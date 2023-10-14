@@ -3,7 +3,7 @@
 
 ## About
 
-The Irreden Game Engine. An isometric, pixelatable, voxel game engine.
+The Irreden content and game engine. An isometric, pixelatable, voxel game engine.
 
 ### Isometric
 
@@ -13,6 +13,10 @@ The Irreden Game Engine. An isometric, pixelatable, voxel game engine.
 
 
 ## Style
+
+## Noteworthy c++ concepts (not that one) in code
+
+#### Type erasure
 
 ## FAQ
 ### Why a fixed camera perspective for a 3D engine?
