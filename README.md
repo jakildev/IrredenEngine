@@ -3,6 +3,9 @@
 
 ## About
 
+- Started developement January 2021
+-
+
 The Irreden content and game engine. Does not have an IDE currently, implementations are written in c++. Specific editors should be created for user projects, but a game can be created soley using c++/lua as well.
 
 **NOTE: This project is still in the alpha stages and the structure of it is subject to change!** If you implement this engine, your implementation might not be compatable with future versions.
