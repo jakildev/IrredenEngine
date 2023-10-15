@@ -29,9 +29,6 @@ using namespace IRAudio;
 
 namespace IRCommands {
 
-    // TODO: All command types should move to a appropriate system
-    //
-
     class CommandManager {
     public:
         CommandManager()
@@ -45,8 +42,7 @@ namespace IRCommands {
             std::function<void()> command
         )
         {
-            // Create map entry if doesn't exist
-            if(m_systemCommands.count(SystemName) == 0) {
+            if(!m_systemCommands.contains(SystemName)) {
                 m_systemCommands.emplace(
                     SystemName,
                     std::vector<IRCommand<IR_COMMAND_SYSTEM>>{}
@@ -74,8 +70,7 @@ namespace IRCommands {
             Args... fixedArgs
         )
         {
-            // Create map entry if doesn't exist
-            if(m_entityCommands.count(commandName) == 0) {
+            if(!m_entityCommands.contains(commandName)) {
                 m_entityCommands.emplace(
                     commandName,
                     IRCommand<IR_COMMAND_ENTITY>{
@@ -89,7 +84,6 @@ namespace IRCommands {
             }
         }
 
-        // User commands, non named with enum or whatever
         template <
             typename Function,
             typename... Args
@@ -101,8 +95,7 @@ namespace IRCommands {
             Args... fixedArgs
         )
         {
-            // Create map entry if doesn't exist
-            if(!m_midiCCDeviceCommands.contains(device)) { // contains?
+            if(!m_midiCCDeviceCommands.contains(device)) {
                 m_midiNoteDeviceCommands.emplace(
                     device,
                     std::vector<IRCommand<IR_COMMAND_MIDI_NOTE>>{}
@@ -158,31 +151,6 @@ namespace IRCommands {
             return m_userCommands.size() - 1;
         }
 
-
-        // template <
-        //     IRInputTypes InputType,
-        //     typename... Components
-        // >
-        // int registerComponentCommand(
-        //     int button,
-        //     std::function<void(Components...)> command
-        // )
-        // [
-
-        // ]
-
-        // TODO: This will be fore commands that are defined in component
-        // definition. They will be bound to a button and called on the
-        // entity that the component belongs to. I can use this args... for the
-        // template <typename... Args>
-        // registerComponentCommand(
-        //     int button,
-        //     std::function<void(EntityHandle, Args...)> command
-        // )
-        // {
-
-        // }
-
         template <IRCommandNames CommandName>
         void bindEntityToCommand(EntityHandle entity) {
             m_entitiesBoundToCommands[CommandName].push_back(entity);
@@ -217,8 +185,6 @@ namespace IRCommands {
 
     private:
         EntityHandle m_noneEntity;
-        // These are all commands that are bound to each system. They
-        // are executed when the system is executed
         std::unordered_map<
             IRSystemName,
             std::vector<IRCommand<IR_COMMAND_SYSTEM>>
@@ -252,6 +218,5 @@ namespace IRCommands {
     };
 
 } // namespace IRCommands
-
 
 #endif /* COMMAND_MANAGER_H */

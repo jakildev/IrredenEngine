@@ -54,7 +54,6 @@ namespace IRCommands {
                 command.execute(entity);
             }
         }
-        // MIDI commands next
     }
 
     void CommandManager::executeDeviceMidiCCCommandsAll() {
@@ -166,4 +165,5 @@ namespace IRCommands {
         return global.systemManager_->get<INPUT_MIDI_MESSAGE_IN>()->
             checkCCMessageReceived(device, ccMessage);
     }
+
 } // namespace IRCommands

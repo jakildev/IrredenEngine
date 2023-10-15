@@ -15,10 +15,7 @@
 #include "../input/ir_input.hpp"
 #include "../audio/ir_audio.hpp"
 
-
 using namespace IRECS;
-using namespace IRInput;
-using namespace IRAudio;
 
 namespace IRCommands {
 
@@ -40,10 +37,8 @@ namespace IRCommands {
         IR_COMMAND_ENTITY,
         IR_COMMAND_MIDI_NOTE,
         IR_COMMAND_MIDI_CC,
-        IR_COMMAND_COMPONENTS,
         IR_COMMAND_USER
     };
-
 
     template <IRCommandTypes CommandType>
     class IRCommand;
@@ -153,14 +148,13 @@ namespace IRCommands {
         std::function<void(unsigned char, unsigned char)> m_func;
     };
 
-
     template <>
     class IRCommand<IR_COMMAND_MIDI_CC> {
     public:
         template <typename Function>
         IRCommand(
             IRInput::IRInputTypes type,
-            IRCCMessage ccMessage,
+            IRAudio::IRCCMessage ccMessage,
             Function func
         )
         :   m_type(type)
@@ -191,10 +185,9 @@ namespace IRCommands {
         }
     private:
         IRInput::IRInputTypes m_type;
-        IRCCMessage m_ccMessage;
+        IRAudio::IRCCMessage m_ccMessage;
         std::function<void(unsigned char)> m_func;
     };
-
 
     template <>
     class IRCommand<IR_COMMAND_USER> {
@@ -228,92 +221,11 @@ namespace IRCommands {
             return m_button;
         }
 
-
-
     private:
         IRInput::IRInputTypes m_type;
         int m_button;
         std::function<void()> m_func;
     };
-
-
-
-    // template <>
-    // class IRCommand<IR_COMMAND_COMPONENTS> {
-    // public:
-    //     template <typename... Components>
-    //     IRCommand(
-    //         IRInput::IRInputTypes type,
-    //         int buttonValue,
-    //         std::function<void(Components...)> func,
-    //     )
-    //     :   m_type(type)
-    //     ,   m_button(buttonValue)
-    //     ,   m_func([func, fixedArgs...](EntityHandle entity) {
-    //             func(entity, fixedArgs...);
-    //         })
-    //     {
-
-    //     }
-
-    //     void execute(EntityHandle entity) const {
-    //         m_func(entity);
-    //     }
-
-    //     const int getButton() const {
-    //         return m_button;
-    //     }
-
-    //     const IRInput::IRInputTypes getType() const {
-    //         return m_type;
-    //     }
-    // private:
-    //     IRInput::IRInputTypes m_type;
-    //     int m_button;
-    //     std::function<void(EntityHandle)> m_func;
-    // };
-
-        // class CommandVirtual {
-    // public:
-    //     virtual ~CommandVirtual() = default;
-    //     virtual void execute(EntityHandle entity) = 0;
-    // };
-
-    // template <IRCommandNames Command>
-    // class IRCommand;
-
-    // template <IRCommandNames Command>
-    // class IRCommand;
-    // template <>
-    // class IRCommand<NULL_COMMAND> : public CommandVirtual {
-    // public:
-    //     void execute(EntityHandle entity) {
-
-    //     }
-    // };
-
-    // template <class CommandImpl>
-    // class Command {
-    // public:
-
-    //     // SOON once __cpp_explicit_this_parameter is supported by gcc
-    //     // void execute(this auto&& self, EntityId entity) {
-    //     //     self.impl(entity);
-    //     // }
-
-    //     void execute(EntityId entity) {
-    //         static_cast<CommandImpl*>(this)->impl(entity);
-    //     }
-    // private:
-
-    // };
-
-    // class CommandTest : public Command<CommandTest> {
-    // public:
-    //     void impl(EntityId entity) {
-    //         ENG_LOG_ERROR("TEST LOG!!!!!!!!");
-    //     }
-    // };
 
 }
 
