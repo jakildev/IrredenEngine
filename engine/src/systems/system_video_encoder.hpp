@@ -69,6 +69,8 @@ namespace IRECS {
             m_encoderSettings.bitRate = 200000000;
             m_encoderSettings.fname = outfile;
             m_encoderSettings.inputAlpha = false;
+
+            ENG_LOG_INFO("Creating system VIDEO_ENCODER");
         }
 
         virtual ~IRSystem() = default;

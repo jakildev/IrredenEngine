@@ -72,7 +72,7 @@ namespace IRECS {
             }
         ,   m_frameData{}
         {
-
+            ENG_LOG_INFO("Created system RENDERING_FRAMEBUFFER_TO_SCREEN");
         }
 
         void tickWithArchetype(
@@ -83,8 +83,6 @@ namespace IRECS {
             const std::vector<C_CameraPosition2DIso>& cameraPositionIso
         )
         {
-                // ENG_LOG_INFO("Num entities: {}", entities.size());
-            // for(int i = 0; i < entities.size(); i++) {
             for(int i = 0; i < entities.size(); i++) {
                 // if(t)
                 const C_TriangleCanvasFramebuffer& framebuffer =
@@ -134,7 +132,7 @@ namespace IRECS {
         ivec2 m_viewportThisFrame;
 
         virtual void beginExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
             m_viewportThisFrame = ivec2(
                 global.systemManager_->get<SCREEN_VIEW>()->getViewportX(),
                 global.systemManager_->get<SCREEN_VIEW>()->getViewportY()
@@ -146,7 +144,7 @@ namespace IRECS {
         }
 
         virtual void endExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
         }
 
         void bindDefaultFramebuffer() {

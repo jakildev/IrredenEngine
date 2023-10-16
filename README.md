@@ -1,38 +1,52 @@
 # Irreden
 
 ## About
+The Irreden content and game engine.
 
-The Irreden content and game engine. Written in c++23.
+**NOTE: This project is still in the alpha stages and the structure of it is subject to change!** If you implement this engine, your implementation might not be compatible with future versions.
 
-**NOTE: This project is still in the alpha stages and the structure of it is subject to change!** If you implement this engine, your implementation might not be compatable with future versions.
+## Features
+-   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
+[Isometric Pixelatable Voxel Renderer](/irreden-engine/docs/features/renderer.md)\
+[Archetype-based entity-component-system](/irreden-engine/docs/features/ecs.md)
 
-### Features
-[Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
-[Archetype-based entity-component-system](/docs/features/ecs.md)
+## Licensing
+This project is under the [MIT License](/irreden-engine/docs/usage/licensing.md).\
+It relies on other open-source dependencies as described in [dependencies](#dependencies).\
+More details can be found [here](/irreden-engine/docs/usage/licensing.md).
+
+## Dependencies
+-   OpenGL 4.6
+-   EasyProfiler
+-   SpdLogger
+-
 
 ## Usage
-[Licensing](/docs/usage/licensing.md)\
-[Project Setup](/docs/usage/project_setup.md)
+[Project Setup](/irreden-engine/docs/usage/project_setup.md)
 
 ## Contributing
 
-[Style rules and guidelines](/docs/rules/style.md)\
-[Opening a pull request](/docs/contributing/pull_requests.md)\
-[Submitting a new issue](/docs/contributing/issues.md)
+[Style rules and guidelines](/irreden-engine/docs/rules/style.md)\
+[Opening a pull request](/irreden-engine/docs/contributing/pull_requests.md)\
+[Submitting a new issue](/irreden-engine/docs/contributing/issues.md)
 
 **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.** If you have a suggestion, submit a new issue to discuss, or email me at jakildev@gmail.com.
 
 ## Limitations
--   Only builds for Windows
--   Device must support OpenGL 4.6
-- Does not have an IDE currently, implementations are written in c++. Specific editors should be created for user projects, but a game can be created soley using c++/lua as well.
+-   Only builds for Windows.
+-   Device must support OpenGL 4.6.
+-   No IDE (may have one in the future).
+-   Implementations must be written in c++.
 
+## Contact
+-   Join the discord [here](TODO: ).
+-   Email me at jakildev@gmail.com.
+-
 
 ## Noteworthy c++ concepts (not that one) in code
 #### Type erasure
 
 ## FAQ
-### Why a fixed camera perspective for a 3D engine?
-Short answer, ways to optimize.
+### See here.
 
-### [TODO](/docs/todo.md)
+### [TODO](/irreden-engine/docs/todo.md)

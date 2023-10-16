@@ -42,7 +42,6 @@ namespace IRECS {
 
         )
         {
-            EASY_FUNCTION(IR_PROFILER_COLOR_INPUT);
             for(int i=0; i < entities.size(); i++) {
                 gamepadState[i].updateState(
                     m_window.getGamepadState(joysticks[i].joystickId_)
@@ -85,11 +84,11 @@ namespace IRECS {
         std::vector<EntityHandle> m_gamepadEntities;
 
         virtual void beginExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_INPUT);
+
         }
 
         virtual void endExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_INPUT);
+
         }
 
         void initJoystickEntities() {

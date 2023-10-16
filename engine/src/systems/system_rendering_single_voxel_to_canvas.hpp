@@ -189,7 +189,7 @@ namespace IRECS {
             m_guiCanvas.set(C_GuiCanvas{});
             // TODO...........
 
-            ENG_LOG_INFO("Created system single voxel to canvas");
+            ENG_LOG_INFO("Created system RENDERING_SINGLE_VOXEL_TO_CANVAS");
         }
         // instead
 
@@ -203,7 +203,6 @@ namespace IRECS {
             const std::vector<C_CameraPosition2DIso>& cameraPositions
         )
         {
-
             // Stage 1
             for(int i = 0; i < entities.size(); i++) {
                 updateTriangleCanvasOffset(
@@ -304,7 +303,6 @@ namespace IRECS {
         Buffer m_bufferFrameData;
 
         virtual void beginExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
              m_mainCanvas.get<C_CameraPosition2DIso>().pos_ =
                 offsetScreenToIsoTriangles(
                     global.systemManager_->get<SCREEN_VIEW>()->
@@ -330,7 +328,6 @@ namespace IRECS {
         }
 
         virtual void endExecute() override {
-            EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
             // TODO move to where m_playerCanvas is defined
             if(m_player.id_ != kNullEntityId) {
                 m_playerCanvas.get<C_Position3D>().pos_ =

@@ -29,7 +29,7 @@ namespace IRECS {
     public:
         IRSystem()
         {
-            ENG_LOG_INFO("Created system system-name-here");
+            ENG_LOG_INFO("Created system RENDERING_TEXTURE_SCROLL");
         }
 
         void tickWithArchetype(
@@ -52,11 +52,11 @@ namespace IRECS {
         }
     private:
         // virtual void beginExecute() override {
-        //     EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
         // }
 
         // virtual void endExecute() override {
-        //     EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
         // }
 
 

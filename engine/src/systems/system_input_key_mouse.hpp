@@ -56,10 +56,7 @@ namespace IRECS {
                     entityNewButton
                 });
             }
-
-
             ENG_LOG_INFO("Created system INPUT_KEY_MOUSE");
-
         }
 
         // TEMP
@@ -79,7 +76,6 @@ namespace IRECS {
         std::vector<C_KeyMouseButton>& mouseButtons
     )
     {
-        EASY_BLOCK("SystemKeyMouseInput::tickWithArchetype", IR_PROFILER_COLOR_UPDATE);
         for(int i=0; i < entities.size(); ++i) {
             C_KeyStatus& componentStatus = keyStatuses[i];
             int mouseButtonPressCount = m_buttonPressesThisFrame.at(

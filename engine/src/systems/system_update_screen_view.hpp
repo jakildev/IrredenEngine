@@ -121,7 +121,7 @@ namespace IRECS {
                 }
             );
 
-            ENG_LOG_INFO("Created system update screen view");
+            ENG_LOG_INFO("Created system SCREEN_VIEW");
         }
 
         virtual ~IRSystem() = default;
@@ -254,16 +254,10 @@ namespace IRECS {
 
 
         virtual void beginExecute() override {
-            EASY_BLOCK(
-                "IRSystem<SCREEN_VIEW>::beginExecute",
-                IR_PROFILER_COLOR_BEGIN_EXECUTE
-            );
-
             m_window.getUpdateWindowSize(
                 m_viewport.x_,
                 m_viewport.y_
             );
-
             m_window.getUpdateCursorPos(
                 m_cursorPosition.posX_,
                 m_cursorPosition.posY_

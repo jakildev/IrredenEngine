@@ -43,7 +43,6 @@ namespace IRECS {
             std::vector<C_VoxelSetNew>& voxelSets // is a voxel set a top level only?
         )
         {
-            EASY_BLOCK("IRSystem<UPDATE_VOXEL_SET_CHILDREN>::tickWithArchetype");
             const bool isPlayer = archetype.contains(global.entityManager_->getComponentType<C_Player>());
             for(int i=0; i < entities.size(); i++) {
                 if(isPlayer) {

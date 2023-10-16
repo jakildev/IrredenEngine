@@ -72,11 +72,11 @@ namespace IRECS {
         }
     private:
         // virtual void beginExecute() override {
-        //     EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
         // }
 
         // virtual void endExecute() override {
-        //     EASY_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
         // }
 
     };

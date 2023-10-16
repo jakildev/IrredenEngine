@@ -58,7 +58,6 @@ namespace IRECS {
             std::vector<C_Velocity3D>& velocities
         )
         {
-            EASY_BLOCK("IRSystem<VELOCITY_3D>::tickWithArchetype");
             for(int i=0; i < entities.size(); i++) {
                 positions[i].pos_ += (
                     velocities[i].velocity_ * m_velocityModifier

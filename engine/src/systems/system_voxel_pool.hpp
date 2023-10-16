@@ -66,6 +66,8 @@ namespace IRECS {
                 m_voxelColors.end(),
                 C_Voxel{Color{0, 0, 0, 0}}
             );
+
+            ENG_LOG_INFO("Created system VOXEL_POOL");
         }
 
         std::tuple<
