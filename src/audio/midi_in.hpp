@@ -18,7 +18,7 @@
 #include <queue>
 #include <unordered_map>
 
-#include "../game_components/component_midi_message.hpp"
+#include "../components/component_midi_message.hpp"
 
 namespace IRAudio {
 

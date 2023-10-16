@@ -12,12 +12,12 @@
 
 #include "ir_commands.hpp"
 #include "../input/ir_input.hpp"
-#include "../entity/ir_system.hpp"
-#include "../entity/ir_ecs.hpp"
+#include "../ecs/ir_system.hpp"
+#include "../ecs/ir_ecs.hpp"
 #include "../audio/ir_audio.hpp"
 
-#include "../game_components/component_tags_all.hpp"
-#include "../entity/ir_system_virtual.hpp"
+#include "../components/component_tags_all.hpp"
+#include "../ecs/ir_system_virtual.hpp"
 
 #include <unordered_map>
 #include <memory>

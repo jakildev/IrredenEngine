@@ -9,8 +9,11 @@
 
 #include "ir_audio.hpp"
 #include "midi_in.hpp"
-#include "../game_entities/entity_midi_message_note_on.hpp"
-#include "../game_components/component_lifetime.hpp"
+#include "..\ecs\entity_handle.hpp"
+#include "..\components\component_lifetime.hpp"
+#include "..\components\component_midi_message.hpp"
+
+using namespace IRComponents;
 
 namespace IRAudio {
 

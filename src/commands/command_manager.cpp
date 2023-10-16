@@ -8,11 +8,11 @@
  */
 
 #include "command_manager.hpp"
-#include "../entity/system_manager.hpp"
+#include "..\ecs\system_manager.hpp"
 
-#include "../game_systems/system_input_key_mouse.hpp"
-#include "../game_systems/system_input_gamepad.hpp"
-#include "../game_systems/system_input_midi_message_in.hpp"
+#include "..\systems\system_input_key_mouse.hpp"
+#include "..\systems\system_input_gamepad.hpp"
+#include "..\systems\system_input_midi_message_in.hpp"
 
 namespace IRCommands {
 

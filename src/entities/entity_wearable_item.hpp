@@ -1,0 +1,6 @@
+#ifndef ENTITY_WEARABLE_ITEM_H
+#define ENTITY_WEARABLE_ITEM_H
+
+// Just an Idea
+
+#endif /* ENTITY_WEARABLE_ITEM_H */

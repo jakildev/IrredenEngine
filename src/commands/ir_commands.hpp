@@ -10,8 +10,8 @@
 #ifndef IR_COMMANDS_H
 #define IR_COMMANDS_H
 
-#include "../entity/entity_handle.hpp"
-#include "../entity/ir_ecs.hpp"
+#include "../ecs/entity_handle.hpp"
+#include "../ecs/ir_ecs.hpp"
 #include "../input/ir_input.hpp"
 #include "../audio/ir_audio.hpp"
 
@@ -180,7 +180,7 @@ namespace IRCommands {
             return m_type;
         }
 
-        const IRCCMessage getCCMessage() const {
+        const IRAudio::IRCCMessage getCCMessage() const {
             return m_ccMessage;
         }
     private:

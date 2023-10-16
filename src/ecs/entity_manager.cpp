@@ -1,0 +1,262 @@
+/*
+ * Project: Irreden Engine
+ * File: \irreden-engine\src\entity\entity_manager.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: October 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
+#include "../ecs/entity_manager.hpp"
+#include "../profiling/logger_spd.hpp"
+#include <memory>
+#include <sstream>
+#include "../world/global.hpp"
+
+namespace IRECS {
+
+    EntityManager::EntityManager()
+        :   m_entityPool{}
+        ,   m_entityIndex{}
+        ,   m_archetypeGraph{}
+        ,   m_pureComponentTypes{}
+        ,   m_pureComponentVectors{}
+        ,   m_liveEntityCount{0}
+        ,   m_entitiesMarkedForDeletion{}
+
+        {
+        for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
+            m_entityPool.push(entity);
+        }
+        global.entityManager_ = this;
+        ENG_LOG_INFO("Created Entity Manager (IR_MAX_ENTITIES={})", IR_MAX_ENTITIES);
+    }
+
+    EntityManager::~EntityManager() {}
+
+    EntityId EntityManager::createEntity() {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityId id = allocateNewEntity();
+        addNewEntityToBaseNode(id);
+        return id;
+    }
+
+    EntityId EntityManager::allocateNewEntity() {
+        ENG_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
+        EntityId id = m_entityPool.front();
+        m_entityPool.pop();
+        m_liveEntityCount++;
+        ENG_LOG_DEBUG("Created entity={}", id);
+        return id;
+    }
+
+    void EntityManager::addNewEntityToBaseNode(EntityId id) {
+        ArchetypeNode* node = m_archetypeGraph.getBaseNode();
+        m_entityIndex.emplace(
+            id & IR_ENTITY_ID_BITS,
+            EntityRecord{node, node->length_}
+        );
+        node->entities_.push_back(id);
+        node->length_++;
+    }
+
+    void EntityManager::returnEntityToPool(EntityId entity) {
+        m_entityIndex.erase(entity & IR_ENTITY_ID_BITS);
+        --m_liveEntityCount;
+        entity &= IR_ENTITY_ID_BITS;
+        m_entityPool.push(entity);
+    }
+
+    void EntityManager::addFlags(EntityId entity, EntityId flags) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityRecord& record = getRecord(entity);
+        // Make sure ID bits are not getting modified
+        record.archetypeNode->entities_.at(
+            record.row) |= (flags & (~IR_ENTITY_ID_BITS)
+        );
+        EntityId newId = record.archetypeNode->entities_.at(record.row);
+    }
+
+    void EntityManager::markEntityForDeletion(EntityId& entity) {
+        m_entitiesMarkedForDeletion.push_back(entity);
+        entity |= IR_ENTITY_FLAG_MARKED_FOR_DELETION;
+    }
+
+    /* TODO: destroy entities in batch after each frame */
+    void EntityManager::destroyEntity(EntityId entity) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityRecord& record = getRecord(entity);
+        ENG_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
+        ArchetypeNode* node = record.archetypeNode;
+        destroyComponents(entity);
+        removeEntityFromArchetypeNode(node, record.row);
+        returnEntityToPool(entity);
+        ENG_LOG_DEBUG(
+            "Destroyed entity {}",
+            entity & IR_ENTITY_ID_BITS
+        );
+    }
+
+    // Not going to handle nested entities for now because I will prob remove
+    // that feature and redo something like it. Doesnt make sense to have a whole
+    // new archetype base node per entity even if they would have the same archetype
+    void EntityManager::destroyComponents(EntityId entity) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityRecord& record = getRecord(entity);
+        const Archetype& type = record.archetypeNode->type_;
+        for(auto itr = type.begin(); itr != type.end(); itr++) {
+            destroyComponent(*itr, record.archetypeNode, record.row);
+        }
+    }
+
+    void EntityManager::destroyComponent(
+        ComponentId component,
+        ArchetypeNode* node,
+        unsigned int index
+    )
+    {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        if(!isPureComponent(component)) {
+
+            ENG_ASSERT(false, "non pure components not supported rn");
+        }
+        node->components_.at(component)->destroy(index);
+        return;
+    }
+
+    void EntityManager::destroyMarkedEntities() {
+        // ENG_LOG_DEBUG("")
+        for(int i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
+            this->destroyEntity(m_entitiesMarkedForDeletion.at(i));
+        }
+        m_entitiesMarkedForDeletion.clear();
+    }
+
+    EntityRecord& EntityManager::getRecord(EntityId entity) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        return m_entityIndex[entity & IR_ENTITY_ID_BITS];
+    }
+
+    bool EntityManager::isPureComponent(ComponentId component) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        return m_pureComponentVectors.find(component) !=
+            m_pureComponentVectors.end();
+    }
+
+    // This could look up component in archetype graph and clone from there,
+    // thus eliminating the need for the m_pureComponentVectors entirely
+    smart_ComponentData EntityManager::createComponentDataVector(
+        ComponentId component
+    )
+    {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        return m_pureComponentVectors[component]->cloneEmpty();
+    }
+
+    void EntityManager::pushCopyData(
+        IComponentData* fromStructure,
+        unsigned int fromIndex,
+        IComponentData* toStructure) {
+            fromStructure->pushCopyData(toStructure, fromIndex);
+    }
+
+    int EntityManager::moveEntityByArchetype(
+        EntityRecord& record,
+        const Archetype& type,
+        ArchetypeNode* fromNode,
+        ArchetypeNode* toNode
+    )
+    {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+
+        if(fromNode == toNode) {
+            return record.row;
+        }
+
+        ENG_ASSERT(
+            std::includes(
+                fromNode->type_.begin(),
+                fromNode->type_.end(),
+                type.begin(),
+                type.end()),
+            "Entity move type is not a subset of fromNode type");
+        ENG_ASSERT(
+            std::includes(
+                toNode->type_.begin(),
+                toNode->type_.end(),
+                type.begin(),
+                type.end()),
+            "Entity move type is not a subset of toNode type");
+        // EntityRecord& record = getRecord(entity);
+        for(auto itr = type.begin(); itr != type.end(); itr++) {
+            handleComponentMove(
+                *itr,
+                fromNode,
+                toNode,
+                record.row);
+        }
+        toNode->entities_.push_back(
+            fromNode->entities_.at(record.row));
+        updateBackEntityPosition(fromNode, record.row);
+        record.archetypeNode = toNode;
+        record.row = toNode->length_;
+        toNode->length_++;
+        fromNode->length_--;
+        return record.row;
+    }
+
+    // TODO: Be able to move things in batches (when performance requires it)
+    void EntityManager::handleComponentMove(
+        const ComponentId component,
+        ArchetypeNode* fromNode,
+        ArchetypeNode* toNode,
+        const unsigned int row
+    )
+    {
+        if(!isPureComponent(component)) {
+            ENG_ASSERT(false, "non pure components not supported rn");
+        }
+        fromNode->components_.at(component)->moveDataAndPack(
+            toNode->components_.at(component).get(),
+            row
+        );
+
+    }
+
+    void EntityManager::removeEntityFromArchetypeNode(
+        ArchetypeNode* node,
+        unsigned int index) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        for(auto itr = node->type_.begin(); itr != node->type_.end(); itr++) {
+            handleComponentRemove(
+                *itr,
+                node,
+                index);
+        }
+        updateBackEntityPosition(node, index);
+        node->length_--;
+    }
+
+    void EntityManager::handleComponentRemove(
+        const ComponentId component,
+        ArchetypeNode* node,
+        const unsigned int row)
+    {
+
+        if(!isPureComponent(component)) {
+            ENG_ASSERT(false, "non pure components not supported rn");
+        }
+        node->components_[component]->removeDataAndPack(row);
+    }
+
+    void EntityManager::updateBackEntityPosition(ArchetypeNode* node, unsigned int newPos) {
+        EASY_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityId backEntity = node->entities_.back();
+        EntityRecord& backRecord = getRecord(backEntity);
+        backRecord.row = newPos;
+        node->entities_[newPos] = node->entities_.back();
+        node->entities_.pop_back();
+        ENG_LOG_DEBUG("Entity={} moved to row={}", backEntity, newPos);
+    }
+
+} // namespace IREntity:
