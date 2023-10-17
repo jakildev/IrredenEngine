@@ -10,16 +10,17 @@ The Irreden content and game engine.
 [Isometric Pixelatable Voxel Renderer](/irreden-engine/docs/features/renderer.md)\
 [Archetype-based entity-component-system](/irreden-engine/docs/features/ecs.md)
 
-## Licensing
-This project is under the [MIT License](/irreden-engine/docs/usage/licensing.md).\
-It relies on other open-source dependencies as described in [dependencies](#dependencies).\
-More details can be found [here](/irreden-engine/docs/usage/licensing.md).
-
 ## Dependencies
 -   OpenGL 4.6
 -   EasyProfiler
 -   SpdLogger
 -
+
+## Licensing
+This project is under the [MIT License](/irreden-engine/docs/usage/licensing.md).\
+It relies on other open-source dependencies as described in [dependencies](#dependencies).\
+More details can be found [here](/irreden-engine/docs/usage/licensing.md).
+
 
 ## Usage
 [Project Setup](/irreden-engine/docs/usage/project_setup.md)
