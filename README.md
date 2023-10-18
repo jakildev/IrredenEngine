@@ -14,7 +14,10 @@ The Irreden content and game engine.
 -   OpenGL 4.6
 -   EasyProfiler
 -   SpdLogger
--
+-   RtAudio
+-   RtMidi
+-   StbImage
+
 
 ## Licensing
 This project is under the [MIT License](/irreden-engine/docs/usage/licensing.md).\

@@ -81,8 +81,16 @@ namespace IRECS {
                 &kAttrFloat2
             }
         ,   m_shaderProgram {
-                ShaderStage{IRShaders::kFileVertIsoTrianglesScreen, GL_VERTEX_SHADER}.getHandle(),
-                ShaderStage{IRShaders::kFileFragIsoTrianglesScreen, GL_FRAGMENT_SHADER}.getHandle()
+                {
+                    ShaderStage{
+                        IRShaders::kFileVertIsoTrianglesScreen,
+                        GL_VERTEX_SHADER
+                    }.getHandle(),
+                    ShaderStage{
+                        IRShaders::kFileFragIsoTrianglesScreen,
+                        GL_FRAGMENT_SHADER
+                    }.getHandle()
+                }
             }
         {
             ENG_LOG_INFO(

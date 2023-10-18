@@ -33,13 +33,12 @@ add_library(IrredenEngine STATIC
     src/rendering/assimp_demo.cpp
     src/rendering/buffer.cpp
     src/rendering/framebuffer.cpp
-    src/rendering/irreden_glapi.cpp
-    src/rendering/meshPVP.cpp
+    src/rendering/ir_gl_api.cpp
     src/rendering/renderer.cpp
     src/rendering/rendering_rm.cpp
-    src/rendering/scene.cpp
     src/rendering/shader.cpp
     src/rendering/texture.cpp
+    src/rendering/vao.cpp
     src/rendering/voxel_data.cpp
     src/rendering/image_data.cpp
 

@@ -152,11 +152,11 @@ namespace IRECS {
                 dvec2(getTriangleStepSizeScreen())
             ;
 
-            ENG_LOG_INFO(
-                "Mouse position render triangles: {}, {}",
-                m_mousePositionRenderTriangles.x,
-                m_mousePositionRenderTriangles.y
-            );
+            // ENG_LOG_INFO(
+            //     "Mouse position render triangles: {}, {}",
+            //     m_mousePositionRenderTriangles.x,
+            //     m_mousePositionRenderTriangles.y
+            // );
 
         }
 

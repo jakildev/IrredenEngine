@@ -43,14 +43,16 @@ namespace IRECS {
     public:
         IRSystem()
         :   m_shaderProgram{  // FramebufferBasic
-                ShaderStage{
-                    IRShaders::kFileVertFramebufferScreen,
-                    GL_VERTEX_SHADER
-                }.getHandle(),
-                ShaderStage{
-                    IRShaders::kFileFragFramebufferScreen,
-                    GL_FRAGMENT_SHADER
-                }.getHandle()
+                {
+                    ShaderStage{
+                        IRShaders::kFileVertFramebufferScreen,
+                        GL_VERTEX_SHADER
+                    }.getHandle(),
+                    ShaderStage{
+                        IRShaders::kFileFragFramebufferScreen,
+                        GL_FRAGMENT_SHADER
+                    }.getHandle()
+                }
             }
         ,   m_bufferTexturedQuad{
                 IRShapes2D::k2DQuadTextured,

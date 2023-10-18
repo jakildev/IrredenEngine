@@ -1,0 +1,89 @@
+/*
+ * Project: Irreden Engine
+ * File: \irreden-engine\engine\src\rendering\buffer.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: October 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
+#include "buffer.hpp"
+#include "../profiling/logger_spd.hpp"
+#include "../rendering/ir_gl_api.hpp"
+
+namespace IRRendering {
+
+    Buffer::Buffer(
+        const void* data,
+        GLsizeiptr size,
+        GLbitfield flags
+    )
+    {
+        ENG_API->glCreateBuffers(1, &m_handle);
+        ENG_API->glNamedBufferStorage(m_handle, size, data, flags);
+        ENG_LOG_INFO("Created GL buffer handle={}", m_handle);
+    }
+
+    Buffer::Buffer(
+        const void* data,
+        GLsizeiptr size,
+        GLbitfield flags,
+        GLenum target,
+        GLuint index
+    )
+    :   Buffer(data, size, flags)
+    {
+        bindBase(target, index);
+    }
+
+    Buffer::~Buffer()
+    {
+        ENG_API->glDeleteBuffers(1, &m_handle);
+        ENG_LOG_DEBUG("Deleted GL buffer handle={}", m_handle);
+    }
+
+    GLuint Buffer::getHandle() {
+        return m_handle;
+    }
+
+    void Buffer::subData(
+        GLintptr offset,
+        GLsizeiptr size,
+        const void *data
+    ) {
+        ENG_API->glNamedBufferSubData(
+            m_handle,
+            offset,
+            size,
+            data
+        );
+    }
+
+    void Buffer::bindRange(
+        GLenum target,
+        GLuint index,
+        GLintptr offset,
+        GLsizeiptr size
+    ) {
+        ENG_API->glBindBufferRange(
+            target,
+            index,
+            m_handle,
+            offset,
+            size
+        );
+    }
+
+    void Buffer::bindBase(
+        GLenum target,
+        GLuint index
+    )
+    {
+        ENG_API->glBindBufferBase(
+            target,
+            index,
+            m_handle
+        );
+    }
+
+} // namespace IRRendering

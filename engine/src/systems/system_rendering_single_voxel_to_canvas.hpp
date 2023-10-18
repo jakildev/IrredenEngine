@@ -57,16 +57,20 @@ namespace IRECS {
     public:
         IRSystem()
         :   m_shaderCompute{
-                ShaderStage{
-                    IRShaders::kFileCompSingleVoxelToIsoTriangleScreen,
-                    GL_COMPUTE_SHADER
-                }.getHandle()
+                {
+                    ShaderStage{
+                        IRShaders::kFileCompSingleVoxelToIsoTriangleScreen,
+                        GL_COMPUTE_SHADER
+                    }.getHandle()
+                }
             }
         ,   m_shaderComputeSecondPass{
-                ShaderStage{
-                    IRShaders::kFileCompSingleVoxelToCanvasSecondPass,
-                    GL_COMPUTE_SHADER
-                }.getHandle()
+                {
+                    ShaderStage{
+                        IRShaders::kFileCompSingleVoxelToCanvasSecondPass,
+                        GL_COMPUTE_SHADER
+                    }.getHandle()
+                }
             }
         ,   m_bufferVoxelPositions{
                 nullptr,

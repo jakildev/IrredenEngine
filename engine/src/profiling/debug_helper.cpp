@@ -11,7 +11,7 @@
 #include <iostream>
 #include "../profiling/debug_helper.hpp"
 #include "../profiling/logger_spd.hpp"
-#include "../rendering/irreden_glapi.hpp"
+#include "../rendering/ir_gl_api.hpp"
 
 namespace IRDebugging {
 
