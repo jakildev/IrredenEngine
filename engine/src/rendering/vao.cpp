@@ -38,14 +38,12 @@ namespace IRRendering {
             m_stride += attributeSizes[i];
         }
 
-        // index buffer
         if(indexBufferHandle) {
             ENG_API->glVertexArrayElementBuffer(
                 m_handle,
                 indexBufferHandle
             );
         }
-        // vertex buffer
         ENG_API->glVertexArrayVertexBuffer(
             m_handle,
             bindingIndex,
@@ -60,9 +58,14 @@ namespace IRRendering {
             bindingIndex
         );
         ENG_LOG_INFO(
-            "Created VAO: ",
+            "Created VAO: {}",
             m_handle
         );
+    }
+
+    VAO::~VAO() {
+        ENG_API->glDeleteVertexArrays(1, &m_handle);
+        ENG_LOG_INFO("Deleted VAO: {}", m_handle);
     }
 
     void VAO::bind() const {

@@ -1,7 +1,7 @@
-# Irreden
+# Irreden Engine
 
 ## About
-The Irreden content and game engine.
+The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
 **NOTE: This project is still in the alpha stages and the structure of it is subject to change!** If you implement this engine, your implementation might not be compatible with future versions.
 
@@ -17,6 +17,7 @@ The Irreden content and game engine.
 -   RtAudio
 -   RtMidi
 -   StbImage
+-   EasyProfiler
 
 
 ## Licensing

@@ -4,8 +4,7 @@ project(GameBuilds VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Your file name here
-add_subdirectory(${PROJECT_SOURCE_DIR}/your-implementation-here)
+add_subdirectory(${PROJECT_SOURCE_DIR}/game)
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 
 # Eventually move all include files to engine/include

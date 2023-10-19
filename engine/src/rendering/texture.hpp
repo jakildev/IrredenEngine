@@ -13,7 +13,6 @@
 #include <glad/glad.h>
 #include "../rendering/ir_gl_api.hpp"
 #include "../profiling/logger_spd.hpp"
-#include "voxel_data.hpp"
 #include "../math/ir_math.hpp"
 
 using namespace IRMath;
@@ -36,10 +35,10 @@ namespace IRRendering {
         Texture2D& operator=(const Texture2D& other);
         Texture2D(Texture2D&& other);
         Texture2D& operator=(Texture2D&& other);
+
         inline unsigned int getWidth() const { return m_width; }
         inline unsigned int getHeight() const { return m_height; }
         inline uvec2 getSize() const { return uvec2(m_width, m_height); }
-
         GLuint getHandle() const;
         void bind(GLuint unit = 0) const;
         void bindImage(
@@ -61,6 +60,7 @@ namespace IRRendering {
             const void* data
         );
         void clear(GLenum format, GLenum type, const void* data);
+
     private:
         GLuint m_handle;
         unsigned int m_width, m_height;
@@ -78,6 +78,7 @@ namespace IRRendering {
             GLint filter = GL_NEAREST
         );
         ~Texture3D();
+
         GLuint getHandle() const;
         void bind(GLuint unit = 0);
         void setParameteri(GLenum pname, GLint param);
@@ -89,10 +90,7 @@ namespace IRRendering {
             GLenum type,
             const void* data
         );
-        // void subVoxels3D(
-        //     const VoxelData& voxels,
-        //     ivec3 offset = ivec3(0, 0, 0)
-        // );
+
     private:
         GLuint m_handle;
         unsigned int m_width, m_height, m_depth;

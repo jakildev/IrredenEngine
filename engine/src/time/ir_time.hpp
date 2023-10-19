@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: \irreden-engine\engine\src\time\ir_time.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: October 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_TIME_H
 #define IR_TIME_H
 

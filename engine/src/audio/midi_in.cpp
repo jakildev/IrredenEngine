@@ -14,6 +14,7 @@
 #include "..\components\component_midi_message.hpp"
 
 using namespace IRComponents;
+using namespace IRECS;
 
 namespace IRAudio {
 

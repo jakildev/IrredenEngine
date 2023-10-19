@@ -27,6 +27,7 @@ namespace IRRendering {
             unsigned int numAttributes,
             const VertexArrayAttribute* attributes
         );
+        ~VAO();
 
         void bind() const;
     private:

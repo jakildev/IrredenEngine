@@ -7,6 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
+#include "../world/global.hpp"
 #include "rendering_rm.hpp"
 #include "shader.hpp"
 #include "texture.hpp"
@@ -29,6 +30,10 @@ RenderingResourceManager::RenderingResourceManager() {
     registerResource<ShaderProgram>();
     registerResource<Buffer>();
     registerResource<VAO>();
+
+    ENG_LOG_INFO("Created rendering resource manager.");
+
+    global.renderingResourceManager_ = this;
 }
 
 } // namespace IRRendering

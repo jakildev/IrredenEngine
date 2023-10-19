@@ -12,7 +12,7 @@
 
 #include "..\ecs\ir_system_base.hpp"
 
-#include "..\world\glfw_helper.hpp"
+#include "..\world\ir_glfw_window.hpp"
 #include "..\entities\entity_joystick.hpp"
 
 using namespace IRComponents;

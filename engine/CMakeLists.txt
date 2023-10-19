@@ -39,13 +39,11 @@ add_library(IrredenEngine STATIC
     src/rendering/shader.cpp
     src/rendering/texture.cpp
     src/rendering/vao.cpp
-    src/rendering/voxel_data.cpp
     src/rendering/image_data.cpp
 
     src/time/time_manager.cpp
 
-    src/world/resource_manager.cpp
-    src/world/glfw_helper.cpp
+    src/world/ir_glfw_window.cpp
     src/world/ir_world.cpp
 )
 
@@ -162,9 +160,10 @@ add_custom_command(TARGET IrredenEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/src/data ${PROJECT_BINARY_DIR}/data)
 
-add_custom_command(TARGET IrredenEngine POST_BUILD
-                   COMMAND ${CMAKE_COMMAND} -E copy_directory
-                   ${CMAKE_CURRENT_SOURCE_DIR}/src/scripts ${PROJECT_BINARY_DIR}/scripts)
+
+# add_custom_command(TARGET IrredenEngine POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy_directory
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/scripts ${PROJECT_BINARY_DIR}/scripts)
 
 # add_custom_command(TARGET IrredenEngine POST_BUILD
 #                    COMMAND ${CMAKE_COMMAND} -E copy_directory

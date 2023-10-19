@@ -36,7 +36,6 @@ namespace IRRendering {
         }
     {
         initRenderingSystems();
-        global.renderer_ = this;
         ENG_LOG_INFO("Created renderer.");
     }
 

@@ -5,7 +5,6 @@ int main(int argc, char **argv) {
 
     World gameworld = World{argc, argv};
 
-    // hmmmmm, multiple worlds at once??
     gameworld.gameLoop();
 
     return 0;

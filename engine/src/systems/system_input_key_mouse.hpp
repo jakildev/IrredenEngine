@@ -13,7 +13,7 @@
 #include "..\world\global.hpp"
 #include "..\ecs\ir_system_base.hpp"
 #include "..\world\ir_constants.hpp"
-#include "..\world\glfw_helper.hpp"
+#include "..\world\ir_glfw_window.hpp"
 
 #include "..\entities\entity_mouse_button.hpp"
 
