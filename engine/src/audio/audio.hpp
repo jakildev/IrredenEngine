@@ -10,7 +10,8 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
-#include <RtAudio/RtAudio.h>
+// #include <RtAudio/RtAudio.h>
+#include <RtAudio.h>
 #include "../profiling/logger_spd.hpp"
 #include <string>
 
@@ -28,7 +29,10 @@ namespace IRAudio {
         );
     private:
         RtAudio m_rtAudio;
-        std::vector<RtAudio::DeviceInfo> m_deviceInfo;
+        std::unordered_map<
+            unsigned int,
+            RtAudio::DeviceInfo
+        > m_deviceInfo;
         int m_numDevices;
 
         void logDeviceInfoAll();

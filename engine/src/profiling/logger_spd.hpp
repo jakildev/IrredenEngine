@@ -14,8 +14,10 @@
 #include <memory>
 #include <spdlog/spdlog.h>
 
-// A wrapper for the spdlogger: https://github.com/gabime/spdlog
+// TODO: Not use pointers and singleton for logger and just use
+// class members.
 
+// A wrapper for the spdlogger: https://github.com/gabime/spdlog
 
 class LoggerSpd {
 public:

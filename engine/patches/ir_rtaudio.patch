@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1be49c9..a91c12c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -46,7 +46,7 @@ endif()
+ 
+ # Build Options
+ option(RTAUDIO_BUILD_PYTHON "Build PyRtAudio python bindings" OFF)
+-set(RTAUDIO_TARGETNAME_UNINSTALL "uninstall" CACHE STRING "Name of 'uninstall' build target")
++set(RTAUDIO_TARGETNAME_UNINSTALL "RtAudioUninstall" CACHE STRING "Name of 'uninstall' build target")
+ 
+ # API Options
+ option(RTAUDIO_API_DS "Build DirectSound API" OFF)

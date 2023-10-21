@@ -16,8 +16,10 @@ namespace IRAudio {
     :   m_rtAudio()
     ,   m_numDevices(m_rtAudio.getDeviceCount())
     {
-        for(int i = 0; i < m_numDevices; i++) {
-            m_deviceInfo.push_back(m_rtAudio.getDeviceInfo(i));
+        ENG_LOG_INFO("Number of devices found: {}", m_numDevices);
+        std::vector<unsigned int> deviceIds = m_rtAudio.getDeviceIds();
+        for(auto& id : deviceIds) {
+            m_deviceInfo.insert({id, m_rtAudio.getDeviceInfo(id)});
         }
         logDeviceInfoAll();
     }
@@ -51,12 +53,8 @@ namespace IRAudio {
     }
 
     void Audio::logDeviceInfoAll() {
-        for(int i = 0; i < m_numDevices; i++) {
-            RtAudio::DeviceInfo info = m_rtAudio.getDeviceInfo(i);
+        for(auto& [id, info] : m_deviceInfo) {
             ENG_LOG_INFO("Device: {}", info.name);
-            if(info.probed == false) {
-                ENG_LOG_INFO("Device not probed");
-            }
             if(info.outputChannels > 0) {
                 ENG_LOG_INFO("Output channels: {}", info.outputChannels);
             }
@@ -90,12 +88,11 @@ namespace IRAudio {
     }
 
     int Audio::getDeviceIndexByName(std::string deviceName) {
-        for(int i = 0; i < m_numDevices; i++) {
-            if(m_deviceInfo[i].name == deviceName) {
-                return i;
+        for(auto& [id, info] : m_deviceInfo) {
+            if(info.name == deviceName) {
+                return id;
             }
         }
         return -1;
     }
-
 }

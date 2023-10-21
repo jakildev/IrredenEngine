@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include "../lua/lua_helper.hpp"
+#include "lua_helper.hpp"
 #include <string>
 #include "../profiling/logger_spd.hpp"
 

@@ -20,7 +20,7 @@ namespace IRRendering {
 RenderingResourceManager::RenderingResourceManager() {
     ENG_LOG_INFO("Initalizing rendering resource manager.");
     m_liveResourceCount = 0;
-    ENG_LOG_INFO("Creating an resource id pool. IR_MAX_RESOURCES={}", IR_MAX_RESOURCES);
+    ENG_LOG_INFO("Creating an resource id pool. IR_MAX_RESOURCES={}", static_cast<int>(IR_MAX_RESOURCES));
     for (ResourceId resource = 0; resource < IR_MAX_RESOURCES; resource++) {
         m_resourcePool.push(resource);
     }

@@ -13,7 +13,7 @@
 #include "..\world\global.hpp"
 #include "..\ecs\ir_system_base.hpp"
 #include "..\world\ir_constants.hpp"
-#include "..\world\ir_glfw_window.hpp"
+#include "..\input\ir_glfw_window.hpp"
 
 #include "..\entities\entity_mouse_button.hpp"
 
@@ -220,7 +220,7 @@ namespace IRECS {
                 ENG_LOG_DEBUG(
                     "Processed button={}, status={}",
                     button,
-                    status
+                    static_cast<int>(status)
                 );
             }
         }

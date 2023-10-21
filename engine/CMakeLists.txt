@@ -1,12 +1,14 @@
-# cmake_minimum_required(VERSION 3.5.0)
-# project(IrredenEngine VERSION 0.1.0)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
-# set(CMAKE_CXX_STANDARD 23)
-# set(CMAKE_CXX_STANDARD_REQUIRED True)
+include(FetchContent)
+include(CMakeScripts/ir_functions.cmake)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/audio)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/input)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/profiling)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/scripting)
+
 
 add_library(IrredenEngine STATIC
-    src/audio/midi_in.cpp
-    src/audio/audio.cpp
 
     src/commands/command_manager.cpp
 
@@ -22,13 +24,7 @@ add_library(IrredenEngine STATIC
 
     src/gl_wrap/GLAPITrace.cpp
 
-    src/lua/lua_helper.cpp
-    src/lua/lua_script.cpp
-
     src/math/ir_math.cpp
-
-    src/profiling/debug_helper.cpp
-    src/profiling/logger_spd.cpp
 
     src/rendering/assimp_demo.cpp
     src/rendering/buffer.cpp
@@ -43,16 +39,14 @@ add_library(IrredenEngine STATIC
 
     src/time/time_manager.cpp
 
-    src/world/ir_glfw_window.cpp
     src/world/ir_world.cpp
 )
 
+# ------------------ Dependencies start --------------------
 
 # Toggle release build
 # target_compile_definitions(IrredenEngine PUBLIC IRREDEN_RELEASE_BUILD)
 
-# Remove to disable profiling
-target_compile_definitions(IrredenEngine PUBLIC BUILD_WITH_EASY_PROFILER)
 
 target_include_directories(IrredenEngine PUBLIC include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/include
@@ -69,13 +63,8 @@ set(IrredenEngine_DYNAMIC_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic)
 
 # link static lib files
 target_link_libraries(IrredenEngine PUBLIC
-    ${IrredenEngine_STATIC_LIB_DIR}/libglfw3dll.a
-    ${IrredenEngine_STATIC_LIB_DIR}/libspdlogd.a
-    ${IrredenEngine_STATIC_LIB_DIR}/liblua54.a
     ${IrredenEngine_STATIC_LIB_DIR}/libassimp.dll.a
     ${IrredenEngine_STATIC_LIB_DIR}/libmeshoptimizer.a
-    ${IrredenEngine_STATIC_LIB_DIR}/librtaudiod.dll.a
-    ${IrredenEngine_STATIC_LIB_DIR}/librtmidi.dll.a
     -lole32
     ${IrredenEngine_STATIC_LIB_DIR}/libavdevice.a
     ${IrredenEngine_STATIC_LIB_DIR}/libavfilter.a
@@ -95,7 +84,6 @@ target_link_libraries(IrredenEngine PUBLIC
     -lm
     -luser32
     -lbcrypt
-    ${IrredenEngine_STATIC_LIB_DIR}/libeasy_profiler.dll.a
     # ${IrredenEngine_STATIC_LIB_DIR}/libdirect-to-video.a
 )
 # below could be helpful if trying to pull in package and build here.
@@ -104,7 +92,12 @@ target_link_libraries(IrredenEngine PUBLIC
 #   target_link_libraries(IrredenEngine PUBLIC ${IrredenEngine_STATIC_LIB_DIR}/easy_profiler.lib)
 
 # I built this manually and link here
-target_link_libraries(IrredenEngine PUBLIC)
+target_link_libraries(
+    IrredenEngine PUBLIC
+    IrredenEngineProfiling
+    IrredenEngineAudio
+    IrredenEngineInput
+)
 
 # # Install the IrredenEngine library
 # install(TARGETS IrredenEngine
@@ -117,40 +110,35 @@ target_link_libraries(IrredenEngine PUBLIC)
 # )
 
 # one way of copying a single file
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/glfw3.dll
-    ${PROJECT_BINARY_DIR}/glfw3.dll COPYONLY
-)
+# configure_file(
+#     ${IrredenEngine_DYNAMIC_LIB_DIR}/glfw3.dll
+#     ${PROJECT_BINARY_DIR}/glfw3.dll COPYONLY
+# )
 
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/lua54.dll
-    ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
-)
-
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/easy_profiler.dll
-    ${PROJECT_BINARY_DIR}/easy_profiler.dll COPYONLY
-)
+# configure_file(
+#     ${IrredenEngine_DYNAMIC_LIB_DIR}/easy_profiler.dll
+#     ${PROJECT_BINARY_DIR}/easy_profiler.dll COPYONLY
+# )
 
 configure_file(
     ${IrredenEngine_DYNAMIC_LIB_DIR}/libassimp-5.dll
     ${PROJECT_BINARY_DIR}/libassimp-5.dll COPYONLY
 )
 
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/libeasy_profiler.dll
-    ${PROJECT_BINARY_DIR}/libeasy_profiler.dll COPYONLY
-)
+# configure_file(
+#     ${IrredenEngine_DYNAMIC_LIB_DIR}/libeasy_profiler.dll
+#     ${PROJECT_BINARY_DIR}/libeasy_profiler.dll COPYONLY
+# )
 
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/librtaudiod.dll
-    ${PROJECT_BINARY_DIR}/librtaudiod.dll COPYONLY
-)
+# configure_file(
+#     ${IrredenEngine_DYNAMIC_LIB_DIR}/librtaudiod.dll
+#     ${PROJECT_BINARY_DIR}/librtaudiod.dll COPYONLY
+# )
 
-configure_file(
-    ${IrredenEngine_DYNAMIC_LIB_DIR}/librtmidi.dll
-    ${PROJECT_BINARY_DIR}/librtmidi.dll COPYONLY
-)
+# configure_file(
+#     ${IrredenEngine_DYNAMIC_LIB_DIR}/librtmidi.dll
+#     ${PROJECT_BINARY_DIR}/librtmidi.dll COPYONLY
+# )
 
 add_custom_command(TARGET IrredenEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

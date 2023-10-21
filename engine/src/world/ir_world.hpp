@@ -10,7 +10,7 @@
 #ifndef IR_WORLD_H
 #define IR_WORLD_H
 
-#include "../world/ir_glfw_window.hpp"
+#include "../input/ir_glfw_window.hpp"
 #include "../ecs/entity_manager.hpp"
 #include "../commands/command_manager.hpp"
 #include "../ecs/system_manager.hpp"

@@ -16,6 +16,7 @@
 #define MIDI_MESSAGES_H
 
 #include "ir_audio.hpp"
+#include "../profiling/logger_spd.hpp"
 
 namespace IRAudio {
 

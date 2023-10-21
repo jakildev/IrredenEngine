@@ -10,7 +10,7 @@
 #ifndef MIDI_IN_H
 #define MIDI_IN_H
 
-#include <RtMidi/RtMidi.h>
+#include <RtMidi.h>
 #include "../profiling/logger_spd.hpp"
 #include "../profiling/cpu_profiler.hpp"
 #include "midi_messages.hpp"

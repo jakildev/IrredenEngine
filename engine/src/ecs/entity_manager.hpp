@@ -103,7 +103,7 @@ namespace IRECS {
             ENG_LOG_INFO("Regestered component type={}, sizeof={} with id={}",
                 typeName,
                 sizeof(Component),
-                componentId
+                static_cast<int>(componentId)
             );
             return componentId;
         }
@@ -157,7 +157,7 @@ namespace IRECS {
                 componentType,
                 toNode->entities_[record.row],
                 record.row,
-                IRECS::makeComponentString(type));
+                IRECS::makeComponentString(type).c_str());
         }
 
         template <typename Component>

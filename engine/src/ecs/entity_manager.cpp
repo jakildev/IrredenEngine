@@ -29,7 +29,10 @@ namespace IRECS {
             m_entityPool.push(entity);
         }
         global.entityManager_ = this;
-        ENG_LOG_INFO("Created Entity Manager (IR_MAX_ENTITIES={})", IR_MAX_ENTITIES);
+        ENG_LOG_INFO(
+            "Created Entity Manager (IR_MAX_ENTITIES={})",
+            static_cast<int>(IR_MAX_ENTITIES)
+        );
     }
 
     EntityManager::~EntityManager() {}

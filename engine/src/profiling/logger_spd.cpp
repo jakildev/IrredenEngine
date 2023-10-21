@@ -8,13 +8,14 @@
  */
 
 #include "logger_spd.hpp"
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/stdout_sinks.h>
 #include <iostream>
 #include <ctime>
 
 LoggerSpd::LoggerSpd() {
-    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    consoleSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l] [%n] %v%$");
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
+    // consoleSink->
+    // consoleSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l] [%n] %v%$");
 
     /* add more sinks here */
     std::vector<spdlog::sink_ptr> sinks{ consoleSink};

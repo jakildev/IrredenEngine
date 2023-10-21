@@ -29,7 +29,7 @@ namespace IRAudio {
             m_portNames.push_back(m_rtMidiIn.getPortName(i));
             ENG_LOG_INFO("MIDI input source {}: {}", i, m_portNames[i].c_str());
         }
-        // this->setCallback(midiInputCallback);
+        ENG_LOG_INFO("Created IRMidiIn");
     }
 
     IRMidiIn::~IRMidiIn() {

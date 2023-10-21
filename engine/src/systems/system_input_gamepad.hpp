@@ -7,12 +7,12 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef SYSTEM_INPUT_JOYSTICK_H
-#define SYSTEM_INPUT_JOYSTICK_H
+#ifndef SYSTEM_INPUT_GAMEPAD_H
+#define SYSTEM_INPUT_GAMEPAD_H
 
 #include "..\ecs\ir_system_base.hpp"
 
-#include "..\world\ir_glfw_window.hpp"
+#include "..\input\ir_glfw_window.hpp"
 #include "..\entities\entity_joystick.hpp"
 
 using namespace IRComponents;
@@ -109,4 +109,4 @@ namespace IRECS {
 
 } // namespace IRSystem
 
-#endif /* SYSTEM_INPUT_JOYSTICK_H */
+#endif /* SYSTEM_INPUT_GAMEPAD_H */

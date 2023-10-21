@@ -7,7 +7,6 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-
 #ifndef AUDIO_MANAGER_H
 #define AUDIO_MANAGER_H
 
@@ -23,38 +22,14 @@ namespace IRAudio {
         AudioManager(
             std::vector<MidiInInterface> midiInInterfaces,
             std::vector<MidiOutInterfaces> midiOutInterfaces
-        )
-        :   m_audio{},
-            m_midiIn{},
-            m_midiOut{}
-        {
-            for(auto& midiInInterface : midiInInterfaces) {
-                m_midiIn.openPort(midiInInterface);
-            }
+        );
 
-            for(auto& midiOutInterface : midiOutInterfaces) {
-                m_midiOut.openPort(kMidiOutInterfaceNames[midiOutInterface]);
-            }
+        ~AudioManager();
 
-            ENG_LOG_INFO("Created AudioManager");
+        inline IRMidiIn& getMidiIn() { return m_midiIn; }
+        inline IRMidiOut& getMidiOut() { return m_midiOut; }
 
-        }
-
-        ~AudioManager() {
-            ENG_LOG_DEBUG("Destroyed AudioManager");
-        }
-
-        void processMidiMessageQueue() {
-            m_midiIn.processMidiMessageQueue();
-        }
-
-        IRMidiIn& getMidiIn() {
-            return m_midiIn;
-        }
-
-        IRMidiOut& getMidiOut() {
-            return m_midiOut;
-        }
+        void processMidiMessageQueue();
 
     private:
         Audio m_audio;

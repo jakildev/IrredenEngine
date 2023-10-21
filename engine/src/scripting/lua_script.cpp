@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include "../lua/lua_script.hpp"
+#include "lua_script.hpp"
 #include "../profiling/logger_spd.hpp"
 
 // lua_dofile runs a lua script. Global functions and variables

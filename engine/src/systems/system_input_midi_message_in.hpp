@@ -115,8 +115,8 @@ namespace IRECS {
                 "Created MIDI device {} (id: {}) on channel {} (value: {})",
                 name,
                 newDeviceId,
-                channelValue + 1,
-                channelValue
+                static_cast<int>(channelValue) + 1,
+                static_cast<int>(channelValue)
             );
             return device;
 

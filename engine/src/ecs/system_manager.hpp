@@ -51,7 +51,10 @@ class SystemManager {
 
             // TODO: Here is where all events are subscribed to
 
-            ENG_LOG_INFO("Registered new system {}", SystemName);
+            ENG_LOG_INFO(
+                "Registered new system {}",
+                static_cast<int>(SystemName)
+            );
         }
 
         template <IRSystemType systemType>

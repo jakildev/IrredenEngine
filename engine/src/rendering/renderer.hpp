@@ -11,7 +11,7 @@
 #define RENDERER_H
 
 #include "buffer.hpp"
-#include "../world/ir_glfw_window.hpp"
+#include "../input/ir_glfw_window.hpp"
 
 using IRGLFW::IRGLFWWindow;
 
