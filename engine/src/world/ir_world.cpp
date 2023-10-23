@@ -123,7 +123,7 @@ void IRWorld::gameLoop() {
         }
         m_IRGLFWWindow.pollEvents();
         // TODO: Set frame caps
-        render(); // ????
+        render(); // ???
     }
     end();
 }

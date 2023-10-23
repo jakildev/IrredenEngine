@@ -18,7 +18,7 @@ target_compile_options(
 
 target_link_libraries(
     IrredenEngineScripting PUBLIC
-    ${IrredenEngine_STATIC_LIB_DIR}/liblua54.a
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/static/liblua54.a
     IrredenEngineProfiling
 )
 target_include_directories(
@@ -28,7 +28,7 @@ target_include_directories(
 )
 
 configure_file(
-    ${PROJECT_SOURCE_DIR}/engine/lib/dynamic/lua54.dll
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic/lua54.dll
     ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
 )
 
