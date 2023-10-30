@@ -7,110 +7,84 @@ namespace IRProfile {
 
     // TODO: Disable logging and asserts in release mode
 
-    inline std::vector<char> formattedString(const char* format, va_list args) {
-        va_list argsCopy;
-        va_copy(argsCopy, args);
-        int size = _vscprintf(format, argsCopy) + 1; // +1 for null-terminator
-        std::vector<char> message(size);
-        vsnprintf(message.data(), size, format, args);
-        va_end(argsCopy);
-        return message;
-    }
-
-    inline void engAssert(bool condition, const char* format, ...) {
+    template <typename... Args>
+    inline void engAssert(bool condition, const char* format, Args&&... args) {
         if (!condition) {
-            va_list args;
-            auto message = formattedString(format, args);
-            LoggerSpd::instance()->getEngineLogger()->critical("{}", message.data());
+            LoggerSpd::instance()->getEngineLogger()->critical(fmt::runtime(format), args...);
             throw std::runtime_error("Engine assertion failed");
         }
     }
-    inline void glAssert(bool condition, const char* format, ...) {
-        if (!condition) {
-            va_list args;
-            auto message = formattedString(format, args);
-            LoggerSpd::instance()->getGLAPILogger()->critical("{}", message.data());
 
+    template <typename... Args>
+    inline void glAssert(bool condition, const char* format, Args&&... args) {
+        if (!condition) {
+            LoggerSpd::instance()->getGLAPILogger()->critical(fmt::runtime(format), args...);
             throw std::runtime_error("GL assertion failed");
         }
     }
 
     // Game logging API
 
-    inline void logTrace(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->trace("{}", message.data());
+    template <typename... Args>
+    inline void logTrace(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->trace(fmt::runtime(format), args...);
     }
-    inline void logDebug(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->debug("{}", message.data());
+    template <typename... Args>
+    inline void logDebug(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->debug(fmt::runtime(format), args...);
     }
-    inline void logInfo(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->info("{}", message.data());
+    template <typename... Args>
+    inline void logInfo(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->info(fmt::runtime(format), args...);
     }
-    inline void logWarn(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->warn("{}", message.data());
+    template <typename... Args>
+    inline void logWarn(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->warn(fmt::runtime(format), args...);
     }
-    inline void logError(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->error("{}", message.data());
+    template <typename... Args>
+    inline void logError(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->error(fmt::runtime(format), args...);
     }
-    inline void logFatal(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGameLogger()->critical("{}", message.data());
+    template <typename... Args>
+    inline void logFatal(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGameLogger()->critical(fmt::runtime(format), args...);
     }
 
     // Engine logging API
 
-    inline void engLogTrace(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->trace("{}", message.data());
+    template <typename... Args>
+    inline void engLogTrace(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->trace(fmt::runtime(format), args...);
     }
-    inline void engLogDebug(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->debug("{}", message.data());
+    template <typename... Args>
+    inline void engLogDebug(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->debug(fmt::runtime(format), args...);
     }
-    inline void engLogInfo(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->info("{}", message.data());
+    template <typename... Args>
+    inline void engLogInfo(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->info(fmt::runtime(format), args...);
     }
-    inline void engLogWarn(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->warn("{}", message.data());
+    template <typename... Args>
+    inline void engLogWarn(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->warn(fmt::runtime(format), args...);
     }
-    inline void engLogError(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->error("{}", message.data());
+    template <typename... Args>
+    inline void engLogError(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->error(fmt::runtime(format), args...);
     }
-    inline void engLogFatal(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getEngineLogger()->critical("{}", message.data());
+    template <typename... Args>
+    inline void engLogFatal(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getEngineLogger()->critical(fmt::runtime(format), args...);
     }
 
     // GL logging API
-    inline void glLogDebug(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGLAPILogger()->debug("{}", message.data());
+    template <typename... Args>
+    inline void glLogDebug(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGLAPILogger()->debug(fmt::runtime(format), args...);
     }
-    inline void glLogFatal(const char* format, ...) {
-        va_list args;
-        auto message = formattedString(format, args);
-        LoggerSpd::instance()->getGLAPILogger()->critical("{}", message.data());
+    template <typename... Args>
+    inline void glLogFatal(const char* format, Args&&... args) {
+        LoggerSpd::instance()->getGLAPILogger()->critical(fmt::runtime(format), args...);
     }
 
 } // namespace IRProfile

@@ -30,28 +30,44 @@ namespace IRProfile {
     #define IR_PROFILER_COLOR_END_EXECUTE        0xff00ff00
     #define IR_PROFILER_COLOR_INPUT      0xff4444ff
 
-    inline void engAssert(bool condition, const char* format, ...);
-    inline void glAssert(bool condition, const char* format, ...);
+    template <typename... Args>
+    inline void engAssert(bool condition, const char* format, Args&&... args);
+    template <typename... Args>
+    inline void glAssert(bool condition, const char* format, Args&&... args);
 
     // Game logging commands
-    inline void logTrace(const char* format, ...);
-    inline void logDebug(const char* format, ...);
-    inline void logInfo(const char* format, ...);
-    inline void logWarn(const char* format, ...);
-    inline void logError(const char* format, ...);
-    inline void logFatal(const char* format, ...);
+    template <typename... Args>
+    inline void logTrace(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void logDebug(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void logInfo(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void logWarn(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void logError(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void logFatal(const char* format, Args&&... args);
 
     // Engine logging commands
-    inline void engLogTrace(const char* format, ...);
-    inline void engLogDebug(const char* format, ...);
-    inline void engLogInfo(const char* format, ...);
-    inline void engLogWarn(const char* format, ...);
-    inline void engLogError(const char* format, ...);
-    inline void engLogFatal(const char* format, ...);
+    template <typename... Args>
+    inline void engLogTrace(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void engLogDebug(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void engLogInfo(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void engLogWarn(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void engLogError(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void engLogFatal(const char* format, Args&&... args);
 
     // GL logging commands
-    inline void glLogDebug(const char* format, ...);
-    inline void glLogFatal(const char* format, ...);
+    template <typename... Args>
+    inline void glLogDebug(const char* format, Args&&... args);
+    template <typename... Args>
+    inline void glLogFatal(const char* format, Args&&... args);
 
     // CPU profiling commands
     void profileMainThread();
