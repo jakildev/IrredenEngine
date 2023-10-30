@@ -8,4 +8,4 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/game)
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 
 # Eventually move all include files to engine/include
-include_directories(${PROJECT_SOURCE_DIR}/engine/src)
+# include_directories(${PROJECT_SOURCE_DIR}/engine/include)

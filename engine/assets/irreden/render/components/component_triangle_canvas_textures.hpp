@@ -1,0 +1,134 @@
+/*
+ * Project: Irreden Engine
+ * File: component_rendering_triangle_canvas_textures.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: October 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
+#ifndef COMPONENT_TRIANGLE_CANVAS_TEXTURES_H
+#define COMPONENT_TRIANGLE_CANVAS_TEXTURES_H
+
+#include <irreden/ir_math.hpp>
+#include <irreden/ir_render.hpp>
+#include <irreden/render/rendering_rm.hpp>
+#include <irreden/render/texture.hpp>
+
+using namespace IRMath;
+using namespace IRRender;
+
+namespace IRComponents {
+
+    struct C_TriangleCanvasTextures {
+        ivec2 size_;
+        std::pair<ResourceId, Texture2D*> textureTriangleColors_;
+        std::pair<ResourceId, Texture2D*> textureTriangleDistances_;
+
+        C_TriangleCanvasTextures(
+            ivec2 size
+        )
+        :   size_{size}
+        ,   textureTriangleColors_{
+                IRRender::createResource<
+                    IRRender::Texture2D
+                >(
+                    GL_TEXTURE_2D,
+                    size.x,
+                    size.y,
+                    GL_RGBA8,
+                    GL_REPEAT,
+                    GL_NEAREST
+                )
+            }
+        ,   textureTriangleDistances_{
+                IRRender::createResource<
+                    IRRender::Texture2D
+                >(
+                    GL_TEXTURE_2D,
+                    size.x,
+                    size.y,
+                    GL_R32I,
+                    GL_REPEAT,
+                    GL_NEAREST
+                )
+            }
+        {
+
+        }
+
+        C_TriangleCanvasTextures() {}
+
+        void onDestroy() {
+            IRRender::destroyResource<Texture2D>(
+                textureTriangleColors_.first
+            );
+            IRRender::destroyResource<Texture2D>(
+                textureTriangleDistances_.first
+            );
+        }
+
+        const Texture2D* getTextureColors() const {
+            return textureTriangleColors_.second;
+        }
+
+        const Texture2D* getTextureDistances() const {
+            return textureTriangleDistances_.second;
+        }
+
+        void bind(int textureUnitColors, int textureUnitDistances) const {
+            textureTriangleColors_.second->bind(textureUnitColors);
+            textureTriangleDistances_.second->bind(textureUnitDistances);
+        }
+
+        void clear() const {
+            textureTriangleColors_.second->clear(
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                &u8vec4(0, 0, 0, 0)[0]
+            );
+            textureTriangleDistances_.second->clear(
+                GL_RED_INTEGER,
+                GL_INT,
+                &ivec1(IRConstants::kTriangleDistanceMaxDistance)[0]
+            );
+        }
+
+        void clearWithColor(const Color& color) const {
+            textureTriangleColors_.second->clear(
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                &color
+            );
+            clearDistanceTexture();
+        }
+
+        void clearWithColorData(
+            ivec2 size,
+            const std::vector<Color>& colorData
+        ) const
+        {
+            textureTriangleColors_.second->subImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                colorData.data()
+            );
+            clearDistanceTexture();
+        }
+    private:
+        void clearDistanceTexture() const {
+            textureTriangleDistances_.second->clear(
+                GL_RED_INTEGER,
+                GL_INT,
+                &ivec1(IRConstants::kTriangleDistanceMaxDistance - 1)[0]
+            );
+        }
+    };
+
+} // IRComponents
+
+#endif /* COMPONENT_TRIANGLE_CANVAS_TEXTURES_H */

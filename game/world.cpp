@@ -1,14 +1,14 @@
 #include "world.hpp"
 
-#include <entities/entity_single_voxel.hpp>
+// #include <irreden/voxel/entit>
 
-#include <components/component_position_3d.hpp>
-#include <components/component_voxel_set.hpp>
+#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 World::World(int argc, char **argv)
 :   IRWorld(argc, argv)
 {
-    GAME_LOG_INFO("Creating world: XxxxxXxxxx");
+    IRProfile::logInfo("Creating world: XxxxxXxxxx");
 }
 
 World::~World()

@@ -1,7 +1,8 @@
 #ifndef WORLD_H
 #define WORLD_H
 
-#include <engine.hpp>
+// #include <engine.hpp>
+#include <irreden/ir_world.hpp>
 
 class World : public IRWorld {
 public:

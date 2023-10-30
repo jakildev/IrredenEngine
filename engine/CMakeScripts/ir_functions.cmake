@@ -1,5 +1,5 @@
 function(
-    applyPatchOnce
+    IrredenEngine_applyPatchOnce
     packageName
     patchName
     patchFile

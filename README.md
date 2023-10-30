@@ -5,8 +5,6 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
-**NOTE: This project is still in the alpha stages and the structure of it is subject to change!** If you implement this engine, your implementation might not be compatible with future versions.
-
 ## Features
 -   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
 [Isometric Pixelatable Voxel Renderer](/irreden-engine/docs/features/renderer.md)\
@@ -35,10 +33,18 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
 ## Build
 
-### Prerequisites
--   Windows
+### Prerequirsites
+
+-   Windows: [Windows set up instructions.]()
+    -   Obtain a device running Windows 10 or greater.
+-   OpenGL 4.6 supported hardware.
+    -
+-   MinGW (or other c/c++ compiler)
+    -   MinGW gives you a c/c++ compiler in the form of gcc and g++ respectively.
 -   CMake
--   MinGW
+    -   Set up an environment to build cmake projects.
+
+
 
 ### Instructions
 
@@ -49,15 +55,42 @@ More details can be found [here](/docs/usage/licensing.md).
 
 
 ## Usage
+
+### Navigating the Engine
+The engine is broken up into modules. Each module contains the following directories (when applicable):
+
+-   **components:** Game components associated with this module
+-   **entities:** Game entities, also known as prefabs, associated with this module
+-   **include:** All include files for the module, including associated third-party files
+-   **lib:** Precompiled binaries for third party libraries.
+-   **patches:** Patch files for third-party packages pulled in during build.
+-   **scripts:** Lua/python scripts associated with the module.
+-   **shaders:** GLSL shader files used for rendering pipeline and GPU compute.
+-   **src:** Main source files composing the module,
+-   **systems:** Game systems associated with the module.
+
+### Project Setup
 [Project Setup](/docs/usage/project_setup.md)
 
-## Contributing
+### Building Your Project
+When building your project, you should note the available systems from each of the modules, as well as create your own, to create your update, input, and rendering pipelines. You shold use the availble prefab entities, and create new entities with the supplied components. You should also write your own components to create unique game logic.
 
+
+## Contributing
+-   Submit pull requests directly to master.
 [Style rules and guidelines](/docs/rules/style.md)\
 [Opening a pull request](/docs/contributing/pull_requests.md)\
 [Submitting a new issue](/docs/contributing/issues.md)
 
 **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.** If you have a suggestion, submit a new issue to discuss, or email me at jakildev@gmail.com.
+
+-   You can request a new feature by opening up a issue with the feature request tag
+-
+
+- Requesting a new component:
+    -   If you think a new component should be added to the engine (and thus added to the standard) you should submit a pull request with a new component file in assets/wip/components/\<new_component_name.hpp\>
+        -   This can be worked on in code or left blank.
+    -   Provide a reason why this new component is needed
 
 ## Limitations
 -   Only builds for Windows.
