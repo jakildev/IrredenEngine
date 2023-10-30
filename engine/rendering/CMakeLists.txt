@@ -2,7 +2,7 @@ add_library(IrredenEngineRendering STATIC
     # include/irreden/ir_render.hpp
     # include/irreden/render/buffer.hpp
     # include/irreden/render/framebuffer.hpp
-
+    src/ir_render.cpp
 
     src/assimp_demo.cpp
     src/buffer.cpp

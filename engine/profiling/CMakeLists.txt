@@ -1,6 +1,7 @@
 add_library(IrredenEngineProfiling STATIC
     src/cpu_profiler.cpp
     src/logger_spd.cpp
+    src/ir_profiling.cpp
     # src/logger_spd.hpp
 )
 

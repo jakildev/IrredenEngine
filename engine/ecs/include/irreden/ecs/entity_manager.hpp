@@ -13,8 +13,8 @@
 // #include "../entity/entity_handle.hpp"
 #include <irreden/ir_profiling.hpp>
 #include <irreden/ir_ecs.hpp>
-#include "../ecs/archetype_node.hpp"
-#include "../ecs/archetype_graph.hpp"
+#include <irreden/ecs/archetype_node.hpp>
+#include <irreden/ecs/archetype_graph.hpp>
 
 #include <queue>
 #include <sstream>
@@ -40,6 +40,10 @@ namespace IRECS {
     public:
         static EntityManager& instance();
         ~EntityManager();
+        EntityManager(const EntityManager&) = delete;
+        EntityManager(EntityManager&&) = delete;
+        EntityManager& operator=(const EntityManager&) = delete;
+        EntityManager& operator=(EntityManager&&) = delete;
         EntityId createEntity();
         EntityRecord& getRecord(EntityId entity);
         void addFlags(EntityId entity, EntityId flags);

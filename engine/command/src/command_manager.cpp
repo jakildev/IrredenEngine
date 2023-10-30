@@ -42,7 +42,7 @@ namespace IRCommands {
         IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
         const auto& command =
             m_entityCommands.at(commandName);
-        if(IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->
+        if(IRECS::getSystem<INPUT_KEY_MOUSE>()->
             checkButton(
                 command.getType(),
                 (IRKeyMouseButtons)command.getButton()
@@ -119,7 +119,7 @@ namespace IRCommands {
     )
     {
         if(command.getType() == kMidiNotePressed) {
-            auto& notes = IRECS::getSystemManager().get<INPUT_MIDI_MESSAGE_IN>()->
+            auto& notes = IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
                 getMidiNotesOnThisFrame(device);
             for(int i = 0; i < notes.size(); ++i) {
                 command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
@@ -127,7 +127,7 @@ namespace IRCommands {
         }
 
         if(command.getType() == kMidiNoteReleased) {
-            auto& notes = IRECS::getSystemManager().get<INPUT_MIDI_MESSAGE_IN>()->
+            auto& notes = IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
                 getMidiNotesOffThisFrame(device);
             for(int i = 0; i < notes.size(); ++i) {
                 command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
@@ -142,7 +142,7 @@ namespace IRCommands {
             type == IRInputTypes::kKeyMouseButtonDown
         )
         {
-            return IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->checkButton(
+            return IRECS::getSystem<INPUT_KEY_MOUSE>()->checkButton(
                 type,
                 (IRKeyMouseButtons)button
             );
@@ -153,7 +153,7 @@ namespace IRCommands {
             type == IRInputTypes::kGamepadButtonDown
         )
         {
-            return IRECS::getSystemManager().get<INPUT_GAMEPAD>()->checkButton(
+            return IRECS::getSystem<INPUT_GAMEPAD>()->checkButton(
                 type,
                 (IRGamepadButtons)button
             );
@@ -162,7 +162,7 @@ namespace IRCommands {
     }
 
     IRCCData CommandManager::checkCCMessage(int device, IRCCMessage ccMessage) {
-        return IRECS::getSystemManager().get<INPUT_MIDI_MESSAGE_IN>()->
+        return IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
             checkCCMessageReceived(device, ccMessage);
     }
 

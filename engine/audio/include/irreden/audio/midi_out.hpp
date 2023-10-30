@@ -25,6 +25,8 @@ namespace IRAudio {
 
             void openPort(unsigned int portNumber);
             // Opens the first device that matches substring name
+            void openPort(MidiOutInterface midiInInterface);
+
             void openPort(std::string portNameSubstring);
             void sendMessage(const std::vector<unsigned char>& message);
         private:

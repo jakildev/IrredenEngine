@@ -70,13 +70,13 @@ class SystemManager {
         }
 
         template <IRSystemName SystemName>
-        const IRSystem<SystemName>* get() const {
-            return static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
+        const IRSystem<SystemName>& get() const {
+            return *static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
         }
 
         template <IRSystemName SystemName>
-        IRSystem<SystemName>* get() {
-            return static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
+        IRSystem<SystemName>& get() {
+            return *static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
         }
 
         // template <
@@ -117,6 +117,12 @@ class SystemManager {
             return m_systemOrders.at(systemType);
         }
     };
+
+    // ir_ecs API
+    template <IRSystemName systemName>
+    IRSystem<systemName>& getSystem() {
+        return SystemManager::instance().get<systemName>();
+    }
 
 } // namespace IRECS
 

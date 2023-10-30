@@ -40,8 +40,8 @@ namespace IRRender {
     void Renderer::tick() {
         IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
 
-        IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->beginRenderExecute(); // TODO: not like this after system CRTP
-        IRECS::getSystemManager().get<SCREEN_VIEW>()->beginExecuteRender();
+        IRECS::getSystem<INPUT_KEY_MOUSE>().beginRenderExecute(); // TODO: not like this after system CRTP
+        IRECS::getSystem<SCREEN_VIEW>().beginExecuteRender();
 
         IRECS::getSystemManager().executeGroup<SYSTEM_TYPE_RENDER>();
         m_window.swapBuffers();

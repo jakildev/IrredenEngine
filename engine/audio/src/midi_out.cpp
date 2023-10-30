@@ -34,6 +34,10 @@ namespace IRAudio {
         IRProfile::engLogInfo("Opened MIDI Out port {}", portNumber);
     }
 
+    void IRMidiOut::openPort(MidiOutInterface interface) {
+        openPort(kMidiOutInterfaceNames[interface]);
+    }
+
     void IRMidiOut::openPort(std::string portNameSubstring) {
         for(int i = 0; i < m_numberPorts; i++) {
             const std::string_view portName{m_portNames[i]};

@@ -146,7 +146,7 @@ namespace IRECS {
 
             // MAIN CANVAS------------------------------------------------------
             m_mainCanvas.set<C_VoxelPool>(
-                IRECS::getSystemManager().get<VOXEL_POOL>()->getVoxelPoolComponent(0)
+                IRECS::getSystem<VOXEL_POOL>().getVoxelPoolComponent(0)
             );
             m_mainCanvas.set(C_TriangleCanvasTextures{
                 ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
@@ -169,7 +169,7 @@ namespace IRECS {
 
             // PLAYER CANVAS---------------------------------------------------
             m_playerCanvas.set(C_VoxelPool{
-                IRECS::getSystemManager().get<VOXEL_POOL>()->getVoxelPoolComponent(1)
+                IRECS::getSystem<VOXEL_POOL>().getVoxelPoolComponent(1)
             });
             m_playerCanvas.set(C_TriangleCanvasTextures{
                 ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
@@ -309,16 +309,16 @@ namespace IRECS {
         virtual void beginExecute() override {
              m_mainCanvas.get<C_CameraPosition2DIso>().pos_ =
                 offsetScreenToIsoTriangles(
-                    IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                    IRECS::getSystem<SCREEN_VIEW>().
                         getGlobalCameraOffsetScreen(),
-                    IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                    IRECS::getSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen()
                 );
             //  m_backgroundCanvas.get<C_CameraPosition2DIso>().pos_ =
             //     offsetScreenToIsoTriangles(
-            //         IRECS::getSystemManager().get<SCREEN_VIEW>()->
+            //         IRECS::getSystem<SCREEN_VIEW>()->
             //             getGlobalCameraOffsetScreen(),
-            //         IRECS::getSystemManager().get<SCREEN_VIEW>()->
+            //         IRECS::getSystem<SCREEN_VIEW>()->
             //             getTriangleStepSizeScreen()
             //     );
 

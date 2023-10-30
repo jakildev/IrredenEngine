@@ -3,30 +3,30 @@
 
 namespace IRProfile{
 
-    ProfilerCPU& ProfilerCPU::instance() {
-        static ProfilerCPU instance;
+    CPUProfiler& CPUProfiler::instance() {
+        static CPUProfiler instance;
         return instance;
     }
 
-    ProfilerCPU::ProfilerCPU() {
+    CPUProfiler::CPUProfiler() {
         EASY_PROFILER_ENABLE;
     }
 
-    ProfilerCPU::~ProfilerCPU() {
+    CPUProfiler::~CPUProfiler() {
         EASY_PROFILER_DISABLE;
         uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
         // IRProfile::engLogInfo("Dumped profiling blocks, result={}", res);
     }
 
-    void ProfilerCPU::mainThread() {
+    void CPUProfiler::mainThread() {
         EASY_MAIN_THREAD;
     }
 
-    void ProfilerCPU::profileFunction(unsigned int color) {
-        IRProfile::profileFunction(color);
+    void CPUProfiler::profileFunction(unsigned int color) {
+        EASY_FUNCTION(color);
     }
 
-    void ProfilerCPU::profileBlock(
+    void CPUProfiler::profileBlock(
         const std::string name,
         unsigned int color
     )

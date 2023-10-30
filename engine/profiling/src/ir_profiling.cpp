@@ -4,17 +4,14 @@
 
 namespace IRProfile {
 
-
-
-
     // CPU profiling API
     void profileMainThread() {
-        CPUProfiler::instance.mainThread();
+        CPUProfiler::instance().mainThread();
     }
     void profileFunction(unsigned int color) {
-        CPUProfiler::instance.profileFunction(color);
+        CPUProfiler::instance().profileFunction(color);
     }
     void profileBlock(const std::string name, unsigned int color) {
-        CPUProfiler::instance.profileBlock(name, color);
+        CPUProfiler::instance().profileBlock(name, color);
     }
 } // namespace IRProfile

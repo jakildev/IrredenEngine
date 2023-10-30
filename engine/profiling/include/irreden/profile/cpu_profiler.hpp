@@ -14,15 +14,15 @@
 #include <string>
 
 namespace IRProfile {
-    class ProfilerCPU {
+    class CPUProfiler {
     public:
-        ~ProfilerCPU();
-        static ProfilerCPU& instance();
+        ~CPUProfiler();
+        static CPUProfiler& instance();
         void mainThread();
         void profileFunction(unsigned int color);
         void profileBlock(const std::string name, unsigned int color);
     private:
-        ProfilerCPU();
+        CPUProfiler();
     };
 
 } // namespace IRProfile

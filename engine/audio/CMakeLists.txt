@@ -1,4 +1,5 @@
 add_library(IrredenEngineAudio STATIC
+    src/ir_audio.cpp
     src/audio_manager.cpp
     src/midi_in.cpp
     src/midi_out.cpp

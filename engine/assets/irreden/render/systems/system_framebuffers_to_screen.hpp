@@ -136,8 +136,8 @@ namespace IRECS {
         virtual void beginExecute() override {
 
             m_viewportThisFrame = ivec2(
-                IRECS::getSystemManager().get<SCREEN_VIEW>()->getViewportX(),
-                IRECS::getSystemManager().get<SCREEN_VIEW>()->getViewportY()
+                IRECS::getSystem<SCREEN_VIEW>().getViewportX(),
+                IRECS::getSystem<SCREEN_VIEW>().getViewportY()
             );
             bindDefaultFramebuffer();
             clearDefaultFramebuffer();
@@ -175,7 +175,7 @@ namespace IRECS {
         )
         {
             const int scaleFactor =
-                IRECS::getSystemManager().get<SCREEN_VIEW>()->getScaleFactor();
+                IRECS::getSystem<SCREEN_VIEW>().getScaleFactor();
 
             // also known as screen center
             float xOffset = m_viewportThisFrame.x / 2.0f;
@@ -184,10 +184,10 @@ namespace IRECS {
                 vec2(xOffset, yOffset) +
                 (pos3DtoPos2DScreen(
                     cameraPosition,
-                    IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                    IRECS::getSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen()
                 ) * vec2(-1, 1) -
-                ( IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                ( IRECS::getSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen() / 2.0f
                 ) * vec2(1, -1))
             ;
@@ -202,7 +202,7 @@ namespace IRECS {
             {
                 vec2 fractComponentScaledNew =
                     glm::fract(cameraPositionIso) *
-                    IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                    IRECS::getSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen() *
                         vec2(1, -1);
 
@@ -218,7 +218,7 @@ namespace IRECS {
             }
             else{
                 offset += (
-                    IRECS::getSystemManager().get<SCREEN_VIEW>()->
+                    IRECS::getSystem<SCREEN_VIEW>().
                         getGlobalCameraOffsetScreen() *
                     vec2(1, -1)
                 );

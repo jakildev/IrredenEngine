@@ -32,21 +32,21 @@ namespace IRECS {
         return SystemManager::instance();
     }
 
-    template <IRSystemName systemName>
-    IRSystem<systemName>& getSystem() {
-        return SystemManager::instance().get<systemName>();
-    }
+    // template <IRSystemName systemName>
+    // IRSystem<systemName>& getSystem() {
+    //     return SystemManager::instance().get<systemName>();
+    // }
 
-    template <
-        PrefabTypes type,
-        typename... Args
-    >
-    EntityId createPrefab(Args&&... args)
-    {
-        return Prefab<type>::create(
-            args...
-        );
-    }
+    // template <
+    //     PrefabTypes type,
+    //     typename... Args
+    // >
+    // EntityId createPrefab(Args&&... args)
+    // {
+    //     return Prefab<type>::create(
+    //         args...
+    //     );
+    // }
 
 
 } // namespace IRECS

@@ -35,8 +35,9 @@ namespace IRECS {
         );
     }
 
+
     EntityManager& EntityManager::instance() {
-        static EntityManager instance = EntityManager{};
+        static EntityManager instance{};
         return instance;
     }
 

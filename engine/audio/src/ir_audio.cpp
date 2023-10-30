@@ -21,7 +21,7 @@ namespace IRAudio {
     }
 
     void openPortMidiOut(MidiOutInterface port) {
-        getAudioManager().getMidiIn().openPort(port);
+        getAudioManager().getMidiOut().openPort(port);
     }
 
 } // namespace IRAudio

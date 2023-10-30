@@ -117,6 +117,20 @@ namespace IRRender {
         }
     };
 
+    // ir_render API
+
+    template <typename T, typename... Args>
+    std::pair<ResourceId, T*> createResource(Args&&... args) {
+        return getRenderingResourceManager().create<T>(
+            std::forward<Args>(args)...
+        );
+    }
+
+    template <typename T>
+    void destroyResource(ResourceId resource) {
+        getRenderingResourceManager().destroy<T>(resource);
+    }
+
 } // namespace IRRender
 
 #endif /* RENDERING_RM_H */

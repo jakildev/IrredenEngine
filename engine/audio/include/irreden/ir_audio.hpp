@@ -21,7 +21,7 @@ namespace IRAudio {
 
     constexpr IRCCData kCCFalse = 0xFF;
 
-    enum MidiOutInterfaces {
+    enum MidiOutInterface {
         MIDI_OUT_UMC,
         MIDI_OUT_FOCUSRITE,
         MIDI_OUT_MPK,
@@ -211,7 +211,7 @@ namespace IRAudio {
     AudioManager& getAudioManager();
 
     void openPortMidiIn(MidiInInterface midiInInterface);
-    void openPortMidiOut(MidiOutInterfaces midiOutInterface);
+    void openPortMidiOut(MidiOutInterface midiOutInterface);
 
 } // namespace IRAudio
 

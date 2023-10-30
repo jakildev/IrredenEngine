@@ -140,13 +140,13 @@ namespace IRECS {
         void beginExecuteRender() {
             if(m_isWheelClicked) {
                 m_tempCameraOffset =
-                    IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->getMousePositionRender().pos_ -
+                    IRECS::getSystem<INPUT_KEY_MOUSE>().getMousePositionRender().pos_ -
                     m_mouseWheelClickedStart;
             }
             m_mousePositionRenderTriangles =
                 (
-                    IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()
-                        ->getMousePositionRender().pos_ -
+                    IRECS::getSystem<INPUT_KEY_MOUSE>()
+                        .getMousePositionRender().pos_ -
                     dvec2(getCenterScreen())
                 ) /
                 dvec2(getTriangleStepSizeScreen())
@@ -172,7 +172,7 @@ namespace IRECS {
 
         void dragCanvasStart() {
             m_mouseWheelClickedStart =
-                IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->getMousePositionUpdate().pos_;
+                IRECS::getSystem<INPUT_KEY_MOUSE>().getMousePositionUpdate().pos_;
 
             m_isWheelClicked = true;
         }
@@ -180,7 +180,7 @@ namespace IRECS {
         void dragCanvasEnd() {
             m_isWheelClicked = false;
             m_cameraOffset += (
-                IRECS::getSystemManager().get<INPUT_KEY_MOUSE>()->getMousePositionUpdate().pos_ -
+                IRECS::getSystem<INPUT_KEY_MOUSE>().getMousePositionUpdate().pos_ -
                 m_mouseWheelClickedStart
             );
             m_tempCameraOffset = vec2(0, 0);
