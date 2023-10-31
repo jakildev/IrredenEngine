@@ -24,14 +24,23 @@ namespace IRECS {
         return stream.str();
     }
 
+    EntityManager* g_entityManager = nullptr;
     EntityManager& getEntityManager() {
-        return EntityManager::instance();
+        IR_ENG_ASSERT(
+            g_entityManager != nullptr,
+            "EntityManager not initialized"
+        );
+        return *g_entityManager;
     }
 
+    SystemManager* g_systemManager = nullptr;
     SystemManager& getSystemManager() {
-        return SystemManager::instance();
+        IR_ENG_ASSERT(
+            g_systemManager != nullptr,
+            "SystemManager not initialized"
+        );
+        return *g_systemManager;
     }
-
     // template <IRSystemName systemName>
     // IRSystem<systemName>& getSystem() {
     //     return SystemManager::instance().get<systemName>();

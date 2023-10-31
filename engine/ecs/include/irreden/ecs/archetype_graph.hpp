@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\archetype_graph.hpp
+ * File: archetype_graph.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -11,7 +11,7 @@
 #define ARCHETYPE_GRAPH_H
 
 #include <irreden/ecs/archetype_node.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <algorithm>
 #include <sstream>
 #include <tuple>

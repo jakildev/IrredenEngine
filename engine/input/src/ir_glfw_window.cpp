@@ -8,7 +8,7 @@
  */
 
 #include <irreden/input/ir_glfw_window.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <iostream>
 
@@ -22,7 +22,7 @@ namespace IRGLFW {
         setCallbackError(irglfwCallback_error);
 
         int status = glfwInit();
-        IRProfile::engAssert(status, "Failed to initalize glfw.");
+        IR_ENG_ASSERT(status, "Failed to initalize glfw.");
 
         for(int i = 0; i < kNumWindowHints; ++i) {
             glfwWindowHint(kWindowHints[i].first, kWindowHints[i].second);
@@ -45,7 +45,7 @@ namespace IRGLFW {
 
         // glfwSetWindowPos(m_window, 50, 50);
 
-        IRProfile::engAssert(m_window != nullptr,
+        IR_ENG_ASSERT(m_window != nullptr,
             "Failed to create window: glfwCreateWindow returned null"
         );
 
@@ -54,7 +54,7 @@ namespace IRGLFW {
         glfwSwapInterval(0);
 
         status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-        IRProfile::engAssert(status, "Failed to initalize GLAD");
+        IR_ENG_ASSERT(status, "Failed to initalize GLAD");
 
         setWindowUserPointer(this);
 
@@ -116,7 +116,7 @@ namespace IRGLFW {
     GLFWgamepadstate IRGLFWWindow::getGamepadState(int gamepad) {
         GLFWgamepadstate state;
         int res = glfwGetGamepadState(gamepad, &state);
-        IRProfile::engAssert(res == GLFW_TRUE, "Error getting gamepad state!");
+        IR_ENG_ASSERT(res == GLFW_TRUE, "Error getting gamepad state!");
         return state;
     }
 

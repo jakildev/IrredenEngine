@@ -17,7 +17,7 @@ add_library(IrredenEngineECS STATIC
 target_compile_options(
     IrredenEngineECS
     PUBLIC
-    -O0
+    -O3
 )
 
 target_include_directories(

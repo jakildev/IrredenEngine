@@ -3,17 +3,22 @@
 
 namespace IRTime {
 
+    TimeManager* g_timeManager = nullptr;
     TimeManager& getTimeManager() {
-        return TimeManager::instance();
+        IR_ENG_ASSERT(
+            g_timeManager != nullptr,
+            "TimeManager not initialized"
+        );
+        return *g_timeManager;
     }
 
     double deltaTime(Events eventType) {
         if(eventType == Events::UPDATE) {
-            return TimeManager::instance().deltaTime<UPDATE>();
+            return getTimeManager().deltaTime<UPDATE>();
         }
 
         if(eventType == Events::RENDER) {
-            return TimeManager::instance().deltaTime<RENDER>();
+            return getTimeManager().deltaTime<RENDER>();
         }
 
         return 0.0;

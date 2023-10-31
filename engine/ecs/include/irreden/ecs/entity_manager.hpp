@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\entity_manager.hpp
+ * File: entity_manager.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -11,7 +11,7 @@
 #define ENTITY_MANAGER_H
 
 // #include "../entity/entity_handle.hpp"
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ecs/archetype_node.hpp>
 #include <irreden/ecs/archetype_graph.hpp>
@@ -38,12 +38,8 @@ namespace IRECS {
     class EntityManager
     {
     public:
-        static EntityManager& instance();
+        EntityManager();
         ~EntityManager();
-        EntityManager(const EntityManager&) = delete;
-        EntityManager(EntityManager&&) = delete;
-        EntityManager& operator=(const EntityManager&) = delete;
-        EntityManager& operator=(EntityManager&&) = delete;
         EntityId createEntity();
         EntityRecord& getRecord(EntityId entity);
         void addFlags(EntityId entity, EntityId flags);
@@ -75,7 +71,7 @@ namespace IRECS {
         ComponentId registerComponent(Args&&... args) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(Component).name();
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
                 "Regestering the same component twice"
             );
@@ -101,7 +97,7 @@ namespace IRECS {
                 toNode->components_[componentId].get(),
                 std::forward<Args>(args)...
             );
-            IRProfile::engAssert(insertedIndex == toNode->length_ - 1,
+            IR_ENG_ASSERT(insertedIndex == toNode->length_ - 1,
                 "Component inserted at unexpected location."
             );
             IRProfile::engLogInfo("Regestered component type={}, sizeof={} with id={}",
@@ -152,7 +148,7 @@ namespace IRECS {
                 component
             );
 
-            IRProfile::engAssert(insertedIndex == toNode->length_ - 1,
+            IR_ENG_ASSERT(insertedIndex == toNode->length_ - 1,
                 "Component inserted at unexpected location.");
 
             IRProfile::engLogDebug("Added default component type={} to entity={}: \n\
@@ -253,7 +249,7 @@ namespace IRECS {
             // {
             //     IRProfile::engLogInfo("Attempted to retrieve non-existant component from entity");
             // }
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 std::find(archetype.begin(), archetype.end(), componentType) !=
                     archetype.end(),
                 "Attempted to retrieve non-existant component from entity"
@@ -274,7 +270,7 @@ namespace IRECS {
             Archetype archetype = node->type_;
             ComponentId componentType = getComponentType<Component>();
 
-            IRProfile::engAssert(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
+            IR_ENG_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
                     "Attempted to retrieve non-existant component vector from node");
             IComponentDataImpl<Component> *data =
                 castComponentDataPointer<Component>(
@@ -295,7 +291,7 @@ namespace IRECS {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::vector<EntityId> res;
             size_t sizes[] = {componentVectors.size()...};
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 std::all_of(
                     std::begin(sizes),
                     std::end(sizes),
@@ -323,7 +319,6 @@ namespace IRECS {
 
 
     private:
-        EntityManager();
         std::queue<EntityId> m_entityPool;
         std::unordered_map<EntityId, EntityRecord> m_entityIndex;
         ArchetypeGraph m_archetypeGraph;

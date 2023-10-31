@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\ir_component.hpp
+ * File: ir_component.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

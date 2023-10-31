@@ -135,13 +135,13 @@ private:
     virtual void initGameEntities() = 0;
 
     IRGLFW::IRGLFWWindow m_IRGLFWWindow;
-    IRECS::EntityManager& m_entityManager;
+    IRECS::EntityManager m_entityManager;
     // IRCommands::CommandManager m_commandManager;
-    IRECS::SystemManager& m_systemManager;
+    IRECS::SystemManager m_systemManager;
+    IRRender::RenderingResourceManager m_renderingResourceManager;
     IRRender::Renderer m_renderer;
-    IRRender::RenderingResourceManager& m_renderingResourceManager;
-    IRAudio::AudioManager& m_audioManager;
-    IRTime::TimeManager& m_timeManager;
+    IRAudio::AudioManager m_audioManager;
+    IRTime::TimeManager m_timeManager;
 
     void input();
     void update();

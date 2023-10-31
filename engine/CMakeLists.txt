@@ -1,6 +1,5 @@
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 include(FetchContent)
-include(CMakeScripts/ir_functions.cmake)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/assets
@@ -8,9 +7,9 @@ include_directories(
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/profiling)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/scripting)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/rendering)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/profile)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/render)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ecs)

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\midi_in.cpp
+ * File: midi_in.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -53,7 +53,7 @@ namespace IRAudio {
     //             return;
     //         }
     //     }
-    //     IRProfile::engAssert(false, "Attempted to open non-existant MIDI In port by name");
+    //     IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     // }
 
     void IRMidiIn::openPort(MidiInInterface interface) {
@@ -67,7 +67,7 @@ namespace IRAudio {
                 return;
             }
         }
-        IRProfile::engAssert(false, "Attempted to open non-existant MIDI In port by name");
+        IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     }
 
     void IRMidiIn::processMidiMessageQueue() {
@@ -104,7 +104,7 @@ namespace IRAudio {
         // Game input messages will be added to synchronous queue
 
         unsigned int messageSize = message->size();
-        IRProfile::engAssert(messageSize > 0, "Received size 0 midi message");
+        IR_ENG_ASSERT(messageSize > 0, "Received size 0 midi message");
 
 
         for(int i = 0; i < messageSize; i++) {

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\entity_handle.hpp
+ * File: entity_handle.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

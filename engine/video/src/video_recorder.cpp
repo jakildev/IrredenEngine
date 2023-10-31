@@ -1,6 +1,6 @@
 #include "video_recorder.hpp"
 
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 namespace IRVideo {
 

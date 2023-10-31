@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\midi_messages.hpp
+ * File: midi_messages.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -16,7 +16,7 @@
 #define MIDI_MESSAGES_H
 
 #include <irreden/ir_audio.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 namespace IRAudio {
 
@@ -35,7 +35,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_offVelocity(offVelocity)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -56,7 +56,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_onVelocity(onVelocity)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
 
         unsigned char getChannel() const {
@@ -86,7 +86,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_pressure(pressure)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -106,7 +106,7 @@ namespace IRAudio {
             m_controllerNumber(controllerNumber),
             m_controllerValue(controllerValue)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -125,7 +125,7 @@ namespace IRAudio {
         :   m_channel(channel),
             m_programNumber(programNumber)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -143,7 +143,7 @@ namespace IRAudio {
         :   m_channel(channel),
             m_pressureValue(pressureValue)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -163,7 +163,7 @@ namespace IRAudio {
             m_msbValue(msbValue),
             m_lsbValue(lsbValue)
         {
-            IRProfile::engAssert(channel <= 0x0F, "Invalid midi channel");
+            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;

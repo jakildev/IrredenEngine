@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\archetype_node.cpp
+ * File: archetype_node.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -10,7 +10,7 @@
 #include <irreden/ecs/archetype_node.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ecs/entity_manager.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 // TODO: SHOULD absolutly have node specialization
 // that can handle multiple tickWithArchetype functions...

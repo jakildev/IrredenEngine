@@ -129,12 +129,12 @@ namespace IRComponents {
         {
             // Values gets optimized out and assert crashes in debug mode
             // IRProfile::engLogInfo("startAngle: ", startAngle);
-            // IRProfile::engAssert(
+            // IR_ENG_ASSERT(
             //     startAngle >= 0.0f &&
             //     startAngle <= 2.0f * static_cast<float>(M_PI),
             //     "Start angle is not in range 0-2PI"
             // );
-            // IRProfile::engAssert(
+            // IR_ENG_ASSERT(
             //     endAngle >= startAngle &&
             //     endAngle <= 2.0f * static_cast<float>(M_PI),
             //     "End angle is not in range startAngle-2PI"
@@ -223,7 +223,7 @@ namespace IRComponents {
         }
 
         void makeReverseLoop() {
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 stages_.back().endAngle_ <= static_cast<float>(M_PI),
                 "Cannot make reverse loop with end angle greater than PI"
             );

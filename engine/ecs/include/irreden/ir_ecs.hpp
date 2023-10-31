@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\ir_ecs.hpp
+ * File: ir_ecs.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -100,7 +100,9 @@ namespace IRECS {
     // Get top level systems. Most of this functionality
     // should be wrapped in other API commands here, but
     // I can see why one might want to access the systems.
+    extern EntityManager* g_entityManager;
     EntityManager& getEntityManager();
+    extern SystemManager* g_systemManager;
     SystemManager& getSystemManager();
 
     // TODO: Move this

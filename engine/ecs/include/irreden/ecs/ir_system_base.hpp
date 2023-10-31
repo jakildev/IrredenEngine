@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\ir_system_base.hpp
+ * File: ir_system_base.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -13,7 +13,7 @@
 #include <irreden/ir_input.hpp>
 #include "ir_system_virtual.hpp"
 #include <irreden/ecs/entity_manager.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 // #include <irreden/ir_command.hpp>
 #include "entity_handle.hpp"
 #include "system_manager.hpp"

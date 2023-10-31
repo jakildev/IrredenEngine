@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\midi_out.hpp
+ * File: midi_out.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

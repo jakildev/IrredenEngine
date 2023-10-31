@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\system_manager.hpp
+ * File: system_manager.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -16,7 +16,7 @@
 #include <string>
 #include <list>
 #include <irreden/ecs/entity_manager.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ecs/ir_system_virtual.hpp>
 
@@ -24,10 +24,18 @@ namespace IRECS {
 
 class SystemManager {
     public:
-        static SystemManager& instance() {
-            static SystemManager instance{};
-            return instance;
-        }
+        SystemManager()
+        :   m_systems{}
+        ,   m_systemOrders{}
+        {
+            for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
+                m_systemOrders
+                    [static_cast<IRSystemType>(i)
+                ] = std::list<IRSystemName>{};
+            }
+            g_systemManager = this;
+            IRProfile::engLogInfo("SystemManager initalized");
+        };
         ~SystemManager() = default;
 
         template <IRSystemName SystemName, IRSystemType SystemType, typename... Args>
@@ -93,16 +101,6 @@ class SystemManager {
             m_systems;
         std::unordered_map<IRSystemType, std::list<IRSystemName>>
             m_systemOrders;
-        SystemManager()
-        :   m_systems{}
-        ,   m_systemOrders{}
-        {
-            for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
-                m_systemOrders
-                    [static_cast<IRSystemType>(i)
-                ] = std::list<IRSystemName>{};
-            }
-        };
         // TODO: This should be in event manager, and like commands,
         // systems, entities, etc can all subscribe to events!
         // std::unordered_map<
@@ -121,7 +119,7 @@ class SystemManager {
     // ir_ecs API
     template <IRSystemName systemName>
     IRSystem<systemName>& getSystem() {
-        return SystemManager::instance().get<systemName>();
+        return getSystemManager().get<systemName>();
     }
 
 } // namespace IRECS

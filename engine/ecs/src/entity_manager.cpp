@@ -1,13 +1,13 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\entity_manager.cpp
+ * File: entity_manager.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ecs/entity_manager.hpp>
 
 #include <memory>
@@ -28,17 +28,11 @@ namespace IRECS {
         for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
             m_entityPool.push(entity);
         }
-        // global.entityManager_ = this;
+        g_entityManager = this;
         IRProfile::engLogInfo(
             "Created Entity Manager (IR_MAX_ENTITIES={})",
             static_cast<int>(IR_MAX_ENTITIES)
         );
-    }
-
-
-    EntityManager& EntityManager::instance() {
-        static EntityManager instance{};
-        return instance;
     }
 
     EntityManager::~EntityManager() {}
@@ -51,7 +45,7 @@ namespace IRECS {
     }
 
     EntityId EntityManager::allocateNewEntity() {
-        IRProfile::engAssert(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
+        IR_ENG_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
         EntityId id = m_entityPool.front();
         m_entityPool.pop();
         m_liveEntityCount++;
@@ -127,7 +121,7 @@ namespace IRECS {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         if(!isPureComponent(component)) {
 
-            IRProfile::engAssert(false, "non pure components not supported rn");
+            IR_ENG_ASSERT(false, "non pure components not supported rn");
         }
         node->components_.at(component)->destroy(index);
         return;
@@ -182,14 +176,14 @@ namespace IRECS {
             return record.row;
         }
 
-        IRProfile::engAssert(
+        IR_ENG_ASSERT(
             std::includes(
                 fromNode->type_.begin(),
                 fromNode->type_.end(),
                 type.begin(),
                 type.end()),
             "Entity move type is not a subset of fromNode type");
-        IRProfile::engAssert(
+        IR_ENG_ASSERT(
             std::includes(
                 toNode->type_.begin(),
                 toNode->type_.end(),
@@ -223,7 +217,7 @@ namespace IRECS {
     )
     {
         if(!isPureComponent(component)) {
-            IRProfile::engAssert(false, "non pure components not supported rn");
+            IR_ENG_ASSERT(false, "non pure components not supported rn");
         }
         fromNode->components_.at(component)->moveDataAndPack(
             toNode->components_.at(component).get(),
@@ -253,7 +247,7 @@ namespace IRECS {
     {
 
         if(!isPureComponent(component)) {
-            IRProfile::engAssert(false, "non pure components not supported rn");
+            IR_ENG_ASSERT(false, "non pure components not supported rn");
         }
         node->components_[component]->removeDataAndPack(row);
     }

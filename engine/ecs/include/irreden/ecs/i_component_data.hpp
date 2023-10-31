@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\i_component_data.hpp
+ * File: i_component_data.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -10,7 +10,7 @@
 #ifndef I_COMPONENT_DATA_H
 #define I_COMPONENT_DATA_H
 
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <vector>
 #include <memory>
@@ -84,7 +84,7 @@ namespace IRECS {
         }
 
         virtual void removeDataAndPack(const int index) override {
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 index < size(),
                 "Attempted to remove data with index out of bounds");
             this->dataVector[index] = this->dataVector.back();

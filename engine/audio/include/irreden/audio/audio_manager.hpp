@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\audio_manager.hpp
+ * File: audio_manager.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -19,7 +19,7 @@ namespace IRAudio {
 
     class AudioManager {
     public:
-        static AudioManager& instance();
+        AudioManager();
         ~AudioManager();
 
         inline IRMidiIn& getMidiIn() { return m_midiIn; }
@@ -32,7 +32,6 @@ namespace IRAudio {
         IRMidiIn m_midiIn;
         IRMidiOut m_midiOut;
 
-        AudioManager();
     };
 
 } // namespace IRAudio

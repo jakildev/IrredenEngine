@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\archetype_node.hpp
+ * File: archetype_node.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

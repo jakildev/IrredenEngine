@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\midi_out.hpp
+ * File: midi_out.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -48,7 +48,7 @@ namespace IRAudio {
                 return;
             }
         }
-        IRProfile::engAssert(false, "Attempted to open non-existant MIDI Out port by name");
+        IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
     }
 
     void IRMidiOut::sendMessage(const std::vector<unsigned char>& message) {

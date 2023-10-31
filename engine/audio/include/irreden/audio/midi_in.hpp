@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\midi_in.hpp
+ * File: midi_in.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -11,7 +11,7 @@
 #define MIDI_IN_H
 
 #include <RtMidi.h>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/audio/midi_messages.hpp>
 #include <set>
 #include <queue>

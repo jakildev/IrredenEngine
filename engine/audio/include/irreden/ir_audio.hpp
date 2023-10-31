@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\ir_audio.hpp
+ * File: ir_audio.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -208,6 +208,7 @@ namespace IRAudio {
         2, 1, 4, 1, 4
     };
 
+    extern AudioManager* g_audioManager;
     AudioManager& getAudioManager();
 
     void openPortMidiIn(MidiInInterface midiInInterface);

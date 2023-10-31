@@ -75,7 +75,7 @@ namespace IRComponents {
 
         void setTriangle(ivec2 pos, Color color, uint32_t distance = 0)
         {
-            IRProfile::engAssert(
+            IR_ENG_ASSERT(
                 glm::all(glm::lessThan(pos, size_)) &&
                 glm::all(glm::greaterThanEqual(pos, ivec2(0))),
                 "TRIANGLE INDEX OUT OF BOUNDS."

@@ -10,7 +10,7 @@
 #include <irreden/ir_world.hpp>
 
 // OTHER PACKAGES THAT SHOULD MOVE TO RESPECTIVE PACKAGES
-#include <irreden/ir_profiling.hpp> // ir_profiling
+#include <irreden/ir_profile.hpp> // ir_profiling
 #include <irreden/ecs/entity_handle.hpp> // ir_ecs
 #include <irreden/render/rendering_rm.hpp> // ir_rendering
 #include <irreden/render/texture.hpp> // ir_rendering
@@ -59,14 +59,14 @@ IRWorld::IRWorld(int &argc, char **argv)
 :   m_IRGLFWWindow{
         IRConstants::kInitWindowSize
     }
-,   m_entityManager{IRECS::getEntityManager()}
+,   m_entityManager{}
 // ,   m_commandManager{}
-,   m_systemManager{IRECS::getSystemManager()}
-,   m_renderingResourceManager{IRRender::getRenderingResourceManager()}
+,   m_systemManager{}
+,   m_renderingResourceManager{}
 ,   m_renderer{
         m_IRGLFWWindow
     }
-,   m_audioManager{IRAudio::getAudioManager()}
+,   m_audioManager{}
 //         // TODO: Move opening audio interface somewhere else
 //         // (component midi device creation perhaps...)
 //         std::vector<IRAudio::MidiInInterface>{
@@ -79,11 +79,10 @@ IRWorld::IRWorld(int &argc, char **argv)
 //             IRAudio::MidiOutInterfaces::MIDI_OUT_UMC
 //         }
 //     }
-,   m_timeManager{IRTime::getTimeManager()}
+,   m_timeManager{}
 {
     m_renderer.printGLSystemInfo();
     initEngineSystems();
-
     IRProfile::engLogInfo("Initalized game world");
 
     // global.world_ = this;

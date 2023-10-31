@@ -1,6 +1,6 @@
 --[[
 --Project: Irreden Engine
---File: \irreden-engine\src\entity\archetypes.lua
+--File: archetypes.lua
 --Author: Evin Killian jakildev@gmail.com
 --Created Date: October 2023
 -------
@@ -11,13 +11,13 @@
 
 local archetypes = {
     ["Player"] = {
-        ["Components"] = 
+        ["Components"] =
             "pos2d";
             "vel2d";
             "lightsource"
     };
 
     ["ShaderProgram"] = {
-        ["Components"] = 
+        ["Components"] =
     };
 }

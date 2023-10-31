@@ -12,8 +12,13 @@
 
 namespace IRAudio {
 
+    AudioManager* g_audioManager = nullptr;
     AudioManager& getAudioManager() {
-        return AudioManager::instance();
+        IR_ENG_ASSERT(
+            g_audioManager != nullptr,
+            "AudioManager not initialized"
+        );
+        return *g_audioManager;
     }
 
     void openPortMidiIn(MidiInInterface port) {

@@ -42,6 +42,7 @@ namespace IRTime {
     template<Events eventType>
     class EventProfiler;
 
+    extern TimeManager* g_timeManager;
     TimeManager& getTimeManager();
 
     double deltaTime(Events eventType);

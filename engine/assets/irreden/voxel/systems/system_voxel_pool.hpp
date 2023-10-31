@@ -129,7 +129,7 @@ namespace IRECS {
                 );
             }
 
-            IRProfile::engAssert(false, "Ran out of voxels");
+            IR_ENG_ASSERT(false, "Ran out of voxels");
 
             return std::make_tuple(
                 std::span<C_Position3D>{},

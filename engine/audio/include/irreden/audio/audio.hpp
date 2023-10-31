@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\audio\audio.hpp
+ * File: audio.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -12,7 +12,7 @@
 
 // #include <RtAudio/RtAudio.h>
 #include <RtAudio.h>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 #include <string>
 
 #include <sstream>

@@ -11,7 +11,7 @@
 #define EVENT_PROFILER_H
 
 #include <irreden/ir_time.hpp>
-#include <irreden/ir_profiling.hpp>
+#include <irreden/ir_profile.hpp>
 
 constexpr int kUpdateTimeWarningThresholdMs = 10;
 

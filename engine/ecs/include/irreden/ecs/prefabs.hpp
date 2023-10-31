@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\prefabs.hpp
+ * File: prefabs.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

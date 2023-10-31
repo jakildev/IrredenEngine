@@ -108,7 +108,7 @@
 //             atg_dtv::Frame* newFrame = m_dtvEncoder.newFrame(false);
 //             if(m_dtvEncoder.getError() != atg_dtv::Encoder::Error::None) {
 //                 IRProfile::engLogError("Encoder error: {}", (int)m_dtvEncoder.getError());
-//                 IRProfile::engAssert(false, "Encoder error");
+//                 IR_ENG_ASSERT(false, "Encoder error");
 //             }
 //             ENG_API->glReadBuffer(GL_FRONT);
 //             ENG_API->glReadPixels(

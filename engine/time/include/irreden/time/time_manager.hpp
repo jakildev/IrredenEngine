@@ -17,9 +17,15 @@ namespace IRTime {
 
     class TimeManager {
     public:
-        static TimeManager& instance() {
-            static TimeManager instance{};
-            return instance;
+        TimeManager()
+        :   m_profilerUpdate{}
+        ,   m_profilerRender{}
+        ,   m_start{}
+        ,   m_mainLoopPrevious{}
+        ,   m_mainLoopElapsed{0}
+        {
+            g_timeManager = this;
+            IRProfile::engLogInfo("TimeManager initalized");
         }
 
         void start() {
@@ -57,16 +63,6 @@ namespace IRTime {
         TimePoint m_start;
         TimePoint m_mainLoopPrevious;
         NanoSeconds m_mainLoopElapsed;
-
-        TimeManager()
-        :   m_profilerUpdate{}
-        ,   m_profilerRender{}
-        ,   m_start{}
-        ,   m_mainLoopPrevious{}
-        ,   m_mainLoopElapsed{0}
-        {
-
-        }
     };
 
 } // namespace IRTime

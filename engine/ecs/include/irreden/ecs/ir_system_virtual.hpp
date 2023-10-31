@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\entity\ir_system_virtual.hpp
+ * File: ir_system_virtual.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
