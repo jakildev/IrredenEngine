@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\time\event_profiler.hpp
+ * File: event_profiler.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

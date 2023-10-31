@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_update_screen_view.hpp
+ * File: system_update_screen_view.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

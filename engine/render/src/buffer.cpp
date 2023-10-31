@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\buffer.cpp
+ * File: buffer.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

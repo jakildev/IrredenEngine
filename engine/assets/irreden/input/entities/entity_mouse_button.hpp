@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_entities\entity_mouse_button.hpp
+ * File: entity_mouse_button.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

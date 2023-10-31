@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_entities\entity_voxel_sprite.hpp
+ * File: entity_voxel_sprite.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

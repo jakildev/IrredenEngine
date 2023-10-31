@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_entities\entity_camera.hpp
+ * File: entity_camera.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

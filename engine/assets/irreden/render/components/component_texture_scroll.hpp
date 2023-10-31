@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_texture_scroll.hpp
+ * File: component_texture_scroll.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

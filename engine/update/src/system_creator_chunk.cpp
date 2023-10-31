@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_creator_chunk.cpp
+ * File: system_creator_chunk.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

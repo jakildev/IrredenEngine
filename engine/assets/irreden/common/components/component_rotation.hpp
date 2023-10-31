@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_rotation.hpp
+ * File: component_rotation.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

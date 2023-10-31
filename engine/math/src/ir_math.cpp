@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\math\ir_math.cpp
+ * File: ir_math.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

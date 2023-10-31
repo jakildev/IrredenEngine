@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_lifetime.hpp
+ * File: component_lifetime.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

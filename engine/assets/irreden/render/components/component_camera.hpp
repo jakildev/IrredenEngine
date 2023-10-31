@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_camera.hpp
+ * File: component_camera.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

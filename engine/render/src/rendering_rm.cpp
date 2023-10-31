@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\rendering_rm.cpp
+ * File: rendering_rm.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

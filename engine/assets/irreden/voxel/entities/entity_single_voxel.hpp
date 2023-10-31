@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_entities\entity_single_voxel.hpp
+ * File: entity_single_voxel.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\commands\command_manager.cpp
+ * File: command_manager.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

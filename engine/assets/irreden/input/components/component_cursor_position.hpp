@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_cursor_position.hpp
+ * File: component_cursor_position.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_update_voxel_set_children.hpp
+ * File: system_update_voxel_set_children.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

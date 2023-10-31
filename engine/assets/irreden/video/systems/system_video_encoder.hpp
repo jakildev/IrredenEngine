@@ -1,6 +1,6 @@
 // /*
 //  * Project: Irreden Engine
-//  * File: \irreden-engine\src\systems\system_video_encoder.hpp
+//  * File: system_video_encoder.hpp
 //  * Author: Evin Killian jakildev@gmail.com
 //  * Created Date: October 2023
 //  * -----

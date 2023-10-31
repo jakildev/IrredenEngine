@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\lua\lua_helper.hpp
+ * File: lua_helper.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

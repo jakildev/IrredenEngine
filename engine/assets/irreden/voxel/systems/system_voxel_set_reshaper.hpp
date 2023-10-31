@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_voxel_set_reshaper.hpp
+ * File: system_voxel_set_reshaper.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

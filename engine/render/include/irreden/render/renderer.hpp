@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\renderer.hpp
+ * File: renderer.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

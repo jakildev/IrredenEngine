@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_position_2d.hpp
+ * File: component_position_2d.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\math\percolation.hpp
+ * File: percolation.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_entities\entity_midi_device.hpp
+ * File: entity_midi_device.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -14,7 +14,9 @@
 #include <irreden/ecs/prefabs.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_audio.hpp>
-#include "..\game_components\collections\music.hpp"
+#include <irreden/common/components/component_name.hpp>
+#include <irreden/audio/components/component_midi_channel.hpp>
+#include <irreden/audio/components/component_midi_device_in.hpp>
 
 using namespace IRComponents;
 using namespace IRAudio;

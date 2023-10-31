@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_rendering_triangle_framebuffer.hpp
+ * File: component_rendering_triangle_framebuffer.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

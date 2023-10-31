@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\time\ir_time.hpp
+ * File: ir_time.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

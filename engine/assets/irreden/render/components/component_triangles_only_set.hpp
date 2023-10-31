@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_triangles_only_set.hpp
+ * File: component_triangles_only_set.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

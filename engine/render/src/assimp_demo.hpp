@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\assimp_demo.hpp
+ * File: assimp_demo.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

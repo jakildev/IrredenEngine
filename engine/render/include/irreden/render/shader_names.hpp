@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\shaders\shader_names.hpp
+ * File: shader_names.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

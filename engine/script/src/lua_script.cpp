@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\lua\lua_script.cpp
+ * File: lua_script.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

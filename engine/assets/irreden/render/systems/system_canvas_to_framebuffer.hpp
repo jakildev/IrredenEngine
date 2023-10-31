@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_rendering_canvas_to_framebuffer.hpp
+ * File: system_rendering_canvas_to_framebuffer.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

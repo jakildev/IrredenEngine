@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_text_segment.hpp
+ * File: component_text_segment.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

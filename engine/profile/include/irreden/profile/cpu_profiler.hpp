@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\profiling\cpu_profiler.hpp
+ * File: cpu_profiler.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

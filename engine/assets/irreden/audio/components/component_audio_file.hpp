@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_audio_file.hpp
+ * File: component_audio_file.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

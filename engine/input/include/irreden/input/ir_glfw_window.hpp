@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\world\ir_glfw_window.hpp
+ * File: ir_glfw_window.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

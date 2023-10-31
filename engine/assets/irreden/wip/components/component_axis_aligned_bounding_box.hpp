@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_axis_aligned_bounding_box.hpp
+ * File: component_axis_aligned_bounding_box.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

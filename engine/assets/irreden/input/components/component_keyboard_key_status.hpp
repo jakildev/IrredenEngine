@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_keyboard_key_status.hpp
+ * File: component_keyboard_key_status.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\framebuffer.hpp
+ * File: framebuffer.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

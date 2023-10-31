@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\commands\command_manager.hpp
+ * File: command_manager.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

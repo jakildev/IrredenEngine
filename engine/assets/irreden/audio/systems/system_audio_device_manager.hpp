@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_systems\system_audio_device_manager.hpp
+ * File: system_audio_device_manager.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

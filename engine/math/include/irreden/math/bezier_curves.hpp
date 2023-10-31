@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\math\bezier_curves.hpp
+ * File: bezier_curves.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

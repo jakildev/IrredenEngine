@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\time\time_manager.cpp
+ * File: time_manager.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

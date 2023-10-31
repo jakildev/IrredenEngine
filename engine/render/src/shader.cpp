@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\shader.cpp
+ * File: shader.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_creator_triangles_only_entity.cpp
+ * File: system_creator_triangles_only_entity.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

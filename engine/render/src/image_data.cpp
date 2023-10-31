@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\image_data.cpp
+ * File: image_data.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

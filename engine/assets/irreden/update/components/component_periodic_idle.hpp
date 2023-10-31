@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_periodic_idle.hpp
+ * File: component_periodic_idle.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

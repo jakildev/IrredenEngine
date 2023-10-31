@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_viewport_state.hpp
+ * File: component_viewport_state.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

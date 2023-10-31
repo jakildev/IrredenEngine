@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_particle_spawner.hpp
+ * File: system_particle_spawner.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

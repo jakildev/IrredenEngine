@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_lifetime.hpp
+ * File: system_lifetime.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

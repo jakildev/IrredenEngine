@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\ir_gl_api.cpp
+ * File: ir_gl_api.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

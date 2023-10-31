@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_size_int_3d.hpp
+ * File: component_size_int_3d.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

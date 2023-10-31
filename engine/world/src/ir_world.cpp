@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\world\ir_world.cpp
+ * File: ir_world.cpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

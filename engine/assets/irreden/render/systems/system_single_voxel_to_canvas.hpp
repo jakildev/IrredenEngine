@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_rendering_single_voxel_to_canvas.hpp
+ * File: system_rendering_single_voxel_to_canvas.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

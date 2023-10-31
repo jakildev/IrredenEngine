@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\systems\system_voxel_pool.hpp
+ * File: system_voxel_pool.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

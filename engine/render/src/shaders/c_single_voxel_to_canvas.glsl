@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\shaders\c_single_voxel_to_canvas.glsl
+ * File: c_single_voxel_to_canvas.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

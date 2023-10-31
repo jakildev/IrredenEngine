@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_midi_message_note_on.hpp
+ * File: component_midi_message_note_on.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

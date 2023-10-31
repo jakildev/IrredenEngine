@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_direction.hpp
+ * File: component_direction.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\src\game_components\component_example.hpp
+ * File: component_example.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

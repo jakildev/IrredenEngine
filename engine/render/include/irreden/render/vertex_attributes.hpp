@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\rendering\vertex_attributes.hpp
+ * File: vertex_attributes.hpp
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

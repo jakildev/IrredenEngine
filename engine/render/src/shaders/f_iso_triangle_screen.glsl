@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: \irreden-engine\engine\src\shaders\f_iso_triangle_screen.glsl
+ * File: f_iso_triangle_screen.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
