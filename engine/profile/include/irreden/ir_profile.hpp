@@ -30,22 +30,13 @@ namespace IRProfile {
     #define IR_PROFILER_COLOR_END_EXECUTE        0xff00ff00
     #define IR_PROFILER_COLOR_INPUT      0xff4444ff
 
-   template <typename... Args>
+    template <typename... Args>
     inline void engAssert(
         bool condition,
         const char* filepath,
         const char* functionName,
         int lineNumber,
-        const char* format,
-        Args&&... args
-    );
-
-    template <typename... Args>
-    inline void glAssert(
-        bool condition,
-        const char* filepath,
-        const char* functionName,
-        int lineNumber,
+        const char* assertionString,
         const char* format,
         Args&&... args
     );
