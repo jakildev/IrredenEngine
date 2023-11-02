@@ -7,28 +7,22 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef IR_SYSTEM_BASE_H
-#define IR_SYSTEM_BASE_H
+#ifndef SYSTEM_BASE_H
+#define SYSTEM_BASE_H
 
-#include <irreden/ir_input.hpp>
-#include <irreden/ir_entity.hpp>
-#include "ir_system_virtual.hpp"
 #include <irreden/ir_profile.hpp>
-// #include <irreden/ir_command.hpp>
-#include "system_manager.hpp"
+#include <irreden/ir_entity.hpp>
 
-// #include <irreden/command/command_manager.hpp>
+#include <irreden/system/system_virtual.hpp>
+#include <irreden/system/system_manager.hpp>
 
-#include <irreden/common/components/component_tags_all.hpp>
-
-using namespace IRInput;
-// using namespace IRCommands;
+// #include <irreden/common/components/component_tags_all.hpp>
 
 namespace IRECS {
 
     // I want to try the "deducing this" pattern to solve all
     // my system problems.
-    template <IRSystemName system, typename... Components>
+    template <SystemName system, typename... Components>
     class SystemBase : public SystemVirtual {
     public:
         SystemBase()
@@ -39,7 +33,7 @@ namespace IRECS {
         {
             IRProfile::engLogInfo(
                 "Created system with archetype {}",
-                IRECS::makeComponentString(this->getArchetype())
+                makeComponentString(this->getArchetype())
             );
         }
         virtual ~SystemBase() = default;
@@ -112,37 +106,6 @@ namespace IRECS {
         // TODO One contiguous array
         // void forEachEntity()
     protected:
-        // template <IRInputTypes inputType>
-        // void registerCommand(
-        //     int button,
-        //     std::function<void()> command
-        // )
-        // {
-        //     global.commandManager_->registerSystemCommand<System, inputType>(
-        //         button,
-        //         command
-        //     );
-        // }
-
-        // template <
-        //     IRCommandNames commandName,
-        //     IRInputTypes inputType,
-        //     typename Function,
-        //     typename... Args
-        // >
-        // void registerCommand(
-        //     int button,
-        //     Function func,
-        //     Args... fixedArgs
-        // )
-        // {
-        //     global.commandManager_->registerEntityCommand<System, commandName, inputType>(
-        //         button,
-        //         func,
-        //         fixedArgs...
-        //     );
-        // }
-
         template <typename ComponentTag>
         void addTag() {
             m_includeTags.insert(
@@ -165,4 +128,4 @@ namespace IRECS {
 
 } // namespace IRECS
 
-#endif /* IR_SYSTEM_BASE_H */
+#endif /* SYSTEM_BASE_H */

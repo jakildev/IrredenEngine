@@ -1,13 +1,29 @@
 #ifndef IR_COMMAND_H
 #define IR_COMMAND_H
 
+#include <irreden/input/ir_input_types.hpp>
+#include <irreden/command/command_manager.hpp>
+
 namespace IRCommand {
 
-    class CommandManager;
     extern CommandManager* g_commandManager;
     CommandManager& getCommandManager();
 
-    void registerCommand
+    template <typename Function>
+    int registerCommand(
+        IRInput::InputTypes inputType,
+        IRInput::ButtonStatuses triggerStatus,
+        int button,
+        Function command
+    )
+    {
+        return getCommandManager().registerCommand(
+            inputType,
+            triggerStatus,
+            button,
+            command
+        );
+    }
 
 } // namespace IRCommand
 

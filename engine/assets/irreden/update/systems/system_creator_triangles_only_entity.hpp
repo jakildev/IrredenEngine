@@ -42,7 +42,7 @@
 //         PASTE_SELECTION
 //     };
 
-//     constexpr std::pair<IRKeyMouseButtons, EnumPaintingModes> kKeyCommandsPaintingModes[] = {
+//     constexpr std::pair<KeyMouseButtons, EnumPaintingModes> kKeyCommandsPaintingModes[] = {
 //         {kKeyButtonT, TRIANGLES},
 //         {kKeyButtonF, FACES},
 //         {kKeyButtonC, CUBES},
@@ -54,7 +54,7 @@
 //         sizeof(kKeyCommandsPaintingModes[0])
 //     ;
 
-//     constexpr std::pair<IRKeyMouseButtons, int> kKeyCommandsPaletteColor[] = {
+//     constexpr std::pair<KeyMouseButtons, int> kKeyCommandsPaletteColor[] = {
 //         {kKeyButton1, 0},
 //         {kKeyButton2, 1},
 //         {kKeyButton3, 2},
@@ -66,7 +66,7 @@
 //         sizeof(kKeyCommandsPaletteColor) /
 //         sizeof(kKeyCommandsPaletteColor[0]);
 
-//     constexpr std::pair<IRKeyMouseButtons, FaceType> kKeyCommandsFaceType[] = {
+//     constexpr std::pair<KeyMouseButtons, FaceType> kKeyCommandsFaceType[] = {
 //         {kKeyButtonX, FaceType::X_FACE},
 //         {kKeyButtonY, FaceType::Y_FACE},
 //         {kKeyButtonZ, FaceType::Z_FACE}

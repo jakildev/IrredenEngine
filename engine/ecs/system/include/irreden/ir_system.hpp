@@ -7,7 +7,7 @@ namespace IRECS {
     extern SystemManager* g_systemManager;
     SystemManager& getSystemManager();
 
-    template <IRSystemName systemName>
+    template <SystemName systemName>
     System<systemName>& getSystem() {
         return getSystemManager().get<systemName>();
     }

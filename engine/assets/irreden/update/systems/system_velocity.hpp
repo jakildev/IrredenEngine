@@ -10,7 +10,7 @@
 #ifndef SYSTEM_VELOCITY_H
 #define SYSTEM_VELOCITY_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include "..\components\component_velocity_3d.hpp"
 
@@ -35,7 +35,7 @@ namespace IRECS {
     public:
         System() {
             // registerCommand<kGamepadButtonPressed>(
-            //     IRGamepadButtons::kGamepadButtonA,
+            //     GamepadButtons::kGamepadButtonA,
             //     [this]() {
             //         this->invertVelocitiesAll();
             //     }
@@ -43,7 +43,7 @@ namespace IRECS {
 
             // TODO: Move commands out
             // registerCommand<STOP_VELOCITY, kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonS,
+            //     KeyMouseButtons::kKeyButtonS,
             //     &stopVelocity
             // );
             IRProfile::engLogInfo("Created system VELOCITY_3D");

@@ -8,8 +8,9 @@
  */
 
 #include <irreden/ir_entity.hpp>
-#include <irreden/entity/archetype_node.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/entity/archetype_node.hpp>
 
 // TODO: SHOULD absolutly have node specialization
 // that can handle multiple tickWithArchetype functions...

@@ -13,6 +13,7 @@
 #define PREFABS_H
 
 namespace IRECS {
+
     enum PrefabTypes {
         kExample,
         kGLFWJoystick,

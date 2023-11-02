@@ -27,7 +27,7 @@ target_include_directories(
 target_link_libraries(
     IrredenEngineSystem PUBLIC
     IrredenEngineProfiling
-    IrredenEngineInput
+    # IrredenEngineInput
     IrredenEngineEntity
     IrredenEngineTime
 )

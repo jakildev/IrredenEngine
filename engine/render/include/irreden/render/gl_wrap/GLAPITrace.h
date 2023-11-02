@@ -21,7 +21,7 @@ void GLTracer_glCullFace(GLenum mode)
 	IRProfile::glLogDebug("glCullFace({})", E2S(mode));
 	apiHook.glCullFace(mode);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glPolygonMode(GLenum face, GLenum mode)
@@ -29,7 +29,7 @@ void GLTracer_glPolygonMode(GLenum face, GLenum mode)
 	IRProfile::glLogDebug("glPolygonMode({}, {})", E2S(face), E2S(mode));
 	apiHook.glPolygonMode(face, mode);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
@@ -37,7 +37,7 @@ void GLTracer_glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
 	IRProfile::glLogDebug("glScissor({}, {}, {}, {})", x, y, width, height);
 	apiHook.glScissor(x, y, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexParameterf(GLenum target, GLenum pname, GLfloat param)
@@ -45,7 +45,7 @@ void GLTracer_glTexParameterf(GLenum target, GLenum pname, GLfloat param)
 	IRProfile::glLogDebug("glTexParameterf({}, {}, {})", E2S(target), E2S(pname), param);
 	apiHook.glTexParameterf(target, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexParameterfv(GLenum target, GLenum pname, const GLfloat* params)
@@ -53,7 +53,7 @@ void GLTracer_glTexParameterfv(GLenum target, GLenum pname, const GLfloat* param
 	IRProfile::glLogDebug("glTexParameterfv({}, {}, {})", E2S(target), E2S(pname), (const void*)(params));
 	apiHook.glTexParameterfv(target, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexParameteri(GLenum target, GLenum pname, GLint param)
@@ -61,7 +61,7 @@ void GLTracer_glTexParameteri(GLenum target, GLenum pname, GLint param)
 	IRProfile::glLogDebug("glTexParameteri({}, {}, {})", E2S(target), E2S(pname), param);
 	apiHook.glTexParameteri(target, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexParameteriv(GLenum target, GLenum pname, const GLint* params)
@@ -69,7 +69,7 @@ void GLTracer_glTexParameteriv(GLenum target, GLenum pname, const GLint* params)
 	IRProfile::glLogDebug("glTexParameteriv({}, {}, {})", E2S(target), E2S(pname), (const void*)(params));
 	apiHook.glTexParameteriv(target, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* pixels)
@@ -77,7 +77,7 @@ void GLTracer_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLs
 	IRProfile::glLogDebug("glTexImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, internalformat, width, height, border, E2S(format), E2S(type), pixels);
 	apiHook.glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClear(GLbitfield mask)
@@ -85,7 +85,7 @@ void GLTracer_glClear(GLbitfield mask)
 	IRProfile::glLogDebug("glClear({})", (unsigned int)(mask));
 	apiHook.glClear(mask);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
@@ -93,7 +93,7 @@ void GLTracer_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alp
 	IRProfile::glLogDebug("glClearColor({}, {}, {}, {})", red, green, blue, alpha);
 	apiHook.glClearColor(red, green, blue, alpha);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearStencil(GLint s)
@@ -101,7 +101,7 @@ void GLTracer_glClearStencil(GLint s)
 	IRProfile::glLogDebug("glClearStencil({})", s);
 	apiHook.glClearStencil(s);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearDepth(GLdouble depth)
@@ -109,7 +109,7 @@ void GLTracer_glClearDepth(GLdouble depth)
 	IRProfile::glLogDebug("glClearDepth({})", depth);
 	apiHook.glClearDepth(depth);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha)
@@ -117,7 +117,7 @@ void GLTracer_glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLbool
 	IRProfile::glLogDebug("glColorMask({}, {}, {}, {})", (unsigned int)(red), (unsigned int)(green), (unsigned int)(blue), (unsigned int)(alpha));
 	apiHook.glColorMask(red, green, blue, alpha);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDepthMask(GLboolean flag)
@@ -125,7 +125,7 @@ void GLTracer_glDepthMask(GLboolean flag)
 	IRProfile::glLogDebug("glDepthMask({})", (unsigned int)(flag));
 	apiHook.glDepthMask(flag);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDisable(GLenum cap)
@@ -133,7 +133,7 @@ void GLTracer_glDisable(GLenum cap)
 	IRProfile::glLogDebug("glDisable({})", E2S(cap));
 	apiHook.glDisable(cap);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glEnable(GLenum cap)
@@ -141,7 +141,7 @@ void GLTracer_glEnable(GLenum cap)
 	IRProfile::glLogDebug("glEnable({})", E2S(cap));
 	apiHook.glEnable(cap);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glFinish()
@@ -149,7 +149,7 @@ void GLTracer_glFinish()
 	IRProfile::glLogDebug("glFinish()\n");
 	apiHook.glFinish();
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glFlush()
@@ -157,7 +157,7 @@ void GLTracer_glFlush()
 	IRProfile::glLogDebug("glFlush()\n");
 	apiHook.glFlush();
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBlendFunc(GLenum sfactor, GLenum dfactor)
@@ -165,7 +165,7 @@ void GLTracer_glBlendFunc(GLenum sfactor, GLenum dfactor)
 	IRProfile::glLogDebug("glBlendFunc({}, {})", E2S(sfactor), E2S(dfactor));
 	apiHook.glBlendFunc(sfactor, dfactor);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDepthFunc(GLenum func)
@@ -173,7 +173,7 @@ void GLTracer_glDepthFunc(GLenum func)
 	IRProfile::glLogDebug("glDepthFunc({})", E2S(func));
 	apiHook.glDepthFunc(func);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glPixelStorei(GLenum pname, GLint param)
@@ -181,7 +181,7 @@ void GLTracer_glPixelStorei(GLenum pname, GLint param)
 	IRProfile::glLogDebug("glPixelStorei({}, {})", E2S(pname), param);
 	apiHook.glPixelStorei(pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glReadBuffer(GLenum src)
@@ -189,7 +189,7 @@ void GLTracer_glReadBuffer(GLenum src)
 	IRProfile::glLogDebug("glReadBuffer({})", E2S(src));
 	apiHook.glReadBuffer(src);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels)
@@ -197,7 +197,7 @@ void GLTracer_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLen
 	IRProfile::glLogDebug("glReadPixels({}, {}, {}, {}, {}, {}, {})", x, y, width, height, E2S(format), E2S(type), pixels);
 	apiHook.glReadPixels(x, y, width, height, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLenum GLTracer_glGetError()
@@ -205,7 +205,7 @@ GLenum GLTracer_glGetError()
 	IRProfile::glLogDebug("glGetError()\n");
 	GLenum const r = apiHook.glGetError();
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -214,7 +214,7 @@ void GLTracer_glGetIntegerv(GLenum pname, GLint* data)
 	IRProfile::glLogDebug("glGetIntegerv({}, {})", E2S(pname), (void*)(data));
 	apiHook.glGetIntegerv(pname, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 const GLubyte* GLTracer_glGetString(GLenum name)
@@ -222,7 +222,7 @@ const GLubyte* GLTracer_glGetString(GLenum name)
 	IRProfile::glLogDebug("glGetString({})", E2S(name));
 	const GLubyte* const r = apiHook.glGetString(name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -231,7 +231,7 @@ void GLTracer_glGetTexImage(GLenum target, GLint level, GLenum format, GLenum ty
 	IRProfile::glLogDebug("glGetTexImage({}, {}, {}, {}, {})", E2S(target), level, E2S(format), E2S(type), pixels);
 	apiHook.glGetTexImage(target, level, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint* params)
@@ -239,7 +239,7 @@ void GLTracer_glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname,
 	IRProfile::glLogDebug("glGetTexLevelParameteriv({}, {}, {}, {})", E2S(target), level, E2S(pname), (void*)(params));
 	apiHook.glGetTexLevelParameteriv(target, level, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
@@ -247,7 +247,7 @@ void GLTracer_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 	IRProfile::glLogDebug("glViewport({}, {}, {}, {})", x, y, width, height);
 	apiHook.glViewport(x, y, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDrawArrays(GLenum mode, GLint first, GLsizei count)
@@ -255,7 +255,7 @@ void GLTracer_glDrawArrays(GLenum mode, GLint first, GLsizei count)
 	IRProfile::glLogDebug("glDrawArrays({}, {}, {})", E2S(mode), first, count);
 	apiHook.glDrawArrays(mode, first, count);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices)
@@ -263,7 +263,7 @@ void GLTracer_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void
 	IRProfile::glLogDebug("glDrawElements({}, {}, {}, {})", E2S(mode), count, E2S(type), indices);
 	apiHook.glDrawElements(mode, count, type, indices);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels)
@@ -271,7 +271,7 @@ void GLTracer_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint y
 	IRProfile::glLogDebug("glTexSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
 	apiHook.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteTextures(GLsizei n, const GLuint* textures)
@@ -279,7 +279,7 @@ void GLTracer_glDeleteTextures(GLsizei n, const GLuint* textures)
 	IRProfile::glLogDebug("glDeleteTextures({}, {})", n, (const void*)(textures));
 	apiHook.glDeleteTextures(n, textures);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenTextures(GLsizei n, GLuint* textures)
@@ -287,7 +287,7 @@ void GLTracer_glGenTextures(GLsizei n, GLuint* textures)
 	IRProfile::glLogDebug("glGenTextures({}, {})", n, (void*)(textures));
 	apiHook.glGenTextures(n, textures);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void* pixels)
@@ -295,7 +295,7 @@ void GLTracer_glTexImage3D(GLenum target, GLint level, GLint internalformat, GLs
 	IRProfile::glLogDebug("glTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, internalformat, width, height, depth, border, E2S(format), E2S(type), pixels);
 	apiHook.glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glActiveTexture(GLenum texture)
@@ -303,7 +303,7 @@ void GLTracer_glActiveTexture(GLenum texture)
 	IRProfile::glLogDebug("glActiveTexture({})", E2S(texture));
 	apiHook.glActiveTexture(texture);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void* data)
@@ -311,7 +311,7 @@ void GLTracer_glCompressedTexImage3D(GLenum target, GLint level, GLenum internal
 	IRProfile::glLogDebug("glCompressedTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, E2S(internalformat), width, height, depth, border, imageSize, data);
 	apiHook.glCompressedTexImage3D(target, level, internalformat, width, height, depth, border, imageSize, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void* data)
@@ -319,7 +319,7 @@ void GLTracer_glCompressedTexImage2D(GLenum target, GLint level, GLenum internal
 	IRProfile::glLogDebug("glCompressedTexImage2D({}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, E2S(internalformat), width, height, border, imageSize, data);
 	apiHook.glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetCompressedTexImage(GLenum target, GLint level, void* img)
@@ -327,7 +327,7 @@ void GLTracer_glGetCompressedTexImage(GLenum target, GLint level, void* img)
 	IRProfile::glLogDebug("glGetCompressedTexImage({}, {}, {})", E2S(target), level, img);
 	apiHook.glGetCompressedTexImage(target, level, img);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenQueries(GLsizei n, GLuint* ids)
@@ -335,7 +335,7 @@ void GLTracer_glGenQueries(GLsizei n, GLuint* ids)
 	IRProfile::glLogDebug("glGenQueries({}, {})", n, (void*)(ids));
 	apiHook.glGenQueries(n, ids);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteQueries(GLsizei n, const GLuint* ids)
@@ -343,7 +343,7 @@ void GLTracer_glDeleteQueries(GLsizei n, const GLuint* ids)
 	IRProfile::glLogDebug("glDeleteQueries({}, {})", n, (const void*)(ids));
 	apiHook.glDeleteQueries(n, ids);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBeginQuery(GLenum target, GLuint id)
@@ -351,7 +351,7 @@ void GLTracer_glBeginQuery(GLenum target, GLuint id)
 	IRProfile::glLogDebug("glBeginQuery({}, {})", E2S(target), id);
 	apiHook.glBeginQuery(target, id);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glEndQuery(GLenum target)
@@ -359,7 +359,7 @@ void GLTracer_glEndQuery(GLenum target)
 	IRProfile::glLogDebug("glEndQuery({})", E2S(target));
 	apiHook.glEndQuery(target);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetQueryObjectiv(GLuint id, GLenum pname, GLint* params)
@@ -367,7 +367,7 @@ void GLTracer_glGetQueryObjectiv(GLuint id, GLenum pname, GLint* params)
 	IRProfile::glLogDebug("glGetQueryObjectiv({}, {}, {})", id, E2S(pname), (void*)(params));
 	apiHook.glGetQueryObjectiv(id, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindBuffer(GLenum target, GLuint buffer)
@@ -375,16 +375,15 @@ void GLTracer_glBindBuffer(GLenum target, GLuint buffer)
 	IRProfile::glLogDebug("glBindBuffer({}, {})", E2S(target), buffer);
 	apiHook.glBindBuffer(target, buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteBuffers(GLsizei n, const GLuint* buffers)
 {
-	IRProfile::engLogInfo("glDeleteBuffers({}, {})", n, *(buffers));
-	// IRProfile::glLogDebug("glDeleteBuffers({}, {})", n, (const void*)(buffers));
+	IRProfile::glLogDebug("glDeleteBuffers({}, {})", n, (const void*)(buffers));
 	apiHook.glDeleteBuffers(n, buffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError), "glDeleteBuffers({}, {})", n, (const void*)(buffers));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError), "glDeleteBuffers({}, {})", n, (const void*)(buffers));
 }
 
 void GLTracer_glGenBuffers(GLsizei n, GLuint* buffers)
@@ -392,7 +391,7 @@ void GLTracer_glGenBuffers(GLsizei n, GLuint* buffers)
 	IRProfile::glLogDebug("glGenBuffers({}, {})", n, (void*)(buffers));
 	apiHook.glGenBuffers(n, buffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage)
@@ -400,7 +399,7 @@ void GLTracer_glBufferData(GLenum target, GLsizeiptr size, const void* data, GLe
 	IRProfile::glLogDebug("glBufferData({}, {}, {}, {})", E2S(target), size, data, E2S(usage));
 	apiHook.glBufferData(target, size, data, usage);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void* data)
@@ -408,7 +407,7 @@ void GLTracer_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, c
 	IRProfile::glLogDebug("glBufferSubData({}, {}, {}, {})", E2S(target), offset, size, data);
 	apiHook.glBufferSubData(target, offset, size, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDrawBuffers(GLsizei n, const GLenum* bufs)
@@ -416,7 +415,7 @@ void GLTracer_glDrawBuffers(GLsizei n, const GLenum* bufs)
 	IRProfile::glLogDebug("glDrawBuffers({}, {})", n, (const void*)(bufs));
 	apiHook.glDrawBuffers(n, bufs);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glAttachShader(GLuint program, GLuint shader)
@@ -424,7 +423,7 @@ void GLTracer_glAttachShader(GLuint program, GLuint shader)
 	IRProfile::glLogDebug("glAttachShader({}, {})", program, shader);
 	apiHook.glAttachShader(program, shader);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindAttribLocation(GLuint program, GLuint index, const GLchar* name)
@@ -432,7 +431,7 @@ void GLTracer_glBindAttribLocation(GLuint program, GLuint index, const GLchar* n
 	IRProfile::glLogDebug("glBindAttribLocation({}, {}, {})", program, index, (const void*)(name));
 	apiHook.glBindAttribLocation(program, index, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompileShader(GLuint shader)
@@ -440,7 +439,7 @@ void GLTracer_glCompileShader(GLuint shader)
 	IRProfile::glLogDebug("glCompileShader({})", shader);
 	apiHook.glCompileShader(shader);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLuint GLTracer_glCreateProgram()
@@ -448,7 +447,7 @@ GLuint GLTracer_glCreateProgram()
 	IRProfile::glLogDebug("glCreateProgram()\n");
 	GLuint const r = apiHook.glCreateProgram();
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -457,7 +456,7 @@ GLuint GLTracer_glCreateShader(GLenum type)
 	IRProfile::glLogDebug("glCreateShader({})", E2S(type));
 	GLuint const r = apiHook.glCreateShader(type);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -466,7 +465,7 @@ void GLTracer_glDeleteProgram(GLuint program)
 	IRProfile::glLogDebug("glDeleteProgram({})", program);
 	apiHook.glDeleteProgram(program);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteShader(GLuint shader)
@@ -474,7 +473,7 @@ void GLTracer_glDeleteShader(GLuint shader)
 	IRProfile::glLogDebug("glDeleteShader({})", shader);
 	apiHook.glDeleteShader(shader);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDisableVertexAttribArray(GLuint index)
@@ -482,7 +481,7 @@ void GLTracer_glDisableVertexAttribArray(GLuint index)
 	IRProfile::glLogDebug("glDisableVertexAttribArray({})", index);
 	apiHook.glDisableVertexAttribArray(index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glEnableVertexAttribArray(GLuint index)
@@ -490,7 +489,7 @@ void GLTracer_glEnableVertexAttribArray(GLuint index)
 	IRProfile::glLogDebug("glEnableVertexAttribArray({})", index);
 	apiHook.glEnableVertexAttribArray(index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetActiveAttrib(GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name)
@@ -498,7 +497,7 @@ void GLTracer_glGetActiveAttrib(GLuint program, GLuint index, GLsizei bufSize, G
 	IRProfile::glLogDebug("glGetActiveAttrib({}, {}, {}, {}, {}, {}, {})", program, index, bufSize, (void*)(length), (void*)(size), (void*)(type), (void*)(name));
 	apiHook.glGetActiveAttrib(program, index, bufSize, length, size, type, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name)
@@ -506,7 +505,7 @@ void GLTracer_glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, 
 	IRProfile::glLogDebug("glGetActiveUniform({}, {}, {}, {}, {}, {}, {})", program, index, bufSize, (void*)(length), (void*)(size), (void*)(type), (void*)(name));
 	apiHook.glGetActiveUniform(program, index, bufSize, length, size, type, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLint GLTracer_glGetAttribLocation(GLuint program, const GLchar* name)
@@ -514,7 +513,7 @@ GLint GLTracer_glGetAttribLocation(GLuint program, const GLchar* name)
 	IRProfile::glLogDebug("glGetAttribLocation({}, {})", program, (const void*)(name));
 	GLint const r = apiHook.glGetAttribLocation(program, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -523,7 +522,7 @@ void GLTracer_glGetProgramiv(GLuint program, GLenum pname, GLint* params)
 	IRProfile::glLogDebug("glGetProgramiv({}, {}, {})", program, E2S(pname), (void*)(params));
 	apiHook.glGetProgramiv(program, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog)
@@ -531,7 +530,7 @@ void GLTracer_glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei* leng
 	IRProfile::glLogDebug("glGetProgramInfoLog({}, {}, {}, {})", program, bufSize, (void*)(length), (void*)(infoLog));
 	apiHook.glGetProgramInfoLog(program, bufSize, length, infoLog);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetShaderiv(GLuint shader, GLenum pname, GLint* params)
@@ -539,7 +538,7 @@ void GLTracer_glGetShaderiv(GLuint shader, GLenum pname, GLint* params)
 	IRProfile::glLogDebug("glGetShaderiv({}, {}, {})", shader, E2S(pname), (void*)(params));
 	apiHook.glGetShaderiv(shader, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog)
@@ -547,7 +546,7 @@ void GLTracer_glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length
 	IRProfile::glLogDebug("glGetShaderInfoLog({}, {}, {}, {})", shader, bufSize, (void*)(length), (void*)(infoLog));
 	apiHook.glGetShaderInfoLog(shader, bufSize, length, infoLog);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLint GLTracer_glGetUniformLocation(GLuint program, const GLchar* name)
@@ -555,7 +554,7 @@ GLint GLTracer_glGetUniformLocation(GLuint program, const GLchar* name)
 	IRProfile::glLogDebug("glGetUniformLocation({}, {})", program, (const void*)(name));
 	GLint const r = apiHook.glGetUniformLocation(program, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -564,7 +563,7 @@ GLboolean GLTracer_glIsProgram(GLuint program)
 	IRProfile::glLogDebug("glIsProgram({})", program);
 	GLboolean const r = apiHook.glIsProgram(program);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -573,7 +572,7 @@ GLboolean GLTracer_glIsShader(GLuint shader)
 	IRProfile::glLogDebug("glIsShader({})", shader);
 	GLboolean const r = apiHook.glIsShader(shader);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -582,7 +581,7 @@ void GLTracer_glLinkProgram(GLuint program)
 	IRProfile::glLogDebug("glLinkProgram({})", program);
 	apiHook.glLinkProgram(program);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glShaderSource(GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length)
@@ -590,7 +589,7 @@ void GLTracer_glShaderSource(GLuint shader, GLsizei count, const GLchar* const* 
 	IRProfile::glLogDebug("glShaderSource({}, {}, {}, {})", shader, count, (const void*)(string), (const void*)(length));
 	apiHook.glShaderSource(shader, count, string, length);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUseProgram(GLuint program)
@@ -598,7 +597,7 @@ void GLTracer_glUseProgram(GLuint program)
 	IRProfile::glLogDebug("glUseProgram({})", program);
 	apiHook.glUseProgram(program);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform1f(GLint location, GLfloat v0)
@@ -606,7 +605,7 @@ void GLTracer_glUniform1f(GLint location, GLfloat v0)
 	IRProfile::glLogDebug("glUniform1f({}, {})", location, v0);
 	apiHook.glUniform1f(location, v0);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform1i(GLint location, GLint v0)
@@ -614,7 +613,7 @@ void GLTracer_glUniform1i(GLint location, GLint v0)
 	IRProfile::glLogDebug("glUniform1i({}, {})", location, v0);
 	apiHook.glUniform1i(location, v0);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform1fv(GLint location, GLsizei count, const GLfloat* value)
@@ -622,7 +621,7 @@ void GLTracer_glUniform1fv(GLint location, GLsizei count, const GLfloat* value)
 	IRProfile::glLogDebug("glUniform1fv({}, {}, {})", location, count, (const void*)(value));
 	apiHook.glUniform1fv(location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform3fv(GLint location, GLsizei count, const GLfloat* value)
@@ -630,7 +629,7 @@ void GLTracer_glUniform3fv(GLint location, GLsizei count, const GLfloat* value)
 	IRProfile::glLogDebug("glUniform3fv({}, {}, {})", location, count, (const void*)(value));
 	apiHook.glUniform3fv(location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform4fv(GLint location, GLsizei count, const GLfloat* value)
@@ -638,7 +637,7 @@ void GLTracer_glUniform4fv(GLint location, GLsizei count, const GLfloat* value)
 	IRProfile::glLogDebug("glUniform4fv({}, {}, {})", location, count, (const void*)(value));
 	apiHook.glUniform4fv(location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniform1iv(GLint location, GLsizei count, const GLint* value)
@@ -646,7 +645,7 @@ void GLTracer_glUniform1iv(GLint location, GLsizei count, const GLint* value)
 	IRProfile::glLogDebug("glUniform1iv({}, {}, {})", location, count, (const void*)(value));
 	apiHook.glUniform1iv(location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)
@@ -654,7 +653,7 @@ void GLTracer_glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transp
 	IRProfile::glLogDebug("glUniformMatrix3fv({}, {}, {}, {})", location, count, (unsigned int)(transpose), (const void*)(value));
 	apiHook.glUniformMatrix3fv(location, count, transpose, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniformMatrix4fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)
@@ -662,7 +661,7 @@ void GLTracer_glUniformMatrix4fv(GLint location, GLsizei count, GLboolean transp
 	IRProfile::glLogDebug("glUniformMatrix4fv({}, {}, {}, {})", location, count, (unsigned int)(transpose), (const void*)(value));
 	apiHook.glUniformMatrix4fv(location, count, transpose, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glValidateProgram(GLuint program)
@@ -670,7 +669,7 @@ void GLTracer_glValidateProgram(GLuint program)
 	IRProfile::glLogDebug("glValidateProgram({})", program);
 	apiHook.glValidateProgram(program);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer)
@@ -678,7 +677,7 @@ void GLTracer_glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboo
 	IRProfile::glLogDebug("glVertexAttribPointer({}, {}, {}, {}, {}, {})", index, size, E2S(type), (unsigned int)(normalized), stride, pointer);
 	apiHook.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glEnablei(GLenum target, GLuint index)
@@ -686,7 +685,7 @@ void GLTracer_glEnablei(GLenum target, GLuint index)
 	IRProfile::glLogDebug("glEnablei({}, {})", E2S(target), index);
 	apiHook.glEnablei(target, index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDisablei(GLenum target, GLuint index)
@@ -694,7 +693,7 @@ void GLTracer_glDisablei(GLenum target, GLuint index)
 	IRProfile::glLogDebug("glDisablei({}, {})", E2S(target), index);
 	apiHook.glDisablei(target, index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)
@@ -702,7 +701,7 @@ void GLTracer_glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLin
 	IRProfile::glLogDebug("glBindBufferRange({}, {}, {}, {}, {})", E2S(target), index, buffer, offset, size);
 	apiHook.glBindBufferRange(target, index, buffer, offset, size);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindBufferBase(GLenum target, GLuint index, GLuint buffer)
@@ -710,7 +709,7 @@ void GLTracer_glBindBufferBase(GLenum target, GLuint index, GLuint buffer)
 	IRProfile::glLogDebug("glBindBufferBase({}, {}, {})", E2S(target), index, buffer);
 	apiHook.glBindBufferBase(target, index, buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindFragDataLocation(GLuint program, GLuint color, const GLchar* name)
@@ -718,7 +717,7 @@ void GLTracer_glBindFragDataLocation(GLuint program, GLuint color, const GLchar*
 	IRProfile::glLogDebug("glBindFragDataLocation({}, {}, {})", program, color, (const void*)(name));
 	apiHook.glBindFragDataLocation(program, color, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 const GLubyte* GLTracer_glGetStringi(GLenum name, GLuint index)
@@ -726,7 +725,7 @@ const GLubyte* GLTracer_glGetStringi(GLenum name, GLuint index)
 	IRProfile::glLogDebug("glGetStringi({}, {})", E2S(name), index);
 	const GLubyte* const r = apiHook.glGetStringi(name, index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -735,7 +734,7 @@ void GLTracer_glBindFramebuffer(GLenum target, GLuint framebuffer)
 	IRProfile::glLogDebug("glBindFramebuffer({}, {})", E2S(target), framebuffer);
 	apiHook.glBindFramebuffer(target, framebuffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteFramebuffers(GLsizei n, const GLuint* framebuffers)
@@ -743,7 +742,7 @@ void GLTracer_glDeleteFramebuffers(GLsizei n, const GLuint* framebuffers)
 	IRProfile::glLogDebug("glDeleteFramebuffers({}, {})", n, (const void*)(framebuffers));
 	apiHook.glDeleteFramebuffers(n, framebuffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenFramebuffers(GLsizei n, GLuint* framebuffers)
@@ -751,7 +750,7 @@ void GLTracer_glGenFramebuffers(GLsizei n, GLuint* framebuffers)
 	IRProfile::glLogDebug("glGenFramebuffers({}, {})", n, (void*)(framebuffers));
 	apiHook.glGenFramebuffers(n, framebuffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLenum GLTracer_glCheckFramebufferStatus(GLenum target)
@@ -759,7 +758,7 @@ GLenum GLTracer_glCheckFramebufferStatus(GLenum target)
 	IRProfile::glLogDebug("glCheckFramebufferStatus({})", E2S(target));
 	GLenum const r = apiHook.glCheckFramebufferStatus(target);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -768,7 +767,7 @@ void GLTracer_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum te
 	IRProfile::glLogDebug("glFramebufferTexture2D({}, {}, {}, {}, {})", E2S(target), E2S(attachment), E2S(textarget), texture, level);
 	apiHook.glFramebufferTexture2D(target, attachment, textarget, texture, level);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset)
@@ -776,7 +775,7 @@ void GLTracer_glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum te
 	IRProfile::glLogDebug("glFramebufferTexture3D({}, {}, {}, {}, {}, {})", E2S(target), E2S(attachment), E2S(textarget), texture, level, zoffset);
 	apiHook.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenerateMipmap(GLenum target)
@@ -784,7 +783,7 @@ void GLTracer_glGenerateMipmap(GLenum target)
 	IRProfile::glLogDebug("glGenerateMipmap({})", E2S(target));
 	apiHook.glGenerateMipmap(target);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindVertexArray(GLuint array)
@@ -792,7 +791,7 @@ void GLTracer_glBindVertexArray(GLuint array)
 	IRProfile::glLogDebug("glBindVertexArray({})", array);
 	apiHook.glBindVertexArray(array);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDeleteVertexArrays(GLsizei n, const GLuint* arrays)
@@ -800,7 +799,7 @@ void GLTracer_glDeleteVertexArrays(GLsizei n, const GLuint* arrays)
 	IRProfile::glLogDebug("glDeleteVertexArrays({}, {})", n, (const void*)(arrays));
 	apiHook.glDeleteVertexArrays(n, arrays);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenVertexArrays(GLsizei n, GLuint* arrays)
@@ -808,7 +807,7 @@ void GLTracer_glGenVertexArrays(GLsizei n, GLuint* arrays)
 	IRProfile::glLogDebug("glGenVertexArrays({}, {})", n, (void*)(arrays));
 	apiHook.glGenVertexArrays(n, arrays);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instancecount)
@@ -816,7 +815,7 @@ void GLTracer_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLs
 	IRProfile::glLogDebug("glDrawArraysInstanced({}, {}, {}, {})", E2S(mode), first, count, instancecount);
 	apiHook.glDrawArraysInstanced(mode, first, count, instancecount);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount)
@@ -824,7 +823,7 @@ void GLTracer_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, c
 	IRProfile::glLogDebug("glDrawElementsInstanced({}, {}, {}, {}, {})", E2S(mode), count, E2S(type), indices, instancecount);
 	apiHook.glDrawElementsInstanced(mode, count, type, indices, instancecount);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetActiveUniformBlockiv(GLuint program, GLuint uniformBlockIndex, GLenum pname, GLint* params)
@@ -832,7 +831,7 @@ void GLTracer_glGetActiveUniformBlockiv(GLuint program, GLuint uniformBlockIndex
 	IRProfile::glLogDebug("glGetActiveUniformBlockiv({}, {}, {}, {})", program, uniformBlockIndex, E2S(pname), (void*)(params));
 	apiHook.glGetActiveUniformBlockiv(program, uniformBlockIndex, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniformBlockBinding(GLuint program, GLuint uniformBlockIndex, GLuint uniformBlockBinding)
@@ -840,7 +839,7 @@ void GLTracer_glUniformBlockBinding(GLuint program, GLuint uniformBlockIndex, GL
 	IRProfile::glLogDebug("glUniformBlockBinding({}, {}, {})", program, uniformBlockIndex, uniformBlockBinding);
 	apiHook.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64* params)
@@ -848,7 +847,7 @@ void GLTracer_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64* params)
 	IRProfile::glLogDebug("glGetQueryObjectui64v({}, {}, {})", id, E2S(pname), (void*)(params));
 	apiHook.glGetQueryObjectui64v(id, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLint GLTracer_glGetSubroutineUniformLocation(GLuint program, GLenum shadertype, const GLchar* name)
@@ -856,7 +855,7 @@ GLint GLTracer_glGetSubroutineUniformLocation(GLuint program, GLenum shadertype,
 	IRProfile::glLogDebug("glGetSubroutineUniformLocation({}, {}, {})", program, E2S(shadertype), (const void*)(name));
 	GLint const r = apiHook.glGetSubroutineUniformLocation(program, shadertype, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -865,7 +864,7 @@ GLuint GLTracer_glGetSubroutineIndex(GLuint program, GLenum shadertype, const GL
 	IRProfile::glLogDebug("glGetSubroutineIndex({}, {}, {})", program, E2S(shadertype), (const void*)(name));
 	GLuint const r = apiHook.glGetSubroutineIndex(program, shadertype, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -874,7 +873,7 @@ void GLTracer_glGetActiveSubroutineUniformiv(GLuint program, GLenum shadertype, 
 	IRProfile::glLogDebug("glGetActiveSubroutineUniformiv({}, {}, {}, {}, {})", program, E2S(shadertype), index, E2S(pname), (void*)(values));
 	apiHook.glGetActiveSubroutineUniformiv(program, shadertype, index, pname, values);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetActiveSubroutineName(GLuint program, GLenum shadertype, GLuint index, GLsizei bufsize, GLsizei* length, GLchar* name)
@@ -882,7 +881,7 @@ void GLTracer_glGetActiveSubroutineName(GLuint program, GLenum shadertype, GLuin
 	IRProfile::glLogDebug("glGetActiveSubroutineName({}, {}, {}, {}, {}, {})", program, E2S(shadertype), index, bufsize, (void*)(length), (void*)(name));
 	apiHook.glGetActiveSubroutineName(program, shadertype, index, bufsize, length, name);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glUniformSubroutinesuiv(GLenum shadertype, GLsizei count, const GLuint* indices)
@@ -890,7 +889,7 @@ void GLTracer_glUniformSubroutinesuiv(GLenum shadertype, GLsizei count, const GL
 	IRProfile::glLogDebug("glUniformSubroutinesuiv({}, {}, {})", E2S(shadertype), count, (const void*)(indices));
 	apiHook.glUniformSubroutinesuiv(shadertype, count, indices);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetProgramStageiv(GLuint program, GLenum shadertype, GLenum pname, GLint* values)
@@ -898,7 +897,7 @@ void GLTracer_glGetProgramStageiv(GLuint program, GLenum shadertype, GLenum pnam
 	IRProfile::glLogDebug("glGetProgramStageiv({}, {}, {}, {})", program, E2S(shadertype), E2S(pname), (void*)(values));
 	apiHook.glGetProgramStageiv(program, shadertype, pname, values);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glPatchParameteri(GLenum pname, GLint value)
@@ -906,7 +905,7 @@ void GLTracer_glPatchParameteri(GLenum pname, GLint value)
 	IRProfile::glLogDebug("glPatchParameteri({}, {})", E2S(pname), value);
 	apiHook.glPatchParameteri(pname, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetProgramBinary(GLuint program, GLsizei bufSize, GLsizei* length, GLenum* binaryFormat, void* binary)
@@ -914,7 +913,7 @@ void GLTracer_glGetProgramBinary(GLuint program, GLsizei bufSize, GLsizei* lengt
 	IRProfile::glLogDebug("glGetProgramBinary({}, {}, {}, {}, {})", program, bufSize, (void*)(length), (void*)(binaryFormat), binary);
 	apiHook.glGetProgramBinary(program, bufSize, length, binaryFormat, binary);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramBinary(GLuint program, GLenum binaryFormat, const void* binary, GLsizei length)
@@ -922,7 +921,7 @@ void GLTracer_glProgramBinary(GLuint program, GLenum binaryFormat, const void* b
 	IRProfile::glLogDebug("glProgramBinary({}, {}, {}, {})", program, E2S(binaryFormat), binary, length);
 	apiHook.glProgramBinary(program, binaryFormat, binary, length);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramParameteri(GLuint program, GLenum pname, GLint value)
@@ -930,7 +929,7 @@ void GLTracer_glProgramParameteri(GLuint program, GLenum pname, GLint value)
 	IRProfile::glLogDebug("glProgramParameteri({}, {}, {})", program, E2S(pname), value);
 	apiHook.glProgramParameteri(program, pname, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform1i(GLuint program, GLint location, GLint v0)
@@ -938,7 +937,7 @@ void GLTracer_glProgramUniform1i(GLuint program, GLint location, GLint v0)
 	IRProfile::glLogDebug("glProgramUniform1i({}, {}, {})", program, location, v0);
 	apiHook.glProgramUniform1i(program, location, v0);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform1f(GLuint program, GLint location, GLfloat v0)
@@ -946,7 +945,7 @@ void GLTracer_glProgramUniform1f(GLuint program, GLint location, GLfloat v0)
 	IRProfile::glLogDebug("glProgramUniform1f({}, {}, {})", program, location, v0);
 	apiHook.glProgramUniform1f(program, location, v0);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform2iv(GLuint program, GLint location, GLsizei count, const GLint* value)
@@ -954,7 +953,7 @@ void GLTracer_glProgramUniform2iv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform2iv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform2iv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform2fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
@@ -962,7 +961,7 @@ void GLTracer_glProgramUniform2fv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform2fv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform2fv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform3iv(GLuint program, GLint location, GLsizei count, const GLint* value)
@@ -970,7 +969,7 @@ void GLTracer_glProgramUniform3iv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform3iv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform3iv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform3fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
@@ -978,7 +977,7 @@ void GLTracer_glProgramUniform3fv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform3fv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform3fv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform4iv(GLuint program, GLint location, GLsizei count, const GLint* value)
@@ -986,7 +985,7 @@ void GLTracer_glProgramUniform4iv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform4iv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform4iv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glProgramUniform4fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
@@ -994,7 +993,7 @@ void GLTracer_glProgramUniform4fv(GLuint program, GLint location, GLsizei count,
 	IRProfile::glLogDebug("glProgramUniform4fv({}, {}, {}, {})", program, location, count, (const void*)(value));
 	apiHook.glProgramUniform4fv(program, location, count, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindTextures(GLuint first, GLsizei count, const GLuint* textures)
@@ -1002,7 +1001,7 @@ void GLTracer_glBindTextures(GLuint first, GLsizei count, const GLuint* textures
 	IRProfile::glLogDebug("glBindTextures({}, {}, {})", first, count, (const void*)(textures));
 	apiHook.glBindTextures(first, count, textures);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateTransformFeedbacks(GLsizei n, GLuint* ids)
@@ -1010,7 +1009,7 @@ void GLTracer_glCreateTransformFeedbacks(GLsizei n, GLuint* ids)
 	IRProfile::glLogDebug("glCreateTransformFeedbacks({}, {})", n, (void*)(ids));
 	apiHook.glCreateTransformFeedbacks(n, ids);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buffer)
@@ -1018,7 +1017,7 @@ void GLTracer_glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buf
 	IRProfile::glLogDebug("glTransformFeedbackBufferBase({}, {}, {})", xfb, index, buffer);
 	apiHook.glTransformFeedbackBufferBase(xfb, index, buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint buffer, GLintptr offset, GLsizei size)
@@ -1026,7 +1025,7 @@ void GLTracer_glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint bu
 	IRProfile::glLogDebug("glTransformFeedbackBufferRange({}, {}, {}, {}, {})", xfb, index, buffer, offset, size);
 	apiHook.glTransformFeedbackBufferRange(xfb, index, buffer, offset, size);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTransformFeedbackiv(GLuint xfb, GLenum pname, GLint* param)
@@ -1034,7 +1033,7 @@ void GLTracer_glGetTransformFeedbackiv(GLuint xfb, GLenum pname, GLint* param)
 	IRProfile::glLogDebug("glGetTransformFeedbackiv({}, {}, {})", xfb, E2S(pname), (void*)(param));
 	apiHook.glGetTransformFeedbackiv(xfb, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint index, GLint* param)
@@ -1042,7 +1041,7 @@ void GLTracer_glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint index, 
 	IRProfile::glLogDebug("glGetTransformFeedbacki_v({}, {}, {}, {})", xfb, E2S(pname), index, (void*)(param));
 	apiHook.glGetTransformFeedbacki_v(xfb, pname, index, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index, GLint64* param)
@@ -1050,7 +1049,7 @@ void GLTracer_glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index
 	IRProfile::glLogDebug("glGetTransformFeedbacki64_v({}, {}, {}, {})", xfb, E2S(pname), index, (void*)(param));
 	apiHook.glGetTransformFeedbacki64_v(xfb, pname, index, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateBuffers(GLsizei n, GLuint* buffers)
@@ -1058,7 +1057,7 @@ void GLTracer_glCreateBuffers(GLsizei n, GLuint* buffers)
 	IRProfile::glLogDebug("glCreateBuffers({}, {})", n, (void*)(buffers));
 	apiHook.glCreateBuffers(n, buffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void* data, GLbitfield flags)
@@ -1066,7 +1065,7 @@ void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void* data
 	IRProfile::glLogDebug("glNamedBufferStorage({}, {}, {}, {})", buffer, size, data, (unsigned int)(flags));
 	apiHook.glNamedBufferStorage(buffer, size, data, flags);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedBufferData(GLuint buffer, GLsizei size, const void* data, GLenum usage)
@@ -1074,7 +1073,7 @@ void GLTracer_glNamedBufferData(GLuint buffer, GLsizei size, const void* data, G
 	IRProfile::glLogDebug("glNamedBufferData({}, {}, {}, {})", buffer, size, data, E2S(usage));
 	apiHook.glNamedBufferData(buffer, size, data, usage);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, const void* data)
@@ -1082,7 +1081,7 @@ void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size,
 	IRProfile::glLogDebug("glNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
 	apiHook.glNamedBufferSubData(buffer, offset, size, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer, GLintptr readOffset, GLintptr writeOffset, GLsizei size)
@@ -1090,7 +1089,7 @@ void GLTracer_glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer, GL
 	IRProfile::glLogDebug("glCopyNamedBufferSubData({}, {}, {}, {}, {})", readBuffer, writeBuffer, readOffset, writeOffset, size);
 	apiHook.glCopyNamedBufferSubData(readBuffer, writeBuffer, readOffset, writeOffset, size);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenum format, GLenum type, const void* data)
@@ -1098,7 +1097,7 @@ void GLTracer_glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenu
 	IRProfile::glLogDebug("glClearNamedBufferData({}, {}, {}, {}, {})", buffer, E2S(internalformat), E2S(format), E2S(type), data);
 	apiHook.glClearNamedBufferData(buffer, internalformat, format, type, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GLintptr offset, GLsizei size, GLenum format, GLenum type, const void* data)
@@ -1106,7 +1105,7 @@ void GLTracer_glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GL
 	IRProfile::glLogDebug("glClearNamedBufferSubData({}, {}, {}, {}, {}, {}, {})", buffer, E2S(internalformat), offset, size, E2S(format), E2S(type), data);
 	apiHook.glClearNamedBufferSubData(buffer, internalformat, offset, size, format, type, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void* GLTracer_glMapNamedBuffer(GLuint buffer, GLenum access)
@@ -1114,7 +1113,7 @@ void* GLTracer_glMapNamedBuffer(GLuint buffer, GLenum access)
 	IRProfile::glLogDebug("glMapNamedBuffer({}, {})", buffer, E2S(access));
 	void* const r = apiHook.glMapNamedBuffer(buffer, access);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -1123,7 +1122,7 @@ void* GLTracer_glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei len
 	IRProfile::glLogDebug("glMapNamedBufferRange({}, {}, {}, {})", buffer, offset, length, (unsigned int)(access));
 	void* const r = apiHook.glMapNamedBufferRange(buffer, offset, length, access);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -1132,7 +1131,7 @@ GLboolean GLTracer_glUnmapNamedBuffer(GLuint buffer)
 	IRProfile::glLogDebug("glUnmapNamedBuffer({})", buffer);
 	GLboolean const r = apiHook.glUnmapNamedBuffer(buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -1141,7 +1140,7 @@ void GLTracer_glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsi
 	IRProfile::glLogDebug("glFlushMappedNamedBufferRange({}, {}, {})", buffer, offset, length);
 	apiHook.glFlushMappedNamedBufferRange(buffer, offset, length);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedBufferParameteriv(GLuint buffer, GLenum pname, GLint* params)
@@ -1149,7 +1148,7 @@ void GLTracer_glGetNamedBufferParameteriv(GLuint buffer, GLenum pname, GLint* pa
 	IRProfile::glLogDebug("glGetNamedBufferParameteriv({}, {}, {})", buffer, E2S(pname), (void*)(params));
 	apiHook.glGetNamedBufferParameteriv(buffer, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedBufferParameteri64v(GLuint buffer, GLenum pname, GLint64* params)
@@ -1157,7 +1156,7 @@ void GLTracer_glGetNamedBufferParameteri64v(GLuint buffer, GLenum pname, GLint64
 	IRProfile::glLogDebug("glGetNamedBufferParameteri64v({}, {}, {})", buffer, E2S(pname), (void*)(params));
 	apiHook.glGetNamedBufferParameteri64v(buffer, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void** params)
@@ -1165,7 +1164,7 @@ void GLTracer_glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void** param
 	IRProfile::glLogDebug("glGetNamedBufferPointerv({}, {}, {})", buffer, E2S(pname), (void*)(params));
 	apiHook.glGetNamedBufferPointerv(buffer, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, void* data)
@@ -1173,7 +1172,7 @@ void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei si
 	IRProfile::glLogDebug("glGetNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
 	apiHook.glGetNamedBufferSubData(buffer, offset, size, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateFramebuffers(GLsizei n, GLuint* framebuffers)
@@ -1181,7 +1180,7 @@ void GLTracer_glCreateFramebuffers(GLsizei n, GLuint* framebuffers)
 	IRProfile::glLogDebug("glCreateFramebuffers({}, {})", n, (void*)(framebuffers));
 	apiHook.glCreateFramebuffers(n, framebuffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferRenderbuffer(GLuint framebuffer, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
@@ -1189,7 +1188,7 @@ void GLTracer_glNamedFramebufferRenderbuffer(GLuint framebuffer, GLenum attachme
 	IRProfile::glLogDebug("glNamedFramebufferRenderbuffer({}, {}, {}, {})", framebuffer, E2S(attachment), E2S(renderbuffertarget), renderbuffer);
 	apiHook.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferParameteri(GLuint framebuffer, GLenum pname, GLint param)
@@ -1197,7 +1196,7 @@ void GLTracer_glNamedFramebufferParameteri(GLuint framebuffer, GLenum pname, GLi
 	IRProfile::glLogDebug("glNamedFramebufferParameteri({}, {}, {})", framebuffer, E2S(pname), param);
 	apiHook.glNamedFramebufferParameteri(framebuffer, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferTexture(GLuint framebuffer, GLenum attachment, GLuint texture, GLint level)
@@ -1205,7 +1204,7 @@ void GLTracer_glNamedFramebufferTexture(GLuint framebuffer, GLenum attachment, G
 	IRProfile::glLogDebug("glNamedFramebufferTexture({}, {}, {}, {})", framebuffer, E2S(attachment), texture, level);
 	apiHook.glNamedFramebufferTexture(framebuffer, attachment, texture, level);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferTextureLayer(GLuint framebuffer, GLenum attachment, GLuint texture, GLint level, GLint layer)
@@ -1213,7 +1212,7 @@ void GLTracer_glNamedFramebufferTextureLayer(GLuint framebuffer, GLenum attachme
 	IRProfile::glLogDebug("glNamedFramebufferTextureLayer({}, {}, {}, {}, {})", framebuffer, E2S(attachment), texture, level, layer);
 	apiHook.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferDrawBuffer(GLuint framebuffer, GLenum buf)
@@ -1221,7 +1220,7 @@ void GLTracer_glNamedFramebufferDrawBuffer(GLuint framebuffer, GLenum buf)
 	IRProfile::glLogDebug("glNamedFramebufferDrawBuffer({}, {})", framebuffer, E2S(buf));
 	apiHook.glNamedFramebufferDrawBuffer(framebuffer, buf);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferDrawBuffers(GLuint framebuffer, GLsizei n, const GLenum* bufs)
@@ -1229,7 +1228,7 @@ void GLTracer_glNamedFramebufferDrawBuffers(GLuint framebuffer, GLsizei n, const
 	IRProfile::glLogDebug("glNamedFramebufferDrawBuffers({}, {}, {})", framebuffer, n, (const void*)(bufs));
 	apiHook.glNamedFramebufferDrawBuffers(framebuffer, n, bufs);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedFramebufferReadBuffer(GLuint framebuffer, GLenum src)
@@ -1237,7 +1236,7 @@ void GLTracer_glNamedFramebufferReadBuffer(GLuint framebuffer, GLenum src)
 	IRProfile::glLogDebug("glNamedFramebufferReadBuffer({}, {})", framebuffer, E2S(src));
 	apiHook.glNamedFramebufferReadBuffer(framebuffer, src);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glInvalidateNamedFramebufferData(GLuint framebuffer, GLsizei numAttachments, const GLenum* attachments)
@@ -1245,7 +1244,7 @@ void GLTracer_glInvalidateNamedFramebufferData(GLuint framebuffer, GLsizei numAt
 	IRProfile::glLogDebug("glInvalidateNamedFramebufferData({}, {}, {})", framebuffer, numAttachments, (const void*)(attachments));
 	apiHook.glInvalidateNamedFramebufferData(framebuffer, numAttachments, attachments);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glInvalidateNamedFramebufferSubData(GLuint framebuffer, GLsizei numAttachments, const GLenum* attachments, GLint x, GLint y, GLsizei width, GLsizei height)
@@ -1253,7 +1252,7 @@ void GLTracer_glInvalidateNamedFramebufferSubData(GLuint framebuffer, GLsizei nu
 	IRProfile::glLogDebug("glInvalidateNamedFramebufferSubData({}, {}, {}, {}, {}, {}, {})", framebuffer, numAttachments, (const void*)(attachments), x, y, width, height);
 	apiHook.glInvalidateNamedFramebufferSubData(framebuffer, numAttachments, attachments, x, y, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedFramebufferiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLint* value)
@@ -1261,7 +1260,7 @@ void GLTracer_glClearNamedFramebufferiv(GLuint framebuffer, GLenum buffer, GLint
 	IRProfile::glLogDebug("glClearNamedFramebufferiv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
 	apiHook.glClearNamedFramebufferiv(framebuffer, buffer, drawbuffer, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedFramebufferuiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLuint* value)
@@ -1269,7 +1268,7 @@ void GLTracer_glClearNamedFramebufferuiv(GLuint framebuffer, GLenum buffer, GLin
 	IRProfile::glLogDebug("glClearNamedFramebufferuiv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
 	apiHook.glClearNamedFramebufferuiv(framebuffer, buffer, drawbuffer, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedFramebufferfv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLfloat* value)
@@ -1277,7 +1276,7 @@ void GLTracer_glClearNamedFramebufferfv(GLuint framebuffer, GLenum buffer, GLint
 	IRProfile::glLogDebug("glClearNamedFramebufferfv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
 	apiHook.glClearNamedFramebufferfv(framebuffer, buffer, drawbuffer, value);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glClearNamedFramebufferfi(GLuint framebuffer, GLenum buffer, const GLfloat depth, GLint stencil)
@@ -1285,7 +1284,7 @@ void GLTracer_glClearNamedFramebufferfi(GLuint framebuffer, GLenum buffer, const
 	IRProfile::glLogDebug("glClearNamedFramebufferfi({}, {}, {}, {})", framebuffer, E2S(buffer), depth, stencil);
 	apiHook.glClearNamedFramebufferfi(framebuffer, buffer, depth, stencil);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBlitNamedFramebuffer(GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)
@@ -1293,7 +1292,7 @@ void GLTracer_glBlitNamedFramebuffer(GLuint readFramebuffer, GLuint drawFramebuf
 	IRProfile::glLogDebug("glBlitNamedFramebuffer({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, (unsigned int)(mask), E2S(filter));
 	apiHook.glBlitNamedFramebuffer(readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 GLenum GLTracer_glCheckNamedFramebufferStatus(GLuint framebuffer, GLenum target)
@@ -1301,7 +1300,7 @@ GLenum GLTracer_glCheckNamedFramebufferStatus(GLuint framebuffer, GLenum target)
 	IRProfile::glLogDebug("glCheckNamedFramebufferStatus({}, {})", framebuffer, E2S(target));
 	GLenum const r = apiHook.glCheckNamedFramebufferStatus(framebuffer, target);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 	return r;
 }
 
@@ -1310,7 +1309,7 @@ void GLTracer_glGetNamedFramebufferParameteriv(GLuint framebuffer, GLenum pname,
 	IRProfile::glLogDebug("glGetNamedFramebufferParameteriv({}, {}, {})", framebuffer, E2S(pname), (void*)(param));
 	apiHook.glGetNamedFramebufferParameteriv(framebuffer, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedFramebufferAttachmentParameteriv(GLuint framebuffer, GLenum attachment, GLenum pname, GLint* params)
@@ -1318,7 +1317,7 @@ void GLTracer_glGetNamedFramebufferAttachmentParameteriv(GLuint framebuffer, GLe
 	IRProfile::glLogDebug("glGetNamedFramebufferAttachmentParameteriv({}, {}, {}, {})", framebuffer, E2S(attachment), E2S(pname), (void*)(params));
 	apiHook.glGetNamedFramebufferAttachmentParameteriv(framebuffer, attachment, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateRenderbuffers(GLsizei n, GLuint* renderbuffers)
@@ -1326,7 +1325,7 @@ void GLTracer_glCreateRenderbuffers(GLsizei n, GLuint* renderbuffers)
 	IRProfile::glLogDebug("glCreateRenderbuffers({}, {})", n, (void*)(renderbuffers));
 	apiHook.glCreateRenderbuffers(n, renderbuffers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedRenderbufferStorage(GLuint renderbuffer, GLenum internalformat, GLsizei width, GLsizei height)
@@ -1334,7 +1333,7 @@ void GLTracer_glNamedRenderbufferStorage(GLuint renderbuffer, GLenum internalfor
 	IRProfile::glLogDebug("glNamedRenderbufferStorage({}, {}, {}, {})", renderbuffer, E2S(internalformat), width, height);
 	apiHook.glNamedRenderbufferStorage(renderbuffer, internalformat, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glNamedRenderbufferStorageMultisample(GLuint renderbuffer, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
@@ -1342,7 +1341,7 @@ void GLTracer_glNamedRenderbufferStorageMultisample(GLuint renderbuffer, GLsizei
 	IRProfile::glLogDebug("glNamedRenderbufferStorageMultisample({}, {}, {}, {}, {})", renderbuffer, samples, E2S(internalformat), width, height);
 	apiHook.glNamedRenderbufferStorageMultisample(renderbuffer, samples, internalformat, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetNamedRenderbufferParameteriv(GLuint renderbuffer, GLenum pname, GLint* params)
@@ -1350,7 +1349,7 @@ void GLTracer_glGetNamedRenderbufferParameteriv(GLuint renderbuffer, GLenum pnam
 	IRProfile::glLogDebug("glGetNamedRenderbufferParameteriv({}, {}, {})", renderbuffer, E2S(pname), (void*)(params));
 	apiHook.glGetNamedRenderbufferParameteriv(renderbuffer, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateTextures(GLenum target, GLsizei n, GLuint* textures)
@@ -1358,7 +1357,7 @@ void GLTracer_glCreateTextures(GLenum target, GLsizei n, GLuint* textures)
 	IRProfile::glLogDebug("glCreateTextures({}, {}, {})", E2S(target), n, (void*)(textures));
 	apiHook.glCreateTextures(target, n, textures);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buffer)
@@ -1366,7 +1365,7 @@ void GLTracer_glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buff
 	IRProfile::glLogDebug("glTextureBuffer({}, {}, {})", texture, E2S(internalformat), buffer);
 	apiHook.glTextureBuffer(texture, internalformat, buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint buffer, GLintptr offset, GLsizei size)
@@ -1374,7 +1373,7 @@ void GLTracer_glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint
 	IRProfile::glLogDebug("glTextureBufferRange({}, {}, {}, {}, {})", texture, E2S(internalformat), buffer, offset, size);
 	apiHook.glTextureBufferRange(texture, internalformat, buffer, offset, size);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureStorage1D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width)
@@ -1382,7 +1381,7 @@ void GLTracer_glTextureStorage1D(GLuint texture, GLsizei levels, GLenum internal
 	IRProfile::glLogDebug("glTextureStorage1D({}, {}, {}, {})", texture, levels, E2S(internalformat), width);
 	apiHook.glTextureStorage1D(texture, levels, internalformat, width);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height)
@@ -1390,7 +1389,7 @@ void GLTracer_glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internal
 	IRProfile::glLogDebug("glTextureStorage2D({}, {}, {}, {}, {})", texture, levels, E2S(internalformat), width, height);
 	apiHook.glTextureStorage2D(texture, levels, internalformat, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureStorage3D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth)
@@ -1398,7 +1397,7 @@ void GLTracer_glTextureStorage3D(GLuint texture, GLsizei levels, GLenum internal
 	IRProfile::glLogDebug("glTextureStorage3D({}, {}, {}, {}, {}, {})", texture, levels, E2S(internalformat), width, height, depth);
 	apiHook.glTextureStorage3D(texture, levels, internalformat, width, height, depth);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureStorage2DMultisample(GLuint texture, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLboolean fixedsamplelocations)
@@ -1406,7 +1405,7 @@ void GLTracer_glTextureStorage2DMultisample(GLuint texture, GLsizei samples, GLe
 	IRProfile::glLogDebug("glTextureStorage2DMultisample({}, {}, {}, {}, {}, {})", texture, samples, E2S(internalformat), width, height, (unsigned int)(fixedsamplelocations));
 	apiHook.glTextureStorage2DMultisample(texture, samples, internalformat, width, height, fixedsamplelocations);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureStorage3DMultisample(GLuint texture, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLboolean fixedsamplelocations)
@@ -1414,7 +1413,7 @@ void GLTracer_glTextureStorage3DMultisample(GLuint texture, GLsizei samples, GLe
 	IRProfile::glLogDebug("glTextureStorage3DMultisample({}, {}, {}, {}, {}, {}, {})", texture, samples, E2S(internalformat), width, height, depth, (unsigned int)(fixedsamplelocations));
 	apiHook.glTextureStorage3DMultisample(texture, samples, internalformat, width, height, depth, fixedsamplelocations);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const void* pixels)
@@ -1422,7 +1421,7 @@ void GLTracer_glTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GL
 	IRProfile::glLogDebug("glTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, width, E2S(format), E2S(type), pixels);
 	apiHook.glTextureSubImage1D(texture, level, xoffset, width, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels)
@@ -1430,7 +1429,7 @@ void GLTracer_glTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GL
 	IRProfile::glLogDebug("glTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
 	apiHook.glTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void* pixels)
@@ -1438,7 +1437,7 @@ void GLTracer_glTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GL
 	IRProfile::glLogDebug("glTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), E2S(type), pixels);
 	apiHook.glTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompressedTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void* data)
@@ -1446,7 +1445,7 @@ void GLTracer_glCompressedTextureSubImage1D(GLuint texture, GLint level, GLint x
 	IRProfile::glLogDebug("glCompressedTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, width, E2S(format), imageSize, data);
 	apiHook.glCompressedTextureSubImage1D(texture, level, xoffset, width, format, imageSize, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompressedTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data)
@@ -1454,7 +1453,7 @@ void GLTracer_glCompressedTextureSubImage2D(GLuint texture, GLint level, GLint x
 	IRProfile::glLogDebug("glCompressedTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, width, height, E2S(format), imageSize, data);
 	apiHook.glCompressedTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format, imageSize, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCompressedTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void* data)
@@ -1462,7 +1461,7 @@ void GLTracer_glCompressedTextureSubImage3D(GLuint texture, GLint level, GLint x
 	IRProfile::glLogDebug("glCompressedTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), imageSize, data);
 	apiHook.glCompressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, data);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCopyTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width)
@@ -1470,7 +1469,7 @@ void GLTracer_glCopyTextureSubImage1D(GLuint texture, GLint level, GLint xoffset
 	IRProfile::glLogDebug("glCopyTextureSubImage1D({}, {}, {}, {}, {}, {})", texture, level, xoffset, x, y, width);
 	apiHook.glCopyTextureSubImage1D(texture, level, xoffset, x, y, width);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCopyTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)
@@ -1478,7 +1477,7 @@ void GLTracer_glCopyTextureSubImage2D(GLuint texture, GLint level, GLint xoffset
 	IRProfile::glLogDebug("glCopyTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, x, y, width, height);
 	apiHook.glCopyTextureSubImage2D(texture, level, xoffset, yoffset, x, y, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCopyTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height)
@@ -1486,7 +1485,7 @@ void GLTracer_glCopyTextureSubImage3D(GLuint texture, GLint level, GLint xoffset
 	IRProfile::glLogDebug("glCopyTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, x, y, width, height);
 	apiHook.glCopyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameterf(GLuint texture, GLenum pname, GLfloat param)
@@ -1494,7 +1493,7 @@ void GLTracer_glTextureParameterf(GLuint texture, GLenum pname, GLfloat param)
 	IRProfile::glLogDebug("glTextureParameterf({}, {}, {})", texture, E2S(pname), param);
 	apiHook.glTextureParameterf(texture, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameterfv(GLuint texture, GLenum pname, const GLfloat* param)
@@ -1502,7 +1501,7 @@ void GLTracer_glTextureParameterfv(GLuint texture, GLenum pname, const GLfloat* 
 	IRProfile::glLogDebug("glTextureParameterfv({}, {}, {})", texture, E2S(pname), (const void*)(param));
 	apiHook.glTextureParameterfv(texture, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameteri(GLuint texture, GLenum pname, GLint param)
@@ -1510,7 +1509,7 @@ void GLTracer_glTextureParameteri(GLuint texture, GLenum pname, GLint param)
 	IRProfile::glLogDebug("glTextureParameteri({}, {}, {})", texture, E2S(pname), param);
 	apiHook.glTextureParameteri(texture, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameterIiv(GLuint texture, GLenum pname, const GLint* params)
@@ -1518,7 +1517,7 @@ void GLTracer_glTextureParameterIiv(GLuint texture, GLenum pname, const GLint* p
 	IRProfile::glLogDebug("glTextureParameterIiv({}, {}, {})", texture, E2S(pname), (const void*)(params));
 	apiHook.glTextureParameterIiv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameterIuiv(GLuint texture, GLenum pname, const GLuint* params)
@@ -1526,7 +1525,7 @@ void GLTracer_glTextureParameterIuiv(GLuint texture, GLenum pname, const GLuint*
 	IRProfile::glLogDebug("glTextureParameterIuiv({}, {}, {})", texture, E2S(pname), (const void*)(params));
 	apiHook.glTextureParameterIuiv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glTextureParameteriv(GLuint texture, GLenum pname, const GLint* param)
@@ -1534,7 +1533,7 @@ void GLTracer_glTextureParameteriv(GLuint texture, GLenum pname, const GLint* pa
 	IRProfile::glLogDebug("glTextureParameteriv({}, {}, {})", texture, E2S(pname), (const void*)(param));
 	apiHook.glTextureParameteriv(texture, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenerateTextureMipmap(GLuint texture)
@@ -1542,7 +1541,7 @@ void GLTracer_glGenerateTextureMipmap(GLuint texture)
 	IRProfile::glLogDebug("glGenerateTextureMipmap({})", texture);
 	apiHook.glGenerateTextureMipmap(texture);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glBindTextureUnit(GLuint unit, GLuint texture)
@@ -1550,7 +1549,7 @@ void GLTracer_glBindTextureUnit(GLuint unit, GLuint texture)
 	IRProfile::glLogDebug("glBindTextureUnit({}, {})", unit, texture);
 	apiHook.glBindTextureUnit(unit, texture);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureImage(GLuint texture, GLint level, GLenum format, GLenum type, GLsizei bufSize, void* pixels)
@@ -1558,7 +1557,7 @@ void GLTracer_glGetTextureImage(GLuint texture, GLint level, GLenum format, GLen
 	IRProfile::glLogDebug("glGetTextureImage({}, {}, {}, {}, {}, {})", texture, level, E2S(format), E2S(type), bufSize, pixels);
 	apiHook.glGetTextureImage(texture, level, format, type, bufSize, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetCompressedTextureImage(GLuint texture, GLint level, GLsizei bufSize, void* pixels)
@@ -1566,7 +1565,7 @@ void GLTracer_glGetCompressedTextureImage(GLuint texture, GLint level, GLsizei b
 	IRProfile::glLogDebug("glGetCompressedTextureImage({}, {}, {}, {})", texture, level, bufSize, pixels);
 	apiHook.glGetCompressedTextureImage(texture, level, bufSize, pixels);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureLevelParameterfv(GLuint texture, GLint level, GLenum pname, GLfloat* params)
@@ -1574,7 +1573,7 @@ void GLTracer_glGetTextureLevelParameterfv(GLuint texture, GLint level, GLenum p
 	IRProfile::glLogDebug("glGetTextureLevelParameterfv({}, {}, {}, {})", texture, level, E2S(pname), (void*)(params));
 	apiHook.glGetTextureLevelParameterfv(texture, level, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureLevelParameteriv(GLuint texture, GLint level, GLenum pname, GLint* params)
@@ -1582,7 +1581,7 @@ void GLTracer_glGetTextureLevelParameteriv(GLuint texture, GLint level, GLenum p
 	IRProfile::glLogDebug("glGetTextureLevelParameteriv({}, {}, {}, {})", texture, level, E2S(pname), (void*)(params));
 	apiHook.glGetTextureLevelParameteriv(texture, level, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureParameterfv(GLuint texture, GLenum pname, GLfloat* params)
@@ -1590,7 +1589,7 @@ void GLTracer_glGetTextureParameterfv(GLuint texture, GLenum pname, GLfloat* par
 	IRProfile::glLogDebug("glGetTextureParameterfv({}, {}, {})", texture, E2S(pname), (void*)(params));
 	apiHook.glGetTextureParameterfv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureParameterIiv(GLuint texture, GLenum pname, GLint* params)
@@ -1598,7 +1597,7 @@ void GLTracer_glGetTextureParameterIiv(GLuint texture, GLenum pname, GLint* para
 	IRProfile::glLogDebug("glGetTextureParameterIiv({}, {}, {})", texture, E2S(pname), (void*)(params));
 	apiHook.glGetTextureParameterIiv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureParameterIuiv(GLuint texture, GLenum pname, GLuint* params)
@@ -1606,7 +1605,7 @@ void GLTracer_glGetTextureParameterIuiv(GLuint texture, GLenum pname, GLuint* pa
 	IRProfile::glLogDebug("glGetTextureParameterIuiv({}, {}, {})", texture, E2S(pname), (void*)(params));
 	apiHook.glGetTextureParameterIuiv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetTextureParameteriv(GLuint texture, GLenum pname, GLint* params)
@@ -1614,7 +1613,7 @@ void GLTracer_glGetTextureParameteriv(GLuint texture, GLenum pname, GLint* param
 	IRProfile::glLogDebug("glGetTextureParameteriv({}, {}, {})", texture, E2S(pname), (void*)(params));
 	apiHook.glGetTextureParameteriv(texture, pname, params);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateVertexArrays(GLsizei n, GLuint* arrays)
@@ -1622,7 +1621,7 @@ void GLTracer_glCreateVertexArrays(GLsizei n, GLuint* arrays)
 	IRProfile::glLogDebug("glCreateVertexArrays({}, {})", n, (void*)(arrays));
 	apiHook.glCreateVertexArrays(n, arrays);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glDisableVertexArrayAttrib(GLuint vaobj, GLuint index)
@@ -1630,7 +1629,7 @@ void GLTracer_glDisableVertexArrayAttrib(GLuint vaobj, GLuint index)
 	IRProfile::glLogDebug("glDisableVertexArrayAttrib({}, {})", vaobj, index);
 	apiHook.glDisableVertexArrayAttrib(vaobj, index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glEnableVertexArrayAttrib(GLuint vaobj, GLuint index)
@@ -1638,7 +1637,7 @@ void GLTracer_glEnableVertexArrayAttrib(GLuint vaobj, GLuint index)
 	IRProfile::glLogDebug("glEnableVertexArrayAttrib({}, {})", vaobj, index);
 	apiHook.glEnableVertexArrayAttrib(vaobj, index);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayElementBuffer(GLuint vaobj, GLuint buffer)
@@ -1646,7 +1645,7 @@ void GLTracer_glVertexArrayElementBuffer(GLuint vaobj, GLuint buffer)
 	IRProfile::glLogDebug("glVertexArrayElementBuffer({}, {})", vaobj, buffer);
 	apiHook.glVertexArrayElementBuffer(vaobj, buffer);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayVertexBuffer(GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride)
@@ -1654,7 +1653,7 @@ void GLTracer_glVertexArrayVertexBuffer(GLuint vaobj, GLuint bindingindex, GLuin
 	IRProfile::glLogDebug("glVertexArrayVertexBuffer({}, {}, {}, {}, {})", vaobj, bindingindex, buffer, offset, stride);
 	apiHook.glVertexArrayVertexBuffer(vaobj, bindingindex, buffer, offset, stride);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayVertexBuffers(GLuint vaobj, GLuint first, GLsizei count, const GLuint* buffers, const GLintptr* offsets, const GLsizei* strides)
@@ -1662,7 +1661,7 @@ void GLTracer_glVertexArrayVertexBuffers(GLuint vaobj, GLuint first, GLsizei cou
 	IRProfile::glLogDebug("glVertexArrayVertexBuffers({}, {}, {}, {}, {}, {})", vaobj, first, count, (const void*)(buffers), (const void*)(offsets), (const void*)(strides));
 	apiHook.glVertexArrayVertexBuffers(vaobj, first, count, buffers, offsets, strides);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayAttribBinding(GLuint vaobj, GLuint attribindex, GLuint bindingindex)
@@ -1670,7 +1669,7 @@ void GLTracer_glVertexArrayAttribBinding(GLuint vaobj, GLuint attribindex, GLuin
 	IRProfile::glLogDebug("glVertexArrayAttribBinding({}, {}, {})", vaobj, attribindex, bindingindex);
 	apiHook.glVertexArrayAttribBinding(vaobj, attribindex, bindingindex);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayAttribFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLboolean normalized, GLuint relativeoffset)
@@ -1678,7 +1677,7 @@ void GLTracer_glVertexArrayAttribFormat(GLuint vaobj, GLuint attribindex, GLint 
 	IRProfile::glLogDebug("glVertexArrayAttribFormat({}, {}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), (unsigned int)(normalized), relativeoffset);
 	apiHook.glVertexArrayAttribFormat(vaobj, attribindex, size, type, normalized, relativeoffset);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayAttribIFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset)
@@ -1686,7 +1685,7 @@ void GLTracer_glVertexArrayAttribIFormat(GLuint vaobj, GLuint attribindex, GLint
 	IRProfile::glLogDebug("glVertexArrayAttribIFormat({}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), relativeoffset);
 	apiHook.glVertexArrayAttribIFormat(vaobj, attribindex, size, type, relativeoffset);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayAttribLFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset)
@@ -1694,7 +1693,7 @@ void GLTracer_glVertexArrayAttribLFormat(GLuint vaobj, GLuint attribindex, GLint
 	IRProfile::glLogDebug("glVertexArrayAttribLFormat({}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), relativeoffset);
 	apiHook.glVertexArrayAttribLFormat(vaobj, attribindex, size, type, relativeoffset);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glVertexArrayBindingDivisor(GLuint vaobj, GLuint bindingindex, GLuint divisor)
@@ -1702,7 +1701,7 @@ void GLTracer_glVertexArrayBindingDivisor(GLuint vaobj, GLuint bindingindex, GLu
 	IRProfile::glLogDebug("glVertexArrayBindingDivisor({}, {}, {})", vaobj, bindingindex, divisor);
 	apiHook.glVertexArrayBindingDivisor(vaobj, bindingindex, divisor);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetVertexArrayiv(GLuint vaobj, GLenum pname, GLint* param)
@@ -1710,7 +1709,7 @@ void GLTracer_glGetVertexArrayiv(GLuint vaobj, GLenum pname, GLint* param)
 	IRProfile::glLogDebug("glGetVertexArrayiv({}, {}, {})", vaobj, E2S(pname), (void*)(param));
 	apiHook.glGetVertexArrayiv(vaobj, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetVertexArrayIndexediv(GLuint vaobj, GLuint index, GLenum pname, GLint* param)
@@ -1718,7 +1717,7 @@ void GLTracer_glGetVertexArrayIndexediv(GLuint vaobj, GLuint index, GLenum pname
 	IRProfile::glLogDebug("glGetVertexArrayIndexediv({}, {}, {}, {})", vaobj, index, E2S(pname), (void*)(param));
 	apiHook.glGetVertexArrayIndexediv(vaobj, index, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGetVertexArrayIndexed64iv(GLuint vaobj, GLuint index, GLenum pname, GLint64* param)
@@ -1726,7 +1725,7 @@ void GLTracer_glGetVertexArrayIndexed64iv(GLuint vaobj, GLuint index, GLenum pna
 	IRProfile::glLogDebug("glGetVertexArrayIndexed64iv({}, {}, {}, {})", vaobj, index, E2S(pname), (void*)(param));
 	apiHook.glGetVertexArrayIndexed64iv(vaobj, index, pname, param);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateSamplers(GLsizei n, GLuint* samplers)
@@ -1734,7 +1733,7 @@ void GLTracer_glCreateSamplers(GLsizei n, GLuint* samplers)
 	IRProfile::glLogDebug("glCreateSamplers({}, {})", n, (void*)(samplers));
 	apiHook.glCreateSamplers(n, samplers);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateProgramPipelines(GLsizei n, GLuint* pipelines)
@@ -1742,7 +1741,7 @@ void GLTracer_glCreateProgramPipelines(GLsizei n, GLuint* pipelines)
 	IRProfile::glLogDebug("glCreateProgramPipelines({}, {})", n, (void*)(pipelines));
 	apiHook.glCreateProgramPipelines(n, pipelines);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glCreateQueries(GLenum target, GLsizei n, GLuint* ids)
@@ -1750,7 +1749,7 @@ void GLTracer_glCreateQueries(GLenum target, GLsizei n, GLuint* ids)
 	IRProfile::glLogDebug("glCreateQueries({}, {}, {})", E2S(target), n, (void*)(ids));
 	apiHook.glCreateQueries(target, n, ids);
 	GLenum glError = apiHook.glGetError();
-	IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 #define INJECT(S) api->S = &GLTracer_##S;

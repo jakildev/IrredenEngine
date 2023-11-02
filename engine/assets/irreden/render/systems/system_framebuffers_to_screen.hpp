@@ -10,7 +10,7 @@
 #ifndef SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 #define SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/ir_math.hpp>
 
 #include <irreden/ir_render.hpp>

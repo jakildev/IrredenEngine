@@ -7,8 +7,10 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/entity/archetype_graph.hpp>
 #include <irreden/ir_entity.hpp>
+
+#include <irreden/entity/archetype_graph.hpp>
+
 #include <iterator>
 
 namespace IRECS {
@@ -69,7 +71,7 @@ namespace IRECS {
 
     void ArchetypeGraph::createArchetypeNodeWithArchetype(const Archetype& type) {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-        IR_ENG_ASSERT(findArchetypeNode(type) == nullptr,
+        IR_ASSERT(findArchetypeNode(type) == nullptr,
             "Archetype node of this type already exists.");
         m_nodes.push_back(std::make_unique<ArchetypeNode>(m_nodeCount++, type));
         ArchetypeNode* newNode = m_nodes.back().get(); // not threadsafe
@@ -81,7 +83,7 @@ namespace IRECS {
         ArchetypeNode* tempNode = m_baseNode;
         Archetype tempType{};
         Archetype nodeType = node->type_;
-        IR_ENG_ASSERT(nodeType.size() > 0,
+        IR_ASSERT(nodeType.size() > 0,
             "Attempted to connect typeless node to base");
         auto first = nodeType.begin();
         auto last = std::prev(nodeType.end());

@@ -13,13 +13,11 @@
 #include <irreden/render/buffer.hpp>
 #include <irreden/input/ir_glfw_window.hpp>
 
-using IRGLFW::IRGLFWWindow;
-
 namespace IRRender {
 
     class Renderer {
     public:
-        Renderer(IRGLFWWindow& window);
+        Renderer(IRInput::IRGLFWWindow& window);
         ~Renderer() {}
 
         void tick();
@@ -27,7 +25,7 @@ namespace IRRender {
         void printGLSystemInfo();
 
     private:
-        IRGLFWWindow& m_window;
+        IRInput::IRGLFWWindow& m_window;
         Buffer m_bufferUniformConstantsGLSL;
 
         void initRenderingSystems();

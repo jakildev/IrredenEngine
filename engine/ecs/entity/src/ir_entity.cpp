@@ -4,7 +4,7 @@ namespace IRECS {
 
     EntityManager* g_entityManager = nullptr;
     EntityManager& getEntityManager() {
-        IR_ENG_ASSERT(
+        IR_ASSERT(
             g_entityManager != nullptr,
             "EntityManager not initialized"
         );

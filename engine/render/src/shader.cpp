@@ -59,7 +59,7 @@ namespace IRRender {
                 filepath,
                 e.what()
             );
-            IR_ENG_ASSERT(false, "Error while reading shader file.");
+            IR_ASSERT(false, "Error while reading shader file.");
         }
         return shaderCode;
     }
@@ -89,7 +89,7 @@ namespace IRRender {
                 infoLog.data()
             );
             IRProfile::engLogFatal(infoLog.data());
-            IR_ENG_ASSERT(false, "Shader stage compilation failed.");
+            IR_ASSERT(false, "Shader stage compilation failed.");
         }
     }
 
@@ -139,7 +139,7 @@ namespace IRRender {
                 infoLog.data()
             );
             IRProfile::engLogFatal(infoLog.data());
-            IR_ENG_ASSERT(false, "Shader program linking failed.");
+            IR_ASSERT(false, "Shader program linking failed.");
         }
     }
 

@@ -19,6 +19,8 @@
 #include <irreden/input/components/component_glfw_joystick.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
 
+using namespace IRComponents;
+
 namespace IRECS {
 
     template <>

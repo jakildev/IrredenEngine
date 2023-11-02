@@ -5,6 +5,9 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
+## Design
+-   Modules of engine are clearly seperated as individual static libraries.
+
 ## Features
 -   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
 [Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
@@ -12,11 +15,6 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
 ## Integrations and Dependencies
 
-### Embedded Source
-
-### Static Libraries
-
-### Dynamic Libraries
 [Glad](/docs/dependencies/glad.md)
 [GLFW](/docs/dependencies/glfw.md)
 [GLM](/docs/dependencies/glm.md)
@@ -50,7 +48,7 @@ More details can be found [here](/docs/usage/licensing.md).
 
 ## Usage
 
-### Navigating the Engine
+<!-- ### Navigating the Engine
 The engine is broken up into modules. Each module contains the following directories (when applicable):
 
 -   **components:** Game components associated with this module
@@ -61,7 +59,7 @@ The engine is broken up into modules. Each module contains the following directo
 -   **scripts:** Lua/python scripts associated with the module.
 -   **shaders:** GLSL shader files used for rendering pipeline and GPU compute.
 -   **src:** Main source files composing the module,
--   **systems:** Game systems associated with the module.
+-   **systems:** Game systems associated with the module. -->
 
 ### Project Setup
 [Project Setup](/docs/usage/project_setup.md)
@@ -104,3 +102,6 @@ When building your project, you should note the available systems from each of t
 ### See here.
 
 ### [TODO](/irreden-engine/docs/todo.md)
+
+### Things to consider...
+-   Should MORE of the engine's logic be part of the entity component system?

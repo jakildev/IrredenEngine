@@ -13,7 +13,7 @@
 #ifndef SYSTEM_PARTICLE_SPAWNER_H
 #define SYSTEM_PARTICLE_SPAWNER_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/update/components/component_particle_spawner.hpp>
 #include <irreden/common/components/component_position_3d.hpp>

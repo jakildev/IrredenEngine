@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_SCENE_H
 #define SYSTEM_VOXEL_SCENE_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_position_3d.hpp>

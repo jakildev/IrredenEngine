@@ -20,12 +20,12 @@ using namespace IRInput;
 namespace IRComponents {
 
     struct C_KeyStatus {
-        IRButtonStatuses status_;
+        ButtonStatuses status_;
         // A key can be pressed and released in the same frame
         int pressedThisFrameCount_;
         int releasedThisFrameCount_;
 
-        C_KeyStatus(IRButtonStatuses status)
+        C_KeyStatus(ButtonStatuses status)
         :   status_{status}
         ,   pressedThisFrameCount_{0}
         ,   releasedThisFrameCount_{0}
@@ -35,7 +35,7 @@ namespace IRComponents {
 
         // Default
         C_KeyStatus()
-        :   status_(IRButtonStatuses::kNotHeld)
+        :   status_(ButtonStatuses::NOT_HELD)
         ,   pressedThisFrameCount_{0}
         ,   releasedThisFrameCount_{0}
 

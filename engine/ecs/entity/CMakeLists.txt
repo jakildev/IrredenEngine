@@ -4,15 +4,6 @@ add_library(IrredenEngineEntity STATIC
     src/archetype_node.cpp
     src/entity_manager.cpp
     src/archetype.cpp
-    # src/ir_ecs.cpp
-
-
-    # include/irreden/ir_ecs.hpp
-    # include/irreden/ecs/archetype_graph.hpp
-    # include/irreden/ecs/archetype_node.hpp
-    # include/irreden/ecs/entity_handle.hpp
-    # include/irreden/ecs/entity_manager.hpp
-    # include/irreden/ecs/i_component_data.hpp
 )
 
 target_compile_options(
@@ -30,5 +21,5 @@ target_include_directories(
 target_link_libraries(
     IrredenEngineEntity PUBLIC
     IrredenEngineProfiling
-    IrredenEngineInput
+    # IrredenEngineInput
 )

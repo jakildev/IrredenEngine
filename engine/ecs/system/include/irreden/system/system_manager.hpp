@@ -10,25 +10,31 @@
 #ifndef SYSTEM_MANAGER_H
 #define SYSTEM_MANAGER_H
 
+#include <irreden/ir_profile.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_time.hpp>
+
+#include <irreden/system/ir_system_types.hpp>
+#include <irreden/system/system_virtual.hpp>
+
 #include <cstdint> // uint32_t
 #include <unordered_map>
 #include <memory>
 #include <string>
 #include <list>
-#include <irreden/ir_profile.hpp>
-#include <irreden/ir_entity.hpp>
-#include <irreden/ir_time.hpp>
-#include <irreden/system/ir_system_types.hpp>
-#include <irreden/system/ir_system_virtual.hpp>
 
 namespace IRECS {
 
-class SystemManager {
+    class SystemManager {
     public:
         SystemManager();
         ~SystemManager() = default;
 
-        template <IRSystemName SystemName, IRSystemType SystemType, typename... Args>
+        template <
+            SystemName SystemName,
+            IRSystemType SystemType,
+            typename... Args
+        >
         void registerSystem(Args&&... args)
         {
             auto systemInstance = std::make_unique<System<SystemName>>(
@@ -36,8 +42,6 @@ class SystemManager {
             );
             m_systems.insert(std::make_pair(SystemName, std::move(systemInstance)));
             m_systemOrders[SystemType].push_back(SystemName);
-
-            // TODO: Here is where all events are subscribed to
 
             IRProfile::engLogInfo(
                 "Registered new system {}",
@@ -67,18 +71,18 @@ class SystemManager {
             }
         }
 
-        template <IRSystemName SystemName>
+        template <SystemName SystemName>
         const System<SystemName>& get() const {
             return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
-        template <IRSystemName SystemName>
+        template <SystemName SystemName>
         System<SystemName>& get() {
             return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
         // template <
-        //     IRSystemName SystemName,
+        //     SystemName SystemName,
         //     IREvents Event
         // >
         // void subscribeToEvent() {
@@ -87,15 +91,15 @@ class SystemManager {
 
 
     private:
-        std::unordered_map<IRSystemName, std::unique_ptr<SystemVirtual>>
+        std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
             m_systems;
-        std::unordered_map<IRSystemType, std::list<IRSystemName>>
+        std::unordered_map<IRSystemType, std::list<SystemName>>
             m_systemOrders;
         // TODO: This should be in event manager, and like commands,
         // systems, entities, etc can all subscribe to events!
         // std::unordered_map<
         //     IREvent,
-        //     std::vector<IRSystemName>
+        //     std::vector<SystemName>
         // > m_eventSubscriptions;
 
         void executeSystem(
@@ -103,7 +107,7 @@ class SystemManager {
         );
 
         template <IRSystemType systemType>
-        const std::list<IRSystemName>& getSystemExecutionOrder() const {
+        const std::list<SystemName>& getSystemExecutionOrder() const {
             return m_systemOrders.at(systemType);
         }
     };

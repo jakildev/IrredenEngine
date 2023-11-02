@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_POOL_H
 #define SYSTEM_VOXEL_POOL_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/entities/entity_single_voxel.hpp>
@@ -129,7 +129,7 @@ namespace IRECS {
                 );
             }
 
-            IR_ENG_ASSERT(false, "Ran out of voxels");
+            IR_ASSERT(false, "Ran out of voxels");
 
             return std::make_tuple(
                 std::span<C_Position3D>{},

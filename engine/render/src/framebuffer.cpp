@@ -98,7 +98,7 @@ namespace IRRender {
             GL_FRAMEBUFFER
         );
 
-        IR_ENG_ASSERT(status == GL_FRAMEBUFFER_COMPLETE,
+        IR_ASSERT(status == GL_FRAMEBUFFER_COMPLETE,
             "Attempted to create incomplete framebuffer"
         );
     }

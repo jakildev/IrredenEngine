@@ -22,7 +22,7 @@ namespace IRRender {
             &nrChannels_,
             4
         );
-        IR_ENG_ASSERT(this->data_, "Failed to load image");
+        IR_ASSERT(this->data_, "Failed to load image");
         IRProfile::engLogInfo(
             "Loaded image width={}, height={}, channels={}",
             width_,
@@ -37,8 +37,8 @@ namespace IRRender {
     }
 
     Color ImageData::getPixel(unsigned int x, unsigned int y) const {
-        IR_ENG_ASSERT(x < width_, "x out of bounds");
-        IR_ENG_ASSERT(y < height_, "y out of bounds");
+        IR_ASSERT(x < width_, "x out of bounds");
+        IR_ASSERT(y < height_, "y out of bounds");
         unsigned int index = (y * width_ + x) * 4;
         return Color(
             data_[index],

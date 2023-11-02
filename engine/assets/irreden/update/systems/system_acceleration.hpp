@@ -10,7 +10,7 @@
 #ifndef SYSTEM_ACCELERATION_H
 #define SYSTEM_ACCELERATION_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include "..\components\component_velocity_3d.hpp"
 #include "..\components\component_acceleration_3d.hpp"

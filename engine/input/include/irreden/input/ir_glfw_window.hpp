@@ -10,8 +10,16 @@
 #ifndef IR_GLFW_WINDOW_H
 #define IR_GLFW_WINDOW_H
 
+// Style guideline?
+// Modules on top
+// internal files second
+// foreign files third
+// cpp files last
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+
+#include <irreden/ir_math.hpp>
+#include <irreden/input/ir_input_types.hpp>
 
 #include <vector>
 #include <functional>
@@ -19,11 +27,10 @@
 #include <string>
 #include <queue>
 
-#include <irreden/ir_math.hpp>
 
 using namespace IRMath;
 
-namespace IRGLFW {
+namespace IRInput {
 
     struct IRGLFWJoystickInfo {
         int joystickId_;
@@ -138,6 +145,6 @@ namespace IRGLFW {
         double yoffset
     );
 
-} // namespace IRGLFW
+} // namespace IRInput
 
 #endif /* IR_GLFW_WINDOW_H */

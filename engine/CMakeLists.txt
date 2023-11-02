@@ -17,7 +17,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
 # add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/update)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
-# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
 
 add_library(IrredenEngine STATIC
     engine.cpp
@@ -60,5 +60,6 @@ target_link_libraries(
     IrredenEngineMath
     IrredenEngineECS
     IrredenEngineTime
+    IrredenEngineCommand
     IrredenEngineWorld
 )

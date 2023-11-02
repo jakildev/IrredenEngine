@@ -139,4 +139,4 @@ namespace IRProfile {
 } // namespace IRProfile
 
 
-#define IR_ENG_ASSERT(x, en, ...) IRProfile::engAssert(x, __FILE__, __FUNCTION__, __LINE__, #x, en, ##__VA_ARGS__)
+#define IR_ASSERT(x, en, ...) IRProfile::engAssert(x, __FILE__, __FUNCTION__, __LINE__, #x, en, ##__VA_ARGS__)

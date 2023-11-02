@@ -11,9 +11,8 @@
 
 // OTHER PACKAGES THAT SHOULD MOVE TO RESPECTIVE PACKAGES
 #include <irreden/ir_profile.hpp> // ir_profiling
-#include <irreden/render/rendering_rm.hpp> // ir_rendering
-#include <irreden/render/texture.hpp> // ir_rendering
-#include <irreden/ir_constants.hpp> // ir_constants
+
+#include <irreden/ir_constants.hpp>
 
 // #include "../commands/ir_commands.hpp"
 
@@ -59,7 +58,7 @@ IRWorld::IRWorld(int &argc, char **argv)
         IRConstants::kInitWindowSize
     }
 ,   m_entityManager{}
-// ,   m_commandManager{}
+,   m_commandManager{}
 ,   m_systemManager{}
 ,   m_renderingResourceManager{}
 ,   m_renderer{
@@ -80,11 +79,11 @@ IRWorld::IRWorld(int &argc, char **argv)
 //     }
 ,   m_timeManager{}
 {
-    m_renderer.printGLSystemInfo();
     initEngineSystems();
+    initEngineCommands();
+    m_renderer.printGLSystemInfo();
     IRProfile::engLogInfo("Initalized game world");
 
-    // global.world_ = this;
 }
 
 IRWorld::~IRWorld() {
@@ -155,7 +154,7 @@ void IRWorld::update()
     IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);
 
     m_audioManager.processMidiMessageQueue(); // this should be somewhere else
-    // m_commandManager.executeUserKeyboardCommandsAll();
+    m_commandManager.executeUserKeyboardCommandsAll();
     // m_commandManager.executeDeviceMidiCCCommandsAll();
     // m_commandManager.executeDeviceMidiNoteCommandsAll();
 
@@ -187,9 +186,16 @@ void IRWorld::initEngineSystems() {
     initIRRenderSystems();
 }
 
-// void IRWorld::initEngineCommands() {
-//     IRCommand::registerCommand
-// }
+void IRWorld::initEngineCommands() {
+    IRCommand::registerCommand(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEscape,
+        []() {
+            IRECS::getSystem<SystemName::SCREEN_VIEW>().closeWindow();
+        }
+    );
+}
 
 void IRWorld::initIRInputSystems() {
     m_systemManager.registerSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(

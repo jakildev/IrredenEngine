@@ -24,8 +24,8 @@ namespace IRECS {
     template <>
     struct Prefab<PrefabTypes::kKeyMouseButton> {
         static EntityHandle create(
-            IRKeyMouseButtons button,
-            IRButtonStatuses status = IRButtonStatuses::kNotHeld
+            KeyMouseButtons button,
+            ButtonStatuses status = ButtonStatuses::NOT_HELD
         )
         {
             EntityHandle entity{};

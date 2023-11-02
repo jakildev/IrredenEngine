@@ -24,7 +24,7 @@ namespace IRRender {
     {
         ENG_API->glCreateVertexArrays(1, &m_handle);
         GLuint bindingIndex = 0; // TODO: change to param if need more than one
-        IR_ENG_ASSERT(
+        IR_ASSERT(
             numAttributes <= kMaxVertexAttributes,
             "Too many vertex attributes for VAO"
         );

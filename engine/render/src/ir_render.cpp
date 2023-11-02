@@ -6,7 +6,7 @@ namespace IRRender {
 
     RenderingResourceManager* g_renderingResourceManager = nullptr;
     RenderingResourceManager& getRenderingResourceManager() {
-        IR_ENG_ASSERT(
+        IR_ASSERT(
             g_renderingResourceManager != nullptr,
             "RenderingResourceManager not initalized"
         );

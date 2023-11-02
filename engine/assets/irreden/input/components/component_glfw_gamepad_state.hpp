@@ -20,7 +20,7 @@ namespace IRComponents {
 
     struct C_GLFWGamepadState {
         // GLFWgamepadstate state_;
-        IRButtonStatuses buttons_[15];
+        ButtonStatuses buttons_[15];
         float axes_[6];
 
         C_GLFWGamepadState(const GLFWgamepadstate& state)
@@ -39,35 +39,35 @@ namespace IRComponents {
         void updateState(const GLFWgamepadstate& state) {
             for(int i=0; i < sizeof(state.buttons); i++) {
                 if(state.buttons[i] == GLFW_PRESS) {
-                    if(buttons_[i] == IRButtonStatuses::kNotHeld || buttons_[i] == IRButtonStatuses::kReleased)
-                        buttons_[i] = IRButtonStatuses::kPressed;
+                    if(buttons_[i] == ButtonStatuses::NOT_HELD || buttons_[i] == ButtonStatuses::RELEASED)
+                        buttons_[i] = ButtonStatuses::PRESSED;
                     else
-                        buttons_[i] = IRButtonStatuses::kHeld;
+                        buttons_[i] = ButtonStatuses::HELD;
                 }
                 if(state.buttons[i] == GLFW_RELEASE) {
-                    if(buttons_[i] == IRButtonStatuses::kHeld || buttons_[i] == IRButtonStatuses::kPressed)
-                        buttons_[i] = IRButtonStatuses::kReleased;
+                    if(buttons_[i] == ButtonStatuses::HELD || buttons_[i] == ButtonStatuses::PRESSED)
+                        buttons_[i] = ButtonStatuses::RELEASED;
                     else
-                        buttons_[i] = IRButtonStatuses::kNotHeld;
+                        buttons_[i] = ButtonStatuses::NOT_HELD;
                 }
             }
             std::memcpy(axes_, state.axes, sizeof(axes_));
         }
 
-        bool checkButtonPressed(IRGamepadButtons button) const {
-            return buttons_[static_cast<int>(button)] == IRButtonStatuses::kPressed;
+        bool checkButtonPressed(GamepadButtons button) const {
+            return buttons_[static_cast<int>(button)] == ButtonStatuses::PRESSED;
         }
 
-        bool checkButtonDown(IRGamepadButtons button) const {
-            return buttons_[static_cast<int>(button)] == IRButtonStatuses::kHeld ||
-                buttons_[static_cast<int>(button)] == IRButtonStatuses::kPressed;
+        bool checkButtonDown(GamepadButtons button) const {
+            return buttons_[static_cast<int>(button)] == ButtonStatuses::HELD ||
+                buttons_[static_cast<int>(button)] == ButtonStatuses::PRESSED;
         }
 
-        bool checkButtonReleased(IRGamepadButtons button) const {
-            return buttons_[static_cast<int>(button)] == IRButtonStatuses::kReleased;
+        bool checkButtonReleased(GamepadButtons button) const {
+            return buttons_[static_cast<int>(button)] == ButtonStatuses::RELEASED;
         }
 
-        float getAxisValue(IRGamepadAxes axis) const {
+        float getAxisValue(GamepadAxes axis) const {
             return axes_[static_cast<int>(axis)];
         }
 

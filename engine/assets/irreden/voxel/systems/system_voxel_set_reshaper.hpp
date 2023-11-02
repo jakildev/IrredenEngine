@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_SET_RESHAPER_H
 #define SYSTEM_VOXEL_SET_RESHAPER_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -33,12 +33,12 @@ namespace IRECS {
         System() {
             // TOOD: Move commands
             // registerCommand<RESHAPE_SPHERE, kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonS,
+            //     KeyMouseButtons::kKeyButtonS,
             //     &reshapeVoxelSet,
             //     Shape3D::SPHERE
             // );
             // registerCommand<RESHAPE_RECTANGULAR_PRISM, kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonC,
+            //     KeyMouseButtons::kKeyButtonC,
             //     &reshapeVoxelSet,
             //     Shape3D::RECTANGULAR_PRISM
             // );

@@ -11,11 +11,12 @@
 #define ARCHETYPE_NODE_H
 
 #include <irreden/entity/ir_entity_types.hpp>
-#include "i_component_data.hpp"
+#include <irreden/entity/i_component_data.hpp>
 
 #include <vector>
 #include <unordered_map>
 #include <memory>
+
 // TODO: Specialize nodes as systems and consolidate system code
 // this could eliminate the need to query archetype nodes
 

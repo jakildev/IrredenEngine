@@ -35,7 +35,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_offVelocity(offVelocity)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -56,7 +56,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_onVelocity(onVelocity)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
 
         unsigned char getChannel() const {
@@ -86,7 +86,7 @@ namespace IRAudio {
             m_keyNumber(keyNumber),
             m_pressure(pressure)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -106,7 +106,7 @@ namespace IRAudio {
             m_controllerNumber(controllerNumber),
             m_controllerValue(controllerValue)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -125,7 +125,7 @@ namespace IRAudio {
         :   m_channel(channel),
             m_programNumber(programNumber)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -143,7 +143,7 @@ namespace IRAudio {
         :   m_channel(channel),
             m_pressureValue(pressureValue)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;
@@ -163,7 +163,7 @@ namespace IRAudio {
             m_msbValue(msbValue),
             m_lsbValue(lsbValue)
         {
-            IR_ENG_ASSERT(channel <= 0x0F, "Invalid midi channel");
+            IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
         }
     private:
         unsigned char m_channel;

@@ -12,7 +12,7 @@
 
 
 // #include <irreden/ir_constants.hpp>
-// #include <irreden/system/ir_system_base.hpp>
+// #include <irreden/system/system_base.hpp>
 // #include <irreden/ir_render.hpp>
 // #include <irreden/ir_math.hpp>
 
@@ -108,7 +108,7 @@
 //             atg_dtv::Frame* newFrame = m_dtvEncoder.newFrame(false);
 //             if(m_dtvEncoder.getError() != atg_dtv::Encoder::Error::None) {
 //                 IRProfile::engLogError("Encoder error: {}", (int)m_dtvEncoder.getError());
-//                 IR_ENG_ASSERT(false, "Encoder error");
+//                 IR_ASSERT(false, "Encoder error");
 //             }
 //             ENG_API->glReadBuffer(GL_FRONT);
 //             ENG_API->glReadPixels(

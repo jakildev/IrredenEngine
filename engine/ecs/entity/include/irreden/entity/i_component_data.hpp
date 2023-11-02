@@ -11,6 +11,7 @@
 #define I_COMPONENT_DATA_H
 
 #include <irreden/ir_profile.hpp>
+
 #include <irreden/entity/ir_entity_types.hpp>
 
 #include <vector>
@@ -82,7 +83,7 @@ namespace IRECS {
         }
 
         virtual void removeDataAndPack(const int index) override {
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 index < size(),
                 "Attempted to remove data with index out of bounds");
             this->dataVector[index] = this->dataVector.back();

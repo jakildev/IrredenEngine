@@ -10,7 +10,7 @@
 #ifndef SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 #define SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/buffer.hpp>

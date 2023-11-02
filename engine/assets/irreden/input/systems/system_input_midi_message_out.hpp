@@ -12,7 +12,7 @@
 #ifndef SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
 #define SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/midi_out.hpp>
 

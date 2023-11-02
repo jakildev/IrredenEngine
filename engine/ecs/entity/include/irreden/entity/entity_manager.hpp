@@ -10,8 +10,8 @@
 #ifndef ENTITY_MANAGER_H
 #define ENTITY_MANAGER_H
 
-// #include "../entity/entity_handle.hpp"
 #include <irreden/ir_profile.hpp>
+
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/archetype_node.hpp>
 #include <irreden/entity/archetype_graph.hpp>
@@ -72,7 +72,7 @@ namespace IRECS {
         ComponentId registerComponent(Args&&... args) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(Component).name();
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
                 "Regestering the same component twice"
             );
@@ -98,7 +98,7 @@ namespace IRECS {
                 toNode->components_[componentId].get(),
                 std::forward<Args>(args)...
             );
-            IR_ENG_ASSERT(insertedIndex == toNode->length_ - 1,
+            IR_ASSERT(insertedIndex == toNode->length_ - 1,
                 "Component inserted at unexpected location."
             );
             IRProfile::engLogInfo("Regestered component type={}, sizeof={} with id={}",
@@ -149,7 +149,7 @@ namespace IRECS {
                 component
             );
 
-            IR_ENG_ASSERT(insertedIndex == toNode->length_ - 1,
+            IR_ASSERT(insertedIndex == toNode->length_ - 1,
                 "Component inserted at unexpected location.");
 
             IRProfile::engLogDebug("Added default component type={} to entity={}: \n\
@@ -249,7 +249,7 @@ namespace IRECS {
             // {
             //     IRProfile::engLogInfo("Attempted to retrieve non-existant component from entity");
             // }
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 std::find(archetype.begin(), archetype.end(), componentType) !=
                     archetype.end(),
                 "Attempted to retrieve non-existant component from entity"
@@ -270,7 +270,7 @@ namespace IRECS {
             Archetype archetype = node->type_;
             ComponentId componentType = getComponentType<Component>();
 
-            IR_ENG_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
+            IR_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
                     "Attempted to retrieve non-existant component vector from node");
             IComponentDataImpl<Component> *data =
                 castComponentDataPointer<Component>(
@@ -291,7 +291,7 @@ namespace IRECS {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::vector<EntityId> res;
             size_t sizes[] = {componentVectors.size()...};
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 std::all_of(
                     std::begin(sizes),
                     std::end(sizes),

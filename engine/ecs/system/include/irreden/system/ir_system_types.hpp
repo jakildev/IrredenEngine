@@ -3,7 +3,7 @@
 
 namespace IRECS {
 
-    enum IRSystemName {
+    enum SystemName {
         NULL_SYSTEM,
         EXAMPLE,
 
@@ -51,7 +51,7 @@ namespace IRECS {
         NUM_SYSTEM_TYPES
     };
 
-    template <IRSystemName system>
+    template <SystemName system>
     class System;
 
 } // namespace IRECS

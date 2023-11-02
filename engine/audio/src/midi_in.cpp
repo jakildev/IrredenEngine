@@ -53,7 +53,7 @@ namespace IRAudio {
     //             return;
     //         }
     //     }
-    //     IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
+    //     IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     // }
 
     void IRMidiIn::openPort(MidiInInterface interface) {
@@ -67,7 +67,7 @@ namespace IRAudio {
                 return;
             }
         }
-        IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
+        IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     }
 
     void IRMidiIn::processMidiMessageQueue() {
@@ -104,7 +104,7 @@ namespace IRAudio {
         // Game input messages will be added to synchronous queue
 
         unsigned int messageSize = message->size();
-        IR_ENG_ASSERT(messageSize > 0, "Received size 0 midi message");
+        IR_ASSERT(messageSize > 0, "Received size 0 midi message");
 
 
         for(int i = 0; i < messageSize; i++) {

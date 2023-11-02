@@ -47,7 +47,7 @@ namespace IRRender {
     class RenderingResourceManager {
     public:
         // static RenderingResourceManager& instance() {
-        //     IR_ENG_ASSERT(m_initalized, "RenderingResourceManager not initalized");
+        //     IR_ASSERT(m_initalized, "RenderingResourceManager not initalized");
         //     return m_instance;
         // }
 
@@ -77,7 +77,7 @@ namespace IRRender {
             ResourceType type = getResourceType<T>();
             ResourceDataImpl<T>* container = static_cast<ResourceDataImpl<T>*>(m_resourceMaps[type].get());
             auto it = container->resourceMap.find(resource);
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 it != container->resourceMap.end(),
                 "Failed to find resource."
             );
@@ -107,7 +107,7 @@ namespace IRRender {
         void registerResource() {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(T).name();
-            IR_ENG_ASSERT(m_resourceTypes.find(typeName) == m_resourceTypes.end(),
+            IR_ASSERT(m_resourceTypes.find(typeName) == m_resourceTypes.end(),
                             "Regestering the same component twice");
             m_resourceTypes.insert({typeName, m_nextResourceType});
             m_resourceMaps.emplace(m_nextResourceType, std::make_unique<ResourceDataImpl<T>>());
@@ -121,7 +121,7 @@ namespace IRRender {
         ResourceType getResourceType() {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(T).name();
-            IR_ENG_ASSERT(m_resourceTypes.find(typeName) != m_resourceTypes.end(),
+            IR_ASSERT(m_resourceTypes.find(typeName) != m_resourceTypes.end(),
                             "Attempted to find a non-existent resource");
 
             return m_resourceTypes[typeName];

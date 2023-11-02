@@ -34,7 +34,7 @@ private:
 #ifndef IRREDEN_RELEASE_BUILD
 
 // TODO: Move asserts somewhere else
-// #define IR_ENG_ASSERT(x, m) if ((x)) {} else { IRProfile::engLogFatal("ASSERT: {}\n\t{}\n\tFILE: {}\n\tFUNCTION: {}\n\tLINE: {}", #x, m, __FILE__, __FUNCTION__, __LINE__); exit(EXIT_FAILURE); }
+// #define IR_ASSERT(x, m) if ((x)) {} else { IRProfile::engLogFatal("ASSERT: {}\n\t{}\n\tFILE: {}\n\tFUNCTION: {}\n\tLINE: {}", #x, m, __FILE__, __FUNCTION__, __LINE__); exit(EXIT_FAILURE); }
 
 // #define IRProfile::glLogDebug(...)  LoggerSpd::instance()->getGLAPILogger()->debug(__VA_ARGS__)
 // #define GLAPI_LOG_FATAL(...)  LoggerSpd::instance()->getGLAPILogger()->critical(__VA_ARGS__)
@@ -47,7 +47,7 @@ private:
 #define IRProfile::engLogFatal(...)  (void)0
 #define ENG_LOG_TRACE(...)  (void)0
 
-#define IR_ENG_ASSERT(x, m) ((void)0)
+#define IR_ASSERT(x, m) ((void)0)
 #define IRProfile::glLogDebug(...) (void)0
 #define GLAPI_LOG_FATAL(...) (void)0
 #define IRProfile::glAssert(x, en) ((void)0)

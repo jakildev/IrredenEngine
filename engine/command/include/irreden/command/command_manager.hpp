@@ -10,13 +10,12 @@
 #ifndef COMMAND_MANAGER_H
 #define COMMAND_MANAGER_H
 
-#include <irreden/command/command_manager.hpp>
+#include <irreden/command/command.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
-#include <irreden/ecs/ir_system_virtual.hpp>
 
 #include <unordered_map>
 #include <memory>
@@ -26,16 +25,13 @@
 using namespace IRInput;
 using namespace IRAudio;
 
-namespace IRCommands {
+namespace IRCommand {
 
     class CommandManager {
     public:
-        CommandManager()
-        {
+        CommandManager();
 
-        }
-
-        // template <IRECS::IRSystemName SystemName, IRInputTypes InputType>
+        // template <IRECS::SystemName SystemName, InputTypes InputType>
         // void registerSystemCommand(
         //     int button,
         //     std::function<void()> command
@@ -44,11 +40,11 @@ namespace IRCommands {
         //     if(!m_systemCommands.contains(SystemName)) {
         //         m_systemCommands.emplace(
         //             SystemName,
-        //             std::vector<IRCommand<IR_COMMAND_SYSTEM>>{}
+        //             std::vector<Command<IR_COMMAND_SYSTEM>>{}
         //         );
         //     }
         //     m_systemCommands[SystemName].emplace_back(
-        //         IRCommand<IR_COMMAND_SYSTEM>{
+        //         Command<IR_COMMAND_SYSTEM>{
         //             InputType,
         //             button,
         //             command
@@ -57,9 +53,9 @@ namespace IRCommands {
         // }
 
         // template <
-        //     IRSystemName systemName,
-        //     IRCommandNames commandName,
-        //     IRInputTypes InputType,
+        //     SystemName systemName,
+        //     CommandNames commandName,
+        //     InputTypes InputType,
         //     typename Function,
         //     typename... Args
         // >
@@ -72,7 +68,7 @@ namespace IRCommands {
         //     if(!m_entityCommands.contains(commandName)) {
         //         m_entityCommands.emplace(
         //             commandName,
-        //             IRCommand<IR_COMMAND_ENTITY>{
+        //             Command<IR_COMMAND_ENTITY>{
         //                 InputType,
         //                 button,
         //                 command,
@@ -85,14 +81,16 @@ namespace IRCommands {
         template <
             typename Function
         >
-        int registerUserCommand(
-            IRInputTypes inputType,
+        int registerCommand(
+            InputTypes inputType,
+            ButtonStatuses triggerStatus,
             int button,
             Function command
         )
         {
-            m_userCommands.emplace_back(IRCommand<IR_COMMAND_USER>{
+            m_userCommands.emplace_back(Command<IR_COMMAND_USER>{
                 inputType,
+                triggerStatus,
                 button,
                 command
             });
@@ -105,7 +103,7 @@ namespace IRCommands {
         >
         int registerMidiNoteCommand(
             int device,
-            IRInputTypes InputType,
+            InputTypes InputType,
             Function command,
             Args... fixedArgs
         )
@@ -113,11 +111,11 @@ namespace IRCommands {
             if(!m_midiCCDeviceCommands.contains(device)) {
                 m_midiNoteDeviceCommands.emplace(
                     device,
-                    std::vector<IRCommand<IR_COMMAND_MIDI_NOTE>>{}
+                    std::vector<Command<IR_COMMAND_MIDI_NOTE>>{}
                 );
             }
             m_midiNoteDeviceCommands[device].emplace_back(
-                IRCommand<IR_COMMAND_MIDI_NOTE>{
+                Command<IR_COMMAND_MIDI_NOTE>{
                     InputType,
                     command,
                     fixedArgs...
@@ -129,7 +127,7 @@ namespace IRCommands {
         template <typename Function>
         int registerMidiCCCommand(
             int device,
-            IRInputTypes InputType,
+            InputTypes InputType,
             unsigned char ccMessage,
             Function command
         )
@@ -137,11 +135,11 @@ namespace IRCommands {
             if(!m_midiCCDeviceCommands.contains(device)) {
                 m_midiCCDeviceCommands.emplace(
                     device,
-                    std::vector<IRCommand<IR_COMMAND_MIDI_CC>>{}
+                    std::vector<Command<IR_COMMAND_MIDI_CC>>{}
                 );
             }
             m_midiCCDeviceCommands[device].emplace_back(
-                IRCommand<IR_COMMAND_MIDI_CC>{
+                Command<IR_COMMAND_MIDI_CC>{
                     InputType,
                     ccMessage,
                     command
@@ -150,72 +148,74 @@ namespace IRCommands {
             return m_midiCCDeviceCommands[device].size() - 1;
         }
 
-        // template <IRCommandNames CommandName>
+        // template <CommandNames CommandName>
         // void bindEntityToCommand(EntityHandle entity) {
         //     m_entitiesBoundToCommands[CommandName].push_back(entity);
         // }
 
-        // void executeSystemCommands(IRSystemName systemName);
+        // void executeSystemCommands(SystemName systemName);
 
         // TODO: Still pretty slow when operating on a lot of entities,
         // because each one is fetched individually. Still need a
         // tickWithArchetype type command
-        // void executeSystemEntityCommands(IRSystemName systemName);
+        // void executeSystemEntityCommands(SystemName systemName);
 
-        void executeDeviceMidiCCCommandsAll();
-        void executeDeviceMidiNoteCommandsAll();
+        // void executeDeviceMidiCCCommandsAll();
+        // void executeDeviceMidiNoteCommandsAll();
         void executeUserKeyboardCommandsAll();
-        void executeDeviceMidiCCCommands(
-            int device,
-            std::vector<IRCommand<IR_COMMAND_MIDI_CC>>& commands
-        );
-        void executeDeviceMidiCCCommand(
-            int device,
-            IRCommand<IR_COMMAND_MIDI_CC>& command
-        );
-        void executeDeviceMidiNoteCommands(
-            int device,
-            std::vector<IRCommand<IR_COMMAND_MIDI_NOTE>>& commands
-        );
-        void executeDeviceMidiNoteCommand(
-            int device,
-            IRCommand<IR_COMMAND_MIDI_NOTE>& command
-        );
+        // void executeDeviceMidiCCCommands(
+        //     int device,
+        //     std::vector<
+        //         Command<CommandTypes::IR_COMMAND_MIDI_CC>
+        //     >& commands
+        // );
+        // void executeDeviceMidiCCCommand(
+        //     int device,
+        //     Command<IR_COMMAND_MIDI_CC>& command
+        // );
+        // void executeDeviceMidiNoteCommands(
+        //     int device,
+        //     std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
+        // );
+        // void executeDeviceMidiNoteCommand(
+        //     int device,
+        //     Command<IR_COMMAND_MIDI_NOTE>& command
+        // );
 
     private:
         // EntityHandle m_noneEntity;
         // std::unordered_map<
-        //     IRSystemName,
-        //     std::vector<IRCommand<IR_COMMAND_SYSTEM>>
+        //     SystemName,
+        //     std::vector<Command<IR_COMMAND_SYSTEM>>
         // > m_systemCommands;
         // std::unordered_map<
-        //     IRSystemName,
-        //     std::vector<IRCommandNames>
+        //     SystemName,
+        //     std::vector<CommandNames>
         // > m_systemEntityCommands;
         // std::unordered_map<
-        //     IRCommandNames,
-        //     IRCommand<IR_COMMAND_ENTITY>
+        //     CommandNames,
+        //     Command<IR_COMMAND_ENTITY>
         // > m_entityCommands;
         std::unordered_map<
             int,
-            std::vector<IRCommand<IR_COMMAND_MIDI_NOTE>>
+            std::vector<Command<IR_COMMAND_MIDI_NOTE>>
         > m_midiNoteDeviceCommands;
         std::unordered_map<
             int,
-            std::vector<IRCommand<IR_COMMAND_MIDI_CC>>
+            std::vector<Command<IR_COMMAND_MIDI_CC>>
         > m_midiCCDeviceCommands;
 
-        std::vector<IRCommand<IR_COMMAND_USER>> m_userCommands;
+        std::vector<Command<IR_COMMAND_USER>> m_userCommands;
         // std::vector<std::list<EntityHandle>> m_entitiesBoundToMidiNoteCommands;
-        // std::unordered_map<IRCommandNames, std::list<EntityHandle>>
+        // std::unordered_map<CommandNames, std::list<EntityHandle>>
         //     m_entitiesBoundToCommands;
 
-        // void executeEntityCommand(IRCommandNames commandName);
-        bool checkButton(IRInputTypes inputType, int button);
-        IRCCData checkCCMessage(int device, IRCCMessage ccMessage);
+        // void executeEntityCommand(CommandNames commandName);
+        // bool checkButton(InputTypes inputType, int button);
+        // IRCCData checkCCMessage(int device, IRCCMessage ccMessage);
 
     };
 
-} // namespace IRCommands
+} // namespace IRCommand
 
 #endif /* COMMAND_MANAGER_H */

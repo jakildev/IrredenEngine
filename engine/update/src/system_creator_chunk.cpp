@@ -132,7 +132,7 @@
 
 //         // check commands shape start
 //         if(global.systemKeyMouseInput_->checkButtonPressed(
-//             IRKeyMouseButtons::kMouseButtonLeft
+//             KeyMouseButtons::kMouseButtonLeft
 //         ))
 //         {
 //             if(m_shapeMode == RECTANGULAR_PRISM) {
@@ -141,7 +141,7 @@
 //         }
 
 //         if(global.systemKeyMouseInput_->checkButtonReleased(
-//             IRKeyMouseButtons::kMouseButtonLeft
+//             KeyMouseButtons::kMouseButtonLeft
 //         ))
 //         {
 //             if(m_shapeMode == RECTANGULAR_PRISM) {

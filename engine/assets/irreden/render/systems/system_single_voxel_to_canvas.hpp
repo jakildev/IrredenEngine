@@ -10,7 +10,7 @@
 #ifndef SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 #define SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/shader.hpp>

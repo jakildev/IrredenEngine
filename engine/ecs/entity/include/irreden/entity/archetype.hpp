@@ -2,6 +2,7 @@
 #define ARCHETYPE_H
 
 #include <irreden/entity/ir_entity_types.hpp>
+
 #include <sstream>
 
 namespace IRECS {

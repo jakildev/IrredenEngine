@@ -5,7 +5,7 @@ namespace IRTime {
 
     TimeManager* g_timeManager = nullptr;
     TimeManager& getTimeManager() {
-        IR_ENG_ASSERT(
+        IR_ASSERT(
             g_timeManager != nullptr,
             "TimeManager not initialized"
         );

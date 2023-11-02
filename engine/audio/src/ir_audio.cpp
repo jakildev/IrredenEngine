@@ -14,7 +14,7 @@ namespace IRAudio {
 
     AudioManager* g_audioManager = nullptr;
     AudioManager& getAudioManager() {
-        IR_ENG_ASSERT(
+        IR_ASSERT(
             g_audioManager != nullptr,
             "AudioManager not initialized"
         );

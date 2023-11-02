@@ -10,7 +10,7 @@
 #ifndef SYSTEM_INPUT_KEY_MOUSE_H
 #define SYSTEM_INPUT_KEY_MOUSE_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/input/ir_glfw_window.hpp>
 
@@ -22,7 +22,6 @@
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRECS;
-using IRGLFW::IRGLFWWindow;
 
 namespace IRECS {
 
@@ -33,7 +32,7 @@ namespace IRECS {
         C_KeyMouseButton
     > {
     public:
-        System(IRGLFWWindow& window)
+        System(IRInput::IRGLFWWindow& window)
         :   m_window{window}
         ,   m_scrollEntitiesThisFrame{}
         ,   m_buttonPressesThisFrame{}
@@ -46,12 +45,12 @@ namespace IRECS {
             m_buttonPressesThisFrame.resize(kNumKeyMouseButtons);
             m_buttonReleasesThisFrame.resize(kNumKeyMouseButtons);
 
-            for(int i = 0; i < IRKeyMouseButtons::kNumKeyMouseButtons; ++i) {
+            for(int i = 0; i < KeyMouseButtons::kNumKeyMouseButtons; ++i) {
                 EntityHandle entityNewButton = Prefab<kKeyMouseButton>::create(
-                    static_cast<IRKeyMouseButtons>(i)
+                    static_cast<KeyMouseButtons>(i)
                 );
                 m_keyMouseButtonEntities.insert({
-                    static_cast<IRKeyMouseButtons>(i),
+                    static_cast<KeyMouseButtons>(i),
                     entityNewButton
                 });
             }
@@ -75,6 +74,7 @@ namespace IRECS {
         std::vector<C_KeyMouseButton>& mouseButtons
     )
     {
+        // Shouldn't the entities get updated here?
         for(int i=0; i < entities.size(); ++i) {
             C_KeyStatus& componentStatus = keyStatuses[i];
             int mouseButtonPressCount = m_buttonPressesThisFrame.at(
@@ -83,25 +83,29 @@ namespace IRECS {
             int mouseButtonReleaseCount = m_buttonReleasesThisFrame.at(
                 mouseButtons[i].button_
             );
-            if(componentStatus.status_ == kPressed) {
-                componentStatus.status_ = kHeld;
+            if(componentStatus.status_ == PRESSED) {
+                componentStatus.status_ = HELD;
             }
-            else if(componentStatus.status_ == kReleased) {
-                componentStatus.status_ = kNotHeld;
+            else if(componentStatus.status_ == RELEASED) {
+                componentStatus.status_ = NOT_HELD;
             }
 
             if(mouseButtonPressCount > 0 && mouseButtonReleaseCount <= 0) {
-                componentStatus.status_ = kPressed;
+                componentStatus.status_ = PRESSED;
             }
             else if(mouseButtonPressCount <= 0 && mouseButtonReleaseCount > 0) {
-                componentStatus.status_ = kReleased;
+                componentStatus.status_ = RELEASED;
             }
             else if(mouseButtonPressCount > 0 && mouseButtonReleaseCount > 0) {
-                componentStatus.status_ = kPressedAndReleased;
+                componentStatus.status_ = PRESSED_AND_RELEASED;
             }
             componentStatus.pressedThisFrameCount_ = mouseButtonPressCount;
             componentStatus.releasedThisFrameCount_ = mouseButtonReleaseCount;
         }
+    }
+
+    ButtonStatuses getButtonStatus(KeyMouseButtons button) const {
+        return m_keyMouseButtonEntities.at(button).get<C_KeyStatus>().status_;
     }
 
 
@@ -113,33 +117,34 @@ namespace IRECS {
         return m_mousePositionRender;
     }
 
-    bool checkButton(IRInputTypes inputType, IRKeyMouseButtons button) const {
-        if(inputType == IRInputTypes::kKeyMouseButtonPressed) {
+    bool checkButton(KeyMouseButtons button, ButtonStatuses status) const {
+        if(status == ButtonStatuses::PRESSED) {
             return checkButtonPressed(button);
         }
-        if(inputType == IRInputTypes::kKeyMouseButtonReleased) {
+        if(status == ButtonStatuses::RELEASED) {
             return checkButtonReleased(button);
         }
-        if(inputType == IRInputTypes::kKeyMouseButtonDown) {
+        if(status == ButtonStatuses::HELD) {
             return checkButtonDown(button);
         }
+        IR_ASSERT(false, "Invalid button status to check");
         return false;
     }
 
-    bool checkButtonPressed(IRKeyMouseButtons button) const {
+    bool checkButtonPressed(KeyMouseButtons button) const {
         if(m_keyMouseButtonEntities.at(button).get<C_KeyStatus>().pressedThisFrameCount_ > 0) {
             return true;
         }
         return false;
     }
 
-    // Intentionally not using the kPressedAndReleased status for this
-    bool checkButtonDown(IRKeyMouseButtons button) const {
+    // Intentionally not using the PRESSED_AND_RELEASED status for this
+    bool checkButtonDown(KeyMouseButtons button) const {
         const C_KeyStatus buttonStatus =
             m_keyMouseButtonEntities.at(button).get<C_KeyStatus>();
         if(
-            buttonStatus.status_ == IRButtonStatuses::kPressed ||
-            buttonStatus.status_ == IRButtonStatuses::kHeld
+            buttonStatus.status_ == ButtonStatuses::PRESSED ||
+            buttonStatus.status_ == ButtonStatuses::HELD
         )
         {
             return true;
@@ -147,7 +152,7 @@ namespace IRECS {
         return false;
     }
 
-    bool checkButtonReleased(IRKeyMouseButtons button) const {
+    bool checkButtonReleased(KeyMouseButtons button) const {
         if(m_keyMouseButtonEntities.at(button).get<C_KeyStatus>().releasedThisFrameCount_ > 0) {
             return true;
         }
@@ -156,11 +161,11 @@ namespace IRECS {
 
 
     private:
-        IRGLFW::IRGLFWWindow& m_window;
+        IRInput::IRGLFWWindow& m_window;
         std::vector<EntityId> m_scrollEntitiesThisFrame;
         std::vector<int> m_buttonPressesThisFrame;
         std::vector<int> m_buttonReleasesThisFrame;
-        std::unordered_map<IRKeyMouseButtons, EntityHandle> m_keyMouseButtonEntities;
+        std::unordered_map<KeyMouseButtons, EntityHandle> m_keyMouseButtonEntities;
         EntityHandle m_entityMouse;
 
         C_MousePosition m_mousePositionUpdate;
@@ -182,10 +187,10 @@ namespace IRECS {
             );
 
             // TODO: Process buttons to match new component design...
-            processKeyMouseButtons(m_window.getKeysPressedToProcess(), IRButtonStatuses::kPressed);
-            processKeyMouseButtons(m_window.getKeysReleasedToProcess(), IRButtonStatuses::kReleased);
-            processKeyMouseButtons(m_window.getMouseButtonsPressedToProcess(), IRButtonStatuses::kPressed);
-            processKeyMouseButtons(m_window.getMouseButtonsReleasedToProcess(), IRButtonStatuses::kReleased);
+            processKeyMouseButtons(m_window.getKeysPressedToProcess(), ButtonStatuses::PRESSED);
+            processKeyMouseButtons(m_window.getKeysReleasedToProcess(), ButtonStatuses::RELEASED);
+            processKeyMouseButtons(m_window.getMouseButtonsPressedToProcess(), ButtonStatuses::PRESSED);
+            processKeyMouseButtons(m_window.getMouseButtonsReleasedToProcess(), ButtonStatuses::RELEASED);
             processScrolls(m_window.getScrollsToProcess());
 
             m_window.getUpdateCursorPos(
@@ -201,16 +206,16 @@ namespace IRECS {
 
         void processKeyMouseButtons(
             std::queue<int>& queueOfButtons,
-            IRButtonStatuses status
+            ButtonStatuses status
         )
         {
             while(!queueOfButtons.empty()) {
                 int button = queueOfButtons.front();
-                IRKeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
-                if(status == IRButtonStatuses::kPressed) {
+                KeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
+                if(status == ButtonStatuses::PRESSED) {
                     ++m_buttonPressesThisFrame[irButton];
                 }
-                if(status == IRButtonStatuses::kReleased) {
+                if(status == ButtonStatuses::RELEASED) {
                     ++m_buttonReleasesThisFrame[irButton];
 
                 }

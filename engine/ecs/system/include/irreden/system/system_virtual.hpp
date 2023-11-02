@@ -11,8 +11,8 @@
 #define IR_SYSTEM_VIRTUAL_H
 
 #include <irreden/ir_entity.hpp>
+
 #include <irreden/system/ir_system_types.hpp>
-#include <irreden/entity/archetype_node.hpp>
 
 
 // Virtual should just be the interface
@@ -20,7 +20,7 @@ namespace IRECS {
 
     class SystemVirtual {
     public:
-        SystemVirtual(Archetype type, IRSystemName name)
+        SystemVirtual(Archetype type, SystemName name)
         :   m_archetype(type)
         ,   m_name(name)
         {
@@ -33,7 +33,7 @@ namespace IRECS {
         virtual void end() {};
         // virtual void executeEvent(IREvents event) = 0;
 
-        inline const IRSystemName getSystemName() const {
+        inline const SystemName getSystemName() const {
             return m_name;
         }
         inline const Archetype getArchetype() const {
@@ -41,7 +41,7 @@ namespace IRECS {
         }
     private:
         Archetype m_archetype;
-        IRSystemName m_name;
+        SystemName m_name;
     };
 
 }

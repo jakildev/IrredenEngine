@@ -12,7 +12,7 @@
 
 #include <iostream>
 
-namespace IRGLFW {
+namespace IRInput {
 
     // TODO: implement multiple sub-windows if necessary
     IRGLFWWindow::IRGLFWWindow(
@@ -22,7 +22,7 @@ namespace IRGLFW {
         setCallbackError(irglfwCallback_error);
 
         int status = glfwInit();
-        IR_ENG_ASSERT(status, "Failed to initalize glfw.");
+        IR_ASSERT(status, "Failed to initalize glfw.");
 
         for(int i = 0; i < kNumWindowHints; ++i) {
             glfwWindowHint(kWindowHints[i].first, kWindowHints[i].second);
@@ -45,7 +45,7 @@ namespace IRGLFW {
 
         // glfwSetWindowPos(m_window, 50, 50);
 
-        IR_ENG_ASSERT(m_window != nullptr,
+        IR_ASSERT(m_window != nullptr,
             "Failed to create window: glfwCreateWindow returned null"
         );
 
@@ -54,7 +54,7 @@ namespace IRGLFW {
         glfwSwapInterval(0);
 
         status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-        IR_ENG_ASSERT(status, "Failed to initalize GLAD");
+        IR_ASSERT(status, "Failed to initalize GLAD");
 
         setWindowUserPointer(this);
 
@@ -116,7 +116,7 @@ namespace IRGLFW {
     GLFWgamepadstate IRGLFWWindow::getGamepadState(int gamepad) {
         GLFWgamepadstate state;
         int res = glfwGetGamepadState(gamepad, &state);
-        IR_ENG_ASSERT(res == GLFW_TRUE, "Error getting gamepad state!");
+        IR_ASSERT(res == GLFW_TRUE, "Error getting gamepad state!");
         return state;
     }
 
@@ -262,5 +262,5 @@ namespace IRGLFW {
         IRProfile::engLogInfo("Scroll: xoffset: {}, yoffset: {}", xoffset, yoffset);
     }
 
-} // namespace IRGLFW
+} // namespace IRInput
 

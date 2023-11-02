@@ -138,7 +138,7 @@ namespace IRComponents {
         {
             int startTick = start * m_ticksPerMeasure;
             int holdDurationTicks = holdDurationSeconds * m_ticksPerSecond;
-            IR_ENG_ASSERT(
+            IR_ASSERT(
                 startTick >= 0.0 &&
                 startTick + holdDurationTicks <= lengthMidiTicks_,
                 "Attempted to insert note on outside of sequence"

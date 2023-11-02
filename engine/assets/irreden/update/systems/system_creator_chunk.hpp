@@ -32,7 +32,7 @@
 
 //      // Commands shape modes
 
-//     constexpr std::pair<IRKeyMouseButtons, Shape3D> kKeyCommandsShapeMode[] = {
+//     constexpr std::pair<KeyMouseButtons, Shape3D> kKeyCommandsShapeMode[] = {
 //         {kKeyButtonR, Shape3D::RECTANGULAR_PRISM},
 //         {kKeyButtonS, Shape3D::SPHERE}
 //     };

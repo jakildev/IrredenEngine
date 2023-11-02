@@ -10,7 +10,7 @@
 #ifndef SYSTEM_RENDERING_TEXTURE_SCROLL_H
 #define SYSTEM_RENDERING_TEXTURE_SCROLL_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/ir_time.hpp>

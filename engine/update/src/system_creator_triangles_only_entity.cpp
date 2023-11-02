@@ -300,7 +300,7 @@
 //             }
 //         }
 //         if(global.systemKeyMouseInput_->checkButtonPressed(
-//             IRKeyMouseButtons::kMouseButtonLeft))
+//             KeyMouseButtons::kMouseButtonLeft))
 //         {
 //             if(m_activePaintingMode == SELECTION)
 //             {
@@ -317,7 +317,7 @@
 //         }
 
 //         if(global.systemKeyMouseInput_->checkButtonReleased(
-//             IRKeyMouseButtons::kMouseButtonLeft))
+//             KeyMouseButtons::kMouseButtonLeft))
 //         {
 //             if(m_activePaintingMode == SELECTION)
 //             {

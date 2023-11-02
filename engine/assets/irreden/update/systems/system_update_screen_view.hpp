@@ -10,7 +10,7 @@
 #ifndef SYSTEM_UPDATE_SCREEN_VIEW_H
 #define SYSTEM_UPDATE_SCREEN_VIEW_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/render/components/component_viewport.hpp>
 #include <irreden/input/components/component_cursor_position.hpp>
@@ -25,7 +25,6 @@ using namespace IRComponents;
 using namespace IRMath;
 using namespace IRECS;
 // using namespace IRCommands;
-using IRGLFW::IRGLFWWindow;
 
 namespace IRECS {
 
@@ -35,7 +34,7 @@ namespace IRECS {
     >   {
     public:
         System(
-            IRGLFWWindow& window
+            IRInput::IRGLFWWindow& window
         )
         :   m_window{window}
         ,   m_screenRenderResolutionWidth(0)
@@ -55,55 +54,55 @@ namespace IRECS {
             // so that all commands can be visualized and assigned
             // together.
             // registerCommand<kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonEqual,
+            //     KeyMouseButtons::kKeyButtonEqual,
             //     [this]() {
             //         zoomIn();
             //     }
             // );
             // registerCommand<kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonMinus,
+            //     KeyMouseButtons::kKeyButtonMinus,
             //     [this]() {
             //         zoomOut();
             //     }
             // );
             // registerCommand<kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonEscape,
+            //     KeyMouseButtons::kKeyButtonEscape,
             //     [this]() {
             //         closeWindow();
             //     }
             // );
             // registerCommand<kKeyMouseButtonPressed>(
-            //     IRKeyMouseButtons::kKeyButtonLeftControl,
+            //     KeyMouseButtons::kKeyButtonLeftControl,
             //     [this]() {
             //         dragCanvasStart();
             //     }
             // );
             // registerCommand<kKeyMouseButtonReleased>(
-            //     IRKeyMouseButtons::kKeyButtonLeftControl,
+            //     KeyMouseButtons::kKeyButtonLeftControl,
             //     [this]() {
             //         dragCanvasEnd();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
-            //     IRKeyMouseButtons::kKeyButtonW,
+            //     KeyMouseButtons::kKeyButtonW,
             //     [this]() {
             //         m_camera.get<C_Camera>().moveUp();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
-            //     IRKeyMouseButtons::kKeyButtonS,
+            //     KeyMouseButtons::kKeyButtonS,
             //     [this]() {
             //         m_camera.get<C_Camera>().moveDown();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
-            //     IRKeyMouseButtons::kKeyButtonA,
+            //     KeyMouseButtons::kKeyButtonA,
             //     [this]() {
             //         m_camera.get<C_Camera>().moveLeft();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
-            //     IRKeyMouseButtons::kKeyButtonD,
+            //     KeyMouseButtons::kKeyButtonD,
             //     [this]() {
             //         m_camera.get<C_Camera>().moveRight();
             //     }
@@ -238,7 +237,7 @@ namespace IRECS {
         }
 
     private:
-        IRGLFWWindow& m_window;
+        IRInput::IRGLFWWindow& m_window;
         bool m_cameraFollow = false;
         EntityHandle m_cameraFollowEntity;
         C_ViewportXY m_viewport;

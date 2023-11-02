@@ -29,8 +29,8 @@ MeshData load3DModelPositionsAndIndices(const char* filepath) {
     const aiScene* scene = aiImportFile(
         filepath,
         aiProcess_Triangulate);
-    IR_ENG_ASSERT(scene, "Unable to load file.");
-    IR_ENG_ASSERT(scene->HasMeshes(), "No meshes??? (like the meme)");
+    IR_ASSERT(scene, "Unable to load file.");
+    IR_ASSERT(scene->HasMeshes(), "No meshes??? (like the meme)");
     const aiMesh* mesh = scene->mMeshes[0];
 
     std::vector<glm::vec3> positions;

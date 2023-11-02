@@ -10,7 +10,7 @@
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
-#include <irreden/system/ir_system_base.hpp>
+#include <irreden/system/system_base.hpp>
 
 #include <irreden/input/ir_glfw_window.hpp>
 #include "..\entities\entity_joystick.hpp"
@@ -27,7 +27,7 @@ namespace IRECS {
         C_GLFWGamepadState
     >   {
     public:
-        System(IRGLFWWindow& window)
+        System(IRInput::IRGLFWWindow& window)
         :   m_window{window}
         {
             IRProfile::engLogInfo("Creating system INPUT_GAMEPAD");
@@ -49,28 +49,28 @@ namespace IRECS {
             }
         }
 
-        bool checkButton(
-            IRInputTypes buttonType,
-            IRGamepadButtons button,
-            int irGamepadId = 0
-        )
-        {
-            const auto& gamepadState = m_gamepadEntities[irGamepadId]
-                .get<C_GLFWGamepadState>();
-            if(buttonType == IRInputTypes::kGamepadButtonPressed) {
-                return gamepadState.checkButtonPressed(button);
-            }
-            if(buttonType == IRInputTypes::kGamepadButtonReleased) {
-                return gamepadState.checkButtonReleased(button);
-            }
-            if(buttonType == IRInputTypes::kGamepadButtonDown) {
-                return gamepadState.checkButtonDown(button);
-            }
-            return false;
-        }
+        // bool checkButton(
+        //     InputTypes buttonType,
+        //     GamepadButtons button,
+        //     int irGamepadId = 0
+        // )
+        // {
+        //     const auto& gamepadState = m_gamepadEntities[irGamepadId]
+        //         .get<C_GLFWGamepadState>();
+        //     if(buttonType == InputTypes::kGamepadButtonPressed) {
+        //         return gamepadState.checkButtonPressed(button);
+        //     }
+        //     if(buttonType == InputTypes::kGamepadButtonReleased) {
+        //         return gamepadState.checkButtonReleased(button);
+        //     }
+        //     if(buttonType == InputTypes::kGamepadButtonDown) {
+        //         return gamepadState.checkButtonDown(button);
+        //     }
+        //     return false;
+        // }
 
         float getAxisValue(
-            IRGamepadAxes axis,
+            GamepadAxes axis,
             int irGamepadId = 0
         )
         {

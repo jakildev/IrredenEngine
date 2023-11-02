@@ -15,6 +15,7 @@ target_link_libraries(IrredenEngineWorld PUBLIC
     IrredenEngineMath
     IrredenEngineECS
     IrredenEngineTime
+    IrredenEngineCommand
 )
 
 target_include_directories(IrredenEngineWorld PUBLIC

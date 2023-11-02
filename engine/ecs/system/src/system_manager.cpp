@@ -11,7 +11,7 @@ namespace IRECS {
         for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
             m_systemOrders
                 [static_cast<IRSystemType>(i)
-            ] = std::list<IRSystemName>{};
+            ] = std::list<SystemName>{};
         }
         g_systemManager = this;
         IRProfile::engLogInfo("SystemManager initalized");

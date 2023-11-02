@@ -1,4 +1,5 @@
 add_library(IrredenEngineInput STATIC
+    src/ir_input.cpp
     src/ir_glfw_window.cpp
 
     src/glad/glad.c
@@ -23,6 +24,7 @@ target_link_libraries(
     IrredenEngineProfiling
     IrredenEngineMath
     IrredenEngineCommon
+    IrredenEngineECS
 )
 target_include_directories(
     IrredenEngineInput

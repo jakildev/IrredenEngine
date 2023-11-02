@@ -3,7 +3,6 @@
 
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/entity_manager.hpp>
-// #include <irreden/ecs/entity_handle.hpp>
 
 namespace IRECS {
     // Gets created by ir_world and set here.
@@ -36,6 +35,9 @@ namespace IRECS {
         const Archetype includeComponents,
         const Archetype excludeComponents = Archetype{}
     );
+
+    template <typename... Components>
+    EntityId createEntity(const Components&&... components); // TODO;
 
 
 } // namespace IRECS

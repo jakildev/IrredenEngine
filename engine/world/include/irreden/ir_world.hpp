@@ -8,10 +8,11 @@
  */
 
 #ifndef IR_WORLD_H
-#define IR_WORLD_Hjj
+#define IR_WORLD_H
 
 #include <irreden/input/ir_glfw_window.hpp>
 #include <irreden/ir_ecs.hpp>
+#include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
 #include <irreden/system/system_manager.hpp>
 #include <irreden/render/renderer.hpp>
@@ -40,7 +41,7 @@ public:
     //     );
     // }
 
-    // template <IRCommands::IRCommandNames commandName>
+    // template <IRCommands::CommandNames commandName>
     // void bindEntityToCommand(EntityHandle entity)
     // {
     //     m_commandManager.bindEntityToCommand<commandName>(entity);
@@ -52,7 +53,7 @@ public:
     // >
     // int registerMidiNoteCommand(
     //     int device,
-    //     IRInputTypes InputType,
+    //     InputTypes InputType,
     //     Function command,
     //     Args... fixedArgs
     // )
@@ -70,7 +71,7 @@ public:
     // >
     // int registerMidiCCCommand(
     //     int device,
-    //     IRInputTypes inputType,
+    //     InputTypes inputType,
     //     unsigned char ccMessage,
     //     Function command
     // )
@@ -84,13 +85,13 @@ public:
     // }
 
     // template <typename Function>
-    // int registerUserCommand(
-    //     IRInputTypes InputType,
+    // int registerCommand(
+    //     InputTypes InputType,
     //     int button,
     //     Function command
     // )
     // {
-    //     return m_commandManager.registerUserCommand(
+    //     return m_commandManager.registerCommand(
     //         InputType,
     //         button,
     //         command
@@ -131,9 +132,9 @@ private:
     virtual void initGameSystems() = 0;
     virtual void initGameEntities() = 0;
 
-    IRGLFW::IRGLFWWindow m_IRGLFWWindow;
+    IRInput::IRGLFWWindow m_IRGLFWWindow;
     IRECS::EntityManager m_entityManager;
-    // IRCommands::CommandManager m_commandManager;
+    IRCommand::CommandManager m_commandManager;
     IRECS::SystemManager m_systemManager;
     IRRender::RenderingResourceManager m_renderingResourceManager;
     IRRender::Renderer m_renderer;

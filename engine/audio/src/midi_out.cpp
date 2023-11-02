@@ -48,7 +48,7 @@ namespace IRAudio {
                 return;
             }
         }
-        IR_ENG_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
+        IR_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
     }
 
     void IRMidiOut::sendMessage(const std::vector<unsigned char>& message) {

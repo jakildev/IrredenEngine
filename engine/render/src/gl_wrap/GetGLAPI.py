@@ -40,7 +40,7 @@
 # ----------------------------------------------------------------------
 
 GetErrorFunc = "GLenum glError = apiHook.glGetError();"
-CheckErrorFunc = "IR_ENG_ASSERT(glError == GL_NO_ERROR, E2S(glError));"
+CheckErrorFunc = "IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));"
 LoggerPrefix = "IRProfile::glLogDebug"
 WrapFuncs = []
 

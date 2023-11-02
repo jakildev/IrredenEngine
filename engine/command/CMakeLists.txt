@@ -1,12 +1,11 @@
 add_library(IrredenEngineCommand STATIC
-    # include/irreden/ir_command.hpp
-    include/irreden/command/command_manager.hpp
 
+    src/ir_command.cpp
     src/command_manager.cpp
 )
 
 target_compile_options(
-    IrredenEngineRendering
+    IrredenEngineCommand
     PUBLIC
     -O3
 )

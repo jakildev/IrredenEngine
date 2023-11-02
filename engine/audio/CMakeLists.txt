@@ -58,16 +58,16 @@ target_link_libraries(
 target_include_directories(IrredenEngineAudio PRIVATE
     ${rtmidi_SOURCE_DIR}
 )
+
+target_include_directories(
+    IrredenEngineAudio PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/engine/assets
+)
 add_custom_command(
     TARGET IrredenEngineAudio
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${rtmidi_BINARY_DIR}/librtmidid.dll
         ${PROJECT_BINARY_DIR}/librtmidid.dll
-)
-
-target_include_directories(
-    IrredenEngineAudio PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/engine/assets
 )
