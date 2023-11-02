@@ -10,7 +10,7 @@
 #ifndef ARCHETYPE_NODE_H
 #define ARCHETYPE_NODE_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/entity/ir_entity_types.hpp>
 #include "i_component_data.hpp"
 
 #include <vector>
@@ -21,9 +21,6 @@
 
 namespace IRECS {
     // TODO: ecs can know a certain archetype and how to sort it
-
-    class ArchetypeNode;
-    using smart_ArchetypeNode = std::unique_ptr<ArchetypeNode>;
 
     struct ArchetypeNodeEdge {
         ArchetypeNode* add = nullptr;

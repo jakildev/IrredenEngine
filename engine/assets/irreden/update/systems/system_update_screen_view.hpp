@@ -10,14 +10,14 @@
 #ifndef SYSTEM_UPDATE_SCREEN_VIEW_H
 #define SYSTEM_UPDATE_SCREEN_VIEW_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/render/components/component_viewport.hpp>
 #include <irreden/input/components/component_cursor_position.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
-#include <irreden/ecs/system_manager.hpp>
+#include <irreden/system/system_manager.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -30,11 +30,11 @@ using IRGLFW::IRGLFWWindow;
 namespace IRECS {
 
     template<>
-    class IRSystem<SCREEN_VIEW> : public IRSystemBase<
+    class System<SCREEN_VIEW> : public SystemBase<
         SCREEN_VIEW
     >   {
     public:
-        IRSystem(
+        System(
             IRGLFWWindow& window
         )
         :   m_window{window}
@@ -124,7 +124,7 @@ namespace IRECS {
             IRProfile::engLogInfo("Created system SCREEN_VIEW");
         }
 
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

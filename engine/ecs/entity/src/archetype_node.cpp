@@ -7,9 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/ecs/archetype_node.hpp>
-#include <irreden/ir_ecs.hpp>
-#include <irreden/ecs/entity_manager.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/entity/archetype_node.hpp>
 #include <irreden/ir_profile.hpp>
 
 // TODO: SHOULD absolutly have node specialization
@@ -33,11 +32,11 @@ namespace IRECS {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         for(auto itr = archetype.begin(); itr != archetype.end(); itr++) {
             components_[*itr] =
-                IRECS::getEntityManager().createComponentDataVector(*itr);
+                IRECS::createComponentData(*itr);
 
         }
         IRProfile::engLogInfo("Created archetype node with components: {}, id={}",
-            IRECS::makeComponentString(archetype),
+            makeComponentStringInternal(archetype),
             id_
         );
     }

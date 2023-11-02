@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_POOL_H
 #define SYSTEM_VOXEL_POOL_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/entities/entity_single_voxel.hpp>
@@ -207,11 +207,11 @@ namespace IRECS {
     };
 
     template<>
-    class IRSystem<VOXEL_POOL> : public IRSystemBase<
+    class System<VOXEL_POOL> : public SystemBase<
         VOXEL_POOL
     >   {
     public:
-        IRSystem(ivec3 numVoxelsMainCanvas, ivec3 numVoxelsPlayer)
+        System(ivec3 numVoxelsMainCanvas, ivec3 numVoxelsPlayer)
         :   m_voxelPools{}
         ,   m_voxelPoolIdMainCanvas{-1}
         ,   m_voxelPoolIdPlayer{-1}

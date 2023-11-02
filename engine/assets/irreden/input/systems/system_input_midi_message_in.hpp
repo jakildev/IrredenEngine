@@ -12,7 +12,7 @@
 #ifndef SYSTEM_INPUT_MIDI_MESSAGE_IN_H
 #define SYSTEM_INPUT_MIDI_MESSAGE_IN_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/midi_in.hpp>
 
@@ -29,13 +29,13 @@ using namespace IRAudio;
 namespace IRECS {
 
     template<>
-    class IRSystem<INPUT_MIDI_MESSAGE_IN> : public IRSystemBase<
+    class System<INPUT_MIDI_MESSAGE_IN> : public SystemBase<
         INPUT_MIDI_MESSAGE_IN,
         C_MidiMessage,
         C_MidiIn
     > {
     public:
-        IRSystem(IRMidiIn& midiIn)
+        System(IRMidiIn& midiIn)
         :   m_midiIn{midiIn}
         ,   m_ccMessagesReceivedThisFrame{}
         ,   m_nextDeviceId{0}
@@ -56,7 +56,7 @@ namespace IRECS {
             }
             IRProfile::engLogInfo("Created system INPUT_MIDI_MESSAGE_IN");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

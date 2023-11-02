@@ -10,7 +10,7 @@
 #ifndef SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 #define SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/buffer.hpp>
@@ -41,7 +41,7 @@ using namespace IRMath;
 namespace IRECS {
 
     template <>
-    class IRSystem<RENDERING_CANVAS_TO_FRAMEBUFFER> : public IRSystemBase<
+    class System<RENDERING_CANVAS_TO_FRAMEBUFFER> : public SystemBase<
         RENDERING_CANVAS_TO_FRAMEBUFFER,
         C_TriangleCanvasTextures,
         C_TriangleCanvasFramebuffer,
@@ -49,7 +49,7 @@ namespace IRECS {
         C_ZoomLevel
     >   {
     public:
-        IRSystem(
+        System(
             ivec2 sceneSize
         )
         :   m_cameraOffset{- ivec2(m_isoTriangleScreenSize) / 2}
@@ -65,7 +65,7 @@ namespace IRECS {
             }
         ,   m_frameDataBuffer{
                 nullptr,
-                kFrameDataUniformBufferSizeIsoTriangles,
+                sizeof(FrameDataIsoTriangles),
                 GL_DYNAMIC_STORAGE_BIT,
                 GL_UNIFORM_BUFFER,
                 kBufferIndex_FrameDataUniformIsoTriangles
@@ -152,7 +152,7 @@ namespace IRECS {
                 m_frameData.textureOffset_ = vec2(0);
                 m_frameDataBuffer.subData(
                     0,
-                    kFrameDataUniformBufferSizeIsoTriangles,
+                    sizeof(FrameDataIsoTriangles),
                     &m_frameData
                 );
                 triangleCanvasTextures[i].bind(0, 1);
@@ -190,7 +190,7 @@ namespace IRECS {
         }
     };
 
-} // namespace IRSystem
+} // namespace System
 
 
 #endif /* SYSTEM_CANVAS_TO_FRAMEBUFFER_H */

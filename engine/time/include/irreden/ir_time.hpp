@@ -36,6 +36,8 @@ namespace IRTime {
         UPDATE,
         RENDER,
         INPUT,
+        START,
+        END,
         NUM_EVENTS
     };
 

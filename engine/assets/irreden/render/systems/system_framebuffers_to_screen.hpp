@@ -10,7 +10,7 @@
 #ifndef SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 #define SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_math.hpp>
 
 #include <irreden/ir_render.hpp>
@@ -34,14 +34,14 @@ using namespace IRMath;
 namespace IRECS {
 
     template <>
-    class IRSystem<RENDERING_FRAMEBUFFER_TO_SCREEN> : public IRSystemBase<
+    class System<RENDERING_FRAMEBUFFER_TO_SCREEN> : public SystemBase<
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         C_TriangleCanvasFramebuffer,
         C_Position3D,
         C_CameraPosition2DIso
     >   {
     public:
-        IRSystem()
+        System()
         :   m_shaderProgram{  // FramebufferBasic
                 {
                     ShaderStage{

@@ -12,7 +12,7 @@
 #ifndef SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
 #define SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/midi_out.hpp>
 
@@ -30,14 +30,14 @@ using namespace IRAudio;
 namespace IRECS {
 
     template<>
-    class IRSystem<OUTPUT_MIDI_MESSAGE_OUT> : public IRSystemBase<
+    class System<OUTPUT_MIDI_MESSAGE_OUT> : public SystemBase<
         OUTPUT_MIDI_MESSAGE_OUT,
         C_MidiMessage,
         C_MidiOut
     >   {
 
     public:
-        IRSystem(IRMidiOut& midiOut)
+        System(IRMidiOut& midiOut)
         :   m_midiOut{midiOut}
         ,   m_nextDeviceId{0}
         ,   m_midiOutDevices{}
@@ -45,7 +45,7 @@ namespace IRECS {
         {
             IRProfile::engLogInfo("Creating system OUTPUT_MIDI_MESSAGE_OUT");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

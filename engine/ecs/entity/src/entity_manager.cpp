@@ -8,7 +8,8 @@
  */
 
 #include <irreden/ir_profile.hpp>
-#include <irreden/ecs/entity_manager.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/entity/entity_manager.hpp>
 
 #include <memory>
 #include <sstream>
@@ -262,4 +263,4 @@ namespace IRECS {
         IRProfile::engLogDebug("Entity={} moved to row={}", backEntity, newPos);
     }
 
-} // namespace IREntity:
+} // namespace IRECS:

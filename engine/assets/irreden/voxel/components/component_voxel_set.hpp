@@ -15,7 +15,7 @@
 #include <irreden/render/image_data.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/texture.hpp>
-#include <irreden/ecs/system_manager.hpp>
+#include <irreden/system/system_manager.hpp>
 #include <irreden/ecs/entity_handle.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 

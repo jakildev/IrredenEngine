@@ -12,7 +12,7 @@
 
 
 // #include <irreden/ir_constants.hpp>
-// #include <irreden/ecs/ir_system_base.hpp>
+// #include <irreden/system/ir_system_base.hpp>
 // #include <irreden/ir_render.hpp>
 // #include <irreden/ir_math.hpp>
 
@@ -30,11 +30,11 @@
 //     constexpr GLenum kDataGLType = GL_UNSIGNED_BYTE;
 
 //     template<>
-//     class IRSystem<VIDEO_ENCODER> : public IRSystemBase<
+//     class System<VIDEO_ENCODER> : public SystemBase<
 //         VIDEO_ENCODER
 //     >  {
 //     public:
-//         IRSystem(
+//         System(
 //             const std::string outfile = "video_encoder_out.mp4",
 //             ivec2 inOutResolution = kVideoEncoderDefaultResolution,
 //             GLenum inOutFormat = kDataGLFormat,
@@ -73,7 +73,7 @@
 //             IRProfile::engLogInfo("Creating system VIDEO_ENCODER");
 //         }
 
-//         virtual ~IRSystem() = default;
+//         virtual ~System() = default;
 
 //         virtual void start() override {
 //             m_dtvEncoder.run(m_encoderSettings, 20);

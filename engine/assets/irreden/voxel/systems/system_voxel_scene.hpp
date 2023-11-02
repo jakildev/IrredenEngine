@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_SCENE_H
 #define SYSTEM_VOXEL_SCENE_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
@@ -25,17 +25,17 @@ using namespace IRMath;
 // that is how update algorithm will work...
 namespace IRECS {
     template<>
-    class IRSystem<VOXEL_SCENE> : public IRSystemBase<
+    class System<VOXEL_SCENE> : public SystemBase<
         VOXEL_SCENE,
         C_Position3D,
         C_PositionGlobal3D,
         C_VoxelSceneNode
     >   {
     public:
-        IRSystem() {
+        System() {
             IRProfile::engLogInfo("Created system VOXEL_SCENE");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         // WIP WIP WIP LEFT OFF HERE WIP WIP WIP
         // simply a matter of updating positions for now based
@@ -48,7 +48,7 @@ namespace IRECS {
             std::vector<C_VoxelSceneNode>& voxelSceneNodes
         )
         {
-            IRProfile::profileBlock("IRSystem<VOXEL_SCENE>::tickWithArchetype");
+            IRProfile::profileBlock("System<VOXEL_SCENE>::tickWithArchetype");
             for(int i=0; i < entities.size(); i++) {
                 voxelSets[i].updateChildren(
                     positions[i].pos_
@@ -64,7 +64,7 @@ namespace IRECS {
         //     std::vector<C_VoxelSetNew>& voxelSets
         // )
         // {
-        //     IRProfile::profileBlock("IRSystem<VOXEL_SCENE>::tickWithArchetype");
+        //     IRProfile::profileBlock("System<VOXEL_SCENE>::tickWithArchetype");
         //     for(int i=0; i < entities.size(); i++) {
         //         voxelSets[i].updateChildren(
         //             positions[i].pos_ + positionOffsets[i].pos_

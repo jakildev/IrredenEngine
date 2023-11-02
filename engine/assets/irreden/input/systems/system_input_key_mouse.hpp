@@ -10,7 +10,7 @@
 #ifndef SYSTEM_INPUT_KEY_MOUSE_H
 #define SYSTEM_INPUT_KEY_MOUSE_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/input/ir_glfw_window.hpp>
 
@@ -27,13 +27,13 @@ using IRGLFW::IRGLFWWindow;
 namespace IRECS {
 
     template <>
-    class IRSystem<INPUT_KEY_MOUSE> : public IRSystemBase<
+    class System<INPUT_KEY_MOUSE> : public SystemBase<
         INPUT_KEY_MOUSE,
         C_KeyStatus,
         C_KeyMouseButton
     > {
     public:
-        IRSystem(IRGLFWWindow& window)
+        System(IRGLFWWindow& window)
         :   m_window{window}
         ,   m_scrollEntitiesThisFrame{}
         ,   m_buttonPressesThisFrame{}
@@ -244,6 +244,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_INPUT_KEY_MOUSE_H */

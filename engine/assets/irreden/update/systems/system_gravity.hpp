@@ -10,7 +10,7 @@
 #ifndef SYSTEM_GRAVITY_H
 #define SYSTEM_GRAVITY_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include "..\components\component_velocity_3d.hpp"
 #include "..\components\component_gravity_3d.hpp"
@@ -20,12 +20,12 @@ using namespace IRComponents;
 namespace IRECS {
 
     template<>
-    class IRSystem<GRAVITY_3D> : public IRSystemBase<
+    class System<GRAVITY_3D> : public SystemBase<
         GRAVITY_3D,
         C_Velocity3D
     >   {
     public:
-        IRSystem(
+        System(
             C_Gravity3D gravity = C_Gravity3D{}
         )
         :   m_gravity{gravity}
@@ -40,7 +40,7 @@ namespace IRECS {
             // );
             IRProfile::engLogInfo("Created system GRAVITY_3D");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype type,

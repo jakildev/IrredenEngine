@@ -11,18 +11,15 @@
 #define IR_WORLD_Hjj
 
 #include <irreden/input/ir_glfw_window.hpp>
-#include <irreden/ecs/entity_manager.hpp>
+#include <irreden/ir_ecs.hpp>
 // #include <irreden/command/command_manager.hpp>
-#include <irreden/ecs/system_manager.hpp>
+#include <irreden/system/system_manager.hpp>
 #include <irreden/render/renderer.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio_manager.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/time/time_manager.hpp>
-
-#include <irreden/ecs/entity_handle.hpp>
-#include <irreden/ecs/prefabs.hpp>
 
 class IRWorld {
 

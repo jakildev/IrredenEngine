@@ -14,7 +14,6 @@
 #include <irreden/math/easing_functions.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/ecs/entity_handle.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 

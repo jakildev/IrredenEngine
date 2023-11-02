@@ -12,9 +12,10 @@
 
 // #include "../entity/entity_handle.hpp"
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_ecs.hpp>
-#include <irreden/ecs/archetype_node.hpp>
-#include <irreden/ecs/archetype_graph.hpp>
+#include <irreden/entity/ir_entity_types.hpp>
+#include <irreden/entity/archetype_node.hpp>
+#include <irreden/entity/archetype_graph.hpp>
+#include <irreden/entity/archetype.hpp>
 
 #include <queue>
 #include <sstream>
@@ -157,28 +158,27 @@ namespace IRECS {
                 componentType,
                 toNode->entities_[record.row],
                 record.row,
-                IRECS::makeComponentString(type).c_str());
+                makeComponentStringInternal(type).c_str());
         }
 
         template <typename Component>
         Component& getInsertComponent(EntityId entity) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-            EntityRecord& r = getRecord(entity);
-            //ArchetypeNode* node = r.archetypeNode;
+            EntityRecord& record = getRecord(entity);
             ComponentId componentType = getComponentType<Component>();
-            Archetype archetype = r.archetypeNode->type_;
+            Archetype archetype = record.archetypeNode->type_;
 
             if(std::find(archetype.begin(), archetype.end(), componentType) ==
                 archetype.end()) {
-                insertDefaultComponent<Component>(r);
+                insertDefaultComponent<Component>(record);
             }
-            ArchetypeNode* node = r.archetypeNode;
+            ArchetypeNode* node = record.archetypeNode;
             IComponentDataImpl<Component> *data =
                 castComponentDataPointer<Component>(
                     node->components_[componentType].get()
                 );
 
-            return data->dataVector[r.row];
+            return data->dataVector[record.row];
         }
 
         template <typename... Components>
@@ -402,6 +402,6 @@ namespace IRECS {
 
     };
 
-} // namespace IREntity
+} // namespace IRECS
 
 #endif /* ENTITY_MANAGER_H */

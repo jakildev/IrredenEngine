@@ -15,7 +15,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IREntity;
+using namespace IRECS;
 using namespace IRMath;
 using namespace IRComponents;
 

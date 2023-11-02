@@ -19,9 +19,6 @@ namespace IRRender {
     #define IR_ENABLE_WIREFRAME ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
     #define IR_DISABLE_WIREFRAME ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-    const unsigned int kRenderTargetMaxVertices = 65536;
-    const unsigned int kRenderTargetMaxIndices = 65536;
-
     const std::unordered_map<GLenum, GLint> kMapSizeofGLType = {
         {GL_BYTE, sizeof(GLbyte)},
         {GL_SHORT, sizeof(GLshort)},
@@ -50,8 +47,7 @@ namespace IRRender {
         mat4 mvpMatrix;
         int isWireframe;
     };
-    const GLuint kBufferIndex_FrameDataUniform = 0;
-    const GLsizeiptr kFrameDataUniformBufferSize = sizeof(FrameData);
+    constexpr GLuint kBufferIndex_FrameDataUniform = 0;
 
     // C++ weekly ep 339
     // Use 'static constexpr' for constexpr values at function scope
@@ -62,14 +58,14 @@ namespace IRRender {
         int kMinTriangleDistance = IRConstants::kTriangleDistanceMinDistance;
         int kMaxTriangleDistance = IRConstants::kTriangleDistanceMaxDistance;
     } kGlobalConstantsGLSL;
-    const GLuint kBufferIndex_GlobalConstantsGLSL = 1;
+    constexpr GLuint kBufferIndex_GlobalConstantsGLSL = 1;
 
     struct FrameDataFramebuffer {
         glm::mat4 mvpMatrix;
         vec2 textureOffset;
     };
-    const GLuint kBufferIndex_FramebufferFrameDataUniform = 2;
-    const GLsizeiptr kFramebufferFrameDataUniformBufferSize =
+    constexpr GLuint kBufferIndex_FramebufferFrameDataUniform = 2;
+    constexpr GLsizeiptr kFramebufferFrameDataUniformBufferSize =
         sizeof(FrameDataFramebuffer);
 
     struct FrameDataIsoTriangles {
@@ -78,27 +74,25 @@ namespace IRRender {
         vec2 canvasOffset_;
         vec2 textureOffset_;
     };
-    const GLuint kBufferIndex_FrameDataUniformIsoTriangles = 3;
-    const GLsizeiptr kFrameDataUniformBufferSizeIsoTriangles =
-        sizeof(FrameDataIsoTriangles);
+    constexpr GLuint kBufferIndex_FrameDataUniformIsoTriangles = 3;
 
     struct FrameDataIsoTriangleCompute {
         ivec2 imageOffset_;
         unsigned int imageDistanceOffset_;
     };
-    const GLuint kBufferIndex_ComputeShaderImageOffset = 4;
+    constexpr GLuint kBufferIndex_ComputeShaderImageOffset = 4;
 
-    const GLuint kBufferIndex_SingleVoxelPositions = 5;
-    const GLuint kBufferIndex_SingleVoxelColors = 6;
+    constexpr GLuint kBufferIndex_SingleVoxelPositions = 5;
+    constexpr GLuint kBufferIndex_SingleVoxelColors = 6;
 
     struct FrameDataVoxelToCanvas {
         vec2 canvasOffset_;
     };
 
-    const GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;
+    constexpr GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;
 
-    const GLuint kBufferIndex_VoxelSetUnlockedPositions = 8;
-    const GLuint kBufferIndex_VoxelSetUnlockedColors = 9;
+    constexpr GLuint kBufferIndex_VoxelSetUnlockedPositions = 8;
+    constexpr GLuint kBufferIndex_VoxelSetUnlockedColors = 9;
 
     extern RenderingResourceManager* g_renderingResourceManager;
     RenderingResourceManager& getRenderingResourceManager();

@@ -7,7 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/ecs/archetype_graph.hpp>
+#include <irreden/entity/archetype_graph.hpp>
+#include <irreden/ir_entity.hpp>
 #include <iterator>
 
 namespace IRECS {
@@ -111,7 +112,7 @@ namespace IRECS {
                 // }
                 edge->add->edges_[*itr].remove = tempNode;
                 IRProfile::engLogInfo("Created archetype node with components HERE: {}, id={}",
-                IRECS::makeComponentString(tempType),
+                makeComponentStringInternal(tempType),
                 edge->add->id_);
             }
             tempNode = edge->add;
@@ -119,4 +120,4 @@ namespace IRECS {
         return tempNode;
     }
 
-} // namespace IREntity
+} // namespace IRECS

@@ -11,6 +11,7 @@
 #define I_COMPONENT_DATA_H
 
 #include <irreden/ir_profile.hpp>
+#include <irreden/entity/ir_entity_types.hpp>
 
 #include <vector>
 #include <memory>
@@ -36,9 +37,6 @@ namespace IRECS {
 
     // IR: 119
 
-
-    class IComponentData;
-    typedef std::unique_ptr<IComponentData> smart_ComponentData;
 
     class IComponentData {
     public:

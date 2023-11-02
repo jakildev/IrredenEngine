@@ -10,8 +10,7 @@
 #ifndef SYSTEM_VELOCITY_H
 #define SYSTEM_VELOCITY_H
 
-#include <irreden/ecs/ir_system_base.hpp>
-
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include "..\components\component_velocity_3d.hpp"
 
@@ -28,13 +27,13 @@ namespace IRECS {
     }
 
     template<>
-    class IRSystem<VELOCITY_3D> : public IRSystemBase<
+    class System<VELOCITY_3D> : public SystemBase<
         VELOCITY_3D,
         C_Position3D,
         C_Velocity3D
     >   {
     public:
-        IRSystem() {
+        System() {
             // registerCommand<kGamepadButtonPressed>(
             //     IRGamepadButtons::kGamepadButtonA,
             //     [this]() {
@@ -49,7 +48,7 @@ namespace IRECS {
             // );
             IRProfile::engLogInfo("Created system VELOCITY_3D");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

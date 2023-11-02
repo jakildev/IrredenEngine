@@ -7,8 +7,8 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
 ## Features
 -   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
-[Isometric Pixelatable Voxel Renderer](/irreden-engine/docs/features/renderer.md)\
-[Archetype-based entity-component-system](/irreden-engine/docs/features/ecs.md)
+[Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
+[Archetype-based entity-component-system](/docs/features/ecs.md)
 
 ## Integrations and Dependencies
 
@@ -35,16 +35,10 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
 ### Prerequirsites
 
--   Windows: [Windows set up instructions.]()
-    -   Obtain a device running Windows 10 or greater.
+-   Windows OS
 -   OpenGL 4.6 supported hardware.
-    -
 -   MinGW (or other c/c++ compiler)
-    -   MinGW gives you a c/c++ compiler in the form of gcc and g++ respectively.
 -   CMake
-    -   Set up an environment to build cmake projects.
-
-
 
 ### Instructions
 

@@ -10,7 +10,7 @@
 #ifndef SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 #define SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/shader.hpp>
@@ -46,7 +46,7 @@ constexpr int kMaxSingleVoxels =
 namespace IRECS {
 
     template<>
-    class IRSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS> : public IRSystemBase<
+    class System<RENDERING_SINGLE_VOXEL_TO_CANVAS> : public SystemBase<
         RENDERING_SINGLE_VOXEL_TO_CANVAS,
         C_VoxelPool,
         C_TriangleCanvasTextures,
@@ -55,7 +55,7 @@ namespace IRECS {
         // C_TriangleCanvasFramebuffer
     >   {
     public:
-        IRSystem()
+        System()
         :   m_shaderCompute{
                 {
                     ShaderStage{
@@ -345,6 +345,6 @@ namespace IRECS {
     };
 
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_SINGLE_VOXEL_TO_CANVAS_H */

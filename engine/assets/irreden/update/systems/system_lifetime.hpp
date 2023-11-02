@@ -21,15 +21,15 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<LIFETIME> : public IRSystemBase<
+    class System<LIFETIME> : public SystemBase<
         LIFETIME,
         C_Lifetime
     >   {
     public:
-        IRSystem() {
+        System() {
             IRProfile::engLogInfo("Created system LIFETIME");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

@@ -10,8 +10,7 @@
 #ifndef ENTITY_HANDLE_H
 #define ENTITY_HANDLE_H
 
-#include <irreden/ir_ecs.hpp>
-#include <irreden/ecs/entity_manager.hpp>
+#include <irreden/ir_entity.hpp>
 
 namespace IRECS {
 

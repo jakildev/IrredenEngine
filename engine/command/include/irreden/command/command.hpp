@@ -7,11 +7,11 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef IR_COMMAND_H
-#define IR_COMMAND_H
+#ifndef COMMAND_H
+#define COMMAND_H
 
 #include <irreden/ecs/entity_handle.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_ecs.hpp
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
 
@@ -33,89 +33,129 @@ namespace IRCommands {
 
     enum IRCommandTypes {
         IR_COMMAND_NULL,
-        IR_COMMAND_SYSTEM,
-        IR_COMMAND_ENTITY,
+        // IR_COMMAND_SYSTEM,
+        // IR_COMMAND_ENTITY,
+        IR_COMMAND_USER,
         IR_COMMAND_MIDI_NOTE,
-        IR_COMMAND_MIDI_CC,
-        IR_COMMAND_USER
+        IR_COMMAND_MIDI_CC
     };
 
     template <IRCommandTypes CommandType>
-    class IRCommand;
+    class Command;
 
     template <>
-    class IRCommand<IR_COMMAND_SYSTEM> {
+    class Command<IR_COMMAND_USER> {
     public:
-        IRCommand(
+        template <
+            typename Function
+        >
+        Command(
             IRInput::IRInputTypes type,
-            int buttonValue,
-            std::function<void()> func
+            int button,
+            Function func
         )
         :   m_type(type)
-        ,   m_button(buttonValue)
-        ,   m_func(func)
+        ,   m_button{button}
+        ,   m_func([func]()
+            {
+                func();
+            })
         {
 
         }
 
-        void execute() const {
+        void execute() const
+        {
             m_func();
+        }
+
+        const IRInput::IRInputTypes getType() const {
+            return m_type;
         }
 
         const int getButton() const {
             return m_button;
         }
 
-        const IRInput::IRInputTypes getType() const {
-            return m_type;
-        }
     private:
         IRInput::IRInputTypes m_type;
         int m_button;
         std::function<void()> m_func;
     };
 
+    // template <>
+    // class Command<IR_COMMAND_SYSTEM> {
+    // public:
+    //     Command(
+    //         IRInput::IRInputTypes type,
+    //         int buttonValue,
+    //         std::function<void()> func
+    //     )
+    //     :   m_type(type)
+    //     ,   m_button(buttonValue)
+    //     ,   m_func(func)
+    //     {
+
+    //     }
+
+    //     void execute() const {
+    //         m_func();
+    //     }
+
+    //     const int getButton() const {
+    //         return m_button;
+    //     }
+
+    //     const IRInput::IRInputTypes getType() const {
+    //         return m_type;
+    //     }
+    // private:
+    //     IRInput::IRInputTypes m_type;
+    //     int m_button;
+    //     std::function<void()> m_func;
+    // };
+
+    // template <>
+    // class Command<IR_COMMAND_ENTITY> {
+    // public:
+    //     template <typename Function, typename... Args>
+    //     Command(
+    //         IRInput::IRInputTypes type,
+    //         int buttonValue,
+    //         Function func,
+    //         Args... fixedArgs
+    //     )
+    //     :   m_type(type)
+    //     ,   m_button(buttonValue)
+    //     ,   m_func([func, fixedArgs...](EntityHandle entity) {
+    //             func(entity, fixedArgs...);
+    //         })
+    //     {
+
+    //     }
+
+    //     void execute(EntityHandle entity) const {
+    //         m_func(entity);
+    //     }
+
+    //     const int getButton() const {
+    //         return m_button;
+    //     }
+
+    //     const IRInput::IRInputTypes getType() const {
+    //         return m_type;
+    //     }
+    // private:
+    //     IRInput::IRInputTypes m_type;
+    //     int m_button;
+    //     std::function<void(EntityHandle)> m_func;
+    // };
+
     template <>
-    class IRCommand<IR_COMMAND_ENTITY> {
+    class Command<IR_COMMAND_MIDI_NOTE> {
     public:
         template <typename Function, typename... Args>
-        IRCommand(
-            IRInput::IRInputTypes type,
-            int buttonValue,
-            Function func,
-            Args... fixedArgs
-        )
-        :   m_type(type)
-        ,   m_button(buttonValue)
-        ,   m_func([func, fixedArgs...](EntityHandle entity) {
-                func(entity, fixedArgs...);
-            })
-        {
-
-        }
-
-        void execute(EntityHandle entity) const {
-            m_func(entity);
-        }
-
-        const int getButton() const {
-            return m_button;
-        }
-
-        const IRInput::IRInputTypes getType() const {
-            return m_type;
-        }
-    private:
-        IRInput::IRInputTypes m_type;
-        int m_button;
-        std::function<void(EntityHandle)> m_func;
-    };
-
-    template <>
-    class IRCommand<IR_COMMAND_MIDI_NOTE> {
-    public:
-        template <typename Function, typename... Args>
-        IRCommand(
+        Command(
             IRInput::IRInputTypes type,
             Function func,
             Args... fixedArgs
@@ -149,10 +189,10 @@ namespace IRCommands {
     };
 
     template <>
-    class IRCommand<IR_COMMAND_MIDI_CC> {
+    class Command<IR_COMMAND_MIDI_CC> {
     public:
         template <typename Function>
-        IRCommand(
+        Command(
             IRInput::IRInputTypes type,
             IRAudio::IRCCMessage ccMessage,
             Function func
@@ -189,44 +229,6 @@ namespace IRCommands {
         std::function<void(unsigned char)> m_func;
     };
 
-    template <>
-    class IRCommand<IR_COMMAND_USER> {
-    public:
-        template <typename Function>
-        IRCommand(
-            IRInput::IRInputTypes type,
-            int button,
-            Function func
-        )
-        :   m_type(type)
-        ,   m_button{button}
-        ,   m_func([func]()
-            {
-                func();
-            })
-        {
-
-        }
-
-        void execute() const
-        {
-            m_func();
-        }
-
-        const IRInput::IRInputTypes getType() const {
-            return m_type;
-        }
-
-        const int getButton() const {
-            return m_button;
-        }
-
-    private:
-        IRInput::IRInputTypes m_type;
-        int m_button;
-        std::function<void()> m_func;
-    };
-
 }
 
-#endif /* IR_COMMAND_H */
+#endif /* COMMAND_H */

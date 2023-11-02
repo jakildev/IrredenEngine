@@ -9,7 +9,7 @@
 
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/midi_in.hpp>
-#include <irreden/ecs/entity_handle.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
 

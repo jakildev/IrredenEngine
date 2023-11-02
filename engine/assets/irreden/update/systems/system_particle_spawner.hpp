@@ -13,7 +13,7 @@
 #ifndef SYSTEM_PARTICLE_SPAWNER_H
 #define SYSTEM_PARTICLE_SPAWNER_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/update/components/component_particle_spawner.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
@@ -29,13 +29,13 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<PARTICLE_SPAWNER> : public IRSystemBase<
+    class System<PARTICLE_SPAWNER> : public SystemBase<
         PARTICLE_SPAWNER,
         C_PositionGlobal3D,
         C_ParticleSpawner
     >   {
     public:
-        IRSystem()
+        System()
         {
             IRProfile::engLogInfo("Created system PARTICLE_SPAWNER");
         }
@@ -81,6 +81,6 @@ namespace IRECS {
 
     };
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_PARTICLE_SPAWNER_H */

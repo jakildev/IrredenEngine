@@ -8,7 +8,7 @@
  */
 
 #include <irreden/command/command_manager.hpp>
-#include <irreden/ecs/system_manager.hpp>
+#include <irreden/system/system_manager.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/systems/input/system_input_gamepad.hpp>
@@ -16,45 +16,45 @@
 
 namespace IRCommands {
 
-    void CommandManager::executeSystemCommands(IRSystemName systemName) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-        const auto& systemCommandList =
-            m_systemCommands[systemName];
-        for(int i = 0; i < systemCommandList.size(); ++i) {
-            const auto& command = systemCommandList[i];
-            if(checkButton(command.getType(), command.getButton()))
-            {
-                command.execute();
-            }
-        }
-    }
+    // void CommandManager::executeSystemCommands(IRSystemName systemName) {
+    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+    //     const auto& systemCommandList =
+    //         m_systemCommands[systemName];
+    //     for(int i = 0; i < systemCommandList.size(); ++i) {
+    //         const auto& command = systemCommandList[i];
+    //         if(checkButton(command.getType(), command.getButton()))
+    //         {
+    //             command.execute();
+    //         }
+    //     }
+    // }
 
-    void CommandManager::executeSystemEntityCommands(IRSystemName systemName) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-        const auto& systemEntityCommandList =
-            m_systemEntityCommands[systemName];
-        for(int i = 0; i < systemEntityCommandList.size(); ++i) {
-            executeEntityCommand(systemEntityCommandList[i]);
-        }
-    }
+    // void CommandManager::executeSystemEntityCommands(IRSystemName systemName) {
+    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+    //     const auto& systemEntityCommandList =
+    //         m_systemEntityCommands[systemName];
+    //     for(int i = 0; i < systemEntityCommandList.size(); ++i) {
+    //         executeEntityCommand(systemEntityCommandList[i]);
+    //     }
+    // }
 
-    void CommandManager::executeEntityCommand(IRCommandNames commandName) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-        const auto& command =
-            m_entityCommands.at(commandName);
-        if(IRECS::getSystem<INPUT_KEY_MOUSE>()->
-            checkButton(
-                command.getType(),
-                (IRKeyMouseButtons)command.getButton()
-            )
-        )
-        {
-            const auto& boundEntities = m_entitiesBoundToCommands[commandName];
-            for(auto const& entity : boundEntities) {
-                command.execute(entity);
-            }
-        }
-    }
+    // void CommandManager::executeEntityCommand(IRCommandNames commandName) {
+    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+    //     const auto& command =
+    //         m_entityCommands.at(commandName);
+    //     if(IRECS::getSystem<INPUT_KEY_MOUSE>()->
+    //         checkButton(
+    //             command.getType(),
+    //             (IRKeyMouseButtons)command.getButton()
+    //         )
+    //     )
+    //     {
+    //         const auto& boundEntities = m_entitiesBoundToCommands[commandName];
+    //         for(auto const& entity : boundEntities) {
+    //             command.execute(entity);
+    //         }
+    //     }
+    // }
 
     void CommandManager::executeDeviceMidiCCCommandsAll() {
         IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);

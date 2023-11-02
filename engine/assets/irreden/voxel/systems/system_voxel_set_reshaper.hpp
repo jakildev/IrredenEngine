@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_SET_RESHAPER_H
 #define SYSTEM_VOXEL_SET_RESHAPER_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -26,11 +26,11 @@ namespace IRECS {
     }
 
     template<>
-    class IRSystem<VOXEL_SET_RESHAPER> : public IRSystemBase<
+    class System<VOXEL_SET_RESHAPER> : public SystemBase<
         VOXEL_SET_RESHAPER
     >   {
     public:
-        IRSystem() {
+        System() {
             // TOOD: Move commands
             // registerCommand<RESHAPE_SPHERE, kKeyMouseButtonPressed>(
             //     IRKeyMouseButtons::kKeyButtonS,
@@ -45,7 +45,7 @@ namespace IRECS {
 
             IRProfile::engLogInfo("Created system VOXEL_SET_RESHAPER");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

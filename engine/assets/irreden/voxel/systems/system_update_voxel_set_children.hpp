@@ -10,7 +10,7 @@
 #ifndef SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 #define SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
@@ -22,19 +22,19 @@ using namespace IRMath;
 
 namespace IRECS {
     template<>
-    class IRSystem<UPDATE_VOXEL_SET_CHILDREN> : public IRSystemBase<
+    class System<UPDATE_VOXEL_SET_CHILDREN> : public SystemBase<
         UPDATE_VOXEL_SET_CHILDREN,
         C_PositionGlobal3D,
         C_VoxelSetNew
     >   {
     public:
-        IRSystem()
+        System()
         :   m_voxelScene{}
         {
             IRProfile::engLogInfo("Created system UPDATE_VOXEL_SET_CHILDREN");
         }
 
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,

@@ -1,11 +1,28 @@
-#include <irreden/ecs/system_manager.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/system/system_manager.hpp>
 // #include <irreden/command/command_manager.hpp>
 
 namespace IRECS {
 
-    void SystemManager::executeSystem(std::unique_ptr<IRECS::IRSystemVirtual> &system) {
+    SystemManager::SystemManager()
+    :   m_systems{}
+    ,   m_systemOrders{}
+    {
+        for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
+            m_systemOrders
+                [static_cast<IRSystemType>(i)
+            ] = std::list<IRSystemName>{};
+        }
+        g_systemManager = this;
+        IRProfile::engLogInfo("SystemManager initalized");
+    };
+
+    void SystemManager::executeSystem(
+        std::unique_ptr<SystemVirtual> &system
+    )
+    {
         std::stringstream ss;
-        ss << "IRSystemBase::tick " << static_cast<int>(system->getSystemName());
+        ss << "SystemBase::tick " << static_cast<int>(system->getSystemName());
         IRProfile::profileBlock(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
         // TODO: Resolve system commands elsewhere or remove
         // this concept entirely.

@@ -22,12 +22,12 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<system_name> : public IRSystemBase<
+    class System<system_name> : public SystemBase<
         system_name,
         components...
     >   {
     public:
-        IRSystem()
+        System()
         {
             IRProfile::engLogInfo("Created system ");
         }
@@ -72,6 +72,6 @@ namespace IRECS {
     };
 
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_AUDIO_DEVICE_MANAGER_H */

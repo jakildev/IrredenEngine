@@ -10,8 +10,7 @@
 #ifndef ENTITY_MOUSE_BUTTON_H
 #define ENTITY_MOUSE_BUTTON_H
 
-#include <irreden/ecs/prefabs.hpp>
-#include <irreden/ecs/entity_handle.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/input/components/component_mouse_button.hpp>
 #include <irreden/input/components/component_keyboard_key_status.hpp>

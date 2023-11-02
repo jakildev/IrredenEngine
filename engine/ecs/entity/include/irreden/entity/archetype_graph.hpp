@@ -10,7 +10,8 @@
 #ifndef ARCHETYPE_GRAPH_H
 #define ARCHETYPE_GRAPH_H
 
-#include <irreden/ecs/archetype_node.hpp>
+#include <irreden/entity/archetype_node.hpp>
+#include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_profile.hpp>
 #include <algorithm>
 #include <sstream>

@@ -39,6 +39,6 @@ namespace IRECS {
 
     // template<PrefabTypes type, typename... Args>
     // EntityHandle create(Args&&... args);
-}
+} // namespace IRECS
 
 #endif /* PREFABS_H */

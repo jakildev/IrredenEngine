@@ -15,33 +15,23 @@
 #include <memory>
 #include <string>
 #include <list>
-#include <irreden/ecs/entity_manager.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_ecs.hpp>
-#include <irreden/ecs/ir_system_virtual.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_time.hpp>
+#include <irreden/system/ir_system_types.hpp>
+#include <irreden/system/ir_system_virtual.hpp>
 
 namespace IRECS {
 
 class SystemManager {
     public:
-        SystemManager()
-        :   m_systems{}
-        ,   m_systemOrders{}
-        {
-            for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
-                m_systemOrders
-                    [static_cast<IRSystemType>(i)
-                ] = std::list<IRSystemName>{};
-            }
-            g_systemManager = this;
-            IRProfile::engLogInfo("SystemManager initalized");
-        };
+        SystemManager();
         ~SystemManager() = default;
 
         template <IRSystemName SystemName, IRSystemType SystemType, typename... Args>
         void registerSystem(Args&&... args)
         {
-            auto systemInstance = std::make_unique<IRSystem<SystemName>>(
+            auto systemInstance = std::make_unique<System<SystemName>>(
                 std::forward<Args>(args)...
             );
             m_systems.insert(std::make_pair(SystemName, std::move(systemInstance)));
@@ -63,14 +53,14 @@ class SystemManager {
             }
         }
 
-        template <IREvents Event>
+        template <IRTime::Events Event>
         void executeEvent() {
-            if(Event == IREvents::START) {
+            if(Event == IRTime::Events::START) {
                 for(auto& system : m_systems) {
                     system.second->start();
                 }
             }
-            if(Event == IREvents::END) {
+            if(Event == IRTime::Events::END) {
                 for(auto& system : m_systems) {
                     system.second->end();
                 }
@@ -78,13 +68,13 @@ class SystemManager {
         }
 
         template <IRSystemName SystemName>
-        const IRSystem<SystemName>& get() const {
-            return *static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
+        const System<SystemName>& get() const {
+            return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
         template <IRSystemName SystemName>
-        IRSystem<SystemName>& get() {
-            return *static_cast<IRSystem<SystemName>*>(m_systems.at(SystemName).get());
+        System<SystemName>& get() {
+            return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
         // template <
@@ -97,7 +87,7 @@ class SystemManager {
 
 
     private:
-        std::unordered_map<IRSystemName, std::unique_ptr<IRSystemVirtual>>
+        std::unordered_map<IRSystemName, std::unique_ptr<SystemVirtual>>
             m_systems;
         std::unordered_map<IRSystemType, std::list<IRSystemName>>
             m_systemOrders;
@@ -108,19 +98,15 @@ class SystemManager {
         //     std::vector<IRSystemName>
         // > m_eventSubscriptions;
 
-        void executeSystem(std::unique_ptr<IRECS::IRSystemVirtual> &system);
+        void executeSystem(
+            std::unique_ptr<SystemVirtual> &system
+        );
 
         template <IRSystemType systemType>
         const std::list<IRSystemName>& getSystemExecutionOrder() const {
             return m_systemOrders.at(systemType);
         }
     };
-
-    // ir_ecs API
-    template <IRSystemName systemName>
-    IRSystem<systemName>& getSystem() {
-        return getSystemManager().get<systemName>();
-    }
 
 } // namespace IRECS
 

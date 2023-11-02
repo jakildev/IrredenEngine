@@ -10,7 +10,7 @@
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/input/ir_glfw_window.hpp>
 #include "..\entities\entity_joystick.hpp"
@@ -21,13 +21,13 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<INPUT_GAMEPAD> : public IRSystemBase<
+    class System<INPUT_GAMEPAD> : public SystemBase<
         INPUT_GAMEPAD,
         C_GLFWJoystick,
         C_GLFWGamepadState
     >   {
     public:
-        IRSystem(IRGLFWWindow& window)
+        System(IRGLFWWindow& window)
         :   m_window{window}
         {
             IRProfile::engLogInfo("Creating system INPUT_GAMEPAD");
@@ -107,6 +107,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_INPUT_GAMEPAD_H */

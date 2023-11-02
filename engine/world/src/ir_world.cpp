@@ -11,7 +11,6 @@
 
 // OTHER PACKAGES THAT SHOULD MOVE TO RESPECTIVE PACKAGES
 #include <irreden/ir_profile.hpp> // ir_profiling
-#include <irreden/ecs/entity_handle.hpp> // ir_ecs
 #include <irreden/render/rendering_rm.hpp> // ir_rendering
 #include <irreden/render/texture.hpp> // ir_rendering
 #include <irreden/ir_constants.hpp> // ir_constants
@@ -98,9 +97,6 @@ void IRWorld::gameLoop() {
     initGameSystems();
     initGameEntities();
 
-    /* Noclip console test */
-    // noclip::console c{};
-
     start();
     while (!m_IRGLFWWindow.shouldClose())
     {
@@ -146,11 +142,11 @@ void IRWorld::input() {
 void IRWorld::start() {
         m_timeManager.start();
 
-    m_systemManager.executeEvent<IREvents::START>();
+    m_systemManager.executeEvent<IRTime::Events::START>();
 }
 
 void IRWorld::end() {
-    m_systemManager.executeEvent<IREvents::END>();
+    m_systemManager.executeEvent<IRTime::Events::END>();
 }
 
 void IRWorld::update()
@@ -190,6 +186,10 @@ void IRWorld::initEngineSystems() {
     initIRUpdateSystems();
     initIRRenderSystems();
 }
+
+// void IRWorld::initEngineCommands() {
+//     IRCommand::registerCommand
+// }
 
 void IRWorld::initIRInputSystems() {
     m_systemManager.registerSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
@@ -253,9 +253,6 @@ void IRWorld::initIRRenderSystems() {
     >();
 }
 
-void IRWorld::initEngineCommands() {
-    // TODO: maybe move all commands here instead of inside systems
-}
 
 // This set player stuff is incomplete and should probably
 // just be deduced

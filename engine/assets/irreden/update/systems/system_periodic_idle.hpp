@@ -10,7 +10,7 @@
 #ifndef SYSTEM_PERIODIC_IDLE_H
 #define SYSTEM_PERIODIC_IDLE_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include "..\components\component_periodic_idle.hpp"
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -21,13 +21,13 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<PERIODIC_IDLE> : public IRSystemBase<
+    class System<PERIODIC_IDLE> : public SystemBase<
         PERIODIC_IDLE,
         C_PeriodicIdle,
         C_VoxelSetNew
     >   {
     public:
-        IRSystem()
+        System()
         {
             IRProfile::engLogInfo("Created system PERIODIC_IDLE");
         }
@@ -54,6 +54,6 @@ namespace IRECS {
     };
 
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_PERIODIC_IDLE_H */

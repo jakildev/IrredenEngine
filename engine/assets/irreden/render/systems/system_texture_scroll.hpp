@@ -10,7 +10,7 @@
 #ifndef SYSTEM_RENDERING_TEXTURE_SCROLL_H
 #define SYSTEM_RENDERING_TEXTURE_SCROLL_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/ir_time.hpp>
@@ -21,13 +21,13 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class IRSystem<RENDERING_TEXTURE_SCROLL> : public IRSystemBase<
+    class System<RENDERING_TEXTURE_SCROLL> : public SystemBase<
         RENDERING_TEXTURE_SCROLL,
         C_TextureScrollPosition,
         C_TextureScrollVelocity
     >   {
     public:
-        IRSystem()
+        System()
         {
             IRProfile::engLogInfo("Created system RENDERING_TEXTURE_SCROLL");
         }
@@ -64,6 +64,6 @@ namespace IRECS {
     };
 
 
-} // namespace IRSystem
+} // namespace System
 
 #endif /* SYSTEM_RENDERING_TEXTURE_SCROLL_H */

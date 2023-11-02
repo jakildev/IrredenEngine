@@ -11,11 +11,10 @@
 #define IR_SYSTEM_BASE_H
 
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_entity.hpp>
 #include "ir_system_virtual.hpp"
-#include <irreden/ecs/entity_manager.hpp>
 #include <irreden/ir_profile.hpp>
 // #include <irreden/ir_command.hpp>
-#include "entity_handle.hpp"
 #include "system_manager.hpp"
 
 // #include <irreden/command/command_manager.hpp>
@@ -29,13 +28,13 @@ namespace IRECS {
 
     // I want to try the "deducing this" pattern to solve all
     // my system problems.
-    template <IRSystemName System, typename... Components>
-    class IRSystemBase : public IRSystemVirtual {
+    template <IRSystemName system, typename... Components>
+    class SystemBase : public SystemVirtual {
     public:
-        IRSystemBase()
-        :   IRSystemVirtual{
-                IRECS::getEntityManager().getArchetype<Components...>(),
-                System
+        SystemBase()
+        :   SystemVirtual{
+                IRECS::getArchetype<Components...>(),
+                system
             }
         {
             IRProfile::engLogInfo(
@@ -43,13 +42,13 @@ namespace IRECS {
                 IRECS::makeComponentString(this->getArchetype())
             );
         }
-        virtual ~IRSystemBase() = default;
+        virtual ~SystemBase() = default;
 
         // What if instead of one call per archetype node it was a span
         // of all components this frame...
         virtual void tick(ArchetypeNode* node) override {
             std::stringstream ss;
-            ss << "IRSystemBase::tick " << static_cast<int>(System);
+            ss << "SystemBase::tick " << static_cast<int>(system);
             IRProfile::profileBlock(ss.str().c_str(), IR_PROFILER_COLOR_UPDATE);
 
             // TODO: This is not intuative and should change or
@@ -71,11 +70,11 @@ namespace IRECS {
             auto paramTuple = std::make_tuple(
                 node->type_,
                 std::ref(node->entities_),
-                std::ref(IRECS::getEntityManager().getComponentData<Components>(node))...
+                std::ref(getComponentData<Components>(node))...
             );
 
             std::apply([&](auto&&... args) {
-                static_cast<IRSystem<System>*>(this)->
+                static_cast<System<system>*>(this)->
                     tickWithArchetype(
                         std::forward<decltype(args)>(args)...
                     );
@@ -147,18 +146,16 @@ namespace IRECS {
         template <typename ComponentTag>
         void addTag() {
             m_includeTags.insert(
-                IRECS::getEntityManager().getComponentType<ComponentTag>()
+                IRECS::getComponentType<ComponentTag>()
             );
         }
 
         template <typename... StandaloneComponents>
         void tickWithArchetypeStandalone() {
             auto nodes =
-                IRECS::getEntityManager().
-                    getArchetypeGraph()->
-                    queryArchetypeNodesSimple(
-                        IRECS::getEntityManager().getArchetype<Components...>()
-                    );
+                IRECS::queryArchetypeNodesSimple(
+                    IRECS::getArchetype<Components...>()
+                );
         }
 
     private:

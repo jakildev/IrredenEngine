@@ -10,7 +10,7 @@
 #ifndef SYSTEM_ACCELERATION_H
 #define SYSTEM_ACCELERATION_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include "..\components\component_velocity_3d.hpp"
 #include "..\components\component_acceleration_3d.hpp"
@@ -20,17 +20,17 @@ using namespace IRComponents;
 namespace IRECS {
 
     template<>
-    class IRSystem<ACCELERATION_3D> : public IRSystemBase<
+    class System<ACCELERATION_3D> : public SystemBase<
         ACCELERATION_3D,
         C_Velocity3D,
         C_Acceleration3D
     >   {
     public:
-        IRSystem()
+        System()
         {
             IRProfile::engLogInfo("Created system ACCELERATION_3D");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype type,

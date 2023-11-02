@@ -10,7 +10,7 @@
 #ifndef SYSTEM_GOTO_3D_H
 #define SYSTEM_GOTO_3D_H
 
-#include <irreden/ecs/ir_system_base.hpp>
+#include <irreden/system/ir_system_base.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include "..\components\component_goto_easing_3d.hpp"
@@ -20,16 +20,16 @@ using namespace IRComponents;
 namespace IRECS {
 
     template<>
-    class IRSystem<GOTO_3D> : public IRSystemBase<
+    class System<GOTO_3D> : public SystemBase<
         GOTO_3D,
         C_Position3D,
         C_GotoEasing3D
     >   {
     public:
-        IRSystem() {
+        System() {
             IRProfile::engLogInfo("Created system GOTO_3D");
         }
-        virtual ~IRSystem() = default;
+        virtual ~System() = default;
 
         void tickWithArchetype(
             Archetype archetype,
