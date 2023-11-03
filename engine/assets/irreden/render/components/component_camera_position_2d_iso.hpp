@@ -11,9 +11,8 @@
 #define COMPONENT_CAMERA_POSITION_2D_ISO_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using  IRMath::vec2;
 
 namespace IRComponents {
 

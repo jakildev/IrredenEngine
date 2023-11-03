@@ -36,6 +36,7 @@ target_link_libraries(
     -luser32
     -lbcrypt
     IrredenEngineProfiling
+    IrredenEngineRendering
 )
 
 target_include_directories(

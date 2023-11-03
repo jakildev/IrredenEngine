@@ -11,9 +11,9 @@
 #define COMPONENT_TRIANGLES_ONLY_SET_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/ir_profile.hpp>
+
 #include <vector>
-#include "../profiling/cpu_profiler.hpp"
 
 using namespace IRMath;
 

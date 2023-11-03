@@ -11,12 +11,7 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 # include_directories(${IrredenEngine_DIR}/src)
 # include_directories(${IrredenEngine_DIR}/src/include)
 
-add_executable(UserProject world.cpp main.cpp)
+add_executable(DefaultCreation world.cpp main.cpp)
 
-target_include_directories(
-    UserProject
-    PUBLIC
-    ${PROJECT_SOURCE_DIR}/engine/src
-)
-target_link_libraries(UserProject PUBLIC IrredenEngine)
+target_link_libraries(DefaultCreation PUBLIC IrredenEngine)
 

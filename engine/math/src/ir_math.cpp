@@ -8,6 +8,7 @@
  */
 
 #include <irreden/ir_math.hpp>
+
 #include <random>
 
 namespace IRMath {

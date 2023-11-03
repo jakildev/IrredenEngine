@@ -5,8 +5,22 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
+## Terms (as they are used in this document)
+-   *Engine*: A foundation of software that games and other forms of media can be built upon.
+-   *The Engine*: The Irreden Engine.
+-   *Modules*: A logical and practical seperation of code.
+-   *Depencency module*: A module that is required by another module to perform its function
+
+
 ## Design
--   Modules of engine are clearly seperated as individual static libraries.
+
+### Modules
+-   *The Engine* is seperated into "modules". Modules
+    -   Contain functionality relating to a particular domain (rendering, profiling, etc).
+    -   Build seperately as their own *static library*.
+    -   Links to *dependency modules* and 3rd party libraries.
+- Modules are used by the Engine and creations by including its "/irreden/ir_\<module_name\>.hpp" file.
+    -   This file contains the module's public API and necessecary header files.
 
 ## Features
 -   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
@@ -32,13 +46,16 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 ## Build
 
 ### Prerequirsites
-
 -   Windows OS
 -   OpenGL 4.6 supported hardware.
 -   MinGW (or other c/c++ compiler)
 -   CMake
 
 ### Instructions
+-   Clone the repository
+-   Configure cmake
+-   Build all targets
+-   Run the default project
 
 ## Licensing
 This project is under the [MIT License](/docs/usage/licensing.md).\
@@ -73,6 +90,7 @@ When building your project, you should note the available systems from each of t
 [Style rules and guidelines](/docs/rules/style.md)\
 [Opening a pull request](/docs/contributing/pull_requests.md)\
 [Submitting a new issue](/docs/contributing/issues.md)
+[Forking this repository]()
 
 **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.** If you have a suggestion, submit a new issue to discuss, or email me at jakildev@gmail.com.
 
@@ -105,3 +123,6 @@ When building your project, you should note the available systems from each of t
 
 ### Things to consider...
 -   Should MORE of the engine's logic be part of the entity component system?
+
+## Notes and References
+1. See *Depenceny Injection: Design patterns using Spring and Guice*

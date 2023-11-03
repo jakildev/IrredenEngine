@@ -1,20 +1,17 @@
 add_library(IrredenEngineWorld STATIC
-    # include/irreden/world/ir_world.hpp
-    # include/irreden/world/ir_constants.hpp
-
     src/ir_world.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC
+    IrredenEngineECS
     IrredenEngineProfiling
+    IrredenEngineTime
     IrredenEngineAudio
     IrredenEngineInput
     IrredenEngineScripting
     IrredenEngineRendering
     IrredenEngineVideo
     IrredenEngineMath
-    IrredenEngineECS
-    IrredenEngineTime
     IrredenEngineCommand
 )
 

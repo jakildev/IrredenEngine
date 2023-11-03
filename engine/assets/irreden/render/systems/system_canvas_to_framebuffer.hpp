@@ -10,16 +10,18 @@
 #ifndef SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 #define SYSTEM_CANVAS_TO_FRAMEBUFFER_H
 
-#include <irreden/system/system_base.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_math.hpp>
+
+// LEFT OFF HERE, going through and refactoring assets
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/texture.hpp>
 #include <irreden/render/vao.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
-#include <irreden/ir_math.hpp>
 
 #include <irreden/common/components/component_position_2d.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>

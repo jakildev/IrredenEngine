@@ -10,7 +10,6 @@
 #ifndef COMPONENT_TEXT_SEGMENT_H
 #define COMPONENT_TEXT_SEGMENT_H
 
-#include <irreden/ir_math.hpp>
 #include <string>
 
 namespace IRComponents {

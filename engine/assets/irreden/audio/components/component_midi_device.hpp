@@ -10,15 +10,10 @@
 #ifndef COMPONENT_MIDI_DEVICE_H
 #define COMPONENT_MIDI_DEVICE_H
 
-#include <irreden/ir_ecs.hpp>
-
 namespace IRComponents {
 
     struct C_MidiDevice {
         int id_;
-        // TODO: This should be stored elsewhere prob, like
-        // as a relationship in ecs
-        // std::unordered_map<unsigned char, EntityId> ccMessageMap_;
 
         C_MidiDevice(int id)
         :   id_(id)

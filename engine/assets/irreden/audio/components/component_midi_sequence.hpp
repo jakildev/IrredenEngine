@@ -10,6 +10,9 @@
 #ifndef COMPONENT_MIDI_SEQUENCE_H
 #define COMPONENT_MIDI_SEQUENCE_H
 
+// Perhaps this should be moved to a sample implementation
+// (it shouldn't be a standard component)
+
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 

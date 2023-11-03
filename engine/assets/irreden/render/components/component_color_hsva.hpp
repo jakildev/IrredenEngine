@@ -11,9 +11,8 @@
 #define COMPONENT_COLOR_HSVA_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 // Ranges
 // Hue: 0.0f-360.0f

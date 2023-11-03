@@ -11,14 +11,12 @@
 #define COMPONENT_CAMERA_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/math/easing_functions.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 
 using namespace IRMath;
-using namespace IRComponents;
 using namespace IRECS;
 
 namespace IRComponents {

@@ -11,13 +11,8 @@
 #define COMPONENT_GEOMETRIC_SHAPE_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_constants.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRMath;
-using namespace IRConstants;
-
-// Unused at the moment
 
 namespace IRComponents {
 

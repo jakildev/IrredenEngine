@@ -12,7 +12,7 @@
 
 #include <irreden/ir_math.hpp>
 
-using namespace IRMath;
+using IRMath::vec2;
 
 namespace IRComponents {
 

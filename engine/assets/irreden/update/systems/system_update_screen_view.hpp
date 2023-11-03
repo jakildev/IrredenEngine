@@ -199,18 +199,18 @@ namespace IRECS {
             return m_camera.get<C_Camera>().triangleStepSizeScreen_;
         }
         inline const int getViewportX() const {
-            return m_viewport.x_;
+            return m_viewport.size_.x;
         }
         inline const int getViewportY() const {
-            return m_viewport.y_;
+            return m_viewport.size_.y;
         }
         inline const int getScaleFactor() const {
             return m_screenScaleFactor;
         }
         inline const vec2 getCenterScreen() const {
             return vec2(
-                m_viewport.x_ / 2,
-                m_viewport.y_ / 2
+                m_viewport.size_.x / 2,
+                m_viewport.size_.y / 2
             );
         }
 
@@ -240,7 +240,7 @@ namespace IRECS {
         IRInput::IRGLFWWindow& m_window;
         bool m_cameraFollow = false;
         EntityHandle m_cameraFollowEntity;
-        C_ViewportXY m_viewport;
+        C_Viewport m_viewport;
         C_CursorPosition m_cursorPosition;
         bool m_isWheelClicked;
         dvec2 m_mouseWheelClickedStart;
@@ -254,8 +254,8 @@ namespace IRECS {
 
         virtual void beginExecute() override {
             m_window.getUpdateWindowSize(
-                m_viewport.x_,
-                m_viewport.y_
+                m_viewport.size_.x,
+                m_viewport.size_.y
             );
             m_window.getUpdateCursorPos(
                 m_cursorPosition.posX_,
@@ -263,11 +263,11 @@ namespace IRECS {
             );
             m_screenScaleFactor = glm::min(
                 glm::floor(
-                    m_viewport.x_ /
+                    m_viewport.size_.x /
                     IRConstants::kGameResolution.x
                 ),
                 glm::floor(
-                    m_viewport.y_ /
+                    m_viewport.size_.y /
                     IRConstants::kGameResolution.y
                 )
             );
@@ -277,8 +277,8 @@ namespace IRECS {
             m_screenRenderResolutionHeight =
                 IRConstants::kGameResolution.y *
                 m_screenScaleFactor;
-            int screenX1 = (m_viewport.x_ - m_screenRenderResolutionWidth) / 2;
-            int screenY1 = (m_viewport.y_ - m_screenRenderResolutionHeight) / 2;
+            int screenX1 = (m_viewport.size_.x - m_screenRenderResolutionWidth) / 2;
+            int screenY1 = (m_viewport.size_.y - m_screenRenderResolutionHeight) / 2;
 
             m_camera.get<C_Camera>().setTriangleStepSize(
                 vec2(m_screenRenderResolutionWidth, m_screenRenderResolutionHeight),

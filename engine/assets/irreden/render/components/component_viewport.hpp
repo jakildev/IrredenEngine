@@ -11,28 +11,30 @@
 #define COMPONENT_VIEWPORT_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec2;
 
 namespace IRComponents {
 
-    struct C_ViewportXY {
+    struct C_Viewport {
 
-        int x_;
-        int y_;
+        ivec2 size_;
 
-        C_ViewportXY(int x, int y)
-        :   x_{x}
-        ,   y_{y}
+        C_Viewport(ivec2 size)
+        :   size_(size)
+        {
+
+        }
+
+        C_Viewport(int x, int y)
+        :   C_Viewport(ivec2{x, y})
         {
 
         }
 
         // Default
-        C_ViewportXY()
-        :   x_{0}
-        ,   y_{0}
+        C_Viewport()
+        :   C_Viewport(ivec2{0, 0})
         {
 
         }
@@ -40,8 +42,5 @@ namespace IRComponents {
     };
 
 } // namespace IRComponents
-
-
-
 
 #endif /* COMPONENT_VIEWPORT_STATE_H */

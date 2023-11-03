@@ -11,9 +11,8 @@
 #define COMPONENT_TEXTURE_SCROLL_H
 
 #include <irreden/ir_math.hpp>
-#include "../components/component_texture_scroll.hpp"
 
-using namespace IRMath;
+using IRMath::vec2;
 
 namespace IRComponents {
 
