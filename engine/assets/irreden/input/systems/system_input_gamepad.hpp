@@ -1,4 +1,4 @@
-/*
+    /*
  * Project: Irreden Engine
  * File: system_input_gamepad.hpp
  * Author: Evin Killian jakildev@gmail.com
@@ -10,10 +10,12 @@
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_input.hpp>
 
-#include <irreden/input/ir_glfw_window.hpp>
-#include "..\entities\entity_joystick.hpp"
+#include <irreden/input/components/component_glfw_joystick.hpp>
+#include <irreden/input/components/component_glfw_gamepad_state.hpp>
+#include <irreden/input/entities/entity_joystick.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -80,7 +82,7 @@ namespace IRECS {
         }
 
     private:
-        IRGLFWWindow& m_window;
+        IRInput::IRGLFWWindow& m_window;
         std::vector<EntityHandle> m_gamepadEntities;
 
         virtual void beginExecute() override {
@@ -107,6 +109,6 @@ namespace IRECS {
         }
     };
 
-} // namespace System
+} // namespace IRECS
 
 #endif /* SYSTEM_INPUT_GAMEPAD_H */

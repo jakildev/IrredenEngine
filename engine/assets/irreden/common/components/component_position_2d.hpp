@@ -31,13 +31,11 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_Position2D()
         :   C_Position2D{vec2(0, 0)}
         {
 
         }
-
 
     };
 

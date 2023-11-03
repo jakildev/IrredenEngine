@@ -10,18 +10,19 @@
 #ifndef SYSTEM_INPUT_KEY_MOUSE_H
 #define SYSTEM_INPUT_KEY_MOUSE_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_input.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/input/ir_glfw_window.hpp>
 
-#include "..\entities\entity_mouse_button.hpp"
-
+#include <irreden/input/entities/entity_key_mouse_button.hpp>
+#include <irreden/input/components/component_keyboard_key_status.hpp>
+#include <irreden/input/components/component_key_mouse_button.hpp>
+#include <irreden/input/components/component_mouse_position.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
-#include "..\components\component_mouse_position.hpp"
 
 using namespace IRComponents;
 using namespace IRMath;
-using namespace IRECS;
+using namespace IRInput;
 
 namespace IRECS {
 
@@ -32,7 +33,7 @@ namespace IRECS {
         C_KeyMouseButton
     > {
     public:
-        System(IRInput::IRGLFWWindow& window)
+        System(IRGLFWWindow& window)
         :   m_window{window}
         ,   m_scrollEntitiesThisFrame{}
         ,   m_buttonPressesThisFrame{}

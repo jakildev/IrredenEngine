@@ -212,7 +212,7 @@ namespace IRCommand {
 
         // void executeEntityCommand(CommandNames commandName);
         // bool checkButton(InputTypes inputType, int button);
-        // IRCCData checkCCMessage(int device, IRCCMessage ccMessage);
+        // CCData checkCCMessage(int device, CCMessage ccMessage);
 
     };
 

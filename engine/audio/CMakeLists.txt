@@ -50,6 +50,7 @@ IrredenEngine_applyPatchOnce(
 FetchContent_MakeAvailable(rtmidi)
 target_link_libraries(
     IrredenEngineAudio PUBLIC
+    rtaudio
     rtmidi
     IrredenEngineProfiling
     IrredenEngineECS

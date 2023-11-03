@@ -10,13 +10,7 @@
 #ifndef COMPONENT_EXAMPLE_HPP
 #define COMPONENT_EXAMPLE_HPP
 
-#include <irreden/ir_math.hpp>
-#include <irreden/ir_constants.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
-
 #include <string>
-
-using namespace IRMath;
 
 namespace IRComponents {
 

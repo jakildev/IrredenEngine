@@ -9,12 +9,11 @@
 
 // TODO: MOVE TO AUDIO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-#ifndef SYSTEM_INPUT_MIDI_MESSAGE_IN_H
-#define SYSTEM_INPUT_MIDI_MESSAGE_IN_H
+#ifndef SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
+#define SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_audio.hpp>
-#include <irreden/audio/midi_in.hpp>
 
 #include <irreden/audio/components/component_midi_device.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
@@ -35,15 +34,15 @@ namespace IRECS {
         C_MidiIn
     > {
     public:
-        System(IRMidiIn& midiIn)
-        :   m_midiIn{midiIn}
-        ,   m_ccMessagesReceivedThisFrame{}
+        System()
+        // :   m_midiIn{midiIn}
+        :   m_ccMessagesReceivedThisFrame{}
         ,   m_nextDeviceId{0}
         {
             for(unsigned char i = 0; i < kNumMidiChannels; ++i) {
                 m_ccMessagesReceivedThisFrame.insert({
                     i,
-                    std::unordered_map<IRCCMessage, IRCCData>{}
+                    std::unordered_map<CCMessage, CCData>{}
                 });
                 m_midiNoteOffMessagesThisFrame.insert({
                     i,
@@ -67,9 +66,9 @@ namespace IRECS {
         {
             for(int i=0; i < entities.size(); i++) {
                 const auto& midiMessage = midiMessages[i];
-                const IRMidiStatus statusBits =
+                const MidiStatus statusBits =
                     midiMessage.getStatusBits();
-                const IRMidiChannel channel =
+                const MidiChannel channel =
                     midiMessage.getChannelBits();
 
                 if(!m_midiChannelToDeviceMappings.contains(channel)) {
@@ -97,7 +96,7 @@ namespace IRECS {
             MidiChannels channel
         )
         {
-            IRMidiChannel channelValue = (IRMidiChannel)channel;
+            MidiChannel channelValue = (MidiChannel)channel;
             if(m_midiChannelToDeviceMappings.contains(channelValue)) {
                 IRProfile::engLogError("Device already exists for channel, skipping {}", channelValue);
                 return m_midiInDevices[m_midiChannelToDeviceMappings[channelValue]];
@@ -124,12 +123,12 @@ namespace IRECS {
 
         }
 
-        IRCCData checkCCMessageReceived(
+        CCData checkCCMessageReceived(
             int device,
-            IRCCMessage ccNumber
+            CCMessage ccNumber
         )
         {
-            IRMidiChannel channel = m_midiDeviceToChannelMappings.at(device);
+            MidiChannel channel = m_midiDeviceToChannelMappings.at(device);
             if(!m_ccMessagesReceivedThisFrame[channel].contains(ccNumber)) {
                 return kCCFalse;
             }
@@ -148,31 +147,31 @@ namespace IRECS {
         }
 
     private:
-        IRMidiIn& m_midiIn;
+        // MidiIn& m_midiIn;
 
         int m_nextDeviceId;
         std::vector<EntityHandle> m_midiInDevices;
 
         // Condense these two into one vector where
         // index is the device id
-        std::unordered_map<IRMidiChannel, int> m_midiChannelToDeviceMappings;
-        std::unordered_map<int, IRMidiChannel> m_midiDeviceToChannelMappings;
+        std::unordered_map<MidiChannel, int> m_midiChannelToDeviceMappings;
+        std::unordered_map<int, MidiChannel> m_midiDeviceToChannelMappings;
 
         std::unordered_map<
-            IRMidiChannel,
+            MidiChannel,
             std::unordered_map<
-                IRCCMessage,
-                // std::vector<IRCCData> // TODO: Do i need to worry about multiple of the same message in one frame?
-                IRCCData
+                CCMessage,
+                // std::vector<CCData> // TODO: Do i need to worry about multiple of the same message in one frame?
+                CCData
             >
         > m_ccMessagesReceivedThisFrame;
         std::unordered_map<
-            IRMidiChannel,
+            MidiChannel,
             std::vector<C_MidiMessage>
         > m_midiNoteOnMessagesThisFrame;
 
         std::unordered_map<
-            IRMidiChannel,
+            MidiChannel,
             std::vector<C_MidiMessage>
         > m_midiNoteOffMessagesThisFrame;
 
@@ -192,4 +191,4 @@ namespace IRECS {
 
 } // namespace IRECS
 
-#endif /* SYSTEM_INPUT_MIDI_MESSAGE_IN_H */
+#endif /* SYSTEM_AUDIO_MIDI_MESSAGE_IN_H */

@@ -12,9 +12,9 @@
 #ifndef SYSTEM_AUDIO_DEVICE_MANAGER_H
 #define SYSTEM_AUDIO_DEVICE_MANAGER_H
 
-#include "..\entity\ir_system_base.hpp"
+#include <irreden/ir_system.hpp>
 
-#include "..\entities\entity_midi_device.hpp"
+#include <irreden/audio/entities/entity_midi_device.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;

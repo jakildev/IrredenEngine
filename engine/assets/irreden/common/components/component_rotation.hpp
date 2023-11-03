@@ -12,7 +12,7 @@
 
 #include <irreden/ir_math.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 struct C_Rotation {
     vec3 rot_;
@@ -35,7 +35,6 @@ struct C_Rotation {
 
     }
 
-    // Default
     C_Rotation()
     :   C_Rotation{vec3(0, 0, 0)}
     {

@@ -11,9 +11,8 @@
 #define COMPONENT_POSITION_3D_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 namespace IRComponents {
 
@@ -40,7 +39,6 @@ struct C_Position3D {
 
     }
 
-    // Default
     C_Position3D()
     :   C_Position3D{vec3(0, 0, 0)}
     {
@@ -66,7 +64,6 @@ struct C_Position3D {
     void updateChild(C_Position3D& child) {
         child.pos_ = pos_;
     }
-
 
 };
 

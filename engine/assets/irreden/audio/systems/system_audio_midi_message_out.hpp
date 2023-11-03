@@ -9,12 +9,11 @@
 
 // TODO: MOVE TO AUDIO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-#ifndef SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
-#define SYSTEM_INPUT_MIDI_MESSAGE_OUT_H
+#ifndef SYSTEM_AUDIO_MIDI_MESSAGE_OUT_H
+#define SYSTEM_AUDIO_MIDI_MESSAGE_OUT_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/ir_audio.hpp>
-#include <irreden/audio/midi_out.hpp>
 
 #include <irreden/audio/components/component_midi_device.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
@@ -37,9 +36,8 @@ namespace IRECS {
     >   {
 
     public:
-        System(IRMidiOut& midiOut)
-        :   m_midiOut{midiOut}
-        ,   m_nextDeviceId{0}
+        System()
+        :   m_nextDeviceId{0}
         ,   m_midiOutDevices{}
         ,   m_midiOutDeviceChannels{}
         {
@@ -61,7 +59,7 @@ namespace IRECS {
                     midiMessages[i].data1_,
                     midiMessages[i].data2_
                 );
-                m_midiOut.sendMessage(midiMessages[i].toRtMidiMessage());
+                IRAudio::sendMidiMessage(midiMessages[i].toRtMidiMessage());
             }
         }
 
@@ -70,7 +68,7 @@ namespace IRECS {
             MidiChannels channel
         )
         {
-            IRMidiChannel channelValue = (IRMidiChannel)channel;
+            MidiChannel channelValue = (MidiChannel)channel;
 
             EntityHandle device{};
             device.set(C_Name{name});
@@ -91,13 +89,13 @@ namespace IRECS {
             return device;
         }
 
-        inline IRMidiChannel getDeviceChannel(const C_MidiDevice& device) const {
+        inline MidiChannel getDeviceChannel(const C_MidiDevice& device) const {
             return m_midiOutDeviceChannels[device.id_];
         }
 
         EntityHandle createMidiMessageOut(
             C_MidiDevice& device,
-            IRMidiStatus status,
+            MidiStatus status,
             unsigned char data1,
             unsigned char data2 = 0
         )
@@ -116,11 +114,9 @@ namespace IRECS {
         }
 
     private:
-        IRMidiOut& m_midiOut;
-
         int m_nextDeviceId;
         std::vector<EntityHandle> m_midiOutDevices;
-        std::vector<IRMidiChannel> m_midiOutDeviceChannels;
+        std::vector<MidiChannel> m_midiOutDeviceChannels;
 
         virtual void beginExecute() override {}
         virtual void endExecute() override {}
@@ -128,4 +124,4 @@ namespace IRECS {
 
 } // namespace IRECS
 
-#endif /* SYSTEM_INPUT_MIDI_MESSAGE_OUT_H */
+#endif /* SYSTEM_AUDIO_MIDI_MESSAGE_OUT_H */

@@ -10,10 +10,10 @@
 #ifndef ENTITY_MIDI_DEVICE_H
 #define ENTITY_MIDI_DEVICE_H
 
-#include <irreden/ecs/entity_handle.hpp>
-#include <irreden/ecs/prefabs.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_audio.hpp>
+#include <irreden/ir_ecs.hpp>
+
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/audio/components/component_midi_channel.hpp>
 #include <irreden/audio/components/component_midi_device_in.hpp>
@@ -26,7 +26,7 @@ namespace IRECS {
     template <>
     struct Prefab<PrefabTypes::kMidiDevice> {
         static EntityHandle create(
-            IRMidiChannel channel,
+            MidiChannel channel,
             std::string name,
             IRMidiDeviceType type
         )

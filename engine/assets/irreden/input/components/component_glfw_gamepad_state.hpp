@@ -10,11 +10,10 @@
 #ifndef COMPONENT_GLFW_GAMEPAD_STATE_H
 #define COMPONENT_GLFW_GAMEPAD_STATE_H
 
-#include <GLFW/glfw3.h>
 #include <irreden/ir_input.hpp>
 #include <cstring>
 
-using namespace IRInput;
+using IRInput::ButtonStatuses;
 
 namespace IRComponents {
 

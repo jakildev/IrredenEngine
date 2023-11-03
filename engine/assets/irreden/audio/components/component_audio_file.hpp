@@ -10,10 +10,7 @@
 #ifndef COMPONENT_AUDIO_FILE_H
 #define COMPONENT_AUDIO_FILE_H
 
-#include <irreden/ir_math.hpp>
-#include <irreden/ir_constants.hpp>
-
-using namespace IRMath;
+#include <string>
 
 namespace IRComponents {
 

@@ -48,6 +48,7 @@ namespace IRECS {
         SYSTEM_TYPE_UPDATE,
         SYSTEM_TYPE_RENDER,
         SYSTEM_TYPE_INPUT,
+        SYSTEM_TYPE_OUTPUT,
         NUM_SYSTEM_TYPES
     };
 

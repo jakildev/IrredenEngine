@@ -10,7 +10,6 @@
 #ifndef ENTITY_JOYSTICK_H
 #define ENTITY_JOYSTICK_H
 
-#include <irreden/ecs/prefabs.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
 

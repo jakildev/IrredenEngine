@@ -10,12 +10,9 @@
 #ifndef COMPONENT_KEYBOARD_KEY_STATUS_H
 #define COMPONENT_KEYBOARD_KEY_STATUS_H
 
-#include <irreden/ir_math.hpp>
 #include <irreden/ir_input.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
-using namespace IRInput;
+using IRInput::ButtonStatuses;
 
 namespace IRComponents {
 
@@ -33,7 +30,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_KeyStatus()
         :   status_(ButtonStatuses::NOT_HELD)
         ,   pressedThisFrameCount_{0}
@@ -49,8 +45,5 @@ namespace IRComponents {
     struct C_KeyReleased{};
 
 } // namespace IRComponents
-
-
-
 
 #endif /* COMPONENT_KEYBOARD_KEY_STATUS_H */

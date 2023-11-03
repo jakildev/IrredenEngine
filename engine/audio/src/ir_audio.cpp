@@ -9,6 +9,7 @@
 
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio_manager.hpp>
+#include <irreden/audio/midi_out.hpp>
 
 namespace IRAudio {
 
@@ -21,12 +22,16 @@ namespace IRAudio {
         return *g_audioManager;
     }
 
-    void openPortMidiIn(MidiInInterface port) {
+    void openPortMidiIn(MidiInInterfaces port) {
         getAudioManager().getMidiIn().openPort(port);
     }
 
-    void openPortMidiOut(MidiOutInterface port) {
+    void openPortMidiOut(MidiOutInterfaces port) {
         getAudioManager().getMidiOut().openPort(port);
+    }
+
+    void sendMidiMessage(const std::vector<unsigned char>& message) {
+        getAudioManager().getMidiOut().sendMessage(message);
     }
 
 } // namespace IRAudio

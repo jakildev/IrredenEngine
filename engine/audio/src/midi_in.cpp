@@ -18,7 +18,7 @@ using namespace IRECS;
 
 namespace IRAudio {
 
-    IRMidiIn::IRMidiIn()
+    MidiIn::MidiIn()
     :   m_rtMidiIn{},
         m_numberPorts(m_rtMidiIn.getPortCount()),
         m_portNames{},
@@ -29,21 +29,21 @@ namespace IRAudio {
             m_portNames.push_back(m_rtMidiIn.getPortName(i));
             IRProfile::engLogInfo("MIDI input source {}: {}", i, m_portNames[i].c_str());
         }
-        IRProfile::engLogInfo("Created IRMidiIn");
+        IRProfile::engLogInfo("Created MidiIn");
     }
 
-    IRMidiIn::~IRMidiIn() {
+    MidiIn::~MidiIn() {
 
     }
 
-    // void IRMidiIn::openPort(unsigned int portNumber) {
+    // void MidiIn::openPort(unsigned int portNumber) {
     //     IRProfile::engLogInfo("Opening MIDI In port {}", portNumber);
     //     m_rtMidiIn.openPort(portNumber);
     //     m_openPorts.push_back(portNumber);
     // }
 
     // // Opens the first device that matches substring name
-    // void IRMidiIn::openPort(std::string portNameSubstring) {
+    // void MidiIn::openPort(std::string portNameSubstring) {
     //     for(int i = 0; i < m_numberPorts; i++) {
     //         const std::string_view portName{m_portNames[i]};
     //         if(portName.find(portNameSubstring) != portName.npos) {
@@ -56,7 +56,7 @@ namespace IRAudio {
     //     IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     // }
 
-    void IRMidiIn::openPort(MidiInInterface interface) {
+    void MidiIn::openPort(MidiInInterfaces interface) {
         for(int i = 0; i < m_numberPorts; i++) {
             const std::string_view portName{m_portNames[i]};
             if(portName.find(kMidiInInterfaceNames[interface]) != portName.npos) {
@@ -70,7 +70,7 @@ namespace IRAudio {
         IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
     }
 
-    void IRMidiIn::processMidiMessageQueue() {
+    void MidiIn::processMidiMessageQueue() {
 
         while(!m_messageQueue.empty()) {
             const C_MidiMessage& message = m_messageQueue.front();
@@ -82,7 +82,7 @@ namespace IRAudio {
         }
     }
 
-    void IRMidiIn::setCallback(
+    void MidiIn::setCallback(
         RtMidiIn& rtMidiIn,
         void(*midiInputCallback)(
             double timeStamp,

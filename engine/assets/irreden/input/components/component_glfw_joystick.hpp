@@ -21,7 +21,6 @@ namespace IRECS {
 
             }
 
-            // Default
             C_GLFWJoystick()
             :   joystickId_(-1)
             {

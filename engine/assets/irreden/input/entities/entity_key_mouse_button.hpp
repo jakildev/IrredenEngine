@@ -7,15 +7,16 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef ENTITY_MOUSE_BUTTON_H
-#define ENTITY_MOUSE_BUTTON_H
+#ifndef ENTITY_KEY_MOUSE_BUTTON_H
+#define ENTITY_KEY_MOUSE_BUTTON_H
 
 #include <irreden/ir_ecs.hpp>
+#include <irreden/ir_input.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
-#include <irreden/input/components/component_mouse_button.hpp>
+#include <irreden/input/components/component_key_mouse_button.hpp>
+#include <irreden/input/components/component_mouse_scroll.hpp>
 #include <irreden/input/components/component_keyboard_key_status.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
-#include <irreden/ir_input.hpp>
 
 using namespace IRComponents;
 using namespace IRInput;
@@ -53,4 +54,4 @@ namespace IRECS {
 } // namespace IRECS
 
 
-#endif /* ENTITY_MOUSE_BUTTON_H */
+#endif /* ENTITY_KEY_MOUSE_BUTTON_H */

@@ -10,11 +10,10 @@
 #ifndef ENTITY_EXAMPLE_H
 #define ENTITY_EXAMPLE_H
 
-#include <irreden/ecs/prefabs.hpp>
-#include <irreden/ecs/entity_handle.hpp>
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/ir_ecs.hpp>
 
+#include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/demo/components/component_example.hpp>
 
 using namespace IRMath;

@@ -10,22 +10,23 @@
 #ifndef MIDI_OUT_H
 #define MIDI_OUT_H
 
-#include <RtMidi.h>
-#include <irreden/ir_audio.hpp>
+#include <irreden/audio/ir_audio_types.hpp>
 #include <irreden/audio/midi_messages.hpp>
+
+#include <RtMidi.h>
 
 #include <set>
 
 namespace IRAudio {
 
-    class IRMidiOut {
+    class MidiOut {
         public:
-            IRMidiOut();
-            ~IRMidiOut();
+            MidiOut();
+            ~MidiOut();
 
             void openPort(unsigned int portNumber);
             // Opens the first device that matches substring name
-            void openPort(MidiOutInterface midiInInterface);
+            void openPort(MidiOutInterfaces midiInInterface);
 
             void openPort(std::string portNameSubstring);
             void sendMessage(const std::vector<unsigned char>& message);

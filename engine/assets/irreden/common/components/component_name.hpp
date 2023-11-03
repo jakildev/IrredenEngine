@@ -24,7 +24,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_Name()
         :   name_("Default name component.")
         {

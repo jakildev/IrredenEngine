@@ -11,9 +11,8 @@
 #define COMPONENT_POSITION_GLOBAL_3D_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 struct C_PositionGlobal3D {
     vec3 pos_;
@@ -37,7 +36,6 @@ struct C_PositionGlobal3D {
 
     }
 
-    // Default
     C_PositionGlobal3D()
     :   C_PositionGlobal3D{vec3(0, 0, 0)}
     {

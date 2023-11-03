@@ -122,6 +122,7 @@ private:
     // EntityHandle m_worldEngine;
     // EntityHandle m_worldGame;
     void initEngineSystems();
+        void initIROutputSystems();
         void initIRInputSystems();
         void initIRUpdateSystems();
         void initIRRenderSystems();

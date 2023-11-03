@@ -29,7 +29,6 @@ struct C_PositionInt3D {
 
     }
 
-    // Default
     C_PositionInt3D()
     :   C_PositionInt3D{ivec3(0, 0, 0)}
     {

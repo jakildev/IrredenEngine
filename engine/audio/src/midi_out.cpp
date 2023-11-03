@@ -11,7 +11,7 @@
 
 namespace IRAudio {
 
-    IRMidiOut::IRMidiOut()
+    MidiOut::MidiOut()
     :   m_rtMidiOut{},
         m_numberPorts(m_rtMidiOut.getPortCount()),
         m_portNames{},
@@ -23,22 +23,22 @@ namespace IRAudio {
             m_portNames.push_back(m_rtMidiOut.getPortName(i));
             IRProfile::engLogInfo("MIDI Output source {}: {}", i, m_portNames[i].c_str());
         }
-        IRProfile::engLogInfo("Created IRMidiOut");
+        IRProfile::engLogInfo("Created MidiOut");
     }
 
-    IRMidiOut::~IRMidiOut() {}
+    MidiOut::~MidiOut() {}
 
-    void IRMidiOut::openPort(unsigned int portNumber) {
+    void MidiOut::openPort(unsigned int portNumber) {
         m_rtMidiOut.openPort(portNumber);
         m_openPorts.insert(portNumber);
         IRProfile::engLogInfo("Opened MIDI Out port {}", portNumber);
     }
 
-    void IRMidiOut::openPort(MidiOutInterface interface) {
+    void MidiOut::openPort(MidiOutInterfaces interface) {
         openPort(kMidiOutInterfaceNames[interface]);
     }
 
-    void IRMidiOut::openPort(std::string portNameSubstring) {
+    void MidiOut::openPort(std::string portNameSubstring) {
         for(int i = 0; i < m_numberPorts; i++) {
             const std::string_view portName{m_portNames[i]};
             if(portName.find(portNameSubstring) != portName.npos) {
@@ -51,7 +51,7 @@ namespace IRAudio {
         IR_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
     }
 
-    void IRMidiOut::sendMessage(const std::vector<unsigned char>& message) {
+    void MidiOut::sendMessage(const std::vector<unsigned char>& message) {
         m_rtMidiOut.sendMessage(&message);
         IRProfile::engLogDebug("Sent MIDI message status={}", message.at(0));
 

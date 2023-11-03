@@ -12,10 +12,10 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
-#include "component_midi_message.hpp"
 
-// #include <chrono>
+#include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/audio/components/component_midi_message.hpp>
+
 #include <optional>
 
 using namespace IRMath;

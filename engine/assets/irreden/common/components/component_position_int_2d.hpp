@@ -31,7 +31,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_PositionInt2D()
         :   C_PositionInt2D{ivec2(0, 0)}
         {

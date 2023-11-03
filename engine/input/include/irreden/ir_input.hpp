@@ -11,6 +11,7 @@
 #define IR_INPUT_H
 
 #include <irreden/input/ir_input_types.hpp>
+#include <irreden/input/ir_glfw_window.hpp>
 
 namespace IRInput {
 

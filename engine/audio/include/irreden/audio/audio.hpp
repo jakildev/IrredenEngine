@@ -10,11 +10,13 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
-// #include <RtAudio/RtAudio.h>
-#include <RtAudio.h>
 #include <irreden/ir_profile.hpp>
-#include <string>
 
+#include <irreden/audio/ir_audio_types.hpp>
+
+#include <RtAudio.h>
+
+#include <string>
 #include <sstream>
 
 namespace IRAudio {

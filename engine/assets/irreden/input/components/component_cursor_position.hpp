@@ -15,9 +15,8 @@
 // renderer and not the logic, right????
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec2;
 
 namespace IRComponents {
 
@@ -35,7 +34,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_CursorPosition()
         :   posX_{0.0}
         ,   posY_{0.0}

@@ -14,9 +14,8 @@
 // temporarily
 
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 namespace IRComponents {
 
@@ -42,13 +41,11 @@ struct C_PositionOffset3D {
 
     }
 
-    // Default
     C_PositionOffset3D()
     :   C_PositionOffset3D{vec3(0, 0, 0)}
     {
 
     }
-
 
 };
 

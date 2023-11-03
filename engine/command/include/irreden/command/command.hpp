@@ -182,7 +182,7 @@ namespace IRCommand {
         template <typename Function>
         Command(
             IRInput::InputTypes type,
-            IRAudio::IRCCMessage ccMessage,
+            IRAudio::CCMessage ccMessage,
             Function func
         )
         :   m_type(type)
@@ -208,12 +208,12 @@ namespace IRCommand {
             return m_type;
         }
 
-        const IRAudio::IRCCMessage getCCMessage() const {
+        const IRAudio::CCMessage getCCMessage() const {
             return m_ccMessage;
         }
     private:
         IRInput::InputTypes m_type;
-        IRAudio::IRCCMessage m_ccMessage;
+        IRAudio::CCMessage m_ccMessage;
         std::function<void(unsigned char)> m_func;
     };
 

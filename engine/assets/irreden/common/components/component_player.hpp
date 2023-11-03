@@ -14,7 +14,6 @@ namespace IRComponents {
 
     struct C_Player {
 
-        // Default
         C_Player()
         {
 

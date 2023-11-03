@@ -12,15 +12,15 @@
 
 #include <irreden/ir_audio.hpp>
 
-using namespace IRAudio;
+using IRAudio::MidiChannel;
 
 namespace IRComponents {
 
     struct C_MidiChannel {
-        IRMidiChannel channel_;
+        MidiChannel channel_;
 
         C_MidiChannel(
-            IRMidiChannel channel
+            MidiChannel channel
         )
         :   channel_(channel)
         {

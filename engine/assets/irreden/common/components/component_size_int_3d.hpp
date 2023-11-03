@@ -11,10 +11,8 @@
 #define COMPONENT_SIZE_INT_3D_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_constants.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::ivec3;
 
 namespace IRComponents {
 
@@ -33,7 +31,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_SizeInt3D()
         :   C_SizeInt3D{ivec3(0, 0, 0)}
         {
@@ -43,8 +40,5 @@ namespace IRComponents {
     };
 
 } // namespace IRComponents
-
-
-
 
 #endif /* COMPONENT_SIZE_INT_3D_H */

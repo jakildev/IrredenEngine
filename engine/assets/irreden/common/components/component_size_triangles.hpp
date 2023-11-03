@@ -11,10 +11,8 @@
 #define COMPONENT_SIZE_TRIANGLES_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_constants.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
-using namespace IRMath;
+using IRMath::ivec2;
 
 namespace IRComponents {
 
@@ -35,7 +33,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_SizeTriangles()
         :   C_SizeTriangles{ivec2(0, 0)}
         {
@@ -45,6 +42,5 @@ namespace IRComponents {
     };
 
 } // namespace IRComponents
-
 
 #endif /* COMPONENT_SIZE_TRIANGLES_H */

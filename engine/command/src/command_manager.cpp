@@ -12,7 +12,7 @@
 #include <irreden/command/command_manager.hpp>
 
 #include <irreden/input/systems/system_input_gamepad.hpp>
-#include <irreden/input/systems/system_input_midi_message_in.hpp>
+#include <irreden/audio/systems/system_audio_midi_message_in.hpp>
 
 namespace IRCommand {
 
@@ -85,7 +85,7 @@ namespace IRCommand {
     // )
     // {
     //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     IRCCData ccData = checkCCMessage(device, command.getCCMessage());
+    //     CCData ccData = checkCCMessage(device, command.getCCMessage());
     //     if(ccData != kCCFalse) {
     //         command.execute(ccData);
     //     }
@@ -145,7 +145,7 @@ namespace IRCommand {
     // }
 
 
-    // IRCCData CommandManager::checkCCMessage(int device, IRCCMessage ccMessage) {
+    // CCData CommandManager::checkCCMessage(int device, CCMessage ccMessage) {
     //     return IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
     //         checkCCMessageReceived(device, ccMessage);
     // }

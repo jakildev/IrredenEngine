@@ -10,14 +10,17 @@
 #ifndef MIDI_IN_H
 #define MIDI_IN_H
 
-#include <RtMidi.h>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/audio/ir_audio_types.hpp>
 #include <irreden/audio/midi_messages.hpp>
+#include <irreden/audio/components/component_midi_message.hpp>
+
+#include <RtMidi.h>
+
 #include <set>
 #include <queue>
 #include <unordered_map>
-
-#include <irreden/audio/components/component_midi_message.hpp>
 
 namespace IRAudio {
 
@@ -38,22 +41,20 @@ namespace IRAudio {
             m_messageQueuePitchBend;
     };
 
-
-
-    class IRMidiIn {
+    class MidiIn {
         public:
-            IRMidiIn();
-            ~IRMidiIn();
+            MidiIn();
+            ~MidiIn();
 
             // void openPort(unsigned int portNumber);
 
-            void openPort(MidiInInterface midiInInterface);
+            void openPort(MidiInInterfaces midiInInterface);
 
             void processMidiMessageQueue();
 
         private:
             RtMidiIn m_rtMidiIn;
-            std::unordered_map<MidiInInterface, RtMidiIn> m_rtMidiInMap;
+            std::unordered_map<MidiInInterfaces, RtMidiIn> m_rtMidiInMap;
             unsigned int m_numberPorts;
             std::vector<std::string> m_portNames;
             std::vector<unsigned int> m_openPorts;
@@ -76,7 +77,6 @@ namespace IRAudio {
         std::vector<unsigned char> *message,
         void* userdata
     );
-
 
 } // namespace IRAudio
 

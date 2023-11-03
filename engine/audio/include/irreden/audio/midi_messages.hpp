@@ -15,8 +15,9 @@
 #ifndef MIDI_MESSAGES_H
 #define MIDI_MESSAGES_H
 
-#include <irreden/ir_audio.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/audio/ir_audio_types.hpp>
 
 namespace IRAudio {
 
@@ -170,7 +171,6 @@ namespace IRAudio {
         unsigned char m_msbValue;
         unsigned char m_lsbValue;
     };
-
 
 } // namespace IRAudio
 

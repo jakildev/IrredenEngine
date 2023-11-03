@@ -17,12 +17,12 @@
 // #include "../commands/ir_commands.hpp"
 
 // AUDIO SYSTEMS
+#include <irreden/audio/systems/system_audio_midi_message_in.hpp>
+#include <irreden/audio/systems/system_audio_midi_message_out.hpp>
 
 // INPUT SYSTEMS
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_input_gamepad.hpp>
-#include <irreden/input/systems/system_input_midi_message_in.hpp>
-#include <irreden/input/systems/system_input_midi_message_out.hpp>
 
 // UPDATE SYSTEMS
 #include <irreden/voxel/systems/system_voxel_set_reshaper.hpp>
@@ -67,9 +67,9 @@ IRWorld::IRWorld(int &argc, char **argv)
 ,   m_audioManager{}
 //         // TODO: Move opening audio interface somewhere else
 //         // (component midi device creation perhaps...)
-//         std::vector<IRAudio::MidiInInterface>{
-//             // IRAudio::MidiInInterface::MIDI_IN_OP1,
-//             IRAudio::MidiInInterface::MIDI_IN_UMC
+//         std::vector<IRAudio::MidiInInterfaces>{
+//             // IRAudio::MidiInInterfaces::MIDI_IN_OP1,
+//             IRAudio::MidiInInterfaces::MIDI_IN_UMC
 
 //         },
 //         std::vector<IRAudio::MidiOutInterfaces>{
@@ -183,6 +183,7 @@ void IRWorld::initEngineSystems() {
     // own user systesms and engine systems.
     initIRInputSystems();
     initIRUpdateSystems();
+    initIROutputSystems();
     initIRRenderSystems();
 }
 
@@ -197,6 +198,9 @@ void IRWorld::initEngineCommands() {
     );
 }
 
+void IRWorld::initIROutputSystems() {
+}
+
 void IRWorld::initIRInputSystems() {
     m_systemManager.registerSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
@@ -204,9 +208,7 @@ void IRWorld::initIRInputSystems() {
     m_systemManager.registerSystem<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerSystem<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_UPDATE>(
-        m_audioManager.getMidiIn()
-    );
+    m_systemManager.registerSystem<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
 
 }
 
@@ -231,9 +233,10 @@ void IRWorld::initIRUpdateSystems() {
     m_systemManager.registerSystem<GRAVITY_3D, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<GOTO_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>(
-        m_audioManager.getMidiOut()
-    );
+    // TODO: This should be an output system but midi message out's get destroyed
+    // by lifetime system, so perhaps they should just get consumed by
+    // midi out system instead.
+    m_systemManager.registerSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<LIFETIME, SYSTEM_TYPE_UPDATE>();
     // m_systemManager.registerSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
