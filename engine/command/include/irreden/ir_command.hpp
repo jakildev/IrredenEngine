@@ -1,7 +1,9 @@
 #ifndef IR_COMMAND_H
 #define IR_COMMAND_H
 
-#include <irreden/input/ir_input_types.hpp>
+#include <irreden/ir_input.hpp>
+
+#include <irreden/command/ir_command_types.hpp>
 #include <irreden/command/command_manager.hpp>
 
 namespace IRCommand {

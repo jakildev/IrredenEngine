@@ -7,8 +7,9 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include "lua_script.hpp"
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/script/lua_script.hpp>
 
 // lua_dofile runs a lua script. Global functions and variables
 // can be accessed via the lua stack.

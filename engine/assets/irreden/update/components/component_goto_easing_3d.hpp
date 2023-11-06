@@ -11,8 +11,8 @@
 #define COMPONENT_GOTO_EASING_3D_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/math/easing_functions.hpp>
 #include <irreden/ir_constants.hpp>
+
 #include <irreden/common/components/component_position_3d.hpp>
 
 using namespace IRMath;
@@ -52,8 +52,6 @@ namespace IRComponents {
 
         }
     };
-
-    // TODO: C_GotoAnimated3D
 
 }// namespace IRComponents
 

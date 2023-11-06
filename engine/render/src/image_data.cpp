@@ -7,8 +7,9 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/render/image_data.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/render/image_data.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>

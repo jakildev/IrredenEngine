@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_POOL_H
 #define SYSTEM_VOXEL_POOL_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/entities/entity_single_voxel.hpp>

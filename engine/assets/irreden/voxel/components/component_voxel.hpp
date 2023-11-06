@@ -12,7 +12,7 @@
 
 #include <irreden/ir_math.hpp>
 
-using namespace IRMath;
+using IRMath::Color;
 
 struct C_Voxel {
     Color color_;

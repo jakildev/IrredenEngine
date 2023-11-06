@@ -11,12 +11,10 @@
 #define COMPONENT_VOXEL_SET_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/render/image_data.hpp>
-#include <irreden/render/rendering_rm.hpp>
-#include <irreden/render/texture.hpp>
-#include <irreden/system/system_manager.hpp>
-#include <irreden/ecs/entity_handle.hpp>
+#include <irreden/ir_render.hpp>
+
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 
 using namespace IRMath;
@@ -127,13 +125,6 @@ namespace IRComponents {
         }
 
     };
-
-
-
-    // struct VoxelSubset {
-    //     int startIndex_;
-    //     int size_;
-    // };
 
     struct C_VoxelSetNew {
         // Move parent child stuff out of here and treat all voxels as
@@ -310,10 +301,6 @@ namespace IRComponents {
         // int addVoxelSceneNode
 
 
-        // private:
-        //     void calcMaxSphereRadius() {
-        //         o
-        //     }
 
     };
 

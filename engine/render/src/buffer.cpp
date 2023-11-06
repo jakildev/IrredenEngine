@@ -7,9 +7,10 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/render/buffer.hpp>
 #include <irreden/ir_profile.hpp>
+
 #include <irreden/render/ir_gl_api.hpp>
+#include <irreden/render/buffer.hpp>
 
 namespace IRRender {
 

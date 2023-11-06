@@ -13,12 +13,11 @@
 #ifndef SYSTEM_PARTICLE_SPAWNER_H
 #define SYSTEM_PARTICLE_SPAWNER_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
 #include <irreden/update/components/component_particle_spawner.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
-
 
 #include <irreden/voxel/entities/entity_voxel_particle.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>

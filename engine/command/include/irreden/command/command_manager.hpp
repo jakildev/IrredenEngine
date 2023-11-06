@@ -10,11 +10,11 @@
 #ifndef COMMAND_MANAGER_H
 #define COMMAND_MANAGER_H
 
-#include <irreden/command/command.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_audio.hpp>
 
+#include <irreden/command/command.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
 #include <unordered_map>

@@ -10,10 +10,10 @@
 #ifndef SYSTEM_ACCELERATION_H
 #define SYSTEM_ACCELERATION_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
-#include "..\components\component_velocity_3d.hpp"
-#include "..\components\component_acceleration_3d.hpp"
+#include <irreden/update/components/component_velocity_3d.hpp>
+#include <irreden/update/components/component_acceleration_3d.hpp>
 
 using namespace IRComponents;
 
@@ -43,7 +43,6 @@ namespace IRECS {
                 velocities[i].velocity_ += accelerations[i].acceleration_;
             }
         }
-
     private:
         virtual void beginExecute() override {}
         virtual void endExecute() override {}

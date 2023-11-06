@@ -11,11 +11,8 @@
 #define COMPONENT_LERP_COMPONENT_H
 
 #include <irreden/ir_math.hpp>
-#include "../entity/ir_ecs.hpp"
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/math/easing_functions.hpp>
-
-#include <irreden/common/components/component_tags_all.hpp>
 
 // LEFT OFF HERE, all this needs work.
 // do i need to also take in a min and max value,

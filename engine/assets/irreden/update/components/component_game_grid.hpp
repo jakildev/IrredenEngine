@@ -2,10 +2,12 @@
 #define COMPONENT_GAME_GRID_H
 
 #include <irreden/ir_math.hpp>
-#include "../entity/ir_ecs.hpp"
+#include <irreden/ir_ecs.hpp>
+
 #include <vector>
 
-using namespace IRMath;
+using IRMath::uvec2;
+using IRECS::EntityId;
 
 namespace IRComponents {
 
@@ -27,7 +29,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_GameGrid2D()
         {
 

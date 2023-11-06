@@ -10,9 +10,6 @@
 #ifndef COMPONENT_HITBOX_CIRCLE_H
 #define COMPONENT_HITBOX_CIRCLE_H
 
-#include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
-
 namespace IRComponents {
 
     struct C_HitboxCircle {

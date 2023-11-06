@@ -10,11 +10,11 @@
 #ifndef SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 #define SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
-#include <irreden/render/buffer.hpp>
-#include <irreden/render/shader.hpp>
-#include <irreden/render/shader_names.hpp>
+#include <irreden/ir_profile.hpp>
+#include <irreden/ir_math.hpp>
+#include <irreden/ir_constants.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
@@ -26,13 +26,11 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_framebuffer.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
-#include "..\components\component_zoom_level.hpp"
+#include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
-
-#include <irreden/math/color_palettes.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -51,8 +49,6 @@ namespace IRECS {
         C_VoxelPool,
         C_TriangleCanvasTextures,
         C_CameraPosition2DIso
-        // C_TriangleCanvasBackground
-        // C_TriangleCanvasFramebuffer
     >   {
     public:
         System()

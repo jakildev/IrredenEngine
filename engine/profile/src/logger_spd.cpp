@@ -8,8 +8,10 @@
  */
 
 #include <irreden/profile/logger_spd.hpp>
+
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+
 #include <iostream>
 #include <ctime>
 

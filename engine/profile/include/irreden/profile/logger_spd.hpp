@@ -13,9 +13,10 @@
 #ifndef LOGGER_SPD_H
 #define LOGGER_SPD_H
 
+#include <spdlog/spdlog.h>
+
 #include <fstream>
 #include <memory>
-#include <spdlog/spdlog.h>
 
 class LoggerSpd {
 public:

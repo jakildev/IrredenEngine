@@ -1,0 +1,6 @@
+#ifndef IR_PROFILE_TYPES_H
+#define IR_PROFILE_TYPES_H
+
+
+
+#endif /* IR_PROFILE_TYPES_H */

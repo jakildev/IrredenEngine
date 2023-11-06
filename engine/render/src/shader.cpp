@@ -8,8 +8,9 @@
  */
 
 
-#include <irreden/render/shader.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/render/shader.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 
 #include <fstream>

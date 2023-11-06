@@ -24,7 +24,6 @@
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRECS;
-// using namespace IRCommands;
 
 namespace IRECS {
 

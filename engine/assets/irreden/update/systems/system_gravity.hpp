@@ -10,10 +10,10 @@
 #ifndef SYSTEM_GRAVITY_H
 #define SYSTEM_GRAVITY_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
-#include "..\components\component_velocity_3d.hpp"
-#include "..\components\component_gravity_3d.hpp"
+#include <irreden/update/components/component_velocity_3d.hpp>
+#include <irreden/update/components/component_gravity_3d.hpp>
 
 using namespace IRComponents;
 

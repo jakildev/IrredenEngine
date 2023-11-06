@@ -7,8 +7,9 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/input/ir_glfw_window.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/input/ir_glfw_window.hpp>
 
 #include <iostream>
 

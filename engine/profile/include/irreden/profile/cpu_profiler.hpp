@@ -11,6 +11,7 @@
 #define CPU_PROFILER_H
 
 #include <easy/profiler.h>
+
 #include <string>
 
 namespace IRProfile {

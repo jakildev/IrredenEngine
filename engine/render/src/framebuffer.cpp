@@ -10,11 +10,12 @@
 // OpenGL Framebuffer with extra pixel buffer for scaled up
 // pixel pixel-art rendering with smooth scroll.
 
+#include <irreden/ir_profile.hpp>
+
 #include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/rendering_rm.hpp>
 
-#include <irreden/ir_profile.hpp>
 
 namespace IRRender {
 

@@ -10,7 +10,7 @@
 #ifndef SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 #define SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_position_3d.hpp>

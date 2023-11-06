@@ -10,7 +10,7 @@
 #ifndef VERTEX_ATTRIBUTES_H
 #define VERTEX_ATTRIBUTES_H
 
-#include <glad/glad.h>
+#include <irreden/render/ir_render_types.hpp>
 
 namespace IRRender {
     struct VertexArrayAttribute {

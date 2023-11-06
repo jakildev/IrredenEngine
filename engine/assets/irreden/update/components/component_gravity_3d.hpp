@@ -11,10 +11,8 @@
 #define COMPONENT_GRAVITY_3D_H
 
 #include <irreden/ir_math.hpp>
-#include "../components/component_direction.hpp"
-#include "../components/component_magnitude.hpp"
-
-#
+#include <irreden/update/components/component_direction.hpp>
+#include <irreden/update/components/component_magnitude.hpp>
 
 namespace IRComponents {
 

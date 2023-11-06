@@ -13,7 +13,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 namespace IRComponents {
 
@@ -40,7 +40,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_Acceleration3D()
         :   acceleration_(vec3(0.0f))
         {

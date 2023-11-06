@@ -8,11 +8,22 @@
  */
 
 #include <irreden/time/time_manager.hpp>
+#include <irreden/ir_time.hpp>
 
 namespace IRTime {
 
     // I forgot about this, maybe I can apply this elsewhere
     // like for systems and such...
+    TimeManager::TimeManager()
+    :   m_profilerUpdate{}
+    ,   m_profilerRender{}
+    ,   m_start{}
+    ,   m_mainLoopPrevious{}
+    ,   m_mainLoopElapsed{0}
+    {
+        g_timeManager = this;
+        IRProfile::engLogInfo("TimeManager initalized");
+    }
 
     template <>
     void TimeManager::beginEvent<UPDATE>() {

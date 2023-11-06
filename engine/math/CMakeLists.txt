@@ -1,5 +1,4 @@
 add_library(IrredenEngineMath STATIC
-    include/irreden/ir_math.hpp
     src/ir_math.cpp
 )
 

@@ -12,7 +12,7 @@
 
 #include <irreden/math/ir_math_types.hpp>
 #include <irreden/math/easing_functions.hpp>
-
+#include <irreden/math/color_palettes.hpp>
 #include <vector>
 
 // TODO: The game engine needs transformations for voxel sets

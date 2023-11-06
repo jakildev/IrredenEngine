@@ -10,10 +10,10 @@
 #ifndef SYSTEM_RENDERING_TEXTURE_SCROLL_H
 #define SYSTEM_RENDERING_TEXTURE_SCROLL_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_time.hpp>
 
 #include <irreden/render/components/component_texture_scroll.hpp>
-#include <irreden/ir_time.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -51,19 +51,10 @@ namespace IRECS {
             }
         }
     private:
-        // virtual void beginExecute() override {
-
-        // }
-
-        // virtual void endExecute() override {
-
-        // }
-
-
 
     };
 
 
-} // namespace System
+} // namespace IRECS
 
 #endif /* SYSTEM_RENDERING_TEXTURE_SCROLL_H */

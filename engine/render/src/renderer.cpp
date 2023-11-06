@@ -6,12 +6,10 @@
  * -----
  * Modified By: <your_name> <Month> <YYYY>
  */
-
-#include <irreden/render/renderer.hpp>
-#include <irreden/ir_render.hpp>
-#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/ir_ecs.hpp>
 
+#include <irreden/render/renderer.hpp>
+#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 

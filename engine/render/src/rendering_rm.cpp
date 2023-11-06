@@ -7,6 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
+#include <irreden/ir_render.hpp>
+
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/texture.hpp>

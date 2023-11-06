@@ -12,6 +12,8 @@
 
 #include <irreden/ir_math.hpp>
 
+using IRMath::vec3;
+
 namespace IRComponents {
 
     constexpr vec3 kDirecton3DUp{0, 0, -1};
@@ -39,7 +41,6 @@ namespace IRComponents {
 
         }
 
-        // Default
         C_Direction3D()
         :   C_Direction3D{vec3(0, 0, 1)}
         {

@@ -10,12 +10,13 @@
 #ifndef FRAMEBUFFER_H
 #define FRAMEBUFFER_H
 
-#include <irreden/ir_render.hpp>
+#include <irreden/ir_math.hpp>
+
+#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/texture.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/vao.hpp>
 
-#include <irreden/ir_math.hpp>
 
 using namespace IRMath;
 

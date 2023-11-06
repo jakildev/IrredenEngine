@@ -10,8 +10,10 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <irreden/ir_input.hpp>
+
+#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
-#include <irreden/input/ir_glfw_window.hpp>
 
 namespace IRRender {
 

@@ -10,7 +10,7 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include <glad/glad.h>
+#include <irreden/render/ir_render_types.hpp>
 
 namespace IRRender {
 

@@ -7,9 +7,11 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include "lua_helper.hpp"
-#include <string>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/script/lua_helper.hpp>
+
+#include <string>
 
 bool checkLua(lua_State *L, const int r) {
     if (r != LUA_OK) {

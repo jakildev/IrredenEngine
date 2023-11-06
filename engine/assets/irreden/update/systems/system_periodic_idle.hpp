@@ -10,9 +10,9 @@
 #ifndef SYSTEM_PERIODIC_IDLE_H
 #define SYSTEM_PERIODIC_IDLE_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
-#include "..\components\component_periodic_idle.hpp"
+#include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 using namespace IRComponents;

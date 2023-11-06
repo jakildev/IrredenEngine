@@ -10,7 +10,8 @@
 #ifndef SHADER_H
 #define SHADER_H
 
-#include <glad/glad.h>
+#include <irreden/render/ir_render_types.hpp>
+
 #include <string>
 #include <vector>
 

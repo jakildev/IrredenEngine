@@ -10,22 +10,15 @@
 #ifndef SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 #define SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
-
 #include <irreden/ir_render.hpp>
-#include <irreden/render/shader_names.hpp>
-#include <irreden/render/shader.hpp>
-#include <irreden/render/vao.hpp>
-#include <irreden/render/shapes_2d.hpp>
-#include <irreden/render/buffer.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_triangle_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
-
 
 using namespace IRMath;
 

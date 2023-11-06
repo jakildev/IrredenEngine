@@ -36,7 +36,4 @@ namespace IRComponents {
 
 } // namespace IRComponents
 
-
-
-
 #endif /* COMPONENT_HITBOX_RECT_H */

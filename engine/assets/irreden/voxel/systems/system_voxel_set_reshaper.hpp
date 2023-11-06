@@ -12,7 +12,7 @@
 #ifndef SYSTEM_VOXEL_SET_RESHAPER_H
 #define SYSTEM_VOXEL_SET_RESHAPER_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_ecs.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 

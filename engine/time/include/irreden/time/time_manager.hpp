@@ -10,23 +10,14 @@
 #ifndef TIME_MANAGER_H
 #define TIME_MANAGER_H
 
-#include <irreden/ir_time.hpp>
+#include <irreden/time/ir_time_types.hpp>
 #include <irreden/time/event_profiler.hpp>
 
 namespace IRTime {
 
     class TimeManager {
     public:
-        TimeManager()
-        :   m_profilerUpdate{}
-        ,   m_profilerRender{}
-        ,   m_start{}
-        ,   m_mainLoopPrevious{}
-        ,   m_mainLoopElapsed{0}
-        {
-            g_timeManager = this;
-            IRProfile::engLogInfo("TimeManager initalized");
-        }
+        TimeManager();
 
         void start() {
             auto current = Clock::now();

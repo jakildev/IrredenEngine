@@ -11,10 +11,11 @@
 #define IR_PROFILING_H
 
 // This is the API for the profiling module
+#include <irreden/profile/logger_spd.hpp>
+
 #include <string>
 #include <cstdarg>
 #include <vector>
-#include <irreden/profile/logger_spd.hpp>
 
 namespace IRProfile {
 

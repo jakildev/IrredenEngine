@@ -10,10 +10,11 @@
 #ifndef TEXTURE_H
 #define TEXTURE_H
 
-#include <glad/glad.h>
-#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
+
+#include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/ir_gl_api.hpp>
 
 using namespace IRMath;
 

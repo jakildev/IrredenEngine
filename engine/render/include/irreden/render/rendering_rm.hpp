@@ -13,13 +13,14 @@
 #define RENDERING_RM_H
 
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_render.hpp>
 
-#include <glad/glad.h>
+#include <irreden/render/ir_render_types.hpp>
+
 #include <vector>
 #include <unordered_map>
 #include <queue>
 #include <memory>
+
 namespace IRRender {
 
     template <typename T>
@@ -127,21 +128,6 @@ namespace IRRender {
             return m_resourceTypes[typeName];
         }
     };
-
-
-    // ir_render API
-
-    template <typename T, typename... Args>
-    std::pair<ResourceId, T*> createResource(Args&&... args) {
-        return getRenderingResourceManager().create<T>(
-            std::forward<Args>(args)...
-        );
-    }
-
-    template <typename T>
-    void destroyResource(ResourceId resource) {
-        getRenderingResourceManager().destroy<T>(resource);
-    }
 
 } // namespace IRRender
 

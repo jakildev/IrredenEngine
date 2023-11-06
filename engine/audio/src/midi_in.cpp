@@ -8,10 +8,12 @@
  */
 
 #include <irreden/ir_audio.hpp>
-#include <irreden/audio/midi_in.hpp>
 #include <irreden/ir_ecs.hpp>
+
+#include <irreden/audio/midi_in.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
+#include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
 using namespace IRECS;

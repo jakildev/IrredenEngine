@@ -7,8 +7,9 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/profile/cpu_profiler.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/profile/cpu_profiler.hpp>
 
 namespace IRProfile{
 

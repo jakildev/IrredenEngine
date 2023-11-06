@@ -10,10 +10,8 @@
 #ifndef ENTITY_SINGLE_VOXEL_H
 #define ENTITY_SINGLE_VOXEL_H
 
-#include <irreden/ecs/entity_handle.hpp>
-#include <irreden/ecs/prefabs.hpp>
+#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>

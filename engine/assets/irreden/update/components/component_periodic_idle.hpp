@@ -11,7 +11,7 @@
 #define COMPONENT_PERIODIC_IDLE_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/math/easing_functions.hpp>
+
 #include <cmath>
 
 using namespace IRMath;

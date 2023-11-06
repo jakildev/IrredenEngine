@@ -12,7 +12,7 @@
 
 #include <irreden/system/system_base.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
-#include "..\components\component_velocity_3d.hpp"
+#include <irreden/update/components/component_velocity_3d.hpp>
 
 using namespace IRComponents;
 using namespace IRRender;

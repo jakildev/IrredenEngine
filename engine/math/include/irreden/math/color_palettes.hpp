@@ -10,7 +10,7 @@
 #ifndef COLOR_PALETTES_H
 #define COLOR_PALETTES_H
 
-#include <irreden/ir_math.hpp>
+#include <irreden/math/ir_math_types.hpp>
 
 namespace IRMath {
 
