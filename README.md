@@ -9,39 +9,38 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 -   *Engine*: A foundation of software that games and other forms of media can be built upon.
 -   *The Engine*: The Irreden Engine.
 -   *Modules*: A logical and practical seperation of code.
--   *Depencency module*: A module that is required by another module to perform its function
 
 
 ## Design
 
 ### Modules
--   *The Engine* is seperated into "modules". Modules
+-   The Engine is seperated into "modules". Modules
     -   Contain functionality relating to a particular domain (rendering, profiling, etc).
     -   Build seperately as their own *static library*.
-    -   Links to *dependency modules* and 3rd party libraries.
+    -   Link to dependency modules and 3rd party libraries.
 - Modules are used by the Engine and creations by including its "/irreden/ir_\<module_name\>.hpp" file.
     -   This file contains the module's public API and necessecary header files.
 
 ## Features
--   Connects to an audio interface for to send and receive midi and *audio* data. TODO: audio.
+-   
 [Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
 [Archetype-based entity-component-system](/docs/features/ecs.md)
 
 ## Integrations and Dependencies
 
-[Glad](/docs/dependencies/glad.md)
-[GLFW](/docs/dependencies/glfw.md)
-[GLM](/docs/dependencies/glm.md)
-[OpenGL](/docs/dependencies/opengl.md)
-[StbImage](/docs/dependencies/)
+[Glad](/docs/dependencies/glad.md)\
+[GLFW](/docs/dependencies/glfw.md)\
+[GLM](/docs/dependencies/glm.md)\
+[OpenGL](/docs/dependencies/opengl.md)\
+[StbImage](/docs/dependencies/)\
 <!-- -   GoogleTest -->
-[EasyProfiler](https://github.com/yse/easy_profiler)
-[SpdLogger]()
-[Fmt](/docs/dependencies/)
-[RtAudio](/docs/dependencies/)
-[RtMidi](/docs/dependencies/)
-[Assimp](https://github.com/assimp/assimp)
-[MeshOptimizer]()
+[EasyProfiler](https://github.com/yse/easy_profiler)\
+[SpdLogger]()\
+[Fmt](/docs/dependencies/)\
+[RtAudio](/docs/dependencies/)\
+[RtMidi](/docs/dependencies/)\
+[Assimp](https://github.com/assimp/assimp)\
+[MeshOptimizer]()\
 
 ## Build
 

@@ -8,13 +8,8 @@
  */
 
 #include <irreden/ir_world.hpp>
-
-// OTHER PACKAGES THAT SHOULD MOVE TO RESPECTIVE PACKAGES
-#include <irreden/ir_profile.hpp> // ir_profiling
-
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_constants.hpp>
-
-// #include "../commands/ir_commands.hpp"
 
 // AUDIO SYSTEMS
 #include <irreden/audio/systems/system_audio_midi_message_in.hpp>
@@ -53,7 +48,7 @@ using namespace IRECS;
 
 //TODO: replace initalization constants with config file.
 
-IRWorld::IRWorld(int &argc, char **argv)
+IRWorld::IRWorld(int &argc, char  **argv)
 :   m_IRGLFWWindow{
         IRConstants::kInitWindowSize
     }
