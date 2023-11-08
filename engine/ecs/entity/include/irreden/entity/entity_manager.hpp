@@ -80,18 +80,17 @@ namespace IRECS {
         }
 
         EntityRecord& getRecord(EntityId entity);
-        void addFlags(EntityId entity, EntityId flags);
+        EntityId setFlags(EntityId entity, EntityId flags);
         bool isPureComponent(ComponentId component);
         smart_ComponentData createComponentDataVector(ComponentId component);
         void destroyEntity(EntityId entity);
         void markEntityForDeletion(EntityId& entity);
         void destroyMarkedEntities();
 
-        template <IRRelationType Relation>
+        template <Relation Relation>
         void addRelation(EntityId fromEntity, EntityId toEntity); // TODO
 
         void setChild(EntityId parent, EntityId child); // TODO
-
 
         template <typename Component, typename... Args>
         ComponentId registerComponent(Args&&... args) {
@@ -107,6 +106,8 @@ namespace IRECS {
                 componentId,
                 std::make_unique<IComponentDataImpl<Component>>()
             );
+            // TODO: Just leave this pure component entity in base node or something
+            // No need to have this default component biz i dont think...
             Archetype archetype = {componentId};
             ArchetypeNode* toNode =
                 m_archetypeGraph.findCreateArchetypeNode(archetype);
@@ -144,9 +145,12 @@ namespace IRECS {
             return m_pureComponentTypes[typeName];
         }
 
-        template <IRRelationType Relation>
-        ComponentId registerRelation(EntityId fromEntity, EntityId toEntity) {
-            // WIP WIP WIP
+        template <Relation relation>
+        RelationId registerRelation(EntityId relatedEntity) {
+            RelationId newRelation = createEntity();
+            m_relationTypes[relation][newRelation] = relatedEntity;
+            setFlags(newRelation, kEntityFlagIsRelation);
+            return newRelation;
         }
 
         // Set component should return an ComponentId
@@ -273,13 +277,6 @@ namespace IRECS {
             Archetype archetype = node->type_;
             ComponentId componentType = getComponentType<Component>();
 
-            // if(
-            //     std::find(archetype.begin(), archetype.end(), componentType) ==
-            //         archetype.end()
-            // )
-            // {
-            //     IRProfile::engLogInfo("Attempted to retrieve non-existant component from entity");
-            // }
             IR_ASSERT(
                 std::find(archetype.begin(), archetype.end(), componentType) !=
                     archetype.end(),
@@ -351,6 +348,10 @@ namespace IRECS {
         std::unordered_map<EntityId, EntityRecord> m_entityIndex;
         ArchetypeGraph m_archetypeGraph;
         std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
+        std::unordered_map<
+            Relation,
+            std::unordered_map<RelationId, EntityId>
+        > m_relationTypes;
         // TODO:
         // std::unordered_map<
         //     ComponentId, ComponentTypeInfo> m_component_type_info;;
@@ -358,8 +359,6 @@ namespace IRECS {
         std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
         EntityId m_liveEntityCount;
         std::vector<EntityId> m_entitiesMarkedForDeletion;
-
-
 
         template <typename Component, typename... Args>
         int emplaceComponent(IComponentData* dest, Args&&... args) {

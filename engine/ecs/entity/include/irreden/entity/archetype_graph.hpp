@@ -61,7 +61,7 @@ namespace IRECS {
             return nodes;
         }
 
-        template <IRRelationType relation>
+        template <Relation relation>
         void sortSubgraphByRelation(ArchetypeNode* localRootNote) {
             // TODO:
 

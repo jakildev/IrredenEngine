@@ -77,14 +77,13 @@ namespace IRECS {
         m_entityPool.push(entity);
     }
 
-    void EntityManager::addFlags(EntityId entity, EntityId flags) {
+    EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         // Make sure ID bits are not getting modified
-        record.archetypeNode->entities_.at(
-            record.row) |= (flags & (~IR_ENTITY_ID_BITS)
-        );
-        EntityId newId = record.archetypeNode->entities_.at(record.row);
+        record.archetypeNode->entities_.at(record.row) |= 
+            (flags & (~IR_ENTITY_ID_BITS));
+        return record.archetypeNode->entities_.at(record.row);
     }
 
     void EntityManager::markEntityForDeletion(EntityId& entity) {
@@ -143,6 +142,7 @@ namespace IRECS {
         return m_entityIndex[entity & IR_ENTITY_ID_BITS];
     }
 
+    // TODO: make this a flag instead
     bool EntityManager::isPureComponent(ComponentId component) {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         return m_pureComponentVectors.find(component) !=
