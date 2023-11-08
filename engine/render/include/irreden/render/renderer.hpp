@@ -64,7 +64,7 @@ namespace IRRender {
         IRECS::EntityId m_playerCanvas;
         std::unordered_map<std::string, IRECS::EntityId> m_canvasMap;
 
-        // EntityId m_guiCanvas;
+
 
         void initRenderingSystems();
     };
