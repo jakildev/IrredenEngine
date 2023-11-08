@@ -14,5 +14,14 @@ namespace IRRender {
         return *g_renderingResourceManager;
     }
 
+    RenderManager* g_renderManager = nullptr;
+    RenderManager& getRenderManager() {
+        IR_ASSERT(
+            g_renderManager != nullptr,
+            "RenderManager not initalized"
+        );
+        return *g_renderManager;
+    }
+
 } // namespace IRRender
 

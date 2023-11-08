@@ -27,19 +27,7 @@ class IRWorld {
 public:
     IRWorld(int &argc, char **argv);
     virtual ~IRWorld();
-
     void gameLoop();
-
-    // template <
-    //     PrefabTypes type,
-    //     typename... Args
-    // >
-    // EntityHandle createPrefab(Args&&... args)
-    // {
-    //     return Prefab<type>::create(
-    //         args...
-    //     );
-    // }
 
     // template <IRCommands::CommandNames commandName>
     // void bindEntityToCommand(EntityHandle entity)
@@ -138,7 +126,7 @@ private:
     IRCommand::CommandManager m_commandManager;
     IRECS::SystemManager m_systemManager;
     IRRender::RenderingResourceManager m_renderingResourceManager;
-    IRRender::Renderer m_renderer;
+    IRRender::RenderManager m_renderer;
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
 

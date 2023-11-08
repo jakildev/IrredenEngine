@@ -29,6 +29,10 @@
 // TODO: When entities are truly like components and can have tick functions
 // and such, the world will be much easier!!
 
+// Entities can be grouped in their archetype nodes with
+// a ChildOf ____ component, where a child of a particular parent
+// is a unique component type.
+
 namespace IRECS {
 
     struct EntityRecord {
@@ -41,7 +45,7 @@ namespace IRECS {
     public:
         EntityManager();
         ~EntityManager();
-        EntityId createEntity();
+        // EntityId createEntity();
         EntityRecord& getRecord(EntityId entity);
         void addFlags(EntityId entity, EntityId flags);
         bool isPureComponent(ComponentId component);
@@ -118,6 +122,9 @@ namespace IRECS {
             return m_pureComponentTypes[typeName];
         }
 
+        // Set component should return an ComponentId
+        // The ComponentId can be looked up to figure out what component it belongs to
+        // Therefore, it can be looked up in memory
         template <typename Component>
         Component& setComponent(EntityId entity, const Component& component) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -283,6 +290,31 @@ namespace IRECS {
 
         // TODO: Just take in a lambda that says how to initalize
         // the entity!
+
+        template <typename... Components>
+        EntityId createEntity(
+            const Components &...components
+        )
+        {
+            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            EntityId entity = allocateEntity();
+            Archetype archetype = getArchetype<Components...>();
+            ArchetypeNode* archetypeNode =
+                m_archetypeGraph.findCreateArchetypeNode(archetype);
+            int index = insertEntityToNode(
+                archetypeNode,
+                entity,
+                components...
+            );
+            updateRecord(entity, archetypeNode, index);
+
+            IRProfile::engLogDebug("Created entity={} with archetype={}",
+                entity,
+                makeComponentStringInternal(archetype).c_str()
+            );
+            return entity;
+        }
+
         template <typename... Components>
         std::vector<EntityId> createEntitiesBatch(
             const std::vector<Components>&... componentVectors
@@ -301,7 +333,7 @@ namespace IRECS {
             );
             size_t numEntities = sizes[0];
             for(int i = 0; i < numEntities; i++) {
-                res.push_back(allocateNewEntity());
+                res.push_back(allocateEntity());
             }
             Archetype archetype = getArchetype<Components...>();
             ArchetypeNode* toNode =
@@ -312,7 +344,7 @@ namespace IRECS {
                 componentVectors...
             );
             for(int i = 0; i < numEntities; i++) {
-                m_entityIndex.emplace(res[i] & IR_ENTITY_ID_BITS, EntityRecord{toNode, indices[i]});
+                updateRecord(res[i], toNode, indices[i]);
             }
             return res;
         }
@@ -323,6 +355,10 @@ namespace IRECS {
         std::unordered_map<EntityId, EntityRecord> m_entityIndex;
         ArchetypeGraph m_archetypeGraph;
         std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
+        // TODO:
+        // std::unordered_map<
+        //     ComponentId, ComponentTypeInfo> m_component_type_info;;
+
         std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
         EntityId m_liveEntityCount;
         std::vector<EntityId> m_entitiesMarkedForDeletion;
@@ -343,6 +379,33 @@ namespace IRECS {
             d->dataVector.push_back(component);
             int index = d->size() - 1;
             return index;
+        }
+
+        template <typename... Components>
+        int insertEntityToNode(
+            ArchetypeNode* toNode,
+            EntityId entity,
+            const Components &...components
+        )
+        {
+            int newIndex = toNode->length_;
+
+            std::tuple<IComponentDataImpl<Components>*...> dataPointers = {
+                castComponentDataPointer<Components>(
+                    toNode->components_[getComponentType<Components>()].get()
+                )...
+            };
+
+            std::apply([&](auto&&... args) {
+                (args->dataVector.emplace_back(components), ...);
+            }, dataPointers);
+
+
+            toNode->entities_.push_back(entity);
+            toNode->length_++;
+
+            return newIndex;
+
         }
 
         template <typename... Components>
@@ -370,7 +433,7 @@ namespace IRECS {
             return indices;
         }
 
-        EntityId allocateNewEntity();
+        EntityId allocateEntity();
         void addNewEntityToBaseNode(EntityId entity);
         void returnEntityToPool(EntityId entity);
         void pushCopyData(
@@ -396,6 +459,11 @@ namespace IRECS {
         void destroyComponents(EntityId entity);
         void destroyComponent(
             ComponentId component,
+            ArchetypeNode* node,
+            unsigned int row
+        );
+        void updateRecord(
+            EntityId entity,
             ArchetypeNode* node,
             unsigned int row
         );

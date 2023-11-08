@@ -21,9 +21,9 @@ namespace IRComponents {
     struct C_MidiIn{};
     struct C_MidiOut{};
     struct C_HasGravity{};
-    struct C_MainCanvas{};
-    struct C_GuiCanvas{};
-    struct C_BackgroundCanvas{};
+    // struct C_MainCanvas{};
+    // struct C_GuiCanvas{};
+    // struct C_BackgroundCanvas{};
     struct C_Loop{};
     struct C_IsNotPure{}; // TEMP while not executing on entities with one component
     // struct C_IsGamepad{};

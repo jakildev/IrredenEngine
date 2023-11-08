@@ -16,6 +16,8 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_scene_node.hpp>
+
 
 using namespace IRMath;
 using IRRender::ImageData;
@@ -26,69 +28,6 @@ using IRECS::EntityHandle;
 // UPDATE: see component_geometric_shape.hpp
 
 namespace IRComponents {
-
-    struct C_VoxelSceneNode {
-        EntityHandle self_{0};
-        EntityHandle parent_{0};
-        std::vector<EntityHandle> children_{};
-
-        C_VoxelSceneNode(EntityHandle self, EntityHandle parent)
-        :   parent_{parent}
-        ,   self_{self}
-        {
-
-        }
-
-        C_VoxelSceneNode()
-        :   C_VoxelSceneNode{
-                EntityHandle{0},
-                EntityHandle{0}
-            }
-        {
-
-        }
-
-        void addChild(EntityHandle child) {
-            children_.push_back(child);
-        }
-
-        void setParent(EntityHandle parent) {
-            parent_ = parent;
-        }
-
-        void updateChildren(const C_PositionGlobal3D& position) {
-            for(auto child: children_) {
-                auto& childGlobalPosition = child.get<C_PositionGlobal3D>();
-                auto& childPosition = child.get<C_Position3D>();
-                childGlobalPosition.pos_ =
-                    childPosition.pos_ +
-                    position.pos_;
-                child.get<C_VoxelSceneNode>().updateChildren(
-                    childGlobalPosition
-                );
-                // ENG_LOG_IN
-            }
-        }
-
-        void onDestroy() {
-            removeNodeFromScene();
-        }
-
-        void removeNodeFromScene() {
-            auto& parent = self_.get<C_VoxelSceneNode>().parent_;
-            auto& children = parent.get<C_VoxelSceneNode>().children_;
-            // TODO: also recursively remove childrens children
-            // Or recursively destory all child entities...
-            children.erase(
-                std::remove(
-                    children.begin(),
-                    children.end(),
-                    self_
-                ),
-                children.end()
-            );
-        }
-    };
 
     struct C_VoxelScene {
         EntityHandle root_;
@@ -127,8 +66,6 @@ namespace IRComponents {
     };
 
     struct C_VoxelSetNew {
-        // Move parent child stuff out of here and treat all voxels as
-        // individual entities just like any other voxel set...
         int numVoxels_;
         ivec3 size_;
         std::span<C_Position3D> positions_;
@@ -136,20 +73,16 @@ namespace IRComponents {
         std::span<C_PositionGlobal3D> globalPositions_;
         std::span<C_Voxel> voxels_;
 
-        // OO wait this is probably a problem with being copied around and
-        // allocating voxels multiple times
-        // Allocate a voxel set with the given size
         C_VoxelSetNew(
             ivec3 size,
-            Color color = IRConstants::kColorGreen,
-            int voxelPoolId = 0
+            Color color = IRConstants::kColorGreen
+            // int voxelPoolId = 0
         )
         :   numVoxels_{size.x * size.y * size.z}
         ,   size_{size}
         {
-            auto voxels = IRECS::getSystem<IRECS::VOXEL_POOL>().allocateVoxels(
-                size.x * size.y * size.z,
-                voxelPoolId
+            auto voxels = IRRender::allocateVoxels(
+                size.x * size.y * size.z
             );
             positions_ = std::get<0>(voxels);
             positionOffsets_ = std::get<1>(voxels);
@@ -196,7 +129,7 @@ namespace IRComponents {
         // voxels, just in case the constructor might be called in more than
         // one place?
         void onDestroy() {
-            IRECS::getSystem<IRECS::VOXEL_POOL>().deallocateVoxels(
+            IRRender::deallocateVoxels(
                 positions_,
                 positionOffsets_,
                 globalPositions_,

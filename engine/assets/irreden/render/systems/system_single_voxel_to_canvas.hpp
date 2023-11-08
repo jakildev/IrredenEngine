@@ -22,12 +22,9 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
-#include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/render/components/component_triangle_canvas_textures.hpp>
-#include <irreden/render/components/component_triangle_framebuffer.hpp>
-#include <irreden/render/components/component_triangle_canvas_background.hpp>
-#include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_triangle_canvas_background.hpp>
 
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
@@ -90,104 +87,9 @@ namespace IRECS {
                 GL_UNIFORM_BUFFER,
                 kBufferIndex_FrameDataVoxelToCanvas
             }
-        ,   m_mainCanvas{}
-        ,   m_playerCanvas{}
-        ,   m_backgroundCanvas{}
         ,   m_player{0}
         {
-            int backgroundZoomLevel = 2;
-            m_backgroundCanvas.set(C_TriangleCanvasTextures{
-                ivec2(
-                    IRConstants::kScreenTriangleMaxCanvasSize / uvec2(backgroundZoomLevel)
 
-                )
-            });
-            m_backgroundCanvas.set(C_TriangleCanvasFramebuffer{
-                IRConstants::kGameResolution,
-                IRConstants::kSizeExtraPixelNoBuffer
-            });
-            m_backgroundCanvas.set(C_Position3D{
-                vec3(0.0f)
-            });
-            // TODO: Add back pixel buffer for pixel perfect texture
-            // scrolling
-            m_backgroundCanvas.set(C_CameraPosition2DIso{vec2(0.0f)});
-            std::vector<Color> colorPalette = {
-                kPinkTanOrange[1],
-                // kPinkTanOrange[2]
-                IRColors::kBlack
-            };
-            m_backgroundCanvas.set(C_TriangleCanvasBackground{
-                // BackgroundTypes::kSingleColor,
-                // {Color{150, 5, 40, 255}},
-                // ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
-                BackgroundTypes::kGradientRandom,
-                colorPalette,
-                // createColorPaletteFromFile(
-                //     "IRMT/data/color_palettes/neon-moon-tarot-5.png"
-                // ),
-                ivec2(IRConstants::kScreenTriangleMaxCanvasSize) / ivec2(backgroundZoomLevel)
-
-            });
-            m_backgroundCanvas.set(C_ZoomLevel{static_cast<float>(backgroundZoomLevel)});
-            m_backgroundCanvas.set(C_TextureScrollPosition{vec2(0.0f)});
-            m_backgroundCanvas.set(C_TextureScrollVelocity
-                {
-                    // vec2(1.0f, 1.0f)
-                    // vec2(IRConstants::kGameResolution) /
-                    // vec2(IRConstants::kScreenTriangleMaxCanvasSize) * vec2(2.0f)
-                }
-            );
-            m_backgroundCanvas.set(C_BackgroundCanvas{});
-
-            // MAIN CANVAS------------------------------------------------------
-            m_mainCanvas.set<C_VoxelPool>(
-                IRECS::getSystem<VOXEL_POOL>().getVoxelPoolComponent(0)
-            );
-            m_mainCanvas.set(C_TriangleCanvasTextures{
-                ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
-            });
-            // m_mainCanvas.set(C_TriangleCanvasFramebuffer{});
-            m_mainCanvas.set(C_TriangleCanvasFramebuffer{
-                IRConstants::kGameResolution,
-                IRConstants::kSizeExtraPixelBuffer
-            });
-            m_mainCanvas.set(C_Position3D{vec3(0.0f)});
-            m_mainCanvas.set(C_CameraPosition2DIso{vec2(0.0f)}); // gets updated elsewhere
-            m_mainCanvas.set(C_ZoomLevel{1.0f});
-            m_mainCanvas.set(C_MainCanvas{});
-
-            // m_mainCanvas.set(C_TriangleCanvasBackground{
-            //     BackgroundTypes::kSingleColor,
-            //     {Color{150, 5, 40, 255}},
-            //     ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
-            // });
-
-            // PLAYER CANVAS---------------------------------------------------
-            m_playerCanvas.set(C_VoxelPool{
-                IRECS::getSystem<VOXEL_POOL>().getVoxelPoolComponent(1)
-            });
-            m_playerCanvas.set(C_TriangleCanvasTextures{
-                ivec2(IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer)
-            });
-            m_playerCanvas.set(C_TriangleCanvasFramebuffer{
-                IRConstants::kGameResolution,
-                IRConstants::kSizeExtraPixelBuffer
-            });
-            m_playerCanvas.set(C_Position3D{
-                vec3(0.0f) // needs to follow player and adjust camera based on player movement
-            });
-            m_playerCanvas.set(C_CameraPosition2DIso{vec2(0.0f)});
-            m_playerCanvas.set(C_ZoomLevel{1.0f});
-
-            // m_playerCanvas.set(C_TriangleCanvasBackground{});
-
-            // GUI CANVAS------------------------------------------------------
-            // gui canvas should have triangle cursor for now
-            // triangle cursor should be a 2d triangle entity
-            // which I also must implement
-            m_guiCanvas.set(C_GuiCanvas{});
-            // TODO...........
 
             IRProfile::engLogInfo("Created system RENDERING_SINGLE_VOXEL_TO_CANVAS");
         }
@@ -214,15 +116,15 @@ namespace IRECS {
                 // voxel GPU buffers as well.
                 m_bufferVoxelPositions.subData(
                     0,
-                    voxelPools[i].positionGlobals_.size() *
+                    voxelPools[i].getVoxelPoolSize() *
                         sizeof(C_PositionGlobal3D),
-                    voxelPools[i].positionGlobals_.data()
+                    voxelPools[i].getPositionGlobals().data()
                 );
                 m_bufferVoxelColors.subData(
                     0,
-                    voxelPools[i].voxels_.size() *
+                    voxelPools[i].getVoxelPoolSize() *
                         sizeof(C_Voxel),
-                    voxelPools[i].voxels_.data()
+                    voxelPools[i].getColors().data()
                 );
 
                 triangleCanvasTextures[i].getTextureDistances()->bindImage(
@@ -232,7 +134,7 @@ namespace IRECS {
                 );
                 m_shaderCompute.use();
                 glDispatchCompute(
-                    voxelPools[i].numVoxels_,
+                    voxelPools[i].getVoxelPoolSize(),
                     1,
                     1
                 );
@@ -245,15 +147,15 @@ namespace IRECS {
                 // gets own space in buffer...
                 m_bufferVoxelPositions.subData(
                     0,
-                    voxelPools[i].positionGlobals_.size() *
+                    voxelPools[i].getVoxelPoolSize() *
                         sizeof(C_PositionGlobal3D),
-                    voxelPools[i].positionGlobals_.data()
+                    voxelPools[i].getPositionGlobals().data()
                 );
                 m_bufferVoxelColors.subData(
                     0,
-                    voxelPools[i].voxels_.size() *
+                    voxelPools[i].getVoxelPoolSize() *
                         sizeof(C_Voxel),
-                    voxelPools[i].voxels_.data()
+                    voxelPools[i].getColors().data()
                 );
                 triangleCanvasTextures[i].getTextureColors()->bindImage(
                     0,
@@ -267,7 +169,7 @@ namespace IRECS {
                 );
                 m_shaderComputeSecondPass.use();
                 glDispatchCompute(
-                    voxelPools[i].numVoxels_,
+                    voxelPools[i].getVoxelPoolSize(),
                     1,
                     1
                 );
@@ -290,10 +192,6 @@ namespace IRECS {
         }
 
     private:
-        EntityHandle m_backgroundCanvas;
-        EntityHandle m_mainCanvas;
-        EntityHandle m_playerCanvas;
-        EntityHandle m_guiCanvas;
         EntityHandle m_player;
         ShaderProgram m_shaderCompute;
         ShaderProgram m_shaderComputeSecondPass;
@@ -303,13 +201,14 @@ namespace IRECS {
         Buffer m_bufferFrameData;
 
         virtual void beginExecute() override {
-             m_mainCanvas.get<C_CameraPosition2DIso>().pos_ =
-                offsetScreenToIsoTriangles(
-                    IRECS::getSystem<SCREEN_VIEW>().
-                        getGlobalCameraOffsetScreen(),
-                    IRECS::getSystem<SCREEN_VIEW>().
-                        getTriangleStepSizeScreen()
-                );
+            IRECS::getComponent<C_CameraPosition2DIso>(
+                IRRender::getCanvas("main")
+            ).pos_ = offsetScreenToIsoTriangles(
+                IRECS::getSystem<SCREEN_VIEW>().
+                    getGlobalCameraOffsetScreen(),
+                IRECS::getSystem<SCREEN_VIEW>().
+                    getTriangleStepSizeScreen()
+            );
             //  m_backgroundCanvas.get<C_CameraPosition2DIso>().pos_ =
             //     offsetScreenToIsoTriangles(
             //         IRECS::getSystem<SCREEN_VIEW>()->
@@ -319,24 +218,28 @@ namespace IRECS {
             //     );
 
             // Write background here for now
-            m_backgroundCanvas.get<C_TriangleCanvasBackground>()
-                .clearCanvasWithBackground(
-                    m_backgroundCanvas.get<C_TriangleCanvasTextures>()
+            IRECS::getComponent<C_TriangleCanvasBackground>(
+                IRRender::getCanvas("background")
+            ).clearCanvasWithBackground(
+                IRECS::getComponent<C_TriangleCanvasTextures>(
+                    IRRender::getCanvas("background")
                 )
-            ;
+            );
 
         }
 
         virtual void endExecute() override {
             // TODO move to where m_playerCanvas is defined
-            if(m_player.id_ != kNullEntityId) {
-                m_playerCanvas.get<C_Position3D>().pos_ =
-                    m_player.get<C_Position3D>().pos_;
-            }
-            else {
-                m_playerCanvas.get<C_Position3D>().pos_ =
-                    vec3(0.0f);
-            }
+            // if(m_player.id_ != kNullEntityId) {
+            //     IRECS::getComponent<C_Position3D>(m_playerCanvas).pos_ =
+            //         m_player.get<C_Position3D>().pos_;
+            // }
+            // else {
+            // This should be somewhere else for sure
+            IRECS::getComponent<C_Position3D>(
+                IRRender::getCanvas("player")
+            ).pos_ = vec3(0.0f);
+            // }
         }
     };
 

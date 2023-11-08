@@ -31,7 +31,8 @@ namespace IRECS {
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         C_TriangleCanvasFramebuffer,
         C_Position3D,
-        C_CameraPosition2DIso
+        C_CameraPosition2DIso,
+        C_Name
     >   {
     public:
         System()
@@ -75,7 +76,8 @@ namespace IRECS {
             std::vector<EntityId>& entities,
             const std::vector<C_TriangleCanvasFramebuffer>& framebuffers,
             const std::vector<C_Position3D>& cameraPosition,
-            const std::vector<C_CameraPosition2DIso>& cameraPositionIso
+            const std::vector<C_CameraPosition2DIso>& cameraPositionIso,
+            const std::vector<C_Name>& names
         )
         {
             for(int i = 0; i < entities.size(); i++) {
@@ -91,7 +93,7 @@ namespace IRECS {
                         framebuffer.getResolutionPlusBuffer(),
                         cameraPosition[i].pos_,
                         cameraPositionIso[i].pos_,
-                        type
+                        names[i].name_
                     );
                 // perhaps update someday
                   if(type.contains(
@@ -164,7 +166,7 @@ namespace IRECS {
             ivec2 resolutionPlusBuffer,
             vec3 cameraPosition,
             vec2 cameraPositionIso,
-            Archetype type
+            std::string name
         )
         {
             const int scaleFactor =
@@ -188,10 +190,7 @@ namespace IRECS {
             mat4 model = glm::mat4(1.0f);
 
             // Pixel perfect part
-            if(type.contains(
-                IRECS::getEntityManager().
-                    getComponentType<C_MainCanvas>()
-            ))
+            if(name == "main")
             {
                 vec2 fractComponentScaledNew =
                     glm::fract(cameraPositionIso) *
@@ -201,10 +200,7 @@ namespace IRECS {
 
                 offset += fractComponentScaledNew;
             }
-            else if(type.contains(
-                IRECS::getEntityManager().
-                    getComponentType<C_BackgroundCanvas>()
-            ))
+            else if(name == "background")
             {
                 // Need to offset by one pixel here but not exactly sure why atm
                 offset += vec2(1.0f, -1.0f) * vec2(scaleFactor);

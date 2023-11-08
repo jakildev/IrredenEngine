@@ -33,11 +33,14 @@ namespace IRECS {
         PrefabTypes type,
         typename... Args
     >
-    IRECS::EntityId createPrefab(Args&&... args) {
+    EntityId createPrefab(Args&&... args) {
         return Prefab<type>::create(
             args...
         );
     }
+
+
+
 
     // EntityHandle createEntity();
 

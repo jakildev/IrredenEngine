@@ -39,18 +39,23 @@ namespace IRECS {
 
     EntityManager::~EntityManager() {}
 
-    EntityId EntityManager::createEntity() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-        EntityId id = allocateNewEntity();
-        addNewEntityToBaseNode(id);
-        return id;
-    }
+    // EntityId EntityManager::createEntity() {
+    //     IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+    //     EntityId id = allocateEntity();
+    //     addNewEntityToBaseNode(id);
+    //     return id;
+    // }
 
-    EntityId EntityManager::allocateNewEntity() {
+    EntityId EntityManager::allocateEntity() {
         IR_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
         EntityId id = m_entityPool.front();
         m_entityPool.pop();
+        m_entityIndex.emplace(
+            id & IR_ENTITY_ID_BITS,
+            EntityRecord{nullptr, -1}
+        );
         m_liveEntityCount++;
+
         IRProfile::engLogDebug("Created entity={}", id);
         return id;
     }
@@ -102,9 +107,6 @@ namespace IRECS {
         );
     }
 
-    // Not going to handle nested entities for now because I will prob remove
-    // that feature and redo something like it. Doesnt make sense to have a whole
-    // new archetype base node per entity even if they would have the same archetype
     void EntityManager::destroyComponents(EntityId entity) {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
@@ -138,7 +140,6 @@ namespace IRECS {
     }
 
     EntityRecord& EntityManager::getRecord(EntityId entity) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         return m_entityIndex[entity & IR_ENTITY_ID_BITS];
     }
 
@@ -262,6 +263,12 @@ namespace IRECS {
         node->entities_[newPos] = node->entities_.back();
         node->entities_.pop_back();
         IRProfile::engLogDebug("Entity={} moved to row={}", backEntity, newPos);
+    }
+
+    void EntityManager::updateRecord(EntityId entity, ArchetypeNode* node, unsigned int row) {
+        EntityRecord& record = getRecord(entity);
+        record.archetypeNode = node;
+        record.row = row;
     }
 
 } // namespace IRECS:

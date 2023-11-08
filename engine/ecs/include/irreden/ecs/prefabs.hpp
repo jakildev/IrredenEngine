@@ -27,7 +27,8 @@ namespace IRECS {
         kVoxelParticle,
         kMidiSequenceAnimated,
         kKeyMouseButton,
-        kMouseScroll
+        kMouseScroll,
+        kCanvas
     };
 
     template<PrefabTypes type>

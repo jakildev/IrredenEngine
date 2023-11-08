@@ -34,4 +34,5 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy
         ${glm_BINARY_DIR}/glm/libglm_sharedd.dll
         ${PROJECT_BINARY_DIR}/libglm_sharedd.dll
+    DEPENDS glm
 )

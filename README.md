@@ -14,6 +14,9 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 ## Design
 
 ### Modules
+-   IRMath
+-   IRRender
+
 -   The Engine is seperated into "modules". Modules
     -   Contain functionality relating to a particular domain (rendering, profiling, etc).
     -   Build seperately as their own *static library*.
@@ -22,7 +25,7 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
     -   This file contains the module's public API and necessecary header files.
 
 ## Features
--   
+-
 [Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
 [Archetype-based entity-component-system](/docs/features/ecs.md)
 
@@ -83,6 +86,10 @@ The engine is broken up into modules. Each module contains the following directo
 ### Building Your Project
 When building your project, you should note the available systems from each of the modules, as well as create your own, to create your update, input, and rendering pipelines. You shold use the availble prefab entities, and create new entities with the supplied components. You should also write your own components to create unique game logic.
 
+### Coordinate System (move somewhere else)
+-   2D Screen coordinates
+-   2D Isometric coordinates
+-   3D World space coordinates
 
 ## Contributing
 -   Submit pull requests directly to master.
@@ -101,19 +108,22 @@ When building your project, you should note the available systems from each of t
         -   This can be worked on in code or left blank.
     -   Provide a reason why this new component is needed
 
+## Performance
+-   Highlight sections that perform well
+-   Identify bottlenecks and main areas for improvement
+
 ## Limitations
 -   Only builds for Windows.
 -   Device must support OpenGL 4.6.
 -   No IDE (may have one in the future).
 -   Implementations must be written in c++.
 
+
+
 ## Contact
 -   Join the discord [here](TODO: ).
 -   Email me at jakildev@gmail.com.
 -
-
-## Noteworthy c++ concepts (not that one) in code
-#### Type erasure
 
 ## FAQ
 ### See here.

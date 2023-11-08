@@ -36,8 +36,48 @@ namespace IRECS {
         const Archetype excludeComponents = Archetype{}
     );
 
+    template <
+        typename... Components
+    >
+    EntityId createEntity(
+        const Components&... components
+    )
+    {
+        return getEntityManager().createEntity(
+            components...
+        );
+
+    }
+
+    // Returns the first EntityId of the batch
+    // Needs to guarentee that entities are ajacent for
+    // voxel scenes to work
     template <typename... Components>
-    EntityId createEntity(const Components&&... components); // TODO;
+    std::vector<EntityId> createEntityBatch(
+        int count,
+        const Components&... components
+    )
+    {
+        std::vector<EntityId> res;
+        for (int i = 0; i < count; i++) {
+            res.push_back(
+                createEntity(
+                    components...
+                )
+            );
+        }
+        return res;
+    }
+
+    template <typename Component>
+    Component& getComponent(EntityId entity) {
+        return getEntityManager().getComponent<Component>(entity);
+    }
+
+    template <typename Component>
+    Component& setComponent(EntityId entity, Component component) {
+        return getEntityManager().setComponent(entity, component);
+    }
 
 
 } // namespace IRECS
