@@ -1,10 +1,10 @@
-#ifndef COMPONENT_TRIANGLE_CANVAS_H
-#define COMPONENT_TRIANGLE_CANVAS_H
+// #ifndef COMPONENT_TRIANGLE_CANVAS_H
+// #define COMPONENT_TRIANGLE_CANVAS_H
 
-namespace IRComponents {
+// namespace IRComponents {
 
-    struct C_TriangleCanvas
+//     struct C_TriangleCanvas
 
-} // namespace IRComponents
+// } // namespace IRComponents
 
-#endif /* COMPONENT_TRIANGLE_CANVAS_H */
+// #endif /* COMPONENT_TRIANGLE_CANVAS_H */

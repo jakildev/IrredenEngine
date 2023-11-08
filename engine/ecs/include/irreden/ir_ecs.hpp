@@ -39,9 +39,6 @@ namespace IRECS {
         );
     }
 
-
-
-
     // EntityHandle createEntity();
 
 }

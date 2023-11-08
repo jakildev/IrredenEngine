@@ -19,7 +19,6 @@
 namespace IRRender {
 
 RenderingResourceManager::RenderingResourceManager() {
-    IRProfile::engLogInfo("Initalizing rendering resource manager.");
     m_liveResourceCount = 0;
     IRProfile::engLogInfo("Creating an resource id pool. IR_MAX_RESOURCES={}", static_cast<int>(IR_MAX_RESOURCES));
     for (ResourceId resource = 0; resource < IR_MAX_RESOURCES; resource++) {
@@ -33,7 +32,7 @@ RenderingResourceManager::RenderingResourceManager() {
     registerResource<VAO>();
 
     g_renderingResourceManager = this;
-    IRProfile::engLogInfo("Created rendering resource manager.");
+    IRProfile::engLogInfo("Created RenderingResourceManager");
 }
 
 } // namespace IRRender

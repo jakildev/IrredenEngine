@@ -14,7 +14,7 @@ namespace IRECS {
             ] = std::list<SystemName>{};
         }
         g_systemManager = this;
-        IRProfile::engLogInfo("SystemManager initalized");
+        IRProfile::engLogInfo("Created SystemManager");
     };
 
     void SystemManager::executeSystem(

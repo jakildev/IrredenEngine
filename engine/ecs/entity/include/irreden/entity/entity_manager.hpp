@@ -45,19 +45,6 @@ namespace IRECS {
     public:
         EntityManager();
         ~EntityManager();
-        // EntityId createEntity();
-        EntityRecord& getRecord(EntityId entity);
-        void addFlags(EntityId entity, EntityId flags);
-        bool isPureComponent(ComponentId component);
-        smart_ComponentData createComponentDataVector(ComponentId component);
-        void destroyEntity(EntityId entity); // entityManager
-        void markEntityForDeletion(EntityId& entity);
-        void destroyMarkedEntities();
-
-        template <IRRelationType Relation>
-        void addRelation(EntityId fromEntity, EntityId toEntity); // TODO
-
-        void setChild(EntityId parent, EntityId child); // TODO
 
         inline Archetype& getEntityArchetype(EntityId e) {
             return getRecord(e).archetypeNode->type_;
@@ -72,8 +59,81 @@ namespace IRECS {
             return &m_archetypeGraph;
         }
 
+        template <typename... Components>
+        EntityId createEntity(const Components &...components) {
+            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            EntityId entity = allocateEntity();
+            Archetype archetype = getArchetype<Components...>();
+            ArchetypeNode* archetypeNode =
+                m_archetypeGraph.findCreateArchetypeNode(archetype);
+            int index = insertEntityToNode(
+                archetypeNode,
+                entity,
+                components...
+            );
+            updateRecord(entity, archetypeNode, index);
+            IRProfile::engLogDebug("Created entity={} with archetype={}",
+                entity,
+                makeComponentStringInternal(archetype).c_str()
+            );
+            return entity;
+        }
+
+        EntityRecord& getRecord(EntityId entity);
+        void addFlags(EntityId entity, EntityId flags);
+        bool isPureComponent(ComponentId component);
+        smart_ComponentData createComponentDataVector(ComponentId component);
+        void destroyEntity(EntityId entity);
+        void markEntityForDeletion(EntityId& entity);
+        void destroyMarkedEntities();
+
+        template <IRRelationType Relation>
+        void addRelation(EntityId fromEntity, EntityId toEntity); // TODO
+
+        void setChild(EntityId parent, EntityId child); // TODO
+
+
         template <typename Component, typename... Args>
-        ComponentId registerComponent(Args&&... args);
+        ComponentId registerComponent(Args&&... args) {
+            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            std::string typeName = typeid(Component).name();
+            IR_ASSERT(
+                m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
+                "Regestering the same component twice"
+            );
+            ComponentId componentId = createEntity();
+            m_pureComponentTypes.insert({typeName, componentId});
+            m_pureComponentVectors.emplace(
+                componentId,
+                std::make_unique<IComponentDataImpl<Component>>()
+            );
+            Archetype archetype = {componentId};
+            ArchetypeNode* toNode =
+                m_archetypeGraph.findCreateArchetypeNode(archetype);
+            EntityRecord& record = getRecord(componentId);
+            ArchetypeNode* fromNode = record.archetypeNode;
+
+            moveEntityByArchetype(
+                record,
+                fromNode->type_,
+                fromNode,
+                toNode
+            );
+
+            int insertedIndex = emplaceComponent<Component>(
+                toNode->components_[componentId].get(),
+                std::forward<Args>(args)...
+            );
+            IR_ASSERT(insertedIndex == toNode->length_ - 1,
+                "Component inserted at unexpected location."
+            );
+            IRProfile::engLogInfo("Regestered component type={}, sizeof={} with id={}",
+                typeName,
+                sizeof(Component),
+                static_cast<int>(componentId)
+            );
+            return componentId;
+        }
 
         template <typename Component>
         ComponentId getComponentType() {
@@ -84,15 +144,17 @@ namespace IRECS {
             return m_pureComponentTypes[typeName];
         }
 
+        template <IRRelationType Relation>
+        ComponentId registerRelation(EntityId fromEntity, EntityId toEntity) {
+            // WIP WIP WIP
+        }
+
         // Set component should return an ComponentId
         // The ComponentId can be looked up to figure out what component it belongs to
         // Therefore, it can be looked up in memory
         template <typename Component>
-        Component& setComponent(EntityId entity, const Component& component) {
+        Component& setComponent(EntityId entity, const Component& component)  {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-            EntityRecord& record = getRecord(entity);
-            ArchetypeNode* fromNode = record.archetypeNode;
-            ComponentId componentType = getComponentType<Component>();
             Component& c = getInsertComponent<Component>(entity);
             c = component;
             return c;
@@ -247,34 +309,6 @@ namespace IRECS {
                 );
 
             return data->dataVector;
-        }
-
-
-        // TODO: Just take in a lambda that says how to initalize
-        // the entity!
-
-        template <typename... Components>
-        EntityId createEntity(
-            const Components &...components
-        )
-        {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-            EntityId entity = allocateEntity();
-            Archetype archetype = getArchetype<Components...>();
-            ArchetypeNode* archetypeNode =
-                m_archetypeGraph.findCreateArchetypeNode(archetype);
-            int index = insertEntityToNode(
-                archetypeNode,
-                entity,
-                components...
-            );
-            updateRecord(entity, archetypeNode, index);
-
-            IRProfile::engLogDebug("Created entity={} with archetype={}",
-                entity,
-                makeComponentStringInternal(archetype).c_str()
-            );
-            return entity;
         }
 
         template <typename... Components>
@@ -432,9 +466,8 @@ namespace IRECS {
 
     };
 
-
 } // namespace IRECS
 
-#include <irreden/entity/entity_manager.tpp>
+// #include <irreden/entity/entity_manager.tpp>
 
 #endif /* ENTITY_MANAGER_H */
