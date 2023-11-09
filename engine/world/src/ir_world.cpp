@@ -109,16 +109,16 @@ void IRWorld::gameLoop() {
     end();
 }
 
-void IRWorld::addEntityToScene(
-    EntityHandle entity,
-    EntityHandle parent
-)
-{
-    IRECS::getSystem<UPDATE_VOXEL_SET_CHILDREN>().addEntityToScene(
-        entity,
-        parent
-    );
-}
+// void IRWorld::addEntityToScene(
+//     EntityHandle entity,
+//     EntityHandle parent
+// )
+// {
+//     IRECS::getSystem<UPDATE_VOXEL_SET_CHILDREN>().addEntityToScene(
+//         entity,
+//         parent
+//     );
+// }
 
 void IRWorld::input() {
     IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);

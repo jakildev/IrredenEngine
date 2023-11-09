@@ -32,5 +32,15 @@ namespace IRECS {
         );
     }
 
+    bool isPureComponent(ComponentId component) {
+        return getEntityManager().isPureComponent(component);
+    }
 
+    EntityId setParent(EntityId child, EntityId parent) {
+        return getEntityManager().setRelation(CHILD_OF, child, parent);
+    }
+
+    // bool isRelationCompoenent(ComponentId component) {
+    //     return getEntityManager().isRelationComponent(component);
+    // }
 }

@@ -20,7 +20,7 @@ namespace IRComponents {
             grid_{}
         {
             grid_.resize(size.x * size.y);
-            std::fill(grid_.begin(), grid_.end(), IRECS::kNullEntityId);
+            std::fill(grid_.begin(), grid_.end(), IRECS::kNullEntity);
         }
 
         C_GameGrid2D(unsigned int x, unsigned int y)

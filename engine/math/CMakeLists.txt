@@ -19,7 +19,7 @@ FetchContent_MakeAvailable(glm)
 target_link_libraries(
     IrredenEngineMath
     PUBLIC
-    glm
+    # glm
 )
 
 target_include_directories(
@@ -28,11 +28,11 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-add_custom_command(
-    TARGET IrredenEngineMath
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${glm_BINARY_DIR}/glm/libglm_sharedd.dll
-        ${PROJECT_BINARY_DIR}/libglm_sharedd.dll
-    DEPENDS glm
-)
+# add_custom_command(
+#     TARGET IrredenEngineMath
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#         ${glm_BINARY_DIR}/glm/libglm_sharedd.dll
+#         ${PROJECT_BINARY_DIR}/libglm_sharedd.dll
+#     DEPENDS glm
+# )

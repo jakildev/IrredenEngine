@@ -12,6 +12,7 @@
 
 // This is the API for the profiling module
 #include <irreden/profile/logger_spd.hpp>
+#include <irreden/profile/cpu_profiler.hpp>
 
 #include <string>
 #include <cstdarg>
@@ -77,9 +78,16 @@ namespace IRProfile {
     inline void glLogFatal(const char* format, Args&&... args);
 
     // CPU profiling commands
-    void profileMainThread();
-    void profileFunction(unsigned int color);
-    void profileBlock(const std::string name, unsigned int color);
+    inline void profileMainThread() {
+        CPUProfiler::instance().mainThread();
+    }
+    inline void profileFunction(unsigned int color) {
+        CPUProfiler::instance().profileFunction(color);
+    }
+    inline void profileBlock(const std::string name, unsigned int color) {
+        CPUProfiler::instance().profileBlock(name, color);
+    }
+
 
 } // namespace IRProfile
 

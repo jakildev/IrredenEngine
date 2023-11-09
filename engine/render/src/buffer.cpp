@@ -22,7 +22,7 @@ namespace IRRender {
     {
         ENG_API->glCreateBuffers(1, &m_handle);
         ENG_API->glNamedBufferStorage(m_handle, size, data, flags);
-        IRProfile::engLogInfo("Created GL buffer handle={}", m_handle);
+        IRProfile::engLogInfo("Created GL buffer: {}", m_handle);
     }
 
     Buffer::Buffer(

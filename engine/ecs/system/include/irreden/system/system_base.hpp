@@ -47,10 +47,10 @@ namespace IRECS {
 
             // TODO: This is not intuative and should change or
             // be enforced somewhere else.
-            if(node->type_.size() <= 1) {
-                // Skip entities with only one component for now
-                return;
-            }
+            // if(node->type_.size() <= 1) {
+            //     // Skip entities with only one component for now
+            //     return;
+            // }
             if(!std::includes(
                 node->type_.begin(),
                 node->type_.end(),

@@ -1,6 +1,8 @@
 #ifndef IR_ENTITY_H
 #define IR_ENTITY_H
 
+#include <irreden/ir_math.hpp>
+
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/entity_manager.hpp>
 
@@ -36,6 +38,8 @@ namespace IRECS {
         const Archetype excludeComponents = Archetype{}
     );
 
+    bool isPureComponent(ComponentId component);
+
     template <
         typename... Components
     >
@@ -48,6 +52,8 @@ namespace IRECS {
         );
 
     }
+
+    EntityId setParent(EntityId child, EntityId parent);
 
     // Returns the first EntityId of the batch
     // Needs to guarentee that entities are ajacent for
@@ -65,6 +71,29 @@ namespace IRECS {
                     components...
                 )
             );
+        }
+        return res;
+    }
+
+    template <typename... Functions>
+    std::vector<EntityId> createEntitiesBatchWithFunctions(
+        IRMath::ivec3 numEntities,
+        Functions... functions
+    )
+    {
+        std::vector<EntityId> res;
+        for(int i = 0; i < numEntities.x; i++) {
+            for(int j = 0; j < numEntities.y; j++) {
+                for(int k = 0; k < numEntities.z; k++) {
+                    res.push_back(
+                        createEntity(
+                            functions(
+                                IRMath::ivec3{i, j, k}
+                            )...
+                        )
+                    );
+                }
+            }
         }
         return res;
     }

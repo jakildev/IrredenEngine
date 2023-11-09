@@ -58,6 +58,9 @@ namespace IRECS {
         inline const ArchetypeGraph* getArchetypeGraph() const {
             return &m_archetypeGraph;
         }
+        inline EntityId entityBits(EntityId entity) {
+            return entity & IR_ENTITY_ID_BITS;
+        }
 
         template <typename... Components>
         EntityId createEntity(const Components &...components) {
@@ -106,28 +109,9 @@ namespace IRECS {
                 componentId,
                 std::make_unique<IComponentDataImpl<Component>>()
             );
-            // TODO: Just leave this pure component entity in base node or something
-            // No need to have this default component biz i dont think...
-            Archetype archetype = {componentId};
-            ArchetypeNode* toNode =
-                m_archetypeGraph.findCreateArchetypeNode(archetype);
-            EntityRecord& record = getRecord(componentId);
-            ArchetypeNode* fromNode = record.archetypeNode;
+            // TODO: Make a component for a pure component and put there...
+            // Same for relation
 
-            moveEntityByArchetype(
-                record,
-                fromNode->type_,
-                fromNode,
-                toNode
-            );
-
-            int insertedIndex = emplaceComponent<Component>(
-                toNode->components_[componentId].get(),
-                std::forward<Args>(args)...
-            );
-            IR_ASSERT(insertedIndex == toNode->length_ - 1,
-                "Component inserted at unexpected location."
-            );
             IRProfile::engLogInfo("Regestered component type={}, sizeof={} with id={}",
                 typeName,
                 sizeof(Component),
@@ -135,6 +119,8 @@ namespace IRECS {
             );
             return componentId;
         }
+
+        RelationId registerRelation(Relation relation, EntityId relatedEntity);
 
         template <typename Component>
         ComponentId getComponentType() {
@@ -145,13 +131,6 @@ namespace IRECS {
             return m_pureComponentTypes[typeName];
         }
 
-        template <Relation relation>
-        RelationId registerRelation(EntityId relatedEntity) {
-            RelationId newRelation = createEntity();
-            m_relationTypes[relation][newRelation] = relatedEntity;
-            setFlags(newRelation, kEntityFlagIsRelation);
-            return newRelation;
-        }
 
         // Set component should return an ComponentId
         // The ComponentId can be looked up to figure out what component it belongs to
@@ -176,12 +155,12 @@ namespace IRECS {
                 record,
                 fromNode->type_,
                 fromNode,
-                toNode);
+                toNode
+            );
 
-            const Component& component = getComponent<Component>(componentType);
             int insertedIndex = insertComponent<Component>(
                 toNode->components_[componentType].get(),
-                component
+                Component{}
             );
 
             IR_ASSERT(insertedIndex == toNode->length_ - 1,
@@ -195,6 +174,12 @@ namespace IRECS {
                 record.row,
                 makeComponentStringInternal(type).c_str());
         }
+
+        EntityId setRelation(
+            Relation relation,
+            EntityId entity,
+            EntityId relatedEntity
+        );
 
         template <typename Component>
         Component& getInsertComponent(EntityId entity) {
@@ -348,10 +333,12 @@ namespace IRECS {
         std::unordered_map<EntityId, EntityRecord> m_entityIndex;
         ArchetypeGraph m_archetypeGraph;
         std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
-        std::unordered_map<
-            Relation,
-            std::unordered_map<RelationId, EntityId>
-        > m_relationTypes;
+        // I'll just start with parent relationship for now
+        std::unordered_map<EntityId, RelationId> m_parentRelations;
+        // std::unordered_map<
+        //     Relation,
+        //     std::unordered_map<RelationId, EntityId>
+        // > m_relationTypes;
         // TODO:
         // std::unordered_map<
         //     ComponentId, ComponentTypeInfo> m_component_type_info;;
@@ -461,6 +448,10 @@ namespace IRECS {
             EntityId entity,
             ArchetypeNode* node,
             unsigned int row
+        );
+        void insertRelation(
+            EntityId entity,
+            RelationId relation
         );
 
     };

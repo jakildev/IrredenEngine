@@ -32,9 +32,10 @@ namespace IRECS {
     {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         for(auto itr = archetype.begin(); itr != archetype.end(); itr++) {
-            components_[*itr] =
-                IRECS::createComponentData(*itr);
-
+            if(IRECS::isPureComponent(*itr)) {
+                components_[*itr] =
+                    IRECS::createComponentData(*itr);
+            }
         }
         IRProfile::engLogInfo("Created archetype node with components: {}, id={}",
             makeComponentStringInternal(archetype),

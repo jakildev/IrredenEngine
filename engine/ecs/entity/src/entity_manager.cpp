@@ -39,13 +39,6 @@ namespace IRECS {
 
     EntityManager::~EntityManager() {}
 
-    // EntityId EntityManager::createEntity() {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
-    //     EntityId id = allocateEntity();
-    //     addNewEntityToBaseNode(id);
-    //     return id;
-    // }
-
     EntityId EntityManager::allocateEntity() {
         IR_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
         EntityId id = m_entityPool.front();
@@ -81,7 +74,7 @@ namespace IRECS {
         IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         // Make sure ID bits are not getting modified
-        record.archetypeNode->entities_.at(record.row) |= 
+        record.archetypeNode->entities_.at(record.row) |=
             (flags & (~IR_ENTITY_ID_BITS));
         return record.archetypeNode->entities_.at(record.row);
     }
@@ -131,7 +124,6 @@ namespace IRECS {
     }
 
     void EntityManager::destroyMarkedEntities() {
-        // IRProfile::engLogDebug("")
         for(int i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
             this->destroyEntity(m_entitiesMarkedForDeletion.at(i));
         }
@@ -149,8 +141,69 @@ namespace IRECS {
             m_pureComponentVectors.end();
     }
 
-    // This could look up component in archetype graph and clone from there,
-    // thus eliminating the need for the m_pureComponentVectors entirely
+    RelationId EntityManager::registerRelation(
+        Relation relation,
+        EntityId relatedEntity
+    )
+    {
+        if(relation == CHILD_OF) {
+            RelationId newRelation = createEntity();
+            m_parentRelations.insert({entityBits(relatedEntity), newRelation});
+            setFlags(newRelation, kEntityFlagIsRelation);
+            IRProfile::engLogInfo("Regestered relation type={} id={} related to entity={}",
+                static_cast<int>(relation),
+                static_cast<int>(newRelation),
+                static_cast<int>(relatedEntity)
+            );
+            return newRelation;
+        }
+
+        IR_ASSERT(false, "Unsupported relation: ", static_cast<int>(relation));
+
+        return kNullEntity;
+    }
+
+    EntityId EntityManager::setRelation(
+        Relation relation,
+        EntityId subjectEntity,
+        EntityId targetEntity
+    )
+    {
+        if(relation == CHILD_OF) {
+
+            if(!m_parentRelations.contains(entityBits(targetEntity))) {
+                registerRelation(CHILD_OF, targetEntity);
+            }
+            insertRelation(subjectEntity, m_parentRelations[entityBits(targetEntity)]);
+            return subjectEntity;
+        }
+
+        IR_ASSERT(false, "Unsupported relation: ", static_cast<int>(relation));
+        return kNullEntity;
+    }
+
+    void EntityManager::insertRelation(
+        EntityId entity,
+        RelationId relation
+    )
+    {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityRecord& record = getRecord(entity);
+        Archetype newArchetype = record.archetypeNode->type_;
+        newArchetype.insert(relation);
+        ArchetypeNode* toNode = m_archetypeGraph.findCreateArchetypeNode(newArchetype);
+        moveEntityByArchetype(
+            record,
+            record.archetypeNode->type_,
+            record.archetypeNode,
+            toNode
+        );
+        IRProfile::engLogDebug("Moved entity to new archetype with relation {}",
+            relation
+        );
+    }
+
+
     smart_ComponentData EntityManager::createComponentDataVector(
         ComponentId component
     )
@@ -192,7 +245,8 @@ namespace IRECS {
                 toNode->type_.end(),
                 type.begin(),
                 type.end()),
-            "Entity move type is not a subset of toNode type");
+            "Entity move type is not a subset of to node type"
+        );
         // EntityRecord& record = getRecord(entity);
         for(auto itr = type.begin(); itr != type.end(); itr++) {
             handleComponentMove(
@@ -204,6 +258,7 @@ namespace IRECS {
         toNode->entities_.push_back(
             fromNode->entities_.at(record.row));
         updateBackEntityPosition(fromNode, record.row);
+        // updateRecord
         record.archetypeNode = toNode;
         record.row = toNode->length_;
         toNode->length_++;
@@ -271,4 +326,4 @@ namespace IRECS {
         record.row = row;
     }
 
-} // namespace IRECS:
+} // namespace IRECS

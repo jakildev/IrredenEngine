@@ -103,7 +103,7 @@ namespace IRComponents {
                     }
                 }
             }
-            IRProfile::engLogDebug("Allocated {} voxels", numVoxels_);
+            IRProfile::engLogDebug("Allocated {} voxel(s)", numVoxels_);
         }
 
         C_VoxelSetNew(int width, int height, int depth)

@@ -24,9 +24,9 @@ namespace IRECS {
     constexpr EntityId IR_ENTITY_ID_BITS =                      0x00000000FFFFFFFF;
     constexpr EntityId IR_PURE_ENTITY_BIT =                     0x0000000100000000;
     constexpr EntityId kEntityFlagIsRelation =                  0x0000000200000000;
-    constexpr EntityId IR_ENTITY_FLAG_MARKED_FOR_DELETION =     0x8000000000000000;
-    constexpr EntityId kNullEntityId = 0;
+    constexpr EntityId IR_ENTITY_FLAG_MARKED_FOR_DELETION =     0x8000000000000000; // unused i think
 
+    constexpr EntityId kNullEntity = 0;
 
     enum Relation {
         CHILD_OF,
