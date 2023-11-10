@@ -6,6 +6,8 @@
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/entity_manager.hpp>
 
+#include <irreden/common/components/component_position_global_3D.hpp>
+
 namespace IRECS {
     // Gets created by ir_world and set here.
     // Might just make managers static classes in the future, but then
@@ -34,11 +36,19 @@ namespace IRECS {
     }
 
     std::vector<ArchetypeNode*> queryArchetypeNodesSimple(
-        const Archetype includeComponents,
-        const Archetype excludeComponents = Archetype{}
+        const Archetype& includeComponents,
+        const Archetype& excludeComponents = Archetype{}
+    );
+    std::vector<ArchetypeNode*> queryArchetypeNodesRelational(
+        const Archetype& includeComponents,
+        const Archetype& excludeComponents = Archetype{},
+        const Relation relation = CHILD_OF
     );
 
     bool isPureComponent(ComponentId component);
+    bool isChildOfRelation(RelationId relation);
+    NodeId getParentNodeFromRelation(RelationId relation);
+
 
     template <
         typename... Components
@@ -48,6 +58,7 @@ namespace IRECS {
     )
     {
         return getEntityManager().createEntity(
+            IRComponents::C_PositionGlobal3D{},
             components...
         );
 
@@ -107,6 +118,8 @@ namespace IRECS {
     Component& setComponent(EntityId entity, Component component) {
         return getEntityManager().setComponent(entity, component);
     }
+
+    EntityId getParentEntityFromArchetype(Archetype type);
 
 
 } // namespace IRECS

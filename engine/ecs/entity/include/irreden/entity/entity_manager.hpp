@@ -62,6 +62,7 @@ namespace IRECS {
             return entity & IR_ENTITY_ID_BITS;
         }
 
+        // Temp: give all entities a global position
         template <typename... Components>
         EntityId createEntity(const Components &...components) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -85,11 +86,13 @@ namespace IRECS {
         EntityRecord& getRecord(EntityId entity);
         EntityId setFlags(EntityId entity, EntityId flags);
         bool isPureComponent(ComponentId component);
+        bool isChildOfRelation(RelationId relation);
         smart_ComponentData createComponentDataVector(ComponentId component);
         void destroyEntity(EntityId entity);
         void markEntityForDeletion(EntityId& entity);
         void destroyMarkedEntities();
-
+        NodeId getParentNodeFromRelation(RelationId relation);
+        EntityId getParentEntityFromArchetype(Archetype type);
         template <Relation Relation>
         void addRelation(EntityId fromEntity, EntityId toEntity); // TODO
 
@@ -335,6 +338,7 @@ namespace IRECS {
         std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
         // I'll just start with parent relationship for now
         std::unordered_map<EntityId, RelationId> m_parentRelations;
+        std::unordered_map<RelationId, EntityId> m_childOfRelations;
         // std::unordered_map<
         //     Relation,
         //     std::unordered_map<RelationId, EntityId>

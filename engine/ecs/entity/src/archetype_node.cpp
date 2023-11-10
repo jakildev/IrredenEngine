@@ -23,7 +23,7 @@
 
 namespace IRECS {
 
-    ArchetypeNode::ArchetypeNode(uint32_t nodeId, const Archetype& archetype)
+    ArchetypeNode::ArchetypeNode(NodeId nodeId, const Archetype& archetype)
     :   type_{archetype}
     ,   entities_{}
     ,   edges_{}
@@ -41,6 +41,15 @@ namespace IRECS {
             makeComponentStringInternal(archetype),
             id_
         );
+    }
+
+    RelationId ArchetypeNode::getChildOfRelation() {
+        for(RelationId relation : type_) {
+            if(IRECS::isChildOfRelation(relation)) {
+                return relation;
+            }
+        }
+        return kNullRelation;
     }
 
 } // namespace IRECS

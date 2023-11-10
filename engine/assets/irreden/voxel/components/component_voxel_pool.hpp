@@ -65,7 +65,7 @@ namespace IRComponents {
             std::fill(
                 m_voxelColors.begin(),
                 m_voxelColors.end(),
-                C_Voxel{Color{255, 0, 0, 255}}
+                C_Voxel{Color{0, 0, 0, 0}}
             );
 
         }

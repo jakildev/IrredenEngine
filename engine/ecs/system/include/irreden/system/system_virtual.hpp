@@ -32,6 +32,7 @@ namespace IRECS {
         virtual void start() {};
         virtual void end() {};
         // virtual void executeEvent(IREvents event) = 0;
+        virtual Relation getRelation() = 0;
 
         inline const SystemName getSystemName() const {
             return m_name;

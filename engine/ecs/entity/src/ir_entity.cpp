@@ -20,8 +20,8 @@ namespace IRECS {
     }
 
     std::vector<ArchetypeNode*> queryArchetypeNodesSimple(
-        const Archetype includeComponents,
-        const Archetype excludeComponents
+        const Archetype& includeComponents,
+        const Archetype& excludeComponents
     ) {
         return
             getEntityManager().
@@ -32,13 +32,43 @@ namespace IRECS {
         );
     }
 
+    std::vector<ArchetypeNode*> queryArchetypeNodesRelational(
+        const Relation relation,
+        const Archetype& includeComponents,
+        const Archetype& excludeComponents
+    ) {
+        return
+            getEntityManager().
+            getArchetypeGraph()->
+            queryArchetypeNodesRelational(
+                relation,
+                includeComponents,
+                excludeComponents
+        );
+    }
+
     bool isPureComponent(ComponentId component) {
         return getEntityManager().isPureComponent(component);
+    }
+
+    bool isChildOfRelation(RelationId relation) {
+        return getEntityManager().isChildOfRelation(relation);
     }
 
     EntityId setParent(EntityId child, EntityId parent) {
         return getEntityManager().setRelation(CHILD_OF, child, parent);
     }
+
+    NodeId getParentNodeFromRelation(RelationId relation) {
+        return getEntityManager().getParentNodeFromRelation(relation);
+    }
+
+    EntityId getParentEntityFromArchetype(Archetype type) {
+        return getEntityManager().getParentEntityFromArchetype(type);
+
+    }
+
+
 
     // bool isRelationCompoenent(ComponentId component) {
     //     return getEntityManager().isRelationComponent(component);

@@ -18,6 +18,7 @@ namespace IRECS {
     using Archetype = std::set<ComponentId>;
     using smart_ArchetypeNode = std::unique_ptr<ArchetypeNode>;
     using smart_ComponentData = std::unique_ptr<IComponentData>;
+    using NodeId = std::uint32_t;
 
     constexpr EntityId IR_MAX_ENTITIES =                        0x0000000001FFFFFF;
     constexpr EntityId IR_RESERVED_ENTITIES =                   0x00000000000000FF;
@@ -27,8 +28,12 @@ namespace IRECS {
     constexpr EntityId IR_ENTITY_FLAG_MARKED_FOR_DELETION =     0x8000000000000000; // unused i think
 
     constexpr EntityId kNullEntity = 0;
+    constexpr ComponentId kNullComponent = 0;
+    constexpr RelationId kNullRelation = 0;
+    constexpr NodeId kNullNode = 0;
 
     enum Relation {
+        NONE,
         CHILD_OF,
         PARENT_TO,
         SIBLING_OF

@@ -141,6 +141,27 @@ namespace IRECS {
             m_pureComponentVectors.end();
     }
 
+    bool EntityManager::isChildOfRelation(RelationId relation) {
+        return m_childOfRelations.contains(relation);
+    }
+
+    NodeId EntityManager::getParentNodeFromRelation(RelationId relation) {
+        if(!isChildOfRelation(relation)) {
+            return kNullNode;
+        }
+        return getRecord(m_childOfRelations[relation]).archetypeNode->id_;
+    }
+
+    EntityId EntityManager::getParentEntityFromArchetype(Archetype type) {
+        for(auto relation: type) {
+            if(isChildOfRelation(relation)) {
+                return m_childOfRelations[relation];
+            }
+        }
+        return kNullEntity;
+    }
+
+
     RelationId EntityManager::registerRelation(
         Relation relation,
         EntityId relatedEntity
@@ -148,8 +169,9 @@ namespace IRECS {
     {
         if(relation == CHILD_OF) {
             RelationId newRelation = createEntity();
-            m_parentRelations.insert({entityBits(relatedEntity), newRelation});
             setFlags(newRelation, kEntityFlagIsRelation);
+            m_parentRelations.insert({entityBits(relatedEntity), newRelation});
+            m_childOfRelations.insert({newRelation, entityBits(relatedEntity)});
             IRProfile::engLogInfo("Regestered relation type={} id={} related to entity={}",
                 static_cast<int>(relation),
                 static_cast<int>(newRelation),

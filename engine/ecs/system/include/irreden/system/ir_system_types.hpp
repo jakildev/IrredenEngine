@@ -22,6 +22,7 @@ namespace IRECS {
         PERIODIC_IDLE,
         GAME_GRID,
         PLANT_GROW,
+        UPDATE_POSITIONS_GLOBAL,
         UPDATE_VOXEL_SET_CHILDREN,
         VOXEL_SCENE,
         VOXEL_SET_RESHAPER,

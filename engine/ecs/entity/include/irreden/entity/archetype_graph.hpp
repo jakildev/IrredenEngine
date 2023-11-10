@@ -19,6 +19,7 @@
 #include <sstream>
 #include <tuple>
 #include <vector>
+#include <queue>
 
 namespace IRECS {
     // I had the idea of making seperate graphs for seperate note types.
@@ -41,8 +42,8 @@ namespace IRECS {
         }
 
         std::vector<ArchetypeNode*> queryArchetypeNodesSimple(
-            const Archetype includeComponents,
-            const Archetype excludeComponents = Archetype{}
+            const Archetype& includeComponents,
+            const Archetype& excludeComponents = Archetype{}
         ) const
         {
             IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);
@@ -61,12 +62,35 @@ namespace IRECS {
             return nodes;
         }
 
-        template <Relation relation>
-        void sortSubgraphByRelation(ArchetypeNode* localRootNote) {
-            // TODO:
-
+        std::vector<ArchetypeNode*> queryArchetypeNodesRelational(
+            const Relation relation,
+            const Archetype& includeComponents,
+            const Archetype& excludeComponents = Archetype{}
+        )   const
+        {
+            auto nodes = queryArchetypeNodesSimple(
+                includeComponents,
+                excludeComponents
+            );
+            return sortArchetypeNodesByRelation(relation, nodes);
         }
 
+        std::vector<ArchetypeNode*> sortArchetypeNodesByRelation(
+            const Relation relation,
+            const std::vector<ArchetypeNode*>& nodes
+        )   const
+        {
+            if(relation == CHILD_OF) {
+                return sortArchetypeNodesByRelationChildOf(nodes);
+            }
+            return nodes;
+        }
+
+        // Not sure what happens here if a node has a parent with
+        // a different archetype.
+        std::vector<ArchetypeNode*> sortArchetypeNodesByRelationChildOf(
+            const std::vector<ArchetypeNode*>& nodes
+        )   const;
        // DO i need read / write operations that can be atomic
 
     private:

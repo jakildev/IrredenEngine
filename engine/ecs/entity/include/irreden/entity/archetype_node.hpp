@@ -31,14 +31,16 @@ namespace IRECS {
     // TODO: make archetype node own all i_component_data inserting and whatnot
     class ArchetypeNode{
     public:
-        uint32_t id_;
+        NodeId id_;
         Archetype type_;
         std::vector<EntityId> entities_;
         std::unordered_map<ComponentId, smart_ComponentData> components_;
         std::unordered_map<ComponentId, ArchetypeNodeEdge> edges_;
         int length_;
 
-        ArchetypeNode(uint32_t nodeId, const Archetype &archetype);
+        ArchetypeNode(NodeId nodeId, const Archetype &archetype);
+
+        RelationId getChildOfRelation();
     };
 
 } // namespace IRECS

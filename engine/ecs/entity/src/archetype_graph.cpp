@@ -66,6 +66,36 @@ namespace IRECS {
         newNode->edges_[nextType].remove = prevNode;
     }
 
+    // Not sure what happens here if a node has a parent with
+    // a different archetype.
+    std::vector<ArchetypeNode*> ArchetypeGraph::sortArchetypeNodesByRelationChildOf(
+        const std::vector<ArchetypeNode*>& nodes
+    ) const
+    {
+        // A breath first sort of nodes based on relation heirarchy
+        std::vector<ArchetypeNode*> sortedNodes;
+        std::queue<ArchetypeNode*> nodeQueue;
+        for(const auto& node : nodes) {
+            if(node->getChildOfRelation() == kNullRelation) {
+                nodeQueue.push(node);
+                sortedNodes.push_back(node);
+            }
+        }
+
+        while(!nodeQueue.empty()) {
+            auto currentNode = nodeQueue.front();
+            nodeQueue.pop();
+            for(const auto& node: nodes) {
+                RelationId childOfRelation = node->getChildOfRelation();
+                if(IRECS::getParentNodeFromRelation(childOfRelation) == currentNode->id_) {
+                    nodeQueue.push(node);
+                    sortedNodes.push_back(node);
+                }
+            }
+        }
+        return sortedNodes;
+    }
+
     /* ------------Unused functions------------------ */
 
 

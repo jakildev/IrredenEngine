@@ -31,6 +31,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_particle_spawner.hpp>
+#include <irreden/update/systems/system_update_positions_global.hpp>
 
 // RENDER SYSTEMS
 #include <irreden/render/systems/system_texture_scroll.hpp>
@@ -231,6 +232,7 @@ void IRWorld::initIRUpdateSystems() {
     // TODO: This should be an output system but midi message out's get destroyed
     // by lifetime system, so perhaps they should just get consumed by
     // midi out system instead.
+    m_systemManager.registerSystem<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystem<LIFETIME, SYSTEM_TYPE_UPDATE>();

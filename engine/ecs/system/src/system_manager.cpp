@@ -29,10 +29,20 @@ namespace IRECS {
         // global.commandManager_->executeSystemCommands(system->getSystemName());
         // global.commandManager_->executeSystemEntityCommands(system->getSystemName());
         system->beginExecute();
-        auto nodes =
-            IRECS::getEntityManager().
-            getArchetypeGraph()->
-            queryArchetypeNodesSimple(system->getArchetype());
+        std::vector<ArchetypeNode*> nodes;
+        if(system->getRelation() == Relation::NONE) {
+            nodes = IRECS::getEntityManager().
+                getArchetypeGraph()->
+                queryArchetypeNodesSimple(system->getArchetype());
+        }
+        if(system->getRelation() == Relation::CHILD_OF) {
+            nodes = IRECS::getEntityManager().
+                getArchetypeGraph()->
+                queryArchetypeNodesRelational(
+                    system->getRelation(),
+                    system->getArchetype()
+                );
+        }
         for(auto node : nodes) {
             system->tick(node);
         }

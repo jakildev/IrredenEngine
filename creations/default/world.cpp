@@ -19,48 +19,92 @@ World::~World()
 
 void World::initGameEntities()
 {
-    ivec3 batchSize = ivec3(16, 16, 16);
-    auto entities = IRECS::createEntitiesBatchWithFunctions(
-        batchSize,
-        [batchSize](ivec3 index){
-            // IRProfile::logInfo("Index: {}, {}, {}", index.x, index.y, index.z);
-            return C_Position3D{
-                index
-            };
-        },
-        [batchSize](ivec3 index) {
-            Color color{
-                roundFloatToByte(static_cast<float>(index.x) / batchSize.x),
-                roundFloatToByte(static_cast<float>(index.y) / batchSize.y),
-                roundFloatToByte(static_cast<float>(index.z) / batchSize.z),
-                255
-            };
-            // IRProfile::logInfo("Color: {}, {}, {}", color.red_, color.green_, color.blue_);
-            return C_VoxelSetNew(
-                ivec3(1, 1, 1),
-                color
-            );
-        }
-    );
+    ivec3 batchSize = ivec3(32, 32, 32);
+    for(int x = 0; x < 2; x++) {
+        for(int y = 0; y < 2; y++) {
+            for(int z = 0; z < 2; z++) {
+                auto entities = IRECS::createEntitiesBatchWithFunctions(
+                    batchSize,
+                    [](ivec3 index){
+                        return C_Position3D{
+                            256, 256, 256
+                        };
+                    },
+                    [batchSize](ivec3 index) {
+                        Color color{
+                            roundFloatToByte(static_cast<float>(index.x) / batchSize.x),
+                            roundFloatToByte(static_cast<float>(index.y) / batchSize.y),
+                            roundFloatToByte(static_cast<float>(index.z) / batchSize.z),
+                            255
+                        };
+                        return C_VoxelSetNew(
+                            ivec3(1, 1, 1),
+                            color
+                        );
+                    },
+                    [](ivec3 index) {
+                        return C_GotoEasing3D{
+                            C_Position3D{
+                                vec3(256, 256, 256)
+                            },
+                            C_Position3D{
+                                vec3(index.x, index.y, index.z) + vec3(256)
+                            },
+                            (-index.x + -index.y + -index.z + 400) / 100.0f,
+                            IREasingFunctions::kBounceEaseOut
+                        };
+                    },
+                    [](ivec3 index) {
+                        return C_Velocity3D{
+                            vec3(0)
+                        };
+                    },
+                    [](ivec3 index) {
+                        int face = (index.x + index.y + index.z) % 3;
+                        if(face == 0) {
+                            return C_Acceleration3D{
+                                vec3(
+                                    IRMath::randomFloat(-1.25, 1.25),
+                                    0,
+                                    0
+                                )
+                            };
+                        }
+                        if(face == 1) {
+                            return C_Acceleration3D{
+                                vec3(
+                                    0,
+                                    IRMath::randomFloat(-1.25, 1.25),
+                                    0
+                                )
+                            };
+                        }
+                        if(face == 2) {
+                            return C_Acceleration3D{
+                                vec3(
+                                    0,
+                                    0,
+                                    IRMath::randomFloat(-1.25, 1.25)
+                                )
+                            };
+                        }
 
-    EntityId parent1 = IRECS::createEntity(
-        C_Position3D{0, 24, 0}
-    );
-    EntityId parent2 = IRECS::createEntity(
-        C_Position3D{0, 0, 16}
-    );
-
-    int counter = 0;
-    for(auto& entity : entities) {
-        if(counter % 2 == 0) {
-            IRECS::setParent(entity, parent1);
-
+                        return C_Acceleration3D{vec3(0, 0, 0)};
+                    }
+                );
+                EntityId parent = IRECS::createEntity(
+                    C_Position3D{
+                        static_cast<float>(x * 48),
+                        static_cast<float>(y * 48),
+                        static_cast<float>(z * 48)
+                    }
+                    // ,C_Velocity3D{vec3(x * 4, y * 4, z * 4)}
+                );
+                for(auto& entity : entities) {
+                    IRECS::setParent(entity, parent);
+                }
+            }
         }
-        else {
-            IRECS::setParent(entity, parent2);
-        }
-        counter++;
-        // addEntityToScene(entity);
     }
 
 }

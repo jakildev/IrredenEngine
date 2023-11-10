@@ -45,12 +45,6 @@ namespace IRECS {
             ss << "SystemBase::tick " << static_cast<int>(system);
             IRProfile::profileBlock(ss.str().c_str(), IR_PROFILER_COLOR_UPDATE);
 
-            // TODO: This is not intuative and should change or
-            // be enforced somewhere else.
-            // if(node->type_.size() <= 1) {
-            //     // Skip entities with only one component for now
-            //     return;
-            // }
             if(!std::includes(
                 node->type_.begin(),
                 node->type_.end(),
@@ -75,6 +69,10 @@ namespace IRECS {
                 },
                 paramTuple
             );
+        }
+
+        virtual Relation getRelation() override {
+            return m_relation;
         }
 
         // CHAT GPT STUFF BUT IS THIS THE SECRET???
@@ -113,6 +111,10 @@ namespace IRECS {
             );
         }
 
+        void setRelationType(Relation relation) {
+            m_relation = relation;
+        }
+
         template <typename... StandaloneComponents>
         void tickWithArchetypeStandalone() {
             auto nodes =
@@ -123,6 +125,7 @@ namespace IRECS {
 
     private:
         Archetype m_includeTags;
+        Relation m_relation = NONE;
     };
 
 
