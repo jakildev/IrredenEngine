@@ -149,7 +149,7 @@ namespace IRECS {
                 );
                 triangleCanvasTextures[i].bind(0, 1);
 
-                ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+                ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
                 ENG_API->glDrawElements(
                     GL_TRIANGLES,
                     IRShapes2D::kQuadIndicesLength,

@@ -7,8 +7,10 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
+#include <irreden/ir_audio.hpp>
 
 #include <irreden/audio/audio_manager.hpp>
+
 namespace IRAudio {
     AudioManager::AudioManager()
     :   m_audio{},
@@ -24,8 +26,6 @@ namespace IRAudio {
         // }
         g_audioManager = this;
         IRProfile::engLogInfo("Created AudioManager");
-
-
     }
 
     AudioManager::~AudioManager() {

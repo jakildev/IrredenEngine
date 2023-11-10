@@ -62,7 +62,19 @@ namespace IRECS {
             return entity & IR_ENTITY_ID_BITS;
         }
 
-        // Temp: give all entities a global position
+
+        EntityRecord& getRecord(EntityId entity);
+        EntityId setFlags(EntityId entity, EntityId flags);
+        bool isPureComponent(ComponentId component);
+        bool isChildOfRelation(RelationId relation);
+        smart_ComponentData createComponentDataVector(ComponentId component);
+        void destroyEntity(EntityId entity);
+        void markEntityForDeletion(EntityId& entity);
+        void destroyMarkedEntities();
+        NodeId getParentNodeFromRelation(RelationId relation);
+        EntityId getParentEntityFromArchetype(Archetype type);
+        RelationId registerRelation(Relation relation, EntityId relatedEntity);
+
         template <typename... Components>
         EntityId createEntity(const Components &...components) {
             IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -82,21 +94,6 @@ namespace IRECS {
             );
             return entity;
         }
-
-        EntityRecord& getRecord(EntityId entity);
-        EntityId setFlags(EntityId entity, EntityId flags);
-        bool isPureComponent(ComponentId component);
-        bool isChildOfRelation(RelationId relation);
-        smart_ComponentData createComponentDataVector(ComponentId component);
-        void destroyEntity(EntityId entity);
-        void markEntityForDeletion(EntityId& entity);
-        void destroyMarkedEntities();
-        NodeId getParentNodeFromRelation(RelationId relation);
-        EntityId getParentEntityFromArchetype(Archetype type);
-        template <Relation Relation>
-        void addRelation(EntityId fromEntity, EntityId toEntity); // TODO
-
-        void setChild(EntityId parent, EntityId child); // TODO
 
         template <typename Component, typename... Args>
         ComponentId registerComponent(Args&&... args) {
@@ -122,8 +119,6 @@ namespace IRECS {
             );
             return componentId;
         }
-
-        RelationId registerRelation(Relation relation, EntityId relatedEntity);
 
         template <typename Component>
         ComponentId getComponentType() {
@@ -255,7 +250,6 @@ namespace IRECS {
                         componentType, entity, record.row);
         }
 
-
         template <typename Component>
         Component& getComponent(EntityId entity)
         {
@@ -336,20 +330,50 @@ namespace IRECS {
         std::unordered_map<EntityId, EntityRecord> m_entityIndex;
         ArchetypeGraph m_archetypeGraph;
         std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
-        // I'll just start with parent relationship for now
         std::unordered_map<EntityId, RelationId> m_parentRelations;
         std::unordered_map<RelationId, EntityId> m_childOfRelations;
-        // std::unordered_map<
-        //     Relation,
-        //     std::unordered_map<RelationId, EntityId>
-        // > m_relationTypes;
-        // TODO:
-        // std::unordered_map<
-        //     ComponentId, ComponentTypeInfo> m_component_type_info;;
-
         std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
         EntityId m_liveEntityCount;
         std::vector<EntityId> m_entitiesMarkedForDeletion;
+
+        EntityId allocateEntity();
+        void addNewEntityToBaseNode(EntityId entity);
+        void returnEntityToPool(EntityId entity);
+        void pushCopyData(
+            IComponentData* fromStructure,
+            unsigned int fromIndex,
+            IComponentData* toStructure);
+        int moveEntityByArchetype(
+            EntityRecord& entity,
+            const Archetype& type,
+            ArchetypeNode* fromNode,
+            ArchetypeNode* toNode);
+        void handleComponentMove(
+            const ComponentId component,
+            ArchetypeNode* fromNode,
+            ArchetypeNode* toNode,
+            const unsigned int row);
+        void removeEntityFromArchetypeNode(ArchetypeNode* node, unsigned int index);
+        void handleComponentRemove(
+            const ComponentId component,
+            ArchetypeNode* node,
+            const unsigned int row);
+        void updateBackEntityPosition(ArchetypeNode *node, unsigned int newPos);
+        void destroyComponents(EntityId entity);
+        void destroyComponent(
+            ComponentId component,
+            ArchetypeNode* node,
+            unsigned int row
+        );
+        void updateRecord(
+            EntityId entity,
+            ArchetypeNode* node,
+            unsigned int row
+        );
+        void insertRelation(
+            EntityId entity,
+            RelationId relation
+        );
 
         template <typename Component, typename... Args>
         int emplaceComponent(IComponentData* dest, Args&&... args) {
@@ -418,45 +442,6 @@ namespace IRECS {
             }
             return indices;
         }
-
-        EntityId allocateEntity();
-        void addNewEntityToBaseNode(EntityId entity);
-        void returnEntityToPool(EntityId entity);
-        void pushCopyData(
-            IComponentData* fromStructure,
-            unsigned int fromIndex,
-            IComponentData* toStructure);
-        int moveEntityByArchetype(
-            EntityRecord& entity,
-            const Archetype& type,
-            ArchetypeNode* fromNode,
-            ArchetypeNode* toNode);
-        void handleComponentMove(
-            const ComponentId component,
-            ArchetypeNode* fromNode,
-            ArchetypeNode* toNode,
-            const unsigned int row);
-        void removeEntityFromArchetypeNode(ArchetypeNode* node, unsigned int index);
-        void handleComponentRemove(
-            const ComponentId component,
-            ArchetypeNode* node,
-            const unsigned int row);
-        void updateBackEntityPosition(ArchetypeNode *node, unsigned int newPos);
-        void destroyComponents(EntityId entity);
-        void destroyComponent(
-            ComponentId component,
-            ArchetypeNode* node,
-            unsigned int row
-        );
-        void updateRecord(
-            EntityId entity,
-            ArchetypeNode* node,
-            unsigned int row
-        );
-        void insertRelation(
-            EntityId entity,
-            RelationId relation
-        );
 
     };
 

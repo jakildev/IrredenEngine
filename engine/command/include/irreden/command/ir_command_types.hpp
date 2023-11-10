@@ -17,8 +17,6 @@ namespace IRCommand {
 
     enum CommandTypes {
         IR_COMMAND_NULL,
-        // IR_COMMAND_SYSTEM,
-        // IR_COMMAND_ENTITY,
         IR_COMMAND_USER,
         IR_COMMAND_MIDI_NOTE,
         IR_COMMAND_MIDI_CC

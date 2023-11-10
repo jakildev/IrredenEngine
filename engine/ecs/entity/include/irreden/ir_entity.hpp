@@ -40,9 +40,9 @@ namespace IRECS {
         const Archetype& excludeComponents = Archetype{}
     );
     std::vector<ArchetypeNode*> queryArchetypeNodesRelational(
+        const Relation relation,
         const Archetype& includeComponents,
-        const Archetype& excludeComponents = Archetype{},
-        const Relation relation = CHILD_OF
+        const Archetype& excludeComponents = Archetype{}
     );
 
     bool isPureComponent(ComponentId component);
@@ -87,7 +87,7 @@ namespace IRECS {
     }
 
     template <typename... Functions>
-    std::vector<EntityId> createEntitiesBatchWithFunctions(
+    std::vector<EntityId> createEntityBatchWithFunctions(
         IRMath::ivec3 numEntities,
         Functions... functions
     )

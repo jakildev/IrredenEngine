@@ -70,91 +70,22 @@ namespace IRCommand {
         std::function<void()> m_func;
     };
 
-    // template <>
-    // class Command<IR_COMMAND_SYSTEM> {
-    // public:
-    //     Command(
-    //         IRInput::InputTypes type,
-    //         int buttonValue,
-    //         std::function<void()> func
-    //     )
-    //     :   m_type(type)
-    //     ,   m_button(buttonValue)
-    //     ,   m_func(func)
-    //     {
-
-    //     }
-
-    //     void execute() const {
-    //         m_func();
-    //     }
-
-    //     const int getButton() const {
-    //         return m_button;
-    //     }
-
-    //     const IRInput::InputTypes getType() const {
-    //         return m_type;
-    //     }
-    // private:
-    //     IRInput::InputTypes m_type;
-    //     int m_button;
-    //     std::function<void()> m_func;
-    // };
-
-    // template <>
-    // class Command<IR_COMMAND_ENTITY> {
-    // public:
-    //     template <typename Function, typename... Args>
-    //     Command(
-    //         IRInput::InputTypes type,
-    //         int buttonValue,
-    //         Function func,
-    //         Args... fixedArgs
-    //     )
-    //     :   m_type(type)
-    //     ,   m_button(buttonValue)
-    //     ,   m_func([func, fixedArgs...](EntityHandle entity) {
-    //             func(entity, fixedArgs...);
-    //         })
-    //     {
-
-    //     }
-
-    //     void execute(EntityHandle entity) const {
-    //         m_func(entity);
-    //     }
-
-    //     const int getButton() const {
-    //         return m_button;
-    //     }
-
-    //     const IRInput::InputTypes getType() const {
-    //         return m_type;
-    //     }
-    // private:
-    //     IRInput::InputTypes m_type;
-    //     int m_button;
-    //     std::function<void(EntityHandle)> m_func;
-    // };
-
     template <>
     class Command<IR_COMMAND_MIDI_NOTE> {
     public:
         template <typename Function, typename... Args>
         Command(
             IRInput::InputTypes type,
-            Function onPress,
-            // Function onRelease,
-            Args... fixedArgs
+            IRInput::ButtonStatuses triggerStatus,
+            Function func
         )
         :   m_type(type)
-        ,   m_func([onPress, fixedArgs...](
+        ,   m_func([func](
                 unsigned char note,
                 unsigned char velocity
             )
             {
-                onPress(note, velocity, fixedArgs...);
+                func(note, velocity);
             })
         {
 
@@ -171,8 +102,13 @@ namespace IRCommand {
         const IRInput::InputTypes getType() const {
             return m_type;
         }
+
+        const IRInput::ButtonStatuses getTriggerStatus() const {
+            return m_triggerStatus;
+        }
     private:
         IRInput::InputTypes m_type;
+        IRInput::ButtonStatuses m_triggerStatus;
         std::function<void(unsigned char, unsigned char)> m_func;
     };
 

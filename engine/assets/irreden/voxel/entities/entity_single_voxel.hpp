@@ -27,7 +27,7 @@ namespace IRECS {
     struct Prefab<PrefabTypes::kSingleVoxel> {
         static EntityHandle create(
             vec3 position,
-            Color color = IRConstants::kColorGreen
+            Color color = IRColors::kGreen
         )
         {
             EntityHandle entity{};

@@ -8,7 +8,7 @@
  */
 
 #include <irreden/ir_input.hpp>
-#include <irreden/ir_command.hpp> // To set pointer to manager (prob a better way and I do this in a few places)
+#include <irreden/ir_command.hpp>
 #include <irreden/command/command_manager.hpp>
 
 #include <irreden/input/systems/system_input_gamepad.hpp>
@@ -21,82 +21,43 @@ namespace IRCommand {
         IRProfile::engLogInfo("Created CommandManager");
     }
 
-    // void CommandManager::executeSystemCommands(SystemName systemName) {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     const auto& systemCommandList =
-    //         m_systemCommands[systemName];
-    //     for(int i = 0; i < systemCommandList.size(); ++i) {
-    //         const auto& command = systemCommandList[i];
-    //         if(checkButton(command.getType(), command.getButton()))
-    //         {
-    //             command.execute();
-    //         }
-    //     }
-    // }
 
-    // void CommandManager::executeSystemEntityCommands(SystemName systemName) {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     const auto& systemEntityCommandList =
-    //         m_systemEntityCommands[systemName];
-    //     for(int i = 0; i < systemEntityCommandList.size(); ++i) {
-    //         executeEntityCommand(systemEntityCommandList[i]);
-    //     }
-    // }
+    void CommandManager::executeDeviceMidiCCCommandsAll() {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        for(auto& [device, commands] : m_midiCCDeviceCommands) {
+            executeDeviceMidiCCCommands(device, commands);
+        }
+    }
 
-    // void CommandManager::executeEntityCommand(CommandNames commandName) {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     const auto& command =
-    //         m_entityCommands.at(commandName);
-    //     if(IRECS::getSystem<INPUT_KEY_MOUSE>()->
-    //         checkButton(
-    //             command.getType(),
-    //             (KeyMouseButtons)command.getButton()
-    //         )
-    //     )
-    //     {
-    //         const auto& boundEntities = m_entitiesBoundToCommands[commandName];
-    //         for(auto const& entity : boundEntities) {
-    //             command.execute(entity);
-    //         }
-    //     }
-    // }
+    void CommandManager::executeDeviceMidiCCCommands(
+        int device,
+        std::vector<Command<IR_COMMAND_MIDI_CC>>& commands
+    )
+    {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        for(int i = 0; i < commands.size(); ++i) {
+            executeDeviceMidiCCCommand(device, commands[i]);
+        }
+    }
 
-    // void CommandManager::executeDeviceMidiCCCommandsAll() {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     for(auto& [device, commands] : m_midiCCDeviceCommands) {
-    //         executeDeviceMidiCCCommands(device, commands);
-    //     }
-    // }
+    void CommandManager::executeDeviceMidiCCCommand(
+        int device,
+        Command<IR_COMMAND_MIDI_CC>& command
+    )
+    {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        CCData ccData = checkCCMessage(device, command.getCCMessage());
+        if(ccData != kCCFalse) {
+            command.execute(ccData);
+        }
+    }
 
-    // void CommandManager::executeDeviceMidiCCCommands(
-    //     int device,
-    //     std::vector<Command<IR_COMMAND_MIDI_CC>>& commands
-    // )
-    // {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     for(int i = 0; i < commands.size(); ++i) {
-    //         executeDeviceMidiCCCommand(device, commands[i]);
-    //     }
-    // }
-
-    // void CommandManager::executeDeviceMidiCCCommand(
-    //     int device,
-    //     Command<IR_COMMAND_MIDI_CC>& command
-    // )
-    // {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     CCData ccData = checkCCMessage(device, command.getCCMessage());
-    //     if(ccData != kCCFalse) {
-    //         command.execute(ccData);
-    //     }
-    // }
-
-    // void CommandManager::executeDeviceMidiNoteCommandsAll() {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     for(auto& [device, commands] : m_midiNoteDeviceCommands) {
-    //         executeDeviceMidiNoteCommands(device, commands);
-    //     }
-    // }
+    void CommandManager::executeDeviceMidiNoteCommandsAll() {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        for(auto& [device, commands] : m_midiNoteDeviceCommands) {
+            executeDeviceMidiNoteCommands(device, commands);
+        }
+    }
 
     void CommandManager::executeUserKeyboardCommandsAll() {
         for(auto& command : m_userCommands) {
@@ -110,44 +71,35 @@ namespace IRCommand {
         }
     }
 
-    // void CommandManager::executeDeviceMidiNoteCommands(
-    //     int device,
-    //     std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
-    // )
-    // {
-    //     IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
-    //     for(int i = 0; i < commands.size(); ++i) {
-    //         executeDeviceMidiNoteCommand(device, commands[i]);
-    //     }
-    // }
+    void CommandManager::executeDeviceMidiNoteCommands(
+        int device,
+        std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
+    )
+    {
+        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        for(int i = 0; i < commands.size(); ++i) {
+            executeDeviceMidiNoteCommand(device, commands[i]);
+        }
+    }
 
-    // void CommandManager::executeDeviceMidiNoteCommand(
-    //     int device,
-    //     Command<IR_COMMAND_MIDI_NOTE>& command
-    // )
-    // {
-    //     if(command.getType() == MIDI_NOTE) {
-    //         auto& notes = IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
-    //             getMidiNotesOnThisFrame(device);
-    //             // TODO: Check statuses here...
-    //         for(int i = 0; i < notes.size(); ++i) {
-    //             command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
-    //         }
-    //     }
+    void CommandManager::executeDeviceMidiNoteCommand(
+        int device,
+        Command<IR_COMMAND_MIDI_NOTE>& command
+    )
+    {
+        if(command.getType() == MIDI_NOTE && command.getTriggerStatus() == PRESSED) {
+            auto& notes = IRAudio::getMidiNotesOnThisFrame(device);
+            for(int i = 0; i < notes.size(); ++i) {
+                command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
+            }
+        }
 
-    //     if(command.getType() == kMidiNoteReleased) {
-    //         auto& notes = IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
-    //             getMidiNotesOffThisFrame(device);
-    //         for(int i = 0; i < notes.size(); ++i) {
-    //             command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
-    //         }
-    //     }
-    // }
-
-
-    // CCData CommandManager::checkCCMessage(int device, CCMessage ccMessage) {
-    //     return IRECS::getSystem<INPUT_MIDI_MESSAGE_IN>()->
-    //         checkCCMessageReceived(device, ccMessage);
-    // }
+        if(command.getType() == MIDI_NOTE && command.getTriggerStatus() == RELEASED) {
+            auto& notes = IRAudio::getMidiNotesOffThisFrame(device);
+            for(int i = 0; i < notes.size(); ++i) {
+                command.execute(notes[i].getMidiNoteNumber(), notes[i].getMidiNoteVelocity());
+            }
+        }
+    }
 
 } // namespace IRCommand

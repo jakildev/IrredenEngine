@@ -19,21 +19,8 @@ namespace IRInput {
         PRESSED,
         HELD,
         RELEASED,
-        PRESSED_AND_RELEASED // Pressed and released in same frame?
+        PRESSED_AND_RELEASED
     };
-
-    // enum InputTypes {
-    //     kKeyMouseButtonPressed,
-    //     kKeyMouseButtonReleased,
-    //     kKeyMouseButtonDown,
-    //     kGamepadButtonPressed,
-    //     kGamepadButtonReleased,
-    //     kGamepadButtonDown,
-    //     kMidiNotePressed,
-    //     kMidiNoteReleased,
-    //     kMidiNoteDown,
-    //     kMidiCC
-    // };
 
     enum InputTypes {
         KEY_MOUSE,
@@ -41,8 +28,6 @@ namespace IRInput {
         MIDI_NOTE,
         MIDI_CC
     };
-
-
 
     enum OutputTypes {
         kMidiOutNotePressed,

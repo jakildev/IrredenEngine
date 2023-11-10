@@ -12,6 +12,8 @@
 
 #include <irreden/audio/ir_audio_types.hpp>
 
+#include <irreden/audio/components/component_midi_message.hpp>
+
 #include <vector>
 
 namespace IRAudio {
@@ -23,6 +25,10 @@ namespace IRAudio {
     void openPortMidiIn(MidiInInterfaces midiInInterface);
     void openPortMidiOut(MidiOutInterfaces midiOutInterface);
     void sendMidiMessage(const std::vector<unsigned char>& message);
+
+    CCData checkCCMessage(int device, CCMessage ccMessage);
+    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(int device);
+    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(int device);
 
 } // namespace IRAudio
 

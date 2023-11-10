@@ -62,7 +62,6 @@ namespace IRComponents {
                 root_.get<C_PositionGlobal3D>()
             );
         }
-
     };
 
     struct C_VoxelSetNew {
@@ -75,7 +74,7 @@ namespace IRComponents {
 
         C_VoxelSetNew(
             ivec3 size,
-            Color color = IRConstants::kColorGreen
+            Color color = IRColors::kGreen
             // int voxelPoolId = 0
         )
         :   numVoxels_{size.x * size.y * size.z}

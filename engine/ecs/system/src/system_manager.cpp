@@ -1,6 +1,5 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/system/system_manager.hpp>
-// #include <irreden/command/command_manager.hpp>
 
 namespace IRECS {
 
@@ -24,24 +23,18 @@ namespace IRECS {
         std::stringstream ss;
         ss << "SystemBase::tick " << static_cast<int>(system->getSystemName());
         IRProfile::profileBlock(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
-        // TODO: Resolve system commands elsewhere or remove
-        // this concept entirely.
-        // global.commandManager_->executeSystemCommands(system->getSystemName());
-        // global.commandManager_->executeSystemEntityCommands(system->getSystemName());
         system->beginExecute();
         std::vector<ArchetypeNode*> nodes;
         if(system->getRelation() == Relation::NONE) {
-            nodes = IRECS::getEntityManager().
-                getArchetypeGraph()->
-                queryArchetypeNodesSimple(system->getArchetype());
+            nodes = IRECS::queryArchetypeNodesSimple(
+                system->getArchetype()
+            );
         }
         if(system->getRelation() == Relation::CHILD_OF) {
-            nodes = IRECS::getEntityManager().
-                getArchetypeGraph()->
-                queryArchetypeNodesRelational(
-                    system->getRelation(),
-                    system->getArchetype()
-                );
+            nodes = IRECS::queryArchetypeNodesRelational(
+                system->getRelation(),
+                system->getArchetype()
+            );
         }
         for(auto node : nodes) {
             system->tick(node);

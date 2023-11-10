@@ -19,6 +19,6 @@ target_include_directories(
 target_link_libraries(
     IrredenEngineCommand PUBLIC
     IrredenEngineInput
-    # IrredenEngineECS
+    IrredenEngineECS
     IrredenEngineAudio
 )

@@ -18,12 +18,12 @@ namespace IRConstants {
 
     constexpr int kFPS = 60;
     // TODO: Change these to config settings and remove from here
-    constexpr ivec2 kInitWindowSize = ivec2(1080, 1920);
-    // constexpr ivec2 kInitWindowSize = ivec2(1080, 1920) / ivec2(2);
+    // constexpr ivec2 kInitWindowSize = ivec2(1080, 1920);
     // constexpr ivec2 kInitWindowSize = ivec2(360, 640);
 
     // constexpr uvec2 kGameResolution = uvec2(640, 360);
-    constexpr uvec2 kGameResolution = uvec2(360, 640);
+    constexpr uvec2 kGameResolution = uvec2(360, 640) / uvec2(2);
+    constexpr ivec2 kInitWindowSize = ivec2(kGameResolution * uvec2(4));
     constexpr uvec2 kSizeExtraPixelBuffer = uvec2(4, 2);
     constexpr uvec2 kSizeExtraPixelNoBuffer = uvec2(0, 0);
 
@@ -84,16 +84,6 @@ namespace IRConstants {
 
     constexpr vec3 kWorldBoundMin = vec3{0, 0, 0};
     constexpr vec3 kWorldBoundMax = vec3(kChunkSize) - vec3(1, 1, 2);
-
-    constexpr Color kColorBlack = Color{0, 0, 0, 255};
-    constexpr Color kColorGreen = Color{0, 255, 0, 255};
-    constexpr Color kColorRed = Color{255, 0, 0, 255};
-    constexpr Color kColorBlue = Color{0, 0, 255, 255};
-    constexpr Color kColorWhite = Color{255, 255, 255, 255};
-    constexpr Color kColorYellow = Color{255, 255, 0, 255};
-    constexpr Color kColorMagenta = Color{255, 0, 255, 255};
-    constexpr Color kColorCyan = Color{0, 255, 255, 255};
-    constexpr Color kColorBlackTransparent = Color{0, 0, 0, 50};
 
     constexpr Distance kTriangleDistanceMinDistance =       -65535;
     constexpr Distance kTriangleDistanceMaxDistance =       65535;

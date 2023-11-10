@@ -10,7 +10,9 @@
 #ifndef COMPONENT_MIDI_MESSAGE_H
 #define COMPONENT_MIDI_MESSAGE_H
 
-#include <irreden/ir_audio.hpp>
+#include <irreden/audio/ir_audio_types.hpp>
+
+#include <vector>
 
 using namespace IRAudio;
 
