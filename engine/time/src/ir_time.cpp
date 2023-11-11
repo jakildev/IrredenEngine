@@ -20,7 +20,6 @@ namespace IRTime {
         if(eventType == Events::RENDER) {
             return getTimeManager().deltaTime<RENDER>();
         }
-
         return 0.0;
     }
 

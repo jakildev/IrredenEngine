@@ -54,42 +54,42 @@ void World::initGameEntities()
                             IREasingFunctions::kBounceEaseOut
                         };
                     },
-                    [](ivec3 index) {
-                        return C_Velocity3D{
-                            vec3(0)
-                        };
-                    },
+                    // [](ivec3 index) {
+                    //     return C_Velocity3D{
+                    //         vec3(0)
+                    //     };
+                    // },
                     [](ivec3 index) {
                         int face = (index.x + index.y + index.z) % 3;
                         if(face == 0) {
-                            return C_Acceleration3D{
+                            return C_Velocity3D{
                                 vec3(
-                                    IRMath::randomFloat(-1.25, 1.25),
+                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f,
                                     0,
                                     0
                                 )
                             };
                         }
                         if(face == 1) {
-                            return C_Acceleration3D{
+                            return C_Velocity3D{
                                 vec3(
                                     0,
-                                    IRMath::randomFloat(-1.25, 1.25),
+                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f,
                                     0
                                 )
                             };
                         }
                         if(face == 2) {
-                            return C_Acceleration3D{
+                            return C_Velocity3D{
                                 vec3(
                                     0,
                                     0,
-                                    IRMath::randomFloat(-1.25, 1.25)
+                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f
                                 )
                             };
                         }
 
-                        return C_Acceleration3D{vec3(0, 0, 0)};
+                        return C_Velocity3D{vec3(0, 0, 0)};
                     }
                 );
                 EntityId parent = IRECS::createEntity(

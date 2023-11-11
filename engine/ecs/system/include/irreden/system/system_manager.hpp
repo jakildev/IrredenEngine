@@ -49,11 +49,55 @@ namespace IRECS {
             );
         }
 
+        template <
+            typename... Components,
+            typename Function
+        >
+        int registerUserSystem(
+            std::string name,
+            Function function
+        )
+        {
+            m_userSystemFunctions[m_nextUserSystemId] =
+                std::make_pair(
+                    getArchetype<Components...>(),
+                    [function](ArchetypeNode* node) {
+                        auto componentsTuple = std::make_tuple(
+                            std::ref(getComponentData<Components>(node))...
+                        );
+                        for(int i = 0; i < node->length_; i++) {
+                            std::apply([i, &function](auto&&... components) {
+                                function(components[i]...);
+                            }, componentsTuple);
+                        }
+                    }
+                );
+
+            IRProfile::engLogInfo(
+                "Registered new user system {}",
+                name,
+                m_nextUserSystemId
+            );
+            m_nextUserSystemId++;
+            return m_nextUserSystemId - 1;
+        }
+
         template <IRSystemType systemType>
         void executeGroup() {
             auto& systemOrder = getSystemExecutionOrder<systemType>();
             for(const auto systemName : systemOrder) {
                 executeSystem(m_systems[systemName]);
+            }
+        }
+
+        void executeUserSystem(int systemId) {
+            IR_PROFILE_FUNCTION();
+            auto& function = m_userSystemFunctions[systemId].second;
+            for(auto& node : IRECS::queryArchetypeNodesSimple(
+                m_userSystemFunctions[systemId].first,
+                Archetype{}
+            )) {
+                function(node);
             }
         }
 
@@ -76,6 +120,8 @@ namespace IRECS {
             return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
+        // Maybe systems shouldnt provide an API and thus
+        // can just be retrived as virtual systems?
         template <SystemName SystemName>
         System<SystemName>& get() {
             return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
@@ -91,10 +137,20 @@ namespace IRECS {
 
 
     private:
+        // TODO: Unify engine systems and engine systems by assigning each
+        // enum to an index value...
         std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
             m_systems;
+        std::vector<std::unique_ptr<SystemVirtual>>
+            m_userSystems;
         std::unordered_map<IRSystemType, std::list<SystemName>>
             m_systemOrders;
+        std::unordered_map<
+            int,
+            std::pair<Archetype, std::function<void(ArchetypeNode*)>>
+        > m_userSystemFunctions;
+        SystemId m_nextUserSystemId; // TODO: Use this with registering engine systems too.
+        // That way proper pipelines can be made.
         // TODO: This should be in event manager, and like commands,
         // systems, entities, etc can all subscribe to events!
         // std::unordered_map<

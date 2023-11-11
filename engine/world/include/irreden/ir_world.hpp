@@ -129,6 +129,7 @@ private:
     IRRender::RenderManager m_renderer;
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
+    // int m_velocitySystemId;
 
     void input();
     void update();

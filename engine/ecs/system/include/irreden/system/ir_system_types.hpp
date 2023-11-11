@@ -1,7 +1,11 @@
 #ifndef IR_SYSTEM_TYPES_H
 #define IR_SYSTEM_TYPES_H
 
+#include <cstdint>
+
 namespace IRECS {
+
+    using SystemId = std::uint32_t;
 
     enum SystemName {
         NULL_SYSTEM,

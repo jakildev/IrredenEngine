@@ -6,6 +6,7 @@ namespace IRECS {
     SystemManager::SystemManager()
     :   m_systems{}
     ,   m_systemOrders{}
+    ,   m_nextUserSystemId{0}
     {
         for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
             m_systemOrders

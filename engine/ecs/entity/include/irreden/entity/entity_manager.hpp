@@ -281,7 +281,8 @@ namespace IRECS {
             ComponentId componentType = getComponentType<Component>();
 
             IR_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
-                    "Attempted to retrieve non-existant component vector from node");
+                    "Attempted to retrieve non-existant component vector from node: archetype={}, componentType={}",
+                    makeComponentStringInternal(archetype).c_str(), componentType);
             IComponentDataImpl<Component> *data =
                 castComponentDataPointer<Component>(
                     node->components_[componentType].get()

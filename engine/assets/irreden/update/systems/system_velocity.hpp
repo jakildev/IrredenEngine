@@ -34,18 +34,6 @@ namespace IRECS {
     >   {
     public:
         System() {
-            // registerCommand<kGamepadButtonPressed>(
-            //     GamepadButtons::kGamepadButtonA,
-            //     [this]() {
-            //         this->invertVelocitiesAll();
-            //     }
-            // );
-
-            // TODO: Move commands out
-            // registerCommand<STOP_VELOCITY, kKeyMouseButtonPressed>(
-            //     KeyMouseButtons::kKeyButtonS,
-            //     &stopVelocity
-            // );
             IRProfile::engLogInfo("Created system VELOCITY_3D");
         }
         virtual ~System() = default;
@@ -57,30 +45,32 @@ namespace IRECS {
             std::vector<C_Velocity3D>& velocities
         )
         {
-
+            IR_PROFILE_BLOCK("VELOCITY_3D!!!", IR_PROFILER_COLOR_RENDER);
             for(int i=0; i < entities.size(); i++) {
                 positions[i].pos_ += (
-                    velocities[i].velocity_ * m_velocityModifier
+                    velocities[i].velocity_
                 );
             }
         }
-
-        // SystemCommands
-        void invertVelocitiesAll() {
-            IRProfile::engLogInfo("Inverting all velocities.");
-            m_velocityModifier *= -1.0f;
-
-        }
-
     private:
-        vec3 m_velocityModifier = vec3(1.0f, 1.0f, 1.0f);
-
         virtual void beginExecute() override {}
         virtual void endExecute() override {}
     };
 
 
 } // namespace IRECS
+
+// namespace IRECS {
+
+    void systemUpdateVelocity(
+        C_Position3D& position,
+        const C_Velocity3D& velocity
+    )
+    {
+        position.pos_ += velocity.velocity_;
+    }
+
+// } // namespace IRECS
 
 
 #endif /* SYSTEM_VELOCITY_H */

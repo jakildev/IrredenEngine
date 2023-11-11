@@ -133,6 +133,7 @@ void IRWorld::update()
     m_commandManager.executeDeviceMidiNoteCommandsAll();
 
     m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>();
+    // m_systemManager.executeUserSystem(m_veclocitySystemId);
 
     // Destroy all marked entities in one step
     m_entityManager.destroyMarkedEntities();
@@ -203,6 +204,17 @@ void IRWorld::initIRUpdateSystems() {
     m_systemManager.registerEngineSystem<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerEngineSystem<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerEngineSystem<VELOCITY_3D, SYSTEM_TYPE_UPDATE>();
+    // m_velocitySystemId =
+    //     m_systemManager.registerUserSystem<C_Position3D, C_Velocity3D>(
+    //     "Velocity3D",
+    //     [](
+    //         C_Position3D& position,
+    //         const C_Velocity3D& velocity
+    //     )
+    //     {
+    //         position.pos_ += velocity.velocity_;
+    //     }
+    // );
     m_systemManager.registerEngineSystem<ACCELERATION_3D, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerEngineSystem<GRAVITY_3D, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerEngineSystem<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();
