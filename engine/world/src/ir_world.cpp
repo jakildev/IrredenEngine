@@ -61,23 +61,13 @@ IRWorld::IRWorld(int &argc, char  **argv)
         m_IRGLFWWindow
     }
 ,   m_audioManager{}
-//         // TODO: Move opening audio interface somewhere else
-//         // (component midi device creation perhaps...)
-//         std::vector<IRAudio::MidiInInterfaces>{
-//             // IRAudio::MidiInInterfaces::MIDI_IN_OP1,
-//             IRAudio::MidiInInterfaces::MIDI_IN_UMC
-
-//         },
-//         std::vector<IRAudio::MidiOutInterfaces>{
-//             // IRAudio::MidiOutInterfaces::MIDI_OUT_OP1,
-//             IRAudio::MidiOutInterfaces::MIDI_OUT_UMC
-//         }
-//     }
 ,   m_timeManager{}
 {
     initEngineSystems();
     initEngineCommands();
     m_renderer.printGLSystemInfo();
+    IRProfile::profileMainThread();
+
     IRProfile::engLogInfo("Initalized game world");
 
 }
@@ -110,19 +100,8 @@ void IRWorld::gameLoop() {
     end();
 }
 
-// void IRWorld::addEntityToScene(
-//     EntityHandle entity,
-//     EntityHandle parent
-// )
-// {
-//     IRECS::getSystem<UPDATE_VOXEL_SET_CHILDREN>().addEntityToScene(
-//         entity,
-//         parent
-//     );
-// }
-
 void IRWorld::input() {
-    IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
     // TODO: Make this an event from timeManager after
     // making that more generic.
@@ -135,8 +114,7 @@ void IRWorld::input() {
 }
 
 void IRWorld::start() {
-        m_timeManager.start();
-
+    m_timeManager.start();
     m_systemManager.executeEvent<IRTime::Events::START>();
 }
 
@@ -147,12 +125,12 @@ void IRWorld::end() {
 void IRWorld::update()
 {
     m_timeManager.beginEvent<IRTime::UPDATE>();
-    IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
     m_audioManager.processMidiMessageQueue(); // this should be somewhere else
     m_commandManager.executeUserKeyboardCommandsAll();
-    // m_commandManager.executeDeviceMidiCCCommandsAll();
-    // m_commandManager.executeDeviceMidiNoteCommandsAll();
+    m_commandManager.executeDeviceMidiCCCommandsAll();
+    m_commandManager.executeDeviceMidiNoteCommandsAll();
 
     m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>();
 
@@ -166,7 +144,7 @@ void IRWorld::render()
 {
     // Possible oppertunity for promise style await here...
     m_timeManager.beginEvent<IRTime::RENDER>();
-    IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     m_renderer.tick();
 
@@ -189,7 +167,7 @@ void IRWorld::initEngineCommands() {
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonEscape,
         []() {
-            IRECS::getSystem<SystemName::SCREEN_VIEW>().closeWindow();
+            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().closeWindow();
         }
     );
 }
@@ -198,13 +176,13 @@ void IRWorld::initIROutputSystems() {
 }
 
 void IRWorld::initIRInputSystems() {
-    m_systemManager.registerSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
+    m_systemManager.registerEngineSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerSystem<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
+    m_systemManager.registerEngineSystem<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerSystem<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
+    m_systemManager.registerEngineSystem<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
 
 }
 
@@ -215,58 +193,50 @@ void IRWorld::initIRUpdateSystems() {
     // At the beginning of a pipeline, all entities will be fixed for this
     // frame. They can be sorted and things of that nature to be more efficient.
     // for particular update systems.
-    m_systemManager.registerSystem<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
+    m_systemManager.registerEngineSystem<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
         kVoxelPoolSize,
         kVoxelPoolPlayerSize
     );
-    m_systemManager.registerSystem<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
+    m_systemManager.registerEngineSystem<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerSystem<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<VELOCITY_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<ACCELERATION_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<GRAVITY_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<GOTO_3D, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<VELOCITY_3D, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<ACCELERATION_3D, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<GRAVITY_3D, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<GOTO_3D, SYSTEM_TYPE_UPDATE>();
     // TODO: This should be an output system but midi message out's get destroyed
     // by lifetime system, so perhaps they should just get consumed by
     // midi out system instead.
-    m_systemManager.registerSystem<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystem<LIFETIME, SYSTEM_TYPE_UPDATE>();
-    // m_systemManager.registerSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerEngineSystem<LIFETIME, SYSTEM_TYPE_UPDATE>();
+    // m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
 
 }
 
 void IRWorld::initIRRenderSystems() {
-    m_systemManager.registerSystem<RENDERING_TEXTURE_SCROLL, SYSTEM_TYPE_RENDER>();
-    m_systemManager.registerSystem<
+    m_systemManager.registerEngineSystem<RENDERING_TEXTURE_SCROLL, SYSTEM_TYPE_RENDER>();
+    m_systemManager.registerEngineSystem<
         RENDERING_SINGLE_VOXEL_TO_CANVAS,
         SYSTEM_TYPE_RENDER
     >();
-    m_systemManager.registerSystem<
+    m_systemManager.registerEngineSystem<
         RENDERING_CANVAS_TO_FRAMEBUFFER,
         SYSTEM_TYPE_RENDER
     >
     (
         IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
     );
-    m_systemManager.registerSystem<
+    m_systemManager.registerEngineSystem<
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         SYSTEM_TYPE_RENDER
     >();
 }
 
-
-// This set player stuff is incomplete and should probably
-// just be deduced
-void IRWorld::setPlayer(const EntityId& player) {
-    IRECS::getSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS>().setPlayer(player);
-    // getSystem<SCREEN_VIEW>()->setCameraFollowEntity(player);
-}
-
 void IRWorld::setCameraPosition3D(const vec3& position) {
-    IRECS::getSystem<SCREEN_VIEW>().setCameraPosition3D(position);
+    IRECS::getEngineSystem<SCREEN_VIEW>().setCameraPosition3D(position);
 }

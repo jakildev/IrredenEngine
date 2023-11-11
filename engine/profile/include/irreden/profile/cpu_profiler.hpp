@@ -19,9 +19,19 @@ namespace IRProfile {
     public:
         ~CPUProfiler();
         static CPUProfiler& instance();
-        void mainThread();
-        void profileFunction(unsigned int color);
-        void profileBlock(const std::string name, unsigned int color);
+        inline void mainThread() {
+            EASY_MAIN_THREAD;
+        }
+        // inline void profileFunction(unsigned int color) {
+        //     EASY_FUNCTION(color);
+        // }
+        // inline void profileBlock(
+        //     const std::string name,
+        //     unsigned int color
+        // )
+        // {
+        //     EASY_BLOCK(name.c_str(), color);
+        // }
     private:
         CPUProfiler();
     };

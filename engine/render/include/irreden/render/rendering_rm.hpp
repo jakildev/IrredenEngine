@@ -106,7 +106,7 @@ namespace IRRender {
 
         template <typename T>
         void registerResource() {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(T).name();
             IR_ASSERT(m_resourceTypes.find(typeName) == m_resourceTypes.end(),
                             "Regestering the same component twice");
@@ -120,7 +120,7 @@ namespace IRRender {
 
         template <typename T>
         ResourceType getResourceType() {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(T).name();
             IR_ASSERT(m_resourceTypes.find(typeName) != m_resourceTypes.end(),
                             "Attempted to find a non-existent resource");

@@ -25,23 +25,22 @@ namespace IRProfile{
     CPUProfiler::~CPUProfiler() {
         EASY_PROFILER_DISABLE;
         uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
-        // IRProfile::engLogInfo("Dumped profiling blocks, result={}", res);
+        IRProfile::engLogInfo("Dumped profiling blocks, result={}", res);
     }
+    // inline void CPUProfiler::mainThread() {
+    //     EASY_MAIN_THREAD;
+    // }
 
-    void CPUProfiler::mainThread() {
-        EASY_MAIN_THREAD;
-    }
+    // inline void CPUProfiler::profileFunction(unsigned int color) {
+    //     EASY_FUNCTION(color);
+    // }
 
-    void CPUProfiler::profileFunction(unsigned int color) {
-        EASY_FUNCTION(color);
-    }
-
-    void CPUProfiler::profileBlock(
-        const std::string name,
-        unsigned int color
-    )
-    {
-        EASY_BLOCK(name.c_str(), color);
-    }
+    // inline void CPUProfiler::profileBlock(
+    //     const std::string name,
+    //     unsigned int color
+    // )
+    // {
+    //     EASY_BLOCK(name.c_str(), color);
+    // }
 
 } // namespace IRProfile

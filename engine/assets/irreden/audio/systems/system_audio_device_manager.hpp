@@ -37,7 +37,7 @@ namespace IRECS {
         )
         {
             for(int i=0; i < entities.size(); i++) {
-                IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
             }
         }
 
@@ -61,11 +61,11 @@ namespace IRECS {
 
     private:
         virtual void beginExecute() override {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         }
 
         virtual void endExecute() override {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         }
 
 

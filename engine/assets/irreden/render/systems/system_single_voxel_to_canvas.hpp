@@ -203,19 +203,21 @@ namespace IRECS {
         virtual void beginExecute() override {
             IRECS::getComponent<C_CameraPosition2DIso>(
                 IRRender::getCanvas("main")
-            ).pos_ = offsetScreenToIsoTriangles(
-                IRECS::getSystem<SCREEN_VIEW>().
+            ).pos_ = IRMath::offsetScreenToIsoTriangles(
+                IRECS::getEngineSystem<SCREEN_VIEW>().
                     getGlobalCameraOffsetScreen(),
-                IRECS::getSystem<SCREEN_VIEW>().
+                IRECS::getEngineSystem<SCREEN_VIEW>().
                     getTriangleStepSizeScreen()
             );
-            //  m_backgroundCanvas.get<C_CameraPosition2DIso>().pos_ =
-            //     offsetScreenToIsoTriangles(
-            //         IRECS::getSystem<SCREEN_VIEW>()->
-            //             getGlobalCameraOffsetScreen(),
-            //         IRECS::getSystem<SCREEN_VIEW>()->
-            //             getTriangleStepSizeScreen()
-            //     );
+            IRECS::getComponent<C_CameraPosition2DIso>(
+                IRRender::getCanvas("background")
+            ).pos_ =
+                IRMath::offsetScreenToIsoTriangles(
+                    IRECS::getEngineSystem<SCREEN_VIEW>().
+                        getGlobalCameraOffsetScreen(),
+                    IRECS::getEngineSystem<SCREEN_VIEW>().
+                        getTriangleStepSizeScreen()
+                );
 
             // Write background here for now
             IRECS::getComponent<C_TriangleCanvasBackground>(

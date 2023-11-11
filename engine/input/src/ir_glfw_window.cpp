@@ -93,12 +93,12 @@ namespace IRInput {
     }
 
     void IRGLFWWindow::swapBuffers() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         glfwSwapBuffers(m_window);
     }
 
     void IRGLFWWindow::pollEvents() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         glfwPollEvents();
     }
 

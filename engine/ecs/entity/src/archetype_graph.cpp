@@ -26,7 +26,7 @@ namespace IRECS {
         const Archetype& type
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         ArchetypeNode* node = m_baseNode;
         for (auto itr = type.begin(); itr != type.end(); itr++) {
             ArchetypeNodeEdge* edge = &node->edges_[*itr];
@@ -42,7 +42,7 @@ namespace IRECS {
         const Archetype& type
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         ArchetypeNode* node = m_baseNode;
         for (auto itr = type.begin(); itr != type.end(); itr++) {
             ArchetypeNodeEdge* edge = &node->edges_[*itr];
@@ -57,7 +57,7 @@ namespace IRECS {
     /* ----------------Private functions----------------- */
 
     void ArchetypeGraph::createAndConnectNode(ArchetypeNode* prevNode, ComponentId nextType) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         Archetype newType = prevNode->type_;
         newType.insert(nextType);
         m_nodes.push_back(std::make_unique<ArchetypeNode>(m_nodeCount++, newType));
@@ -100,7 +100,7 @@ namespace IRECS {
 
 
     void ArchetypeGraph::createArchetypeNodeWithArchetype(const Archetype& type) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         IR_ASSERT(findArchetypeNode(type) == nullptr,
             "Archetype node of this type already exists.");
         m_nodes.push_back(std::make_unique<ArchetypeNode>(m_nodeCount++, type));

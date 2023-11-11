@@ -12,7 +12,7 @@ namespace IRInput {
         ButtonStatuses checkStatus
     )
     {
-        return IRECS::getSystem<IRECS::SystemName::INPUT_KEY_MOUSE>().
+        return IRECS::getEngineSystem<IRECS::SystemName::INPUT_KEY_MOUSE>().
             checkButton(
                 button,
                 checkStatus

@@ -35,7 +35,7 @@ namespace IRECS {
             IRSystemType SystemType,
             typename... Args
         >
-        void registerSystem(Args&&... args)
+        void registerEngineSystem(Args&&... args)
         {
             auto systemInstance = std::make_unique<System<SystemName>>(
                 std::forward<Args>(args)...

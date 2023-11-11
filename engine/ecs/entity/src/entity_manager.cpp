@@ -71,7 +71,7 @@ namespace IRECS {
     }
 
     EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         // Make sure ID bits are not getting modified
         record.archetypeNode->entities_.at(record.row) |=
@@ -86,7 +86,7 @@ namespace IRECS {
 
     /* TODO: destroy entities in batch after each frame */
     void EntityManager::destroyEntity(EntityId entity) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         IRProfile::engLogDebug("entity={}, record.row={}", entity, record.row);
         ArchetypeNode* node = record.archetypeNode;
@@ -100,7 +100,7 @@ namespace IRECS {
     }
 
     void EntityManager::destroyComponents(EntityId entity) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         const Archetype& type = record.archetypeNode->type_;
         for(auto itr = type.begin(); itr != type.end(); itr++) {
@@ -114,7 +114,7 @@ namespace IRECS {
         unsigned int index
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         if(!isPureComponent(component)) {
 
             IR_ASSERT(false, "non pure components not supported rn");
@@ -136,7 +136,7 @@ namespace IRECS {
 
     // TODO: make this a flag instead
     bool EntityManager::isPureComponent(ComponentId component) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         return m_pureComponentVectors.find(component) !=
             m_pureComponentVectors.end();
     }
@@ -209,7 +209,7 @@ namespace IRECS {
         RelationId relation
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
         Archetype newArchetype = record.archetypeNode->type_;
         newArchetype.insert(relation);
@@ -230,7 +230,7 @@ namespace IRECS {
         ComponentId component
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         return m_pureComponentVectors[component]->cloneEmpty();
     }
 
@@ -248,7 +248,7 @@ namespace IRECS {
         ArchetypeNode* toNode
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
 
         if(fromNode == toNode) {
             return record.row;
@@ -309,7 +309,7 @@ namespace IRECS {
     void EntityManager::removeEntityFromArchetypeNode(
         ArchetypeNode* node,
         unsigned int index) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         for(auto itr = node->type_.begin(); itr != node->type_.end(); itr++) {
             handleComponentRemove(
                 *itr,
@@ -333,7 +333,7 @@ namespace IRECS {
     }
 
     void EntityManager::updateBackEntityPosition(ArchetypeNode* node, unsigned int newPos) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityId backEntity = node->entities_.back();
         EntityRecord& backRecord = getRecord(backEntity);
         backRecord.row = newPos;

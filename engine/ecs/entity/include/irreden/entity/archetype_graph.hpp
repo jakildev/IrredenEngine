@@ -46,7 +46,7 @@ namespace IRECS {
             const Archetype& excludeComponents = Archetype{}
         ) const
         {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_UPDATE);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
             std::vector<ArchetypeNode*> nodes;
             for(auto& node : m_nodes) {
                 if(node->length_ > 0 && std::includes(

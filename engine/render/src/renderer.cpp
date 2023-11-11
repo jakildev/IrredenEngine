@@ -100,10 +100,10 @@ namespace IRRender {
     }
 
     void RenderManager::tick() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        IRECS::getSystem<INPUT_KEY_MOUSE>().beginRenderExecute(); // TODO: not like this after system CRTP
-        IRECS::getSystem<SCREEN_VIEW>().beginExecuteRender();
+        IRECS::getEngineSystem<INPUT_KEY_MOUSE>().beginRenderExecute(); // TODO: not like this after system CRTP
+        IRECS::getEngineSystem<SCREEN_VIEW>().beginExecuteRender();
 
         IRECS::getSystemManager().executeGroup<SYSTEM_TYPE_RENDER>();
         m_window.swapBuffers();

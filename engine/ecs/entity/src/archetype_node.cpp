@@ -30,7 +30,7 @@ namespace IRECS {
     ,   length_(0)
     ,   id_(nodeId)
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         for(auto itr = archetype.begin(); itr != archetype.end(); itr++) {
             if(IRECS::isPureComponent(*itr)) {
                 components_[*itr] =

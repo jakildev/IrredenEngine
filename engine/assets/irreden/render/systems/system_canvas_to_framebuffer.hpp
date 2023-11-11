@@ -115,7 +115,7 @@ namespace IRECS {
                 framebuffers[i].clear();
 
                 m_frameData.canvasZoomLevel_ =
-                    IRECS::getSystem<SCREEN_VIEW>().getTriangleZoom() *
+                    IRECS::getEngineSystem<SCREEN_VIEW>().getTriangleZoom() *
                     zoomLevels[i].zoom_;
 
                 mat4 model = mat4(1.0f);

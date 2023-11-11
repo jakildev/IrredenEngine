@@ -39,7 +39,7 @@ namespace IRAudio {
     }
 
     CCData checkCCMessage(int device, CCMessage ccMessage) {
-        return IRECS::getSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
+        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
             checkCCMessageReceived(device, ccMessage);
     }
 
@@ -47,14 +47,14 @@ namespace IRAudio {
         int device
     )
     {
-        return IRECS::getSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
+        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
             getMidiNotesOnThisFrame(device);
     }
     const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(
         int device
     )
     {
-        return IRECS::getSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
+        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
             getMidiNotesOffThisFrame(device);
     }
 

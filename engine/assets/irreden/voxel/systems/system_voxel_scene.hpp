@@ -48,7 +48,7 @@ namespace IRECS {
             std::vector<C_VoxelSceneNode>& voxelSceneNodes
         )
         {
-            IRProfile::profileBlock("System<VOXEL_SCENE>::tickWithArchetype");
+            IR_PROFILE_FUNCTION("System<VOXEL_SCENE>::tickWithArchetype");
             for(int i=0; i < entities.size(); i++) {
                 voxelSets[i].updateChildren(
                     positions[i].pos_
@@ -64,7 +64,7 @@ namespace IRECS {
         //     std::vector<C_VoxelSetNew>& voxelSets
         // )
         // {
-        //     IRProfile::profileBlock("System<VOXEL_SCENE>::tickWithArchetype");
+        //     IR_PROFILE_FUNCTION("System<VOXEL_SCENE>::tickWithArchetype");
         //     for(int i=0; i < entities.size(); i++) {
         //         voxelSets[i].updateChildren(
         //             positions[i].pos_ + positionOffsets[i].pos_

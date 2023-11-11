@@ -101,7 +101,7 @@
 //     }
 
 //     void SystemCreatorChunk::beginExecute() {
-//         IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+//         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 //         C_VoxelSet& chunkVoxelSet = m_chunk.get<C_VoxelSet>();
 
 //         // check commands shape mode
@@ -151,7 +151,7 @@
 //     }
 
 //     void SystemCreatorChunk::endExecute() {
-//         IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+//         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 //     }
 
 // } // namespace IRECS

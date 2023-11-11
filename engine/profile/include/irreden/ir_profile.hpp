@@ -7,8 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef IR_PROFILING_H
-#define IR_PROFILING_H
+#ifndef IR_PROFILE_H
+#define IR_PROFILE_H
 
 // This is the API for the profiling module
 #include <irreden/profile/logger_spd.hpp>
@@ -81,16 +81,16 @@ namespace IRProfile {
     inline void profileMainThread() {
         CPUProfiler::instance().mainThread();
     }
-    inline void profileFunction(unsigned int color) {
-        CPUProfiler::instance().profileFunction(color);
-    }
-    inline void profileBlock(const std::string name, unsigned int color) {
-        CPUProfiler::instance().profileBlock(name, color);
-    }
+    // inline void profileFunction(unsigned int color) {
+    //     CPUProfiler::instance().profileFunction(color);
+    // }
+    // inline void profileBlock(const std::string name, unsigned int color) {
+    //     CPUProfiler::instance().profileBlock(name, color);
+    // }
 
 
 } // namespace IRProfile
 
 #include <irreden/profile/ir_profile.tpp>
 
-#endif /* IR_PROFILING_H */
+#endif /* IR_PROFILE_H */

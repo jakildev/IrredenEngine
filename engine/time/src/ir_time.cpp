@@ -24,5 +24,9 @@ namespace IRTime {
         return 0.0;
     }
 
+    bool shouldUpdate() {
+        return getTimeManager().shouldUpdate();
+    }
+
 } // namespace IRTime
 

@@ -77,7 +77,7 @@ namespace IRECS {
 
         template <typename... Components>
         EntityId createEntity(const Components &...components) {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             EntityId entity = allocateEntity();
             Archetype archetype = getArchetype<Components...>();
             ArchetypeNode* archetypeNode =
@@ -97,7 +97,7 @@ namespace IRECS {
 
         template <typename Component, typename... Args>
         ComponentId registerComponent(Args&&... args) {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             std::string typeName = typeid(Component).name();
             IR_ASSERT(
                 m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
@@ -135,7 +135,7 @@ namespace IRECS {
         // Therefore, it can be looked up in memory
         template <typename Component>
         Component& setComponent(EntityId entity, const Component& component)  {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             Component& c = getInsertComponent<Component>(entity);
             c = component;
             return c;
@@ -181,7 +181,7 @@ namespace IRECS {
 
         template <typename Component>
         Component& getInsertComponent(EntityId entity) {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             EntityRecord& record = getRecord(entity);
             ComponentId componentType = getComponentType<Component>();
             Archetype archetype = record.archetypeNode->type_;
@@ -201,7 +201,7 @@ namespace IRECS {
 
         template <typename... Components>
         void setComponents(EntityId entity, const Components &...components) {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             /* This solution was found here:
             * https://kubasejdak.com/techniques-of-variadic-templates#non-recursive-argument-evaluation-with-stdinitializer-list
             * Essentially, allows pack expanstion, and the initalizer list ends up full of zeros,
@@ -213,7 +213,7 @@ namespace IRECS {
 
         template <typename... Components>
         Archetype getArchetype() {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             Archetype res{getComponentType<Components>()...};
             return res;
         }
@@ -222,7 +222,7 @@ namespace IRECS {
         template <typename Component>
         void removeComponent(EntityId entity)
         {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             EntityRecord &record = getRecord(entity);
             unsigned int row = record.row;
             ArchetypeNode *fromNode = record.archetypeNode;
@@ -253,7 +253,7 @@ namespace IRECS {
         template <typename Component>
         Component& getComponent(EntityId entity)
         {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             const EntityRecord& record = getRecord(entity);
             ArchetypeNode* node = record.archetypeNode;
             Archetype archetype = node->type_;
@@ -276,7 +276,7 @@ namespace IRECS {
         template <typename Component>
         std::vector<Component>& getComponentData(ArchetypeNode *node)
         {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             Archetype archetype = node->type_;
             ComponentId componentType = getComponentType<Component>();
 
@@ -295,7 +295,7 @@ namespace IRECS {
             const std::vector<Components>&... componentVectors
         )
         {
-            IRProfile::profileFunction(IR_PROFILER_COLOR_ENTITY_OPS);
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
             std::vector<EntityId> res;
             size_t sizes[] = {componentVectors.size()...};
             IR_ASSERT(

@@ -24,6 +24,9 @@ using namespace IRMath;
 
 // TODO: effects at this stage like blur, etc!!
 
+// MODIFY THIS TO JUST BE THE 2D SPRITE RENDERER.
+// CHANGE FRAMEBUFFERS TO RENDERBUFFERS
+
 namespace IRECS {
 
     template <>
@@ -131,8 +134,8 @@ namespace IRECS {
         virtual void beginExecute() override {
 
             m_viewportThisFrame = ivec2(
-                IRECS::getSystem<SCREEN_VIEW>().getViewportX(),
-                IRECS::getSystem<SCREEN_VIEW>().getViewportY()
+                IRECS::getEngineSystem<SCREEN_VIEW>().getViewportX(),
+                IRECS::getEngineSystem<SCREEN_VIEW>().getViewportY()
             );
             bindDefaultFramebuffer();
             clearDefaultFramebuffer();
@@ -170,7 +173,7 @@ namespace IRECS {
         )
         {
             const int scaleFactor =
-                IRECS::getSystem<SCREEN_VIEW>().getScaleFactor();
+                IRECS::getEngineSystem<SCREEN_VIEW>().getScaleFactor();
 
             // also known as screen center
             float xOffset = m_viewportThisFrame.x / 2.0f;
@@ -179,10 +182,10 @@ namespace IRECS {
                 vec2(xOffset, yOffset) +
                 (pos3DtoPos2DScreen(
                     cameraPosition,
-                    IRECS::getSystem<SCREEN_VIEW>().
+                    IRECS::getEngineSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen()
                 ) * vec2(-1, 1) -
-                ( IRECS::getSystem<SCREEN_VIEW>().
+                ( IRECS::getEngineSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen() / 2.0f
                 ) * vec2(1, -1))
             ;
@@ -194,7 +197,7 @@ namespace IRECS {
             {
                 vec2 fractComponentScaledNew =
                     glm::fract(cameraPositionIso) *
-                    IRECS::getSystem<SCREEN_VIEW>().
+                    IRECS::getEngineSystem<SCREEN_VIEW>().
                         getTriangleStepSizeScreen() *
                         vec2(1, -1);
 
@@ -207,7 +210,7 @@ namespace IRECS {
             }
             else{
                 offset += (
-                    IRECS::getSystem<SCREEN_VIEW>().
+                    IRECS::getEngineSystem<SCREEN_VIEW>().
                         getGlobalCameraOffsetScreen() *
                     vec2(1, -1)
                 );

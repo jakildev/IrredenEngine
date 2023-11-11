@@ -23,7 +23,7 @@ namespace IRCommand {
 
 
     void CommandManager::executeDeviceMidiCCCommandsAll() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
         for(auto& [device, commands] : m_midiCCDeviceCommands) {
             executeDeviceMidiCCCommands(device, commands);
         }
@@ -34,7 +34,7 @@ namespace IRCommand {
         std::vector<Command<IR_COMMAND_MIDI_CC>>& commands
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
         for(int i = 0; i < commands.size(); ++i) {
             executeDeviceMidiCCCommand(device, commands[i]);
         }
@@ -45,7 +45,7 @@ namespace IRCommand {
         Command<IR_COMMAND_MIDI_CC>& command
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
         CCData ccData = checkCCMessage(device, command.getCCMessage());
         if(ccData != kCCFalse) {
             command.execute(ccData);
@@ -53,7 +53,7 @@ namespace IRCommand {
     }
 
     void CommandManager::executeDeviceMidiNoteCommandsAll() {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
         for(auto& [device, commands] : m_midiNoteDeviceCommands) {
             executeDeviceMidiNoteCommands(device, commands);
         }
@@ -76,7 +76,7 @@ namespace IRCommand {
         std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_COMMANDS);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
         for(int i = 0; i < commands.size(); ++i) {
             executeDeviceMidiNoteCommand(device, commands[i]);
         }

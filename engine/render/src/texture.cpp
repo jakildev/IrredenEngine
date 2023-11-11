@@ -132,7 +132,7 @@ namespace IRRender {
         );
     }
     void Texture2D::clear(GLenum format, GLenum type, const void* data) {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         // TODO: Figure out why its not eng ENG_API
         // UPDATE: Need to update gl_wrap/funcs_list.txt I think
         glClearTexImage(
@@ -199,7 +199,7 @@ namespace IRRender {
         const void* data
     )
     {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         ENG_API->glTextureSubImage3D(
             m_handle,
             0,

@@ -11,9 +11,11 @@ namespace IRECS {
     SystemManager& getSystemManager();
 
     template <SystemName systemName>
-    System<systemName>& getSystem() {
+    System<systemName>& getEngineSystem() {
         return getSystemManager().get<systemName>();
     }
+
+    // IRECS::createSystem();
 
 } // namespace System
 

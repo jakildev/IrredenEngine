@@ -1,11 +1,11 @@
-/*
- * Project: Irreden Engine
- * File: ir_profile.tpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
+// *
+//  * Project: Irreden Engine
+//  * File: ir_profile.tpp
+//  * Author: Evin Killian jakildev@gmail.com
+//  * Created Date: October 2023
+//  * -----
+//  * Modified By: <your_name> <Month> <YYYY>
+//  */
 
 
 #include <irreden/profile/logger_spd.hpp>
@@ -140,3 +140,5 @@ namespace IRProfile {
 
 
 #define IR_ASSERT(x, en, ...) IRProfile::engAssert(x, __FILE__, __FUNCTION__, __LINE__, #x, en, ##__VA_ARGS__)
+#define IR_PROFILE_FUNCTION(color) EASY_FUNCTION(color)
+#define IR_PROFILE_BLOCK(name, color) EASY_BLOCK(name, color)

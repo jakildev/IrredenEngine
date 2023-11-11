@@ -74,7 +74,7 @@ namespace IRRender {
 
     // Binds for both reading and writing, but maybe should only be for writing
     void Framebuffer::bind() const {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, m_id);
         ENG_API->glViewport(0, 0, m_resolutionPlusBuffer.x, m_resolutionPlusBuffer.y);
         ENG_API->glEnable(GL_DEPTH_TEST);
@@ -88,7 +88,7 @@ namespace IRRender {
     }
 
     void Framebuffer::clear() const {
-        IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         ENG_API->glClearColor(0.3f, 0.0f, 0.0f, 1.0f);
         ENG_API->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }

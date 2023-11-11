@@ -227,7 +227,7 @@
 
 
 //     void SystemCreatorTrianglesOnlyEntity::beginExecute() {
-//         IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+//         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
 //         // 1. Check for key commands
 
@@ -342,7 +342,7 @@
 //     }
 
 //     void SystemCreatorTrianglesOnlyEntity::endExecute() {
-//         IRProfile::profileFunction(IR_PROFILER_COLOR_RENDER);
+//         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
 //     }
 

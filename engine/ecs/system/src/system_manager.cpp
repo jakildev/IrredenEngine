@@ -22,7 +22,7 @@ namespace IRECS {
     {
         std::stringstream ss;
         ss << "SystemBase::tick " << static_cast<int>(system->getSystemName());
-        IRProfile::profileBlock(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
+        IR_PROFILE_BLOCK(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
         system->beginExecute();
         std::vector<ArchetypeNode*> nodes;
         if(system->getRelation() == Relation::NONE) {

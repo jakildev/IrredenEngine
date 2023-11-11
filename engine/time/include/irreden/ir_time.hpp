@@ -18,6 +18,7 @@ namespace IRTime {
     TimeManager& getTimeManager();
 
     double deltaTime(Events eventType);
+    bool shouldUpdate();
 }
 
 #endif /* IR_TIME_H */

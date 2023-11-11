@@ -63,7 +63,7 @@ namespace IRECS {
                             particleSpawner.spawnLifetime_
                         );
                         // TODO: add particle spawner to scene
-                        IRECS::getSystem<UPDATE_VOXEL_SET_CHILDREN>()
+                        IRECS::getEngineSystem<UPDATE_VOXEL_SET_CHILDREN>()
                             .addEntityToScene(newParticle, entities[i]);
                     }
                 }
