@@ -29,41 +29,6 @@ using IRECS::EntityHandle;
 
 namespace IRComponents {
 
-    struct C_VoxelScene {
-        EntityHandle root_;
-
-        C_VoxelScene()
-        :   root_{}
-        {
-            root_.set(C_VoxelSceneNode{root_, EntityHandle{0}});
-            root_.set(C_PositionGlobal3D{vec3(0, 0, 0)});
-        }
-
-        void addNode(
-            EntityHandle child,
-            EntityHandle parent = EntityHandle{0}
-        ) {
-            if(parent.id_ == 0) {
-                parent = root_;
-            }
-            parent.get<C_VoxelSceneNode>().addChild(child);
-            child.set(C_VoxelSceneNode{child, parent});
-        }
-
-        void removeNode(
-            EntityHandle node
-        )
-        {
-            node.get<C_VoxelSceneNode>().removeNodeFromScene();
-        }
-
-        void update() {
-            root_.get<C_VoxelSceneNode>().updateChildren(
-                root_.get<C_PositionGlobal3D>()
-            );
-        }
-    };
-
     struct C_VoxelSetNew {
         int numVoxels_;
         ivec3 size_;

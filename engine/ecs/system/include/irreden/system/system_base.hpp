@@ -75,34 +75,6 @@ namespace IRECS {
             return m_relation;
         }
 
-        // CHAT GPT STUFF BUT IS THIS THE SECRET???
-        // Iterate over the combined component data
-    // template <typename Func>
-    // void forEachComponent(Func func) const {
-    //     char* data = reinterpret_cast<char*>(std::get<0>(componentData).data());
-    //     size_t offset = 0;
-
-    //     for (size_t i = 0; i < sizeof...(Components); ++i) {
-    //         size_t componentSize = componentSizes[i];
-    //         size_t componentCount = componentCounts[i];
-
-    //         for (size_t j = 0; j < componentCount; ++j) {
-    //             func(reinterpret_cast<void*>(data + offset));
-    //             offset += componentSize;
-    //         }
-    //     }
-    // }
-
-
-    // LIKE THIS
-    // void tickWithArchetype(const ComponentContainer<C_MidiSequence, C_MidiDevice>& archetypeData) {
-    // archetypeData.forEachComponent([](void* component) {
-    //     // Process the component here
-    // });
-    // }
-
-        // TODO One contiguous array
-        // void forEachEntity()
     protected:
         template <typename ComponentTag>
         void addTag() {

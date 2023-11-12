@@ -133,6 +133,7 @@ void IRWorld::update()
     m_commandManager.executeDeviceMidiNoteCommandsAll();
 
     m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>();
+    m_systemManager.executeUserSystemAll();
     // m_systemManager.executeUserSystem(m_veclocitySystemId);
 
     // Destroy all marked entities in one step
@@ -171,6 +172,24 @@ void IRWorld::initEngineCommands() {
             IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().closeWindow();
         }
     );
+    IRCommand::registerCommand(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEqual,
+        []() {
+            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().zoomIn();
+        }
+    );
+    IRCommand::registerCommand(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonMinus,
+        []() {
+            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().zoomOut();
+        }
+    );
+
+
 }
 
 void IRWorld::initIROutputSystems() {
@@ -188,12 +207,7 @@ void IRWorld::initIRInputSystems() {
 }
 
 void IRWorld::initIRUpdateSystems() {
-    // TODO: make systems more like a pipeline
-    // Component adds and removes, and entity creates and destroys
-    // will be queued and executed all at once at the end of the pipeline.
-    // At the beginning of a pipeline, all entities will be fixed for this
-    // frame. They can be sorted and things of that nature to be more efficient.
-    // for particular update systems.
+
     m_systemManager.registerEngineSystem<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
         kVoxelPoolSize,
         kVoxelPoolPlayerSize

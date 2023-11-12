@@ -29,7 +29,7 @@ namespace IRECS {
     >   {
     public:
         System()
-        :   m_voxelScene{}
+        // :   m_voxelScene{}
         {
             IRProfile::engLogInfo("Created system UPDATE_VOXEL_SET_CHILDREN");
         }
@@ -57,28 +57,10 @@ namespace IRECS {
             }
         }
 
-        void addEntityToScene(
-            EntityHandle voxelSet,
-            EntityHandle parent = EntityHandle{0}
-        )
-        {
-            // Make sure it has a global position
-            voxelSet.set(C_PositionGlobal3D{});
-            m_voxelScene.addNode(voxelSet, parent);
-        }
-
-        void removeEntityFromScene(
-            EntityHandle voxelSet
-        )
-        {
-            m_voxelScene.removeNode(voxelSet);
-        }
-
     private:
-        IRComponents::C_VoxelScene m_voxelScene;
         virtual void beginExecute() override {
             // THIS MUST CHANGE, WAY TOO SLOW
-            m_voxelScene.update();
+            // m_voxelScene.update();
         }
         virtual void endExecute() override {}
     };

@@ -15,6 +15,21 @@ namespace IRECS {
         return getSystemManager().get<systemName>();
     }
 
+    template <
+        typename... Components,
+        typename Function
+    >
+    int registerUserSystem(
+        std::string name,
+        Function function
+    )
+    {
+        return getSystemManager().registerUserSystem<Components...>(
+            name,
+            function
+        );
+    }
+
     // IRECS::createSystem();
 
 } // namespace System

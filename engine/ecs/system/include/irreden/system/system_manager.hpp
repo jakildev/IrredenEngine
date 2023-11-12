@@ -90,11 +90,21 @@ namespace IRECS {
             }
         }
 
-        void executeUserSystem(int systemId) {
+        void executeUserSystemAll() {
             IR_PROFILE_FUNCTION();
-            auto& function = m_userSystemFunctions[systemId].second;
+            for(auto& system : m_userSystemFunctions) {
+                executeUserSystem(system.second);
+            }
+        }
+
+        void executeUserSystem(
+            std::pair<Archetype, std::function<void(ArchetypeNode*)>>& system
+        )
+        {
+            IR_PROFILE_FUNCTION();
+            auto& function = system.second;
             for(auto& node : IRECS::queryArchetypeNodesSimple(
-                m_userSystemFunctions[systemId].first,
+                system.first,
                 Archetype{}
             )) {
                 function(node);
