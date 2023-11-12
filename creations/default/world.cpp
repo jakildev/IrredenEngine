@@ -19,22 +19,23 @@ World::~World()
 
 void World::initGameEntities()
 {
-    ivec3 batchSize = ivec3(32, 32, 32);
-    for(int x = 0; x < 2; x++) {
-        for(int y = 0; y < 2; y++) {
-            for(int z = 0; z < 2; z++) {
+    const ivec3 partitions = ivec3(2, 2, 2);
+    const ivec3 batchSize = IRConstants::kVoxelPoolMaxAllocationSize;
+    for(int x = 0; x < partitions.x; x++) {
+        for(int y = 0; y < partitions.y; y++) {
+            for(int z = 0; z < partitions.z; z++) {
                 auto entities = IRECS::createEntityBatchWithFunctions(
-                    batchSize,
+                    batchSize / partitions,
                     [](ivec3 index){
                         return C_Position3D{
                             256, 256, 256
                         };
                     },
-                    [batchSize](ivec3 index) {
+                    [batchSize, partitions](ivec3 index) {
                         Color color{
-                            roundFloatToByte(static_cast<float>(index.x) / batchSize.x),
-                            roundFloatToByte(static_cast<float>(index.y) / batchSize.y),
-                            roundFloatToByte(static_cast<float>(index.z) / batchSize.z),
+                            roundFloatToByte(static_cast<float>(index.x) / (batchSize.x / partitions.x)),
+                            roundFloatToByte(static_cast<float>(index.y) / (batchSize.y / partitions.y)),
+                            roundFloatToByte(static_cast<float>(index.z) / (batchSize.z / partitions.z)),
                             255
                         };
                         return C_VoxelSetNew(
@@ -59,12 +60,13 @@ void World::initGameEntities()
                     //         vec3(0)
                     //     };
                     // },
-                    [](ivec3 index) {
+                    [batchSize, partitions](ivec3 index) {
                         int face = (index.x + index.y + index.z) % 3;
                         if(face == 0) {
                             return C_Velocity3D{
                                 vec3(
-                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    index.x ,
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
                                     0,
                                     0
                                 )
@@ -74,7 +76,8 @@ void World::initGameEntities()
                             return C_Velocity3D{
                                 vec3(
                                     0,
-                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    index.y,
                                     0
                                 )
                             };
@@ -84,7 +87,8 @@ void World::initGameEntities()
                                 vec3(
                                     0,
                                     0,
-                                    IRMath::randomFloat(-1.25, 1.25) * 20.0f
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f
+                                    index.z
                                 )
                             };
                         }
@@ -92,13 +96,13 @@ void World::initGameEntities()
                         return C_Velocity3D{vec3(0, 0, 0)};
                     }
                 );
+
                 EntityId parent = IRECS::createEntity(
                     C_Position3D{
-                        static_cast<float>(x * 48),
-                        static_cast<float>(y * 48),
-                        static_cast<float>(z * 48)
+                        static_cast<float>(x * 32),
+                        static_cast<float>(y * 32),
+                        static_cast<float>(z * 32)
                     }
-                    // ,C_Velocity3D{-20 + x * 40, -20 + y * 40, -20 + z * 40}
                 );
                 for(auto& entity : entities) {
                     IRECS::setParent(entity, parent);

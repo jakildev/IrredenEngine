@@ -4,7 +4,7 @@ add_library(IrredenEngineRendering STATIC
     # include/irreden/render/framebuffer.hpp
     src/ir_render.cpp
 
-    src/assimp_demo.cpp
+    # src/assimp_demo.cpp
     src/buffer.cpp
     src/framebuffer.cpp
     src/ir_gl_api.cpp
@@ -25,21 +25,21 @@ target_compile_options(
 )
 
 # Assimp
-FetchContent_Declare(
-    assimp
-    GIT_REPOSITORY https://github.com/assimp/assimp
-    GIT_TAG v5.3.1
-)
-FetchContent_GetProperties(assimp)
-if(NOT assimp_POPULATED)
-    FetchContent_Populate(assimp)
-    set(ASSIMP_BUILD_TESTS OFF)
-    set(ASSIMP_INSTALL OFF)
-endif()
-add_subdirectory(
-    ${assimp_SOURCE_DIR}
-    ${assimp_BINARY_DIR}
-)
+# FetchContent_Declare(
+#     assimp
+#     GIT_REPOSITORY https://github.com/assimp/assimp
+#     GIT_TAG v5.3.1
+# )
+# FetchContent_GetProperties(assimp)
+# if(NOT assimp_POPULATED)
+#     FetchContent_Populate(assimp)
+#     set(ASSIMP_BUILD_TESTS OFF)
+#     set(ASSIMP_INSTALL OFF)
+# endif()
+# add_subdirectory(
+#     ${assimp_SOURCE_DIR}
+#     ${assimp_BINARY_DIR}
+# )
 
 # MeshOptimizer
 FetchContent_Declare(
@@ -75,7 +75,7 @@ target_link_libraries(
     IrredenEngineInput
     IrredenEngineCommon
     IrredenEngineECS
-    assimp
+    # assimp
     meshoptimizer
     # stbimage
 )
@@ -84,13 +84,13 @@ target_include_directories(
     ${assimp_SOURCE_DIR}/include
 )
 
-add_custom_command(
-    TARGET IrredenEngineRendering
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${assimp_BINARY_DIR}/bin/libassimp-5d.dll
-    ${PROJECT_BINARY_DIR}/libassimp-5d.dll
-)
+# add_custom_command(
+#     TARGET IrredenEngineRendering
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#     ${assimp_BINARY_DIR}/bin/libassimp-5d.dll
+#     ${PROJECT_BINARY_DIR}/libassimp-5d.dll
+# )
 
 target_include_directories(
     IrredenEngineRendering

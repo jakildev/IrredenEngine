@@ -10,3 +10,5 @@ entity.set(C_Position2D, [](C_Position3D position3D)
     // Essentially lambda function for a component that defines
     // how it interacts with other components each frame
 ```
+
+REAL TIME ANIMATOR/RECORDER

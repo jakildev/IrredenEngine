@@ -60,7 +60,7 @@ namespace IRRender {
                 filepath,
                 e.what()
             );
-            IR_ASSERT(false, "Error while reading shader file.");
+            IR_ASSERT(false, "Error while reading shader file {} .", filepath);
         }
         return shaderCode;
     }
