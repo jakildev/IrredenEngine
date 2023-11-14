@@ -5,11 +5,11 @@ namespace IRECS {
 
     SystemManager::SystemManager()
     :   m_systems{}
-    ,   m_systemOrders{}
+    ,   m_systemPipelines{}
     ,   m_nextUserSystemId{0}
     {
         for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
-            m_systemOrders
+            m_systemPipelines
                 [static_cast<IRSystemType>(i)
             ] = std::list<SystemName>{};
         }
@@ -38,9 +38,32 @@ namespace IRECS {
             );
         }
         for(auto node : nodes) {
-            system->tick(node);
+            executeSystemTick(system.get(), node);
+            // system->tick(node);
         }
         system->endExecute();
+    }
+
+    void SystemManager::executeUserSystem(
+        SystemUser& system
+    )
+    {
+        IR_PROFILE_FUNCTION();
+        auto& function = system.function_;
+        for(auto& node : IRECS::queryArchetypeNodesSimple(
+            system.archetype_,
+            Archetype{}
+        )) {
+            function(node);
+        }
+    }
+
+    void SystemManager::executeSystemTick(
+        SystemVirtual* system,
+        ArchetypeNode* node
+    )
+    {
+        system->tick(node);
     }
 
 }

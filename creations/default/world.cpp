@@ -55,53 +55,54 @@ void World::initGameEntities()
                             IREasingFunctions::kBounceEaseOut
                         };
                     },
-                    [](ivec3 index) {
-                        return C_Velocity3D(
-                            randomFloat(-20.0f, 20.0f),
-                            randomFloat(-20.0f, 20.0f),
-                            randomFloat(-20.0f, 20.0f)
-                        );
-                    }
+                    // [](ivec3 index) {
+                    //     return C_Velocity3D(
+                    //         randomFloat(-20.0f, 20.0f),
+                    //         randomFloat(-20.0f, 20.0f),
+                    //         randomFloat(-20.0f, 20.0f)
+                    //     );
+                    // }
                     // [](ivec3 index) {
                     //     return C_Velocity3D{
                     //         vec3(0)
                     //     };
                     // },
-                    // [batchSize, partitions](ivec3 index) {
-                    //     int face = (index.x + index.y + index.z) % 3;
-                    //     if(face == 0) {
-                    //         return C_Velocity3D{
-                    //             vec3(
-                    //                 index.x ,
-                    //                 // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
-                    //                 0,
-                    //                 0
-                    //             )
-                    //         };
-                    //     }
-                    //     if(face == 1) {
-                    //         return C_Velocity3D{
-                    //             vec3(
-                    //                 0,
-                    //                 // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
-                    //                 index.y,
-                    //                 0
-                    //             )
-                    //         };
-                    //     }
-                    //     if(face == 2) {
-                    //         return C_Velocity3D{
-                    //             vec3(
-                    //                 0,
-                    //                 0,
-                    //                 // IRMath::randomFloat(-1.25, 1.25) * 20.0f
-                    //                 index.z
-                    //             )
-                    //         };
-                    //     }
+                    [batchSize, partitions](ivec3 index) {
+                        int face = (index.x + index.y + index.z) % 3;
+                        if(face == 0) {
+                            return C_Velocity3D{
+                                vec3(
+                                    sumVecComponents(index),
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    0,
+                                    0
+                                )
+                            };
+                        }
+                        if(face == 1) {
+                            return C_Velocity3D{
+                                vec3(
+                                    0,
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    sumVecComponents(index),
+                                    0
+                                )
+                            };
+                        }
+                        if(face == 2) {
+                            return C_Velocity3D{
+                                vec3(
+                                    0,
+                                    0,
+                                    sumVecComponents(index)
+                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f
+                                    // index.z
+                                )
+                            };
+                        }
 
-                    //     return C_Velocity3D{vec3(0, 0, 0)};
-                    // }
+                        return C_Velocity3D{vec3(0, 0, 0)};
+                    }
                 );
 
                 EntityId parent = IRECS::createEntity(
@@ -117,17 +118,17 @@ void World::initGameEntities()
             }
         }
     }
-    auto colorChangeSystem = IRECS::registerUserSystem<C_Position3D, C_VoxelSetNew>(
-        "ColorChangeSystem",
-        [](const C_Position3D& position, C_VoxelSetNew& voxelSet) {
-            voxelSet.changeVoxelColorAll(Color{
-                roundFloatToByte(position.pos_.x / 256.0f),
-                roundFloatToByte(position.pos_.y / 256.0f),
-                roundFloatToByte(position.pos_.z / 256.0f),
-                255
-            });
-        }
-    );
+    // auto colorChangeSystem = IRECS::registerUserSystem<C_Position3D, C_VoxelSetNew>(
+    //     "ColorChangeSystem",
+    //     [](const C_Position3D& position, C_VoxelSetNew& voxelSet) {
+    //         voxelSet.changeVoxelColorAll(Color{
+    //             roundFloatToByte(position.pos_.x / 256.0f),
+    //             roundFloatToByte(position.pos_.y / 256.0f),
+    //             roundFloatToByte(position.pos_.z / 256.0f),
+    //             255
+    //         });
+    //     }
+    // );
 }
 
 void World::initGameSystems()

@@ -1,7 +1,10 @@
 #ifndef IR_SYSTEM_TYPES_H
 #define IR_SYSTEM_TYPES_H
 
+#include <irreden/entity/ir_entity_types.hpp>
+
 #include <cstdint>
+#include <functional>
 
 namespace IRECS {
 
@@ -55,6 +58,12 @@ namespace IRECS {
         SYSTEM_TYPE_INPUT,
         SYSTEM_TYPE_OUTPUT,
         NUM_SYSTEM_TYPES
+    };
+
+    struct SystemUser {
+        Archetype archetype_;
+        std::function<void(ArchetypeNode*)> function_;
+        Relation relation_;
     };
 
     template <SystemName system>

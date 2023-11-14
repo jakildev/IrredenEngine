@@ -20,8 +20,6 @@
 
 namespace IRECS {
 
-    // I want to try the "deducing this" pattern to solve all
-    // my system problems.
     template <SystemName system, typename... Components>
     class SystemBase : public SystemVirtual {
     public:
