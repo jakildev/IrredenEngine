@@ -13,7 +13,7 @@ target_compile_options(
 # fmt (dependency of spdlog)
 FetchContent_Declare(fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-  GIT_TAG master
+  GIT_TAG 10.1.1
 )
 FetchContent_MakeAvailable(fmt)
 add_custom_command(
