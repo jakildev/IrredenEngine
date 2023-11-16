@@ -20,32 +20,19 @@ using namespace IRComponents;
 namespace IRECS {
 
     template<>
-    class System<ACCELERATION_3D> : public SystemBase<
-        ACCELERATION_3D,
-        C_Velocity3D,
-        C_Acceleration3D
-    >   {
-    public:
-        System()
-        {
-            IRProfile::engLogInfo("Created system ACCELERATION_3D");
+    struct System<ACCELERATION_3D>{
+        static SystemId create() {
+            return createSystem<C_Velocity3D, C_Acceleration3D>(
+                "Acceleration3D",
+                [](
+                    C_Velocity3D& velocity,
+                    const C_Acceleration3D& acceleration
+                )
+                {
+                    velocity.velocity_ += acceleration.acceleration_;
+                }
+            );
         }
-        virtual ~System() = default;
-
-        void tickWithArchetype(
-            Archetype type,
-            std::vector<EntityId>& entities,
-            std::vector<C_Velocity3D>& velocities,
-            std::vector<C_Acceleration3D>& accelerations
-        )
-        {
-            for(int i=0; i < entities.size(); i++) {
-                velocities[i].velocity_ += accelerations[i].acceleration_;
-            }
-        }
-    private:
-        virtual void beginExecute() override {}
-        virtual void endExecute() override {}
     };
 
 } // namespace IRECS

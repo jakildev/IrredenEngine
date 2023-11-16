@@ -30,6 +30,52 @@ namespace IRECS {
         );
     }
 
+    template <
+        typename... Components,
+        typename FunctionTick,
+        typename FunctionBeginTick = std::nullptr_t,
+        typename FunctionEndTick = std::nullptr_t
+    >
+    SystemId createSystem(
+        std::string name,
+        FunctionTick functionTick,
+        FunctionBeginTick functionBeginTick = nullptr,
+        FunctionEndTick functionEndTick = nullptr,
+        Relation relation = Relation::NONE
+    )
+    {
+        return getSystemManager().createSystem<Components...>(
+            name,
+            functionTick,
+            functionBeginTick,
+            functionEndTick,
+            relation
+        );
+    }
+
+     template <
+        SystemName type,
+        typename... Args
+    >
+    SystemId createSystem(Args&&... args) {
+        return System<type>::create(
+            args...
+        );
+    }
+
+    template <
+        typename ComponentTag
+    >
+    void addSystemTag(SystemId system) {
+        getSystemManager().addSystemTag<ComponentTag>(system);
+    }
+
+    // template <SystemName systemName>
+    // SystemId createEngineSystem() {
+    //     return getSystemManager().createEngineSystem<systemName>();
+    // }
+
+
     // IRECS::createSystem();
 
 } // namespace System

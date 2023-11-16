@@ -23,7 +23,6 @@ using namespace IRMath;
 using IRRender::ImageData;
 using IRRender::Texture2D;
 using IRRender::ResourceId;
-using IRECS::EntityHandle;
 // TODO: add primitives to voxel set, not just setting individual voxels...
 // UPDATE: see component_geometric_shape.hpp
 
@@ -62,8 +61,6 @@ namespace IRComponents {
                         voxels_[
                             index3DtoIndex1D(ivec3(x, y, z), size)
                         ].color_ = color;
-                        // voxel.set(C_PositionGlobal3D{vec3(x, y, z)});
-                        // voxel.set(C_Voxel{IRConstants::kColorGreen});
                     }
                 }
             }
@@ -183,11 +180,6 @@ namespace IRComponents {
                     parentPosition.pos_;
             }
         }
-        // todo: this is called by the user after all posible mutations
-        // are defined such as what components are added to it
-        void finalize(const EntityHandle& entity) {
-            // freeClippedVoxels();
-        }
 
         // TODO: get rid of all unneeded voxels
         void freeInvisableVoxels(bool withAnimation = false) {
@@ -196,8 +188,6 @@ namespace IRComponents {
         }
 
         // int addVoxelSceneNode
-
-
 
     };
 

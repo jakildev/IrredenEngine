@@ -63,20 +63,21 @@ namespace IRECS {
             }
         }
 
-        EntityHandle createMidiDeviceOut(
+        // TODO: This is just a prefab
+        EntityId createMidiDeviceOut(
             std::string name,
             MidiChannels channel
         )
         {
             MidiChannel channelValue = (MidiChannel)channel;
 
-            EntityHandle device{};
-            device.set(C_Name{name});
-            device.set(C_MidiChannel{channelValue});
-            device.set(C_MidiOut{});
-
             int newDeviceId = m_nextDeviceId++;
-            device.set(C_MidiDevice{newDeviceId});
+            EntityId device = IRECS::createEntity(
+                C_Name{name},
+                C_MidiChannel{channelValue},
+                C_MidiOut{},
+                C_MidiDevice{newDeviceId}
+            );
             m_midiOutDeviceChannels.push_back(channelValue);
             m_midiOutDevices.push_back(device);
             IRProfile::engLogInfo(
@@ -93,29 +94,30 @@ namespace IRECS {
             return m_midiOutDeviceChannels[device.id_];
         }
 
-        EntityHandle createMidiMessageOut(
+        // TODO: This is just a prefab
+        EntityId createMidiMessageOut(
             C_MidiDevice& device,
             MidiStatus status,
             unsigned char data1,
             unsigned char data2 = 0
         )
         {
-            EntityHandle message{};
-            message.set(C_MidiMessage{
-                static_cast<unsigned char>(
-                    status | getDeviceChannel(device)
-                ),
-                data1,
-                data2
-            });
-            message.set(C_MidiOut{});
-            message.set(C_Lifetime{1});
-            return message;
+            return IRECS::createEntity(
+                C_MidiMessage{
+                    static_cast<unsigned char>(
+                        status | getDeviceChannel(device)
+                    ),
+                    data1,
+                    data2
+                },
+                C_MidiOut{},
+                C_Lifetime{1}
+            );
         }
 
     private:
         int m_nextDeviceId;
-        std::vector<EntityHandle> m_midiOutDevices;
+        std::vector<EntityId> m_midiOutDevices;
         std::vector<MidiChannel> m_midiOutDeviceChannels;
 
         virtual void beginExecute() override {}

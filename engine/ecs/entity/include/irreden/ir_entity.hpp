@@ -17,7 +17,6 @@ namespace IRECS {
     EntityManager& getEntityManager();
 
     smart_ComponentData createComponentData(ComponentId type);
-
     std::string makeComponentString(const Archetype& type);
 
     template <typename... Components>
@@ -117,6 +116,11 @@ namespace IRECS {
     template <typename Component>
     Component& setComponent(EntityId entity, Component component) {
         return getEntityManager().setComponent(entity, component);
+    }
+
+    template <typename Component>
+    void removeComponent(EntityId entity) {
+        getEntityManager().removeComponent<Component>(entity);
     }
 
     EntityId getParentEntityFromArchetype(Archetype type);

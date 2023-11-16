@@ -28,7 +28,7 @@ namespace IRComponents {
         vec2 zoom_;
         vec2 targetZoom_;
         vec2 triangleStepSizeScreen_;
-        EntityHandle followEntity_;
+        EntityId followEntity_;
         static constexpr int zoomDurationFrames_ = 30;
         int zoomCurrentFrame_ = zoomDurationFrames_;
         static constexpr int snapDurationFrames_ = 180;
@@ -84,14 +84,12 @@ namespace IRComponents {
                     )
                 );
             }
-            if(followEntity_.id_ != 0) {
+            if(followEntity_ != 0) {
                 pos2DScreen_ = pos3DtoPos2DScreen(
-                    followEntity_.get<C_Position3D>().pos_,
+                    IRECS::getComponent<C_Position3D>(followEntity_).pos_,
                     triangleStepSizeScreen_
                 );
             }
-
-            // if(cameraDrag)
         }
 
         void moveUp() {
@@ -108,7 +106,7 @@ namespace IRComponents {
         }
 
         void setFollowEntity(EntityId followEntity) {
-            followEntity_.id_ = followEntity;
+            followEntity_ = followEntity;
         }
 
 
@@ -143,7 +141,7 @@ namespace IRComponents {
         void setTargetPosition(vec2 targetPos) {
             targetPos2DScreen_ = targetPos;
             snapCurrentFrame_ = 0;
-            followEntity_.id_ = 0;
+            followEntity_ = IRECS::kNullEntity;
         }
 
         void setTargetPosition(vec3 targetPos) {

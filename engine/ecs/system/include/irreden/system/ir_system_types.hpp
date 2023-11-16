@@ -8,7 +8,15 @@
 
 namespace IRECS {
 
-    using SystemId = std::uint32_t;
+    using SystemId = EntityId;
+
+    enum SystemEvent {
+        BEGIN_TICK,
+        TICK,
+        END_TICK,
+        START,
+        STOP,
+    };
 
     enum SystemName {
         NULL_SYSTEM,
@@ -68,6 +76,11 @@ namespace IRECS {
 
     template <SystemName system>
     class System;
+
+    // template <typename Function>
+    // using SystemEventFunction = std::function<Function>;
+
+
 
 } // namespace IRECS
 

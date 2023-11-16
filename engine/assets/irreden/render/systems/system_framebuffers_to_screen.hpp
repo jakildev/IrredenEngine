@@ -104,9 +104,9 @@ namespace IRECS {
                         getComponentType<C_TextureScrollPosition>()
                 ))
                 {
-                    auto& textureScroll = EntityHandle{
+                    auto& textureScroll = IRECS::getComponent<C_TextureScrollPosition>(
                         entities[i]
-                    }.get<C_TextureScrollPosition>();
+                    );
                     // TODO: This should be updated elsewhere
                     m_frameData.textureOffset = textureScroll.position_;
                 }

@@ -76,14 +76,14 @@ namespace IRECS {
             int irGamepadId = 0
         )
         {
-            const auto& gamepadState = m_gamepadEntities[irGamepadId]
-                .get<C_GLFWGamepadState>();
-            return gamepadState.getAxisValue(axis);
+            return IRECS::getComponent<C_GLFWGamepadState>(
+                m_gamepadEntities[irGamepadId]
+            ).getAxisValue(axis);
         }
 
     private:
         IRInput::IRGLFWWindow& m_window;
-        std::vector<EntityHandle> m_gamepadEntities;
+        std::vector<EntityId> m_gamepadEntities;
 
         virtual void beginExecute() override {
 
@@ -98,12 +98,14 @@ namespace IRECS {
             {
                 if(m_window.joystickPresent(i)) {
                     IRProfile::engLogInfo("Creating joystick entity for joystick {}", i);
-                    EntityHandle newJoystick = Prefab<PrefabTypes::kGLFWJoystick>::create(
-                        i,
-                        m_window.getJoystickName(i),
-                        m_window.joystickIsGamepad(i)
+
+                    m_gamepadEntities.emplace_back(
+                        IRECS::createEntity<kGLFWJoystick>(
+                             i,
+                            m_window.getJoystickName(i),
+                            m_window.joystickIsGamepad(i)
+                        )
                     );
-                    m_gamepadEntities.push_back(newJoystick);
                 }
             }
         }

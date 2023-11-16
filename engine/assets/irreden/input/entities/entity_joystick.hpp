@@ -24,17 +24,17 @@ namespace IRECS {
 
     template <>
     struct Prefab<PrefabTypes::kGLFWJoystick> {
-        static EntityHandle create(
+        static EntityId create(
             int joystickId,
             std::string name,
             bool isGamepad
         )
         {
-            EntityHandle entity{};
-            entity.set(C_GLFWJoystick{joystickId});
-            entity.set(C_Name{name});
-            if(isGamepad) entity.set(C_GLFWGamepadState{});
-
+            EntityId entity = IRECS::createEntity(
+                C_GLFWJoystick{joystickId}
+            );
+            if(isGamepad)
+                IRECS::setComponent(entity, C_GLFWGamepadState{});
             return entity;
         }
 

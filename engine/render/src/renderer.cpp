@@ -32,7 +32,7 @@ namespace IRRender {
             kBufferIndex_GlobalConstantsGLSL
         }
     ,   m_backgroundCanvas{
-            IRECS::createPrefab<kCanvas>(
+            IRECS::createEntity<kCanvas>(
                 "background",
                 ivec2(
                     IRConstants::kScreenTriangleMaxCanvasSize /
@@ -45,7 +45,7 @@ namespace IRRender {
             )
         }
     ,   m_mainCanvas{
-            IRECS::createPrefab<kCanvas>(
+            IRECS::createEntity<kCanvas>(
                 "main",
                 ivec2(
                     IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
@@ -56,7 +56,7 @@ namespace IRRender {
             )
         }
     ,   m_playerCanvas{
-            IRECS::createPrefab<kCanvas>(
+            IRECS::createEntity<kCanvas>(
                 "player",
                 ivec2(
                     IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer

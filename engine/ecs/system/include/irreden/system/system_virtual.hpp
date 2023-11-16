@@ -28,11 +28,13 @@ namespace IRECS {
         virtual ~SystemVirtual() = default;
         virtual void beginExecute() {};
         virtual void endExecute() {};
-        virtual void tick(ArchetypeNode* node) = 0;
+        virtual void tick(ArchetypeNode* node) {};
         virtual void start() {};
         virtual void end() {};
         // virtual void executeEvent(IREvents event) = 0;
-        virtual Relation getRelation() = 0;
+        virtual Relation getRelation() const {
+            return Relation::NONE;
+        }
 
         inline const SystemName getSystemName() const {
             return m_name;

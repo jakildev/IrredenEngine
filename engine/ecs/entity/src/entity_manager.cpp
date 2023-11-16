@@ -297,7 +297,8 @@ namespace IRECS {
     )
     {
         if(!isPureComponent(component)) {
-            IR_ASSERT(false, "non pure components not supported rn");
+            // IR_ASSERT(false, "non pure components not supported rn");
+            return; // Like for relation components with no data, tags maybe, etc
         }
         fromNode->components_.at(component)->moveDataAndPack(
             toNode->components_.at(component).get(),

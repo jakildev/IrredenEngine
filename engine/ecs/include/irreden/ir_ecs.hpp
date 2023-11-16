@@ -25,7 +25,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ecs/ir_ecs_types.hpp>
 #include <irreden/ecs/prefabs.hpp>
-#include <irreden/ecs/entity_handle.hpp>
+// #include <irreden/ecs/entity_handle.hpp>
 
 namespace IRECS {
 
@@ -33,7 +33,7 @@ namespace IRECS {
         PrefabTypes type,
         typename... Args
     >
-    EntityId createPrefab(Args&&... args) {
+    EntityId createEntity(Args&&... args) {
         return Prefab<type>::create(
             args...
         );

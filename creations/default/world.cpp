@@ -72,8 +72,8 @@ void World::initGameEntities()
                         if(face == 0) {
                             return C_Velocity3D{
                                 vec3(
-                                    sumVecComponents(index),
-                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
+                                    // sumVecComponents(index),
+                                    IRMath::randomFloat(-100, 100),
                                     0,
                                     0
                                 )
@@ -83,8 +83,8 @@ void World::initGameEntities()
                             return C_Velocity3D{
                                 vec3(
                                     0,
-                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f,
-                                    sumVecComponents(index),
+                                    IRMath::randomFloat(-100, 100),
+                                    // sumVecComponents(index),
                                     0
                                 )
                             };
@@ -94,8 +94,8 @@ void World::initGameEntities()
                                 vec3(
                                     0,
                                     0,
-                                    sumVecComponents(index)
-                                    // IRMath::randomFloat(-1.25, 1.25) * 20.0f
+                                    // sumVecComponents(index)
+                                    IRMath::randomFloat(-100, 100)
                                     // index.z
                                 )
                             };

@@ -25,17 +25,17 @@ namespace IRECS {
 
     template <>
     struct Prefab<PrefabTypes::kSingleVoxel> {
-        static EntityHandle create(
+        static EntityId create(
             vec3 position,
             Color color = IRColors::kGreen
         )
         {
-            EntityHandle entity{};
-            entity.set(C_Position3D{position});
-            entity.set(C_PositionGlobal3D{position});
-            entity.set(C_PositionOffset3D{vec3(0, 0, 0)});
-            entity.set(C_Voxel{color});
-            return entity;
+            return IRECS::createEntity(
+                C_Position3D{position},
+                C_PositionGlobal3D{position},
+                C_PositionOffset3D{vec3(0, 0, 0)},
+                C_Voxel{color}
+            );
         }
     };
 

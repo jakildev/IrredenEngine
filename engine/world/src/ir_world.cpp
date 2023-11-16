@@ -131,10 +131,8 @@ void IRWorld::update()
     m_commandManager.executeUserKeyboardCommandsAll();
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
-
-    m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>();
-    m_systemManager.executeUserSystemAll();
-    // m_systemManager.executeUserSystem(m_veclocitySystemId);
+    m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>(); // TODO REMOVE THIS
+    m_systemManager.executePipeline(SYSTEM_TYPE_UPDATE);
 
     // Destroy all marked entities in one step
     m_entityManager.destroyMarkedEntities();
@@ -196,68 +194,68 @@ void IRWorld::initIROutputSystems() {
 }
 
 void IRWorld::initIRInputSystems() {
-    m_systemManager.registerEngineSystem<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
+    m_systemManager.registerSystemClass<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerEngineSystem<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
+    m_systemManager.registerSystemClass<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerEngineSystem<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
+    m_systemManager.registerSystemClass<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
 
 }
 
 void IRWorld::initIRUpdateSystems() {
 
-    m_systemManager.registerEngineSystem<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
+    m_systemManager.registerSystemClass<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
         kVoxelPoolSize,
         kVoxelPoolPlayerSize
     );
-    m_systemManager.registerEngineSystem<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
+    m_systemManager.registerSystemClass<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerEngineSystem<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<VELOCITY_3D, SYSTEM_TYPE_UPDATE>();
-    // m_velocitySystemId =
-    //     m_systemManager.registerUserSystem<C_Position3D, C_Velocity3D>(
-    //     "Velocity3D",
-    //     [](
-    //         C_Position3D& position,
-    //         const C_Velocity3D& velocity
-    //     )
-    //     {
-    //         position.pos_ += velocity.velocity_;
-    //     }
-    // );
-    m_systemManager.registerEngineSystem<ACCELERATION_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<GRAVITY_3D, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<GOTO_3D, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
+
+    SystemId systemVelocity = IRECS::createSystem<VELOCITY_3D>();
+    SystemId systemAcceleration = IRECS::createSystem<ACCELERATION_3D>();
+    SystemId systemGravity = IRECS::createSystem<GRAVITY_3D>();
+    m_systemManager.registerSystemClass<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();;
+    SystemId systemGoto = IRECS::createSystem<GOTO_3D>();
     // TODO: This should be an output system but midi message out's get destroyed
     // by lifetime system, so perhaps they should just get consumed by
     // midi out system instead.
-    m_systemManager.registerEngineSystem<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerEngineSystem<LIFETIME, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
+    m_systemManager.registerSystemClass<LIFETIME, SYSTEM_TYPE_UPDATE>();
     // m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
+
+    m_systemManager.registerPipeline(
+        SYSTEM_TYPE_UPDATE,
+        {
+            systemVelocity,
+            systemAcceleration,
+            systemGravity,
+            systemGoto
+        }
+    );
 
 }
 
 void IRWorld::initIRRenderSystems() {
-    m_systemManager.registerEngineSystem<RENDERING_TEXTURE_SCROLL, SYSTEM_TYPE_RENDER>();
-    m_systemManager.registerEngineSystem<
+    m_systemManager.registerSystemClass<RENDERING_TEXTURE_SCROLL, SYSTEM_TYPE_RENDER>();
+    m_systemManager.registerSystemClass<
         RENDERING_SINGLE_VOXEL_TO_CANVAS,
         SYSTEM_TYPE_RENDER
     >();
-    m_systemManager.registerEngineSystem<
+    m_systemManager.registerSystemClass<
         RENDERING_CANVAS_TO_FRAMEBUFFER,
         SYSTEM_TYPE_RENDER
     >
     (
         IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
     );
-    m_systemManager.registerEngineSystem<
+    m_systemManager.registerSystemClass<
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         SYSTEM_TYPE_RENDER
     >();

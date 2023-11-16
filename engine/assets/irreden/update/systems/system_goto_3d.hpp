@@ -20,59 +20,40 @@ using namespace IRComponents;
 namespace IRECS {
 
     template<>
-    class System<GOTO_3D> : public SystemBase<
-        GOTO_3D,
-        C_Position3D,
-        C_GotoEasing3D
-    >   {
-    public:
-        System() {
-            IRProfile::engLogInfo("Created system GOTO_3D");
-        }
-        virtual ~System() = default;
-
-        void tickWithArchetype(
-            Archetype archetype,
-            std::vector<EntityId>& entities,
-            std::vector<C_Position3D>& positions,
-            std::vector<C_GotoEasing3D>& gotos
-        )
-        {
-            for(int i=0; i < entities.size(); i++) {
-                auto& gotoComp = gotos[i];
-                if(gotoComp.done_) continue;
-                gotoComp.currentFrame_++;
-                positions[i].pos_ = glm::mix(
-                    gotoComp.startPos_.pos_,
-                    gotoComp.endPos_.pos_,
-                    gotoComp.easingFunction_(
-                        static_cast<float>(gotoComp.currentFrame_) /
-                        static_cast<float>(gotoComp.durationFrames_)
-                    )
-                );
-                // maybe just have a way to remove components
-                // right here because that would be a lot more intuitive
-                // iterate over local copy if it is non const and copy back at end
-                if(gotoComp.currentFrame_ >= gotoComp.durationFrames_) {
-                    gotoComp.done_ = true;
-                    // m_finishedEntities.push_back(entities[i]);
+    struct System<GOTO_3D> {
+        static SystemId create() {
+            // static std::vector<EntityId> m_finishedEntities;
+            return createSystem<C_Position3D, C_GotoEasing3D>(
+                "Goto3D",
+                [](
+                    C_Position3D& position,
+                    C_GotoEasing3D& gotoComp
+                )
+                {
+                    if(gotoComp.done_) return;
+                    gotoComp.currentFrame_++;
+                    position.pos_ = glm::mix(
+                        gotoComp.startPos_.pos_,
+                        gotoComp.endPos_.pos_,
+                        gotoComp.easingFunction_(
+                            static_cast<float>(gotoComp.currentFrame_) /
+                            static_cast<float>(gotoComp.durationFrames_)
+                        )
+                    );
+                    if(gotoComp.currentFrame_ >= gotoComp.durationFrames_) {
+                        gotoComp.done_ = true;
+                        // m_finishedEntities.push_back(entities[i]);
+                    }
+                },
+                []() {
+                    // m_finishedEntities.clear();
+                },
+                []() {
+                    // for(auto& entity : m_finishedEntities) {
+                    //     IRECS::removeComponent<C_GotoEasing3D>(entity);
+                    // }
                 }
-            }
-        }
-
-    private:
-        std::vector<EntityId> m_finishedEntities;
-
-        virtual void beginExecute() override {
-            m_finishedEntities.clear();
-        }
-        virtual void endExecute() override {
-            // TODO: Remove components batched from same archetype node
-            // This should be a feature of base class or something
-            for(auto& entity : m_finishedEntities) {
-                EntityHandle handle{entity};
-                handle.remove<C_GotoEasing3D>();
-            }
+            );
         }
     };
 

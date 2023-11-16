@@ -87,7 +87,7 @@ namespace IRECS {
                 GL_UNIFORM_BUFFER,
                 kBufferIndex_FrameDataVoxelToCanvas
             }
-        ,   m_player{0}
+        ,   m_player{kNullEntity}
         {
 
 
@@ -177,9 +177,9 @@ namespace IRECS {
             }
         }
 
-        void setPlayer(const EntityId player) {
+        void setPlayer(EntityId player) {
 
-            m_player = EntityHandle{player};
+            m_player = player;
         }
 
         void updateTriangleCanvasOffset(vec2 pos) {
@@ -192,7 +192,7 @@ namespace IRECS {
         }
 
     private:
-        EntityHandle m_player;
+        EntityId m_player;
         ShaderProgram m_shaderCompute;
         ShaderProgram m_shaderComputeSecondPass;
         Buffer m_bufferVoxelPositions;

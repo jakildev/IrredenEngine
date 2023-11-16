@@ -21,9 +21,9 @@ namespace IRConstants {
     // constexpr ivec2 kInitWindowSize = ivec2(1080, 1920);
     // constexpr ivec2 kInitWindowSize = ivec2(360, 640);
 
-    // constexpr uvec2 kGameResolution = uvec2(640, 360);
+    constexpr uvec2 kGameResolution = uvec2(640, 360);
     // constexpr uvec2 kGameResolution = uvec2(360, 640) / uvec2(2);
-    constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(2);
+    // constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(2);
     // constexpr ivec2 kInitWindowSize = ivec2(kGameResolution * uvec2(4));
     constexpr ivec2 kInitWindowSize = ivec2(1920, 1080);
 
@@ -92,13 +92,13 @@ namespace IRConstants {
     constexpr Distance kTriangleDistanceMaxDistance =       65535;
 
     // TODO: Dynamic based on current GPU
-    constexpr ivec3 kVoxelPoolMaxAllocationSize = ivec3{32, 32, 32};
+    constexpr ivec3 kVoxelPoolMaxAllocationSize = ivec3{64, 64, 64};
     constexpr int kVoxelPoolMaxAllocationSizeTotal =
         kVoxelPoolMaxAllocationSize.x *
         kVoxelPoolMaxAllocationSize.y *
         kVoxelPoolMaxAllocationSize.z;
 
-    constexpr ivec3 kVoxelPoolSize = ivec3{32, 32, 32};
+    constexpr ivec3 kVoxelPoolSize = ivec3{64, 64, 64};
 
 } // namespace constants
 

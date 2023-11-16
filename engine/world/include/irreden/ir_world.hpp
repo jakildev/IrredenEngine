@@ -98,11 +98,6 @@ public:
             components...
         );
     }
-
-    void addEntityToScene(
-        IRECS::EntityHandle entity,
-        IRECS::EntityHandle parent = IRECS::EntityHandle{0}
-    );
 private:
 
     // adding to world for user should just be attaching things to world ecs
@@ -129,7 +124,7 @@ private:
     IRRender::RenderManager m_renderer;
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
-    // int m_velocitySystemId;
+    SystemId m_velocitySystemId;
 
     void input();
     void update();

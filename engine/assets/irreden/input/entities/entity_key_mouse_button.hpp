@@ -25,30 +25,30 @@ using namespace IRInput;
 namespace IRECS {
     template <>
     struct Prefab<PrefabTypes::kKeyMouseButton> {
-        static EntityHandle create(
+        static EntityId create(
             KeyMouseButtons button,
             ButtonStatuses status = ButtonStatuses::NOT_HELD
         )
         {
-            EntityHandle entity{};
-            entity.set(C_KeyMouseButton{button});
-            entity.set(C_KeyStatus{status});
-            return entity;
+            return IRECS::createEntity(
+                C_KeyMouseButton{button},
+                C_KeyStatus{status}
+            );
         }
     };
 
     template <>
     struct Prefab<PrefabTypes::kMouseScroll> {
-        static EntityHandle create(
+        static EntityId create(
             double xoffset,
             double yoffset
         )
         {
-            EntityHandle entity{};
-            entity.set(C_MouseScroll{xoffset, yoffset});
-            entity.set(C_Lifetime{1});
+            return IRECS::createEntity(
+                C_MouseScroll{xoffset, yoffset},
+                C_Lifetime{1}
+            );
 
-            return entity;
         }
     };
 

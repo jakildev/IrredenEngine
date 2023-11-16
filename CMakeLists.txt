@@ -3,6 +3,7 @@ project(BuildCreation VERSION 0.1.0)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 include(cmake/ir_functions.cmake)
 

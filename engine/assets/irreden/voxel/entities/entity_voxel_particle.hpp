@@ -30,17 +30,19 @@ using namespace IRComponents;
 
 namespace IRECS {
 
+    // New system should be exactly the same as this!
+    // this should also just use single createEntity call!
     template <>
     struct Prefab<PrefabTypes::kVoxelParticle> {
-        static EntityHandle create(
+        static EntityId create(
             vec3 position,
             Color color,
             int lifetime = 120
         )
         {
-            EntityHandle entity{};
-            entity.set(C_Position3D{position});
-            entity.set(C_VoxelSetNew{
+            EntityId entity = IRECS::createEntity();
+            IRECS::setComponent(entity, C_Position3D{position});
+            IRECS::setComponent(entity, C_VoxelSetNew{
                 ivec3(1, 1, 1),
                 color
             });
@@ -50,10 +52,10 @@ namespace IRECS {
                 periodAmplitude - periodVariance,
                 periodAmplitude + periodVariance
             );
-            // entity.set(C_Velocity3D{vec3(0, 0, -20.0f)});
-            // entity.set(C_Acceleration3D{vec3(0, 0, -3.5f)});
+            // IRECS::setComponent(entity, C_Velocity3D{vec3(0, 0, -20.0f)});
+            // IRECS::setComponent(entity, C_Acceleration3D{vec3(0, 0, -3.5f)});
 
-            auto& periodicIdle = entity.set(C_PeriodicIdle{
+            auto& periodicIdle = IRECS::setComponent(entity, C_PeriodicIdle{
                 gotoHeight,
                 (float)lifetime / IRConstants::kFPS
             });
@@ -84,12 +86,12 @@ namespace IRECS {
             //     IREasingFunctions::kQuadraticEaseOut
             // );
 
-            // entity.set(C_Velocity3D{startVelocity});
+            // IRECS::setComponent(entity, C_Velocity3D{startVelocity});
 
             // Temp, particles always float up
-            // entity.set(C_Acceleration3D{vec3(0, 0, -3.5f)});
-            // entity.set(C_HasGravity{});
-            entity.set(C_Lifetime{lifetime});
+            // IRECS::setComponent(entity, C_Acceleration3D{vec3(0, 0, -3.5f)});
+            // IRECS::setComponent(entity, C_HasGravity{});
+            IRECS::setComponent(entity, C_Lifetime{lifetime});
 
 
             return entity;

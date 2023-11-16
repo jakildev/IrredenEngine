@@ -91,7 +91,7 @@ namespace IRECS {
             }
         }
 
-        EntityHandle createMidiDeviceIn(
+        EntityId createMidiDeviceIn(
             std::string name,
             MidiChannels channel
         )
@@ -102,13 +102,13 @@ namespace IRECS {
                 return m_midiInDevices[m_midiChannelToDeviceMappings[channelValue]];
             }
 
-            EntityHandle device{};
-            device.set(C_Name{name});
-            device.set(C_MidiChannel{channelValue});
-            device.set(C_MidiIn{});
-
             int newDeviceId = m_nextDeviceId++;
-            device.set(C_MidiDevice{newDeviceId});
+            EntityId device = IRECS::createEntity(
+                C_Name{name},
+                C_MidiChannel{channelValue},
+                C_MidiIn{},
+                C_MidiDevice{newDeviceId}
+            );
             m_midiChannelToDeviceMappings.insert({channel, newDeviceId});
             m_midiDeviceToChannelMappings.insert({newDeviceId, channel});
             m_midiInDevices.push_back(device);
@@ -150,7 +150,7 @@ namespace IRECS {
         // MidiIn& m_midiIn;
 
         int m_nextDeviceId;
-        std::vector<EntityHandle> m_midiInDevices;
+        std::vector<EntityId> m_midiInDevices;
 
         // Condense these two into one vector where
         // index is the device id

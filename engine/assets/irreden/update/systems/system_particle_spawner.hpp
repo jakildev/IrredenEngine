@@ -54,7 +54,7 @@ namespace IRECS {
                 particleSpawner.tickCount_++;
                 if(particleSpawner.tickCount_ % particleSpawner.spawnRate_ == 0) {
                     for(int j=0; j < particleSpawner.spawnCount_; j++) {
-                        EntityHandle newParticle = Prefab<PrefabTypes::kVoxelParticle>::create(
+                        IRECS::createEntity<kVoxelParticle>(
                             randomVec(
                                 particleSpawner.spawnRangeMin_,
                                 particleSpawner.spawnRangeMax_

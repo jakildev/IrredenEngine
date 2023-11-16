@@ -44,8 +44,17 @@ namespace IRECS {
         ,   m_cameraOffset(vec2(0))
         ,   m_tempCameraOffset(vec2(0))
         ,   m_cursorPosition{}
-        ,   m_cameraFollowEntity{0}
-        ,   m_camera{}
+        ,   m_cameraFollowEntity{kNullEntity}
+        ,   m_camera{
+                createEntity(
+                    C_Camera{
+                        vec2(0.0f, 0.0f)
+                    },
+                    C_Position3D{
+                        vec3(0.0f, 0.0f, 0.0f)
+                    }
+                )
+            }
         {
 
 
@@ -85,39 +94,30 @@ namespace IRECS {
             // registerCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonW,
             //     [this]() {
-            //         m_camera.get<C_Camera>().moveUp();
+            //         IRECS::getComponent<C_Camera>(m_camera).moveUp();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonS,
             //     [this]() {
-            //         m_camera.get<C_Camera>().moveDown();
+            //         IRECS::getComponent<C_Camera>(m_camera).moveDown();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonA,
             //     [this]() {
-            //         m_camera.get<C_Camera>().moveLeft();
+            //         IRECS::getComponent<C_Camera>(m_camera).moveLeft();
             //     }
             // );
             // registerCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonD,
             //     [this]() {
-            //         m_camera.get<C_Camera>().moveRight();
+            //         IRECS::getComponent<C_Camera>(m_camera).moveRight();
             //     }
             // );
 
-            // make camera
-            m_camera.set(
-                C_Camera{
-                    vec2(0.0f, 0.0f)
-                }
-            );
-            m_camera.set(
-                C_Position3D{
-                    vec3(0.0f, 0.0f, 0.0f)
-                }
-            );
+
+
 
             IRProfile::engLogInfo("Created system SCREEN_VIEW");
         }
@@ -160,12 +160,12 @@ namespace IRECS {
 
         void zoomIn() {
             IRProfile::engLogInfo("Zooming in");
-            m_camera.get<C_Camera>().zoomIn();
+            IRECS::getComponent<C_Camera>(m_camera).zoomIn();
         }
 
         void zoomOut() {
             IRProfile::engLogInfo("Zooming out");
-            m_camera.get<C_Camera>().zoomOut();
+            IRECS::getComponent<C_Camera>(m_camera).zoomOut();
         }
 
         void dragCanvasStart() {
@@ -189,13 +189,13 @@ namespace IRECS {
         }
 
         inline const vec2 getGlobalCameraOffsetScreen() {
-            return m_camera.get<C_Camera>().pos2DScreen_;
+            return IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_;
         }
         inline const vec2 getTriangleZoom() const {
-            return m_camera.get<C_Camera>().zoom_;
+            return IRECS::getComponent<C_Camera>(m_camera).zoom_;
         }
         inline const vec2 getTriangleStepSizeScreen() const {
-            return m_camera.get<C_Camera>().triangleStepSizeScreen_;
+            return IRECS::getComponent<C_Camera>(m_camera).triangleStepSizeScreen_;
         }
         inline const int getViewportX() const {
             return m_viewport.size_.x;
@@ -214,31 +214,32 @@ namespace IRECS {
         }
 
         void setCamera(const EntityId& entity) {
-            m_camera = EntityHandle(entity);
+            m_camera = entity;
         }
 
         void setCameraFollowEntity(const EntityId& entity) {
-            m_camera.get<C_Camera>().setFollowEntity(entity);
+            IRECS::getComponent<C_Camera>(m_camera).setFollowEntity(entity);
         }
 
+        // TODO: Use heirarchies here!
         void setCameraPositionToEntity(const EntityId& entity) {
-            m_camera.get<C_Camera>().setTargetPosition(
-                EntityHandle(entity).get<C_Position3D>().pos_
+            IRECS::getComponent<C_Camera>(m_camera).setTargetPosition(
+                IRECS::getComponent<C_Position3D>(entity).pos_
             );
         }
 
         void setCameraPositionScreen(const vec2& pos) {
-            m_camera.get<C_Camera>().pos2DScreen_ = pos;
+           IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_ = pos;
         }
 
         void setCameraPosition3D(const vec3& pos) {
-            m_camera.get<C_Camera>().setPosScreenFromPos3D(pos);
+            IRECS::getComponent<C_Camera>(m_camera).setPosScreenFromPos3D(pos);
         }
 
     private:
         IRInput::IRGLFWWindow& m_window;
         bool m_cameraFollow = false;
-        EntityHandle m_cameraFollowEntity;
+        EntityId m_cameraFollowEntity;
         C_Viewport m_viewport;
         C_CursorPosition m_cursorPosition;
         bool m_isWheelClicked;
@@ -248,7 +249,7 @@ namespace IRECS {
         dvec2 m_mousePositionRenderTriangles;
         int m_screenRenderResolutionWidth, m_screenRenderResolutionHeight;
         int m_screenScaleFactor;
-        EntityHandle m_camera;
+        EntityId m_camera;
 
 
         virtual void beginExecute() override {
@@ -279,11 +280,11 @@ namespace IRECS {
             int screenX1 = (m_viewport.size_.x - m_screenRenderResolutionWidth) / 2;
             int screenY1 = (m_viewport.size_.y - m_screenRenderResolutionHeight) / 2;
 
-            m_camera.get<C_Camera>().setTriangleStepSize(
+            IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSize(
                 vec2(m_screenRenderResolutionWidth, m_screenRenderResolutionHeight),
                 vec2(IRConstants::kScreenTriangleMaxCanvasSize)
             );
-            m_camera.get<C_Camera>().tick(); // TODO: kinda weird like this
+            IRECS::getComponent<C_Camera>(m_camera).tick(); // TODO: kinda weird like this
 
         }
 

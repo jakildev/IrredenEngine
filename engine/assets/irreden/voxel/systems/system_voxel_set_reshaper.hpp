@@ -21,8 +21,8 @@ using namespace IRMath;
 
 namespace IRECS {
 
-    void reshapeVoxelSet(EntityHandle entity, Shape3D shape) {
-        entity.get<C_VoxelSetNew>().reshape(shape);
+    void reshapeVoxelSet(EntityId entity, Shape3D shape) {
+        IRECS::getComponent<C_VoxelSetNew>(entity).reshape(shape);
     }
 
     template<>

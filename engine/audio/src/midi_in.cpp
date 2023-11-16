@@ -76,10 +76,11 @@ namespace IRAudio {
 
         while(!m_messageQueue.empty()) {
             const C_MidiMessage& message = m_messageQueue.front();
-            EntityHandle midiMessageIn{};
-            midiMessageIn.set(message);
-            midiMessageIn.set(C_MidiIn{});
-            midiMessageIn.set(C_Lifetime{1});
+            IRECS::createEntity(
+                C_MidiMessage{message},
+                C_MidiIn{},
+                C_Lifetime{1}
+            );
             m_messageQueue.pop();
         }
     }

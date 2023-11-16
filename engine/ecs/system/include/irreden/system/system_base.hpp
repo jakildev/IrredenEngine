@@ -69,7 +69,7 @@ namespace IRECS {
             );
         }
 
-        virtual Relation getRelation() override {
+        virtual Relation getRelation() const override {
             return m_relation;
         }
 
