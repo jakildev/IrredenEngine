@@ -7,15 +7,38 @@
 
 namespace IRInput {
 
+    InputManager* g_inputManager = nullptr;
+    InputManager& getInputManager() {
+        IR_ASSERT(
+            g_inputManager != nullptr,
+            "InputManager not initialized"
+        );
+        return *g_inputManager;
+    }
+
     bool checkKeyMouseButton(
         KeyMouseButtons button,
         ButtonStatuses checkStatus
     )
     {
-        return IRECS::getEngineSystem<IRECS::SystemName::INPUT_KEY_MOUSE>().
-            checkButton(
-                button,
-                checkStatus
-            );
+        return getInputManager().checkButton(
+            button,
+            checkStatus
+        );
     }
+
+    C_MousePosition getMousePositionUpdate() {
+        return getInputManager().getMousePositionUpdate();
+    }
+    C_MousePosition getMousePositionRender() {
+        return getInputManager().getMousePositionRender();
+    }
+
+    int getNumButtonPressesThisFrame(KeyMouseButtons button) {
+        return getInputManager().getButtonPressesThisFrame(button);
+    }
+    int getNumButtonReleasesThisFrame(KeyMouseButtons button) {
+        return getInputManager().getButtonReleasesThisFrame(button);
+    }
+
 } // namespace IRInput

@@ -16,6 +16,22 @@ using namespace IRMath;
 
 namespace IRECS {
 
+    // template<>
+    // struct System<UPDATE_POSITIONS_GLOBAL> {
+    //     static SystemId create() {
+    //         static EntityId parent = kNullEntity;
+    //         return createSystem<C_Position3D, C_PositionGlobal3D>(
+    //             "UpdatePositionsGlobal",
+    //             [](
+    //                 C_Position3D& position,
+    //                 C_PositionGlobal3D& positionGlobal
+    //             )
+    //             {
+    //                 positionGlobal.pos_ = position.pos_;
+    //             }
+    //         );
+    //     }
+
     template<>
     class System<UPDATE_POSITIONS_GLOBAL> : public SystemBase<
         UPDATE_POSITIONS_GLOBAL,

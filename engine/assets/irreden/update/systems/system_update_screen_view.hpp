@@ -10,14 +10,14 @@
 #ifndef SYSTEM_UPDATE_SCREEN_VIEW_H
 #define SYSTEM_UPDATE_SCREEN_VIEW_H
 
-#include <irreden/system/system_base.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_input.hpp>
 
 #include <irreden/render/components/component_viewport.hpp>
 #include <irreden/input/components/component_cursor_position.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
-#include <irreden/system/system_manager.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -138,13 +138,12 @@ namespace IRECS {
         void beginExecuteRender() {
             if(m_isWheelClicked) {
                 m_tempCameraOffset =
-                    IRECS::getEngineSystem<INPUT_KEY_MOUSE>().getMousePositionRender().pos_ -
+                    IRInput::getMousePositionRender().pos_ -
                     m_mouseWheelClickedStart;
             }
             m_mousePositionRenderTriangles =
                 (
-                    IRECS::getEngineSystem<INPUT_KEY_MOUSE>()
-                        .getMousePositionRender().pos_ -
+                    IRInput::getMousePositionRender().pos_ -
                     dvec2(getCenterScreen())
                 ) /
                 dvec2(getTriangleStepSizeScreen())
@@ -170,7 +169,7 @@ namespace IRECS {
 
         void dragCanvasStart() {
             m_mouseWheelClickedStart =
-                IRECS::getEngineSystem<INPUT_KEY_MOUSE>().getMousePositionUpdate().pos_;
+                IRInput::getMousePositionUpdate().pos_;
 
             m_isWheelClicked = true;
         }
@@ -178,7 +177,7 @@ namespace IRECS {
         void dragCanvasEnd() {
             m_isWheelClicked = false;
             m_cameraOffset += (
-                IRECS::getEngineSystem<INPUT_KEY_MOUSE>().getMousePositionUpdate().pos_ -
+                IRInput::getMousePositionUpdate().pos_ -
                 m_mouseWheelClickedStart
             );
             m_tempCameraOffset = vec2(0, 0);

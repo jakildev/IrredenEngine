@@ -241,6 +241,8 @@ namespace IRInput {
             glfwGetWindowUserPointer(window)
         );
         if(action == GLFW_PRESS) {
+            // If entity creation and such was syncronous then
+            // this wouldnt be much of a problem...
             irglfwWindow->addKeyPressedToProcess(key);
             IRProfile::engLogInfo("Key {} pressed", key);
         }

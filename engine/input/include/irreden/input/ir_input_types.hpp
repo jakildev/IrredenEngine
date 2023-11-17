@@ -38,7 +38,7 @@ namespace IRInput {
     // entity parent child relationships. Each key can be an
     // entity, and could have a parent keyboard controller, etc...
     enum KeyMouseButtons {
-        kNullButton,
+        kNullButton = 0,
         kKeyButtonMinus,
         kKeyButtonEqual,
         kKeyButtonLeftControl,

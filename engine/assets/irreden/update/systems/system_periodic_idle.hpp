@@ -21,38 +21,25 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class System<PERIODIC_IDLE> : public SystemBase<
-        PERIODIC_IDLE,
-        C_PeriodicIdle,
-        C_VoxelSetNew
-    >   {
-    public:
-        System()
-        {
-            IRProfile::engLogInfo("Created system PERIODIC_IDLE");
-        }
-        void tickWithArchetype(
-            Archetype type,
-            std::vector<EntityId>& entities,
-            std::vector<C_PeriodicIdle>& perodicIdles,
-            std::vector<C_VoxelSetNew>& voxelSets
-        )
-        {
-            for(int i=0; i < entities.size(); i++) {
-                perodicIdles[i].tick();
-                for(int j=0; j < voxelSets[i].positionOffsets_.size(); j++) {
-                    voxelSets[i].positionOffsets_[j] =
-                        vec3(0.0f, 0.0f, perodicIdles[i].getValue());
+    struct System<PERIODIC_IDLE> {
+        static SystemId create() {
+            // TODO: refact this, shouldnt update voxel sets directly
+            return createSystem<C_PeriodicIdle, C_VoxelSetNew>(
+                "PeriodicIdle",
+                [](
+                    C_PeriodicIdle& periodicIdle,
+                    C_VoxelSetNew& voxelSet
+                )
+                {
+                    periodicIdle.tick();
+                    for(int i=0; i < voxelSet.positionOffsets_.size(); i++) {
+                        voxelSet.positionOffsets_[i] =
+                            vec3(0.0f, 0.0f, periodicIdle.getValue());
+                    }
                 }
-            }
+            );
         }
-    private:
-        virtual void beginExecute() override {}
-
-        virtual void endExecute() override {}
-
     };
-
 
 } // namespace System
 

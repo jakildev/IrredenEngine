@@ -1,7 +1,7 @@
 add_library(IrredenEngineInput STATIC
     src/ir_input.cpp
     src/ir_glfw_window.cpp
-
+    src/input_manager.cpp
     src/glad/glad.c
 
 )

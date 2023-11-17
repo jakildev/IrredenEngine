@@ -18,3 +18,6 @@ ray looking?
 
 #### 3. Framebuffer to screen
 **Files:**
+
+## TODO:
+-   Levels of details for texturing over voxels

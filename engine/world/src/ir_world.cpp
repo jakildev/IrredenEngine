@@ -20,7 +20,6 @@
 #include <irreden/input/systems/system_input_gamepad.hpp>
 
 // UPDATE SYSTEMS
-#include <irreden/voxel/systems/system_voxel_set_reshaper.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/update/systems/system_velocity.hpp>
@@ -56,6 +55,9 @@ IRWorld::IRWorld(int &argc, char  **argv)
 ,   m_entityManager{}
 ,   m_commandManager{}
 ,   m_systemManager{}
+,   m_inputManager{
+        m_IRGLFWWindow
+    }
 ,   m_renderingResourceManager{}
 ,   m_renderer{
         m_IRGLFWWindow
@@ -106,7 +108,8 @@ void IRWorld::input() {
     // TODO: Make this an event from timeManager after
     // making that more generic.
     IRProfile::engLogDebug("Begin input world.");
-
+    m_inputManager.tick();
+    m_systemManager.executePipeline(SYSTEM_TYPE_INPUT);
     m_systemManager.executeGroup<SYSTEM_TYPE_INPUT>();
 
     IRProfile::engLogDebug("End input world.");
@@ -146,6 +149,7 @@ void IRWorld::render()
     m_timeManager.beginEvent<IRTime::RENDER>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
+    m_inputManager.tickRender();
     m_renderer.tick();
 
     m_timeManager.endEvent<IRTime::RENDER>();
@@ -194,14 +198,20 @@ void IRWorld::initIROutputSystems() {
 }
 
 void IRWorld::initIRInputSystems() {
-    m_systemManager.registerSystemClass<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
-        m_IRGLFWWindow
-    );
+    SystemId systemInputKeyMouse = IRECS::createSystem<INPUT_KEY_MOUSE>();
+    // m_systemManager.registerSystemClass<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
+    //     m_IRGLFWWindow
+    // );
     m_systemManager.registerSystemClass<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
         m_IRGLFWWindow
     );
     m_systemManager.registerSystemClass<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
-
+    m_systemManager.registerPipeline(
+        SYSTEM_TYPE_INPUT,
+        {
+            systemInputKeyMouse
+        }
+    );
 }
 
 void IRWorld::initIRUpdateSystems() {
@@ -213,29 +223,28 @@ void IRWorld::initIRUpdateSystems() {
     m_systemManager.registerSystemClass<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
         m_IRGLFWWindow
     );
-    m_systemManager.registerSystemClass<VOXEL_SET_RESHAPER, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystemClass<PARTICLE_SPAWNER, SYSTEM_TYPE_UPDATE>();
-
+    SystemId systemParticleSpawner = IRECS::createSystem<PARTICLE_SPAWNER>();
     SystemId systemVelocity = IRECS::createSystem<VELOCITY_3D>();
     SystemId systemAcceleration = IRECS::createSystem<ACCELERATION_3D>();
     SystemId systemGravity = IRECS::createSystem<GRAVITY_3D>();
-    m_systemManager.registerSystemClass<PERIODIC_IDLE, SYSTEM_TYPE_UPDATE>();;
+    SystemId systemPeriodicIdle = IRECS::createSystem<PERIODIC_IDLE>();
     SystemId systemGoto = IRECS::createSystem<GOTO_3D>();
-    // TODO: This should be an output system but midi message out's get destroyed
-    // by lifetime system, so perhaps they should just get consumed by
-    // midi out system instead.
     m_systemManager.registerSystemClass<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
+    // Move to output systems
     m_systemManager.registerSystemClass<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
     m_systemManager.registerSystemClass<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
+    // Should be a default cleanup system or something like that
     m_systemManager.registerSystemClass<LIFETIME, SYSTEM_TYPE_UPDATE>();
     // m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
 
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_UPDATE,
         {
+            systemParticleSpawner,
             systemVelocity,
             systemAcceleration,
             systemGravity,
+            systemPeriodicIdle,
             systemGoto
         }
     );

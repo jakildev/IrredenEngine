@@ -12,14 +12,25 @@
 
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/input/ir_glfw_window.hpp>
+#include <irreden/input/input_manager.hpp>
 
 namespace IRInput {
 
-    // GLOBAL IR_INPUT API
+    extern InputManager* g_inputManager;
+    InputManager& getInputManager();
+
     bool checkKeyMouseButton(
         KeyMouseButtons button,
         ButtonStatuses buttonStatus
     );
+
+    // Everything should just use render mouse position prob...
+    IRComponents::C_MousePosition getMousePositionUpdate();
+    IRComponents::C_MousePosition getMousePositionRender();
+
+    // Internal use for key mouse input system
+    int getNumButtonPressesThisFrame(KeyMouseButtons button);
+    int getNumButtonReleasesThisFrame(KeyMouseButtons button);
 }
 
 #endif /* IR_INPUT_H */

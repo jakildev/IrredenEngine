@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: system_manager.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_system.hpp>
 #include <irreden/system/system_manager.hpp>
 
@@ -23,23 +32,23 @@ namespace IRECS {
        std::stringstream ss;
         ss << "Execute System: " << m_systemNames[system].name_;
         IR_PROFILE_BLOCK(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
-        m_systemBeginTicks[system].functionBeginTick_();
+        m_beginTicks[system].functionBeginTick_();
         std::vector<ArchetypeNode*> nodes;
-        if(m_systemRelations[system].relation_ == Relation::NONE) {
+        if(m_relations[system].relation_ == Relation::NONE) {
             nodes = IRECS::queryArchetypeNodesSimple(
-                m_systemTicks[system].archetype_
+                m_ticks[system].archetype_
             );
         }
-        if(m_systemRelations[system].relation_ == Relation::CHILD_OF) {
+        if(m_relations[system].relation_ == Relation::CHILD_OF) {
             nodes = IRECS::queryArchetypeNodesRelational(
-                m_systemRelations[system].relation_,
-                m_systemTicks[system].archetype_
+                m_relations[system].relation_,
+                m_ticks[system].archetype_
             );
         }
         for(auto node : nodes) {
-            m_systemTicks[system].functionTick_(node);
+            m_ticks[system].functionTick_(node);
         }
-        m_systemEndTicks[system].functionEndTick_();
+        m_endTicks[system].functionEndTick_();
     }
 
     void SystemManager::executeSystem(

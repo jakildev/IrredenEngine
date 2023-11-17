@@ -11,7 +11,7 @@
 #define ENTITY_KEY_MOUSE_BUTTON_H
 
 #include <irreden/ir_ecs.hpp>
-#include <irreden/ir_input.hpp>
+#include <irreden/input/ir_input_types.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/input/components/component_key_mouse_button.hpp>

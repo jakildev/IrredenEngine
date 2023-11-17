@@ -54,18 +54,18 @@ namespace IRECS {
         {
             m_systemNames.emplace_back(C_Name{name});
             if constexpr (!std::is_same_v<FunctionBeginTick, std::nullptr_t>) {
-                m_systemBeginTicks.emplace_back(
+                m_beginTicks.emplace_back(
                     C_SystemEvent<BEGIN_TICK>{[functionBeginTick]() {
                         functionBeginTick();
                     }}
                 );
             }
             else {
-                m_systemBeginTicks.emplace_back(
+                m_beginTicks.emplace_back(
                     C_SystemEvent<BEGIN_TICK>{[](){ return; }}
                 );
             }
-            m_systemTicks.emplace_back(
+            m_ticks.emplace_back(
                 C_SystemEvent<TICK>{
                     [functionTick](ArchetypeNode* node) {
                         auto componentsTuple = std::make_tuple(
@@ -81,18 +81,18 @@ namespace IRECS {
                 }
             );
             if constexpr (!std::is_same_v<FunctionEndTick, std::nullptr_t>) {
-                m_systemEndTicks.emplace_back(
+                m_endTicks.emplace_back(
                     C_SystemEvent<END_TICK>{[functionEndTick]() {
                         functionEndTick();
                     }}
                 );
             }
             else {
-                m_systemEndTicks.emplace_back(
+                m_endTicks.emplace_back(
                     C_SystemEvent<END_TICK>{[](){ return; }}
                 );
             }
-            m_systemRelations.emplace_back(
+            m_relations.emplace_back(
                 C_SystemRelation{relation}
             );
             return m_nextSystemId++;
@@ -275,7 +275,7 @@ namespace IRECS {
 
         template <typename Tag>
         void addSystemTag(SystemId system) {
-            m_systemTicks[system].archetype_.insert(
+            m_ticks[system].archetype_.insert(
                 IRECS::getComponentType<Tag>()
             );
         }
@@ -307,10 +307,10 @@ namespace IRECS {
         // enum to an index value...
         SystemId m_nextSystemId = 0;
         std::vector<C_Name> m_systemNames;
-        std::vector<C_SystemEvent<BEGIN_TICK>> m_systemBeginTicks;
-        std::vector<C_SystemEvent<TICK>> m_systemTicks;
-        std::vector<C_SystemEvent<END_TICK>> m_systemEndTicks;
-        std::vector<C_SystemRelation> m_systemRelations;
+        std::vector<C_SystemEvent<BEGIN_TICK>> m_beginTicks;
+        std::vector<C_SystemEvent<TICK>> m_ticks;
+        std::vector<C_SystemEvent<END_TICK>> m_endTicks;
+        std::vector<C_SystemRelation> m_relations;
         std::unordered_map<SystemName, SystemId> m_engineSystemIds;
         std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
             m_systems;

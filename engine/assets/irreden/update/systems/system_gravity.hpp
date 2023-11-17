@@ -22,7 +22,6 @@ namespace IRECS {
 
     template<>
     struct System<GRAVITY_3D> {
-        // LEFT OFF HERE, find out how to handle tags
         static SystemId create() {
             static C_Gravity3D gravity = C_Gravity3D{};
             SystemId system =  createSystem<C_Velocity3D>(

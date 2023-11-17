@@ -10,7 +10,7 @@
 #ifndef COMPONENT_KEYBOARD_KEY_STATUS_H
 #define COMPONENT_KEYBOARD_KEY_STATUS_H
 
-#include <irreden/ir_input.hpp>
+#include <irreden/input/ir_input_types.hpp>
 
 using IRInput::ButtonStatuses;
 

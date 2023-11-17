@@ -28,56 +28,37 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class System<PARTICLE_SPAWNER> : public SystemBase<
-        PARTICLE_SPAWNER,
-        C_PositionGlobal3D,
-        C_ParticleSpawner
-    >   {
-    public:
-        System()
-        {
-            IRProfile::engLogInfo("Created system PARTICLE_SPAWNER");
-        }
-        void tickWithArchetype(
-            Archetype type,
-            std::vector<EntityId>& entities,
-            const std::vector<C_PositionGlobal3D>& positions,
-            std::vector<C_ParticleSpawner>& particleSpawners
-        )
-        {
-            for(int i=0; i < entities.size(); i++) {
-                if(!particleSpawners[i].active_) {
-                    continue;
-                }
-                // continue;
-                auto& particleSpawner = particleSpawners[i];
-                particleSpawner.tickCount_++;
-                if(particleSpawner.tickCount_ % particleSpawner.spawnRate_ == 0) {
-                    for(int j=0; j < particleSpawner.spawnCount_; j++) {
-                        IRECS::createEntity<kVoxelParticle>(
-                            randomVec(
-                                particleSpawner.spawnRangeMin_,
-                                particleSpawner.spawnRangeMax_
-                            ) + vec3(0.0f, 0.0f, 5.0f), // TEMP
-                            particleSpawner.color_,
-                            particleSpawner.spawnLifetime_
-                        );
-                        // TODO: add particle spawner to scene
-                        // IRECS::getEngineSystem<UPDATE_VOXEL_SET_CHILDREN>()
-                        //     .addEntityToScene(newParticle, entities[i]);
+    struct System<PARTICLE_SPAWNER> {
+        static SystemId create() {
+            return createSystem<C_ParticleSpawner, C_PositionGlobal3D>(
+                "ParticleSpawner",
+                [](
+                    C_ParticleSpawner& particleSpawner,
+                    C_PositionGlobal3D& position
+                )
+                {
+                    if(!particleSpawner.active_) {
+                        return;
+                    }
+                    particleSpawner.tickCount_++;
+                    if(particleSpawner.tickCount_ % particleSpawner.spawnRate_ == 0) {
+                        for(int j=0; j < particleSpawner.spawnCount_; j++) {
+                            IRECS::createEntity<kVoxelParticle>(
+                                randomVec(
+                                    particleSpawner.spawnRangeMin_,
+                                    particleSpawner.spawnRangeMax_
+                                ) + vec3(0.0f, 0.0f, 5.0f), // TEMP
+                                particleSpawner.color_,
+                                particleSpawner.spawnLifetime_
+                            );
+                            // TODO: add particle spawner to scene
+                            // IRECS::getEngineSystem<UPDATE_VOXEL_SET_CHILDREN>()
+                            //     .addEntityToScene(newParticle, entities[i]);
+                        }
                     }
                 }
-            }
+            );
         }
-    private:
-        // virtual void beginExecute() override {
-
-        // }
-
-        // virtual void endExecute() override {
-
-        // }
-
     };
 
 } // namespace System

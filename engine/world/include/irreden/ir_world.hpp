@@ -11,6 +11,7 @@
 #define IR_WORLD_H
 
 #include <irreden/input/ir_glfw_window.hpp>
+#include <irreden/input/input_manager.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
@@ -29,77 +30,18 @@ public:
     virtual ~IRWorld();
     void gameLoop();
 
-    // template <IRCommands::CommandNames commandName>
-    // void bindEntityToCommand(EntityHandle entity)
-    // {
-    //     m_commandManager.bindEntityToCommand<commandName>(entity);
-    // }
-
-    // template <
-    //     typename Function,
-    //     typename... Args
-    // >
-    // int registerMidiNoteCommand(
-    //     int device,
-    //     InputTypes InputType,
-    //     Function command,
-    //     Args... fixedArgs
-    // )
-    // {
-    //     return m_commandManager.registerMidiNoteCommand(
-    //         device,
-    //         InputType,
-    //         command,
-    //         fixedArgs...
-    //     );
-    // }
-
-    // template <
-    //     typename Function
-    // >
-    // int registerMidiCCCommand(
-    //     int device,
-    //     InputTypes inputType,
-    //     unsigned char ccMessage,
-    //     Function command
-    // )
-    // {
-    //     return m_commandManager.registerMidiCCCommand(
-    //         device,
-    //         inputType,
-    //         ccMessage,
-    //         command
-    //     );
-    // }
-
-    // template <typename Function>
-    // int registerCommand(
-    //     InputTypes InputType,
-    //     int button,
-    //     Function command
-    // )
-    // {
-    //     return m_commandManager.registerCommand(
-    //         InputType,
-    //         button,
-    //         command
-    //     );
-    // }
-
     void setPlayer(const IRECS::EntityId& player);
     void setCameraPosition3D(const vec3& position);
-
-    template <typename... Components>
-    std::vector<IRECS::EntityId> createEntitiesBatch(
-        const std::vector<Components>&... components
-    )
-    {
-        return m_entityManager.createEntitiesBatch(
-            components...
-        );
-    }
 private:
-
+    IRInput::IRGLFWWindow m_IRGLFWWindow;
+    IRECS::EntityManager m_entityManager;
+    IRECS::SystemManager m_systemManager;
+    IRInput::InputManager m_inputManager;
+    IRCommand::CommandManager m_commandManager;
+    IRRender::RenderingResourceManager m_renderingResourceManager;
+    IRRender::RenderManager m_renderer;
+    IRAudio::AudioManager m_audioManager;
+    IRTime::TimeManager m_timeManager;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;
@@ -116,15 +58,7 @@ private:
     virtual void initGameSystems() = 0;
     virtual void initGameEntities() = 0;
 
-    IRInput::IRGLFWWindow m_IRGLFWWindow;
-    IRECS::EntityManager m_entityManager;
-    IRCommand::CommandManager m_commandManager;
-    IRECS::SystemManager m_systemManager;
-    IRRender::RenderingResourceManager m_renderingResourceManager;
-    IRRender::RenderManager m_renderer;
-    IRAudio::AudioManager m_audioManager;
-    IRTime::TimeManager m_timeManager;
-    SystemId m_velocitySystemId;
+
 
     void input();
     void update();
