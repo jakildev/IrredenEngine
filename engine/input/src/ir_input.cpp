@@ -16,6 +16,15 @@ namespace IRInput {
         return *g_inputManager;
     }
 
+    IRGLFWWindow* g_irglfwWindow = nullptr;
+    IRGLFWWindow& getWindow() {
+        IR_ASSERT(
+            g_irglfwWindow != nullptr,
+            "IRGLFWWindow not initialized"
+        );
+        return *g_irglfwWindow;
+    }
+
     bool checkKeyMouseButton(
         KeyMouseButtons button,
         ButtonStatuses checkStatus

@@ -8,7 +8,7 @@
  */
 
 #include <irreden/ir_profile.hpp>
-
+#include <irreden/ir_input.hpp>
 #include <irreden/input/ir_glfw_window.hpp>
 
 #include <iostream>
@@ -64,7 +64,8 @@ namespace IRInput {
         setCallbackMouseButton(irglfwCallback_mouseButton);
         setCallbackScroll(irglfwCallback_scroll);
 
-        IRProfile::engLogInfo("Created GLFW Window.");
+        g_irglfwWindow = this;
+        IRProfile::engLogInfo("Created IRGLFWWindow.");
     }
 
     IRGLFWWindow::~IRGLFWWindow() {

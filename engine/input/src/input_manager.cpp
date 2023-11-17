@@ -1,6 +1,8 @@
 #include <irreden/ir_input.hpp>
 
 #include <irreden/input/input_manager.hpp>
+#include <irreden/input/components/component_glfw_gamepad_state.hpp>
+#include <irreden/input/entities/entity_joystick.hpp>
 
 namespace IRInput {
     InputManager::InputManager(IRGLFWWindow& window)
@@ -18,15 +20,9 @@ namespace IRInput {
             static_cast<int>(kNumKeyMouseButtons)
         );
 
-        for(int i = 0; i < KeyMouseButtons::kNumKeyMouseButtons; ++i) {
-            EntityId entityNewButton = Prefab<kKeyMouseButton>::create(
-                static_cast<KeyMouseButtons>(i)
-            );
-            m_keyMouseButtonEntities.insert({
-                static_cast<KeyMouseButtons>(i),
-                entityNewButton
-            });
-        }
+        initKeyMouseButtonEntities();
+        initJoystickEntities();
+
         g_inputManager = this;
         IRProfile::engLogInfo("Created InputManager");
     }
@@ -135,6 +131,89 @@ namespace IRInput {
         return m_buttonReleasesThisFrame.at(
             static_cast<int>(button)
         );
+    }
+
+    float InputManager::getAxisValue(
+        GamepadAxes axis,
+        int irGamepadId
+    ) const
+    {
+        return IRECS::getComponent<C_GLFWGamepadState>(
+            m_gamepadEntities.at(irGamepadId)
+        ).getAxisValue(axis);
+    }
+
+    void InputManager::processKeyMouseButtons(
+        std::queue<int>& queueOfButtons,
+        ButtonStatuses status
+    )
+    {
+        while(!queueOfButtons.empty()) {
+            int button = queueOfButtons.front();
+            KeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
+            if(status == ButtonStatuses::PRESSED) {
+                ++m_buttonPressesThisFrame[irButton];
+            }
+            if(status == ButtonStatuses::RELEASED) {
+                ++m_buttonReleasesThisFrame[irButton];
+
+            }
+            queueOfButtons.pop();
+
+            IRProfile::engLogInfo(
+                "Processed button={}, status={}",
+                button,
+                static_cast<int>(status)
+            );
+        }
+    }
+
+    void InputManager::processScrolls(
+        std::queue<std::pair<double, double>>& queueOfScrolls
+    )
+    {
+        while(!queueOfScrolls.empty()) {
+            std::pair<double, double> scroll = queueOfScrolls.front();
+            EntityId entityScroll =
+                IRECS::createEntity<kMouseScroll>(scroll.first, scroll.second);
+            m_scrollEntitiesThisFrame.push_back(entityScroll);
+            queueOfScrolls.pop();
+
+            IRProfile::engLogDebug(
+                "Processed scroll xoffset={}, yoffset={}",
+                scroll.first,
+                scroll.second
+            );
+        }
+    }
+
+    void InputManager::initKeyMouseButtonEntities() {
+        for(int i = 0; i < KeyMouseButtons::kNumKeyMouseButtons; ++i) {
+            EntityId entityNewButton = Prefab<kKeyMouseButton>::create(
+                static_cast<KeyMouseButtons>(i)
+            );
+            m_keyMouseButtonEntities.insert({
+                static_cast<KeyMouseButtons>(i),
+                entityNewButton
+            });
+        }
+    }
+
+    void InputManager::initJoystickEntities() {
+        for(int i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++)
+        {
+            if(m_window.joystickPresent(i)) {
+                IRProfile::engLogInfo("Creating joystick entity for joystick {}", i);
+
+                m_gamepadEntities.emplace_back(
+                    IRECS::createEntity<kGLFWJoystick>(
+                         i,
+                        m_window.getJoystickName(i),
+                        m_window.joystickIsGamepad(i)
+                    )
+                );
+            }
+        }
     }
 
 } // namespace IRInput

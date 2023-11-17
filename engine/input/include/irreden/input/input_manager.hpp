@@ -4,6 +4,7 @@
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_profile.hpp>
 
+
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/input/components/component_keyboard_key_status.hpp>
 #include <irreden/input/components/component_key_mouse_button.hpp>
@@ -34,14 +35,20 @@ namespace IRInput {
             KeyMouseButtons button,
             ButtonStatuses status
         ) const;
-        C_MousePosition getMousePositionUpdate() const;
-        C_MousePosition getMousePositionRender() const;
+        C_MousePosition getMousePositionUpdate() const; // Should be stored in ECS
+        C_MousePosition getMousePositionRender() const; // Should be stored in ECS
         int getButtonPressesThisFrame(KeyMouseButtons button) const;
         int getButtonReleasesThisFrame(KeyMouseButtons button) const;
+        float getAxisValue(
+            GamepadAxes axis,
+            int irGamepadId = 0
+        ) const;
 
     private:
         IRGLFWWindow& m_window;
         std::unordered_map<KeyMouseButtons, EntityId> m_keyMouseButtonEntities;
+        std::vector<EntityId> m_gamepadEntities;
+
         std::vector<EntityId> m_scrollEntitiesThisFrame;
         std::vector<int> m_buttonPressesThisFrame;
         std::vector<int> m_buttonReleasesThisFrame;
@@ -51,46 +58,14 @@ namespace IRInput {
         void processKeyMouseButtons(
             std::queue<int>& queueOfButtons,
             ButtonStatuses status
-        )
-        {
-            while(!queueOfButtons.empty()) {
-                int button = queueOfButtons.front();
-                KeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
-                if(status == ButtonStatuses::PRESSED) {
-                    ++m_buttonPressesThisFrame[irButton];
-                }
-                if(status == ButtonStatuses::RELEASED) {
-                    ++m_buttonReleasesThisFrame[irButton];
-
-                }
-                queueOfButtons.pop();
-
-                IRProfile::engLogInfo(
-                    "Processed button={}, status={}",
-                    button,
-                    static_cast<int>(status)
-                );
-            }
-        }
+        );
 
         void processScrolls(
             std::queue<std::pair<double, double>>& queueOfScrolls
-        )
-        {
-            while(!queueOfScrolls.empty()) {
-                std::pair<double, double> scroll = queueOfScrolls.front();
-                EntityId entityScroll =
-                    IRECS::createEntity<kMouseScroll>(scroll.first, scroll.second);
-                m_scrollEntitiesThisFrame.push_back(entityScroll);
-                queueOfScrolls.pop();
+        );
 
-                IRProfile::engLogDebug(
-                    "Processed scroll xoffset={}, yoffset={}",
-                    scroll.first,
-                    scroll.second
-                );
-            }
-        }
+        void initKeyMouseButtonEntities();
+        void initJoystickEntities();
     };
 
 } // namespace IRInput

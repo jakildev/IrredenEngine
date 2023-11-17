@@ -12,13 +12,10 @@
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_input.hpp>
-#include <irreden/ir_constants.hpp>
 
-#include <irreden/input/entities/entity_key_mouse_button.hpp>
+
 #include <irreden/input/components/component_keyboard_key_status.hpp>
 #include <irreden/input/components/component_key_mouse_button.hpp>
-#include <irreden/input/components/component_mouse_position.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;

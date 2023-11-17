@@ -5,11 +5,6 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
-## Terms (as they are used in this document)
--   *Engine*: A foundation of software that games and other forms of media can be built upon.
--   *The Engine*: The Irreden Engine.
--   *Modules*: A logical and practical seperation of code.
-
 
 ## Design
 

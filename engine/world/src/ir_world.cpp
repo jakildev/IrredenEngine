@@ -199,17 +199,14 @@ void IRWorld::initIROutputSystems() {
 
 void IRWorld::initIRInputSystems() {
     SystemId systemInputKeyMouse = IRECS::createSystem<INPUT_KEY_MOUSE>();
-    // m_systemManager.registerSystemClass<INPUT_KEY_MOUSE, SYSTEM_TYPE_INPUT>(
-    //     m_IRGLFWWindow
-    // );
-    m_systemManager.registerSystemClass<INPUT_GAMEPAD, SYSTEM_TYPE_INPUT>(
-        m_IRGLFWWindow
-    );
+    SystemId systemInputGamepad = IRECS::createSystem<INPUT_GAMEPAD>();
+
     m_systemManager.registerSystemClass<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_INPUT,
         {
-            systemInputKeyMouse
+            systemInputKeyMouse,
+            systemInputGamepad
         }
     );
 }

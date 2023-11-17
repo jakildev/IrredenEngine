@@ -18,6 +18,8 @@ namespace IRInput {
 
     extern InputManager* g_inputManager;
     InputManager& getInputManager();
+    extern IRGLFWWindow* g_irglfwWindow;
+    IRGLFWWindow& getWindow();
 
     bool checkKeyMouseButton(
         KeyMouseButtons button,
