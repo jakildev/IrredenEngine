@@ -21,32 +21,25 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    class System<LIFETIME> : public SystemBase<
-        LIFETIME,
-        C_Lifetime
-    >   {
-    public:
-        System() {
-            IRProfile::engLogInfo("Created system LIFETIME");
-        }
-        virtual ~System() = default;
-
-        void tickWithArchetype(
-            Archetype archetype,
-            std::vector<EntityId>& entities,
-            std::vector<C_Lifetime>& lifetimes
-        )
-        {
-            for(int i=0; i < entities.size(); i++) {
-                lifetimes[i].life_--;
-                if(lifetimes[i].life_ <= 0) {
-                    IRECS::getEntityManager().markEntityForDeletion(entities[i]);
+    struct System<LIFETIME> {
+        static SystemId create() {
+            return createNodeSystem<C_Lifetime>(
+                "Lifetime",
+                [](
+                    Archetype archetype,
+                    std::vector<EntityId>& entities,
+                    std::vector<C_Lifetime>& lifetimes
+                )
+                {
+                    for(int i=0; i < entities.size(); i++) {
+                        lifetimes[i].life_--;
+                        if(lifetimes[i].life_ <= 0) {
+                            IRECS::destroyEntity(entities[i]);
+                        }
+                    }
                 }
-            }
+            );
         }
-    private:
-        virtual void beginExecute() override {}
-        virtual void endExecute() override {}
     };
 
 } // namespace IRECS

@@ -16,54 +16,34 @@ using namespace IRMath;
 
 namespace IRECS {
 
-    // template<>
-    // struct System<UPDATE_POSITIONS_GLOBAL> {
-    //     static SystemId create() {
-    //         static EntityId parent = kNullEntity;
-    //         return createSystem<C_Position3D, C_PositionGlobal3D>(
-    //             "UpdatePositionsGlobal",
-    //             [](
-    //                 C_Position3D& position,
-    //                 C_PositionGlobal3D& positionGlobal
-    //             )
-    //             {
-    //                 positionGlobal.pos_ = position.pos_;
-    //             }
-    //         );
-    //     }
-
     template<>
-    class System<UPDATE_POSITIONS_GLOBAL> : public SystemBase<
-        UPDATE_POSITIONS_GLOBAL,
-        C_Position3D,
-        C_PositionGlobal3D
-    >   {
-    public:
-        System()
-        {
-            setRelationType(Relation::CHILD_OF);
-            IRProfile::engLogInfo("Created system UPDATE_POSITIONS_GLOBAL");
-        }
-
-        virtual ~System() = default;
-
-        void tickWithArchetype(
-            Archetype archetype,
-            std::vector<EntityId>& entities,
-            std::vector<C_Position3D>& positions,
-            std::vector<C_PositionGlobal3D>& positionsGlobal
-        )
-        {
-            C_PositionGlobal3D parentPositionGlobal{0, 0, 0};
-            EntityId parent = getParentEntityFromArchetype(archetype);
-            if(parent != kNullEntity) {
-                parentPositionGlobal = IRECS::getComponent<C_PositionGlobal3D>(parent);
-            }
-            for(int i=0; i < entities.size(); i++) {
-                positionsGlobal[i].pos_ = positions[i].pos_ + parentPositionGlobal.pos_;
-            }
+    struct System<UPDATE_POSITIONS_GLOBAL> {
+        static constexpr SystemId create() {
+            return createNodeSystem<C_Position3D, C_PositionGlobal3D>(
+                "UpdatePositionsGlobal",
+                [](
+                    Archetype archetype,
+                    std::vector<EntityId>& entities,
+                    std::vector<C_Position3D>& positions,
+                    std::vector<C_PositionGlobal3D>& positionsGlobal
+                )
+                {
+                    C_PositionGlobal3D parentPositionGlobal{0, 0, 0};
+                    EntityId parent = getParentEntityFromArchetype(archetype);
+                    if(parent != kNullEntity) {
+                        parentPositionGlobal = IRECS::getComponent<C_PositionGlobal3D>(parent);
+                    }
+                    for(int i=0; i < entities.size(); i++) {
+                        positionsGlobal[i].pos_ = positions[i].pos_ + parentPositionGlobal.pos_;
+                    }
+                },
+                nullptr,
+                nullptr,
+                Relation::CHILD_OF
+            );
         }
     };
+
 } // namespace IRECS
 
 #endif /* SYSTEM_UPDATE_POSITIONS_GLOBAL_H */

@@ -21,21 +21,86 @@ using namespace IRECS;
 namespace IRAudio {
 
     MidiIn::MidiIn()
-    :   m_rtMidiIn{},
-        m_numberPorts(m_rtMidiIn.getPortCount()),
-        m_portNames{},
-        m_openPorts{}
+    :   m_rtMidiIn{}
+    ,   m_numberPorts(m_rtMidiIn.getPortCount())
+    ,   m_portNames{}
+    ,   m_openPorts{}
+    ,   m_rtMidiInMap{}
+    ,   m_ccMessagesThisFrame{}
+    ,   m_midiNoteOffMessagesThisFrame{}
+    ,   m_midiNoteOnMessagesThisFrame{}
     {
         IRProfile::engLogInfo("Descovered {} MIDI input sources", m_numberPorts);
         for(int i = 0; i < m_numberPorts; i++) {
             m_portNames.push_back(m_rtMidiIn.getPortName(i));
             IRProfile::engLogInfo("MIDI input source {}: {}", i, m_portNames[i].c_str());
         }
+
+        for(unsigned char i = 0; i < kNumMidiChannels; ++i) {
+            m_ccMessagesThisFrame.insert({
+                i,
+                std::unordered_map<CCMessage, CCData>{}
+            });
+            m_midiNoteOffMessagesThisFrame.insert({
+                i,
+                std::vector<C_MidiMessage>{}
+            });
+            m_midiNoteOnMessagesThisFrame.insert({
+                i,
+                std::vector<C_MidiMessage>{}
+            });
+        }
         IRProfile::engLogInfo("Created MidiIn");
     }
 
     MidiIn::~MidiIn() {
 
+    }
+
+    void MidiIn::tick() {
+        clearPreviousMessages();
+        processMidiMessageQueue();
+
+    }
+
+    void MidiIn::clearPreviousMessages() {
+         for(auto& channelMap : m_ccMessagesThisFrame) {
+            channelMap.second.clear();
+        }
+        for(auto& channelMap : m_midiNoteOnMessagesThisFrame) {
+            channelMap.second.clear();
+        }
+        for(auto& channelMap : m_midiNoteOffMessagesThisFrame) {
+            channelMap.second.clear();
+        }
+    }
+
+    CCData MidiIn::checkCCMessageThisFrame(
+        MidiChannel channel,
+        CCMessage ccNumber
+    )   const
+    {
+        if(!m_ccMessagesThisFrame.at(channel).contains(ccNumber)) {
+            return kCCFalse;
+        }
+        return m_ccMessagesThisFrame.at(channel).at(ccNumber);
+    }
+
+    const std::vector<C_MidiMessage>& MidiIn::getMidiNotesOnThisFrame(
+        MidiChannel channel
+    ) const
+    {
+        return m_midiNoteOnMessagesThisFrame.at(
+            channel
+        );
+    }
+    const std::vector<C_MidiMessage>& MidiIn::getMidiNotesOffThisFrame(
+        MidiChannel channel
+    )   const
+    {
+        return m_midiNoteOffMessagesThisFrame.at(
+            channel
+        );
     }
 
     // void MidiIn::openPort(unsigned int portNumber) {
@@ -83,6 +148,28 @@ namespace IRAudio {
             );
             m_messageQueue.pop();
         }
+    }
+
+    void MidiIn::insertNoteOffMessage(
+        MidiChannel channel,
+        const C_MidiMessage& midiMessage
+    ) {
+        m_midiNoteOffMessagesThisFrame[channel].push_back(midiMessage);
+    }
+
+    void MidiIn::insertNoteOnMessage(
+        MidiChannel channel,
+        const C_MidiMessage& midiMessage
+    ) {
+        m_midiNoteOnMessagesThisFrame[channel].push_back(midiMessage);
+    }
+
+    void MidiIn::insertCCMessage(
+        MidiChannel channel,
+        const C_MidiMessage& midiMessage
+    ) {
+        m_ccMessagesThisFrame[channel][midiMessage.getCCNumber()] =
+            midiMessage.getCCValue();
     }
 
     void MidiIn::setCallback(

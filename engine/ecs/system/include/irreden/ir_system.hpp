@@ -30,13 +30,14 @@ namespace IRECS {
         );
     }
 
+    // Componentize
     template <
-        typename... Components,
+        typename... TickComponents,
         typename FunctionTick,
         typename FunctionBeginTick = std::nullptr_t,
         typename FunctionEndTick = std::nullptr_t
     >
-    SystemId createSystem(
+    constexpr SystemId createSystem(
         std::string name,
         FunctionTick functionTick,
         FunctionBeginTick functionBeginTick = nullptr,
@@ -44,7 +45,31 @@ namespace IRECS {
         Relation relation = Relation::NONE
     )
     {
-        return getSystemManager().createSystem<Components...>(
+        return getSystemManager().createSystem<TickComponents...>(
+            name,
+            functionTick,
+            functionBeginTick,
+            functionEndTick,
+            relation
+        );
+    }
+
+    // TODO: Make something better for heirarchical systems
+    template <
+        typename... Components,
+        typename FunctionTick,
+        typename FunctionBeginTick = std::nullptr_t,
+        typename FunctionEndTick = std::nullptr_t
+    >
+    constexpr SystemId createNodeSystem(
+        std::string name,
+        FunctionTick functionTick,
+        FunctionBeginTick functionBeginTick = nullptr,
+        FunctionEndTick functionEndTick = nullptr,
+        Relation relation = Relation::NONE
+    )
+    {
+        return getSystemManager().createNodeSystem<Components...>(
             name,
             functionTick,
             functionBeginTick,

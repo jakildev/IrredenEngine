@@ -11,6 +11,10 @@ namespace IRECS {
         return *g_entityManager;
     }
 
+    void destroyEntity(EntityId entity) {
+        getEntityManager().markEntityForDeletion(entity);
+    }
+
     smart_ComponentData createComponentData(ComponentId type) {
         return getEntityManager().createComponentDataVector(type);
     }

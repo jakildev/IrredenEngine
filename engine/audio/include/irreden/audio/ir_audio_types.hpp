@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_audio_types.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_AUDIO_TYPES_H
 #define IR_AUDIO_TYPES_H
 
@@ -12,6 +21,14 @@ namespace IRAudio {
 
     constexpr CCData kCCFalse = 0xFF;
 
+    enum MidiInInterfaces {
+        MIDI_IN_UMC,
+        MIDI_IN_FOCUSRITE,
+        MIDI_IN_MPK,
+        MIDI_IN_OP1,
+        NUM_MIDI_IN_INTERFACES
+    };
+
     enum MidiOutInterfaces {
         MIDI_OUT_UMC,
         MIDI_OUT_FOCUSRITE,
@@ -20,7 +37,7 @@ namespace IRAudio {
         NUM_MIDI_OUT_INTERFACES
     };
 
-    enum IRMidiDeviceType {
+    enum MidiDeviceType {
         MIDI_DEVICE_TYPE_IN,
         MIDI_DEVICE_TYPE_OUT
     };
@@ -44,16 +61,6 @@ namespace IRAudio {
         kMidiChannel16 = 15,
         kMidiChannelAll = 16
 
-    };
-
-    // MIDI interfaces (these are my devices, will
-    // be defined elsewhere in the future)
-    enum MidiInInterfaces {
-        MIDI_IN_UMC,
-        MIDI_IN_FOCUSRITE,
-        MIDI_IN_MPK,
-        MIDI_IN_OP1,
-        NUM_MIDI_IN_INTERFACES
     };
 
     const char* const kMidiInInterfaceName_UMC = "UMC1820 MIDI In";
@@ -87,13 +94,13 @@ namespace IRAudio {
 
     constexpr MidiChannel kNumMidiChannels = 16;
 
-    const MidiStatus kMidiStatus_NOTE_OFF =                0x80;
-    const MidiStatus kMidiStatus_NOTE_ON =                 0x90;
-    const MidiStatus kMidiStatus_POLYPHONIC_KEY_PRESSURE = 0xA0;
-    const MidiStatus kMidiStatus_CONTROL_CHANGE =          0xB0;
-    const MidiStatus kMidiStatus_PROGRAM_CHANGE =          0xC0;
-    const MidiStatus kMidiStatus_CHANNEL_PRESSURE =        0xD0;
-    const MidiStatus kMidiStatus_PITCH_BEND =              0xE0;
+    constexpr MidiStatus kMidiStatus_NOTE_OFF =                0x80;
+    constexpr MidiStatus kMidiStatus_NOTE_ON =                 0x90;
+    constexpr MidiStatus kMidiStatus_POLYPHONIC_KEY_PRESSURE = 0xA0;
+    constexpr MidiStatus kMidiStatus_CONTROL_CHANGE =          0xB0;
+    constexpr MidiStatus kMidiStatus_PROGRAM_CHANGE =          0xC0;
+    constexpr MidiStatus kMidiStatus_CHANNEL_PRESSURE =        0xD0;
+    constexpr MidiStatus kMidiStatus_PITCH_BEND =              0xE0;
 
     enum IRMidiNote {
         NOTE_A0 = 21,

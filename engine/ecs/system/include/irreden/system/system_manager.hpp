@@ -37,7 +37,7 @@ namespace IRECS {
         SystemManager();
         ~SystemManager() = default;
 
-        // there should be one create system, and everything should just use it!
+        // TODO: Consolidate createSystem and createNodeSystem
         template <
             typename... Components,
             typename FunctionTick,
@@ -65,6 +65,7 @@ namespace IRECS {
                     C_SystemEvent<BEGIN_TICK>{[](){ return; }}
                 );
             }
+
             m_ticks.emplace_back(
                 C_SystemEvent<TICK>{
                     [functionTick](ArchetypeNode* node) {
@@ -76,6 +77,71 @@ namespace IRECS {
                                 functionTick(components[i]...);
                             }, componentsTuple);
                         }
+                    },
+                    getArchetype<Components...>()
+                }
+            );
+
+            if constexpr (!std::is_same_v<FunctionEndTick, std::nullptr_t>) {
+                m_endTicks.emplace_back(
+                    C_SystemEvent<END_TICK>{[functionEndTick]() {
+                        functionEndTick();
+                    }}
+                );
+            }
+            else {
+                m_endTicks.emplace_back(
+                    C_SystemEvent<END_TICK>{[](){ return; }}
+                );
+            }
+            m_relations.emplace_back(
+                C_SystemRelation{relation}
+            );
+            return m_nextSystemId++;
+        }
+
+
+        template <
+            typename... Components,
+            typename FunctionTick,
+            typename FunctionBeginTick = std::nullptr_t,
+            typename FunctionEndTick = std::nullptr_t
+        >
+        SystemId createNodeSystem(
+            std::string name,
+            FunctionTick functionTick,
+            FunctionBeginTick functionBeginTick = nullptr,
+            FunctionEndTick functionEndTick = nullptr,
+            Relation relation = Relation::NONE
+        )
+        {
+            m_systemNames.emplace_back(C_Name{name});
+            if constexpr (!std::is_same_v<FunctionBeginTick, std::nullptr_t>) {
+                m_beginTicks.emplace_back(
+                    C_SystemEvent<BEGIN_TICK>{[functionBeginTick]() {
+                        functionBeginTick();
+                    }}
+                );
+            }
+            else {
+                m_beginTicks.emplace_back(
+                    C_SystemEvent<BEGIN_TICK>{[](){ return; }}
+                );
+            }
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    [functionTick](ArchetypeNode* node) {
+                        auto paramTuple = std::make_tuple(
+                            node->type_,
+                            std::ref(node->entities_),
+                            std::ref(getComponentData<Components>(node))...
+                        );
+                        std::apply(
+                            [&functionTick](auto&&... args) {
+                                functionTick(std::forward<decltype(args)>(args)...);
+                            },
+                            paramTuple
+                        );
                     },
                     getArchetype<Components...>()
                 }

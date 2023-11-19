@@ -6,6 +6,8 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 
+#include <optional>
+
 World::World(int argc, char **argv)
 :   IRWorld(argc, argv)
 {
@@ -51,7 +53,7 @@ void World::initGameEntities()
                             C_Position3D{
                                 vec3(index.x, index.y, index.z)
                             },
-                            (-index.x + -index.y + -index.z + 400) / 100.0f,
+                            (-index.x + -index.y + -index.z + 1000) / 100.0f,
                             IREasingFunctions::kBounceEaseOut
                         };
                     },
@@ -68,6 +70,7 @@ void World::initGameEntities()
                     //     };
                     // },
                     [batchSize, partitions](ivec3 index) {
+                        return C_Velocity3D{0, 0, 0};
                         int face = (index.x + index.y + index.z) % 3;
                         if(face == 0) {
                             return C_Velocity3D{
@@ -104,6 +107,14 @@ void World::initGameEntities()
                         return C_Velocity3D{vec3(0, 0, 0)};
                     }
                 );
+
+                for(auto &entity : entities) {
+                    if(randomInt(0, 25) > 0)
+                        IRECS::setComponent(
+                            entity,
+                            C_Lifetime{randomInt(100, 1000)}
+                        );
+                }
 
                 EntityId parent = IRECS::createEntity(
                     C_Position3D{

@@ -25,8 +25,6 @@ namespace IRAudio {
         inline MidiIn& getMidiIn() { return m_midiIn; }
         inline MidiOut& getMidiOut() { return m_midiOut; }
 
-        void processMidiMessageQueue();
-
     private:
         Audio m_audio;
         MidiIn m_midiIn;

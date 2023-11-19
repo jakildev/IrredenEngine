@@ -32,8 +32,4 @@ namespace IRAudio {
         IRProfile::engLogDebug("Destroyed AudioManager");
     }
 
-    void AudioManager::processMidiMessageQueue() {
-        m_midiIn.processMidiMessageQueue();
-    }
-
 } // namespace IRAudio

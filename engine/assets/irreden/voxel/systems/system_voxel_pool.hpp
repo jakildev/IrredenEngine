@@ -53,46 +53,6 @@ namespace IRECS {
 
         }
 
-        // std::tuple<
-        //     std::span<C_Position3D>,
-        //     std::span<C_PositionOffset3D>,
-        //     std::span<C_PositionGlobal3D>,
-        //     std::span<C_Voxel>
-        // > allocateVoxels(int numVoxels, int voxelPoolId = 0)
-        // {
-        //     return m_voxelPools[voxelPoolId].allocateVoxels(numVoxels);
-        // }
-
-        // int addEntityToScene(
-        //     EntityHandle entity,
-        //     int voxelPoolId = 0
-        // )
-        // {
-        //     return m_voxelPools[voxelPoolId].addEntityToScene(entity);
-        // }
-        // )
-
-        // void deallocateVoxels(
-        //     std::span<C_Position3D> positions,
-        //     std::span<C_PositionOffset3D> positionOffsets,
-        //     std::span<C_PositionGlobal3D> positionGlobals,
-        //     std::span<C_Voxel> colors,
-        //     int voxelPoolId = 0
-        // )
-        // {
-        //     m_voxelPools[voxelPoolId].deallocateVoxels(
-        //         positions,
-        //         positionOffsets,
-        //         positionGlobals,
-        //         colors
-        //     );
-        // }
-
-        void createVoxelPoolComponent(EntityId entity, ivec3 numVoxels) {
-            IRECS::setComponent(entity, C_VoxelPool(numVoxels));
-            m_voxelPoolEntities.push_back(entity);
-        }
-
     private:
         std::vector<EntityId> m_voxelPoolEntities;
         std::vector<C_VoxelPool> m_voxelPools;

@@ -28,13 +28,13 @@ namespace IRECS {
         static EntityHandle create(
             MidiChannel channel,
             std::string name,
-            IRMidiDeviceType type
+            MidiDeviceType type
         )
         {
             EntityHandle entity{};
             entity.set(C_Name{name})
             entity.set(C_MidiChannel{channel});
-            if(type == IRMidiDeviceType::MIDI_DEVICE_TYPE_IN) {
+            if(type == MidiDeviceType::MIDI_DEVICE_TYPE_IN) {
                 entity.set(C_MidiDeviceIn{});
             }
             return entity;

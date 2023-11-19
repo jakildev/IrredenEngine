@@ -27,8 +27,25 @@ namespace IRAudio {
     void sendMidiMessage(const std::vector<unsigned char>& message);
 
     CCData checkCCMessage(int device, CCMessage ccMessage);
-    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(int device);
-    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(int device);
+    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(
+        int device
+    );
+    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(
+        int device
+    );
+
+    void insertNoteOffMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    );
+    void insertNoteOnMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    );
+    void insertCCMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    );
 
 } // namespace IRAudio
 

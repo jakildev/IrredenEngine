@@ -10,6 +10,11 @@ namespace IRECS {
 
     using SystemId = EntityId;
 
+    enum SystemTickModifiers {
+        SYSTEM_MODIFIER_NONE = 0,
+        SYSTEM_MODIFIER_WITH_ENTITY = 1
+    };
+
     enum SystemEvent {
         BEGIN_TICK,
         TICK,
@@ -76,10 +81,6 @@ namespace IRECS {
 
     template <SystemName system>
     class System;
-
-    // template <typename Function>
-    // using SystemEventFunction = std::function<Function>;
-
 
 
 } // namespace IRECS

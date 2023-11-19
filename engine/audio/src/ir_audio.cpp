@@ -11,9 +11,6 @@
 #include <irreden/ir_ecs.hpp>
 
 #include <irreden/audio/audio_manager.hpp>
-#include <irreden/audio/midi_out.hpp>
-
-#include <irreden/audio/systems/system_audio_midi_message_in.hpp>
 
 namespace IRAudio {
 
@@ -39,23 +36,48 @@ namespace IRAudio {
     }
 
     CCData checkCCMessage(int device, CCMessage ccMessage) {
-        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
-            checkCCMessageReceived(device, ccMessage);
+        return getAudioManager().getMidiIn().
+            checkCCMessageThisFrame(device, ccMessage);
     }
 
     const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(
         int device
     )
     {
-        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
+        return getAudioManager().getMidiIn().
             getMidiNotesOnThisFrame(device);
     }
     const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(
         int device
     )
     {
-        return IRECS::getEngineSystem<IRECS::INPUT_MIDI_MESSAGE_IN>().
+        return getAudioManager().getMidiIn().
             getMidiNotesOffThisFrame(device);
+    }
+
+    void insertNoteOffMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    )
+    {
+        getAudioManager().getMidiIn().
+            insertNoteOffMessage(channel, message);
+    }
+    void insertNoteOnMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    )
+    {
+        getAudioManager().getMidiIn().
+            insertNoteOnMessage(channel, message);
+    }
+    void insertCCMessage(
+        MidiChannel channel,
+        const IRComponents::C_MidiMessage& message
+    )
+    {
+        getAudioManager().getMidiIn().
+            insertCCMessage(channel, message);
     }
 
 

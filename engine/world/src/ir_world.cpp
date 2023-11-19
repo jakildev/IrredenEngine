@@ -109,6 +109,8 @@ void IRWorld::input() {
     // making that more generic.
     IRProfile::engLogDebug("Begin input world.");
     m_inputManager.tick();
+    m_audioManager.getMidiIn().tick();
+
     m_systemManager.executePipeline(SYSTEM_TYPE_INPUT);
     m_systemManager.executeGroup<SYSTEM_TYPE_INPUT>();
 
@@ -130,7 +132,6 @@ void IRWorld::update()
     m_timeManager.beginEvent<IRTime::UPDATE>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
-    m_audioManager.processMidiMessageQueue(); // this should be somewhere else
     m_commandManager.executeUserKeyboardCommandsAll();
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
@@ -156,9 +157,6 @@ void IRWorld::render()
 }
 
 void IRWorld::initEngineSystems() {
-    // TODO: Have implementer of engine pass in a list of what
-    // systems to use and in what order. This can be a mix of their
-    // own user systesms and engine systems.
     initIRInputSystems();
     initIRUpdateSystems();
     initIROutputSystems();
@@ -195,18 +193,19 @@ void IRWorld::initEngineCommands() {
 }
 
 void IRWorld::initIROutputSystems() {
+
 }
 
 void IRWorld::initIRInputSystems() {
     SystemId systemInputKeyMouse = IRECS::createSystem<INPUT_KEY_MOUSE>();
     SystemId systemInputGamepad = IRECS::createSystem<INPUT_GAMEPAD>();
-
-    m_systemManager.registerSystemClass<INPUT_MIDI_MESSAGE_IN, SYSTEM_TYPE_INPUT>();
+    SystemId systemInputMidiIn = IRECS::createSystem<INPUT_MIDI_MESSAGE_IN>();
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_INPUT,
         {
             systemInputKeyMouse,
-            systemInputGamepad
+            systemInputGamepad,
+            systemInputMidiIn
         }
     );
 }
@@ -226,12 +225,11 @@ void IRWorld::initIRUpdateSystems() {
     SystemId systemGravity = IRECS::createSystem<GRAVITY_3D>();
     SystemId systemPeriodicIdle = IRECS::createSystem<PERIODIC_IDLE>();
     SystemId systemGoto = IRECS::createSystem<GOTO_3D>();
-    m_systemManager.registerSystemClass<UPDATE_POSITIONS_GLOBAL, SYSTEM_TYPE_UPDATE>();
+    SystemId systemUpdatePositionsGlobal = IRECS::createSystem<UPDATE_POSITIONS_GLOBAL>();
     // Move to output systems
-    m_systemManager.registerSystemClass<OUTPUT_MIDI_MESSAGE_OUT, SYSTEM_TYPE_UPDATE>();
-    m_systemManager.registerSystemClass<UPDATE_VOXEL_SET_CHILDREN, SYSTEM_TYPE_UPDATE>();
-    // Should be a default cleanup system or something like that
-    m_systemManager.registerSystemClass<LIFETIME, SYSTEM_TYPE_UPDATE>();
+    SystemId systemMidiMessageOut = IRECS::createSystem<OUTPUT_MIDI_MESSAGE_OUT>();
+    SystemId systemUpdateVoxelSetChildren = IRECS::createSystem<UPDATE_VOXEL_SET_CHILDREN>();
+    SystemId systemLifetime = IRECS::createSystem<LIFETIME>();
     // m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
 
     m_systemManager.registerPipeline(
@@ -242,7 +240,11 @@ void IRWorld::initIRUpdateSystems() {
             systemAcceleration,
             systemGravity,
             systemPeriodicIdle,
-            systemGoto
+            systemGoto,
+            systemUpdatePositionsGlobal,
+            systemMidiMessageOut,
+            systemUpdateVoxelSetChildren,
+            systemLifetime
         }
     );
 

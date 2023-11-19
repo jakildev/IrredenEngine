@@ -64,6 +64,7 @@ namespace IRECS {
     }
 
     EntityId setParent(EntityId child, EntityId parent);
+    void destroyEntity(EntityId entity);
 
     // Returns the first EntityId of the batch
     // Needs to guarentee that entities are ajacent for
@@ -124,6 +125,7 @@ namespace IRECS {
     }
 
     EntityId getParentEntityFromArchetype(Archetype type);
+
 
 
 } // namespace IRECS

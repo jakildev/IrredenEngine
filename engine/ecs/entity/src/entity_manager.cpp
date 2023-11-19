@@ -32,7 +32,7 @@ namespace IRECS {
         }
         g_entityManager = this;
         IRProfile::engLogInfo(
-            "Created Entity Manager (IR_MAX_ENTITIES={})",
+            "Created EntityManager (IR_MAX_ENTITIES={})",
             static_cast<int>(IR_MAX_ENTITIES)
         );
     }
@@ -116,8 +116,8 @@ namespace IRECS {
     {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         if(!isPureComponent(component)) {
-
-            IR_ASSERT(false, "non pure components not supported rn");
+            return;
+            // IR_ASSERT(false, "non pure components not supported rn");
         }
         node->components_.at(component)->destroy(index);
         return;
@@ -328,6 +328,7 @@ namespace IRECS {
     {
 
         if(!isPureComponent(component)) {
+            return;
             IR_ASSERT(false, "non pure components not supported rn");
         }
         node->components_[component]->removeDataAndPack(row);

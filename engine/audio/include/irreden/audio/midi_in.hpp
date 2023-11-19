@@ -22,6 +22,8 @@
 #include <queue>
 #include <unordered_map>
 
+using IRComponents::C_MidiMessage;
+
 namespace IRAudio {
 
     struct MidiMessageQueues {
@@ -46,12 +48,35 @@ namespace IRAudio {
             MidiIn();
             ~MidiIn();
 
+            void tick();
+
             // void openPort(unsigned int portNumber);
 
             void openPort(MidiInInterfaces midiInInterface);
-
             void processMidiMessageQueue();
+            CCData checkCCMessageThisFrame(
+                MidiChannel channel,
+                CCMessage ccNumber
+            )   const;
+            const std::vector<C_MidiMessage>& getMidiNotesOnThisFrame(
+                MidiChannel channel
+            )   const;
+            const std::vector<C_MidiMessage>& getMidiNotesOffThisFrame(
+                MidiChannel channel
+            )   const;
 
+            void insertNoteOffMessage(
+                MidiChannel channel,
+                const C_MidiMessage& midiMessage
+            );
+            void insertNoteOnMessage(
+                MidiChannel channel,
+                const C_MidiMessage& midiMessage
+            );
+            void insertCCMessage(
+                MidiChannel channel,
+                const C_MidiMessage& midiMessage
+            );
         private:
             RtMidiIn m_rtMidiIn;
             std::unordered_map<MidiInInterfaces, RtMidiIn> m_rtMidiInMap;
@@ -61,6 +86,26 @@ namespace IRAudio {
             std::string m_portName;
             MidiMessageQueues m_messageQueues;
             std::queue<IRComponents::C_MidiMessage> m_messageQueue;
+
+            std::unordered_map<
+                MidiChannel,
+                std::unordered_map<
+                    CCMessage,
+                    CCData
+                >
+            > m_ccMessagesThisFrame;
+            std::unordered_map<
+                MidiChannel,
+                std::vector<C_MidiMessage>
+            > m_midiNoteOnMessagesThisFrame;
+            std::unordered_map<
+                MidiChannel,
+                std::vector<C_MidiMessage>
+            > m_midiNoteOffMessagesThisFrame;
+
+
+
+            void clearPreviousMessages();
 
             void setCallback(
                 RtMidiIn& rtMidiIn,
