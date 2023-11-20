@@ -164,7 +164,7 @@ namespace IRECS {
             return m_nextSystemId++;
         }
 
-        // TODO: return an id, SystemId, or something.
+        // TODO: return an id, SystemId, EntityId, or something.
         void registerPipeline(
             IRSystemType systemType,
             std::list<SystemId> pipeline
@@ -192,107 +192,6 @@ namespace IRECS {
             );
         }
 
-        template <
-            typename... Components,
-            SystemName SystemName,
-            IRSystemType SystemType,
-            typename... Args
-        >
-        SystemId registerSystemClassNew(Args&&... args)
-        {
-            auto systemInstance = std::make_unique<System<SystemName>>(
-                std::forward<Args>(args)...
-            );
-            m_systems.insert(std::make_pair(SystemName, std::move(systemInstance)));
-            m_systemPipelines[SystemType].push_back(SystemName);
-
-            SystemVirtual* newSystem = m_systems[SystemName].get();
-
-            IRProfile::engLogInfo(
-                "Registered new system {}",
-                static_cast<int>(SystemName)
-            );
-
-            return createSystem<Components...>(
-                "TEMP_NAME",
-                newSystem->tick,
-                newSystem->beginExecute,
-                newSystem->endExecute
-            );
-        }
-
-
-
-        // template <
-        //     SystemName SystemName,
-        //     IRSystemType SystemType,
-        //     typename TickFunction,
-        //     typename... Components
-        // >
-        // SystemId registerEngineSystemNew(
-        //     TickFunction tickFunction,
-        //     std::unique_ptr<SystemVirtual> system = nullptr
-        // )
-        // {
-        //     SystemId systemId = m_nextUserSystemId++;
-        //     m_virtualSystems[systemId] = std::move(system);
-        //     m_userSystemFunctions[systemId] =
-        //         SystemUser{
-        //             .archetype_ = getArchetype<Components...>(),
-        //             .function_ = [tickFunction](ArchetypeNode* node) {
-        //                 auto componentsTuple = std::make_tuple(
-        //                     std::ref(getComponentData<Components>(node))...
-        //                 );
-        //                 for(int i = 0; i < node->length_; i++) {
-        //                     std::apply([i, &tickFunction](auto&&... components) {
-        //                         tickFunction(components[i]...);
-        //                     }, componentsTuple);
-        //                 }
-        //             },
-        //             .relation_ = Relation::NONE
-        //         };
-        //     m_systemPipelines[SystemType].push_back(SystemName);
-        //     IRProfile::engLogInfo(
-        //         "Registered new system {}",
-        //         static_cast<int>(SystemName)
-        //     );
-
-        // }
-
-        template <
-            typename... Components,
-            typename Function
-        >
-        SystemId registerUserSystem(
-            std::string name,
-            Function function
-        )
-        {
-            // m_userSystemFunctions[m_nextUserSystemId] =
-            //     SystemUser{
-            //         .archetype_ = getArchetype<Components...>(),
-            //         .function_ = [function](ArchetypeNode* node) {
-            //             auto componentsTuple = std::make_tuple(
-            //                 std::ref(getComponentData<Components>(node))...
-            //             );
-            //             for(int i = 0; i < node->length_; i++) {
-            //                 std::apply([i, &function](auto&&... components) {
-            //                     function(components[i]...);
-            //                 }, componentsTuple);
-            //             }
-            //         },
-            //         .relation_ = Relation::NONE
-            //     };
-            // IRProfile::engLogInfo(
-            //     "Registered new user system {}",
-            //     name,
-            //     m_nextUserSystemId
-            // );
-            // m_nextUserSystemId++;
-            // return m_nextUserSystemId - 1;
-            return kNullEntity;
-        }
-
         template <IRSystemType systemType>
         void executeGroup() {
             auto& systemOrder = getSystemExecutionOrder<systemType>();
@@ -308,16 +207,6 @@ namespace IRECS {
             }
         }
 
-        // void executeUserSystemAll() {
-        //     IR_PROFILE_FUNCTION();
-        //     for(auto& system : m_userSystemFunctions) {
-        //         executeUserSystem(system.second);
-        //     }
-        // }
-
-        void executeUserSystem(
-            SystemUser& system
-        );
         void executeSystemTick(
             SystemVirtual* system,
             ArchetypeNode* node
@@ -355,19 +244,12 @@ namespace IRECS {
         }
 
         // Maybe systems shouldnt provide an API and thus
-        // can just be retrived as virtual systems?
+        // can just be retrived as virtual systems? Now just IDs
         template <SystemName SystemName>
         System<SystemName>& get() {
             return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
-        // template <
-        //     SystemName SystemName,
-        //     IREvents Event
-        // >
-        // void subscribeToEvent() {
-        //     m_eventSubscriptions[Event].push_back(SystemName);
-        // }
     private:
         // TODO: Unify engine systems and engine systems by assigning each
         // enum to an index value...
@@ -380,16 +262,12 @@ namespace IRECS {
         std::unordered_map<SystemName, SystemId> m_engineSystemIds;
         std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
             m_systems;
-        std::unordered_map<SystemId, std::unique_ptr<SystemVirtual>> m_virtualSystems;
+        // std::unordered_map<SystemId, std::unique_ptr<SystemVirtual>> m_virtualSystems;
         std::unordered_map<IRSystemType, std::list<SystemName>>
             m_systemPipelines; // TODO remove
         std::unordered_map<IRSystemType, std::list<SystemId>>
             m_systemPipelinesNew;
 
-        // std::unordered_map<
-        //     SystemId,
-        //     SystemUser
-        // > m_userSystemFunctions;
 
         void executeSystem(
             std::unique_ptr<SystemVirtual> &system

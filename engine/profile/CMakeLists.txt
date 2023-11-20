@@ -61,11 +61,11 @@ add_custom_command(
 # easy_profiler
 
 # Remove to disable profiling
-target_compile_definitions(
-    IrredenEngineProfiling
-    PUBLIC
-    BUILD_WITH_EASY_PROFILER
-)
+# target_compile_definitions(
+#     IrredenEngineProfiling
+#     PUBLIC
+#     BUILD_WITH_EASY_PROFILER
+# )
 
 FetchContent_Declare(
     easy_profiler

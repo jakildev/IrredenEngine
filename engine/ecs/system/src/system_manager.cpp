@@ -78,20 +78,6 @@ namespace IRECS {
         system->endExecute();
     }
 
-    void SystemManager::executeUserSystem(
-        SystemUser& system
-    )
-    {
-        IR_PROFILE_FUNCTION();
-        auto& function = system.function_;
-        for(auto& node : IRECS::queryArchetypeNodesSimple(
-            system.archetype_,
-            Archetype{}
-        )) {
-            function(node);
-        }
-    }
-
     void SystemManager::executeSystemTick(
         SystemVirtual* system,
         ArchetypeNode* node

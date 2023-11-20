@@ -45,7 +45,9 @@ namespace IRRender {
             std::span<C_PositionOffset3D>,
             std::span<C_PositionGlobal3D>,
             std::span<C_Voxel>
-        > allocateVoxels(unsigned int size, std::string canvasName = "main");
+        > allocateVoxels(
+            unsigned int size,
+            std::string canvasName = "main");
 
         void deallocateVoxels(
             std::span<C_Position3D> positions,

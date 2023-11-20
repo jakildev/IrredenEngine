@@ -10,5 +10,5 @@ include(cmake/ir_functions.cmake)
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 
-# Eventually move all include files to engine/include
-# include_directories(${PROJECT_SOURCE_DIR}/engine/include)
+# Options you can enable or disable
+

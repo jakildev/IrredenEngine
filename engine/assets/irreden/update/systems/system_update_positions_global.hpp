@@ -17,7 +17,7 @@ using namespace IRMath;
 namespace IRECS {
 
     template<>
-    struct System<UPDATE_POSITIONS_GLOBAL> {
+    struct System<GLOBAL_POSITION_3D> {
         static constexpr SystemId create() {
             return createNodeSystem<C_Position3D, C_PositionGlobal3D>(
                 "UpdatePositionsGlobal",

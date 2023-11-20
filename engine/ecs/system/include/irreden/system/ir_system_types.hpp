@@ -42,7 +42,7 @@ namespace IRECS {
         PERIODIC_IDLE,
         GAME_GRID,
         PLANT_GROW,
-        UPDATE_POSITIONS_GLOBAL,
+        GLOBAL_POSITION_3D,
         UPDATE_VOXEL_SET_CHILDREN,
         VOXEL_SCENE,
         VOXEL_SET_RESHAPER,
@@ -73,11 +73,11 @@ namespace IRECS {
         NUM_SYSTEM_TYPES
     };
 
-    struct SystemUser {
-        Archetype archetype_;
-        std::function<void(ArchetypeNode*)> function_;
-        Relation relation_;
-    };
+    // struct SystemUser {
+    //     Archetype archetype_;
+    //     std::function<void(ArchetypeNode*)> function_;
+    //     Relation relation_;
+    // };
 
     template <SystemName system>
     class System;

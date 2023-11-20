@@ -212,10 +212,6 @@ void IRWorld::initIRInputSystems() {
 
 void IRWorld::initIRUpdateSystems() {
 
-    m_systemManager.registerSystemClass<VOXEL_POOL, SYSTEM_TYPE_UPDATE>(
-        kVoxelPoolSize,
-        kVoxelPoolPlayerSize
-    );
     m_systemManager.registerSystemClass<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
         m_IRGLFWWindow
     );
@@ -225,7 +221,7 @@ void IRWorld::initIRUpdateSystems() {
     SystemId systemGravity = IRECS::createSystem<GRAVITY_3D>();
     SystemId systemPeriodicIdle = IRECS::createSystem<PERIODIC_IDLE>();
     SystemId systemGoto = IRECS::createSystem<GOTO_3D>();
-    SystemId systemUpdatePositionsGlobal = IRECS::createSystem<UPDATE_POSITIONS_GLOBAL>();
+    SystemId systemGlobalPosition = IRECS::createSystem<GLOBAL_POSITION_3D>();
     // Move to output systems
     SystemId systemMidiMessageOut = IRECS::createSystem<OUTPUT_MIDI_MESSAGE_OUT>();
     SystemId systemUpdateVoxelSetChildren = IRECS::createSystem<UPDATE_VOXEL_SET_CHILDREN>();
@@ -241,7 +237,7 @@ void IRWorld::initIRUpdateSystems() {
             systemGravity,
             systemPeriodicIdle,
             systemGoto,
-            systemUpdatePositionsGlobal,
+            systemGlobalPosition,
             systemMidiMessageOut,
             systemUpdateVoxelSetChildren,
             systemLifetime

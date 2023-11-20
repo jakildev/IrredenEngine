@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_system.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_SYSTEM_H
 #define IR_SYSTEM_H
 
@@ -15,22 +24,18 @@ namespace IRECS {
         return getSystemManager().get<systemName>();
     }
 
+    // Used for creating a engine "built-in" system
     template <
-        typename... Components,
-        typename Function
+        SystemName type,
+        typename... Args
     >
-    int registerUserSystem(
-        std::string name,
-        Function function
-    )
-    {
-        return getSystemManager().registerUserSystem<Components...>(
-            name,
-            function
+    SystemId createSystem(Args&&... args) {
+        return System<type>::create(
+            args...
         );
     }
 
-    // Componentize
+    // Used for creating a user-defined system
     template <
         typename... TickComponents,
         typename FunctionTick,
@@ -54,7 +59,11 @@ namespace IRECS {
         );
     }
 
-    // TODO: Make something better for heirarchical systems
+    // Currently the alternative to just writing a "tick"
+    // lambda. Each call is executed on a single archetype node,
+    // and there is more flexability when dealing with the entities'
+    // archetypes, heirarchies, etc.
+    // TODO: Make something better for heirarchical systems / every other case
     template <
         typename... Components,
         typename FunctionTick,
@@ -78,30 +87,12 @@ namespace IRECS {
         );
     }
 
-     template <
-        SystemName type,
-        typename... Args
-    >
-    SystemId createSystem(Args&&... args) {
-        return System<type>::create(
-            args...
-        );
-    }
-
     template <
         typename ComponentTag
     >
     void addSystemTag(SystemId system) {
         getSystemManager().addSystemTag<ComponentTag>(system);
     }
-
-    // template <SystemName systemName>
-    // SystemId createEngineSystem() {
-    //     return getSystemManager().createEngineSystem<systemName>();
-    // }
-
-
-    // IRECS::createSystem();
 
 } // namespace System
 
