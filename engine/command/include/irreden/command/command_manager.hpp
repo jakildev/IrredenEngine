@@ -34,14 +34,14 @@ namespace IRCommand {
         template <
             typename Function
         >
-        int registerCommand(
+        int createCommand(
             InputTypes inputType,
             ButtonStatuses triggerStatus,
             int button,
             Function command
         )
         {
-            m_userCommands.emplace_back(Command<IR_COMMAND_USER>{
+            m_userCommands.emplace_back(CommandStruct<IR_COMMAND_USER>{
                 inputType,
                 triggerStatus,
                 button,
@@ -64,11 +64,11 @@ namespace IRCommand {
             if(!m_midiCCDeviceCommands.contains(device)) {
                 m_midiNoteDeviceCommands.emplace(
                     device,
-                    std::vector<Command<IR_COMMAND_MIDI_NOTE>>{}
+                    std::vector<CommandStruct<IR_COMMAND_MIDI_NOTE>>{}
                 );
             }
             m_midiNoteDeviceCommands[device].emplace_back(
-                Command<IR_COMMAND_MIDI_NOTE>{
+                CommandStruct<IR_COMMAND_MIDI_NOTE>{
                     InputType,
                     command,
                     fixedArgs...
@@ -88,11 +88,11 @@ namespace IRCommand {
             if(!m_midiCCDeviceCommands.contains(device)) {
                 m_midiCCDeviceCommands.emplace(
                     device,
-                    std::vector<Command<IR_COMMAND_MIDI_CC>>{}
+                    std::vector<CommandStruct<IR_COMMAND_MIDI_CC>>{}
                 );
             }
             m_midiCCDeviceCommands[device].emplace_back(
-                Command<IR_COMMAND_MIDI_CC>{
+                CommandStruct<IR_COMMAND_MIDI_CC>{
                     InputType,
                     ccMessage,
                     command
@@ -107,32 +107,32 @@ namespace IRCommand {
         void executeDeviceMidiCCCommands(
             int device,
             std::vector<
-                Command<CommandTypes::IR_COMMAND_MIDI_CC>
+                CommandStruct<CommandTypes::IR_COMMAND_MIDI_CC>
             >& commands
         );
         void executeDeviceMidiCCCommand(
             int device,
-            Command<IR_COMMAND_MIDI_CC>& command
+            CommandStruct<IR_COMMAND_MIDI_CC>& command
         );
         void executeDeviceMidiNoteCommands(
             int device,
-            std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
+            std::vector<CommandStruct<IR_COMMAND_MIDI_NOTE>>& commands
         );
         void executeDeviceMidiNoteCommand(
             int device,
-            Command<IR_COMMAND_MIDI_NOTE>& command
+            CommandStruct<IR_COMMAND_MIDI_NOTE>& command
         );
 
     private:
         std::unordered_map<
             int,
-            std::vector<Command<IR_COMMAND_MIDI_NOTE>>
+            std::vector<CommandStruct<IR_COMMAND_MIDI_NOTE>>
         > m_midiNoteDeviceCommands;
         std::unordered_map<
             int,
-            std::vector<Command<IR_COMMAND_MIDI_CC>>
+            std::vector<CommandStruct<IR_COMMAND_MIDI_CC>>
         > m_midiCCDeviceCommands;
-        std::vector<Command<IR_COMMAND_USER>> m_userCommands;
+        std::vector<CommandStruct<IR_COMMAND_USER>> m_userCommands;
     };
 
 } // namespace IRCommand

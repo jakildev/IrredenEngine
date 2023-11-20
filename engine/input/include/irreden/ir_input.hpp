@@ -33,6 +33,8 @@ namespace IRInput {
     // Internal use for key mouse input system
     int getNumButtonPressesThisFrame(KeyMouseButtons button);
     int getNumButtonReleasesThisFrame(KeyMouseButtons button);
+
+    void closeWindow();
 }
 
 #endif /* IR_INPUT_H */

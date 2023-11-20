@@ -19,9 +19,9 @@ namespace IRECS {
     ,   m_systemPipelines{}
     ,   m_nextSystemId{0}
     {
-        for(int i = 0; i < IRSystemType::NUM_SYSTEM_TYPES; i++) {
+        for(int i = 0; i < SystemTypes::NUM_SYSTEM_TYPES; i++) {
             m_systemPipelines
-                [static_cast<IRSystemType>(i)
+                [static_cast<SystemTypes>(i)
             ] = std::list<SystemName>{};
         }
         g_systemManager = this;

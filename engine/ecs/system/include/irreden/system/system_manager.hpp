@@ -166,7 +166,7 @@ namespace IRECS {
 
         // TODO: return an id, SystemId, EntityId, or something.
         void registerPipeline(
-            IRSystemType systemType,
+            SystemTypes systemType,
             std::list<SystemId> pipeline
         ) {
             m_systemPipelinesNew[systemType] = pipeline;
@@ -174,7 +174,7 @@ namespace IRECS {
 
         template <
             SystemName SystemName,
-            IRSystemType SystemType,
+            SystemTypes SystemType,
             typename... Args
         >
         void registerSystemClass(Args&&... args)
@@ -192,7 +192,7 @@ namespace IRECS {
             );
         }
 
-        template <IRSystemType systemType>
+        template <SystemTypes systemType>
         void executeGroup() {
             auto& systemOrder = getSystemExecutionOrder<systemType>();
             for(const auto systemName : systemOrder) {
@@ -200,7 +200,7 @@ namespace IRECS {
             }
         }
 
-        void executePipeline(IRSystemType systemType) {
+        void executePipeline(SystemTypes systemType) {
             auto& systemOrder = m_systemPipelinesNew[systemType];
             for(SystemId system : systemOrder) {
                 executeSystem(system);
@@ -263,9 +263,9 @@ namespace IRECS {
         std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
             m_systems;
         // std::unordered_map<SystemId, std::unique_ptr<SystemVirtual>> m_virtualSystems;
-        std::unordered_map<IRSystemType, std::list<SystemName>>
+        std::unordered_map<SystemTypes, std::list<SystemName>>
             m_systemPipelines; // TODO remove
-        std::unordered_map<IRSystemType, std::list<SystemId>>
+        std::unordered_map<SystemTypes, std::list<SystemId>>
             m_systemPipelinesNew;
 
 
@@ -273,7 +273,7 @@ namespace IRECS {
             std::unique_ptr<SystemVirtual> &system
         );
 
-        template <IRSystemType systemType>
+        template <SystemTypes systemType>
         const std::list<SystemName>& getSystemExecutionOrder() const {
             return m_systemPipelines.at(systemType);
         }

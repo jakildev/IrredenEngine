@@ -12,18 +12,33 @@ namespace IRCommand {
     CommandManager& getCommandManager();
 
     template <typename Function>
-    int registerCommand(
+    int createCommand(
         IRInput::InputTypes inputType,
         IRInput::ButtonStatuses triggerStatus,
         int button,
         Function command
     )
     {
-        return getCommandManager().registerCommand(
+        return getCommandManager().createCommand(
             inputType,
             triggerStatus,
             button,
             command
+        );
+    }
+
+    template <CommandNames commandName>
+    CommandId createCommand(
+        IRInput::InputTypes inputType,
+        IRInput::ButtonStatuses triggerStatus,
+        int button
+    )
+    {
+        return getCommandManager().createCommand(
+            inputType,
+            triggerStatus,
+            button,
+            Command<commandName>::create()
         );
     }
 

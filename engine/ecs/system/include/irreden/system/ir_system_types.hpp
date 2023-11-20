@@ -65,7 +65,7 @@ namespace IRECS {
         NUM_SYSTEMS
     };
 
-    enum IRSystemType {
+    enum SystemTypes {
         SYSTEM_TYPE_UPDATE,
         SYSTEM_TYPE_RENDER,
         SYSTEM_TYPE_INPUT,
@@ -73,15 +73,8 @@ namespace IRECS {
         NUM_SYSTEM_TYPES
     };
 
-    // struct SystemUser {
-    //     Archetype archetype_;
-    //     std::function<void(ArchetypeNode*)> function_;
-    //     Relation relation_;
-    // };
-
     template <SystemName system>
     class System;
-
 
 } // namespace IRECS
 

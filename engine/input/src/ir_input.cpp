@@ -50,4 +50,8 @@ namespace IRInput {
         return getInputManager().getButtonReleasesThisFrame(button);
     }
 
+    void closeWindow() {
+        getWindow().setShouldClose();
+    }
+
 } // namespace IRInput

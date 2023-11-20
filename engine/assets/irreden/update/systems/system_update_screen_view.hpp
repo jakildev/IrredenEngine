@@ -61,55 +61,55 @@ namespace IRECS {
             // TODO: Pull commands out somewhere else
             // so that all commands can be visualized and assigned
             // together.
-            // registerCommand<kKeyMouseButtonPressed>(
+            // createCommand<kKeyMouseButtonPressed>(
             //     KeyMouseButtons::kKeyButtonEqual,
             //     [this]() {
             //         zoomIn();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonPressed>(
+            // createCommand<kKeyMouseButtonPressed>(
             //     KeyMouseButtons::kKeyButtonMinus,
             //     [this]() {
             //         zoomOut();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonPressed>(
+            // createCommand<kKeyMouseButtonPressed>(
             //     KeyMouseButtons::kKeyButtonEscape,
             //     [this]() {
             //         closeWindow();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonPressed>(
+            // createCommand<kKeyMouseButtonPressed>(
             //     KeyMouseButtons::kKeyButtonLeftControl,
             //     [this]() {
             //         dragCanvasStart();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonReleased>(
+            // createCommand<kKeyMouseButtonReleased>(
             //     KeyMouseButtons::kKeyButtonLeftControl,
             //     [this]() {
             //         dragCanvasEnd();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonDown>(
+            // createCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonW,
             //     [this]() {
             //         IRECS::getComponent<C_Camera>(m_camera).moveUp();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonDown>(
+            // createCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonS,
             //     [this]() {
             //         IRECS::getComponent<C_Camera>(m_camera).moveDown();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonDown>(
+            // createCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonA,
             //     [this]() {
             //         IRECS::getComponent<C_Camera>(m_camera).moveLeft();
             //     }
             // );
-            // registerCommand<kKeyMouseButtonDown>(
+            // createCommand<kKeyMouseButtonDown>(
             //     KeyMouseButtons::kKeyButtonD,
             //     [this]() {
             //         IRECS::getComponent<C_Camera>(m_camera).moveRight();
@@ -181,10 +181,6 @@ namespace IRECS {
                 m_mouseWheelClickedStart
             );
             m_tempCameraOffset = vec2(0, 0);
-        }
-
-        void closeWindow() {
-            m_window.setShouldClose();
         }
 
         inline const vec2 getGlobalCameraOffsetScreen() {

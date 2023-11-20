@@ -19,7 +19,6 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-
     template<>
     struct System<GRAVITY_3D> {
         static SystemId create() {

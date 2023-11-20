@@ -31,7 +31,7 @@ namespace IRCommand {
 
     void CommandManager::executeDeviceMidiCCCommands(
         int device,
-        std::vector<Command<IR_COMMAND_MIDI_CC>>& commands
+        std::vector<CommandStruct<IR_COMMAND_MIDI_CC>>& commands
     )
     {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
@@ -42,7 +42,7 @@ namespace IRCommand {
 
     void CommandManager::executeDeviceMidiCCCommand(
         int device,
-        Command<IR_COMMAND_MIDI_CC>& command
+        CommandStruct<IR_COMMAND_MIDI_CC>& command
     )
     {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
@@ -73,7 +73,7 @@ namespace IRCommand {
 
     void CommandManager::executeDeviceMidiNoteCommands(
         int device,
-        std::vector<Command<IR_COMMAND_MIDI_NOTE>>& commands
+        std::vector<CommandStruct<IR_COMMAND_MIDI_NOTE>>& commands
     )
     {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
@@ -84,7 +84,7 @@ namespace IRCommand {
 
     void CommandManager::executeDeviceMidiNoteCommand(
         int device,
-        Command<IR_COMMAND_MIDI_NOTE>& command
+        CommandStruct<IR_COMMAND_MIDI_NOTE>& command
     )
     {
         if(command.getType() == MIDI_NOTE && command.getTriggerStatus() == PRESSED) {

@@ -41,6 +41,9 @@
 // VIDEO SYSTEMS
 #include <irreden/video/systems/system_video_encoder.hpp>
 
+// INPUT COMMANDS
+#include <irreden/input/commands/command_close_window.hpp>
+
 using namespace IRComponents;
 using namespace IRConstants;
 // using namespace IRCommands;
@@ -164,15 +167,12 @@ void IRWorld::initEngineSystems() {
 }
 
 void IRWorld::initEngineCommands() {
-    IRCommand::registerCommand(
+    IRCommand::createCommand<IRCommand::CLOSE_WINDOW>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEscape,
-        []() {
-            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().closeWindow();
-        }
+        KeyMouseButtons::kKeyButtonEscape
     );
-    IRCommand::registerCommand(
+    IRCommand::createCommand(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonEqual,
@@ -180,7 +180,7 @@ void IRWorld::initEngineCommands() {
             IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().zoomIn();
         }
     );
-    IRCommand::registerCommand(
+    IRCommand::createCommand(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonMinus,

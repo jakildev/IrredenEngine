@@ -21,15 +21,15 @@ using namespace IRECS;
 namespace IRCommand {
 
     template <CommandTypes CommandType>
-    class Command;
+    class CommandStruct;
 
     template <>
-    class Command<IR_COMMAND_USER> {
+    class CommandStruct<IR_COMMAND_USER> {
     public:
         template <
             typename Function
         >
-        Command(
+        CommandStruct(
             IRInput::InputTypes type,
             IRInput::ButtonStatuses triggerStatus,
             int button,
@@ -71,10 +71,10 @@ namespace IRCommand {
     };
 
     template <>
-    class Command<IR_COMMAND_MIDI_NOTE> {
+    class CommandStruct<IR_COMMAND_MIDI_NOTE> {
     public:
         template <typename Function, typename... Args>
-        Command(
+        CommandStruct(
             IRInput::InputTypes type,
             IRInput::ButtonStatuses triggerStatus,
             Function func
@@ -113,10 +113,10 @@ namespace IRCommand {
     };
 
     template <>
-    class Command<IR_COMMAND_MIDI_CC> {
+    class CommandStruct<IR_COMMAND_MIDI_CC> {
     public:
         template <typename Function>
-        Command(
+        CommandStruct(
             IRInput::InputTypes type,
             IRAudio::CCMessage ccMessage,
             Function func
