@@ -13,6 +13,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_time.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 
@@ -26,11 +27,12 @@ namespace IRComponents {
         vec2 pos2DScreen_;
         vec2 targetPos2DScreen_;
         vec2 zoom_;
+        vec2 startZoom_;
         vec2 targetZoom_;
         vec2 triangleStepSizeScreen_;
         EntityId followEntity_;
-        static constexpr int zoomDurationFrames_ = 30;
-        int zoomCurrentFrame_ = zoomDurationFrames_;
+        static constexpr double zoomDurationSeconds_ = 1.0;
+        double zoomCurrentTime_ = zoomDurationSeconds_;
         static constexpr int snapDurationFrames_ = 180;
         int snapCurrentFrame_ = snapDurationFrames_;
 
@@ -40,6 +42,8 @@ namespace IRComponents {
         )
         :   pos2DScreen_{startPos}
         ,   zoom_{1.0f}
+        ,   startZoom_{1.0f}
+        ,   targetZoom_{1.0f}
         ,   followEntity_{followEntity}
         {
 
@@ -62,15 +66,20 @@ namespace IRComponents {
 
         }
 
+        // TODO: Delta time here
         void tick()
         {
-            if(zoomCurrentFrame_ < zoomDurationFrames_) {
-                zoomCurrentFrame_++;
+            if(zoomCurrentTime_ < zoomDurationSeconds_) {
+                zoomCurrentTime_ = glm::clamp(
+                    zoomCurrentTime_ + IRTime::deltaTime(IRTime::RENDER),
+                    0.0,
+                    zoomDurationSeconds_
+                );
                 zoom_ = glm::mix(
-                    zoom_,
+                    startZoom_,
                     targetZoom_,
                     kEasingFunctions.at(IREasingFunctions::kExponentialEaseOut)(
-                        (float)zoomCurrentFrame_ / zoomDurationFrames_
+                        zoomCurrentTime_ / zoomDurationSeconds_
                     )
                 );
             }
@@ -112,8 +121,9 @@ namespace IRComponents {
 
         // add lerp provided by chatgpt
         void zoomIn() {
+            startZoom_ = zoom_;
             setTargetZoom(round(glm::clamp(
-                zoom_ * vec2(2.0f),
+                targetZoom_ * vec2(2.0f),
                 IRConstants::kTriangleCanvasZoomMin,
                 IRConstants::kTriangleCanvasZoomMax
             )));
@@ -121,8 +131,9 @@ namespace IRComponents {
 
 
         void zoomOut() {
+            startZoom_ = zoom_;
             setTargetZoom(round(glm::clamp(
-                zoom_ / vec2(2.0f),
+                targetZoom_ / vec2(2.0f),
                 IRConstants::kTriangleCanvasZoomMin,
                 IRConstants::kTriangleCanvasZoomMax
             )));
@@ -135,7 +146,7 @@ namespace IRComponents {
                 IRConstants::kTriangleCanvasZoomMin,
                 IRConstants::kTriangleCanvasZoomMax
             );
-            zoomCurrentFrame_ = 0;
+            zoomCurrentTime_ = 0.0f;
         }
 
         void setTargetPosition(vec2 targetPos) {
@@ -150,11 +161,13 @@ namespace IRComponents {
             );
         }
 
-        void setTriangleStepSize(vec2 resolution, vec2 triangleCanvasSize) {
+        void setTriangleStepSize(vec2 resolution) {
             triangleStepSizeScreen_ =
                 resolution /
-                triangleCanvasSize *
-                zoom_;
+                IRMath::gameResolutionToSize2DIso(
+                    resolution,
+                    zoom_
+                );
         }
 
         void setPosScreenFromPos3D(vec3 pos) {

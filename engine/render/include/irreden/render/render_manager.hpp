@@ -7,8 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef RENDERER_H
-#define RENDERER_H
+#ifndef RENDER_MANAGER_H
+#define RENDER_MANAGER_H
 
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_input.hpp>
@@ -26,6 +26,7 @@
 #include <span>
 
 using namespace IRComponents;
+using IRECS::EntityId;
 
 namespace IRRender {
 
@@ -34,8 +35,15 @@ namespace IRRender {
         RenderManager(IRInput::IRGLFWWindow& window);
         ~RenderManager() {}
 
-        IRECS::EntityId getCanvas(std::string canvasName);
+        inline ivec2 getViewport() const { return m_viewport; }
+        inline ivec2 getGameResolution() const { return m_gameResolution; }
+        inline ivec2 getOutputResolution() const { return m_outputResolution; }
+        inline int getOutputScaleFactor() const { return m_outputScaleFactor; }
 
+        EntityId getCanvas(std::string canvasName);
+        vec2 getCameraPositionScreen() const;
+        vec2 getCameraZoom() const;
+        vec2 getTriangleStepSizeScreen() const;
         void tick();
 
         void printGLSystemInfo();
@@ -61,16 +69,20 @@ namespace IRRender {
     private:
         IRInput::IRGLFWWindow& m_window;
         Buffer m_bufferUniformConstantsGLSL;
-        IRECS::EntityId m_backgroundCanvas;
-        IRECS::EntityId m_mainCanvas;
-        IRECS::EntityId m_playerCanvas;
+        EntityId m_backgroundCanvas;
+        EntityId m_mainCanvas;
+        EntityId m_playerCanvas;
+        EntityId m_camera;
+        ivec2 m_viewport;
+        ivec2 m_gameResolution;
+        ivec2 m_outputResolution;
+        int m_outputScaleFactor;
         std::unordered_map<std::string, IRECS::EntityId> m_canvasMap;
 
-
-
         void initRenderingSystems();
+        void updateOutputResolution();
     };
 
 } // namespace IRRender
 
-#endif /* RENDERER_H */
+#endif /* RENDER_MANAGER_H */

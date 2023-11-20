@@ -1,7 +1,7 @@
 #ifndef IR_RENDER_H
 #define IR_RENDER_H
 
-#include <irreden/render/renderer.hpp>
+#include <irreden/render/render_manager.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/buffer.hpp>
@@ -64,6 +64,12 @@ namespace IRRender {
     inline IRECS::EntityId getCanvas(std::string canvasName) {
         return getRenderManager().getCanvas(canvasName);
     }
+
+    vec2 getCameraPositionScreen();
+    vec2 getCameraZoom();
+    vec2 getTriangleStepSizeScreen();
+    ivec2 getViewport();
+    int getOutputScaleFactor();
 
 } // namespace IRRender
 

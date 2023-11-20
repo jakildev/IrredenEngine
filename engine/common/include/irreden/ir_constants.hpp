@@ -46,13 +46,13 @@ namespace IRConstants {
     constexpr uvec2 kScreenTriangleMaxCanvasSize =
         IRMath::gameResolutionToSize2DIso(
             kGameResolution,
-            kTriangleCanvasZoomMin
+            uvec2(kTriangleCanvasZoomMin)
         );
 
     constexpr uvec2 kScreenTriangleMaxCanvasSizeWithBuffer =
         IRMath::gameResolutionToSize2DIso(
             kGameResolutionWithBuffer,
-            kTriangleCanvasZoomMin
+            uvec2(kTriangleCanvasZoomMin)
         );
     constexpr uvec2 kScreenTriangleBufferSize =
         kScreenTriangleMaxCanvasSizeWithBuffer -

@@ -44,6 +44,10 @@
 // INPUT COMMANDS
 #include <irreden/input/commands/command_close_window.hpp>
 
+// RENDER COMMANDS
+#include <irreden/render/commands/command_zoom_in.hpp>
+#include <irreden/render/commands/command_zoom_out.hpp>
+
 using namespace IRComponents;
 using namespace IRConstants;
 // using namespace IRCommands;
@@ -118,7 +122,6 @@ void IRWorld::input() {
     m_systemManager.executeGroup<SYSTEM_TYPE_INPUT>();
 
     IRProfile::engLogDebug("End input world.");
-
 }
 
 void IRWorld::start() {
@@ -172,24 +175,16 @@ void IRWorld::initEngineCommands() {
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonEscape
     );
-    IRCommand::createCommand(
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEqual,
-        []() {
-            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().zoomIn();
-        }
+        KeyMouseButtons::kKeyButtonEqual
     );
-    IRCommand::createCommand(
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonMinus,
-        []() {
-            IRECS::getEngineSystem<SystemName::SCREEN_VIEW>().zoomOut();
-        }
+        KeyMouseButtons::kKeyButtonMinus
     );
-
-
 }
 
 void IRWorld::initIROutputSystems() {
@@ -212,9 +207,7 @@ void IRWorld::initIRInputSystems() {
 
 void IRWorld::initIRUpdateSystems() {
 
-    m_systemManager.registerSystemClass<SCREEN_VIEW, SYSTEM_TYPE_UPDATE>(
-        m_IRGLFWWindow
-    );
+
     SystemId systemParticleSpawner = IRECS::createSystem<PARTICLE_SPAWNER>();
     SystemId systemVelocity = IRECS::createSystem<VELOCITY_3D>();
     SystemId systemAcceleration = IRECS::createSystem<ACCELERATION_3D>();
@@ -265,6 +258,6 @@ void IRWorld::initIRRenderSystems() {
     >();
 }
 
-void IRWorld::setCameraPosition3D(const vec3& position) {
-    IRECS::getEngineSystem<SCREEN_VIEW>().setCameraPosition3D(position);
-}
+// void IRWorld::setCameraPosition3D(const vec3& position) {
+//     IRECS::getEngineSystem<SCREEN_VIEW>().setCameraPosition3D(position);
+// }

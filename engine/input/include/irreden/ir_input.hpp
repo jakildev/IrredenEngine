@@ -35,6 +35,8 @@ namespace IRInput {
     int getNumButtonReleasesThisFrame(KeyMouseButtons button);
 
     void closeWindow();
+    void getWindowSize(IRMath::ivec2& size);
+    void getCursorPosition(IRMath::dvec2& pos);
 }
 
 #endif /* IR_INPUT_H */

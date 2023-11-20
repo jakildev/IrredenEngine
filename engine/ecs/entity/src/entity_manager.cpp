@@ -108,6 +108,20 @@ namespace IRECS {
         }
     }
 
+    void EntityManager::setName(EntityId entity, const std::string& name) {
+        m_namedEntities[name] = entityBits(entity);
+    }
+
+    EntityId EntityManager::getEntityByName(
+        const std::string& name
+    )   const
+    {
+        if(m_namedEntities.contains(name)) {
+            return m_namedEntities.at(name);
+        }
+        return kNullEntity;
+    }
+
     void EntityManager::destroyComponent(
         ComponentId component,
         ArchetypeNode* node,

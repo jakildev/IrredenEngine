@@ -18,7 +18,7 @@
 #include <irreden/render/components/component_triangle_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-#include <irreden/update/systems/system_update_screen_view.hpp>
+// #include <irreden/update/systems/system_update_screen_view.hpp>
 
 using namespace IRMath;
 
@@ -133,10 +133,7 @@ namespace IRECS {
 
         virtual void beginExecute() override {
 
-            m_viewportThisFrame = ivec2(
-                IRECS::getEngineSystem<SCREEN_VIEW>().getViewportX(),
-                IRECS::getEngineSystem<SCREEN_VIEW>().getViewportY()
-            );
+            m_viewportThisFrame = IRRender::getViewport();
             bindDefaultFramebuffer();
             clearDefaultFramebuffer();
             m_shaderProgram.use();
@@ -173,7 +170,7 @@ namespace IRECS {
         )
         {
             const int scaleFactor =
-                IRECS::getEngineSystem<SCREEN_VIEW>().getScaleFactor();
+                IRRender::getOutputScaleFactor();
 
             // also known as screen center
             float xOffset = m_viewportThisFrame.x / 2.0f;
@@ -182,11 +179,9 @@ namespace IRECS {
                 vec2(xOffset, yOffset) +
                 (pos3DtoPos2DScreen(
                     cameraPosition,
-                    IRECS::getEngineSystem<SCREEN_VIEW>().
-                        getTriangleStepSizeScreen()
+                    IRRender::getTriangleStepSizeScreen()
                 ) * vec2(-1, 1) -
-                ( IRECS::getEngineSystem<SCREEN_VIEW>().
-                        getTriangleStepSizeScreen() / 2.0f
+                ( IRRender::getTriangleStepSizeScreen() / 2.0f
                 ) * vec2(1, -1))
             ;
 
@@ -197,8 +192,7 @@ namespace IRECS {
             {
                 vec2 fractComponentScaledNew =
                     glm::fract(cameraPositionIso) *
-                    IRECS::getEngineSystem<SCREEN_VIEW>().
-                        getTriangleStepSizeScreen() *
+                    IRRender::getTriangleStepSizeScreen() *
                         vec2(1, -1);
 
                 offset += fractComponentScaledNew;
@@ -210,8 +204,7 @@ namespace IRECS {
             }
             else{
                 offset += (
-                    IRECS::getEngineSystem<SCREEN_VIEW>().
-                        getGlobalCameraOffsetScreen() *
+                    IRRender::getCameraPositionScreen() *
                     vec2(1, -1)
                 );
             }

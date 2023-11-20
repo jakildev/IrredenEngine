@@ -9,14 +9,17 @@
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/render/renderer.hpp>
+#include <irreden/render/render_manager.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 
 #include <irreden/render/entities/entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-#include <irreden/update/systems/system_update_screen_view.hpp>
+// #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+
+#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/render/components/component_camera.hpp>
 
 namespace IRRender {
 
@@ -66,7 +69,21 @@ namespace IRRender {
                 IRConstants::kSizeExtraPixelBuffer
             )
         }
+    ,   m_camera{
+            createEntity(
+                C_Camera{
+                    vec2(0.0f, 0.0f)
+                },
+                C_Position3D{
+                    vec3(0.0f, 0.0f, 0.0f)
+                }
+            )
+        }
+    ,   m_viewport{0}
+    ,   m_gameResolution{IRConstants::kGameResolution}
+    ,   m_outputResolution{0}
     {
+        IRECS::setName(m_camera, "camera");
         std::vector<Color> colorPalette = {
             kPinkTanOrange[1],
             IRColors::kBlack
@@ -103,7 +120,12 @@ namespace IRRender {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
         // IRECS::getEngineSystem<INPUT_KEY_MOUSE>().beginRenderExecute(); // TODO: not like this after system CRTP
-        IRECS::getEngineSystem<SCREEN_VIEW>().beginExecuteRender();
+        IRInput::getWindowSize(m_viewport);
+        updateOutputResolution();
+        // TODO: Don't really do this anywhere else so prob should
+        // come up with something different.
+        IRECS::getComponent<C_Camera>(m_camera).tick();
+        // IRECS::getEngineSystem<SCREEN_VIEW>().beginExecuteRender();
 
         IRECS::getSystemManager().executeGroup<SYSTEM_TYPE_RENDER>();
         m_window.swapBuffers();
@@ -132,6 +154,16 @@ namespace IRRender {
             std::span<C_PositionGlobal3D>{},
             std::span<C_Voxel>{}
         );
+    }
+
+    vec2 RenderManager::getCameraPositionScreen() const {
+        return IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_;
+    }
+    vec2 RenderManager::getTriangleStepSizeScreen() const {
+        return IRECS::getComponent<C_Camera>(m_camera).triangleStepSizeScreen_;
+    }
+    vec2 RenderManager::getCameraZoom() const {
+        return IRECS::getComponent<C_Camera>(m_camera).zoom_;
     }
 
     void RenderManager::deallocateVoxels(
@@ -179,6 +211,26 @@ namespace IRRender {
         IRProfile::engLogInfo(
             "Max uniform block size: {}",
             intAttr
+        );
+    }
+
+    void RenderManager::updateOutputResolution() {
+        m_outputScaleFactor =  glm::min(
+            glm::floor(
+                m_viewport.x /
+                m_gameResolution.x
+            ),
+            glm::floor(
+                m_viewport.y /
+                m_gameResolution.y
+            )
+        );
+        m_outputResolution = ivec2(
+            m_gameResolution.x * m_outputScaleFactor,
+            m_gameResolution.y * m_outputScaleFactor
+        );
+        IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSize(
+            vec2(m_outputResolution)
         );
     }
 

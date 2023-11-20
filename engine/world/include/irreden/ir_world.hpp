@@ -16,7 +16,7 @@
 #include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
 #include <irreden/system/system_manager.hpp>
-#include <irreden/render/renderer.hpp>
+#include <irreden/render/render_manager.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio_manager.hpp>
@@ -30,8 +30,8 @@ public:
     virtual ~IRWorld();
     void gameLoop();
 
-    void setPlayer(const IRECS::EntityId& player);
-    void setCameraPosition3D(const vec3& position);
+    // void setPlayer(const IRECS::EntityId& player);
+    // void setCameraPosition3D(const vec3& position);
 private:
     IRInput::IRGLFWWindow m_IRGLFWWindow;
     IRECS::EntityManager m_entityManager;

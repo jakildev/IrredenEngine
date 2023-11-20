@@ -1,6 +1,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_math.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -52,6 +53,14 @@ namespace IRInput {
 
     void closeWindow() {
         getWindow().setShouldClose();
+    }
+
+    void getWindowSize(IRMath::ivec2& size) {
+        getWindow().getWindowSize(size.x, size.y);
+    }
+
+    void getCursorPosition(IRMath::dvec2& pos) {
+        getWindow().getCursorPosition(pos.x, pos.y);
     }
 
 } // namespace IRInput

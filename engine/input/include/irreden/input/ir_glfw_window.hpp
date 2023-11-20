@@ -60,8 +60,8 @@ namespace IRInput {
         );
         ~IRGLFWWindow();
 
-        void getUpdateWindowSize(int& width, int& height);
-        void getUpdateCursorPos(double& posX, double& posY);
+        void getWindowSize(int& width, int& height);
+        void getCursorPosition(double& posX, double& posY);
         int getKeyStatus(int key);
         int getMouseButtonStatus(int button);
         GLFWgamepadstate getGamepadState(int gamepad);

@@ -62,16 +62,14 @@ namespace IRInput {
             ButtonStatuses::RELEASED
         );
         processScrolls(m_window.getScrollsToProcess());
-        m_window.getUpdateCursorPos(
-            m_mousePositionUpdate.pos_.x,
-            m_mousePositionUpdate.pos_.y
+        IRInput::getCursorPosition(
+            m_mousePositionUpdate.pos_
         );
     }
 
-     void InputManager::tickRender() {
-        m_window.getUpdateCursorPos(
-            m_mousePositionRender.pos_.x,
-            m_mousePositionRender.pos_.y
+    void InputManager::tickRender() {
+        IRInput::getCursorPosition(
+            m_mousePositionRender.pos_
         );
     }
 

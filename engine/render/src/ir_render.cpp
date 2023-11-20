@@ -23,5 +23,21 @@ namespace IRRender {
         return *g_renderManager;
     }
 
+    vec2 getCameraPositionScreen() {
+        return getRenderManager().getCameraPositionScreen();
+    }
+    vec2 getCameraZoom() {
+        return getRenderManager().getCameraZoom();
+    }
+    vec2 getTriangleStepSizeScreen() {
+        return getRenderManager().getTriangleStepSizeScreen();
+    }
+    ivec2 getViewport() {
+        return getRenderManager().getViewport();
+    }
+    int getOutputScaleFactor() {
+        return getRenderManager().getOutputScaleFactor();
+    }
+
 } // namespace IRRender
 

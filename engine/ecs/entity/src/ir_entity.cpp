@@ -69,7 +69,14 @@ namespace IRECS {
 
     EntityId getParentEntityFromArchetype(Archetype type) {
         return getEntityManager().getParentEntityFromArchetype(type);
+    }
 
+    void setName(EntityId entity, const std::string& name) {
+        getEntityManager().setName(entity, name);
+    }
+
+    EntityId getEntity(const std::string& name) {
+        return getEntityManager().getEntityByName(name);
     }
 
 

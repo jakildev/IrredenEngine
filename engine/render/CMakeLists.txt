@@ -8,7 +8,7 @@ add_library(IrredenEngineRendering STATIC
     src/buffer.cpp
     src/framebuffer.cpp
     src/ir_gl_api.cpp
-    src/renderer.cpp
+    src/render_manager.cpp
     src/rendering_rm.cpp
     src/shader.cpp
     src/texture.cpp

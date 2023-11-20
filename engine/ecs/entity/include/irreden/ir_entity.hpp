@@ -119,6 +119,7 @@ namespace IRECS {
         return getEntityManager().setComponent(entity, component);
     }
 
+
     template <typename Component>
     void removeComponent(EntityId entity) {
         getEntityManager().removeComponent<Component>(entity);
@@ -126,6 +127,8 @@ namespace IRECS {
 
     EntityId getParentEntityFromArchetype(Archetype type);
 
+    void setName(EntityId entity, const std::string& name);
+    EntityId getEntity(const std::string& name);
 
 
 } // namespace IRECS

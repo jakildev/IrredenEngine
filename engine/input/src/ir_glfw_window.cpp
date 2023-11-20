@@ -103,11 +103,11 @@ namespace IRInput {
         glfwPollEvents();
     }
 
-    void IRGLFWWindow::getUpdateWindowSize(int& width, int& height) {
+    void IRGLFWWindow::getWindowSize(int& width, int& height) {
         glfwGetWindowSize(m_window, &width, &height);
     }
 
-    void IRGLFWWindow::getUpdateCursorPos(double& posX, double& posY) {
+    void IRGLFWWindow::getCursorPosition(double& posX, double& posY) {
         glfwGetCursorPos(m_window, &posX, &posY);
     }
 

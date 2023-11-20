@@ -343,6 +343,15 @@ namespace IRMath {
         return gameResolution / uvec2(2, 1) / scaleFactor;
     }
 
+    constexpr vec2 gameResolutionToSize2DIso(
+        const vec2 gameResolution,
+        const vec2 scaleFactor
+    )
+    {
+        // Floor division
+        return gameResolution / vec2(2, 1) / scaleFactor;
+    }
+
     constexpr uvec2 size2DIsoToGameResolution(
         const uvec2 size,
         const uvec2 scaleFactor

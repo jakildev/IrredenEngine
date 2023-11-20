@@ -74,6 +74,8 @@ namespace IRECS {
         NodeId getParentNodeFromRelation(RelationId relation);
         EntityId getParentEntityFromArchetype(Archetype type);
         RelationId registerRelation(Relation relation, EntityId relatedEntity);
+        void setName(EntityId entity, const std::string& name);
+        EntityId getEntityByName(const std::string& name) const;
 
         template <typename... Components>
         EntityId createEntity(const Components &...components) {
@@ -334,6 +336,8 @@ namespace IRECS {
         std::unordered_map<EntityId, RelationId> m_parentRelations;
         std::unordered_map<RelationId, EntityId> m_childOfRelations;
         std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
+        // TODO: Remove when entity is destroyed
+        std::unordered_map<std::string, EntityId> m_namedEntities;
         EntityId m_liveEntityCount;
         std::vector<EntityId> m_entitiesMarkedForDeletion;
 

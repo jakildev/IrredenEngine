@@ -97,7 +97,7 @@ void World::initGameEntities()
                 );
 
                 for(auto &entity : entities) {
-                    if(randomInt(0, 10) > 0)
+                    if(randomInt(0, 50) > 0)
                         IRECS::setComponent(
                             entity,
                             C_Lifetime{randomInt(0, 400)}
