@@ -21,9 +21,9 @@ namespace IRConstants {
     // constexpr ivec2 kInitWindowSize = ivec2(1080, 1920);
     // constexpr ivec2 kInitWindowSize = ivec2(360, 640);
 
-    constexpr uvec2 kGameResolution = uvec2(640, 360);
+    // constexpr uvec2 kGameResolution = uvec2(640, 360);
+    constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(2);
     // constexpr uvec2 kGameResolution = uvec2(360, 640) / uvec2(2);
-    // constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(2);
     // constexpr ivec2 kInitWindowSize = ivec2(kGameResolution * uvec2(4));
     constexpr ivec2 kInitWindowSize = ivec2(1920, 1080);
 

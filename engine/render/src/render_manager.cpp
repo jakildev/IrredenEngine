@@ -226,21 +226,9 @@ namespace IRRender {
                 m_gameResolution.y
             )
         );
-        IRProfile::engLogInfo(
-            "Output scale factor: {}",
-            m_outputScaleFactor
-        );
-        IRProfile::engLogInfo(
-            "Game resolution: {}, {}",
-            m_gameResolution.x, m_gameResolution.y
-        );
         m_outputResolution = ivec2(
             m_gameResolution.x * m_outputScaleFactor,
             m_gameResolution.y * m_outputScaleFactor
-        );
-        IRProfile::engLogInfo(
-            "Output resolution: {}, {}",
-            m_outputResolution.x, m_outputResolution.y
         );
         IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
             vec2(m_gameResolution), m_outputScaleFactor

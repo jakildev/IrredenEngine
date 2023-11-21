@@ -27,6 +27,11 @@ namespace IRCommand {
         STOP_VELOCITY,
         RESHAPE_SPHERE,
         RESHAPE_RECTANGULAR_PRISM,
+        RANDOMIZE_VOXELS,   // TODO, should operate like a system with
+        // a query and stuff, and should exclude "locked entities"
+        LOCK_VOXEL_SCALE, // TODO: This will zoom in the rendered framebuffer,
+        // and not change the on the canvas to framebuffer...
+        UNLOCK_VOXEL_SCALE, // TODO: see above
         NUM_COMMANDS
     };
 
