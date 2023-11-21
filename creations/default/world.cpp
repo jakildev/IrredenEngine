@@ -56,44 +56,43 @@ void World::initGameEntities()
                             (-index.x + -index.y + -index.z + 700) / 100.0f,
                             IREasingFunctions::kBounceEaseOut
                         };
-                    },
-
-                    [batchSize, partitions](ivec3 index) {
-                        int face = (index.x + index.y + index.z) % 3;
-                        if(face == 0) {
-                            return C_Velocity3D{
-                                vec3(
-                                    // sumVecComponents(index),
-                                    IRMath::randomFloat(-5, 5),
-                                    0,
-                                    0
-                                )
-                            };
-                        }
-                        if(face == 1) {
-                            return C_Velocity3D{
-                                vec3(
-                                    0,
-                                    IRMath::randomFloat(-5, 5),
-                                    // sumVecComponents(index),
-                                    0
-                                )
-                            };
-                        }
-                        if(face == 2) {
-                            return C_Velocity3D{
-                                vec3(
-                                    0,
-                                    0,
-                                    // sumVecComponents(index)
-                                    IRMath::randomFloat(-5, 5)
-                                    // index.z
-                                )
-                            };
-                        }
-
-                        return C_Velocity3D{vec3(0, 0, 0)};
                     }
+                // ,   [batchSize, partitions](ivec3 index) {
+                    //     int face = (index.x + index.y + index.z) % 3;
+                    //     if(face == 0) {
+                    //         return C_Velocity3D{
+                    //             vec3(
+                    //                 // sumVecComponents(index),
+                    //                 IRMath::randomFloat(-5, 5),
+                    //                 0,
+                    //                 0
+                    //             )
+                    //         };
+                    //     }
+                    //     if(face == 1) {
+                    //         return C_Velocity3D{
+                    //             vec3(
+                    //                 0,
+                    //                 IRMath::randomFloat(-5, 5),
+                    //                 // sumVecComponents(index),
+                    //                 0
+                    //             )
+                    //         };
+                    //     }
+                    //     if(face == 2) {
+                    //         return C_Velocity3D{
+                    //             vec3(
+                    //                 0,
+                    //                 0,
+                    //                 // sumVecComponents(index)
+                    //                 IRMath::randomFloat(-5, 5)
+                    //                 // index.z
+                    //             )
+                    //         };
+                    //     }
+
+                    //     return C_Velocity3D{vec3(0, 0, 0)};
+                    // }
                 );
 
                 for(auto &entity : entities) {

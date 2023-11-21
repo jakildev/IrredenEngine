@@ -16,7 +16,6 @@ using  IRMath::vec2;
 
 namespace IRComponents {
 
-
 struct C_CameraPosition2DIso {
     vec2 pos_;
     float tempPackBuffer_;

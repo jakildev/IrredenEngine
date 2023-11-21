@@ -31,10 +31,15 @@ namespace IRComponents {
         vec2 targetZoom_;
         vec2 triangleStepSizeScreen_;
         EntityId followEntity_;
-        static constexpr double zoomDurationSeconds_ = 1.0;
+        static constexpr double zoomDurationSeconds_ = 0.5;
         double zoomCurrentTime_ = zoomDurationSeconds_;
         static constexpr int snapDurationFrames_ = 180;
         int snapCurrentFrame_ = snapDurationFrames_;
+        static constexpr int moveSpeed_ = 50;
+        bool moveRight_ = false;
+        bool moveLeft_ = false;
+        bool moveUp_ = false;
+        bool moveDown_ = false;
 
         C_Camera(
             vec2 startPos,
@@ -69,6 +74,11 @@ namespace IRComponents {
         // TODO: Delta time here
         void tick()
         {
+            IRProfile::engLogInfo(
+                "zoom: {}, {}. stepSize: {}, {}",
+                zoom_.x, zoom_.y,
+                triangleStepSizeScreen_.x, triangleStepSizeScreen_.y
+            );
             if(zoomCurrentTime_ < zoomDurationSeconds_) {
                 zoomCurrentTime_ = glm::clamp(
                     zoomCurrentTime_ + IRTime::deltaTime(IRTime::RENDER),
@@ -99,19 +109,58 @@ namespace IRComponents {
                     triangleStepSizeScreen_
                 );
             }
+            move();
         }
 
+        void moveUpStart() {
+            moveUp_ = true;
+        }
+        void moveDownStart() {
+            moveDown_ = true;
+        }
+        void moveLeftStart() {
+            moveLeft_ = true;
+        }
+        void moveRightStart() {
+            moveRight_ = true;
+        }
+        void moveUpStop() {
+            moveUp_ = false;
+        }
+        void moveDownStop() {
+            moveDown_ = false;
+        }
+        void moveLeftStop() {
+            moveLeft_ = false;
+        }
+        void moveRightStop() {
+            moveRight_ = false;
+        }
+        void move() {
+            if(moveUp_) {
+                moveUp();
+            }
+            if(moveDown_) {
+                moveDown();
+            }
+            if(moveLeft_) {
+                moveLeft();
+            }
+            if(moveRight_) {
+                moveRight();
+            }
+        }
         void moveUp() {
-            pos2DScreen_.y += 5;
+            pos2DScreen_.y += moveSpeed_ * IRTime::deltaTime(IRTime::RENDER);
         }
         void moveDown() {
-            pos2DScreen_.y -= 5;
+            pos2DScreen_.y -= moveSpeed_ * IRTime::deltaTime(IRTime::RENDER);
         }
         void moveLeft() {
-            pos2DScreen_.x += 5;
+            pos2DScreen_.x += moveSpeed_ * IRTime::deltaTime(IRTime::RENDER);
         }
         void moveRight() {
-            pos2DScreen_.x -= 5;
+            pos2DScreen_.x -= moveSpeed_ * IRTime::deltaTime(IRTime::RENDER);
         }
 
         void setFollowEntity(EntityId followEntity) {
@@ -161,12 +210,12 @@ namespace IRComponents {
             );
         }
 
-        void setTriangleStepSize(vec2 resolution) {
+        void setTriangleStepSizeScreen(vec2 gameResolution, int pixelScaleFactor) {
             triangleStepSizeScreen_ =
-                resolution /
-                IRMath::gameResolutionToSize2DIso(
-                    resolution,
-                    zoom_
+                IRMath::calcTriangleStepSizeScreen(
+                    gameResolution,
+                    zoom_,
+                    pixelScaleFactor
                 );
         }
 

@@ -13,6 +13,17 @@ namespace IRCommand {
         ZOOM_IN,
         ZOOM_OUT,
         CLOSE_WINDOW,
+        MOVE_CAMERA_LEFT_START,
+        MOVE_CAMERA_RIGHT_START,
+        MOVE_CAMERA_UP_START,
+        MOVE_CAMERA_DOWN_START,
+        MOVE_CAMERA_LEFT_END,
+        MOVE_CAMERA_RIGHT_END,
+        MOVE_CAMERA_UP_END,
+        MOVE_CAMERA_DOWN_END,
+        SCREENSHOT, // todo
+        RECORD_START, // todo
+        RECORD_STOP, // todo
         STOP_VELOCITY,
         RESHAPE_SPHERE,
         RESHAPE_RECTANGULAR_PRISM,

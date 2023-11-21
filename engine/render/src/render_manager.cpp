@@ -83,6 +83,7 @@ namespace IRRender {
     ,   m_gameResolution{IRConstants::kGameResolution}
     ,   m_outputResolution{0}
     {
+
         IRECS::setName(m_camera, "camera");
         std::vector<Color> colorPalette = {
             kPinkTanOrange[1],
@@ -225,12 +226,24 @@ namespace IRRender {
                 m_gameResolution.y
             )
         );
+        IRProfile::engLogInfo(
+            "Output scale factor: {}",
+            m_outputScaleFactor
+        );
+        IRProfile::engLogInfo(
+            "Game resolution: {}, {}",
+            m_gameResolution.x, m_gameResolution.y
+        );
         m_outputResolution = ivec2(
             m_gameResolution.x * m_outputScaleFactor,
             m_gameResolution.y * m_outputScaleFactor
         );
-        IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSize(
-            vec2(m_outputResolution)
+        IRProfile::engLogInfo(
+            "Output resolution: {}, {}",
+            m_outputResolution.x, m_outputResolution.y
+        );
+        IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
+            vec2(m_gameResolution), m_outputScaleFactor
         );
     }
 

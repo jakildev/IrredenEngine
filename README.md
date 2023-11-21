@@ -88,6 +88,7 @@ When building your project, you should note the available systems from each of t
 
 ## Contributing
 -   Submit pull requests directly to master.
+
 [Style rules and guidelines](/docs/rules/style.md)\
 [Opening a pull request](/docs/contributing/pull_requests.md)\
 [Submitting a new issue](/docs/contributing/issues.md)

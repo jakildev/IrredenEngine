@@ -10,16 +10,14 @@
 #include <irreden/ir_world.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_constants.hpp>
-
-// AUDIO SYSTEMS
+// SYSTEMS
+// -    AUDIO
 #include <irreden/audio/systems/system_audio_midi_message_in.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
-
-// INPUT SYSTEMS
+// -    INPUT
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_input_gamepad.hpp>
-
-// UPDATE SYSTEMS
+// -    UPDATE
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/update/systems/system_velocity.hpp>
@@ -31,22 +29,22 @@
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_particle_spawner.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
-
-// RENDER SYSTEMS
+// -    RENDER
 #include <irreden/render/systems/system_texture_scroll.hpp>
 #include <irreden/render/systems/system_single_voxel_to_canvas.hpp>
 #include <irreden/render/systems/system_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffers_to_screen.hpp>
 
-// VIDEO SYSTEMS
+// -    VIDEO
 #include <irreden/video/systems/system_video_encoder.hpp>
-
-// INPUT COMMANDS
+// COMMANDS
+// INPUT
 #include <irreden/input/commands/command_close_window.hpp>
 
 // RENDER COMMANDS
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
+#include <irreden/render/commands/command_move_camera.hpp>
 
 using namespace IRComponents;
 using namespace IRConstants;
@@ -157,6 +155,7 @@ void IRWorld::render()
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     m_inputManager.tickRender();
+    m_systemManager.executePipeline(SYSTEM_TYPE_RENDER);
     m_renderer.tick();
 
     m_timeManager.endEvent<IRTime::RENDER>();
@@ -184,6 +183,46 @@ void IRWorld::initEngineCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonMinus
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonD
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonD
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonA
     );
 }
 
@@ -240,7 +279,6 @@ void IRWorld::initIRUpdateSystems() {
 }
 
 void IRWorld::initIRRenderSystems() {
-    m_systemManager.registerSystemClass<RENDERING_TEXTURE_SCROLL, SYSTEM_TYPE_RENDER>();
     m_systemManager.registerSystemClass<
         RENDERING_SINGLE_VOXEL_TO_CANVAS,
         SYSTEM_TYPE_RENDER
@@ -256,6 +294,17 @@ void IRWorld::initIRRenderSystems() {
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         SYSTEM_TYPE_RENDER
     >();
+
+    m_systemManager.registerPipeline(
+        SYSTEM_TYPE_RENDER,
+        {
+            IRECS::createSystem<TEXTURE_SCROLL>()
+    //         IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS>(),
+    //         IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>(),
+    //         IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
+        }
+    );
+
 }
 
 // void IRWorld::setCameraPosition3D(const vec3& position) {

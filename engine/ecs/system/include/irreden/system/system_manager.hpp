@@ -165,6 +165,9 @@ namespace IRECS {
         }
 
         // TODO: return an id, SystemId, EntityId, or something.
+        // Pipelines should be able to take in arbirary data
+        // and return arbitrary data.
+        // This is currently done by transforming components I suppose
         void registerPipeline(
             SystemTypes systemType,
             std::list<SystemId> pipeline

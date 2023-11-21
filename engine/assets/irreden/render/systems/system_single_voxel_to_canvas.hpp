@@ -234,9 +234,9 @@ namespace IRECS {
             // }
             // else {
             // This should be somewhere else for sure
-            IRECS::getComponent<C_Position3D>(
-                IRRender::getCanvas("player")
-            ).pos_ = vec3(0.0f);
+            // IRECS::getComponent<C_Position3D>(
+            //     IRRender::getCanvas("player")
+            // ).pos_ = vec3(0.0f);
             // }
         }
     };

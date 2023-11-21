@@ -352,6 +352,23 @@ namespace IRMath {
         return gameResolution / vec2(2, 1) / scaleFactor;
     }
 
+    constexpr ivec2 calcTriangleStepSizeScreen(
+        const vec2 gameResolution,
+        const vec2 zoomLevel,
+        const int pixelScaleFactor
+    )
+    {
+        return (
+            ivec2(
+                gameResolution / gameResolutionToSize2DIso(
+                    gameResolution,
+                    zoomLevel
+                )
+            ) *
+            pixelScaleFactor
+        );
+    }
+
     constexpr uvec2 size2DIsoToGameResolution(
         const uvec2 size,
         const uvec2 scaleFactor
