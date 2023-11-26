@@ -35,7 +35,7 @@ namespace IRComponents {
         double zoomCurrentTime_ = zoomDurationSeconds_;
         static constexpr int snapDurationFrames_ = 180;
         int snapCurrentFrame_ = snapDurationFrames_;
-        static constexpr int moveSpeed_ = 50;
+        static constexpr int moveSpeed_ = 200;
         bool moveRight_ = false;
         bool moveLeft_ = false;
         bool moveUp_ = false;

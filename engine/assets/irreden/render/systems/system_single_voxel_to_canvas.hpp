@@ -40,6 +40,8 @@ constexpr int kMaxSingleVoxels =
 
 namespace IRECS {
 
+    
+
     template<>
     class System<RENDERING_SINGLE_VOXEL_TO_CANVAS> : public SystemBase<
         RENDERING_SINGLE_VOXEL_TO_CANVAS,
