@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: component_game_grid.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef COMPONENT_GAME_GRID_H
 #define COMPONENT_GAME_GRID_H
 

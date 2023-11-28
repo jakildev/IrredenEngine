@@ -16,8 +16,6 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
-#include <irreden/voxel/components/component_voxel_scene_node.hpp>
-
 
 using namespace IRMath;
 using IRRender::ImageData;

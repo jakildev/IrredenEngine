@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_math_types.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_MATH_TYPES_H
 #define IR_MATH_TYPES_H
 

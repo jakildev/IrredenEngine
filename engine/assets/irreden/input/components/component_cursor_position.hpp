@@ -10,10 +10,6 @@
 #ifndef COMPONENT_CURSOR_POSITION_H
 #define COMPONENT_CURSOR_POSITION_H
 
-// TODO: Should i keep a seperate position for rendering and game logic?
-// Probably not, but I do want the cursor position to update with the
-// renderer and not the logic, right????
-
 #include <irreden/ir_math.hpp>
 
 using IRMath::vec2;

@@ -26,9 +26,6 @@
 // TODO: a component should be registered with a size so it
 // can be copied around generically just as data.
 
-// TODO: When entities are truly like components and can have tick functions
-// and such, the world will be much easier!!
-
 // Entities can be grouped in their archetype nodes with
 // a ChildOf ____ component, where a child of a particular parent
 // is a unique component type.

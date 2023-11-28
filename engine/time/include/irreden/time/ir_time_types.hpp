@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_time_types.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_TIME_TYPES_H
 #define IR_TIME_TYPES_H
 

@@ -13,7 +13,6 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_input.hpp>
 
-
 #include <irreden/input/components/component_keyboard_key_status.hpp>
 #include <irreden/input/components/component_key_mouse_button.hpp>
 

@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_render_types.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_RENDER_TYPES_HPP
 #define IR_RENDER_TYPES_HPP
 

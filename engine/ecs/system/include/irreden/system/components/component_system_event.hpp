@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: component_system_event.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef COMPONENT_SYSTEM_EVENT_H
 #define COMPONENT_SYSTEM_EVENT_H
 

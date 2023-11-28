@@ -10,8 +10,6 @@
 #ifndef COMPONENT_VOXEL_POOL_H
 #define COMPONENT_VOXEL_POOL_H
 
-// Not sure if this is used rn, might get rid of it
-
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_ecs.hpp>
 

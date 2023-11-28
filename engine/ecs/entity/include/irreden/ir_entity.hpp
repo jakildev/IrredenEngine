@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_entity.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_ENTITY_H
 #define IR_ENTITY_H
 

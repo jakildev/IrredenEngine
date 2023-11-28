@@ -10,6 +10,8 @@
 #ifndef COMPONENT_GEOMETRIC_SHAPE_H
 #define COMPONENT_GEOMETRIC_SHAPE_H
 
+// Unused at the moment.
+
 #include <irreden/ir_math.hpp>
 
 using namespace IRMath;

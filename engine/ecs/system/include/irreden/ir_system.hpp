@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_system.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IR_SYSTEM_H
 #define IR_SYSTEM_H
 

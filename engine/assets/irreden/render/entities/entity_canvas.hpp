@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: entity_canvas.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef ENTITY_CANVAS_H
 #define ENTITY_CANVAS_H
 

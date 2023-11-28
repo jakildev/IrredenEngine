@@ -1,10 +1,18 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_input.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
-
 
 namespace IRInput {
 

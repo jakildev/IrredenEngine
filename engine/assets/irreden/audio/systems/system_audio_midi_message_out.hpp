@@ -7,8 +7,6 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-// TODO: MOVE TO AUDIO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 #ifndef SYSTEM_AUDIO_MIDI_MESSAGE_OUT_H
 #define SYSTEM_AUDIO_MIDI_MESSAGE_OUT_H
 

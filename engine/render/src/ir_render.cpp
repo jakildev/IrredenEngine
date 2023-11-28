@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_render.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_profile.hpp>
 

@@ -13,6 +13,7 @@
 
 #include <cstdarg>
 #include <string>
+
 namespace IRProfile {
 
     // TODO: Disable logging and asserts in release mode

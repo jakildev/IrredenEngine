@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_time.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_time.hpp>
 #include <irreden/time/time_manager.hpp>
 

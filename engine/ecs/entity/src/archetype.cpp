@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: archetype.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/entity/archetype.hpp>
 
 namespace IRECS {

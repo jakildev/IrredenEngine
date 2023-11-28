@@ -6,6 +6,7 @@
  * -----
  * Modified By: <your_name> <Month> <YYYY>
  */
+
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
 
@@ -15,7 +16,6 @@
 #include <irreden/render/entities/entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-// #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>

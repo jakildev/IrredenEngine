@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: ir_system.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_system.hpp>
 
 namespace IRECS {

@@ -5,8 +5,6 @@
  * Created Date: October 2023
  * -----
  * Modified By: <your_name> <Month> <YYYY>
- * -----
- * Copyright
  */
 
 #ifndef PREFABS_H

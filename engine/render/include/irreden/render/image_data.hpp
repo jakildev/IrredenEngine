@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: image_data.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef IMAGE_DATA_H
 #define IMAGE_DATA_H
 

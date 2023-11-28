@@ -26,8 +26,6 @@ namespace IRECS {
         static EntityHandle create() {
             EntityHandle entity{};
             entity.set(C_Example{});
-            // REMOVE BEFORE PUBLISH
-            entity.set(C_IsNotPure{}); // This is what you have to do for now
             return entity;
         }
     };

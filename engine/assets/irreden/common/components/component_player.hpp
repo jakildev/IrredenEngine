@@ -19,7 +19,6 @@ namespace IRComponents {
 
         }
 
-
     };
 
 } // namespace IRComponents

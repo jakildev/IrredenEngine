@@ -20,7 +20,6 @@ struct C_CameraPosition2DIso {
     vec2 pos_;
     float tempPackBuffer_;
 
-
     C_CameraPosition2DIso(
         vec2 pos
     )

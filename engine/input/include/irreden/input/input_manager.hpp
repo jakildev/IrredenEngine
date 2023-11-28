@@ -1,3 +1,12 @@
+/*
+ * Project: Irreden Engine
+ * File: input_manager.hpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #ifndef INPUT_MANAGER_H
 #define INPUT_MANAGER_H
 
