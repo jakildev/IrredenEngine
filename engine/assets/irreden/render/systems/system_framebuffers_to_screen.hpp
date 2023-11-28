@@ -29,23 +29,13 @@ using namespace IRMath;
 
 namespace IRECS {
 
-    // template <>
-    // struct System<RENDERING_FRAMEBUFFER_TO_SCREEN> {
-
-    // };
-
     template <>
-    class System<RENDERING_FRAMEBUFFER_TO_SCREEN> : public SystemBase<
-        RENDERING_FRAMEBUFFER_TO_SCREEN,
-        C_TriangleCanvasFramebuffer,
-        C_Position3D,
-        C_CameraPosition2DIso,
-        C_Name
-    >   {
-    public:
-        System()
-        :   m_shaderProgram{  // FramebufferBasic
-                {
+    struct System<RENDERING_FRAMEBUFFER_TO_SCREEN> {
+        static SystemId create() {
+            static FrameDataFramebuffer frameData{};
+            IRRender::createNamedResource<ShaderProgram>(
+                "FramebufferToScreenProgram",
+                std::vector{
                     ShaderStage{
                         IRRender::kFileVertFramebufferScreen,
                         GL_VERTEX_SHADER
@@ -55,118 +45,66 @@ namespace IRECS {
                         GL_FRAGMENT_SHADER
                     }.getHandle()
                 }
-            }
-        ,   m_bufferTexturedQuad{
-                IRShapes2D::k2DQuadTextured,
-                sizeof(IRShapes2D::k2DQuadTextured),
-                0
-            }
-        ,   m_vaoTexturedQuad{
-                m_bufferTexturedQuad.getHandle(),
-                0,
-                2,
-                kAttrList2Float2
-            }
-        ,   m_bufferFrameData{
+            );
+            IRRender::createNamedResource<Buffer>(
+                "FramebufferToScreenFrameData",
                 nullptr,
                 sizeof(FrameDataFramebuffer),
                 GL_DYNAMIC_STORAGE_BIT,
                 GL_UNIFORM_BUFFER,
                 kBufferIndex_FramebufferFrameDataUniform
-            }
-        ,   m_frameData{}
-        {
-            IRProfile::engLogInfo("Created system RENDERING_FRAMEBUFFER_TO_SCREEN");
-        }
+            );
 
-        void tickWithArchetype(
-            Archetype type,
-            std::vector<EntityId>& entities,
-            const std::vector<C_TriangleCanvasFramebuffer>& framebuffers,
-            const std::vector<C_Position3D>& cameraPosition,
-            const std::vector<C_CameraPosition2DIso>& cameraPositionIso,
-            const std::vector<C_Name>& names
-        )
-        {
-            for(int i = 0; i < entities.size(); i++) {
-                // if(t)
-                const C_TriangleCanvasFramebuffer& framebuffer =
-                    framebuffers[i];
-
-                framebuffer.bindTextures(0, 1);
-                m_frameData.mvpMatrix =
-                    calcProjectionMatrix() *
-                    calcModelMatrix(
-                        framebuffer.getResolution(),
-                        framebuffer.getResolutionPlusBuffer(),
-                        cameraPosition[i].pos_,
-                        cameraPositionIso[i].pos_,
-                        names[i].name_
-                    );
-                // perhaps update someday
-                  if(type.contains(
-                    IRECS::getEntityManager().
-                        getComponentType<C_TextureScrollPosition>()
-                ))
+            return createSystem<
+                C_TriangleCanvasFramebuffer,
+                C_Position3D,
+                C_CameraPosition2DIso,
+                C_Name
+            >
+            (
+               "FramebufferToScreen",
+               [](
+                    const C_TriangleCanvasFramebuffer& framebuffer,
+                    const C_Position3D& cameraPosition,
+                    const C_CameraPosition2DIso& cameraPositionIso,
+                    const C_Name& name
+                )
                 {
-                    auto& textureScroll = IRECS::getComponent<C_TextureScrollPosition>(
-                        entities[i]
+
+                    framebuffer.bindTextures(0, 1);
+                    frameData.mvpMatrix =
+                        calcProjectionMatrix() *
+                        calcModelMatrix(
+                            framebuffer.getResolution(),
+                            framebuffer.getResolutionPlusBuffer(),
+                            cameraPosition.pos_,
+                            cameraPositionIso.pos_,
+                            name.name_
+                        );
+                    IRRender::getNamedResource<Buffer>(
+                        "FramebufferToScreenFrameData"
+                    )->subData(
+                        0,
+                        sizeof(FrameDataFramebuffer),
+                        &frameData
                     );
-                    // TODO: This should be updated elsewhere
-                    m_frameData.textureOffset = textureScroll.position_;
+                    ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                    ENG_API->glDrawArrays(GL_TRIANGLES, 0, 6);
+                },
+                []() {
+                    bindDefaultFramebuffer();
+                    clearDefaultFramebuffer();
+                    IRRender::getNamedResource<ShaderProgram>(
+                        "FramebufferToScreenProgram"
+                    )->use();
+                    IRRender::getNamedResource<VAO>(
+                        "QuadVAOArrays"
+                    )->bind();
                 }
-                else{
-                    m_frameData.textureOffset = vec2(0);
-                }
-                m_bufferFrameData.subData(
-                    0,
-                    sizeof(FrameDataFramebuffer),
-                    &m_frameData
-                );
-                ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                ENG_API->glDrawArrays(GL_TRIANGLES, 0, 6);
-            }
+            );
         }
     private:
-        ShaderProgram m_shaderProgram;
-        Buffer m_bufferTexturedQuad;
-        VAO m_vaoTexturedQuad;
-        Buffer m_bufferFrameData;
-        FrameDataFramebuffer m_frameData;
-
-        ivec2 m_viewportThisFrame;
-
-        virtual void beginExecute() override {
-
-            m_viewportThisFrame = IRRender::getViewport();
-            bindDefaultFramebuffer();
-            clearDefaultFramebuffer();
-            m_shaderProgram.use();
-            m_vaoTexturedQuad.bind();
-        }
-
-        virtual void endExecute() override {
-
-        }
-
-        void bindDefaultFramebuffer() {
-            ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            ENG_API->glViewport(
-                0,
-                0,
-                m_viewportThisFrame.x,
-                m_viewportThisFrame.y
-            );
-            ENG_API->glEnable(GL_DEPTH_TEST);
-            ENG_API->glDepthFunc(GL_LESS);
-        }
-
-        void clearDefaultFramebuffer() {
-            ENG_API->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            ENG_API->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        }
-
-        mat4 calcModelMatrix(
+        static mat4 calcModelMatrix(
             ivec2 resolution,
             ivec2 resolutionPlusBuffer,
             vec3 cameraPosition,
@@ -178,8 +116,8 @@ namespace IRECS {
                 IRRender::getOutputScaleFactor();
 
             // also known as screen center
-            float xOffset = m_viewportThisFrame.x / 2.0f;
-            float yOffset = m_viewportThisFrame.y / 2.0f;
+            float xOffset = IRRender::getViewport().x / 2.0f;
+            float yOffset = IRRender::getViewport().y / 2.0f;
             vec2 offset =
                 vec2(xOffset, yOffset) +
                 (pos3DtoPos2DScreen(
@@ -232,16 +170,33 @@ namespace IRECS {
             return model;
         }
 
-        mat4 calcProjectionMatrix() {
+        static mat4 calcProjectionMatrix() {
             mat4 projection = glm::ortho(
                 0.0f,
-                (float)(m_viewportThisFrame.x),
+                (float)IRRender::getViewport().x,
                 0.0f,
-                (float)(m_viewportThisFrame.y),
+                (float)IRRender::getViewport().y,
                 -1.0f,
                 100.0f
             );
             return projection;
+        }
+
+        static void bindDefaultFramebuffer() {
+            ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            ENG_API->glViewport(
+                0,
+                0,
+                IRRender::getViewport().x,
+                IRRender::getViewport().y
+            );
+            ENG_API->glEnable(GL_DEPTH_TEST);
+            ENG_API->glDepthFunc(GL_LESS);
+        }
+
+        static void clearDefaultFramebuffer() {
+            ENG_API->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            ENG_API->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
     };
 

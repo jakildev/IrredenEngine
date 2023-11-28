@@ -57,7 +57,8 @@ namespace IRRender {
 
     struct FrameDataFramebuffer {
         glm::mat4 mvpMatrix;
-        vec2 textureOffset;
+        vec2 textureOffset; // TODO: Update in texture scroll system and make
+        // a frame data component as well or add as field for shader program
     };
     constexpr GLuint kBufferIndex_FramebufferFrameDataUniform = 2;
     constexpr GLsizeiptr kFramebufferFrameDataUniformBufferSize =

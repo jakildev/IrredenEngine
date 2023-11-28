@@ -83,12 +83,14 @@ IRWorld::~IRWorld() {
 
 }
 
+// rename event loop;
 void IRWorld::gameLoop() {
 
     // init();
     initGameSystems();
     initGameEntities();
 
+    // make events
     start();
     while (!m_IRGLFWWindow.shouldClose())
     {
@@ -104,6 +106,7 @@ void IRWorld::gameLoop() {
         // TODO: Set frame caps
         render(); // ???
     }
+    // cleanup();
     end();
 }
 
@@ -112,14 +115,11 @@ void IRWorld::input() {
 
     // TODO: Make this an event from timeManager after
     // making that more generic.
-    IRProfile::engLogDebug("Begin input world.");
     m_inputManager.tick();
     m_audioManager.getMidiIn().tick();
 
     m_systemManager.executePipeline(SYSTEM_TYPE_INPUT);
     m_systemManager.executeGroup<SYSTEM_TYPE_INPUT>();
-
-    IRProfile::engLogDebug("End input world.");
 }
 
 void IRWorld::start() {
@@ -280,20 +280,9 @@ void IRWorld::initIRUpdateSystems() {
 
 void IRWorld::initIRRenderSystems() {
     // m_systemManager.registerSystemClass<
-    //     RENDERING_SINGLE_VOXEL_TO_CANVAS,
+    //     RENDERING_FRAMEBUFFER_TO_SCREEN,
     //     SYSTEM_TYPE_RENDER
     // >();
-    // m_systemManager.registerSystemClass<
-    //     RENDERING_CANVAS_TO_FRAMEBUFFER,
-    //     SYSTEM_TYPE_RENDER
-    // >
-    // (
-    //     IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
-    // );
-    m_systemManager.registerSystemClass<
-        RENDERING_FRAMEBUFFER_TO_SCREEN,
-        SYSTEM_TYPE_RENDER
-    >();
 
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_RENDER,
@@ -302,7 +291,7 @@ void IRWorld::initIRRenderSystems() {
         ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
         ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
         ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()
-    //         IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
+        ,   IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
         }
     );
 

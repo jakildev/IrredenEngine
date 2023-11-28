@@ -38,23 +38,6 @@ namespace IRECS {
             static FrameDataIsoTriangles frameData{
                 .mpMatrix_ = mat4(1)
             };
-            Buffer* vertexBuffer = IRRender::createResource<Buffer>(
-                IRShapes2D::kQuadVertices,
-                sizeof(IRShapes2D::kQuadVertices),
-                0
-            ).second;
-            Buffer* indexBuffer = IRRender::createResource<Buffer>(
-                IRShapes2D::kQuadIndices,
-                sizeof(IRShapes2D::kQuadIndices),
-                0
-            ).second;
-            IRRender::createNamedResource<VAO>(
-                "CanvasToFramebufferVAO",
-                vertexBuffer->getHandle(),
-                indexBuffer->getHandle(),
-                1,
-                &kAttrFloat2
-            );
             IRRender::createNamedResource<ShaderProgram>(
                 "CanvasToFramebufferProgram",
                 std::vector{
@@ -153,7 +136,7 @@ namespace IRECS {
                         "CanvasToFramebufferProgram"
                     )->use();
                     IRRender::getNamedResource<VAO>(
-                        "CanvasToFramebufferVAO"
+                        "QuadVAO"
                     )->bind();
                 }
             );

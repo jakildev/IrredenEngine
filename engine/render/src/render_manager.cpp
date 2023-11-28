@@ -208,6 +208,36 @@ namespace IRRender {
     }
 
     void RenderManager::initRenderingResources() {
+        Buffer* vertexBuffer = IRRender::createResource<Buffer>(
+            IRShapes2D::kQuadVertices,
+            sizeof(IRShapes2D::kQuadVertices),
+            0
+        ).second;
+        Buffer* indexBuffer = IRRender::createResource<Buffer>(
+            IRShapes2D::kQuadIndices,
+            sizeof(IRShapes2D::kQuadIndices),
+            0
+        ).second;
+        IRRender::createNamedResource<VAO>(
+            "QuadVAO",
+            vertexBuffer->getHandle(),
+            indexBuffer->getHandle(),
+            1,
+            &kAttrFloat2
+        );
+
+        Buffer* vertexBufferTextured = IRRender::createResource<Buffer>(
+            IRShapes2D::k2DQuadTextured,
+            sizeof(IRShapes2D::k2DQuadTextured),
+            0
+        ).second;
+        IRRender::createNamedResource<VAO>(
+            "QuadVAOArrays",
+            vertexBufferTextured->getHandle(),
+            0,
+            2,
+            kAttrList2Float2
+        );
 
     }
 
