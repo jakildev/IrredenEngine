@@ -26,9 +26,30 @@ namespace IRRender {
         return getRenderingResourceManager().create<T>(std::forward<Args>(args)...);
     }
 
+    template <typename T, typename... Args>
+    std::pair<ResourceId, T*> createNamedResource(
+        const std::string& name,
+        Args&&... args
+    ) {
+        return getRenderingResourceManager().createNamed<T>(
+            name,
+            std::forward<Args>(args)...
+        );
+    }
+
     template <typename T>
     void destroyResource(ResourceId resource) {
         getRenderingResourceManager().destroy<T>(resource);
+    }
+
+    template <typename T>
+    T* getResource(ResourceId resource) {
+        return getRenderingResourceManager().get<T>(resource);
+    }
+
+    template <typename T>
+    T* getNamedResource(std::string resourceName) {
+        return getRenderingResourceManager().getNamed<T>(resourceName);
     }
 
     inline std::tuple<

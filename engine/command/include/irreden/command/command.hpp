@@ -24,7 +24,7 @@ namespace IRCommand {
     class CommandStruct;
 
     template <>
-    class CommandStruct<IR_COMMAND_USER> {
+    class CommandStruct<COMMAND_BUTTON> {
     public:
         template <
             typename Function
@@ -71,7 +71,7 @@ namespace IRCommand {
     };
 
     template <>
-    class CommandStruct<IR_COMMAND_MIDI_NOTE> {
+    class CommandStruct<COMMAND_MIDI_NOTE> {
     public:
         template <typename Function, typename... Args>
         CommandStruct(
@@ -113,7 +113,7 @@ namespace IRCommand {
     };
 
     template <>
-    class CommandStruct<IR_COMMAND_MIDI_CC> {
+    class CommandStruct<COMMAND_MIDI_CC> {
     public:
         template <typename Function>
         CommandStruct(

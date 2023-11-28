@@ -82,6 +82,20 @@ namespace IRRender {
     ,   m_viewport{0}
     ,   m_gameResolution{IRConstants::kGameResolution}
     ,   m_outputResolution{0}
+    // ,   m_bufferVoxelPositions{
+    //         nullptr,
+    //         IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
+    //         GL_DYNAMIC_STORAGE_BIT,
+    //         GL_SHADER_STORAGE_BUFFER,
+    //         kBufferIndex_SingleVoxelPositions
+    //     }
+    // ,   m_bufferVoxelColors{
+    //         nullptr,
+    //         IRConstants::kMaxSingleVoxels * sizeof(C_Voxel),
+    //         GL_DYNAMIC_STORAGE_BIT,
+    //         GL_SHADER_STORAGE_BUFFER,
+    //         kBufferIndex_SingleVoxelColors
+    //     }
     {
 
         IRECS::setName(m_camera, "camera");
@@ -112,6 +126,7 @@ namespace IRRender {
         m_canvasMap["main"] = m_mainCanvas;
         m_canvasMap["player"] = m_playerCanvas;
 
+        initRenderingResources();
         initRenderingSystems();
         g_renderManager = this;
         IRProfile::engLogInfo("Created renderer.");
@@ -190,6 +205,10 @@ namespace IRRender {
 
     EntityId RenderManager::getCanvas(std::string canvasName) {
         return m_canvasMap[canvasName];
+    }
+
+    void RenderManager::initRenderingResources() {
+
     }
 
     void RenderManager::initRenderingSystems() {

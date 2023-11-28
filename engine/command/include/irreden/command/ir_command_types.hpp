@@ -31,8 +31,7 @@ namespace IRCommand {
         // a query and stuff, and should exclude "locked entities"
         LOCK_VOXEL_SCALE, // TODO: This will zoom in the rendered framebuffer,
         // and not change the on the canvas to framebuffer...
-        UNLOCK_VOXEL_SCALE, // TODO: see above
-        NUM_COMMANDS
+        UNLOCK_VOXEL_SCALE // TODO: see above
     };
 
     template <CommandNames command>
@@ -40,9 +39,9 @@ namespace IRCommand {
 
     enum CommandTypes {
         IR_COMMAND_NULL,
-        IR_COMMAND_USER,
-        IR_COMMAND_MIDI_NOTE,
-        IR_COMMAND_MIDI_CC
+        COMMAND_BUTTON,
+        COMMAND_MIDI_NOTE,
+        COMMAND_MIDI_CC
     };
 
 

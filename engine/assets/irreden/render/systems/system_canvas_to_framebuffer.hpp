@@ -33,47 +33,31 @@ using namespace IRMath;
 namespace IRECS {
 
     template <>
-    class System<RENDERING_CANVAS_TO_FRAMEBUFFER> : public SystemBase<
-        RENDERING_CANVAS_TO_FRAMEBUFFER,
-        C_TriangleCanvasTextures,
-        C_TriangleCanvasFramebuffer,
-        C_CameraPosition2DIso,
-        C_ZoomLevel
-    >   {
-    public:
-        System(
-            ivec2 sceneSize
-        )
-        :   m_cameraOffset{- ivec2(m_isoTriangleScreenSize) / 2}
-        ,   m_vertexBuffer {
+    struct System<RENDERING_CANVAS_TO_FRAMEBUFFER> {
+        static SystemId create() {
+            static FrameDataIsoTriangles frameData{
+                .mpMatrix_ = mat4(1)
+            };
+            Buffer* vertexBuffer = IRRender::createResource<Buffer>(
                 IRShapes2D::kQuadVertices,
                 sizeof(IRShapes2D::kQuadVertices),
                 0
-            }
-        ,   m_indexBuffer {
+            ).second;
+            Buffer* indexBuffer = IRRender::createResource<Buffer>(
                 IRShapes2D::kQuadIndices,
                 sizeof(IRShapes2D::kQuadIndices),
                 0
-            }
-        ,   m_frameDataBuffer{
-                nullptr,
-                sizeof(FrameDataIsoTriangles),
-                GL_DYNAMIC_STORAGE_BIT,
-                GL_UNIFORM_BUFFER,
-                kBufferIndex_FrameDataUniformIsoTriangles
-            }
-        ,   m_mpMatrix{mat4(1.0f)}
-        ,   m_frameData{
-                .mpMatrix_ = mat4(1)
-            }
-        ,   m_vao {
-                m_vertexBuffer.getHandle(),
-                m_indexBuffer.getHandle(),
+            ).second;
+            IRRender::createNamedResource<VAO>(
+                "CanvasToFramebufferVAO",
+                vertexBuffer->getHandle(),
+                indexBuffer->getHandle(),
                 1,
                 &kAttrFloat2
-            }
-        ,   m_shaderProgram {
-                {
+            );
+            IRRender::createNamedResource<ShaderProgram>(
+                "CanvasToFramebufferProgram",
+                std::vector{
                     ShaderStage{
                         IRRender::kFileVertIsoTrianglesScreen,
                         GL_VERTEX_SHADER
@@ -83,101 +67,96 @@ namespace IRECS {
                         GL_FRAGMENT_SHADER
                     }.getHandle()
                 }
-            }
-        {
-            IRProfile::engLogInfo(
-                "Created system RENDERING_CANVAS_TO_FRAMEBUFFER"
             );
-        }
 
-        void tickWithArchetype(
-            Archetype type,
-            std::vector<EntityId>& entities,
-            const std::vector<C_TriangleCanvasTextures>& triangleCanvasTextures,
-            const std::vector<C_TriangleCanvasFramebuffer>& framebuffers,
-            const std::vector<C_CameraPosition2DIso>& cameraPositions,
-            const std::vector<C_ZoomLevel>& zoomLevels
-        )
-        {
-            // Step 1: write all triangles to respective framebuffers
-            for(int i = 0; i < entities.size(); i++) {
-                vec2 framebufferResolution =
-                    vec2(framebuffers[i].getResolutionPlusBuffer());
-                mat4 projection = glm::ortho(
-                    0.0f,
-                    framebufferResolution.x,
-                    0.0f,
-                    framebufferResolution.y,
-                    -1.0f,
-                    100.0f
-                );
-                framebuffers[i].bindFramebuffer();
-                framebuffers[i].clear();
+            IRRender::createNamedResource<Buffer>(
+                "CanvasToFramebufferFrameData",
+                nullptr,
+                sizeof(FrameDataIsoTriangles),
+                GL_DYNAMIC_STORAGE_BIT,
+                GL_UNIFORM_BUFFER,
+                kBufferIndex_FrameDataUniformIsoTriangles
+            );
+            return createSystem<
+                C_TriangleCanvasTextures,
+                C_TriangleCanvasFramebuffer,
+                C_CameraPosition2DIso,
+                C_ZoomLevel
+            >(
+                "CanvasToFramebuffer",
+                [](
+                    const C_TriangleCanvasTextures& triangleCanvasTextures,
+                    const C_TriangleCanvasFramebuffer& framebuffer,
+                    const C_CameraPosition2DIso& cameraPosition,
+                    const C_ZoomLevel& zoomLevel
+                )
+                {
+                    vec2 framebufferResolution =
+                        vec2(framebuffer.getResolutionPlusBuffer());
+                    mat4 projection = glm::ortho(
+                        0.0f,
+                        framebufferResolution.x,
+                        0.0f,
+                        framebufferResolution.y,
+                        -1.0f,
+                        100.0f
+                    );
+                    framebuffer.bindFramebuffer();
+                    framebuffer.clear();
 
-                m_frameData.canvasZoomLevel_ =
-                    IRRender::getCameraZoom() *
-                    zoomLevels[i].zoom_;
+                    frameData.canvasZoomLevel_ =
+                        IRRender::getCameraZoom() *
+                        zoomLevel.zoom_;
 
-                mat4 model = mat4(1.0f);
-                model = glm::translate(
-                    model,
-                    glm::vec3(
-                        framebufferResolution.x / 2,
-                        framebufferResolution.y / 2,
-                        0.0f
-                    )
-                );
-                model = glm::scale(
-                    model,
-                    glm::vec3(
-                        framebufferResolution.x *
-                            m_frameData.canvasZoomLevel_.x,
-                        framebufferResolution.y *
-                            m_frameData.canvasZoomLevel_.y,
-                        1.0f
-                    )
-                );
-                m_frameData.mpMatrix_ = projection * model;
-                m_frameData.canvasOffset_ = cameraPositions[i].pos_;
+                    mat4 model = mat4(1.0f);
+                    model = glm::translate(
+                        model,
+                        glm::vec3(
+                            framebufferResolution.x / 2,
+                            framebufferResolution.y / 2,
+                            0.0f
+                        )
+                    );
+                    model = glm::scale(
+                        model,
+                        glm::vec3(
+                            framebufferResolution.x *
+                                frameData.canvasZoomLevel_.x,
+                            framebufferResolution.y *
+                                frameData.canvasZoomLevel_.y,
+                            1.0f
+                        )
+                    );
+                    frameData.mpMatrix_ = projection * model;
+                    frameData.canvasOffset_ = cameraPosition.pos_;
 
+                    frameData.textureOffset_ = vec2(0);
+                    IRRender::getNamedResource<Buffer>(
+                        "CanvasToFramebufferFrameData"
+                    )->subData(
+                        0,
+                        sizeof(FrameDataIsoTriangles),
+                        &frameData
+                    );
+                    triangleCanvasTextures.bind(0, 1);
 
-                m_frameData.textureOffset_ = vec2(0);
-                m_frameDataBuffer.subData(
-                    0,
-                    sizeof(FrameDataIsoTriangles),
-                    &m_frameData
-                );
-                triangleCanvasTextures[i].bind(0, 1);
-
-                ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
-                ENG_API->glDrawElements(
-                    GL_TRIANGLES,
-                    IRShapes2D::kQuadIndicesLength,
-                    GL_UNSIGNED_SHORT,
-                    nullptr
-                );
-            }
-        }
-    private:
-        uvec2 m_isoTriangleScreenSize;
-        ivec2 m_cameraOffset;
-        Buffer m_vertexBuffer;
-        Buffer m_indexBuffer;
-        Buffer m_frameDataBuffer;
-        VAO m_vao;
-        ShaderProgram m_shaderProgram;
-        mat4 m_mpMatrix;
-        FrameDataIsoTriangles m_frameData;
-        int m_executeCount;
-
-        virtual void beginExecute() override {
-            m_shaderProgram.use();
-            m_vao.bind();
-
-        }
-
-        virtual void endExecute() override {
-
+                    ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
+                    ENG_API->glDrawElements(
+                        GL_TRIANGLES,
+                        IRShapes2D::kQuadIndicesLength,
+                        GL_UNSIGNED_SHORT,
+                        nullptr
+                    );
+                },
+                []() {
+                    IRRender::getNamedResource<ShaderProgram>(
+                        "CanvasToFramebufferProgram"
+                    )->use();
+                    IRRender::getNamedResource<VAO>(
+                        "CanvasToFramebufferVAO"
+                    )->bind();
+                }
+            );
         }
     };
 

@@ -13,9 +13,6 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/render/rendering_rm.hpp>
-#include <irreden/render/texture.hpp>
-
 using namespace IRMath;
 using namespace IRRender;
 

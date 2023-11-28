@@ -39,6 +39,9 @@ namespace IRRender {
         inline ivec2 getGameResolution() const { return m_gameResolution; }
         inline ivec2 getOutputResolution() const { return m_outputResolution; }
         inline int getOutputScaleFactor() const { return m_outputScaleFactor; }
+        // TODO: Remove once a better render pipeline creator is in place
+        // inline const Buffer& getBufferVoxelPositions() const { return m_bufferVoxelPositions; }
+        // inline const Buffer& getBufferVoxelColors() const { return m_bufferVoxelColors; }
 
         EntityId getCanvas(std::string canvasName);
         vec2 getCameraPositionScreen() const;
@@ -70,6 +73,8 @@ namespace IRRender {
     private:
         IRInput::IRGLFWWindow& m_window;
         Buffer m_bufferUniformConstantsGLSL;
+        // Buffer m_bufferVoxelPositions;
+        // Buffer m_bufferVoxelColors;
         EntityId m_backgroundCanvas;
         EntityId m_mainCanvas;
         EntityId m_playerCanvas;
@@ -81,6 +86,7 @@ namespace IRRender {
         std::unordered_map<std::string, IRECS::EntityId> m_canvasMap;
 
         void initRenderingSystems();
+        void initRenderingResources();
         void updateOutputResolution();
     };
 

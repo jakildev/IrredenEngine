@@ -69,8 +69,21 @@ namespace IRRender {
             ResourceDataImpl<T>* container = static_cast<ResourceDataImpl<T>*>(m_resourceMaps[type].get());
             auto res = container->resourceMap.emplace(id, std::make_unique<T>(std::forward<Args>(args)...));
             m_liveResourceCount++;
-            IRProfile::engLogInfo("Created ResourceId={}, type={}, codepath 2", id, type);
+            IRProfile::engLogInfo("Created ResourceId={}, type={}", id, type);
             return std::pair(id, res.first->second.get());
+        }
+
+        template <typename T, typename... Args>
+        std::pair<ResourceId, T*> createNamed(
+            const std::string& name,
+            Args&&... args
+        )
+        {
+            IR_ASSERT(!m_namedResources.contains(name), "Resource name already exists: {}", name);
+            auto result = create<T>(std::forward<Args>(args)...);
+            m_namedResources.insert({name, result.first});
+            IRProfile::engLogInfo(" Resource {} named {}", result.first, name);
+            return result;
         }
 
         template <typename T>
@@ -80,9 +93,21 @@ namespace IRRender {
             auto it = container->resourceMap.find(resource);
             IR_ASSERT(
                 it != container->resourceMap.end(),
-                "Failed to find resource."
+                "Failed to find resource: {}",
+                resource
             );
             return it->second.get();
+        }
+
+        template <typename T>
+        T* getNamed(const std::string& name) {
+            auto it = m_namedResources.find(name);
+            IR_ASSERT(
+                it != m_namedResources.end(),
+                "Failed to find named resource: {}",
+                name
+            );
+            return get<T>(it->second);
         }
 
         template <typename T>
@@ -96,8 +121,10 @@ namespace IRRender {
     private:
         std::queue<ResourceId> m_resourcePool;
         int m_liveResourceCount = 0;
+        // TODO: Does this have to be a unique pointer
         std::unordered_map<ResourceType, std::unique_ptr<ResourceData>> m_resourceMaps;
         std::unordered_map<std::string, ResourceType> m_resourceTypes;
+        std::unordered_map<std::string, ResourceId> m_namedResources;
         ResourceType m_nextResourceType = 0;
 
         // Singleton

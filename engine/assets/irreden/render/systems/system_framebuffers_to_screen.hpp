@@ -29,6 +29,11 @@ using namespace IRMath;
 
 namespace IRECS {
 
+    // template <>
+    // struct System<RENDERING_FRAMEBUFFER_TO_SCREEN> {
+
+    // };
+
     template <>
     class System<RENDERING_FRAMEBUFFER_TO_SCREEN> : public SystemBase<
         RENDERING_FRAMEBUFFER_TO_SCREEN,

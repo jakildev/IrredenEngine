@@ -38,6 +38,7 @@ namespace IRECS {
         ~SystemManager() = default;
 
         // TODO: Consolidate createSystem and createNodeSystem
+        // TODO: Make parameters a struct and check for specific fields
         template <
             typename... Components,
             typename FunctionTick,

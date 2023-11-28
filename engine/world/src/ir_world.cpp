@@ -279,17 +279,17 @@ void IRWorld::initIRUpdateSystems() {
 }
 
 void IRWorld::initIRRenderSystems() {
-    m_systemManager.registerSystemClass<
-        RENDERING_SINGLE_VOXEL_TO_CANVAS,
-        SYSTEM_TYPE_RENDER
-    >();
-    m_systemManager.registerSystemClass<
-        RENDERING_CANVAS_TO_FRAMEBUFFER,
-        SYSTEM_TYPE_RENDER
-    >
-    (
-        IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
-    );
+    // m_systemManager.registerSystemClass<
+    //     RENDERING_SINGLE_VOXEL_TO_CANVAS,
+    //     SYSTEM_TYPE_RENDER
+    // >();
+    // m_systemManager.registerSystemClass<
+    //     RENDERING_CANVAS_TO_FRAMEBUFFER,
+    //     SYSTEM_TYPE_RENDER
+    // >
+    // (
+    //     IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
+    // );
     m_systemManager.registerSystemClass<
         RENDERING_FRAMEBUFFER_TO_SCREEN,
         SYSTEM_TYPE_RENDER
@@ -299,8 +299,9 @@ void IRWorld::initIRRenderSystems() {
         SYSTEM_TYPE_RENDER,
         {
             IRECS::createSystem<TEXTURE_SCROLL>()
-    //         IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS>(),
-    //         IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>(),
+        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
+        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
+        ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()
     //         IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
         }
     );

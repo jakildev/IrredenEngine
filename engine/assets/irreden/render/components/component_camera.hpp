@@ -74,11 +74,6 @@ namespace IRComponents {
         // TODO: Delta time here
         void tick()
         {
-            IRProfile::engLogInfo(
-                "zoom: {}, {}. stepSize: {}, {}",
-                zoom_.x, zoom_.y,
-                triangleStepSizeScreen_.x, triangleStepSizeScreen_.y
-            );
             if(zoomCurrentTime_ < zoomDurationSeconds_) {
                 zoomCurrentTime_ = glm::clamp(
                     zoomCurrentTime_ + IRTime::deltaTime(IRTime::RENDER),
