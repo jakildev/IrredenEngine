@@ -247,32 +247,23 @@ void IRWorld::initIRInputSystems() {
 void IRWorld::initIRUpdateSystems() {
 
 
-    SystemId systemParticleSpawner = IRECS::createSystem<PARTICLE_SPAWNER>();
-    SystemId systemVelocity = IRECS::createSystem<VELOCITY_3D>();
-    SystemId systemAcceleration = IRECS::createSystem<ACCELERATION_3D>();
-    SystemId systemGravity = IRECS::createSystem<GRAVITY_3D>();
-    SystemId systemPeriodicIdle = IRECS::createSystem<PERIODIC_IDLE>();
-    SystemId systemGoto = IRECS::createSystem<GOTO_3D>();
-    SystemId systemGlobalPosition = IRECS::createSystem<GLOBAL_POSITION_3D>();
-    // Move to output systems
-    SystemId systemMidiMessageOut = IRECS::createSystem<OUTPUT_MIDI_MESSAGE_OUT>();
-    SystemId systemUpdateVoxelSetChildren = IRECS::createSystem<UPDATE_VOXEL_SET_CHILDREN>();
-    SystemId systemLifetime = IRECS::createSystem<LIFETIME>();
-    // m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
+
 
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_UPDATE,
         {
-            systemParticleSpawner,
-            systemVelocity,
-            systemAcceleration,
-            systemGravity,
-            systemPeriodicIdle,
-            systemGoto,
-            systemGlobalPosition,
-            systemMidiMessageOut,
-            systemUpdateVoxelSetChildren,
-            systemLifetime
+            IRECS::createSystem<PARTICLE_SPAWNER>()
+        ,   IRECS::createSystem<VELOCITY_3D>()
+        ,   IRECS::createSystem<ACCELERATION_3D>()
+        ,   IRECS::createSystem<GRAVITY_3D>()
+        ,   IRECS::createSystem<PERIODIC_IDLE>()
+        ,   IRECS::createSystem<GOTO_3D>()
+        ,   IRECS::createSystem<GLOBAL_POSITION_3D>()
+           // Move to output systems
+        ,   IRECS::createSystem<OUTPUT_MIDI_MESSAGE_OUT>()
+        ,   IRECS::createSystem<UPDATE_VOXEL_SET_CHILDREN>()
+        ,   IRECS::createSystem<LIFETIME>()
+        // ,    m_systemManager.registerEngineSystem<VIDEO_ENCODER, SYSTEM_TYPE_UPDATE>();
         }
     );
 
