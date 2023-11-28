@@ -22,6 +22,7 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 

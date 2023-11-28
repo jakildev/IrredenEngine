@@ -15,7 +15,6 @@
 #include <irreden/ir_time.hpp>
 
 #include <irreden/system/ir_system_types.hpp>
-#include <irreden/system/system_virtual.hpp>
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/system/components/component_system_event.hpp>
@@ -176,33 +175,6 @@ namespace IRECS {
             m_systemPipelinesNew[systemType] = pipeline;
         }
 
-        template <
-            SystemName SystemName,
-            SystemTypes SystemType,
-            typename... Args
-        >
-        void registerSystemClass(Args&&... args)
-        {
-            auto systemInstance = std::make_unique<System<SystemName>>(
-                std::forward<Args>(args)...
-            );
-            m_systems.insert(std::make_pair(SystemName, std::move(systemInstance)));
-            m_systemPipelines[SystemType].push_back(SystemName);
-
-
-            IRProfile::engLogInfo(
-                "Registered new system {}",
-                static_cast<int>(SystemName)
-            );
-        }
-
-        template <SystemTypes systemType>
-        void executeGroup() {
-            auto& systemOrder = getSystemExecutionOrder<systemType>();
-            for(const auto systemName : systemOrder) {
-                executeSystem(m_systems[systemName]);
-            }
-        }
 
         void executePipeline(SystemTypes systemType) {
             auto& systemOrder = m_systemPipelinesNew[systemType];
@@ -211,47 +183,14 @@ namespace IRECS {
             }
         }
 
-        void executeSystemTick(
-            SystemVirtual* system,
-            ArchetypeNode* node
-        );
-
         void executeSystem(SystemId system);
 
-        template <IRTime::Events Event>
-        void executeEvent() {
-            if(Event == IRTime::Events::START) {
-                for(auto& system : m_systems) {
-                    system.second->start();
-                }
-            }
-            if(Event == IRTime::Events::END) {
-                for(auto& system : m_systems) {
-                    system.second->end();
-                }
-            }
-        }
 
         template <typename Tag>
         void addSystemTag(SystemId system) {
             m_ticks[system].archetype_.insert(
                 IRECS::getComponentType<Tag>()
             );
-        }
-
-        // This concept will go away and systems that were needed like
-        // This will have their logic moved out to other parts of the
-        // Engine.
-        template <SystemName SystemName>
-        const System<SystemName>& get() const {
-            return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
-        }
-
-        // Maybe systems shouldnt provide an API and thus
-        // can just be retrived as virtual systems? Now just IDs
-        template <SystemName SystemName>
-        System<SystemName>& get() {
-            return *static_cast<System<SystemName>*>(m_systems.at(SystemName).get());
         }
 
     private:
@@ -264,23 +203,10 @@ namespace IRECS {
         std::vector<C_SystemEvent<END_TICK>> m_endTicks;
         std::vector<C_SystemRelation> m_relations;
         std::unordered_map<SystemName, SystemId> m_engineSystemIds;
-        std::unordered_map<SystemName, std::unique_ptr<SystemVirtual>>
-            m_systems;
-        // std::unordered_map<SystemId, std::unique_ptr<SystemVirtual>> m_virtualSystems;
-        std::unordered_map<SystemTypes, std::list<SystemName>>
-            m_systemPipelines; // TODO remove
+
         std::unordered_map<SystemTypes, std::list<SystemId>>
             m_systemPipelinesNew;
 
-
-        void executeSystem(
-            std::unique_ptr<SystemVirtual> &system
-        );
-
-        template <SystemTypes systemType>
-        const std::list<SystemName>& getSystemExecutionOrder() const {
-            return m_systemPipelines.at(systemType);
-        }
     };
 
 } // namespace IRSystem

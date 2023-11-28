@@ -10,14 +10,13 @@
 #include <irreden/ir_world.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_constants.hpp>
-// SYSTEMS
-// -    AUDIO
+
 #include <irreden/audio/systems/system_audio_midi_message_in.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
-// -    INPUT
+
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_input_gamepad.hpp>
-// -    UPDATE
+
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/update/systems/system_velocity.hpp>
@@ -29,26 +28,22 @@
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_particle_spawner.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
-// -    RENDER
+
 #include <irreden/render/systems/system_texture_scroll.hpp>
 #include <irreden/render/systems/system_single_voxel_to_canvas.hpp>
 #include <irreden/render/systems/system_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffers_to_screen.hpp>
 
-// -    VIDEO
 #include <irreden/video/systems/system_video_encoder.hpp>
-// COMMANDS
-// INPUT
+
 #include <irreden/input/commands/command_close_window.hpp>
 
-// RENDER COMMANDS
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
 
 using namespace IRComponents;
 using namespace IRConstants;
-// using namespace IRCommands;
 using namespace IRECS;
 
 //TODO: replace initalization constants with config file.
@@ -119,16 +114,15 @@ void IRWorld::input() {
     m_audioManager.getMidiIn().tick();
 
     m_systemManager.executePipeline(SYSTEM_TYPE_INPUT);
-    m_systemManager.executeGroup<SYSTEM_TYPE_INPUT>();
 }
 
 void IRWorld::start() {
     m_timeManager.start();
-    m_systemManager.executeEvent<IRTime::Events::START>();
+    // m_systemManager.executeEvent<IRTime::Events::START>();
 }
 
 void IRWorld::end() {
-    m_systemManager.executeEvent<IRTime::Events::END>();
+    // m_systemManager.executeEvent<IRTime::Events::END>();
 }
 
 void IRWorld::update()
@@ -139,7 +133,6 @@ void IRWorld::update()
     m_commandManager.executeUserKeyboardCommandsAll();
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
-    m_systemManager.executeGroup<SYSTEM_TYPE_UPDATE>(); // TODO REMOVE THIS
     m_systemManager.executePipeline(SYSTEM_TYPE_UPDATE);
 
     // Destroy all marked entities in one step
@@ -155,7 +148,6 @@ void IRWorld::render()
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     m_inputManager.tickRender();
-    m_systemManager.executePipeline(SYSTEM_TYPE_RENDER);
     m_renderer.tick();
 
     m_timeManager.endEvent<IRTime::RENDER>();
@@ -231,15 +223,13 @@ void IRWorld::initIROutputSystems() {
 }
 
 void IRWorld::initIRInputSystems() {
-    SystemId systemInputKeyMouse = IRECS::createSystem<INPUT_KEY_MOUSE>();
-    SystemId systemInputGamepad = IRECS::createSystem<INPUT_GAMEPAD>();
-    SystemId systemInputMidiIn = IRECS::createSystem<INPUT_MIDI_MESSAGE_IN>();
     m_systemManager.registerPipeline(
         SYSTEM_TYPE_INPUT,
         {
-            systemInputKeyMouse,
-            systemInputGamepad,
-            systemInputMidiIn
+            IRECS::createSystem<INPUT_KEY_MOUSE>()
+        ,   IRECS::createSystem<INPUT_GAMEPAD>()
+        ,   IRECS::createSystem<INPUT_MIDI_MESSAGE_IN>()
+
         }
     );
 }

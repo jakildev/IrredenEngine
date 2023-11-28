@@ -141,9 +141,8 @@ namespace IRRender {
         // TODO: Don't really do this anywhere else so prob should
         // come up with something different.
         IRECS::getComponent<C_Camera>(m_camera).tick();
-        // IRECS::getEngineSystem<SCREEN_VIEW>().beginExecuteRender();
+        IRECS::executePipeline(SYSTEM_TYPE_RENDER);
 
-        IRECS::getSystemManager().executeGroup<SYSTEM_TYPE_RENDER>();
         m_window.swapBuffers();
     }
 

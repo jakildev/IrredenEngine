@@ -7,4 +7,8 @@ namespace IRECS {
     SystemManager& getSystemManager() {
         return *g_systemManager;
     }
+
+    void executePipeline(SystemTypes systemType) {
+        getSystemManager().executePipeline(systemType);
+    }
 } // namespace IRECS
