@@ -1,6 +1,6 @@
 #include "world.hpp"
 int main(int argc, char **argv) {
-    IRProfile::logInfo("Starting game: demo (your-game-here)");
+    IR_LOG_INFO("Starting game: demo (your-game-here)");
 
     World gameworld = World{argc, argv};
 

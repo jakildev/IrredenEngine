@@ -11,7 +11,7 @@
 World::World(int argc, char **argv)
 :   IRWorld(argc, argv)
 {
-    IRProfile::logInfo("Creating world: XxxxxXxxxx");
+    IR_LOG_INFO("Creating world: XxxxxXxxxx");
 }
 
 World::~World()
