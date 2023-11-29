@@ -22,30 +22,30 @@ namespace IRTime {
     ,   m_mainLoopElapsed{0}
     {
         g_timeManager = this;
-        IRProfile::engLogInfo("TimeManager initalized");
+        IRE_LOG_INFO("TimeManager initalized");
     }
 
     template <>
     void TimeManager::beginEvent<UPDATE>() {
-        IRProfile::engLogDebug("Begin update world.");
+        IRE_LOG_DEBUG("Begin update world.");
         m_profilerUpdate.beginEvent();
     }
 
     template <>
     void TimeManager::beginEvent<RENDER>() {
-        IRProfile::engLogDebug("Begin render world.");
+        IRE_LOG_DEBUG("Begin render world.");
         m_profilerRender.beginEvent();
     }
 
     template <>
     void TimeManager::endEvent<UPDATE>() {
-        IRProfile::engLogDebug("End update world.");
+        IRE_LOG_DEBUG("End update world.");
         m_profilerUpdate.endEvent();
     }
 
     template <>
     void TimeManager::endEvent<RENDER>() {
-        IRProfile::engLogDebug("End render world.");
+        IRE_LOG_DEBUG("End render world.");
         m_profilerRender.endEvent();
     }
 

@@ -70,7 +70,7 @@
 //             m_encoderSettings.fname = outfile;
 //             m_encoderSettings.inputAlpha = false;
 
-//             IRProfile::engLogInfo("Creating system VIDEO_ENCODER");
+//             IRE_LOG_INFO("Creating system VIDEO_ENCODER");
 //         }
 
 //         virtual ~System() = default;
@@ -81,7 +81,7 @@
 //         }
 
 //         virtual void end() override {
-//             IRProfile::engLogInfo("Finalizing video encoding");
+//             IRE_LOG_INFO("Finalizing video encoding");
 //             m_dtvEncoder.commit();
 //             m_dtvEncoder.stop();
 //         }
@@ -107,7 +107,7 @@
 //         virtual void beginExecute() override {
 //             atg_dtv::Frame* newFrame = m_dtvEncoder.newFrame(false);
 //             if(m_dtvEncoder.getError() != atg_dtv::Encoder::Error::None) {
-//                 IRProfile::engLogError("Encoder error: {}", (int)m_dtvEncoder.getError());
+//                 IRE_LOG_ERROR("Encoder error: {}", (int)m_dtvEncoder.getError());
 //                 IR_ASSERT(false, "Encoder error");
 //             }
 //             ENG_API->glReadBuffer(GL_FRONT);

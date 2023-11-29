@@ -33,11 +33,11 @@ namespace IRInput {
         initJoystickEntities();
 
         g_inputManager = this;
-        IRProfile::engLogInfo("Created InputManager");
+        IRE_LOG_INFO("Created InputManager");
     }
 
     InputManager::~InputManager() {
-        IRProfile::engLogInfo("Destroyed InputManager");
+        IRE_LOG_INFO("Destroyed InputManager");
     }
 
     void InputManager::tick() {
@@ -167,7 +167,7 @@ namespace IRInput {
             }
             queueOfButtons.pop();
 
-            IRProfile::engLogInfo(
+            IRE_LOG_INFO(
                 "Processed button={}, status={}",
                 button,
                 static_cast<int>(status)
@@ -210,7 +210,7 @@ namespace IRInput {
         for(int i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++)
         {
             if(m_window.joystickPresent(i)) {
-                IRProfile::engLogInfo("Creating joystick entity for joystick {}", i);
+                IRE_LOG_INFO("Creating joystick entity for joystick {}", i);
 
                 m_gamepadEntities.emplace_back(
                     IRECS::createEntity<kGLFWJoystick>(

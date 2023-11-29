@@ -29,7 +29,7 @@ namespace IRECS {
     public:
         System()
         {
-            IRProfile::engLogInfo("Created system ");
+            IRE_LOG_INFO("Created system ");
         }
         void tickWithArchetype(
             Archetype type,

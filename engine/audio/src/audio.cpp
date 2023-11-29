@@ -16,7 +16,7 @@ namespace IRAudio {
     :   m_rtAudio()
     ,   m_numDevices(m_rtAudio.getDeviceCount())
     {
-        IRProfile::engLogInfo("Number of devices found: {}", m_numDevices);
+        IRE_LOG_INFO("Number of devices found: {}", m_numDevices);
         std::vector<unsigned int> deviceIds = m_rtAudio.getDeviceIds();
         for(auto& id : deviceIds) {
             m_deviceInfo.insert({id, m_rtAudio.getDeviceInfo(id)});
@@ -31,7 +31,7 @@ namespace IRAudio {
     {
         int deviceIndex = getDeviceIndexByName(deviceName);
         if(deviceIndex == -1) {
-            IRProfile::engLogError("Device not found");
+            IRE_LOG_ERROR("Device not found");
             return;
         }
         RtAudio::StreamParameters parameters;
@@ -54,35 +54,35 @@ namespace IRAudio {
 
     void Audio::logDeviceInfoAll() {
         for(auto& [id, info] : m_deviceInfo) {
-            IRProfile::engLogInfo("Device: {}", info.name);
+            IRE_LOG_INFO("Device: {}", info.name);
             if(info.outputChannels > 0) {
-                IRProfile::engLogInfo("Output channels: {}", info.outputChannels);
+                IRE_LOG_INFO("Output channels: {}", info.outputChannels);
             }
             if(info.inputChannels > 0) {
-                IRProfile::engLogInfo("Input channels: {}", info.inputChannels);
+                IRE_LOG_INFO("Input channels: {}", info.inputChannels);
             }
             if(info.duplexChannels > 0) {
-                IRProfile::engLogInfo("Duplex channels: {}", info.duplexChannels);
+                IRE_LOG_INFO("Duplex channels: {}", info.duplexChannels);
             }
             if(info.isDefaultInput) {
-                IRProfile::engLogInfo("This is default input device");
+                IRE_LOG_INFO("This is default input device");
             }
             if(info.isDefaultOutput) {
-                IRProfile::engLogInfo("This is default output device");
+                IRE_LOG_INFO("This is default output device");
             }
             if(info.nativeFormats > 0) {
-                IRProfile::engLogInfo("Native formats: {}", info.nativeFormats);
+                IRE_LOG_INFO("Native formats: {}", info.nativeFormats);
             }
             if(info.sampleRates.size() > 0) {
-                IRProfile::engLogInfo("Sample rates: ");
+                IRE_LOG_INFO("Sample rates: ");
                 std::stringstream sampleRates{};
                 for(auto& sampleRate : info.sampleRates) {
                     sampleRates << sampleRate << ", ";
                 }
-                IRProfile::engLogInfo("{}", sampleRates.str());
+                IRE_LOG_INFO("{}", sampleRates.str());
             }
             if(info.preferredSampleRate > 0) {
-                IRProfile::engLogInfo("Preferred sample rate: {}", info.preferredSampleRate);
+                IRE_LOG_INFO("Preferred sample rate: {}", info.preferredSampleRate);
             }
         }
     }

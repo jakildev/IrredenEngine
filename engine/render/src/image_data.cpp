@@ -24,7 +24,7 @@ namespace IRRender {
             4
         );
         IR_ASSERT(this->data_, "Failed to load image");
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Loaded image width={}, height={}, channels={}",
             width_,
             height_,
@@ -33,7 +33,7 @@ namespace IRRender {
     }
 
     ImageData::~ImageData() {
-        IRProfile::engLogInfo("Freeing image data");
+        IRE_LOG_INFO("Freeing image data");
         stbi_image_free(data_);
     }
 

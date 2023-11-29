@@ -7,7 +7,7 @@ namespace IRVideo {
     VideoRecorder::VideoRecorder() {
 
 
-        IRProfile::logInfo("Created Video Recorder.");
+        IR_LOG_INFO("Created Video Recorder.");
     }
 
 } // namespace IRVideo

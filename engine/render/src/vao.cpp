@@ -59,7 +59,7 @@ namespace IRRender {
             attributeSizes,
             bindingIndex
         );
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Created VAO: {}",
             m_handle
         );
@@ -67,7 +67,7 @@ namespace IRRender {
 
     VAO::~VAO() {
         ENG_API->glDeleteVertexArrays(1, &m_handle);
-        IRProfile::engLogInfo("Deleted VAO: {}", m_handle);
+        IRE_LOG_INFO("Deleted VAO: {}", m_handle);
     }
 
     void VAO::bind() const {

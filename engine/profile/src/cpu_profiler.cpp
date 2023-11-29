@@ -25,7 +25,7 @@ namespace IRProfile{
     CPUProfiler::~CPUProfiler() {
         EASY_PROFILER_DISABLE;
         uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
-        IRProfile::engLogInfo("Dumped profiling blocks, result={}", res);
+        IRE_LOG_INFO("Dumped profiling blocks, result={}", res);
     }
     // inline void CPUProfiler::mainThread() {
     //     EASY_MAIN_THREAD;

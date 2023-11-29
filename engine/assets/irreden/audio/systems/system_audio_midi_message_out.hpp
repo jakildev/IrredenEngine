@@ -33,7 +33,7 @@ namespace IRECS {
                     const C_MidiMessage& midiMessage
                 )
                 {
-                    IRProfile::engLogInfo("Sending midi message (type 0x{:02X}, channel 0x{:02X}, data1 {}, data2 {})",
+                    IRE_LOG_INFO("Sending midi message (type 0x{:02X}, channel 0x{:02X}, data1 {}, data2 {})",
                         midiMessage.getStatusBits(),
                         midiMessage.getChannelBits(),
                         midiMessage.data1_,
@@ -63,7 +63,7 @@ namespace IRECS {
         //     );
         //     m_midiOutDeviceChannels.push_back(channelValue);
         //     m_midiOutDevices.push_back(device);
-        //     IRProfile::engLogInfo(
+        //     IRE_LOG_INFO("
         //         "Created MIDI device OUT {} (id: {}) on channel {} (value: {})",
         //         name,
         //         newDeviceId,

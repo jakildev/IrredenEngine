@@ -31,7 +31,7 @@ namespace IRECS {
             m_entityPool.push(entity);
         }
         g_entityManager = this;
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Created EntityManager (IR_MAX_ENTITIES={})",
             static_cast<int>(IR_MAX_ENTITIES)
         );
@@ -49,7 +49,7 @@ namespace IRECS {
         );
         m_liveEntityCount++;
 
-        IRProfile::engLogDebug("Created entity={}", id);
+        IRE_LOG_DEBUG("Created entity={}", id);
         return id;
     }
 
@@ -88,7 +88,7 @@ namespace IRECS {
     void EntityManager::destroyEntity(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         EntityRecord& record = getRecord(entity);
-        IRProfile::engLogDebug("entity={}, record.row={}", entity, record.row);
+        IRE_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
         ArchetypeNode* node = record.archetypeNode;
         destroyComponents(entity);
         removeEntityFromArchetypeNode(node, record.row);
@@ -186,7 +186,7 @@ namespace IRECS {
             setFlags(newRelation, kEntityFlagIsRelation);
             m_parentRelations.insert({entityBits(relatedEntity), newRelation});
             m_childOfRelations.insert({newRelation, entityBits(relatedEntity)});
-            IRProfile::engLogInfo("Regestered relation type={} id={} related to entity={}",
+            IRE_LOG_INFO("Regestered relation type={} id={} related to entity={}",
                 static_cast<int>(relation),
                 static_cast<int>(newRelation),
                 static_cast<int>(relatedEntity)
@@ -234,7 +234,7 @@ namespace IRECS {
             record.archetypeNode,
             toNode
         );
-        IRProfile::engLogDebug("Moved entity to new archetype with relation {}",
+        IRE_LOG_DEBUG("Moved entity to new archetype with relation {}",
             relation
         );
     }
@@ -355,7 +355,7 @@ namespace IRECS {
         backRecord.row = newPos;
         node->entities_[newPos] = node->entities_.back();
         node->entities_.pop_back();
-        IRProfile::engLogDebug("Entity={} moved to row={}", backEntity, newPos);
+        IRE_LOG_DEBUG("Entity={} moved to row={}", backEntity, newPos);
     }
 
     void EntityManager::updateRecord(EntityId entity, ArchetypeNode* node, unsigned int row) {

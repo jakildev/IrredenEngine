@@ -42,7 +42,7 @@
 //             m_voxelPools.push_back(C_VoxelPool(numVoxelsMainCanvas));
 //             m_voxelPoolIdPlayer = m_voxelPools.size();
 //             m_voxelPools.push_back(C_VoxelPool(numVoxelsPlayer));
-//             IRProfile::engLogInfo("Created system VOXEL_POOL");
+//             IRE_LOG_INFO("Created system VOXEL_POOL");
 //         }
 
 //         void tickWithArchetype(

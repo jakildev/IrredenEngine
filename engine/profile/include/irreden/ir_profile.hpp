@@ -77,20 +77,63 @@ namespace IRProfile {
     template <typename... Args>
     inline void glLogFatal(const char* format, Args&&... args);
 
-    // CPU profiling commands
-    inline void profileMainThread() {
-        CPUProfiler::instance().mainThread();
-    }
-    // inline void profileFunction(unsigned int color) {
-    //     CPUProfiler::instance().profileFunction(color);
-    // }
-    // inline void profileBlock(const std::string name, unsigned int color) {
-    //     CPUProfiler::instance().profileBlock(name, color);
-    // }
-
 
 } // namespace IRProfile
 
 #include <irreden/profile/ir_profile.tpp>
+
+// TODO: somewhere else
+// #define IR_RELEASE
+
+#ifndef IR_RELEASE
+
+    #define IR_ASSERT(x, en, ...) IRProfile::engAssert(x, __FILE__, __FUNCTION__, __LINE__, #x, en, ##__VA_ARGS__)
+    #define IR_PROFILE_FUNCTION(color) EASY_FUNCTION(color)
+    #define IR_PROFILE_BLOCK(name, color) EASY_BLOCK(name, color)
+    #define IR_PROFILE_END_BLOCK EASY_END_BLOCK
+    #define IR_PROFILE_MAIN_THREAD EASY_MAIN_THREAD
+
+    #define IR_LOG_TRACE(...) IRProfile::logTrace(__VA_ARGS__)
+    #define IR_LOG_DEBUG(...) IRProfile::logDebug(__VA_ARGS__)
+    #define IR_LOG_INFO(...) IRProfile::logInfo(__VA_ARGS__)
+    #define IR_LOG_WARN(...) IRProfile::logWarn(__VA_ARGS__)
+    #define IR_LOG_ERROR(...) IRProfile::logError(__VA_ARGS__)
+    #define IR_LOG_FATAL(...) IRProfile::logFatal(__VA_ARGS__)
+
+    #define IRE_LOG_TRACE(...) IRProfile::engLogTrace(__VA_ARGS__)
+    #define IRE_LOG_DEBUG(...) IRProfile::engLogDebug(__VA_ARGS__)
+    #define IRE_LOG_INFO(...) IRProfile::engLogInfo(__VA_ARGS__)
+    #define IRE_LOG_WARN(...) IRProfile::engLogWarn(__VA_ARGS__)
+    #define IRE_LOG_ERROR(...) IRProfile::engLogError(__VA_ARGS__)
+    #define IRE_LOG_FATAL(...) IRProfile::engLogFatal(__VA_ARGS__)
+
+    #define IRE_GL_LOG_DEBUG(...) IRProfile::glLogDebug(__VA_ARGS__)
+    #define IRE_GL_LOG_FATAL(...) IRProfile::glLogFatal(__VA_ARGS__)
+
+#else
+
+    #define IR_ASSERT(x, en, ...)
+    #define IR_PROFILE_FUNCTION(color)
+    #define IR_PROFILE_BLOCK(name, color)
+    #define IR_PROFILE_END_BLOCK
+
+    #define IR_LOG_TRACE(...)
+    #define IR_LOG_DEBUG(...)
+    #define IR_LOG_INFO(...)
+    #define IR_LOG_WARN(...)
+    #define IR_LOG_ERROR(...)
+    #define IR_LOG_FATAL(...)
+
+    #define IRE_LOG_TRACE(...)
+    #define IRE_LOG_DEBUG(...)
+    #define IRE_LOG_INFO(...)
+    #define IRE_LOG_WARN(...)
+    #define IRE_LOG_ERROR(...)
+    #define IRE_LOG_FATAL(...)
+
+    #define IRE_GL_LOG_DEBUG(...)
+    #define IRE_GL_LOG_FATAL(...)
+
+#endif // IR_RELEASE
 
 #endif /* IR_PROFILE_H */

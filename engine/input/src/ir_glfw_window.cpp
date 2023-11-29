@@ -65,15 +65,15 @@ namespace IRInput {
         setCallbackScroll(irglfwCallback_scroll);
 
         g_irglfwWindow = this;
-        IRProfile::engLogInfo("Created IRGLFWWindow.");
+        IRE_LOG_INFO("Created IRGLFWWindow.");
     }
 
     IRGLFWWindow::~IRGLFWWindow() {
         glfwDestroyWindow(m_window);
-        IRProfile::engLogInfo("Destroyed GLFW Window");
+        IRE_LOG_INFO("Destroyed GLFW Window");
 
         glfwTerminate();
-        IRProfile::engLogInfo("Terminated GLFW");
+        IRE_LOG_INFO("Terminated GLFW");
     }
 
 
@@ -148,10 +148,10 @@ namespace IRInput {
     int IRGLFWWindow::joystickPresent(int joystick) {
         int res = glfwJoystickPresent(joystick);
         if(res != GLFW_TRUE) {
-            IRProfile::engLogInfo("Joystick {} not present", joystick);
+            IRE_LOG_INFO("Joystick {} not present", joystick);
             return GLFW_FALSE;
         }
-        IRProfile::engLogInfo("Joystick {} present", joystick);
+        IRE_LOG_INFO("Joystick {} present", joystick);
         return GLFW_TRUE;
     }
 
@@ -199,13 +199,13 @@ namespace IRInput {
     // callback functions
 
     void irglfwCallback_error(int error, const char* msg) {
-        IRProfile::engLogError("GLFW error {}: {}", error, msg);
+        IRE_LOG_ERROR("GLFW error {}: {}", error, msg);
     }
 
     void irglfwCallback_framebuffer_size(GLFWwindow* window, int width, int height)
     {
         glViewport(0, 0, width, height);
-        IRProfile::engLogInfo("Resized viewport to {}x{}", width, height);
+        IRE_LOG_INFO("Resized viewport to {}x{}", width, height);
     }
 
     void irglfwCallback_mouseButton(
@@ -220,11 +220,11 @@ namespace IRInput {
         );
         if(action == GLFW_PRESS) {
             irglfwWindow->addMouseButtonPressedToProcess(button);
-            IRProfile::engLogInfo("Mouse button {} pressed", button);
+            IRE_LOG_INFO("Mouse button {} pressed", button);
         }
         if(action == GLFW_RELEASE) {
             irglfwWindow->addMouseButtonReleasedToProcess(button);
-            IRProfile::engLogInfo("Mouse button {} released", button);
+            IRE_LOG_INFO("Mouse button {} released", button);
         }
 
     }
@@ -245,11 +245,11 @@ namespace IRInput {
             // If entity creation and such was syncronous then
             // this wouldnt be much of a problem...
             irglfwWindow->addKeyPressedToProcess(key);
-            IRProfile::engLogInfo("Key {} pressed", key);
+            IRE_LOG_INFO("Key {} pressed", key);
         }
         if(action == GLFW_RELEASE) {
             irglfwWindow->addKeyReleasedToProcess(key);
-            IRProfile::engLogInfo("Key {} released", key);
+            IRE_LOG_INFO("Key {} released", key);
         }
     }
 
@@ -263,7 +263,7 @@ namespace IRInput {
             glfwGetWindowUserPointer(window)
         );
         irglfwWindow->addScrollToProcess(xoffset, yoffset);
-        IRProfile::engLogInfo("Scroll: xoffset: {}, yoffset: {}", xoffset, yoffset);
+        IRE_LOG_INFO("Scroll: xoffset: {}, yoffset: {}", xoffset, yoffset);
     }
 
 } // namespace IRInput

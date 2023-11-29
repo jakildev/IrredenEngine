@@ -58,7 +58,7 @@ namespace IRRender {
         );
         checkSuccess();
 
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Created framebuffer with id={}, resolution={},{}, extraPixelBuffer={},{}",
             m_id,
             m_resolution.x,

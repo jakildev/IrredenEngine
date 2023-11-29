@@ -68,9 +68,9 @@ IRWorld::IRWorld(int &argc, char  **argv)
     initEngineSystems();
     initEngineCommands();
     m_renderer.printGLSystemInfo();
-    IRProfile::profileMainThread();
+    IR_PROFILE_MAIN_THREAD;
 
-    IRProfile::engLogInfo("Initalized game world");
+    IRE_LOG_INFO("Initalized game world");
 
 }
 

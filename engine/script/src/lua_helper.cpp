@@ -16,7 +16,7 @@
 bool checkLua(lua_State *L, const int r) {
     if (r != LUA_OK) {
         std::string errormsg = lua_tostring(L, -1);
-        IRProfile::engLogError("{}", errormsg);
+        IRE_LOG_ERROR("{}", errormsg);
         return false;
     }
     return true;

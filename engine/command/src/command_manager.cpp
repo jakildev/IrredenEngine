@@ -18,7 +18,7 @@ namespace IRCommand {
 
     CommandManager::CommandManager() {
         g_commandManager = this;
-        IRProfile::engLogInfo("Created CommandManager");
+        IRE_LOG_INFO("Created CommandManager");
     }
 
 

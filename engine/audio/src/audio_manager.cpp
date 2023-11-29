@@ -25,11 +25,11 @@ namespace IRAudio {
         //     m_midiOut.openPort(kMidiOutInterfaceNames[midiOutInterface]);
         // }
         g_audioManager = this;
-        IRProfile::engLogInfo("Created AudioManager");
+        IRE_LOG_INFO("Created AudioManager");
     }
 
     AudioManager::~AudioManager() {
-        IRProfile::engLogDebug("Destroyed AudioManager");
+        IRE_LOG_DEBUG("Destroyed AudioManager");
     }
 
 } // namespace IRAudio

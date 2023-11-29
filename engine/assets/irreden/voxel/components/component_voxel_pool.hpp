@@ -84,7 +84,7 @@ namespace IRComponents {
             auto freeSpan = findFreeSpan(size);
             if (freeSpan.has_value()) {
                 size_t startIndex = freeSpan->first;
-                IRProfile::engLogDebug("Reusing existing span from {} to {}", startIndex, startIndex + size - 1);
+                IRE_LOG_DEBUG("Reusing existing span from {} to {}", startIndex, startIndex + size - 1);
                 m_freeSpanLookup[size].erase(*freeSpan);
                 if (m_freeSpanLookup[size].empty()) {
                     m_freeSpanLookup.erase(size);
@@ -112,7 +112,7 @@ namespace IRComponents {
             if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
                 int startIndex = m_voxelPoolIndex;
                 m_voxelPoolIndex += size;
-                IRProfile::engLogDebug("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
+                IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
                 return std::make_tuple(
                     std::span<C_Position3D>{
                         m_voxelPositions.data() + startIndex,

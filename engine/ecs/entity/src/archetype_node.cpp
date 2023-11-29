@@ -37,7 +37,7 @@ namespace IRECS {
                     IRECS::createComponentData(*itr);
             }
         }
-        IRProfile::engLogInfo("Created archetype node with components: {}, id={}",
+        IRE_LOG_INFO("Created archetype node with components: {}, id={}",
             makeComponentStringInternal(archetype),
             id_
         );

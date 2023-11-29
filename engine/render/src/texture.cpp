@@ -41,11 +41,11 @@ namespace IRRender {
             alignment
         );
 
-        IRProfile::engLogInfo("Created texture 2D: {}", m_handle);
+        IRE_LOG_INFO("Created texture 2D: {}", m_handle);
     }
 
     Texture2D::~Texture2D() {
-        IRProfile::engLogInfo("Deleting texture 2D: {}", m_handle);
+        IRE_LOG_INFO("Deleting texture 2D: {}", m_handle);
         ENG_API->glDeleteTextures(1, &this->m_handle);
     }
 
@@ -159,7 +159,7 @@ namespace IRRender {
         m_height(height),
         m_depth(depth)
     {
-        IRProfile::engLogInfo("Creating GL Texture (3D) handle={}", m_handle);
+        IRE_LOG_INFO("Creating GL Texture (3D) handle={}", m_handle);
         ENG_API->glCreateTextures(type, 1, &m_handle);
         ENG_API->glTextureStorage3D(m_handle, 1, internalFormat, width, height, depth);
         ENG_API->glTextureParameteri(m_handle, GL_TEXTURE_WRAP_S, wrap);
@@ -174,7 +174,7 @@ namespace IRRender {
     }
 
     Texture3D::~Texture3D() {
-        IRProfile::engLogInfo("Deleting GL Texture (3D) handle={}", m_handle);
+        IRE_LOG_INFO("Deleting GL Texture (3D) handle={}", m_handle);
         ENG_API->glDeleteTextures(1, &m_handle);
     }
 

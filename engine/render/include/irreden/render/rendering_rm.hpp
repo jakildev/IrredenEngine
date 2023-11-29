@@ -69,7 +69,7 @@ namespace IRRender {
             ResourceDataImpl<T>* container = static_cast<ResourceDataImpl<T>*>(m_resourceMaps[type].get());
             auto res = container->resourceMap.emplace(id, std::make_unique<T>(std::forward<Args>(args)...));
             m_liveResourceCount++;
-            IRProfile::engLogInfo("Created ResourceId={}, type={}", id, type);
+            IRE_LOG_INFO("Created ResourceId={}, type={}", id, type);
             return std::pair(id, res.first->second.get());
         }
 
@@ -82,7 +82,7 @@ namespace IRRender {
             IR_ASSERT(!m_namedResources.contains(name), "Resource name already exists: {}", name);
             auto result = create<T>(std::forward<Args>(args)...);
             m_namedResources.insert({name, result.first});
-            IRProfile::engLogInfo(" Resource {} named {}", result.first, name);
+            IRE_LOG_INFO(" Resource {} named {}", result.first, name);
             return result;
         }
 
@@ -139,7 +139,7 @@ namespace IRRender {
                             "Regestering the same component twice");
             m_resourceTypes.insert({typeName, m_nextResourceType});
             m_resourceMaps.emplace(m_nextResourceType, std::make_unique<ResourceDataImpl<T>>());
-            IRProfile::engLogInfo("Registered resource type {} with ID={}",
+            IRE_LOG_INFO("Registered resource type {} with ID={}",
                             typeName,
                             m_nextResourceType);
             m_nextResourceType++;

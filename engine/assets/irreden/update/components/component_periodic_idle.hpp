@@ -128,7 +128,7 @@ namespace IRComponents {
         )
         {
             // Values gets optimized out and assert crashes in debug mode
-            // IRProfile::engLogInfo("startAngle: ", startAngle);
+            // IRE_LOG_INFO("startAngle: ", startAngle);
             // IR_ASSERT(
             //     startAngle >= 0.0f &&
             //     startAngle <= 2.0f * static_cast<float>(M_PI),

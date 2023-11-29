@@ -54,7 +54,7 @@ namespace IRTime {
             TimePoint current = Clock::now();
             auto newTick = current - m_timePointBeginEvent;
             if(MilliDuration(newTick).count() > kUpdateTimeWarningThresholdMs) {
-                IRProfile::engLogWarn("Update took {} ms", MilliDuration(newTick).count());
+                IRE_LOG_WARN("Update took {} ms", MilliDuration(newTick).count());
             }
             m_sum -= m_tickList[m_tickCount % kProfileHistoryBufferSize];
             m_sum += newTick;
@@ -65,10 +65,10 @@ namespace IRTime {
 
             // TODO: This is weird obvy
             if(m_tickCount % 6000 == 0) {
-                IRProfile::engLogDebug("Update FPS: {} ms", m_sum.count() / 10.0f);
+                IRE_LOG_DEBUG("Update FPS: {} ms", m_sum.count() / 10.0f);
 
                 MilliDuration totalElapsedTime = current - m_start;
-                IRProfile::engLogInfo("Average fixed updates per second: {} updates",
+                IRE_LOG_INFO("Average fixed updates per second: {} updates",
                     m_tickCount * 1000.0f / totalElapsedTime.count()
                 );
             }
@@ -147,10 +147,10 @@ namespace IRTime {
             m_tickCount++;
 
             if(m_tickCount % 1000 == 0) {
-                IRProfile::engLogDebug("Render FPS: {} ms", m_sum.count() / (float)kProfileHistoryBufferSize);
+                IRE_LOG_DEBUG("Render FPS: {} ms", m_sum.count() / (float)kProfileHistoryBufferSize);
 
                 MilliDuration totalElapsedTime = current - m_start;
-                IRProfile::engLogInfo("Average render calls per second: {} updates",
+                IRE_LOG_INFO("Average render calls per second: {} updates",
                     m_tickCount * 1000.0f / totalElapsedTime.count()
                 );
             }

@@ -87,7 +87,7 @@ namespace IRECS {
                 components...
             );
             updateRecord(entity, archetypeNode, index);
-            IRProfile::engLogDebug("Created entity={} with archetype={}",
+            IRE_LOG_DEBUG("Created entity={} with archetype={}",
                 entity,
                 makeComponentStringInternal(archetype).c_str()
             );
@@ -111,7 +111,7 @@ namespace IRECS {
             // TODO: Make a component for a pure component and put there...
             // Same for relation
 
-            IRProfile::engLogInfo("Regestered component type={}, sizeof={} with id={}",
+            IRE_LOG_INFO("Regestered component type={}, sizeof={} with id={}",
                 typeName,
                 sizeof(Component),
                 static_cast<int>(componentId)
@@ -163,7 +163,7 @@ namespace IRECS {
             IR_ASSERT(insertedIndex == toNode->length_ - 1,
                 "Component inserted at unexpected location.");
 
-            IRProfile::engLogDebug("Added default component type={} to entity={}: \n\
+            IRE_LOG_DEBUG("Added default component type={} to entity={}: \n\
                 \tnew row={}\n\
                 \tnew type={}",
                 componentType,
@@ -245,7 +245,7 @@ namespace IRECS {
 
             fromNode->components_[componentType]->removeDataAndPack(row);
 
-            IRProfile::engLogDebug("Removed component type={} from entity={} (new row={})",
+            IRE_LOG_DEBUG("Removed component type={} from entity={} (new row={})",
                         componentType, entity, record.row);
         }
 

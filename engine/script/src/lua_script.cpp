@@ -14,7 +14,7 @@
 // lua_dofile runs a lua script. Global functions and variables
 // can be accessed via the lua stack.
 LuaScript::LuaScript(const char* filename, bool withLibs) {
-    IRProfile::engLogInfo("Creating new lua script from file: {}", filename);
+    IRE_LOG_INFO("Creating new lua script from file: {}", filename);
     L = luaL_newstate();
     IR_ASSERT(filename != NULL, "attemped to create LuaScript object with null file" );
     if (withLibs) {

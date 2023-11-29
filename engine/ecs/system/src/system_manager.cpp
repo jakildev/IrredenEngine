@@ -18,7 +18,7 @@ namespace IRECS {
     :   m_nextSystemId{0}
     {
         g_systemManager = this;
-        IRProfile::engLogInfo("Created SystemManager");
+        IRE_LOG_INFO("Created SystemManager");
     };
 
     void SystemManager::executeSystem(SystemId system) {

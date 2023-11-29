@@ -109,7 +109,7 @@
 
 
 
-//             IRProfile::engLogInfo("Created system SCREEN_VIEW");
+//             IRE_LOG_INFO("Created system SCREEN_VIEW");
 //         }
 
 //         virtual ~System() = default;
@@ -139,7 +139,7 @@
 //                 dvec2(getTriangleStepSizeScreen())
 //             ;
 
-//             // IRProfile::engLogInfo(
+//             // IRE_LOG_INFO("
 //             //     "Mouse position render triangles: {}, {}",
 //             //     m_mousePositionRenderTriangles.x,
 //             //     m_mousePositionRenderTriangles.y
@@ -148,12 +148,12 @@
 //         }
 
 //         // void zoomIn() {
-//         //     IRProfile::engLogInfo("Zooming in");
+//         //     IRE_LOG_INFO("Zooming in");
 //         //     IRECS::getComponent<C_Camera>(m_camera).zoomIn();
 //         // }
 
 //         // void zoomOut() {
-//         //     IRProfile::engLogInfo("Zooming out");
+//         //     IRE_LOG_INFO("Zooming out");
 //         //     IRECS::getComponent<C_Camera>(m_camera).zoomOut();
 //         // }
 

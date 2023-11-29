@@ -33,7 +33,7 @@ namespace IRECS {
     >   {
     public:
         System() {
-            IRProfile::engLogInfo("Created system VOXEL_SCENE");
+            IRE_LOG_INFO("Created system VOXEL_SCENE");
         }
         virtual ~System() = default;
 

@@ -129,7 +129,7 @@ namespace IRRender {
         initRenderingResources();
         initRenderingSystems();
         g_renderManager = this;
-        IRProfile::engLogInfo("Created renderer.");
+        IRE_LOG_INFO("Created renderer.");
     }
 
     void RenderManager::tick() {
@@ -247,17 +247,17 @@ namespace IRRender {
     void RenderManager::printGLSystemInfo() {
         int intAttr;
         ENG_API->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &intAttr);
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Maximum nr of vertex attributes supported: {}",
             intAttr
         );
         ENG_API->glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &intAttr);
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Max 3d texture size: {}",
             intAttr
         );
         ENG_API->glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &intAttr);
-        IRProfile::engLogInfo(
+        IRE_LOG_INFO(
             "Max uniform block size: {}",
             intAttr
         );

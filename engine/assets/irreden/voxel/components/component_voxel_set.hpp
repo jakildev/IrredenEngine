@@ -62,7 +62,7 @@ namespace IRComponents {
                     }
                 }
             }
-            IRProfile::engLogDebug("Allocated {} voxel(s)", numVoxels_);
+            IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
         }
 
         C_VoxelSetNew(int width, int height, int depth)
@@ -94,7 +94,7 @@ namespace IRComponents {
                 globalPositions_,
                 voxels_
             );
-            IRProfile::engLogDebug("Deallocated {} voxels", numVoxels_);
+            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
         }
 
         void changeVoxelColor(ivec3 index, Color color) {

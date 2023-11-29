@@ -18,12 +18,12 @@ namespace IRAudio {
         m_openPorts{}
     {
 
-        IRProfile::engLogInfo("Descovered {} MIDI output sources", m_numberPorts);
+        IRE_LOG_INFO("Descovered {} MIDI output sources", m_numberPorts);
         for(int i = 0; i < m_numberPorts; i++) {
             m_portNames.push_back(m_rtMidiOut.getPortName(i));
-            IRProfile::engLogInfo("MIDI Output source {}: {}", i, m_portNames[i].c_str());
+            IRE_LOG_INFO("MIDI Output source {}: {}", i, m_portNames[i].c_str());
         }
-        IRProfile::engLogInfo("Created MidiOut");
+        IRE_LOG_INFO("Created MidiOut");
     }
 
     MidiOut::~MidiOut() {}
@@ -31,7 +31,7 @@ namespace IRAudio {
     void MidiOut::openPort(unsigned int portNumber) {
         m_rtMidiOut.openPort(portNumber);
         m_openPorts.insert(portNumber);
-        IRProfile::engLogInfo("Opened MIDI Out port {}", portNumber);
+        IRE_LOG_INFO("Opened MIDI Out port {}", portNumber);
     }
 
     void MidiOut::openPort(MidiOutInterfaces interface) {
@@ -44,7 +44,7 @@ namespace IRAudio {
             if(portName.find(portNameSubstring) != portName.npos) {
                 m_rtMidiOut.openPort(i);
                 m_openPorts.insert(i);
-                IRProfile::engLogInfo("Opened MIDI Out port {}: {}", i, portName);
+                IRE_LOG_INFO("Opened MIDI Out port {}: {}", i, portName);
                 return;
             }
         }
@@ -53,7 +53,7 @@ namespace IRAudio {
 
     void MidiOut::sendMessage(const std::vector<unsigned char>& message) {
         m_rtMidiOut.sendMessage(&message);
-        IRProfile::engLogDebug("Sent MIDI message status={}", message.at(0));
+        IRE_LOG_DEBUG("Sent MIDI message status={}", message.at(0));
 
     }
 

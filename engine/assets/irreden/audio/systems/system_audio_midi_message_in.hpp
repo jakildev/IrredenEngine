@@ -40,15 +40,15 @@ namespace IRECS {
                         midiMessage.getChannelBits();
 
                     if(statusBits == IRAudio::kMidiStatus_NOTE_ON) {
-                        IRProfile::engLogInfo("Midi message note on!");
+                        IRE_LOG_INFO("Midi message note on!");
                         IRAudio::insertNoteOnMessage(channel, midiMessage);
                     }
                     if(statusBits == IRAudio::kMidiStatus_NOTE_OFF) {
-                        IRProfile::engLogInfo("Midi message note off!");
+                        IRE_LOG_INFO("Midi message note off!");
                         IRAudio::insertNoteOffMessage(channel, midiMessage);
                     }
                     if(statusBits == IRAudio::kMidiStatus_CONTROL_CHANGE) {
-                        IRProfile::engLogDebug("Midi message control change!");
+                        IRE_LOG_DEBUG("Midi message control change!");
                         IRAudio::insertCCMessage(channel, midiMessage);
                     }
                 }
@@ -64,7 +64,7 @@ namespace IRECS {
         // {
         //     MidiChannel channelValue = (MidiChannel)channel;
         //     if(m_midiChannelToDeviceMappings.contains(channelValue)) {
-        //         IRProfile::engLogError("Device already exists for channel, skipping {}", channelValue);
+        //         IRE_LOG_ERROR("Device already exists for channel, skipping {}", channelValue);
         //         return m_midiInDevices[m_midiChannelToDeviceMappings[channelValue]];
         //     }
 
@@ -78,7 +78,7 @@ namespace IRECS {
         //     m_midiChannelToDeviceMappings.insert({channel, newDeviceId});
         //     m_midiDeviceToChannelMappings.insert({newDeviceId, channel});
         //     m_midiInDevices.push_back(device);
-        //     IRProfile::engLogInfo(
+        //     IRE_LOG_INFO("
         //         "Created MIDI device {} (id: {}) on channel {} (value: {})",
         //         name,
         //         newDeviceId,

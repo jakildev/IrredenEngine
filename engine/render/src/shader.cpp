@@ -30,7 +30,7 @@ namespace IRRender {
     }
 
     ShaderStage::~ShaderStage() {
-        IRProfile::engLogInfo("Deleting shader stage: {}", m_handle);
+        IRE_LOG_INFO("Deleting shader stage: {}", m_handle);
         ENG_API->glDeleteShader(m_handle);
     }
 
@@ -105,11 +105,11 @@ namespace IRRender {
         }
         ENG_API->glLinkProgram(m_handle);
         checkSuccess();
-        IRProfile::engLogInfo("Created shader program: {}", m_handle);
+        IRE_LOG_INFO("Created shader program: {}", m_handle);
     }
 
     ShaderProgram::~ShaderProgram() {
-        IRProfile::engLogInfo("Deleting shader program: {}", m_handle);
+        IRE_LOG_INFO("Deleting shader program: {}", m_handle);
         ENG_API->glDeleteProgram(m_handle);
     }
 

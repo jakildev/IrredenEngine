@@ -143,7 +143,7 @@ namespace IRECS {
                 //     edge->add->components.emplace(*jtr, node->components[*jtr]->cloneEmpty());
                 // }
                 edge->add->edges_[*itr].remove = tempNode;
-                IRProfile::engLogInfo("Created archetype node with components HERE: {}, id={}",
+                IRE_LOG_INFO("Created archetype node with components HERE: {}, id={}",
                 makeComponentStringInternal(tempType),
                 edge->add->id_);
             }

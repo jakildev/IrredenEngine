@@ -30,10 +30,10 @@ namespace IRAudio {
     ,   m_midiNoteOffMessagesThisFrame{}
     ,   m_midiNoteOnMessagesThisFrame{}
     {
-        IRProfile::engLogInfo("Descovered {} MIDI input sources", m_numberPorts);
+        IRE_LOG_INFO("Descovered {} MIDI input sources", m_numberPorts);
         for(int i = 0; i < m_numberPorts; i++) {
             m_portNames.push_back(m_rtMidiIn.getPortName(i));
-            IRProfile::engLogInfo("MIDI input source {}: {}", i, m_portNames[i].c_str());
+            IRE_LOG_INFO("MIDI input source {}: {}", i, m_portNames[i].c_str());
         }
 
         for(unsigned char i = 0; i < kNumMidiChannels; ++i) {
@@ -50,7 +50,7 @@ namespace IRAudio {
                 std::vector<C_MidiMessage>{}
             });
         }
-        IRProfile::engLogInfo("Created MidiIn");
+        IRE_LOG_INFO("Created MidiIn");
     }
 
     MidiIn::~MidiIn() {
@@ -104,7 +104,7 @@ namespace IRAudio {
     }
 
     // void MidiIn::openPort(unsigned int portNumber) {
-    //     IRProfile::engLogInfo("Opening MIDI In port {}", portNumber);
+    //     IRE_LOG_INFO("Opening MIDI In port {}", portNumber);
     //     m_rtMidiIn.openPort(portNumber);
     //     m_openPorts.push_back(portNumber);
     // }
@@ -116,7 +116,7 @@ namespace IRAudio {
     //         if(portName.find(portNameSubstring) != portName.npos) {
     //             m_rtMidiIn.openPort(i);
     //             m_openPorts.push_back(i);
-    //             IRProfile::engLogInfo("Opened MIDI In port {}: {}", i, portName);
+    //             IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
     //             return;
     //         }
     //     }
@@ -130,7 +130,7 @@ namespace IRAudio {
                 m_rtMidiInMap.emplace(interface, RtMidiIn{});
                 setCallback(m_rtMidiInMap[interface], IRAudio::readMessageTestCallbackNew);
                 m_rtMidiInMap[interface].openPort(i);
-                IRProfile::engLogInfo("Opened MIDI In port {}: {}", i, portName);
+                IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
                 return;
             }
         }
@@ -198,7 +198,7 @@ namespace IRAudio {
 
 
         for(int i = 0; i < messageSize; i++) {
-            IRProfile::engLogInfo("Message byte {}: {}", i, message->at(i));
+            IRE_LOG_INFO("Message byte {}: {}", i, message->at(i));
         }
 
         auto messageQueue = static_cast<std::queue<IRComponents::C_MidiMessage>*>(
