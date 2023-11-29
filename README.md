@@ -24,21 +24,24 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 [Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
 [Archetype-based entity-component-system](/docs/features/ecs.md)
 
-## Integrations and Dependencies
+## Dependencies
 
-[Glad](/docs/dependencies/glad.md)\
-[GLFW](/docs/dependencies/glfw.md)\
-[GLM](/docs/dependencies/glm.md)\
-[OpenGL](/docs/dependencies/opengl.md)\
-[StbImage](/docs/dependencies/)\
+| Name | Owning Module | Description/Usage  | Integration Details |
+| ---- | -------| ------------------ | ------------------- |
+| [RtAudio](/docs/dependencies/) | IRAudio | | |
+| [RtMidi](/docs/dependencies/) | IRAudio | | |
+| [Glad](https://github.com/Dav1dde/glad) | IRRender | OpenGL loading library | [Details](/docs/text/dependencies/glad.md) |
+| [OpenGL/glsl](https://www.khronos.org/opengl/) | IRRender | Graphics API/shading language | |
+| [StbImage](/docs/dependencies/) | IRRender | | |
+| [MeshOptimizer](ooo) | IRRender | | |
+| [Assimp](https://github.com/assimp/assimp) | IRRender | | |
+| [GLFW](https://github.com/glfw/glfw) | IRInput | | |
+| [GLM](/docs/dependencies/glm.md) | IRMath | | |
+| [EasyProfiler](https://github.com/yse/easy_profiler) | IRProfile | | |
+| [SpdLogger](ooo) | IRProfile | | |
+| [Fmt](/docs/dependencies/) | IRProfile | | |
+| [Lua](ooo) | IRScript | | |
 <!-- -   GoogleTest -->
-[EasyProfiler](https://github.com/yse/easy_profiler)\
-[SpdLogger]()\
-[Fmt](/docs/dependencies/)\
-[RtAudio](/docs/dependencies/)\
-[RtMidi](/docs/dependencies/)\
-[Assimp](https://github.com/assimp/assimp)\
-[MeshOptimizer]()\
 
 ## Build
 
