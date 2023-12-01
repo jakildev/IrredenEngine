@@ -93,7 +93,7 @@ When building your project, you should note the available systems from each of t
 -   Submit pull requests directly to master.
 
 [Style rules and guidelines](/docs/rules/style.md)\
-[Opening a pull request](/docs/contributing/pull_requests.md)\
+[Opening a pull request](/docs/text/contributing/pull_requests.md)\
 [Submitting a new issue](/docs/contributing/issues.md)
 [Forking this repository]()
 
@@ -118,19 +118,7 @@ When building your project, you should note the available systems from each of t
 -   Implementations must be written in c++.
 
 
-
-## Contact
--   Join the discord [here](TODO: ).
--   Email me at jakildev@gmail.com.
--
-
 ## FAQ
 ### See here.
 
 ### [TODO](/irreden-engine/docs/todo.md)
-
-### Things to consider...
--   Should MORE of the engine's logic be part of the entity component system?
-
-## Notes and References
-1. See *Depenceny Injection: Design patterns using Spring and Guice*

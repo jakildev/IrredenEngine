@@ -1,5 +1,5 @@
 # Creating a Pull Request
-If you make any modifications to this code that would improve this project, or you want to contribue, you should create a pull request. This will give others a chance to review your code and, when approved, will be merged in with the code base. Some examples of modifications that would be useful
+If you make any modifications to this code that would improve this project, or you want to contribue, you should create a pull request. This will give others a chance to review your code and, when approved, will be merged in with the code base. Some examples of modifications that would be useful:
 
 ## Contributing to the engine itself
 
