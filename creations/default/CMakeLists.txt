@@ -11,7 +11,7 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 # include_directories(${IrredenEngine_DIR}/src)
 # include_directories(${IrredenEngine_DIR}/src/include)
 
-add_executable(DefaultCreation world.cpp main.cpp)
+add_executable(DefaultCreation main.cpp)
 
 target_link_libraries(DefaultCreation PUBLIC IrredenEngine)
 

@@ -82,10 +82,6 @@ IRWorld::~IRWorld() {
 void IRWorld::gameLoop() {
 
     // init();
-    initGameSystems();
-    initGameEntities();
-
-    // make events
     start();
     while (!m_IRGLFWWindow.shouldClose())
     {
@@ -99,7 +95,7 @@ void IRWorld::gameLoop() {
         }
         m_IRGLFWWindow.pollEvents();
         // TODO: Set frame caps
-        render(); // ???
+        render();
     }
     // cleanup();
     end();

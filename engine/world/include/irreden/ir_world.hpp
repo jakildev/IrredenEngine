@@ -53,13 +53,6 @@ private:
         void initIRRenderSystems();
     void initEngineCommands();
 
-    // TODO: Remove these virtual commands and perhaps use a CRTP
-    // or encapulation.
-    virtual void initGameSystems() = 0;
-    virtual void initGameEntities() = 0;
-
-
-
     void input();
     void update();
     void start();

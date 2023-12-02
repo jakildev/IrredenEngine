@@ -63,3 +63,8 @@ target_link_libraries(
     IrredenEngineCommand
     IrredenEngineWorld
 )
+
+target_include_directories(
+    IrredenEngine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
