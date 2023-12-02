@@ -52,12 +52,13 @@ namespace IRInput {
 
         glfwMakeContextCurrent(m_window);
 
-        glfwSwapInterval(0);
+        // glfwSwapInterval(0); // Remove for vsync?
 
         status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
         IR_ASSERT(status, "Failed to initalize GLAD");
 
         setWindowUserPointer(this);
+        // setWindowIcon();
 
         setCallbackFramebufferSize(irglfwCallback_framebuffer_size);
         setCallbackKey(irglfwCallback_key);
@@ -193,6 +194,13 @@ namespace IRInput {
     )
     {
         glfwSetScrollCallback(m_window, scrollCallbackFunction);
+    }
+
+    void IRGLFWWindow::setWindowIcon(
+        const GLFWimage* image
+    )   const
+    {
+        glfwSetWindowIcon(m_window, 1, image);
     }
 
 

@@ -65,6 +65,17 @@ IRWorld::IRWorld(int &argc, char  **argv)
 ,   m_audioManager{}
 ,   m_timeManager{}
 {
+    ImageData icon{
+        "data/images/irreden_engine_logo_v1.png"
+    };
+    GLFWimage iconGlfw{
+        icon.width_,
+        icon.height_,
+        icon.data_
+    };
+    m_IRGLFWWindow.setWindowIcon(
+        &iconGlfw
+    );
     initEngineSystems();
     initEngineCommands();
     m_renderer.printGLSystemInfo();
@@ -91,11 +102,11 @@ void IRWorld::gameLoop() {
         {
             input();
             update();
+            m_IRGLFWWindow.pollEvents();
             // output();
         }
-        m_IRGLFWWindow.pollEvents();
-        // TODO: Set frame caps
         render();
+        // TODO: Set frame caps
     }
     // cleanup();
     end();
@@ -114,11 +125,10 @@ void IRWorld::input() {
 
 void IRWorld::start() {
     m_timeManager.start();
-    // m_systemManager.executeEvent<IRTime::Events::START>();
 }
 
 void IRWorld::end() {
-    // m_systemManager.executeEvent<IRTime::Events::END>();
+
 }
 
 void IRWorld::update()

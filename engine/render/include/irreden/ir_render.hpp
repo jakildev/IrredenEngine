@@ -101,6 +101,8 @@ namespace IRRender {
     ivec2 getViewport();
     int getOutputScaleFactor();
 
+
+
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */

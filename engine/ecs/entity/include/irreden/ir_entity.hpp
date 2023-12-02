@@ -69,8 +69,38 @@ namespace IRECS {
             IRComponents::C_PositionGlobal3D{},
             components...
         );
-
     }
+
+    // template <
+    //     typename... Components
+    // >
+    // EntityId createEntity_Ext(
+    //     const Components&... components,
+    //     const CreateEntityExtraParams& params
+    // )
+    // {
+    //     EntityId entity = getEntityManager().createEntity(
+    //         IRComponents::C_PositionGlobal3D{},
+    //         components...
+    //     );
+
+    //     if(params.parentEntity != kNullEntity) {
+    //         setParent(entity, params.parentEntity);
+    //     }
+    // }
+
+    // template <
+    //     typename... Components
+    // >
+    // EntityId createEntityChild(
+    //     EntityId parent,
+    //     const Components&... components
+    // )
+    // {
+    //     return getEntityManager().createEntity(
+    //         components...
+    //     );
+    // }
 
     EntityId setParent(EntityId child, EntityId parent);
     void destroyEntity(EntityId entity);
@@ -78,6 +108,8 @@ namespace IRECS {
     // Returns the first EntityId of the batch
     // Needs to guarentee that entities are ajacent for
     // voxel scenes to work
+    // TODO: Consolidate all createEntity... functions into one variable
+    // param structure call. Do the same for systems.
     template <typename... Components>
     std::vector<EntityId> createEntityBatch(
         int count,
@@ -95,6 +127,14 @@ namespace IRECS {
         return res;
     }
 
+    void handleCreateEntityExtraParams(
+        EntityId entity,
+        const CreateEntityExtraParams& params
+    );
+
+
+    // TODO: Pack vectors and send to entityManager all at once
+    // TODO: Consolidate with Ext version
     template <typename... Functions>
     std::vector<EntityId> createEntityBatchWithFunctions(
         IRMath::ivec3 numEntities,
@@ -112,6 +152,32 @@ namespace IRECS {
                             )...
                         )
                     );
+                }
+            }
+        }
+        return res;
+    }
+
+    // TODO: Pack vectors and send to entityManager all at once
+    template <typename... Functions>
+    std::vector<EntityId> createEntityBatchWithFunctions_Ext(
+        IRMath::ivec3 numEntities,
+        const CreateEntityExtraParams& params,
+        Functions... functions
+    )
+    {
+        std::vector<EntityId> res;
+        for(int i = 0; i < numEntities.x; i++) {
+            for(int j = 0; j < numEntities.y; j++) {
+                for(int k = 0; k < numEntities.z; k++) {
+                    res.push_back(
+                        createEntity(
+                            functions(
+                                IRMath::ivec3{i, j, k}
+                            )...
+                        )
+                    );
+                    handleCreateEntityExtraParams(res.back(), params);
                 }
             }
         }

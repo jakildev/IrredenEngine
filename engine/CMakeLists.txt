@@ -68,3 +68,7 @@ target_include_directories(
     IrredenEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+add_custom_command(TARGET IrredenEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/data ${PROJECT_BINARY_DIR}/data)

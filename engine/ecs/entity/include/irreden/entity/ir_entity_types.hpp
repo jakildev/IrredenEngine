@@ -48,6 +48,14 @@ namespace IRECS {
         SIBLING_OF
     };
 
+
+    struct CreateEntityExtraParams {
+        std::pair<Relation, EntityId> relation = {
+            NONE,
+            kNullEntity
+        };
+    };
+
 } // namespace IRECS
 
 #endif /* IR_ENTITY_TYPES_H */

@@ -83,6 +83,7 @@ namespace IRInput {
         void setCallbackKey(GLFWkeyfun callbackFunction);
         void setCallbackMouseButton(GLFWmousebuttonfun callbackFunction);
         void setCallbackScroll(GLFWscrollfun callbackFunction);
+        void setWindowIcon(const GLFWimage* image) const;
 
         void addKeyPressedToProcess(int key);
         void addKeyReleasedToProcess(int key);

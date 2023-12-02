@@ -88,6 +88,20 @@ namespace IRECS {
         return getEntityManager().getEntityByName(name);
     }
 
+    void handleCreateEntityExtraParams(
+        EntityId entity,
+        const CreateEntityExtraParams& params
+    )
+    {
+        if(params.relation.first != Relation::NONE) {
+            getEntityManager().setRelation(
+                params.relation.first,
+                entity,
+                params.relation.second
+            );
+        }
+    }
+
 
 
     // bool isRelationCompoenent(ComponentId component) {
