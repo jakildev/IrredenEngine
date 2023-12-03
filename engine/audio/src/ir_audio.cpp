@@ -40,6 +40,7 @@ namespace IRAudio {
             checkCCMessageThisFrame(device, ccMessage);
     }
 
+    // Move some of this to IRInput
     const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(
         int device
     )

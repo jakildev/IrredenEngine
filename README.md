@@ -20,19 +20,85 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 -   Run the default project
 
 ## Modules and Key Features
+Modules are built individually as static libraries and linked to dependant modules and third-party libraries.
+
 | Module | Features |
 | ------ | -------- |
-| IRAudio | - Probe and connect to audio devices including audio interfaces<br> - Send and receive midi messages to create integraded sequences and CC parameters tied to game parameters<br> - Process realtime audio stream from audio devices (WIP) |
-| IRCommand | - Lambda defined commands triggered by keyboard, mouse, controller, midi note, or midi cc message events |
-| IRECS | - Archetype-based entity-component-system in which components are stored across entities in memory grouped by archetype<br> - Lambda-defined systems that operate on entities with specified components/relations <br> - Heirarchical relations and storage for memory efficient breadth-first updating of components <br> - Ability to create entities in batches with lambdas defining the initalization of components
+| IRAudio | - Probe and connect to audio devices including audio interfaces<br> - Interface midi input channels and messages to be used as controllers for custom commands<br> - Realtime audio streams from audio devices (WIP) |
+| IRCommand | - Define commands with lambdas that are triggered by a variety of input sources. |
+| IRECS | - Cache-efficient relational archetype-based entity-component-system<br> - Define systems with lambdas that operate on entities containing specific components/relations <br> - Create entities in batches with lambdas defining variable initalization of components
 | IRInput | - OpenGL window and context creation with GLFW<br> - Keyboard, mouse, and gamepad input events syncronized with game loop<br> - Uncapped FPS mouse position for smooth rendering|
-| IRMath | - GLM wrappers for vector math, RBG to HSV color conversion, and more<br> - Easing functions for simple animations<br> - Specialized isometric calculations for converting 3D positions to 2D isometric and 2D screen coordinates |
-| IRProfile | - Seperated color-coded logging sinks for the engine, user creations, and OpenGL API calls. |
-| IRRender | - Fixed orthographic isometric view for rendering voxels allowing for marchless ray rendering<br> - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases <br> - Interpolated pixel scrolling for a smooth pixel-art camera <br> - Multiple voxel canvases allows for select game entities (players, etc) to be unlocked from voxel grid |
+| IRMath | - Specialized isometric calculations for converting 3D positions to 2D isometric and 2D screen coordinates <br> - GLM wrappers for vector math, RBG to HSV color conversion, and more<br> - Easing functions for simple animations<br>  |
+| IRProfile | - Seperated logging sinks for the engine and user creations. |
+| IRRender | - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases <br> - Fixed orthographic isometric view for rendering voxels removing the need for raymarching<br>  - Interpolated pixel scrolling for a smooth pixel-art camera <br> - Multiple voxel canvases allows for select game entities (players, etc) to be unlocked from voxel grid |
 | IRScript | - Provides a wrapper for Lua C API (WIP)<br> - Runtime configuration for engine such as window size, resolution, etc (WIP) <br> - User can define entire implementation using just Lua files (Future) |
-| IRTime | - Fixed update and unfixed events for consistent update loop and uncapped rendering, audio processing, etc.<br> - Delta time unique for each event |
-| IRVideo | |
-| Misc | |
+| IRTime | - Fixed and uncapped events update and unfixed events for consistent update loop and uncapped rendering, audio processing, etc.<br> - Constructable event pipelines using custom and built-in systems |
+| IRVideo | - MP4 Video output of framebuffers in real-time (WIP) |
+
+## Usage
+
+### Getting Started
+
+1. Make a new folder under "creations" named after your new project
+```
+
+├───creations
+│   ├───default
+|   ├───...
+|   ├───your_new_creation
+
+```
+2. Create a new CMakeLists.txt in that directory
+```
+set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(YourNewCreation main.cpp)
+
+target_link_libraries(YourNewCreation PUBLIC IrredenEngine)
+```
+3. Add your new project to the creations top-level CMakeLists.txt file
+```
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/default)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/...)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/your_new_creation) # Add your new project
+```
+4. Create a basic main.cpp file for use with the engine
+```
+#include <irreden/ir_engine.hpp>
+
+int main(int argc, char **argv) {
+    IR_LOG_INFO("Starting creation: your-creation-here");
+
+    IREngine::initalize(argc, argv);
+
+    // Initalize entities, command, and systems here
+    // ...
+
+    IREngine::gameLoop();
+
+    return 0;
+}
+```
+5. Include your first components
+```
+#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
+``````
+6. Create your first entity
+```
+IRECS::createEntity{
+    C_Position3D{0, 0, 0},
+    C_VoxelSetNew{
+        ivec3{1, 1, 1},
+        Color{0, 255, 0, 255}
+    }
+};
+```
+7. Run your project
+    -   You should see a single green voxel in the center of the screen
+
+8. TODO: Check out the wiki for documentation on available features
+
 ## Dependencies
 
 | Name | Owning Module | Description/Usage  | Integration Details |
@@ -53,71 +119,37 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 | [FFMpeg](https://ffmpeg.org/) | IRVideo | Compression and encoding algorithms | [Details](/docs/text/dependencies/ffmpeg.md)
 <!-- -   GoogleTest -->
 
-
-## Design
-
 ## Licensing
 This project is under the [MIT License](/docs/usage/licensing.md).\
 It relies on other open-source dependencies as described in [dependencies](#dependencies).\
 More details can be found [here](/docs/usage/licensing.md).
 
 
-## Usage
-
-<!-- ### Navigating the Engine
-The engine is broken up into modules. Each module contains the following directories (when applicable):
-
--   **components:** Game components associated with this module
--   **entities:** Game entities, also known as prefabs, associated with this module
--   **include:** All include files for the module, including associated third-party files
--   **lib:** Precompiled binaries for third party libraries.
--   **patches:** Patch files for third-party packages pulled in during build.
--   **scripts:** Lua/python scripts associated with the module.
--   **shaders:** GLSL shader files used for rendering pipeline and GPU compute.
--   **src:** Main source files composing the module,
--   **systems:** Game systems associated with the module. -->
-
-### Project Setup
-[Project Setup](/docs/usage/project_setup.md)
-
-### Building Your Project
-When building your project, you should note the available systems from each of the modules, as well as create your own, to create your update, input, and rendering pipelines. You shold use the availble prefab entities, and create new entities with the supplied components. You should also write your own components to create unique game logic.
-
-### Coordinate System (move somewhere else)
--   2D Screen coordinates
--   2D Isometric coordinates
--   3D World space coordinates
-
 ## Contributing
--   Submit pull requests directly to master.
 
-[Style rules and guidelines](/docs/rules/style.md)\
-[Opening a pull request](/docs/text/contributing/pull_requests.md)\
-[Submitting a new issue](/docs/contributing/issues.md)
-[Forking this repository]()
+-   **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.**
+    -   If you have a suggestion, create a new discussion post or email me at jakildev@gmail.com.
+-   Make sure you checkout the [style guidelines](/docs/text/guidelines/style.md) before submitting a pull request
 
-**I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.** If you have a suggestion, submit a new issue to discuss, or email me at jakildev@gmail.com.
+### Ways to contribute
+1.  Submit an issue on github
+2.  Add, expand, or modify the engine's *prefabs* (built-in components, entities, systems, and commands)
+3.  Other work on the engine itself
 
--   You can request a new feature by opening up a issue with the feature request tag
--
 
-- Requesting a new component:
-    -   If you think a new component should be added to the engine (and thus added to the standard) you should submit a pull request with a new component file in assets/wip/components/\<new_component_name.hpp\>
-        -   This can be worked on in code or left blank.
-    -   Provide a reason why this new component is needed
+### 3. Contributing to the engine itself
 
-## Performance
+
+### 2.   Prefabs, demos, and your own creations.
+-   A prefab is an factory for a entity. (todo verify factory)
+
+- Changes or improvements to existing engine infrastructure.
+- A component, entity, or system that might be useful for other projects.
+- Updates to documentation.
+
+To save time in the review process, make sure your changes don't break any of the rules or style guidelines found [here](/docs/guidelines/style.md).
+
+
+## Performance (TODO)
 -   Highlight sections that perform well
 -   Identify bottlenecks and main areas for improvement
-
-## Limitations
--   Only builds for Windows.
--   Device must support OpenGL 4.6.
--   No IDE (may have one in the future).
--   Implementations must be written in c++.
-
-
-## FAQ
-### See here.
-
-### [TODO](/irreden-engine/docs/todo.md)
