@@ -5,6 +5,10 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
+### Licensing
+- This project is licensed under the popular and permissable [MIT License](/docs/usage/licensing.md).
+- It relies on other open-source projects with varying licenses found [here](#dependencies).
+
 ## Build
 
 ### Prerequirsites
@@ -25,14 +29,14 @@ Modules are built individually as static libraries and linked to dependant modul
 | Module | Features |
 | ------ | -------- |
 | IRAudio | - Probe and connect to audio devices including audio interfaces<br> - Interface midi input channels and messages to be used as controllers for custom commands<br> - Realtime audio streams from audio devices (WIP) |
-| IRCommand | - Define commands with lambdas that are triggered by a variety of input sources. |
+| IRCommand | - Define commands with lambdas that are triggered by a variety of input sources |
 | IRECS | - Cache-efficient relational archetype-based entity-component-system<br> - Define systems with lambdas that operate on entities containing specific components/relations <br> - Create entities in batches with lambdas defining variable initalization of components
 | IRInput | - OpenGL window and context creation with GLFW<br> - Keyboard, mouse, and gamepad input events syncronized with game loop<br> - Uncapped FPS mouse position for smooth rendering|
-| IRMath | - Specialized isometric calculations for converting 3D positions to 2D isometric and 2D screen coordinates <br> - GLM wrappers for vector math, RBG to HSV color conversion, and more<br> - Easing functions for simple animations<br>  |
+| IRMath | - Isometric calculations for converting 3D positions to 2D isometric and 2D screen coordinates <br> - GLM wrappers for vector math, RBG to HSV color conversion, and more<br> - Easing functions for simple animations<br>  |
 | IRProfile | - Seperated logging sinks for the engine and user creations. |
-| IRRender | - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases <br> - Fixed orthographic isometric view for rendering voxels removing the need for raymarching<br>  - Interpolated pixel scrolling for a smooth pixel-art camera <br> - Multiple voxel canvases allows for select game entities (players, etc) to be unlocked from voxel grid |
-| IRScript | - Provides a wrapper for Lua C API (WIP)<br> - Runtime configuration for engine such as window size, resolution, etc (WIP) <br> - User can define entire implementation using just Lua files (Future) |
-| IRTime | - Fixed and uncapped events update and unfixed events for consistent update loop and uncapped rendering, audio processing, etc.<br> - Constructable event pipelines using custom and built-in systems |
+| IRRender | - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases <br> - Fixed orthographic isometric view for rendering voxels removing the need for raymarching<br>  - Interpolated pixel scrolling for a smooth pixel-art camera <br> - Multiple voxel canvases allows for select game entities to be unlocked from voxel grid |
+| IRScript | - Provides a wrapper for common Lua C API functionality (WIP)<br> - Runtime configuration for engine such as window size, resolution, etc. (WIP) <br> - User can define entire implementation using just Lua files (Future) |
+| IRTime | - Fixed FPS events for consistent number of update ticks per second<br> - Uncapped FPS events with delta time for faster rendering updates <br> - Constructable event pipelines using custom and built-in systems |
 | IRVideo | - MP4 Video output of framebuffers in real-time (WIP) |
 
 ## Usage
@@ -83,7 +87,7 @@ int main(int argc, char **argv) {
 ```
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
-``````
+```
 6. Create your first entity
 ```
 IRECS::createEntity{
@@ -119,36 +123,31 @@ IRECS::createEntity{
 | [FFMpeg](https://ffmpeg.org/) | IRVideo | Compression and encoding algorithms | [Details](/docs/text/dependencies/ffmpeg.md)
 <!-- -   GoogleTest -->
 
-## Licensing
-This project is under the [MIT License](/docs/usage/licensing.md).\
-It relies on other open-source dependencies as described in [dependencies](#dependencies).\
-More details can be found [here](/docs/usage/licensing.md).
-
-
 ## Contributing
 
--   **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.**
-    -   If you have a suggestion, create a new discussion post or email me at jakildev@gmail.com.
--   Make sure you checkout the [style guidelines](/docs/text/guidelines/style.md) before submitting a pull request
+**I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.**
+-   If you have a suggestion, create a new discussion post or email me at jakildev@gmail.com.
 
 ### Ways to contribute
 1.  Submit an issue on github
 2.  Add, expand, or modify the engine's *prefabs* (built-in components, entities, systems, and commands)
 3.  Other work on the engine itself
+4. Publish an open-source project using the Irreden Engine
 
+### Style Guidelines
+#### Logical
+1. Prefer early exit over chained or nested branching statements.
+2. Perfer std::unique_ptr and std::make_unique over shared pointers or C-style memory allocation
+2. Use raw pointers when there is no transfer of ownership of memory.
 
-### 3. Contributing to the engine itself
-
-
-### 2.   Prefabs, demos, and your own creations.
--   A prefab is an factory for a entity. (todo verify factory)
-
-- Changes or improvements to existing engine infrastructure.
-- A component, entity, or system that might be useful for other projects.
-- Updates to documentation.
-
-To save time in the review process, make sure your changes don't break any of the rules or style guidelines found [here](/docs/guidelines/style.md).
-
+#### Non-logical
+1. Private class member variables are prefixed with "m_"
+2. Public class member variables are postfixed with "_"
+3. User-defined types used as *components* are prefixed with "C_"
+4. Compute shader files are prefixed with "c_"
+5. Vertex shader files are prefixed with "v_"
+6. Fragment shader files are prefixed with "f_"
+7. Geometry shader files are prefixed with "g_"
 
 ## Performance (TODO)
 -   Highlight sections that perform well
