@@ -1,9 +1,8 @@
 # Style
 
-#### logical
+#### Logical
 1. Prefer early exit over chained or nested branching statements.
 2. Raw pointer as argument means no ownership of memory.
-
 
 #### Non-logical
 1. Private class member variables are prefixed with "m_"

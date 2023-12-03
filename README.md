@@ -19,11 +19,20 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 -   Build all targets
 -   Run the default project
 
-## Moduels and Features
--
-[Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
-[Archetype-based entity-component-system](/docs/features/ecs.md)
-
+## Modules and Key Features
+| Module | Features |
+| ------ | -------- |
+| IRAudio | - Probe and connect to audio devices including audio interfaces<br> - Send and receive midi messages to create integraded sequences and CC parameters tied to game parameters<br> - Process realtime audio stream from audio devices (WIP) |
+| IRCommand | - Lambda defined commands triggered by keyboard, mouse, controller, midi note, or midi cc message events |
+| IRECS | - Archetype-based entity-component-system in which components are stored across entities in memory grouped by archetype<br> - Lambda-defined systems that operate on entities with specified components/relations <br> - Heirarchical relations and storage for memory efficient breadth-first updating of components <br> - Ability to create entities in batches with lambdas defining the initalization of components
+| IRInput | - OpenGL window and context creation with GLFW<br> - Keyboard, mouse, and gamepad input events syncronized with game loop<br> - Uncapped FPS mouse position for smooth rendering|
+| IRMath | - GLM wrappers for vector math, RBG to HSV color conversion, and more<br> - Easing functions for simple animations<br> - Specialized isometric calculations for converting 3D positions to 2D isometric and 2D screen coordinates |
+| IRProfile | - Seperated color-coded logging sinks for the engine, user creations, and OpenGL API calls. |
+| IRRender | - Fixed orthographic isometric view for rendering voxels allowing for marchless ray rendering<br> - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases <br> - Interpolated pixel scrolling for a smooth pixel-art camera <br> - Multiple voxel canvases allows for select game entities (players, etc) to be unlocked from voxel grid |
+| IRScript | - Provides a wrapper for Lua C API (WIP)<br> - Runtime configuration for engine such as window size, resolution, etc (WIP) <br> - User can define entire implementation using just Lua files (Future) |
+| IRTime | - Fixed update and unfixed events for consistent update loop and uncapped rendering, audio processing, etc.<br> - Delta time unique for each event |
+| IRVideo | |
+| Misc | |
 ## Dependencies
 
 | Name | Owning Module | Description/Usage  | Integration Details |
