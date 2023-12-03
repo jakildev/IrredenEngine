@@ -17,7 +17,7 @@ using namespace IRMath;
 namespace IRConstants {
 
     constexpr int kFPS = 60;
-    constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(4);
+    constexpr uvec2 kGameResolution = uvec2(640, 360) / uvec2(2);
     constexpr ivec2 kInitWindowSize = ivec2(1920, 1080);
 
     constexpr uvec2 kSizeExtraPixelBuffer = uvec2(4, 2);

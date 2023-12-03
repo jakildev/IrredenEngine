@@ -60,7 +60,7 @@ add_executable(YourNewCreation main.cpp)
 
 target_link_libraries(YourNewCreation PUBLIC IrredenEngine)
 ```
-3. Add your new project to the creations top-level CMakeLists.txt file
+3. Add your new project to the creation's top-level CMakeLists.txt file
 ```
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/default)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/...)

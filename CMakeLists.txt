@@ -9,6 +9,7 @@ include(cmake/ir_functions.cmake)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
+add_subdirectory(${PROJECT_SOURCE_DIR}/test)
 
 # Options you can enable or disable
 
