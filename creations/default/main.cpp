@@ -110,15 +110,6 @@ void initGameEntities()
                 //         return C_Velocity3D{vec3(0, 0, 0)};
                 //     }
                 );
-                // for(auto& entity : entities) {
-                //     IRECS::setParent(entity, parent);
-                //     if(randomInt(0, 50) > 0) {
-                //         IRECS::setComponent(
-                //             entity,
-                //             C_Lifetime{randomInt(0, 400)}
-                //         );
-                //     }
-                // }
             }
         }
     }

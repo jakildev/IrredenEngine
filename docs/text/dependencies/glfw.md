@@ -1,7 +1,7 @@
 ## Irreden Engine: GLFW
 
 ### Details:
--   **Built by module:** Input
+-   **Built by module:** IRInput
 -   **Package type:** Dynamic library
 -   **Bundled:** No
 -   **Version:** master

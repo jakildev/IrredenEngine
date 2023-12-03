@@ -5,44 +5,6 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
-
-## Design
-
-### Modules
--   IRMath
--   IRRender
-
--   The Engine is seperated into "modules". Modules
-    -   Contain functionality relating to a particular domain (rendering, profiling, etc).
-    -   Build seperately as their own *static library*.
-    -   Link to dependency modules and 3rd party libraries.
-- Modules are used by the Engine and creations by including its "/irreden/ir_\<module_name\>.hpp" file.
-    -   This file contains the module's public API and necessecary header files.
-
-## Features
--
-[Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
-[Archetype-based entity-component-system](/docs/features/ecs.md)
-
-## Dependencies
-
-| Name | Owning Module | Description/Usage  | Integration Details |
-| ---- | -------| ------------------ | ------------------- |
-| [RtAudio](/docs/dependencies/) | IRAudio | | |
-| [RtMidi](/docs/dependencies/) | IRAudio | | |
-| [Glad](https://github.com/Dav1dde/glad) | IRRender | OpenGL loading library | [Details](/docs/text/dependencies/glad.md) |
-| [OpenGL/glsl](https://www.khronos.org/opengl/) | IRRender | Graphics API/shading language | |
-| [StbImage](/docs/dependencies/) | IRRender | | |
-| [MeshOptimizer](ooo) | IRRender | | |
-| [Assimp](https://github.com/assimp/assimp) | IRRender | | |
-| [GLFW](https://github.com/glfw/glfw) | IRInput | | |
-| [GLM](/docs/dependencies/glm.md) | IRMath | | |
-| [EasyProfiler](https://github.com/yse/easy_profiler) | IRProfile | | |
-| [SpdLogger](ooo) | IRProfile | | |
-| [Fmt](/docs/dependencies/) | IRProfile | | |
-| [Lua](ooo) | IRScript | | |
-<!-- -   GoogleTest -->
-
 ## Build
 
 ### Prerequirsites
@@ -56,6 +18,34 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 -   Configure cmake
 -   Build all targets
 -   Run the default project
+
+## Moduels and Features
+-
+[Isometric Pixelatable Voxel Renderer](/docs/features/renderer.md)\
+[Archetype-based entity-component-system](/docs/features/ecs.md)
+
+## Dependencies
+
+| Name | Owning Module | Description/Usage  | Integration Details |
+| ---- | -------| ------------------ | ------------------- |
+| [RtAudio](https://github.com/thestk/rtaudio) | IRAudio | Realtime audio input/output | [Details](/docs/text/dependencies/rtaudio.md)|
+| [RtMidi](https://github.com/thestk/rtmidi) | IRAudio | Realtime MIDI input/output | [Details](/docs/text/dependencies/rtmidi.md) |
+| [GLFW](https://github.com/glfw/glfw) | IRInput | OpenGL window creation, inputs, and events | [Details](/docs/text/dependencies/glfw.md) |
+| [GLM](https://github.com/g-truc/glm) | IRMath | Mathametics operations for graphics programming | [Details](/docs/text/dependencies/glm.md) |
+| [EasyProfiler](https://github.com/yse/easy_profiler) | IRProfile | CPU profiler and GUI | [Details](/docs/text/dependencies/easy_profiler.md) |
+| [SpdLogger](https://github.com/gabime/spdlog) | IRProfile | Configurable logging library | [Details](/docs/text/dependencies/spdlog.md) |
+| [Fmt](https://github.com/fmtlib/fmt) | IRProfile | Formatting library used by SpdLog | [Details](/docs/text/dependencies/fmt.md) |
+| [Glad](https://github.com/Dav1dde/glad) | IRRender | OpenGL loading library | [Details](/docs/text/dependencies/glad.md) |
+| [OpenGL/glsl](https://www.khronos.org/opengl/) | IRRender | Graphics API/shading language | [Details](/docs/text/dependencies/opengl.md) |
+| [StbImage](https://github.com/nothings/stb/tree/master) | IRRender | Image loader | [Details](/docs/text/dependencies/stb_image.md) |
+| [MeshOptimizer](https://github.com/zeux/meshoptimizer) | IRRender | Mesh storage and size optimization | [Details](/docs/text/dependencies/mesh_optimizer.md) |
+| [Assimp](https://github.com/assimp/assimp) | IRRender | 3D file loader | [Details](/docs/text/dependencies/assimp.md) |
+| [Lua](https://www.lua.org/manual/5.3/) | IRScript | Scripting language for C/C++ | [Details](/docs/text/dependencies/lua.md) |
+| [FFMpeg](https://ffmpeg.org/) | IRVideo | Compression and encoding algorithms | [Details](/docs/text/dependencies/ffmpeg.md)
+<!-- -   GoogleTest -->
+
+
+## Design
 
 ## Licensing
 This project is under the [MIT License](/docs/usage/licensing.md).\
