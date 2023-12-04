@@ -1,11 +1,8 @@
-# Irreden Engine
-
-## Make a cool banner image (need font rendering first)
+# Irreden Engine <img src="https://github.com/jakildev/IrredenEngine/docs/images/irreden_engine_logo_v6.png" alt="Logo" width="100"/>
+![Banner image](/docs/images/particle_banner.png)
 
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
-
-
 
 ## Build
 
