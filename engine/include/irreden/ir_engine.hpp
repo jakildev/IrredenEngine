@@ -13,7 +13,7 @@ namespace IREngine {
         return *g_world;
     }
 
-    void initalize(int &argc, char **argv) {
+    void init(int &argc, char **argv) {
         g_world = std::make_unique<IRWorld>(argc, argv);
     }
 

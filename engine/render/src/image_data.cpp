@@ -23,7 +23,7 @@ namespace IRRender {
             &nrChannels_,
             4
         );
-        IR_ASSERT(this->data_, "Failed to load image");
+        IR_ASSERT(this->data_, "Failed to load image file: {}", file);
         IRE_LOG_INFO(
             "Loaded image width={}, height={}, channels={}",
             width_,

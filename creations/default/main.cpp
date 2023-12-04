@@ -12,7 +12,7 @@ void initGameEntities();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
-    IREngine::initalize(argc, argv);
+    IREngine::init(argc, argv);
     initGameEntities();
     IREngine::gameLoop();
 
@@ -29,9 +29,9 @@ void initGameEntities()
             for(int z = 0; z < partitions.z; z++) {
                 EntityId parent = IRECS::createEntity(
                     C_Position3D{
-                        static_cast<float>(x * 32),
-                        static_cast<float>(y * 32),
-                        static_cast<float>(z * 32)
+                        static_cast<float>(x * 16),
+                        static_cast<float>(y * 16),
+                        static_cast<float>(z * 16)
                     }
                 );
                 auto entities = IRECS::createEntityBatchWithFunctions_Ext(
