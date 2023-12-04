@@ -66,7 +66,7 @@ IRWorld::IRWorld(int &argc, char  **argv)
 ,   m_timeManager{}
 {
     ImageData icon{
-        "data/images/irreden_engine_logo_v1.png"
+        "data/images/irreden_engine_logo_v6_alpha.png"
     };
     GLFWimage iconGlfw{
         icon.width_,

@@ -23,33 +23,33 @@ target_include_directories(IrredenEngineTest PRIVATE
 )
 
 # Copy DLLs
-add_custom_command(
-    TARGET IrredenEngineTest
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/bin/libgmock_maind.dll
-    ${PROJECT_BINARY_DIR}/libgmock_maind.dll
-)
-add_custom_command(
-    TARGET IrredenEngineTest
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/bin/libgmockd.dll
-    ${PROJECT_BINARY_DIR}/libgmockd.dll
-)
-add_custom_command(
-    TARGET IrredenEngineTest
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/bin/libgtest_maind.dll
-    ${PROJECT_BINARY_DIR}/libgtest_maind.dll
-)
-add_custom_command(
-    TARGET IrredenEngineTest
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/bin/libgtestd.dll
-    ${PROJECT_BINARY_DIR}/libgtestd.dll
-)
+# add_custom_command(
+#     TARGET IrredenEngineTest
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#     ${PROJECT_BINARY_DIR}/bin/libgmock_maind.dll
+#     ${PROJECT_BINARY_DIR}/libgmock_maind.dll
+# )
+# add_custom_command(
+#     TARGET IrredenEngineTest
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#     ${PROJECT_BINARY_DIR}/bin/libgmockd.dll
+#     ${PROJECT_BINARY_DIR}/libgmockd.dll
+# )
+# add_custom_command(
+#     TARGET IrredenEngineTest
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#     ${PROJECT_BINARY_DIR}/bin/libgtest_maind.dll
+#     ${PROJECT_BINARY_DIR}/libgtest_maind.dll
+# )
+# add_custom_command(
+#     TARGET IrredenEngineTest
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy
+#     ${PROJECT_BINARY_DIR}/bin/libgtestd.dll
+#     ${PROJECT_BINARY_DIR}/libgtestd.dll
+# )
 
 gtest_discover_tests(IrredenEngineTest TEST_LIST IrredenEngineTest_targets)

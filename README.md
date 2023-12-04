@@ -5,9 +5,7 @@
 ## About
 The Irreden Engine is an isometric pixel-art voxel content and game engine.
 
-### Licensing
-- This project is licensed under the popular and permissable [MIT License](/docs/usage/licensing.md).
-- It relies on other open-source projects with varying licenses found [here](#dependencies).
+
 
 ## Build
 
