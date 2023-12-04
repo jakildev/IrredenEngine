@@ -1,7 +1,7 @@
 # Irreden Engine
 
 ## About
-The Irreden Engine is an isometric pixel-art voxel content and game engine.
+The Irreden Engine is an isometric pixel-art voxel content and game engine. Created by jakildev to create unique content and games for years to come.
 
 ![Banner image](/docs/images/particle_banner.png)
 
