@@ -52,7 +52,7 @@ namespace IRInput {
 
         glfwMakeContextCurrent(m_window);
 
-        // glfwSwapInterval(0); // Remove for vsync?
+        glfwSwapInterval(0); // Remove for vsync?
 
         status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
         IR_ASSERT(status, "Failed to initalize GLAD");
