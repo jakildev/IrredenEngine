@@ -1,5 +1,5 @@
 add_library(IrredenEngineWorld STATIC
-    src/ir_world.cpp
+    src/world.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC

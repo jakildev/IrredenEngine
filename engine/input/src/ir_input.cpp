@@ -45,10 +45,10 @@ namespace IRInput {
         );
     }
 
-    C_MousePosition getMousePositionUpdate() {
+    vec2 getMousePositionUpdate() {
         return getInputManager().getMousePositionUpdate();
     }
-    C_MousePosition getMousePositionRender() {
+    vec2 getMousePositionRender() {
         return getInputManager().getMousePositionRender();
     }
 

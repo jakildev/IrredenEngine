@@ -72,13 +72,13 @@ namespace IRInput {
         );
         processScrolls(m_window.getScrollsToProcess());
         IRInput::getCursorPosition(
-            m_mousePositionUpdate.pos_
+            m_mousePositionUpdate
         );
     }
 
     void InputManager::tickRender() {
         IRInput::getCursorPosition(
-            m_mousePositionRender.pos_
+            m_mousePositionRender
         );
     }
 
@@ -120,12 +120,11 @@ namespace IRInput {
         return false;
     }
 
-    C_MousePosition InputManager::getMousePositionUpdate() const {
-        return m_mousePositionUpdate;
+    vec2 InputManager::getMousePositionUpdate() const {
+        return vec2(m_mousePositionUpdate);
     }
-
-    C_MousePosition InputManager::getMousePositionRender() const {
-        return m_mousePositionRender;
+    vec2 InputManager::getMousePositionRender() const {
+        return vec2(m_mousePositionRender);
     }
 
     int InputManager::getButtonPressesThisFrame(KeyMouseButtons button) const {

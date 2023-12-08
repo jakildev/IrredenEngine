@@ -78,6 +78,7 @@ namespace IRRender {
         vec2 canvasZoomLevel_;
         vec2 canvasOffset_;
         vec2 textureOffset_;
+        vec2 mouseHoveredTriangleIndex_;
     };
     constexpr GLuint kBufferIndex_FrameDataUniformIsoTriangles = 3;
 

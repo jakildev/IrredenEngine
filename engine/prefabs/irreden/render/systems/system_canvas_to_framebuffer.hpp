@@ -90,13 +90,19 @@ namespace IRECS {
                     frameData.canvasZoomLevel_ =
                         IRRender::getCameraZoom() *
                         zoomLevel.zoom_;
-
+                          // TEST: calc offset
+                    vec2 isoPixelOffset =
+                        glm::floor(IRMath::pos2DIsoToPos2DGameResolution(
+                            glm::fract(cameraPosition.pos_),
+                            IRRender::getCameraZoom() *
+                                zoomLevel.zoom_
+                        ));
                     mat4 model = mat4(1.0f);
                     model = glm::translate(
                         model,
                         glm::vec3(
-                            framebufferResolution.x / 2,
-                            framebufferResolution.y / 2,
+                            framebufferResolution.x / 2 + isoPixelOffset.x,
+                            framebufferResolution.y / 2 - isoPixelOffset.y,
                             0.0f
                         )
                     );
@@ -111,9 +117,18 @@ namespace IRECS {
                         )
                     );
                     frameData.mpMatrix_ = projection * model;
+
                     frameData.canvasOffset_ = cameraPosition.pos_;
 
                     frameData.textureOffset_ = vec2(0);
+                    frameData.mouseHoveredTriangleIndex_ =
+                        IRRender::mousePositionScreenToMainCanvasTriangleIndex(
+                            IRRender::getMousePositionOutputView()
+                        ) -
+                        // Same as offset in framebuffers to screen
+                        glm::fract(cameraPosition.pos_) *
+                            vec2(1, -1)
+                        ;
                     IRRender::getNamedResource<Buffer>(
                         "CanvasToFramebufferFrameData"
                     )->subData(
@@ -138,6 +153,7 @@ namespace IRECS {
                     IRRender::getNamedResource<VAO>(
                         "QuadVAO"
                     )->bind();
+
                 }
             );
         }

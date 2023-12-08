@@ -231,6 +231,15 @@ namespace IRMath {
 
         return ivec3(-1, -1, -1);
     }
+
+    constexpr vec2 pos2DIsoToPos2DGameResolution(
+        const vec2 position,
+        const vec2 zoomLevel
+    )
+    {
+        return position * zoomLevel * vec2(2, 1);
+    }
+
     // Selects from bottom Z face
     template <ivec3 size>
     constexpr ivec3 pos2DIsoToPos3DAtZLevel(
@@ -378,8 +387,7 @@ namespace IRMath {
         return size / uvec2(1, 2) * scaleFactor;
     }
 
-    // TODO: make constexpr somehow
-    vec2 calculateTrianglePositionOffsetIso(const vec2 position);
+    vec2 pos2DIsoToTriangleIndex(const vec2 position);
 
     constexpr int calcResolutionWidthFromHeightAndAspectRatio(
         const int height,

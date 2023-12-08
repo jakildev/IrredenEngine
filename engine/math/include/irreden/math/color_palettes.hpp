@@ -12,6 +12,8 @@
 
 #include <irreden/math/ir_math_types.hpp>
 
+#include <vector>
+
 namespace IRMath {
 
     const std::vector<Color> kPalettePastel5 = {

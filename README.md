@@ -2,7 +2,7 @@
 ![Banner image](/docs/images/irriden_engine_baner.png)
 
 ## About
-The Irreden Engine is an isometric pixel-art voxel content and game engine.
+The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 
 ## Build
 
@@ -19,7 +19,9 @@ The Irreden Engine is an isometric pixel-art voxel content and game engine.
 -   Run the default project.
 
 ## Modules and Key Features
-Modules are built individually as static libraries and linked to dependant modules and third-party libraries.
+- Modules are built individually as static libraries and linked to dependant modules and third-party libraries.
+- Modules are are included by other modules via a single ir_\<module_name\>.hpp file.
+- Check out each module link for a complete list of features and developement roadmap. (TODO)
 
 | Module | Features |
 | ------ | -------- |

@@ -34,19 +34,19 @@ namespace IRRender {
             GL_UNIFORM_BUFFER,
             kBufferIndex_GlobalConstantsGLSL
         }
-    ,   m_backgroundCanvas{
-            IRECS::createEntity<kCanvas>(
-                "background",
-                ivec2(
-                    IRConstants::kScreenTriangleMaxCanvasSize /
-                    uvec2(2)
-                ),
-                ivec3(8, 8, 8),
-                IRConstants::kGameResolution,
-                IRConstants::kSizeExtraPixelNoBuffer,
-                2.0f
-            )
-        }
+    // ,   m_backgroundCanvas{
+    //         IRECS::createEntity<kCanvas>(
+    //             "background",
+    //             ivec2(
+    //                 IRConstants::kScreenTriangleMaxCanvasSize /
+    //                 uvec2(2)
+    //             ),
+    //             ivec3(8, 8, 8),
+    //             IRConstants::kGameResolution,
+    //             IRConstants::kSizeExtraPixelNoBuffer,
+    //             2.0f
+    //         )
+    //     }
     ,   m_mainCanvas{
             IRECS::createEntity<kCanvas>(
                 "main",
@@ -58,17 +58,17 @@ namespace IRRender {
                 IRConstants::kSizeExtraPixelBuffer
             )
         }
-    ,   m_playerCanvas{
-            IRECS::createEntity<kCanvas>(
-                "player",
-                ivec2(
-                    IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
-                ),
-                IRConstants::kVoxelPoolSize / ivec3(2),
-                IRConstants::kGameResolution,
-                IRConstants::kSizeExtraPixelBuffer
-            )
-        }
+    // ,   m_playerCanvas{
+    //         IRECS::createEntity<kCanvas>(
+    //             "player",
+    //             ivec2(
+    //                 IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
+    //             ),
+    //             IRConstants::kVoxelPoolSize / ivec3(2),
+    //             IRConstants::kGameResolution,
+    //             IRConstants::kSizeExtraPixelBuffer
+    //         )
+    //     }
     ,   m_camera{
             createEntity(
                 C_Camera{
@@ -103,28 +103,28 @@ namespace IRRender {
             kPinkTanOrange[1],
             IRColors::kBlack
         };
-        IRECS::setComponent(
-            m_backgroundCanvas,
-            C_TextureScrollPosition{
-                vec2(0.0f)
-            }
-        );
-        IRECS::setComponent(
-            m_backgroundCanvas,
-            C_TextureScrollVelocity{}
-        );
-        IRECS::setComponent(
-            m_backgroundCanvas,
-            C_TriangleCanvasBackground{
-                BackgroundTypes::kGradientRandom,
-                colorPalette,
-                ivec2(IRConstants::kScreenTriangleMaxCanvasSize) /
-                    ivec2(2)
-            }
-        );
-        m_canvasMap["background"] = m_backgroundCanvas;
+        // IRECS::setComponent(
+        //     m_backgroundCanvas,
+        //     C_TextureScrollPosition{
+        //         vec2(0.0f)
+        //     }
+        // );
+        // IRECS::setComponent(
+        //     m_backgroundCanvas,
+        //     C_TextureScrollVelocity{}
+        // );
+        // IRECS::setComponent(
+        //     m_backgroundCanvas,
+        //     C_TriangleCanvasBackground{
+        //         BackgroundTypes::kGradientRandom,
+        //         colorPalette,
+        //         ivec2(IRConstants::kScreenTriangleMaxCanvasSize) /
+        //             ivec2(2)
+        //     }
+        // );
+        // m_canvasMap["background"] = m_backgroundCanvas;
         m_canvasMap["main"] = m_mainCanvas;
-        m_canvasMap["player"] = m_playerCanvas;
+        // m_canvasMap["player"] = m_playerCanvas;
 
         initRenderingResources();
         initRenderingSystems();
@@ -180,6 +180,16 @@ namespace IRRender {
     vec2 RenderManager::getCameraZoom() const {
         return IRECS::getComponent<C_Camera>(m_camera).zoom_;
     }
+    vec2 RenderManager::getCameraOffset2DIso() const {
+        return IRMath::pos2DScreenToPos2DIso(
+            IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_,
+            IRECS::getComponent<C_Camera>(m_camera).triangleStepSizeScreen_
+        ) + (
+            vec2(getMainCanvasSizeTriangles()) /
+            IRECS::getComponent<C_Camera>(m_camera).zoom_ /
+            vec2(2)
+        );
+    }
 
     void RenderManager::deallocateVoxels(
         std::span<C_Position3D> positions,
@@ -204,6 +214,10 @@ namespace IRRender {
 
     EntityId RenderManager::getCanvas(std::string canvasName) {
         return m_canvasMap[canvasName];
+    }
+
+    ivec2 RenderManager::getMainCanvasSizeTriangles() const {
+        return IRECS::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     }
 
     void RenderManager::initRenderingResources() {
@@ -281,6 +295,13 @@ namespace IRRender {
         IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
             vec2(m_gameResolution), m_outputScaleFactor
         );
+    }
+
+    vec2 RenderManager::screenToOutputWindowOffset() const {
+        return vec2(
+            m_viewport.x - m_outputResolution.x,
+            m_viewport.y - m_outputResolution.y
+        ) / vec2(2);
     }
 
 } // namespace IRRender

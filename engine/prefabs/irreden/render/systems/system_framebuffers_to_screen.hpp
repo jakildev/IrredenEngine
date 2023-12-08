@@ -123,22 +123,29 @@ namespace IRECS {
                 (pos3DtoPos2DScreen(
                     cameraPosition,
                     IRRender::getTriangleStepSizeScreen()
-                ) * vec2(-1, 1) -
-                ( IRRender::getTriangleStepSizeScreen() / 2.0f
-                ) * vec2(1, -1))
-            ;
+                ) * vec2(-1, 1)
+                // -
+                // ( IRRender::getTriangleStepSizeScreen() / 2.0f
+                // ) * vec2(1, -1)
+                );
 
             mat4 model = glm::mat4(1.0f);
 
             // Pixel perfect part
             if(name == "main")
             {
-                vec2 fractComponentScaledNew =
-                    glm::fract(cameraPositionIso) *
-                    IRRender::getTriangleStepSizeScreen() *
-                        vec2(1, -1);
-
-                offset += fractComponentScaledNew;
+               vec2 framebufferPositionOffset =
+                    glm::floor(
+                        glm::fract(
+                            IRMath::pos2DIsoToPos2DGameResolution(
+                                glm::fract(cameraPositionIso),
+                                IRRender::getCameraZoom()
+                            )
+                        ) *
+                        vec2(1, -1) *
+                        vec2(scaleFactor)
+                    );
+                offset += framebufferPositionOffset;
             }
             else if(name == "background")
             {

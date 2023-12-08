@@ -1,2 +1,2 @@
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/default)
-# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/your_new_creation)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/midi_device)

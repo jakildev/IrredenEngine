@@ -7,9 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 include(cmake/ir_functions.cmake)
 
+include_directories(${PROJECT_SOURCE_DIR}/engine/prefabs)
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 add_subdirectory(${PROJECT_SOURCE_DIR}/test)
 
 # Options you can enable or disable
-

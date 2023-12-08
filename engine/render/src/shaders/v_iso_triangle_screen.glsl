@@ -20,6 +20,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 zoomLevel;
     vec2 canvasOffset;
     vec2 textureOffset;
+    vec2 mouseHoveredTriangleIndex;
 };
 
 // TODO: maybe just use a mvp matrix
@@ -27,5 +28,6 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     TexCoords = vec2(aPos.x, -aPos.y) + 0.50 + (textureOffset / vec2(textureSize));
+    // TexCoords = vec2(aPos.x, -aPos.y) + 0.50 + canvasOffset;
     gl_Position = mpMatrix * vec4(aPos, 1.0f, 1.0f);
 }

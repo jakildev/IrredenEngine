@@ -21,7 +21,6 @@
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/image_data.hpp>
 
-
 namespace IRRender {
 
     extern RenderingResourceManager* g_renderingResourceManager;
@@ -96,10 +95,16 @@ namespace IRRender {
     }
 
     vec2 getCameraPositionScreen();
+    vec2 getCameraOffset2DIso();
     vec2 getCameraZoom();
     vec2 getTriangleStepSizeScreen();
     ivec2 getViewport();
     int getOutputScaleFactor();
+    vec2 getMousePositionOutputView();
+
+    vec2 mousePositionScreenToMainCanvasTriangleIndex(
+        const vec2& mousePositionScreen
+    );
 
 
 

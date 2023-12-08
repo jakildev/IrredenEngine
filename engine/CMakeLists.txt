@@ -3,7 +3,7 @@
 include(FetchContent)
 
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    ${CMAKE_CURRENT_SOURCE_DIR}/prefabs
 )
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)

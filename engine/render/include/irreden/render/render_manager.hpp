@@ -46,7 +46,11 @@ namespace IRRender {
         EntityId getCanvas(std::string canvasName);
         vec2 getCameraPositionScreen() const;
         vec2 getCameraZoom() const;
+        vec2 getCameraOffset2DIso() const;
         vec2 getTriangleStepSizeScreen() const;
+        ivec2 getMainCanvasSizeTriangles() const;
+        vec2 screenToOutputWindowOffset() const;
+
         void tick();
 
         void printGLSystemInfo();
@@ -75,9 +79,9 @@ namespace IRRender {
         Buffer m_bufferUniformConstantsGLSL;
         // Buffer m_bufferVoxelPositions;
         // Buffer m_bufferVoxelColors;
-        EntityId m_backgroundCanvas;
+        // EntityId m_backgroundCanvas;
         EntityId m_mainCanvas;
-        EntityId m_playerCanvas;
+        // EntityId m_playerCanvas;
         EntityId m_camera;
         ivec2 m_viewport;
         ivec2 m_gameResolution;

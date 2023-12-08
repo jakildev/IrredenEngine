@@ -15,7 +15,7 @@
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/entity_manager.hpp>
 
-#include <irreden/common/components/component_position_global_3D.hpp>
+#include <irreden/common/components/component_position_global_3d.hpp>
 
 namespace IRECS {
     // Gets created by ir_world and set here.

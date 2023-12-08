@@ -125,22 +125,22 @@ namespace IRECS {
                         IRRender::getCameraPositionScreen(),
                         IRRender::getTriangleStepSizeScreen()
                     );
-                    IRECS::getComponent<C_CameraPosition2DIso>(
-                        IRRender::getCanvas("background")
-                    ).pos_ =
-                        IRMath::offsetScreenToIsoTriangles(
-                            IRRender::getCameraPositionScreen(),
-                            IRRender::getTriangleStepSizeScreen()
-                        );
+                    // IRECS::getComponent<C_CameraPosition2DIso>(
+                    //     IRRender::getCanvas("background")
+                    // ).pos_ =
+                    //     IRMath::offsetScreenToIsoTriangles(
+                    //         IRRender::getCameraPositionScreen(),
+                    //         IRRender::getTriangleStepSizeScreen()
+                    //     );
 
-                    // Write background here for now
-                    IRECS::getComponent<C_TriangleCanvasBackground>(
-                        IRRender::getCanvas("background")
-                    ).clearCanvasWithBackground(
-                        IRECS::getComponent<C_TriangleCanvasTextures>(
-                            IRRender::getCanvas("background")
-                        )
-                    );
+                    // // Write background here for now
+                    // IRECS::getComponent<C_TriangleCanvasBackground>(
+                    //     IRRender::getCanvas("background")
+                    // ).clearCanvasWithBackground(
+                    //     IRECS::getComponent<C_TriangleCanvasTextures>(
+                    //         IRRender::getCanvas("background")
+                    //     )
+                    // );
                 }
             );
         }

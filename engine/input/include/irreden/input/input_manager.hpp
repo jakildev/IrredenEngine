@@ -44,8 +44,8 @@ namespace IRInput {
             KeyMouseButtons button,
             ButtonStatuses status
         ) const;
-        C_MousePosition getMousePositionUpdate() const; // Should be stored in ECS
-        C_MousePosition getMousePositionRender() const; // Should be stored in ECS
+        vec2 getMousePositionUpdate() const; // Should be stored in ECS
+        vec2 getMousePositionRender() const; // Should be stored in ECS
         int getButtonPressesThisFrame(KeyMouseButtons button) const;
         int getButtonReleasesThisFrame(KeyMouseButtons button) const;
         float getAxisValue(
@@ -61,8 +61,8 @@ namespace IRInput {
         std::vector<EntityId> m_scrollEntitiesThisFrame;
         std::vector<int> m_buttonPressesThisFrame;
         std::vector<int> m_buttonReleasesThisFrame;
-        C_MousePosition m_mousePositionUpdate;
-        C_MousePosition m_mousePositionRender;
+        dvec2 m_mousePositionUpdate;
+        dvec2 m_mousePositionRender;
 
         void processKeyMouseButtons(
             std::queue<int>& queueOfButtons,

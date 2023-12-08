@@ -31,7 +31,8 @@ namespace IRCommand {
         // a query and stuff, and should exclude "locked entities"
         LOCK_VOXEL_SCALE, // TODO: This will zoom in the rendered framebuffer,
         // and not change the on the canvas to framebuffer...
-        UNLOCK_VOXEL_SCALE // TODO: see above
+        UNLOCK_VOXEL_SCALE, // TODO: see above
+        SPAWN_PARTICLE_MOUSE_POSITION
     };
 
     template <CommandNames command>

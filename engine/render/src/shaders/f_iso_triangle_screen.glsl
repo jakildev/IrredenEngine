@@ -19,7 +19,6 @@ layout(std140, binding = 1) uniform GlobalConstants {
     uniform ivec2 kCanvasTriangleOriginOffsetZ1;
     uniform int kMinTriangleDistance;
     uniform int kMaxTriangleDistance;
-
 };
 
 layout (std140, binding = 3) uniform FrameDataIsoTriangles {
@@ -27,6 +26,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 zoomLevel;
     vec2 canvasOffset;
     vec2 textureOffset;
+    vec2 mouseHoveredTriangleIndex;
 };
 
 out vec4 FragColor;
@@ -36,12 +36,16 @@ float normalizeDistance(int dist) {
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
 
+// Left off here: Use canvasOffset to adjust
+// the origin of the triangles (no pixel perfect part yet)
+
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     // ivec2 zoomAdjustedSize = textureSize / round(zoomLevel);
     // ivec2 screenSize = textureSize / ivec2(zoomLevel);
     ivec2 screenSize = textureSize;
     vec2 origin = TexCoords * screenSize;
+    // origin += fract(canvasOffset);
     vec2 flooredComp = floor(origin);
     vec2 fractComp = fract(origin);
     int originModifier = (
@@ -51,7 +55,7 @@ void main() {
         int(floor(canvasOffset.y))
    ) % 2;
 
-    // I could do this check more efficiently
+    // See IRMath::pos2DIsoToTriangleIndex
     if(mod(flooredComp.x + flooredComp.y + originModifier, 2.0) >= 1) {
         if(fractComp.y < fractComp.x) {
             origin = vec2(origin.x, origin.y - 1);
@@ -63,6 +67,7 @@ void main() {
         }
     }
 
+
     // // Now wrap the edge cases
     // if(origin.y == textureSize.y) {
     //     origin.y = 0;
@@ -72,9 +77,17 @@ void main() {
     float depth = normalizeDistance(
         textureLod(triangleDistances, origin / textureSize, 0).r
     );
-    // if(floor(originMouse) == floor(origin)) {
-    //     color = mix(color, vec4(0, 0, 0, 1), 0.3);
-    // }
+   if(floor(
+            mouseHoveredTriangleIndex +
+            kCanvasTriangleOriginOffsetX1 +
+            canvasOffset
+        ) ==
+        floor(origin))
+    {
+        // color = mix(color, vec4(0, 0, 0, 1), 0.3);
+        color = vec4(255, 0, 0, 1);
+        depth = 0.0;
+    }
     if(color.a < 0.1) {
 		discard;
 	}

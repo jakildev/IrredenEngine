@@ -23,18 +23,18 @@ LoggerSpd::LoggerSpd() {
     /* add more sinks here */
     std::vector<spdlog::sink_ptr> sinks{ consoleSink};
     /* Logger for general game engine stuff */
-    m_engineLogger = make_shared<spdlog::logger>("EngineLog", sinks.begin(), sinks.end());
+    m_engineLogger = std::make_shared<spdlog::logger>("EngineLog", sinks.begin(), sinks.end());
     m_engineLogger->set_level(spdlog::level::info);
     m_engineLogger->flush_on(spdlog::level::trace);
     spdlog::register_logger(m_engineLogger);
     /* Logger for opengl api wrapper */
     // TODO: Have GLAPI logs go to file or somewhere else to not pollute terminal
-    m_GLAPILogger = make_shared<spdlog::logger>("GLAPILog", sinks.begin(), sinks.end());
+    m_GLAPILogger = std::make_shared<spdlog::logger>("GLAPILog", sinks.begin(), sinks.end());
     m_GLAPILogger->set_level(spdlog::level::info); // Change to info to see all gl calls
     m_GLAPILogger->flush_on(spdlog::level::trace);
     spdlog::register_logger(m_GLAPILogger);
     /* Logger for game clients */
-    m_clientLogger = make_shared<spdlog::logger>("ClientLog", sinks.begin(), sinks.end());
+    m_clientLogger = std::make_shared<spdlog::logger>("ClientLog", sinks.begin(), sinks.end());
     m_clientLogger->set_level(spdlog::level::trace);
     m_clientLogger->flush_on(spdlog::level::trace);
     spdlog::register_logger(m_clientLogger);

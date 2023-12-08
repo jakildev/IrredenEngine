@@ -74,7 +74,7 @@ namespace IRMath {
         );
     }
 
-    vec2 calculateTrianglePositionOffsetIso(
+    vec2 pos2DIsoToTriangleIndex(
         const vec2 position
     )
     {

@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/common/components/component_size_triangles.hpp>
 
 using namespace IRComponents;
 
@@ -37,6 +38,7 @@ namespace IRECS {
         {
             return IRECS::createEntity(
                 C_VoxelPool{voxelPoolSize},
+                C_SizeTriangles{triangleCanvasSize},
                 C_TriangleCanvasTextures{triangleCanvasSize},
                 C_TriangleCanvasFramebuffer{
                     framebufferSize,
