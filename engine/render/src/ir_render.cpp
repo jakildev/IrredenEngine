@@ -35,11 +35,8 @@ namespace IRRender {
         return *g_renderManager;
     }
 
-    vec2 getCameraPositionScreen() {
-        return getRenderManager().getCameraPositionScreen();
-    }
-    vec2 getCameraOffset2DIso() {
-        return getRenderManager().getCameraOffset2DIso();
+    vec2 getCameraPosition2DIso() {
+        return getRenderManager().getCameraPosition2DIso();
     }
     vec2 getCameraZoom() {
         return getRenderManager().getCameraZoom();
@@ -57,6 +54,9 @@ namespace IRRender {
         return IRInput::getMousePositionRender() -
             getRenderManager().screenToOutputWindowOffset();
     }
+    vec2 getGameResolution() {
+        return getRenderManager().getGameResolution();
+    }
 
     vec2 mousePositionScreenToMainCanvasTriangleIndex(
         const vec2& mousePositionOutputWindow
@@ -67,9 +67,6 @@ namespace IRRender {
                 mousePositionOutputWindow,
                 IRRender::getTriangleStepSizeScreen()
             );
-
-        mousePositionMainCanvas -=
-            IRRender::getCameraOffset2DIso();
         return mousePositionMainCanvas;
         // return IRMath::pos2DIsoToTriangleIndex(
         //     mousePositionMainCanvas

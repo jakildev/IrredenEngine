@@ -19,6 +19,8 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_position_2d_iso.hpp>
+#include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
 namespace IRRender {
@@ -71,12 +73,14 @@ namespace IRRender {
     //     }
     ,   m_camera{
             createEntity(
-                C_Camera{
+                C_Camera{},
+                C_Position2DIso{
                     vec2(0.0f, 0.0f)
                 },
-                C_Position3D{
-                    vec3(0.0f, 0.0f, 0.0f)
-                }
+                C_Velocity2DIso{
+                    vec2(0.0f, 0.0f)
+                },
+                C_ZoomLevel{1.0f}
             )
         }
     ,   m_viewport{0}
@@ -135,14 +139,9 @@ namespace IRRender {
     void RenderManager::tick() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        // IRECS::getEngineSystem<INPUT_KEY_MOUSE>().beginRenderExecute(); // TODO: not like this after system CRTP
         IRInput::getWindowSize(m_viewport);
         updateOutputResolution();
-        // TODO: Don't really do this anywhere else so prob should
-        // come up with something different.
-        IRECS::getComponent<C_Camera>(m_camera).tick();
         IRECS::executePipeline(SYSTEM_TYPE_RENDER);
-
         m_window.swapBuffers();
     }
 
@@ -171,24 +170,27 @@ namespace IRRender {
         );
     }
 
-    vec2 RenderManager::getCameraPositionScreen() const {
-        return IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_;
+    vec2 RenderManager::getCameraPosition2DIso() const {
+        return IRECS::getComponent<C_Position2DIso>(m_camera).pos_;
     }
+
     vec2 RenderManager::getTriangleStepSizeScreen() const {
-        return IRECS::getComponent<C_Camera>(m_camera).triangleStepSizeScreen_;
-    }
-    vec2 RenderManager::getCameraZoom() const {
-        return IRECS::getComponent<C_Camera>(m_camera).zoom_;
-    }
-    vec2 RenderManager::getCameraOffset2DIso() const {
-        return IRMath::pos2DScreenToPos2DIso(
-            IRECS::getComponent<C_Camera>(m_camera).pos2DScreen_,
-            IRECS::getComponent<C_Camera>(m_camera).triangleStepSizeScreen_
-        ) + (
-            vec2(getMainCanvasSizeTriangles()) /
-            IRECS::getComponent<C_Camera>(m_camera).zoom_ /
-            vec2(2)
+        return IRMath::calcTriangleStepSizeScreen(
+            m_gameResolution,
+            getCameraZoom(),
+            m_outputScaleFactor
         );
+    }
+
+    vec2 RenderManager::getTriangleStepSizeGameResolution() const {
+        return IRMath::calcTriangleStepSizeGameResolution(
+            m_gameResolution,
+            getCameraZoom()
+        );
+    }
+
+    vec2 RenderManager::getCameraZoom() const {
+        return IRECS::getComponent<C_ZoomLevel>(m_camera).zoom_;
     }
 
     void RenderManager::deallocateVoxels(
@@ -292,9 +294,9 @@ namespace IRRender {
             m_gameResolution.x * m_outputScaleFactor,
             m_gameResolution.y * m_outputScaleFactor
         );
-        IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
-            vec2(m_gameResolution), m_outputScaleFactor
-        );
+        // IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
+        //     vec2(m_gameResolution), m_outputScaleFactor
+        // );
     }
 
     vec2 RenderManager::screenToOutputWindowOffset() const {

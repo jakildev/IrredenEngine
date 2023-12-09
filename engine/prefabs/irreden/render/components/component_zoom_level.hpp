@@ -11,6 +11,7 @@
 #define COMPONENT_ZOOM_LEVEL_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_constants.hpp>
 
 using IRMath::vec2;
 
@@ -33,9 +34,25 @@ namespace IRComponents {
 
         // Default
         C_ZoomLevel()
-        :   C_ZoomLevel{vec2(0, 0)}
+        :   C_ZoomLevel{vec2(1, 1)}
         {
 
+        }
+
+        void zoomIn() {
+            zoom_ = round(glm::clamp(
+                zoom_ * vec2(2.0f),
+                IRConstants::kTriangleCanvasZoomMin,
+                IRConstants::kTriangleCanvasZoomMax
+            ));
+        }
+
+        void zoomOut() {
+            zoom_ = round(glm::clamp(
+                zoom_ / vec2(2.0f),
+                IRConstants::kTriangleCanvasZoomMin,
+                IRConstants::kTriangleCanvasZoomMax
+            ));
         }
 
     };

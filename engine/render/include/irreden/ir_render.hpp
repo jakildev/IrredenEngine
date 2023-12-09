@@ -94,13 +94,13 @@ namespace IRRender {
         return getRenderManager().getCanvas(canvasName);
     }
 
-    vec2 getCameraPositionScreen();
-    vec2 getCameraOffset2DIso();
+    vec2 getCameraPosition2DIso();
     vec2 getCameraZoom();
     vec2 getTriangleStepSizeScreen();
     ivec2 getViewport();
     int getOutputScaleFactor();
     vec2 getMousePositionOutputView();
+    vec2 getGameResolution();
 
     vec2 mousePositionScreenToMainCanvasTriangleIndex(
         const vec2& mousePositionScreen

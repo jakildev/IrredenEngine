@@ -5,16 +5,18 @@
 #include <irreden/ir_ecs.hpp>
 
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/update/components/component_velocity_2d_iso.hpp>
 
 namespace IRCommand {
+
+    static constexpr float kCameraMoveSpeed = 30.0f;
 
     template<>
     struct Command<MOVE_CAMERA_LEFT_START> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveLeftStart();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.x += kCameraMoveSpeed;
             };
         }
     };
@@ -23,9 +25,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_RIGHT_START> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveRightStart();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.x -= kCameraMoveSpeed;
             };
         }
     };
@@ -34,9 +35,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_UP_START> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveUpStart();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.y += kCameraMoveSpeed;
             };
         }
     };
@@ -45,9 +45,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_DOWN_START> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveDownStart();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.y -= kCameraMoveSpeed;
             };
         }
     };
@@ -56,9 +55,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_LEFT_END> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveLeftStop();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.x -= kCameraMoveSpeed;
             };
         }
     };
@@ -67,9 +65,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_RIGHT_END> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveRightStop();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.x += kCameraMoveSpeed;
             };
         }
     };
@@ -78,9 +75,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_UP_END> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveUpStop();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.y -= kCameraMoveSpeed;
             };
         }
     };
@@ -89,9 +85,8 @@ namespace IRCommand {
     struct Command<MOVE_CAMERA_DOWN_END> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
-                    IRECS::getEntity("camera")
-                ).moveDownStop();
+                IRECS::getComponent<C_Velocity2DIso>("camera")
+                    .velocity_.y += kCameraMoveSpeed;
             };
         }
     };

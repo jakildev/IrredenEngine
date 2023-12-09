@@ -82,6 +82,11 @@ namespace IRECS {
                     const C_CameraPosition2DIso& cameraPosition
                 )
                 {
+                    // IRE_LOG_INFO(
+                    //     "CAMERA POSITION: {}, {}",
+                    //     cameraPosition.pos_.x,
+                    //     cameraPosition.pos_.y
+                    // );
                     frameData.canvasOffset_ = cameraPosition.pos_;
                     IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")->subData(
                         0,
@@ -121,10 +126,7 @@ namespace IRECS {
                     IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1")->use();
                     IRECS::getComponent<C_CameraPosition2DIso>(
                         IRRender::getCanvas("main")
-                    ).pos_ = IRMath::offsetScreenToIsoTriangles(
-                        IRRender::getCameraPositionScreen(),
-                        IRRender::getTriangleStepSizeScreen()
-                    );
+                    ).pos_ = IRRender::getCameraPosition2DIso();
                     // IRECS::getComponent<C_CameraPosition2DIso>(
                     //     IRRender::getCanvas("background")
                     // ).pos_ =

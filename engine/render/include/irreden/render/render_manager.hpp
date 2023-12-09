@@ -44,10 +44,10 @@ namespace IRRender {
         // inline const Buffer& getBufferVoxelColors() const { return m_bufferVoxelColors; }
 
         EntityId getCanvas(std::string canvasName);
-        vec2 getCameraPositionScreen() const;
+        vec2 getCameraPosition2DIso() const;
         vec2 getCameraZoom() const;
-        vec2 getCameraOffset2DIso() const;
         vec2 getTriangleStepSizeScreen() const;
+        vec2 getTriangleStepSizeGameResolution() const;
         ivec2 getMainCanvasSizeTriangles() const;
         vec2 screenToOutputWindowOffset() const;
 

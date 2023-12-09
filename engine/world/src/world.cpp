@@ -29,6 +29,7 @@
 #include <irreden/update/systems/system_particle_spawner.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
 
+#include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_texture_scroll.hpp>
 #include <irreden/render/systems/system_single_voxel_to_canvas.hpp>
 #include <irreden/render/systems/system_canvas_to_framebuffer.hpp>
@@ -242,16 +243,11 @@ namespace IREngine {
                 IRECS::createSystem<INPUT_KEY_MOUSE>()
             ,   IRECS::createSystem<INPUT_GAMEPAD>()
             ,   IRECS::createSystem<INPUT_MIDI_MESSAGE_IN>()
-
             }
         );
     }
 
     void World::initIRUpdateSystems() {
-
-
-
-
         m_systemManager.registerPipeline(
             SYSTEM_TYPE_UPDATE,
             {
@@ -282,6 +278,7 @@ namespace IREngine {
             SYSTEM_TYPE_RENDER,
             {
                 IRECS::createSystem<TEXTURE_SCROLL>()
+            ,   IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
             ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
             ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
             ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()

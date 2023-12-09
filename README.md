@@ -127,15 +127,15 @@ IRECS::createEntity{
 
 ### Ways to contribute
 1.  Submit an issue on github.
-2.  Add, expand, or modify the engine's *prefabs* (built-in components, entities, systems, and commands).
+2.  Add, expand, or modify the engine's ***prefabs*** (built-in components, entities, systems, and commands).
 3.  Other work on the engine itself.
 4. Publish an open-source project using the Irreden Engine.
 
 ### Style Guidelines
 #### Logical
 1. Prefer early exit over chained or nested branching statements.
-2. Prefer std::unique_ptr and std::make_unique over shared pointers or C-style memory allocation.
-2. Use raw pointers when there is no transfer of ownership of memory.
+2. Prefer unique pointers over shared pointers or C-style memory allocation.
+3. Use raw pointers when there is no transfer of ownership of memory.
 
 #### Non-logical
 1. Private class member variables are prefixed with "m_".

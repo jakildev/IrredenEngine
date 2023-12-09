@@ -153,10 +153,10 @@ namespace IRECS {
                 offset += vec2(1.0f, -1.0f) * vec2(scaleFactor);
             }
             else{
-                offset += (
-                    IRRender::getCameraPositionScreen() *
-                    vec2(1, -1)
-                );
+                // offset += (
+                //     IRRender::getCameraPositionScreen() *
+                //     vec2(1, -1)
+                // );
             }
             model = glm::translate(
                 model,

@@ -13,7 +13,7 @@ namespace IRCommand {
     struct Command<ZOOM_OUT> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_Camera>(
+                IRECS::getComponent<C_ZoomLevel>(
                     IRECS::getEntity("camera")
                 ).zoomOut();
             };
