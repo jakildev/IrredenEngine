@@ -29,7 +29,10 @@ namespace IRECS {
                     const C_Velocity3D& velocity
                 )
                 {
-                    position.pos_ += velocity.velocity_;
+                    position.pos_ +=
+                        // velocity.velocity_;
+                        velocity.velocity_ *
+                        vec3(IRTime::deltaTime(IRTime::UPDATE));
                 }
             );
         }

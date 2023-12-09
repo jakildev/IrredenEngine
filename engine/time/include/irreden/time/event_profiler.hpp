@@ -25,6 +25,9 @@ namespace IRTime {
         ,   m_timePointBeginEvent{}
         ,   m_lag{kFPSNanoDuration}
         ,   m_tickCount(0)
+        ,   m_sum{0}
+        ,   m_deltaTimeActual{0}
+        ,   m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)}
         {
 
         }
@@ -45,7 +48,7 @@ namespace IRTime {
         void beginEvent() {
             auto timePointPrevious = m_timePointBeginEvent;
             m_timePointBeginEvent = Clock::now();
-            m_deltaTime = std::chrono::duration_cast<Seconds>(
+            m_deltaTimeActual = std::chrono::duration_cast<Seconds>(
                 m_timePointBeginEvent - timePointPrevious
             );
         }
@@ -84,7 +87,11 @@ namespace IRTime {
 
         // time in seconds
         double deltaTime() const {
-            return m_deltaTime.count();
+            return m_deltaTimeActual.count();
+        }
+
+        double deltaTimeFixed() const {
+            return m_deltaTimeFixed;
         }
 
     private:
@@ -93,7 +100,8 @@ namespace IRTime {
         NanoDuration m_lag;
         MilliDuration m_tickList[kProfileHistoryBufferSize];
         MilliDuration m_sum;
-        SecondsDuration m_deltaTime;
+        SecondsDuration m_deltaTimeActual;
+        const double m_deltaTimeFixed;
         unsigned int m_tickCount;
     };
 
@@ -105,7 +113,7 @@ namespace IRTime {
         ,   m_timePointBeginEvent{}
         ,   m_tickCount(0)
         ,   m_sum{0}
-        ,   m_deltaTime{0}
+        ,   m_deltaTimeActual{0}
         {
 
         }
@@ -119,12 +127,12 @@ namespace IRTime {
         void beginEvent() {
             auto timePointPrevious = m_timePointBeginEvent;
             m_timePointBeginEvent = Clock::now();
-            m_deltaTime =
+            m_deltaTimeActual =
                 m_timePointBeginEvent - timePointPrevious;
         }
 
         double deltaTime() const {
-            return m_deltaTime.count();
+            return m_deltaTimeActual.count();
         }
 
         double deltaTimeSinceFixedUpdateStart(
@@ -165,7 +173,7 @@ namespace IRTime {
         TimePoint m_timePointBeginEvent;
         MilliDuration m_tickList[kProfileHistoryBufferSize];
         MilliDuration m_sum;
-        SecondsDuration m_deltaTime;
+        SecondsDuration m_deltaTimeActual;
         unsigned int m_tickCount;
     };
 

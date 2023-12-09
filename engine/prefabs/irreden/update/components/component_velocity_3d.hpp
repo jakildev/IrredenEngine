@@ -21,14 +21,12 @@ namespace IRComponents {
     struct C_Velocity3D {
         vec3 velocity_;
 
+        // Velocity is defined in blocks per second
+        // TODO: Use the fixed update delta time instead of converting
+        // to frames per second here!
         C_Velocity3D(vec3 velocity)
         :   velocity_(
-                velocity /
-                vec3(
-                    IRConstants::kFPS,
-                    IRConstants::kFPS,
-                    IRConstants::kFPS
-                )
+                velocity
             )
         {
 

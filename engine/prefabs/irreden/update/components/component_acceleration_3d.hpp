@@ -23,12 +23,7 @@ namespace IRComponents {
 
         C_Acceleration3D(vec3 acceleration)
         :   acceleration_(
-                acceleration /
-                vec3(
-                    IRConstants::kFPS,
-                    IRConstants::kFPS,
-                    IRConstants::kFPS
-                )
+                acceleration
             )
         {
 

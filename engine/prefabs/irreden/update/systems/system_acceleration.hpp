@@ -29,7 +29,9 @@ namespace IRECS {
                     const C_Acceleration3D& acceleration
                 )
                 {
-                    velocity.velocity_ += acceleration.acceleration_;
+                    velocity.velocity_ +=
+                        acceleration.acceleration_ *
+                        vec3(IRTime::deltaTime(IRTime::UPDATE));
                 }
             );
         }

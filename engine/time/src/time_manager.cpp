@@ -51,7 +51,7 @@ namespace IRTime {
 
     template <>
     double TimeManager::deltaTime<UPDATE>() {
-        return m_profilerUpdate.deltaTime();
+        return m_profilerUpdate.deltaTimeFixed();
     }
 
     template <>
