@@ -4,6 +4,8 @@
 ## About
 The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 
+Created by and maintained by jakildev.
+
 ## Build
 
 ### Prerequisites
@@ -17,6 +19,14 @@ The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 -   Configure cmake.
 -   Build all targets.
 -   Run the default project.
+
+## Content and Socials
+| Platform | Account | Usage |
+| -------- | ----- | ---- | 
+| TikTok |  [@jakildev](https://www.tiktok.com/@jakildev) | Creations that I make. |
+| Patreon | [@jakildev](https://www.patreon.com/jakildev) | Support me and this project. |
+| Instagram | [@jakildev](https://www.instagram.com/jakildev) | More of my life. |
+| Youtube | [@jakildev](https://www.youtube.com/@jakildev) | Future long-form informative videos. | 
 
 ## Modules and Key Features
 - Modules are built individually as static libraries and linked to dependant modules and third-party libraries.
@@ -126,9 +136,9 @@ IRECS::createEntity{
 -   If you have a suggestion, create a new discussion post or email me at jakildev@gmail.com.
 
 ### Ways to contribute
-1.  Submit an issue on github.
-2.  Add, expand, or modify the engine's ***prefabs*** (built-in components, entities, systems, and commands).
-3.  Other work on the engine itself.
+1. Submit an issue on github.
+2. Add, expand, or modify the engine's ***prefabs*** (built-in components, entities, systems, and commands).
+3. Other work on the engine itself.
 4. Publish an open-source project using the Irreden Engine.
 
 ### Style Guidelines
