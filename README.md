@@ -4,7 +4,7 @@
 ## About
 The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 
-Created by and maintained by jakildev.
+Created by and maintained by [jakildev](https://github.com/jakildev).
 
 ## Build
 
