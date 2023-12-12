@@ -13,10 +13,8 @@ namespace IRCommand {
     struct Command<SPAWN_PARTICLE_MOUSE_POSITION> {
         static auto create() {
             return []() {
-                vec2 mouseTriangleIndexMainCanvas =
-                    IRRender::mousePositionScreenToMainCanvasTriangleIndex(
-                        IRInput::getMousePositionUpdate()
-                    );
+                vec2 mouseTriangleIndexMainCanvas = vec2(1);
+
                 IRE_LOG_INFO(
                     "Mouse triangleIndex: {}, {}",
                     mouseTriangleIndexMainCanvas.x,

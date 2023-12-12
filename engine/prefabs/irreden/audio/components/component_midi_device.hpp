@@ -13,10 +13,10 @@
 namespace IRComponents {
 
     struct C_MidiDevice {
-        int id_;
+        int portIndex_;
 
         C_MidiDevice(int id)
-        :   id_(id)
+        :   portIndex_(id)
         {
 
         }

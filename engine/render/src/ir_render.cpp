@@ -58,19 +58,18 @@ namespace IRRender {
         return getRenderManager().getGameResolution();
     }
 
-    vec2 mousePositionScreenToMainCanvasTriangleIndex(
-        const vec2& mousePositionOutputWindow
-    )
-    {
-        vec2 mousePositionMainCanvas =
-            IRMath::pos2DScreenToPos2DIso(
-                mousePositionOutputWindow,
-                IRRender::getTriangleStepSizeScreen()
-            );
-        return mousePositionMainCanvas;
-        // return IRMath::pos2DIsoToTriangleIndex(
-        //     mousePositionMainCanvas
-        // );
+    vec2 mousePosition2DIsoScreenRender() {
+        return IRMath::pos2DScreenToPos2DIso(
+            IRRender::getMousePositionOutputView(),
+            IRRender::getTriangleStepSizeScreen()
+        );
+    }
+
+    vec2 mousePosition2DIsoWorldRender() {
+        return IRMath::pos2DScreenToPos2DIso(
+            IRRender::getMousePositionOutputView(),
+            IRRender::getTriangleStepSizeScreen()
+        );
     }
 
 

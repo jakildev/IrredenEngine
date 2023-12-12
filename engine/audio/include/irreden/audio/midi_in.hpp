@@ -52,7 +52,8 @@ namespace IRAudio {
 
             // void openPort(unsigned int portNumber);
 
-            void openPort(MidiInInterfaces midiInInterface);
+            int openPort(MidiInInterfaces midiInInterface);
+            int openPort(const std::string& deviceName);
             void processMidiMessageQueue();
             CCData checkCCMessageThisFrame(
                 MidiChannel channel,

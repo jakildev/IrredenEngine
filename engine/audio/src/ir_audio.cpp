@@ -23,12 +23,20 @@ namespace IRAudio {
         return *g_audioManager;
     }
 
-    void openPortMidiIn(MidiInInterfaces port) {
-        getAudioManager().getMidiIn().openPort(port);
+    int openPortMidiIn(MidiInInterfaces port) {
+        return getAudioManager().getMidiIn().openPort(port);
     }
 
-    void openPortMidiOut(MidiOutInterfaces port) {
-        getAudioManager().getMidiOut().openPort(port);
+    int openPortMidiIn(const std::string& deviceName) {
+        return getAudioManager().getMidiIn().openPort(deviceName);
+    }
+
+    int openPortMidiOut(MidiOutInterfaces port) {
+        return getAudioManager().getMidiOut().openPort(port);
+    }
+
+    int openPortMidiOut(const std::string& deviceName) {
+        return getAudioManager().getMidiOut().openPort(deviceName);
     }
 
     void sendMidiMessage(const std::vector<unsigned char>& message) {

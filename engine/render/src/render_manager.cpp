@@ -294,9 +294,6 @@ namespace IRRender {
             m_gameResolution.x * m_outputScaleFactor,
             m_gameResolution.y * m_outputScaleFactor
         );
-        // IRECS::getComponent<C_Camera>(m_camera).setTriangleStepSizeScreen(
-        //     vec2(m_gameResolution), m_outputScaleFactor
-        // );
     }
 
     vec2 RenderManager::screenToOutputWindowOffset() const {

@@ -166,7 +166,7 @@ namespace IRInput {
             }
             queueOfButtons.pop();
 
-            IRE_LOG_INFO(
+            IRE_LOG_DEBUG(
                 "Processed button={}, status={}",
                 button,
                 static_cast<int>(status)

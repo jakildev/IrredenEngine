@@ -35,9 +35,7 @@ namespace IRECS {
     template <>
     struct System<RENDERING_CANVAS_TO_FRAMEBUFFER> {
         static SystemId create() {
-            static FrameDataIsoTriangles frameData{
-                .mpMatrix_ = mat4(1)
-            };
+            static FrameDataIsoTriangles frameData{};
             IRRender::createNamedResource<ShaderProgram>(
                 "CanvasToFramebufferProgram",
                 std::vector{
@@ -121,10 +119,12 @@ namespace IRECS {
                     frameData.canvasOffset_ = cameraPosition.pos_;
 
                     frameData.textureOffset_ = vec2(0);
+                    // IRE_LOG_INFO("Mouse position iso: {}, {}",
+                    //     IRRender::mousePosition2DIsoScreenRender().x,
+                    //     IRRender::mousePosition2DIsoScreenRender().y
+                    // );
                     frameData.mouseHoveredTriangleIndex_ =
-                        IRRender::mousePositionScreenToMainCanvasTriangleIndex(
-                            IRRender::getMousePositionOutputView()
-                        ) -
+                        IRRender::mousePosition2DIsoScreenRender() -
                         // Same as offset in framebuffers to screen
                         glm::fract(cameraPosition.pos_) *
                             vec2(1, -1)

@@ -28,27 +28,22 @@ namespace IRAudio {
 
     MidiOut::~MidiOut() {}
 
-    void MidiOut::openPort(unsigned int portNumber) {
-        m_rtMidiOut.openPort(portNumber);
-        m_openPorts.insert(portNumber);
-        IRE_LOG_INFO("Opened MIDI Out port {}", portNumber);
+    int MidiOut::openPort(MidiOutInterfaces interface) {
+        return openPort(kMidiOutInterfaceNames[interface]);
     }
 
-    void MidiOut::openPort(MidiOutInterfaces interface) {
-        openPort(kMidiOutInterfaceNames[interface]);
-    }
-
-    void MidiOut::openPort(std::string portNameSubstring) {
+    int MidiOut::openPort(std::string portNameSubstring) {
         for(int i = 0; i < m_numberPorts; i++) {
             const std::string_view portName{m_portNames[i]};
             if(portName.find(portNameSubstring) != portName.npos) {
                 m_rtMidiOut.openPort(i);
                 m_openPorts.insert(i);
                 IRE_LOG_INFO("Opened MIDI Out port {}: {}", i, portName);
-                return;
+                return i;
             }
         }
         IR_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
+        return -1;
     }
 
     void MidiOut::sendMessage(const std::vector<unsigned char>& message) {

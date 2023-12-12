@@ -50,6 +50,7 @@ namespace IRAudio {
                 std::vector<C_MidiMessage>{}
             });
         }
+        setCallback(m_rtMidiIn, readMessageTestCallbackNew);
         IRE_LOG_INFO("Created MidiIn");
     }
 
@@ -109,32 +110,22 @@ namespace IRAudio {
     //     m_openPorts.push_back(portNumber);
     // }
 
-    // // Opens the first device that matches substring name
-    // void MidiIn::openPort(std::string portNameSubstring) {
-    //     for(int i = 0; i < m_numberPorts; i++) {
-    //         const std::string_view portName{m_portNames[i]};
-    //         if(portName.find(portNameSubstring) != portName.npos) {
-    //             m_rtMidiIn.openPort(i);
-    //             m_openPorts.push_back(i);
-    //             IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
-    //             return;
-    //         }
-    //     }
-    //     IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
-    // }
-
-    void MidiIn::openPort(MidiInInterfaces interface) {
+    int MidiIn::openPort(const std::string& portNameSubstring) {
         for(int i = 0; i < m_numberPorts; i++) {
             const std::string_view portName{m_portNames[i]};
-            if(portName.find(kMidiInInterfaceNames[interface]) != portName.npos) {
-                m_rtMidiInMap.emplace(interface, RtMidiIn{});
-                setCallback(m_rtMidiInMap[interface], IRAudio::readMessageTestCallbackNew);
-                m_rtMidiInMap[interface].openPort(i);
+            if(portName.find(portNameSubstring) != portName.npos) {
+                m_rtMidiIn.openPort(i);
+                m_openPorts.push_back(i);
                 IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
-                return;
+                return i;
             }
         }
         IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
+        return -1;
+    }
+
+    int MidiIn::openPort(MidiInInterfaces interface) {
+        return openPort(kMidiInInterfaceNames[interface]);
     }
 
     void MidiIn::processMidiMessageQueue() {

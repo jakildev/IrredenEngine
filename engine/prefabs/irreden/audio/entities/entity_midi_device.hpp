@@ -14,9 +14,10 @@
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_ecs.hpp>
 
+#include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/audio/components/component_midi_device.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/audio/components/component_midi_channel.hpp>
-#include <irreden/audio/components/component_midi_device_in.hpp>
 
 using namespace IRComponents;
 using namespace IRAudio;
@@ -25,17 +26,36 @@ namespace IRECS {
 
     template <>
     struct Prefab<PrefabTypes::kMidiDevice> {
-        static EntityHandle create(
-            MidiChannel channel,
+        static EntityId create(
+            // MidiChannel channel,
             std::string name,
             MidiDeviceType type
         )
         {
-            EntityHandle entity{};
-            entity.set(C_Name{name})
-            entity.set(C_MidiChannel{channel});
+            EntityId entity = IRECS::createEntity(
+                C_Name{name}
+            );
             if(type == MidiDeviceType::MIDI_DEVICE_TYPE_IN) {
-                entity.set(C_MidiDeviceIn{});
+                IRECS::setComponent(entity, C_MidiDevice{
+                    IRAudio::openPortMidiIn(
+                        name
+                    )
+                });
+                IRECS::setComponent(
+                    entity,
+                    C_MidiIn{}
+                );
+            }
+            if(type == MidiDeviceType::MIDI_DEVICE_TYPE_OUT) {
+                IRECS::setComponent(entity, C_MidiDevice{
+                    IRAudio::openPortMidiOut(
+                        name
+                    )
+                });
+                IRECS::setComponent(
+                    entity,
+                    C_MidiOut{}
+                );
             }
             return entity;
         }

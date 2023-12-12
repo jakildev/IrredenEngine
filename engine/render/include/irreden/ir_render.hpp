@@ -101,10 +101,12 @@ namespace IRRender {
     int getOutputScaleFactor();
     vec2 getMousePositionOutputView();
     vec2 getGameResolution();
-
-    vec2 mousePositionScreenToMainCanvasTriangleIndex(
-        const vec2& mousePositionScreen
-    );
+    // Mouse position in iso coordinates as it appears on the screen
+    vec2 mousePosition2DIsoScreenRender();
+    // Mouse position in iso coordinates as it appears in the world
+    // (so with camera offset)
+    vec2 mousePosition2DIsoWorldRender();
+    vec2 mousePosition2DIsoUpdate();
 
 
 

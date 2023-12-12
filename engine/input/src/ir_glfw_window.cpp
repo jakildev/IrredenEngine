@@ -44,7 +44,7 @@ namespace IRInput {
             NULL
         );
 
-        // glfwSetWindowPos(m_window, 50, 50);
+        glfwSetWindowPos(m_window, 50, 50);
 
         IR_ASSERT(m_window != nullptr,
             "Failed to create window: glfwCreateWindow returned null"

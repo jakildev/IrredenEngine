@@ -15,6 +15,7 @@
 #include <irreden/audio/components/component_midi_message.hpp>
 
 #include <vector>
+#include <string>
 
 namespace IRAudio {
 
@@ -22,8 +23,10 @@ namespace IRAudio {
     extern AudioManager* g_audioManager;
     AudioManager& getAudioManager();
 
-    void openPortMidiIn(MidiInInterfaces midiInInterface);
-    void openPortMidiOut(MidiOutInterfaces midiOutInterface);
+    int openPortMidiIn(MidiInInterfaces midiInInterface);
+    int openPortMidiIn(const std::string& deviceName);
+    int openPortMidiOut(MidiOutInterfaces midiOutInterface);
+    int openPortMidiOut(const std::string& midiOutInterface);
     void sendMidiMessage(const std::vector<unsigned char>& message);
 
     CCData checkCCMessage(int device, CCMessage ccMessage);
