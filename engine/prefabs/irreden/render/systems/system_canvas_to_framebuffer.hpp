@@ -88,19 +88,18 @@ namespace IRECS {
                     frameData.canvasZoomLevel_ =
                         IRRender::getCameraZoom() *
                         zoomLevel.zoom_;
-                          // TEST: calc offset
                     vec2 isoPixelOffset =
                         glm::floor(IRMath::pos2DIsoToPos2DGameResolution(
                             glm::fract(cameraPosition.pos_),
                             IRRender::getCameraZoom() *
                                 zoomLevel.zoom_
-                        ));
+                        )) * vec2(1, -1);
                     mat4 model = mat4(1.0f);
                     model = glm::translate(
                         model,
                         glm::vec3(
                             framebufferResolution.x / 2 + isoPixelOffset.x,
-                            framebufferResolution.y / 2 - isoPixelOffset.y,
+                            framebufferResolution.y / 2 + isoPixelOffset.y,
                             0.0f
                         )
                     );
@@ -119,16 +118,8 @@ namespace IRECS {
                     frameData.canvasOffset_ = cameraPosition.pos_;
 
                     frameData.textureOffset_ = vec2(0);
-                    // IRE_LOG_INFO("Mouse position iso: {}, {}",
-                    //     IRRender::mousePosition2DIsoScreenRender().x,
-                    //     IRRender::mousePosition2DIsoScreenRender().y
-                    // );
                     frameData.mouseHoveredTriangleIndex_ =
-                        IRRender::mousePosition2DIsoScreenRender() -
-                        // Same as offset in framebuffers to screen
-                        glm::fract(cameraPosition.pos_) *
-                            vec2(1, -1)
-                        ;
+                        IRRender::mouseTrixelPositionWorldRender();
                     IRRender::getNamedResource<Buffer>(
                         "CanvasToFramebufferFrameData"
                     )->subData(

@@ -82,11 +82,6 @@ namespace IRECS {
                     const C_CameraPosition2DIso& cameraPosition
                 )
                 {
-                    // IRE_LOG_INFO(
-                    //     "CAMERA POSITION: {}, {}",
-                    //     cameraPosition.pos_.x,
-                    //     cameraPosition.pos_.y
-                    // );
                     frameData.canvasOffset_ = cameraPosition.pos_;
                     IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")->subData(
                         0,
@@ -143,6 +138,9 @@ namespace IRECS {
                     //         IRRender::getCanvas("background")
                     //     )
                     // );
+                },
+                []() {
+
                 }
             );
         }
@@ -195,12 +193,14 @@ namespace IRECS {
                         GL_READ_ONLY,
                         GL_R32I
                     );
+
                     glDispatchCompute(
                         voxelPool.getVoxelPoolSize(),
                         1,
                         1
                     );
                     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
                 },
                 []() {
                     IRRender::getNamedResource<ShaderProgram>("SingleVoxel2")->use();

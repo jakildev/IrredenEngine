@@ -117,6 +117,27 @@ namespace IRComponents {
             );
             clearDistanceTexture();
         }
+
+        void setTrixel(ivec2 index, Color color, int distance = 0) {
+            textureTriangleColors_.second->subImage2D(
+                index.x,
+                index.y,
+                1,
+                1,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                &color
+            );
+            textureTriangleDistances_.second->subImage2D(
+                index.x,
+                index.y,
+                1,
+                1,
+                GL_RED_INTEGER,
+                GL_INT,
+                &distance
+            );
+        }
     private:
         void clearDistanceTexture() const {
             textureTriangleDistances_.second->clear(

@@ -400,7 +400,10 @@ namespace IRMath {
         return size / uvec2(1, 2) * scaleFactor;
     }
 
-    vec2 pos2DIsoToTriangleIndex(const vec2 position);
+    vec2 pos2DIsoToTriangleIndex(
+        const vec2 position,
+        const ivec2 triangleStepSizeScreen
+    );
 
     constexpr int calcResolutionWidthFromHeightAndAspectRatio(
         const int height,

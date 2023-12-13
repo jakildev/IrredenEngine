@@ -46,17 +46,17 @@ void main() {
     ivec2 screenSize = textureSize;
     vec2 origin = TexCoords * screenSize;
     // origin += fract(canvasOffset);
-    vec2 flooredComp = floor(origin);
+    vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
     int originModifier = (
-        kCanvasTriangleOriginOffsetX1.x +
-        kCanvasTriangleOriginOffsetX1.y +
+        kCanvasTriangleOriginOffsetZ1.x +
+        kCanvasTriangleOriginOffsetZ1.y +
         int(floor(canvasOffset.x)) +
         int(floor(canvasOffset.y))
    ) % 2;
 
     // See IRMath::pos2DIsoToTriangleIndex
-    if(mod(flooredComp.x + flooredComp.y + originModifier, 2.0) >= 1) {
+    if(mod(originFlooredComp.x + originFlooredComp.y + originModifier, 2.0) >= 1) {
         if(fractComp.y < fractComp.x) {
             origin = vec2(origin.x, origin.y - 1);
         }

@@ -58,18 +58,30 @@ namespace IRRender {
         return getRenderManager().getGameResolution();
     }
 
+    vec2 getMainCanvasSizeTrixels() {
+        return getRenderManager().getMainCanvasSizeTriangles();
+    }
+
     vec2 mousePosition2DIsoScreenRender() {
         return IRMath::pos2DScreenToPos2DIso(
             IRRender::getMousePositionOutputView(),
             IRRender::getTriangleStepSizeScreen()
-        );
+        ) - (
+            getMainCanvasSizeTrixels() -
+            vec2(2, 2) // TODO: why this needed here???
+        ) / getCameraZoom() / vec2(2.0f);
     }
 
     vec2 mousePosition2DIsoWorldRender() {
-        return IRMath::pos2DScreenToPos2DIso(
-            IRRender::getMousePositionOutputView(),
-            IRRender::getTriangleStepSizeScreen()
-        );
+        return mousePosition2DIsoScreenRender() -
+            IRRender::getCameraPosition2DIso() ;
+    }
+
+    ivec2 mouseTrixelPositionWorldRender() {
+        return glm::floor(IRMath::pos2DIsoToTriangleIndex(
+            IRRender::mousePosition2DIsoWorldRender(),
+            ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
+        ));
     }
 
 

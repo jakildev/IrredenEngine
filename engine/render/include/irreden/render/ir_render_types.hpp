@@ -93,6 +93,7 @@ namespace IRRender {
 
     struct FrameDataVoxelToCanvas {
         vec2 canvasOffset_;
+        ivec2 hoveredTriangleIndex_;
     };
 
     constexpr GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;

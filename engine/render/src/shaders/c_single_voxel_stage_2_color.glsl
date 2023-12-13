@@ -31,7 +31,7 @@ layout(std430, binding = 6) buffer ColorBuffer {
 };
 
 layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
-layout(r32i, binding = 1) readonly uniform iimage2D triangleCanvasDistances;
+layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 
 ivec2 pos3DtoPos2DIso(const ivec3 position) {
     return ivec2(

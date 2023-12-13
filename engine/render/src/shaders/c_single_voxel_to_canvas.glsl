@@ -84,4 +84,6 @@ void main() {
         canvasPixel,
         voxelDistance
     );
+
+    // if(mouseHoveredTriangleIndex)
 }
