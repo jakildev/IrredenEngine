@@ -2,6 +2,7 @@
 #define IR_ENGINE_H
 
 #include <irreden/world.hpp>
+#include <irreden/ir_ecs.hpp>
 
 namespace IREngine {
     std::unique_ptr<World> g_world = nullptr;

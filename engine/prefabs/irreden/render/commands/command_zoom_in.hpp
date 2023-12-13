@@ -6,6 +6,7 @@
 #include <irreden/ir_ecs.hpp>
 
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
 
 namespace IRCommand {
 

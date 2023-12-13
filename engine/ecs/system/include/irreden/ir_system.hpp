@@ -87,6 +87,10 @@ namespace IRECS {
         getSystemManager().addSystemTag<ComponentTag>(system);
     }
 
+    void registerPipeline(
+        SystemTypes systemType,
+        std::list<SystemId> pipeline
+    );
     void executePipeline(SystemTypes systemType);
 
 } // namespace System

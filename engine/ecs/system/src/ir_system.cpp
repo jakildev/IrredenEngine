@@ -17,6 +17,14 @@ namespace IRECS {
         return *g_systemManager;
     }
 
+    void registerPipeline(
+        SystemTypes systemType,
+        std::list<SystemId> pipeline
+    )
+    {
+        getSystemManager().registerPipeline(systemType, pipeline);
+    }
+
     void executePipeline(SystemTypes systemType) {
         getSystemManager().executePipeline(systemType);
     }
