@@ -2,9 +2,9 @@
 
 ### Details:
 -   **Found in modules:** IRVideo
--   **Package type:** Dynamic library
--   **Precompiled:** Yes
--   **Version:** 6.0
+-   **Package type:** Unused currently
+-   **Precompiled:** N/A
+-   **Version:** N/A
 -   **License:** LGPL/GPL
 -   **Url:** https://ffmpeg.org/
 -   **Source:** https://git.ffmpeg.org/ffmpeg.git
