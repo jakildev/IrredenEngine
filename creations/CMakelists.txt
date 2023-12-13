@@ -1,2 +1,2 @@
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/default)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/midi_device)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/particle_orthogonal_burst)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/midi_device)

@@ -52,7 +52,7 @@ target_link_libraries(
     IrredenEngineAudio PUBLIC
     rtaudio
     rtmidi
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineECS
     IrredenEngineMath
 )

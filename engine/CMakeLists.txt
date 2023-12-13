@@ -7,6 +7,7 @@ include_directories(
 )
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/profile)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
@@ -51,7 +52,8 @@ target_compile_options(
 # I built this manually and link here
 target_link_libraries(
     IrredenEngine PUBLIC
-    IrredenEngineProfiling
+    IrredenEngineProfile
+    IrredenEngineAsset
     IrredenEngineAudio
     IrredenEngineInput
     IrredenEngineScripting

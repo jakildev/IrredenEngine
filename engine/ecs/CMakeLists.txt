@@ -18,7 +18,7 @@ target_include_directories(
 
 target_link_libraries(
     IrredenEngineECS PUBLIC
-    IrredenEngineProfiling
+    IrredenEngineProfile
     # IrredenEngineInput
     IrredenEngineEntity
     IrredenEngineSystem

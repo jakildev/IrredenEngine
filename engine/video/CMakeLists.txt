@@ -35,7 +35,7 @@ target_link_libraries(
     -lm
     -luser32
     -lbcrypt
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineRendering
 )
 

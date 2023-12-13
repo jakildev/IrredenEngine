@@ -20,7 +20,7 @@ target_include_directories(
 
 target_link_libraries(
     IrredenEngineEntity PUBLIC
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineMath
     # IrredenEngineInput
 )

@@ -70,11 +70,12 @@ target_include_directories(
 
 target_link_libraries(
     IrredenEngineRendering PUBLIC
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineMath
     IrredenEngineInput
     IrredenEngineCommon
     IrredenEngineECS
+    IrredenEngineAsset
     # assimp
     meshoptimizer
     # stbimage

@@ -4,7 +4,7 @@ add_library(IrredenEngineWorld STATIC
 
 target_link_libraries(IrredenEngineWorld PUBLIC
     IrredenEngineECS
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineTime
     IrredenEngineAudio
     IrredenEngineInput
@@ -13,6 +13,7 @@ target_link_libraries(IrredenEngineWorld PUBLIC
     IrredenEngineVideo
     IrredenEngineMath
     IrredenEngineCommand
+    IrredenEngineAsset
 )
 
 target_include_directories(IrredenEngineWorld PUBLIC

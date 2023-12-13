@@ -4,7 +4,7 @@ add_library(IrredenEngineScripting STATIC
 )
 
 target_compile_options(
-    IrredenEngineProfiling
+    IrredenEngineProfile
     PUBLIC
     -O3
 )
@@ -19,7 +19,7 @@ target_compile_options(
 target_link_libraries(
     IrredenEngineScripting PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/static/liblua54.a
-    IrredenEngineProfiling
+    IrredenEngineProfile
 )
 target_include_directories(
     IrredenEngineScripting

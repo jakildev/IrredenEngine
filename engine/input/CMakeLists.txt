@@ -21,7 +21,7 @@ FetchContent_MakeAvailable(glfw)
 target_link_libraries(
     IrredenEngineInput PUBLIC
     glfw
-    IrredenEngineProfiling
+    IrredenEngineProfile
     IrredenEngineMath
     IrredenEngineCommon
     IrredenEngineECS

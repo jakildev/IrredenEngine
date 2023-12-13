@@ -1,11 +1,11 @@
-add_library(IrredenEngineProfiling STATIC
+add_library(IrredenEngineProfile STATIC
     src/cpu_profiler.cpp
     src/logger_spd.cpp
     src/ir_profile.cpp
 )
 
 target_compile_options(
-    IrredenEngineProfiling
+    IrredenEngineProfile
     PUBLIC
     -O3
 )
@@ -17,7 +17,7 @@ FetchContent_Declare(fmt
 )
 FetchContent_MakeAvailable(fmt)
 add_custom_command(
-    TARGET IrredenEngineProfiling
+    TARGET IrredenEngineProfile
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${fmt_BINARY_DIR}/bin/libfmtd.dll
@@ -45,13 +45,13 @@ add_subdirectory(
     ${spdlog_BINARY_DIR}
 )
 
-target_link_libraries(IrredenEngineProfiling PUBLIC spdlog)
-target_include_directories(IrredenEngineProfiling PRIVATE
+target_link_libraries(IrredenEngineProfile PUBLIC spdlog)
+target_include_directories(IrredenEngineProfile PRIVATE
     ${spdlog_SOURCE_DIR}/include
 )
 
 add_custom_command(
-    TARGET IrredenEngineProfiling
+    TARGET IrredenEngineProfile
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     ${spdlog_BINARY_DIR}/libspdlogd.dll
@@ -62,7 +62,7 @@ add_custom_command(
 
 # Remove to disable profiling
 # target_compile_definitions(
-#     IrredenEngineProfiling
+#     IrredenEngineProfile
 #     PUBLIC
 #     BUILD_WITH_EASY_PROFILER
 # )
@@ -73,15 +73,15 @@ FetchContent_Declare(
     GIT_TAG v2.1.0
 )
 FetchContent_MakeAvailable(easy_profiler)
-target_link_libraries(IrredenEngineProfiling PUBLIC easy_profiler)
+target_link_libraries(IrredenEngineProfile PUBLIC easy_profiler)
 target_include_directories(
-    IrredenEngineProfiling
+    IrredenEngineProfile
     PRIVATE
     ${easy_profiler_SOURCE_DIR}/easy_profiler_core/include
 )
 
 add_custom_command(
-    TARGET IrredenEngineProfiling
+    TARGET IrredenEngineProfile
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${easy_profiler_BINARY_DIR}/bin/libeasy_profilerd.dll
@@ -89,7 +89,7 @@ add_custom_command(
 )
 
 target_include_directories(
-    IrredenEngineProfiling
+    IrredenEngineProfile
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
