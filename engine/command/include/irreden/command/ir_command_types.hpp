@@ -32,7 +32,10 @@ namespace IRCommand {
         LOCK_VOXEL_SCALE, // TODO: This will zoom in the rendered framebuffer,
         // and not change the on the canvas to framebuffer...
         UNLOCK_VOXEL_SCALE, // TODO: see above
-        SPAWN_PARTICLE_MOUSE_POSITION
+        SPAWN_PARTICLE_MOUSE_POSITION,
+        SAVE_MAIN_CANVAS_TRIXELS,
+        SET_TRIXEL_COLOR
+
     };
 
     template <CommandNames command>

@@ -77,13 +77,12 @@ namespace IRRender {
             IRRender::getCameraPosition2DIso() ;
     }
 
-    ivec2 mouseTrixelPositionWorldRender() {
+    ivec2 mouseTrixelPositionWorld() {
         return glm::floor(IRMath::pos2DIsoToTriangleIndex(
             IRRender::mousePosition2DIsoWorldRender(),
             ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
         ));
     }
-
 
 } // namespace IRRender
 

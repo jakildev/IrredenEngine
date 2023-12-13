@@ -49,7 +49,19 @@ namespace IRECS {
                 C_ZoomLevel{startZoomLevel},
                 C_Name{canvasName}
             );
+        }
 
+        static void saveCanvas(
+            EntityId canvas,
+            std::string filename
+        )
+        {
+            C_TriangleCanvasTextures& canvasTextures =
+                IRECS::getComponent<C_TriangleCanvasTextures>(canvas);
+            // IRScript::saveCanvas(
+            //     canvasTextures,
+            //     filename
+            // );
         }
     };
 }

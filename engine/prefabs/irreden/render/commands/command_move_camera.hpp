@@ -9,7 +9,7 @@
 
 namespace IRCommand {
 
-    static constexpr float kCameraMoveSpeed = 0.50f;
+    static constexpr float kCameraMoveSpeed = 20.0f;
 
     template<>
     struct Command<MOVE_CAMERA_LEFT_START> {

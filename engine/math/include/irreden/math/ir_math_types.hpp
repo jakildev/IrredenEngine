@@ -45,8 +45,6 @@ namespace IRMath {
     using mat3 = glm::mat3;
     using mat4 = glm::mat4;
 
-    using Distance = int32_t;
-
     enum FaceType {
         NONE_FACE,
         X_FACE,
@@ -102,6 +100,8 @@ namespace IRMath {
         uint8_t blue_;
         uint8_t alpha_;
     };
+    using Distance = int32_t;
+
 
     namespace IRColors {
         constexpr Color kInvisable = Color{0x00, 0x00, 0x00, 0x00};

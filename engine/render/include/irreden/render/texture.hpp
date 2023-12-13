@@ -60,8 +60,17 @@ namespace IRRender {
             GLenum type,
             const void* data
         );
+        void getSubImage2D(
+            GLint xoffset,
+            GLint yoffset,
+            GLsizei width,
+            GLsizei height,
+            GLenum format,
+            GLenum type,
+            void* data
+        );
         void clear(GLenum format, GLenum type, const void* data);
-
+        void* getData() const;
     private:
         GLuint m_handle;
         unsigned int m_width, m_height;

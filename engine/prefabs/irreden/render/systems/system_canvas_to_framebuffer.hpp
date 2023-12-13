@@ -119,7 +119,7 @@ namespace IRECS {
 
                     frameData.textureOffset_ = vec2(0);
                     frameData.mouseHoveredTriangleIndex_ =
-                        IRRender::mouseTrixelPositionWorldRender();
+                        IRRender::mouseTrixelPositionWorld();
                     IRRender::getNamedResource<Buffer>(
                         "CanvasToFramebufferFrameData"
                     )->subData(

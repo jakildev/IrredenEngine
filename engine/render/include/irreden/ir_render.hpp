@@ -108,7 +108,7 @@ namespace IRRender {
     // (so with camera offset)
     vec2 mousePosition2DIsoWorldRender();
     vec2 mousePosition2DIsoUpdate();
-    ivec2 mouseTrixelPositionWorldRender();
+    ivec2 mouseTrixelPositionWorld();
 
 
 

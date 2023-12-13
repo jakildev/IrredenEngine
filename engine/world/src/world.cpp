@@ -43,6 +43,8 @@
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
 #include <irreden/voxel/commands/command_spawn_particle_mouse_position.hpp>
+#include <irreden/asset/commands/command_save_main_canvas_trixels.hpp>
+#include <irreden/render/commands/command_set_trixel_color.hpp>
 
 using namespace IRComponents;
 using namespace IRConstants;
@@ -227,7 +229,17 @@ namespace IREngine {
         IRCommand::createCommand<IRCommand::SPAWN_PARTICLE_MOUSE_POSITION>(
             InputTypes::KEY_MOUSE,
             ButtonStatuses::HELD,
-            KeyMouseButtons::kMouseButtonLeft
+            KeyMouseButtons::kMouseButtonRight
+        );
+        // IRCommand::createCommand<IRCommand::SET_TRIXEL_COLOR>(
+        //     InputTypes::KEY_MOUSE,
+        //     ButtonStatuses::HELD,
+        //     KeyMouseButtons::kMouseButtonLeft
+        // );
+        IRCommand::createCommand<IRCommand::SAVE_MAIN_CANVAS_TRIXELS>(
+            InputTypes::KEY_MOUSE,
+            ButtonStatuses::PRESSED,
+            KeyMouseButtons::kKeyButtonP
         );
 
     }

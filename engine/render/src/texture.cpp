@@ -144,7 +144,31 @@ namespace IRRender {
         );
     }
 
-    // Texture3D
+    void Texture2D::getSubImage2D(
+        GLint xoffset,
+        GLint yoffset,
+        GLsizei width,
+        GLsizei height,
+        GLenum format,
+        GLenum type,
+        void* data
+    ) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        glGetTextureSubImage(
+            m_handle,
+            0,
+            xoffset,
+            yoffset,
+            0,
+            width,
+            height,
+            1,
+            format,
+            type,
+            width * height * 4,
+            data
+        );
+    }
 
     Texture3D::Texture3D(
         GLenum type,

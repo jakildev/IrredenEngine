@@ -53,6 +53,11 @@ namespace IRRender {
     };
     constexpr GLuint kBufferIndex_FrameDataUniform = 0;
 
+    struct TrixelData {
+        vec4 color_;
+        int distance_;
+    };
+
     // C++ weekly ep 339
     // Use 'static constexpr' for constexpr values at function scope
     // Use 'inline constexpr' for constexpr values at file scope
