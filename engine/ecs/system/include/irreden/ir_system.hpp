@@ -17,7 +17,7 @@ namespace IRECS {
     extern SystemManager* g_systemManager;
     SystemManager& getSystemManager();
 
-    // Used for creating a engine "built-in" system
+    // Create a prefab system
     template <
         SystemName type,
         typename... Args
@@ -28,7 +28,7 @@ namespace IRECS {
         );
     }
 
-    // Used for creating a user-defined system
+    // Define your own system
     template <
         typename... TickComponents,
         typename FunctionTick,
@@ -40,7 +40,7 @@ namespace IRECS {
         FunctionTick functionTick,
         FunctionBeginTick functionBeginTick = nullptr,
         FunctionEndTick functionEndTick = nullptr,
-        Relation relation = Relation::NONE
+        CreateSystemExtraParams extraParams = {}
     )
     {
         return getSystemManager().createSystem<TickComponents...>(
@@ -48,38 +48,11 @@ namespace IRECS {
             functionTick,
             functionBeginTick,
             functionEndTick,
-            relation
+            extraParams
         );
     }
 
-    // Currently the alternative to just writing a "tick"
-    // lambda. Each call is executed on a single archetype node,
-    // and there is more flexability when dealing with the entities'
-    // archetypes, heirarchies, etc.
-    // TODO: Make something better for heirarchical systems / every other case
-    template <
-        typename... Components,
-        typename FunctionTick,
-        typename FunctionBeginTick = std::nullptr_t,
-        typename FunctionEndTick = std::nullptr_t
-    >
-    constexpr SystemId createNodeSystem(
-        std::string name,
-        FunctionTick functionTick,
-        FunctionBeginTick functionBeginTick = nullptr,
-        FunctionEndTick functionEndTick = nullptr,
-        Relation relation = Relation::NONE
-    )
-    {
-        return getSystemManager().createNodeSystem<Components...>(
-            name,
-            functionTick,
-            functionBeginTick,
-            functionEndTick,
-            relation
-        );
-    }
-
+    // TODO: Make extra param as well
     template <
         typename ComponentTag
     >

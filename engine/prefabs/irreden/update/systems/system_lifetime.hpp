@@ -23,19 +23,16 @@ namespace IRECS {
     template<>
     struct System<LIFETIME> {
         static SystemId create() {
-            return createNodeSystem<C_Lifetime>(
+            return createSystem<C_Lifetime>(
                 "Lifetime",
                 [](
-                    Archetype archetype,
-                    std::vector<EntityId>& entities,
-                    std::vector<C_Lifetime>& lifetimes
+                    EntityId entity,
+                    C_Lifetime& lifetime
                 )
                 {
-                    for(int i=0; i < entities.size(); i++) {
-                        lifetimes[i].life_--;
-                        if(lifetimes[i].life_ <= 0) {
-                            IRECS::destroyEntity(entities[i]);
-                        }
+                    lifetime.life_--;
+                    if(lifetime.life_ <= 0) {
+                        IRECS::destroyEntity(entity);
                     }
                 }
             );

@@ -25,8 +25,8 @@ namespace IRConstants {
     //     kInitWindowSizeAlt.x / 2
     // );
     constexpr ivec2 kInitWindowSize = ivec2(1080, 1920) / ivec2(2);
-    constexpr uvec2 kGameResolution = uvec2(kInitWindowSize);
-    // constexpr uvec2 kGameResolution = uvec2(kInitWindowSize) / uvec2(2);
+    // constexpr uvec2 kGameResolution = uvec2(kInitWindowSize);
+    constexpr uvec2 kGameResolution = uvec2(kInitWindowSize) / uvec2(2);
 
     constexpr uvec2 kSizeExtraPixelBuffer = uvec2(2, 4);
     constexpr uvec2 kSizeExtraPixelNoBuffer = uvec2(0, 0);

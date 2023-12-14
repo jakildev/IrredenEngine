@@ -195,7 +195,11 @@ void initEntities() {
                             IREasingFunctions::kBounceEaseOut
                         };
                     }
-
+                ,   [](ivec3 index) {
+                        return C_Lifetime{
+                            IRMath::randomInt(0, 1000)
+                        };
+                    }
                 ,   [batchSize, partitions](ivec3 index) {
                         int face = (index.x + index.y + index.z) % 3;
                         if(face == 0) {

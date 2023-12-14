@@ -23,10 +23,10 @@ namespace IRECS {
     template<>
     struct System<GLOBAL_POSITION_3D> {
         static constexpr SystemId create() {
-            return createNodeSystem<C_Position3D, C_PositionGlobal3D>(
+            return createSystem<C_Position3D, C_PositionGlobal3D>(
                 "UpdatePositionsGlobal",
                 [](
-                    Archetype archetype,
+                    const Archetype& archetype,
                     std::vector<EntityId>& entities,
                     std::vector<C_Position3D>& positions,
                     std::vector<C_PositionGlobal3D>& positionsGlobal
@@ -43,10 +43,13 @@ namespace IRECS {
                 },
                 nullptr,
                 nullptr,
-                Relation::CHILD_OF
+                {
+                    .relation_ = Relation::CHILD_OF,
+                }
             );
         }
     };
+
 
 } // namespace IRECS
 

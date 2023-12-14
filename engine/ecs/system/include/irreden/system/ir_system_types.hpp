@@ -85,6 +85,11 @@ namespace IRECS {
         NUM_SYSTEM_TYPES
     };
 
+    struct CreateSystemExtraParams {
+        Relation relation_ = Relation::NONE;
+        bool tickWithEntity_ = false;
+    };
+
     template <SystemName system>
     class System;
 

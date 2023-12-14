@@ -18,7 +18,7 @@ Created by and maintained by [jakildev](https://github.com/jakildev).
 -   Clone the repository.
 -   Configure cmake.
 -   Build all targets.
--   Run the default project.
+-   Launch a demo creation.
 
 ## Content and Socials
 | Platform | Account | Usage |

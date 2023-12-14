@@ -49,120 +49,24 @@ namespace IRECS {
             FunctionTick functionTick,
             FunctionBeginTick functionBeginTick = nullptr,
             FunctionEndTick functionEndTick = nullptr,
-            Relation relation = Relation::NONE
+            CreateSystemExtraParams extraParams = {}
         )
         {
             m_systemNames.emplace_back(C_Name{name});
-            if constexpr (!std::is_same_v<FunctionBeginTick, std::nullptr_t>) {
-                m_beginTicks.emplace_back(
-                    C_SystemEvent<BEGIN_TICK>{[functionBeginTick]() {
-                        functionBeginTick();
-                    }}
-                );
-            }
-            else {
-                m_beginTicks.emplace_back(
-                    C_SystemEvent<BEGIN_TICK>{[](){ return; }}
-                );
-            }
 
-            m_ticks.emplace_back(
-                C_SystemEvent<TICK>{
-                    [functionTick](ArchetypeNode* node) {
-                        auto componentsTuple = std::make_tuple(
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        for(int i = 0; i < node->length_; i++) {
-                            std::apply([i, &functionTick](auto&&... components) {
-                                functionTick(components[i]...);
-                            }, componentsTuple);
-                        }
-                    },
-                    getArchetype<Components...>()
-                }
+            insertBeginTickFunction(functionBeginTick);
+            insertTickFunction<Components...>(
+                functionTick,
+                extraParams
             );
+            insertEndTickFunction(functionEndTick);
 
-            if constexpr (!std::is_same_v<FunctionEndTick, std::nullptr_t>) {
-                m_endTicks.emplace_back(
-                    C_SystemEvent<END_TICK>{[functionEndTick]() {
-                        functionEndTick();
-                    }}
-                );
-            }
-            else {
-                m_endTicks.emplace_back(
-                    C_SystemEvent<END_TICK>{[](){ return; }}
-                );
-            }
             m_relations.emplace_back(
-                C_SystemRelation{relation}
+                C_SystemRelation{extraParams.relation_}
             );
             return m_nextSystemId++;
         }
 
-
-        template <
-            typename... Components,
-            typename FunctionTick,
-            typename FunctionBeginTick = std::nullptr_t,
-            typename FunctionEndTick = std::nullptr_t
-        >
-        SystemId createNodeSystem(
-            std::string name,
-            FunctionTick functionTick,
-            FunctionBeginTick functionBeginTick = nullptr,
-            FunctionEndTick functionEndTick = nullptr,
-            Relation relation = Relation::NONE
-        )
-        {
-            m_systemNames.emplace_back(C_Name{name});
-            if constexpr (!std::is_same_v<FunctionBeginTick, std::nullptr_t>) {
-                m_beginTicks.emplace_back(
-                    C_SystemEvent<BEGIN_TICK>{[functionBeginTick]() {
-                        functionBeginTick();
-                    }}
-                );
-            }
-            else {
-                m_beginTicks.emplace_back(
-                    C_SystemEvent<BEGIN_TICK>{[](){ return; }}
-                );
-            }
-            m_ticks.emplace_back(
-                C_SystemEvent<TICK>{
-                    [functionTick](ArchetypeNode* node) {
-                        auto paramTuple = std::make_tuple(
-                            node->type_,
-                            std::ref(node->entities_),
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        std::apply(
-                            [&functionTick](auto&&... args) {
-                                functionTick(std::forward<decltype(args)>(args)...);
-                            },
-                            paramTuple
-                        );
-                    },
-                    getArchetype<Components...>()
-                }
-            );
-            if constexpr (!std::is_same_v<FunctionEndTick, std::nullptr_t>) {
-                m_endTicks.emplace_back(
-                    C_SystemEvent<END_TICK>{[functionEndTick]() {
-                        functionEndTick();
-                    }}
-                );
-            }
-            else {
-                m_endTicks.emplace_back(
-                    C_SystemEvent<END_TICK>{[](){ return; }}
-                );
-            }
-            m_relations.emplace_back(
-                C_SystemRelation{relation}
-            );
-            return m_nextSystemId++;
-        }
 
         // TODO: return an id, SystemId, EntityId, or something.
         // Pipelines should be able to take in arbirary data
@@ -206,6 +110,135 @@ namespace IRECS {
 
         std::unordered_map<SystemTypes, std::list<SystemId>>
             m_systemPipelinesNew;
+
+        template <typename FunctionBeginTick>
+        void insertBeginTickFunction(
+            FunctionBeginTick functionBeginTick
+        )
+        {
+            if constexpr (std::is_invocable_v<FunctionBeginTick>) {
+                m_beginTicks.emplace_back(
+                    C_SystemEvent<BEGIN_TICK>{
+                        [functionBeginTick]() {
+                            functionBeginTick();
+                        }
+                    }
+                );
+            }
+            else {
+                m_beginTicks.emplace_back(
+                    C_SystemEvent<BEGIN_TICK>{
+                        [](){ return; }
+                    }
+                );
+            }
+        }
+
+        template <typename... Components, typename FunctionTick>
+        void insertTickFunction(
+            FunctionTick functionTick,
+            CreateSystemExtraParams extraParams
+        )
+        {
+            if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    EntityId&,
+                    Components&...
+                >
+            )
+            {
+                m_ticks.emplace_back(
+                    C_SystemEvent<TICK>{
+                        [functionTick](ArchetypeNode* node) {
+                            auto componentsTuple = std::make_tuple(
+                                std::ref(node->entities_),
+                                std::ref(getComponentData<Components>(node))...
+                            );
+                            for(int i = 0; i < node->length_; i++) {
+                                std::apply([i, &functionTick](auto&&... components) {
+                                    functionTick(components[i]...);
+                                }, componentsTuple);
+                            }
+                        },
+                        getArchetype<Components...>()
+                    }
+                );
+                return;
+            }
+
+            else if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    const Archetype&,
+                    std::vector<EntityId>&,
+                    std::vector<Components>&...
+                >
+            )
+            {
+                m_ticks.emplace_back(
+                    C_SystemEvent<TICK>{
+                        [functionTick](ArchetypeNode* node) {
+                            auto paramTuple = std::make_tuple(
+                                node->type_,
+                                std::ref(node->entities_),
+                                std::ref(getComponentData<Components>(node))...
+                            );
+                            std::apply(
+                                [&functionTick](auto&&... args) {
+                                    functionTick(
+                                        std::forward<decltype(args)>(args)...
+                                    );
+                                },
+                                paramTuple
+                            );
+                        },
+                        getArchetype<Components...>()
+                    }
+                );
+                return;
+            }
+            else {
+                m_ticks.emplace_back(
+                    C_SystemEvent<TICK>{
+                        [functionTick](ArchetypeNode* node) {
+                            auto componentsTuple = std::make_tuple(
+                                std::ref(getComponentData<Components>(node))...
+                            );
+                            for(int i = 0; i < node->length_; i++) {
+                                std::apply([i, &functionTick](auto&&... components) {
+                                    functionTick(components[i]...);
+                                }, componentsTuple);
+                            }
+                        },
+                        getArchetype<Components...>()
+                    }
+                );
+            }
+        }
+
+        template <typename FunctionEndTick>
+        void insertEndTickFunction(
+            FunctionEndTick functionEndTick
+        )
+        {
+            if constexpr (std::is_invocable_v<FunctionEndTick>) {
+                m_endTicks.emplace_back(
+                    C_SystemEvent<END_TICK>{
+                        [functionEndTick]() {
+                            functionEndTick();
+                        }
+                    }
+                );
+            }
+            else {
+                m_endTicks.emplace_back(
+                    C_SystemEvent<END_TICK>{
+                        [](){ return; }
+                    }
+                );
+            }
+        }
 
     };
 
