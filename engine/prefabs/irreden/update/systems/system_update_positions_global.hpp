@@ -44,7 +44,7 @@ namespace IRECS {
                 nullptr,
                 nullptr,
                 {
-                    .relation_ = Relation::CHILD_OF,
+                    .relation_ = Relation::CHILD_OF
                 }
             );
         }

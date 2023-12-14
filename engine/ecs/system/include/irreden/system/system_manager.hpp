@@ -198,7 +198,13 @@ namespace IRECS {
                 );
                 return;
             }
-            else {
+            else if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    Components&...
+                >
+            )
+            {
                 m_ticks.emplace_back(
                     C_SystemEvent<TICK>{
                         [functionTick](ArchetypeNode* node) {
@@ -214,6 +220,9 @@ namespace IRECS {
                         getArchetype<Components...>()
                     }
                 );
+            }
+            else {
+                IR_ASSERT(false, "Invalid tick function signature.");
             }
         }
 
