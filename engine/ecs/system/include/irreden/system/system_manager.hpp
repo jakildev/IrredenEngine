@@ -36,8 +36,6 @@ namespace IRECS {
         SystemManager();
         ~SystemManager() = default;
 
-        // TODO: Consolidate createSystem and createNodeSystem
-        // TODO: Make parameters a struct and check for specific fields
         template <
             typename... Components,
             typename FunctionTick,
@@ -67,29 +65,6 @@ namespace IRECS {
             return m_nextSystemId++;
         }
 
-
-        // TODO: return an id, SystemId, EntityId, or something.
-        // Pipelines should be able to take in arbirary data
-        // and return arbitrary data.
-        // This is currently done by transforming components I suppose
-        void registerPipeline(
-            SystemTypes systemType,
-            std::list<SystemId> pipeline
-        ) {
-            m_systemPipelinesNew[systemType] = pipeline;
-        }
-
-
-        void executePipeline(SystemTypes systemType) {
-            auto& systemOrder = m_systemPipelinesNew[systemType];
-            for(SystemId system : systemOrder) {
-                executeSystem(system);
-            }
-        }
-
-        void executeSystem(SystemId system);
-
-
         template <typename Tag>
         void addSystemTag(SystemId system) {
             m_ticks[system].archetype_.insert(
@@ -97,9 +72,15 @@ namespace IRECS {
             );
         }
 
+        void registerPipeline(
+            IRTime::Events event,
+            std::list<SystemId> pipeline
+        );
+        void executePipeline(IRTime::Events event);
+        void executeSystem(SystemId system);
+
+
     private:
-        // TODO: Unify engine systems and engine systems by assigning each
-        // enum to an index value...
         SystemId m_nextSystemId = 0;
         std::vector<C_Name> m_systemNames;
         std::vector<C_SystemEvent<BEGIN_TICK>> m_beginTicks;
@@ -108,7 +89,7 @@ namespace IRECS {
         std::vector<C_SystemRelation> m_relations;
         std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
-        std::unordered_map<SystemTypes, std::list<SystemId>>
+        std::unordered_map<IRTime::Events, std::list<SystemId>>
             m_systemPipelinesNew;
 
         template <typename FunctionBeginTick>

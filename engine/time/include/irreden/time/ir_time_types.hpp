@@ -37,8 +37,7 @@ namespace IRTime {
         RENDER,
         INPUT,
         START,
-        END,
-        NUM_EVENTS
+        END
     };
 
     template<Events eventType>

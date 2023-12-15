@@ -141,7 +141,7 @@ namespace IRRender {
 
         IRInput::getWindowSize(m_viewport);
         updateOutputResolution();
-        IRECS::executePipeline(SYSTEM_TYPE_RENDER);
+        IRECS::executePipeline(IRTime::Events::RENDER);
         m_window.swapBuffers();
     }
 

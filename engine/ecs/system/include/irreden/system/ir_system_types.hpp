@@ -77,17 +77,10 @@ namespace IRECS {
         NUM_SYSTEMS
     };
 
-    enum SystemTypes {
-        SYSTEM_TYPE_UPDATE,
-        SYSTEM_TYPE_RENDER,
-        SYSTEM_TYPE_INPUT,
-        SYSTEM_TYPE_OUTPUT,
-        NUM_SYSTEM_TYPES
-    };
-
     struct CreateSystemExtraParams {
         Relation relation_ = Relation::NONE;
         bool tickWithEntity_ = false;
+
     };
 
     template <SystemName system>

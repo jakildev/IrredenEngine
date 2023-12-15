@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
 
 void initSystems() {
     IRECS::registerPipeline(
-        SYSTEM_TYPE_UPDATE,
+        IRTime::Events::UPDATE,
         {
             IRECS::createSystem<VELOCITY_3D>()
         ,   IRECS::createSystem<GOTO_3D>()
@@ -66,14 +66,14 @@ void initSystems() {
     );
 
     IRECS::registerPipeline(
-        SYSTEM_TYPE_INPUT,
+        IRTime::Events::INPUT,
         {
             IRECS::createSystem<INPUT_KEY_MOUSE>()
         ,   IRECS::createSystem<INPUT_GAMEPAD>()
         }
     );
     IRECS::registerPipeline(
-        SYSTEM_TYPE_RENDER,
+        IRTime::Events::RENDER,
         {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
         ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()

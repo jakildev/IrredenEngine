@@ -18,14 +18,14 @@ namespace IRECS {
     }
 
     void registerPipeline(
-        SystemTypes systemType,
+        IRTime::Events event,
         std::list<SystemId> pipeline
     )
     {
-        getSystemManager().registerPipeline(systemType, pipeline);
+        getSystemManager().registerPipeline(event, pipeline);
     }
 
-    void executePipeline(SystemTypes systemType) {
-        getSystemManager().executePipeline(systemType);
+    void executePipeline(IRTime::Events event) {
+        getSystemManager().executePipeline(event);
     }
 } // namespace IRECS

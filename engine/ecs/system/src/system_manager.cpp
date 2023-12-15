@@ -19,7 +19,23 @@ namespace IRECS {
     {
         g_systemManager = this;
         IRE_LOG_INFO("Created SystemManager");
-    };
+    }
+
+
+    void SystemManager::registerPipeline(
+        IRTime::Events event,
+        std::list<SystemId> pipeline
+    ) {
+        m_systemPipelinesNew[event] = pipeline;
+    }
+
+
+    void SystemManager::executePipeline(IRTime::Events event) {
+        auto& systemOrder = m_systemPipelinesNew[event];
+        for(SystemId system : systemOrder) {
+            executeSystem(system);
+        }
+    }
 
     void SystemManager::executeSystem(SystemId system) {
        std::stringstream ss;

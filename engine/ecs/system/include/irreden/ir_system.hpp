@@ -10,6 +10,8 @@
 #ifndef IR_SYSTEM_H
 #define IR_SYSTEM_H
 
+#include <irreden/ir_time.hpp>
+
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/system/system_manager.hpp>
 
@@ -61,10 +63,10 @@ namespace IRECS {
     }
 
     void registerPipeline(
-        SystemTypes systemType,
+        IRTime::Events systemType,
         std::list<SystemId> pipeline
     );
-    void executePipeline(SystemTypes systemType);
+    void executePipeline(IRTime::Events systemType);
 
 } // namespace System
 

@@ -89,7 +89,7 @@ namespace IREngine {
         m_inputManager.tick();
         m_audioManager.getMidiIn().tick();
 
-        m_systemManager.executePipeline(SYSTEM_TYPE_INPUT);
+        m_systemManager.executePipeline(IRTime::Events::INPUT);
     }
 
     void World::start() {
@@ -108,7 +108,7 @@ namespace IREngine {
         m_commandManager.executeUserKeyboardCommandsAll();
         m_commandManager.executeDeviceMidiCCCommandsAll();
         m_commandManager.executeDeviceMidiNoteCommandsAll();
-        m_systemManager.executePipeline(SYSTEM_TYPE_UPDATE);
+        m_systemManager.executePipeline(IRTime::Events::UPDATE);
 
         // Destroy all marked entities in one step
         m_entityManager.destroyMarkedEntities();
