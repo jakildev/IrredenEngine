@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: v_iso_triangle_screen.glsl
+ * File: v_trixel_to_framebuffer.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -22,8 +22,6 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 textureOffset;
     vec2 mouseHoveredTriangleIndex;
 };
-
-// TODO: maybe just use a mvp matrix
 
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);

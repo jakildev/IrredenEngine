@@ -27,9 +27,9 @@
 #include <irreden/input/systems/system_input_gamepad.hpp>
 
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
-#include <irreden/render/systems/system_single_voxel_to_canvas.hpp>
-#include <irreden/render/systems/system_canvas_to_framebuffer.hpp>
-#include <irreden/render/systems/system_framebuffers_to_screen.hpp>
+#include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 // COMMANDS
 #include <irreden/input/commands/command_close_window.hpp>
@@ -76,10 +76,10 @@ void initSystems() {
         IRTime::Events::RENDER,
         {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
-        ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()
-        ,   IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
+        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
+        ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
         }
     );
 
@@ -205,7 +205,6 @@ void initEntities() {
                         if(face == 0) {
                             return C_Velocity3D{
                                 vec3(
-                                    // sumVecComponents(index),
                                     IRMath::randomFloat(-80, 80),
                                     0,
                                     0
@@ -217,7 +216,6 @@ void initEntities() {
                                 vec3(
                                     0,
                                     IRMath::randomFloat(-80, 80),
-                                    // sumVecComponents(index),
                                     0
                                 )
                             };
@@ -227,9 +225,7 @@ void initEntities() {
                                 vec3(
                                     0,
                                     0,
-                                    // sumVecComponents(index)
                                     IRMath::randomFloat(-80, 80)
-                                    // index.z
                                 )
                             };
                         }

@@ -38,6 +38,7 @@ namespace IRECS {
                 {
                     position.pos_ +=
                         velocity.velocity_ *
+                        // TODO: Delta time based on event registered in pipeline
                         vec2(IRTime::deltaTime(IRTime::RENDER));
                 }
             );

@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: f_iso_triangle_screen.glsl
+ * File: f_trixel_to_framebuffer.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

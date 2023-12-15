@@ -12,20 +12,20 @@
 
 namespace IRRender {
 
-    const char* const kFileVertFramebufferScreen =
-        "shaders/v_framebuffer_screen.glsl";
-    const char* const kFileFragFramebufferScreen =
-        "shaders/f_framebuffer_screen.glsl";
+    const char* const kFileVertFramebufferToScreen =
+        "shaders/v_framebuffer_to_screen.glsl";
+    const char* const kFileFragFramebufferToScreen =
+        "shaders/f_framebuffer_to_screen.glsl";
 
-    const char* const kFileVertIsoTrianglesScreen =
-        "shaders/v_iso_triangle_screen.glsl";
-    const char* const kFileFragIsoTrianglesScreen =
-        "shaders/f_iso_triangle_screen.glsl";
+    const char* const kFileVertTrixelToFramebuffer =
+        "shaders/v_trixel_to_framebuffer.glsl";
+    const char* const kFileFragTrixelToFramebuffer =
+        "shaders/f_trixel_to_framebuffer.glsl";
 
-    const char* const kFileCompSingleVoxelToIsoTriangleScreen =
-        "shaders/c_single_voxel_to_canvas.glsl";
-    const char* const kFileCompSingleVoxelToCanvasSecondPass =
-        "shaders/c_single_voxel_stage_2_color.glsl";
+    const char* const kFileCompVoxelToTrixelStage1 =
+        "shaders/c_voxel_to_trixel_stage_1.glsl";
+    const char* const kFileCompVoxelToTrixelStage2 =
+        "shaders/c_voxel_to_trixel_stage_2.glsl";
 
 }
 

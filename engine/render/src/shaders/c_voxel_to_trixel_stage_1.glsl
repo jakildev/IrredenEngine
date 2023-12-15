@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: c_single_voxel_stage_2_color.glsl
+ * File: c_voxel_to_trixel_stage_1.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----
@@ -16,6 +16,7 @@ layout(std140, binding = 1) uniform GlobalConstants {
     uniform ivec2 kCanvasTriangleOriginOffsetZ1;
     uniform int kMinTriangleDistance;
     uniform int kMaxTriangleDistance;
+
 };
 
 layout(std140, binding = 7) uniform FrameDataCommon {
@@ -30,18 +31,17 @@ layout(std430, binding = 6) buffer ColorBuffer {
     uint colors[];
 };
 
-layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
+
+int pos3DtoDistance(ivec3 position) {
+    return position.x + position.y + position.z;
+}
 
 ivec2 pos3DtoPos2DIso(const ivec3 position) {
     return ivec2(
         - position.x + position.y,
         - position.x - position.y + (2 * position.z)
     );
-}
-
-int pos3DtoDistance(ivec3 position) {
-    return position.x + position.y + position.z;
 }
 
 vec4 unpackColor(uint packedColor) {
@@ -53,37 +53,11 @@ vec4 unpackColor(uint packedColor) {
     );
 }
 
-const int kXFace = 0;
-const int kYFace = 1;
-const int kZFace = 2;
-
-int localIDToFace() {
-    if(gl_LocalInvocationID.y == 0) {
-        return kZFace;
-    }
-    if(gl_LocalInvocationID.x == 1) {
-        return kXFace;
-    }
-    if(gl_LocalInvocationID.x == 0) {
-        return kYFace;
-    }
-}
-
-// Temp way to fake a light source.
-vec4 adjustColorForFace(vec4 color, int face) {
-    if(face == kXFace) {
-        return color;
-    }
-    if(face == kYFace) {
-        return color - vec4(0.2, 0.2, 0.2, 0.0);
-    }
-    if(face == kZFace) {
-        return color + vec4(0.2, 0.2, 0.2, 0.0);
-    }
-    return color;
-}
-
 void main() {
+    const vec4 color = unpackColor(colors[gl_WorkGroupID.x]);
+    if(color.a == 0) {
+        return;
+    }
     const vec4 voxelPosition = positions[gl_WorkGroupID.x];
     const ivec3 voxelPositionInt = ivec3(
         round(voxelPosition.x),
@@ -100,27 +74,16 @@ void main() {
     if (canvasPixel.x < 0 || canvasPixel.x >= imageSize(triangleCanvasDistances).x) {
         return;
     }
+
     if (canvasPixel.y < 0 || canvasPixel.y >= imageSize(triangleCanvasDistances).y) {
         return;
     }
 
-    int canvasDistance = imageLoad(triangleCanvasDistances, canvasPixel).x;
+    int canvasDistance = imageAtomicMin(
+        triangleCanvasDistances,
+        canvasPixel,
+        voxelDistance
+    );
 
-    if (voxelDistance == canvasDistance)
-    {
-        vec4 voxelColor = unpackColor(
-            colors[gl_WorkGroupID.x]
-        );
-        if(voxelColor.a == 0) return;
-        voxelColor = adjustColorForFace(
-            voxelColor,
-            localIDToFace()
-        );
-        imageStore(
-            triangleCanvasColors,
-            canvasPixel,
-            voxelColor
-        );
-    }
+    // if(mouseHoveredTriangleIndex)
 }
-

@@ -33,14 +33,14 @@ using namespace IRRender;
 namespace IRECS {
 
     template<>
-    struct System<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST> {
+    struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         static SystemId create() {
             static FrameDataVoxelToCanvas frameData{};
             IRRender::createNamedResource<ShaderProgram>(
                 "SingleVoxelProgram1",
                 std::vector{
                     ShaderStage{
-                        IRRender::kFileCompSingleVoxelToIsoTriangleScreen,
+                        IRRender::kFileCompVoxelToTrixelStage1,
                         GL_COMPUTE_SHADER
                     }.getHandle()
                 }
@@ -147,13 +147,13 @@ namespace IRECS {
     };
 
     template<>
-    struct System<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND> {
+    struct System<VOXEL_TO_TRIXEL_STAGE_2> {
         static SystemId create() {
             IRRender::createNamedResource<ShaderProgram>(
                 "SingleVoxel2",
                 std::vector{
                     ShaderStage{
-                        IRRender::kFileCompSingleVoxelToCanvasSecondPass,
+                        IRRender::kFileCompVoxelToTrixelStage2,
                         GL_COMPUTE_SHADER
                     }.getHandle()
                 }

@@ -67,10 +67,10 @@ void initSystems() {
         SYSTEM_TYPE_RENDER,
         {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
-        ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()
-        ,   IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
+        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
+        ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
         }
     );
 

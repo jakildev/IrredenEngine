@@ -1,6 +1,6 @@
 /*
  * Project: Irreden Engine
- * File: v_framebuffer_screen.glsl
+ * File: v_framebuffer_to_screen.glsl
  * Author: Evin Killian jakildev@gmail.com
  * Created Date: October 2023
  * -----

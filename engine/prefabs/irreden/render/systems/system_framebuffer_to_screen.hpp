@@ -30,18 +30,18 @@ using namespace IRMath;
 namespace IRECS {
 
     template <>
-    struct System<RENDERING_FRAMEBUFFER_TO_SCREEN> {
+    struct System<FRAMEBUFFER_TO_SCREEN> {
         static SystemId create() {
             static FrameDataFramebuffer frameData{};
             IRRender::createNamedResource<ShaderProgram>(
                 "FramebufferToScreenProgram",
                 std::vector{
                     ShaderStage{
-                        IRRender::kFileVertFramebufferScreen,
+                        IRRender::kFileVertFramebufferToScreen,
                         GL_VERTEX_SHADER
                     }.getHandle(),
                     ShaderStage{
-                        IRRender::kFileFragFramebufferScreen,
+                        IRRender::kFileFragFramebufferToScreen,
                         GL_FRAGMENT_SHADER
                     }.getHandle()
                 }

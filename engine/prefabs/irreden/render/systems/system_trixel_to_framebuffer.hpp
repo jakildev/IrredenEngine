@@ -33,18 +33,18 @@ using namespace IRMath;
 namespace IRECS {
 
     template <>
-    struct System<RENDERING_CANVAS_TO_FRAMEBUFFER> {
+    struct System<TRIXEL_TO_FRAMEBUFFER> {
         static SystemId create() {
             static FrameDataIsoTriangles frameData{};
             IRRender::createNamedResource<ShaderProgram>(
                 "CanvasToFramebufferProgram",
                 std::vector{
                     ShaderStage{
-                        IRRender::kFileVertIsoTrianglesScreen,
+                        IRRender::kFileVertTrixelToFramebuffer,
                         GL_VERTEX_SHADER
                     }.getHandle(),
                     ShaderStage{
-                        IRRender::kFileFragIsoTrianglesScreen,
+                        IRRender::kFileFragTrixelToFramebuffer,
                         GL_FRAGMENT_SHADER
                     }.getHandle()
                 }
