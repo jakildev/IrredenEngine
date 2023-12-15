@@ -19,18 +19,7 @@ namespace IRECS {
     extern SystemManager* g_systemManager;
     SystemManager& getSystemManager();
 
-    // Create a prefab system
-    template <
-        SystemName type,
-        typename... Args
-    >
-    SystemId createSystem(Args&&... args) {
-        return System<type>::create(
-            args...
-        );
-    }
-
-    // Define your own system
+    // Create a new system
     template <
         typename... TickComponents,
         typename FunctionTick,
@@ -54,6 +43,17 @@ namespace IRECS {
         );
     }
 
+    // Create a prefab system
+    template <
+        SystemName type,
+        typename... Args
+    >
+    SystemId createSystem(Args&&... args) {
+        return System<type>::create(
+            args...
+        );
+    }
+
     // TODO: Make extra param as well
     template <
         typename ComponentTag
@@ -66,7 +66,7 @@ namespace IRECS {
         IRTime::Events systemType,
         std::list<SystemId> pipeline
     );
-    void executePipeline(IRTime::Events systemType);
+    void executePipeline(IRTime::Events event);
 
 } // namespace System
 
