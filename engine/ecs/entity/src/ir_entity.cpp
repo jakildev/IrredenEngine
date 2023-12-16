@@ -102,6 +102,10 @@ namespace IRECS {
         }
     }
 
+    EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation) {
+        return getEntityManager().getRelatedEntityFromArchetype(type, relation);
+    }
+
 
 
     // bool isRelationCompoenent(ComponentId component) {

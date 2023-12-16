@@ -27,9 +27,11 @@ namespace IRECS {
 
     smart_ComponentData createComponentData(ComponentId type);
     std::string makeComponentString(const Archetype& type);
+    EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
     EntityId getParentEntityFromArchetype(Archetype type);
     void setName(EntityId entity, const std::string& name);
     EntityId getEntity(const std::string& name);
+
 
 
     template <typename... Components>
@@ -51,6 +53,7 @@ namespace IRECS {
         const Archetype& includeComponents,
         const Archetype& excludeComponents = Archetype{}
     );
+
     std::vector<ArchetypeNode*> queryArchetypeNodesRelational(
         const Relation relation,
         const Archetype& includeComponents,
@@ -198,6 +201,11 @@ namespace IRECS {
         return getEntityManager().getComponent<Component>(
             getEntity(name)
         );
+    }
+
+    template <typename Component>
+    std::optional<Component*> getComponentOptional(EntityId entity) {
+        return getEntityManager().getComponentOptional<Component>(entity);
     }
 
     template <typename Component>

@@ -69,6 +69,7 @@ namespace IRECS {
         void markEntityForDeletion(EntityId& entity);
         void destroyMarkedEntities();
         NodeId getParentNodeFromRelation(RelationId relation);
+        EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
         EntityId getParentEntityFromArchetype(Archetype type);
         RelationId registerRelation(Relation relation, EntityId relatedEntity);
         void setName(EntityId entity, const std::string& name);
@@ -269,6 +270,30 @@ namespace IRECS {
                 );
 
             return data->dataVector[record.row];
+        }
+
+        template <typename Component>
+        std::optional<Component*> getComponentOptional(EntityId entity)
+        {
+            IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+            if(entity == kNullEntity) {
+                return std::nullopt;
+            }
+
+            const EntityRecord& record = getRecord(entity);
+            ArchetypeNode* node = record.archetypeNode;
+            Archetype archetype = node->type_;
+            ComponentId componentType = getComponentType<Component>();
+
+            if(std::find(archetype.begin(), archetype.end(), componentType) ==
+                archetype.end()) {
+                return std::nullopt;
+            }
+            IComponentDataImpl<Component> *data =
+                castComponentDataPointer<Component>(
+                    node->components_[componentType].get()
+                );
+            return std::make_optional(&data->dataVector[record.row]);
         }
 
 

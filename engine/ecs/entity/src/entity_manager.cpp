@@ -166,6 +166,18 @@ namespace IRECS {
         return getRecord(m_childOfRelations[relation]).archetypeNode->id_;
     }
 
+    EntityId EntityManager::getRelatedEntityFromArchetype(
+        Archetype type,
+        Relation relation
+    )
+    {
+        if(relation == CHILD_OF) {
+            return getParentEntityFromArchetype(type);
+        }
+        IR_ASSERT(false, "Unsupported relation: {}", static_cast<int>(relation));
+        return kNullEntity;
+    }
+
     EntityId EntityManager::getParentEntityFromArchetype(Archetype type) {
         for(auto relation: type) {
             if(isChildOfRelation(relation)) {

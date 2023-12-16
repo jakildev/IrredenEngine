@@ -78,7 +78,7 @@ namespace IRRender {
     constexpr GLsizeiptr kFramebufferFrameDataUniformBufferSize =
         sizeof(FrameDataFramebuffer);
 
-    struct FrameDataIsoTriangles {
+    struct FrameDataTrixelToFramebuffer {
         mat4 mpMatrix_;
         vec2 canvasZoomLevel_;
         vec2 canvasOffset_;

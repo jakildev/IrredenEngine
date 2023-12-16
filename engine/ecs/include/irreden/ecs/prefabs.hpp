@@ -26,7 +26,8 @@ namespace IRECS {
         kMidiSequenceAnimated,
         kKeyMouseButton,
         kMouseScroll,
-        kCanvas
+        kCanvas,
+        kFramebuffer
     };
 
     template<PrefabTypes type>

@@ -69,9 +69,9 @@ namespace IREngine {
 
             while (m_timeManager.shouldUpdate())
             {
+                m_IRGLFWWindow.pollEvents();
                 input();
                 update();
-                m_IRGLFWWindow.pollEvents();
                 // output();
             }
             render();
@@ -109,7 +109,7 @@ namespace IREngine {
         m_commandManager.executeDeviceMidiCCCommandsAll();
         m_commandManager.executeDeviceMidiNoteCommandsAll();
         m_systemManager.executePipeline(IRTime::Events::UPDATE);
-
+        auto globalParentPos = IRECS::getComponent<C_PositionGlobal3D>(403);
         // Destroy all marked entities in one step
         m_entityManager.destroyMarkedEntities();
         // TODO: maybe component adds and removes should be done here too

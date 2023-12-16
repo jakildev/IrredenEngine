@@ -156,6 +156,6 @@ IRECS::createEntity{
 6. Fragment shader files are prefixed with "f_".
 7. Geometry shader files are prefixed with "g_".
 
-## Performance (TODO)
--   Highlight sections that perform well.
--   Identify bottlenecks and main areas for improvement.
+<!-- ## Performance (TODO) -->
+<!-- -   Highlight sections that perform well. -->
+<!-- -   Identify bottlenecks and main areas for improvement. -->

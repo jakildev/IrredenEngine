@@ -66,17 +66,16 @@ namespace IRECS {
         RENDERING_TILE_SELECTOR,
         VOXEL_TO_TRIXEL_STAGE_1,
         VOXEL_TO_TRIXEL_STAGE_2,
+        TRIXEL_TO_FRAMEBUFFER_FRAME_DATA,
         TRIXEL_TO_FRAMEBUFFER,
         FRAMEBUFFER_TO_SCREEN,
         RENDERING_VELOCITY_2D_ISO,
-        TEXTURE_SCROLL,
-        NUM_SYSTEMS
+        TEXTURE_SCROLL
     };
 
-    struct CreateSystemExtraParams {
+    template <typename... RelationComponents>
+    struct RelationParams {
         Relation relation_ = Relation::NONE;
-        bool tickWithEntity_ = false;
-
     };
 
     template <SystemName system>

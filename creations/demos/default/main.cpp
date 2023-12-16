@@ -146,6 +146,7 @@ void initCommands() {
 void initEntities() {
     const ivec3 partitions = ivec3(2, 2, 2);
     const ivec3 batchSize = IRConstants::kVoxelPoolMaxAllocationSize;
+    // const ivec3 batchSize = ivec3(4, 4, 4);
 
     for(int x = 0; x < partitions.x; x++) {
         for(int y = 0; y < partitions.y; y++) {

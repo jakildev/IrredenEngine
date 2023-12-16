@@ -1,14 +1,14 @@
 /*
  * Project: Irreden Engine
- * File: system_rendering_canvas_to_framebuffer.hpp
+ * File: system_trixel_to_framebuffer_frame_data.hpp
  * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
+ * Created Date: December 2023
  * -----
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
-#define SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
+#ifndef SYSTEM_TRIXEL_TO_FRAMEBUFFER_FRAME_DATA_H
+#define SYSTEM_TRIXEL_TO_FRAMEBUFFER_FRAME_DATA_H
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_ecs.hpp>
@@ -20,7 +20,8 @@
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_triangle_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-#include <irreden/update/systems/system_update_screen_view.hpp>
+#include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
+
 
 #include <glm/gtc/matrix_transform.hpp> // not this here
 
@@ -28,14 +29,12 @@ using namespace IRComponents;
 using namespace IRRender;
 using namespace IRMath;
 
-// ADD ABLILITY TO TEXTURE OVER FACES!
 
 namespace IRECS {
 
     template <>
-    struct System<TRIXEL_TO_FRAMEBUFFER> {
+    struct System<TRIXEL_TO_FRAMEBUFFER_FRAME_DATA> {
         static SystemId create() {
-            static FrameDataTrixelToFramebuffer frameData{};
             IRRender::createNamedResource<ShaderProgram>(
                 "CanvasToFramebufferProgram",
                 std::vector{
@@ -50,14 +49,6 @@ namespace IRECS {
                 }
             );
 
-            IRRender::createNamedResource<Buffer>(
-                "CanvasToFramebufferFrameData",
-                nullptr,
-                sizeof(FrameDataTrixelToFramebuffer),
-                GL_DYNAMIC_STORAGE_BIT,
-                GL_UNIFORM_BUFFER,
-                kBufferIndex_FrameDataUniformIsoTriangles
-            );
             return createSystem<
                 C_TriangleCanvasTextures,
                 C_TriangleCanvasFramebuffer,
@@ -125,15 +116,6 @@ namespace IRECS {
                         sizeof(FrameDataTrixelToFramebuffer),
                         &frameData
                     );
-                    triangleCanvasTextures.bind(0, 1);
-
-                    ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
-                    ENG_API->glDrawElements(
-                        GL_TRIANGLES,
-                        IRShapes2D::kQuadIndicesLength,
-                        GL_UNSIGNED_SHORT,
-                        nullptr
-                    );
                 },
                 []() {
                     IRRender::getNamedResource<ShaderProgram>(
@@ -150,4 +132,5 @@ namespace IRECS {
 
 } // namespace System
 
-#endif /* SYSTEM_TRIXEL_TO_FRAMEBUFFER_H */
+#endif /* SYSTEM_TRIXEL_TO_FRAMEBUFFER_FRAME_DATA_H */
+
