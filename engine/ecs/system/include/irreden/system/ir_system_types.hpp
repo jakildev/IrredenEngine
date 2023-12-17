@@ -19,7 +19,7 @@ namespace IRECS {
 
     using SystemId = EntityId;
 
-    enum SystemTickModifiers {
+     enum SystemTickModifiers {
         SYSTEM_MODIFIER_NONE = 0,
         SYSTEM_MODIFIER_WITH_ENTITY = 1
     };
@@ -77,6 +77,53 @@ namespace IRECS {
     struct RelationParams {
         Relation relation_ = Relation::NONE;
     };
+
+
+    // Acceptable tick function signatures
+    template <
+        typename FunctionTick,
+        typename... Components
+    >
+    concept InvocableWithComponents = std::is_invocable_v<
+        FunctionTick,
+        Components&...
+    >;
+
+    template <
+        typename FunctionTick,
+        typename... Components
+    >
+    concept InvocableWithEntityId = std::is_invocable_v<
+        FunctionTick,
+        EntityId&,
+        Components&...
+    >;
+
+    // TODO: This doesn't work due to ambiguous parameter packs
+    // Probably need some sort of type extractor from RelationParams.
+    // Deferring work for now.
+    // template <
+    //     typename FunctionTick,
+    //     typename... Components,
+    //     typename... RelationComponents
+    // >
+    // concept InvocableWithOptionalRelations = std::is_invocable_v<
+    //     FunctionTick,
+    //     Components&...,
+    //     std::optional<RelationComponents*>...
+    // >;
+
+
+    template <
+        typename FunctionTick,
+        typename... Components
+    >
+    concept InvocableWithNodeVectors = std::is_invocable_v<
+        FunctionTick,
+        const Archetype&,
+        std::vector<EntityId>&,
+        std::vector<Components>&...
+    >;
 
     template <SystemName system>
     class System;

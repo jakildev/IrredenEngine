@@ -130,10 +130,9 @@ namespace IRECS {
                 C_SystemEvent<TICK>{
                     [functionTick, extraParams](ArchetypeNode* node) {
                         if constexpr (
-                            std::is_invocable_v<
+                            InvocableWithEntityId<
                                 FunctionTick,
-                                EntityId&,
-                                Components&...
+                                Components...
                             >
                         )
                         {
@@ -148,9 +147,9 @@ namespace IRECS {
                             }
                         }
                         else if constexpr (
-                            std::is_invocable_v<
+                            InvocableWithComponents<
                                 FunctionTick,
-                                Components&...
+                                Components...
                             >
                         )
                         {
@@ -190,7 +189,10 @@ namespace IRECS {
                                     functionTick(args...);
                                 }, std::tuple_cat(
                                         std::make_tuple(
-                                            std::ref(std::get<std::vector<Components>&>(componentsTuple)[i])...
+                                            std::ref(std::get<
+                                                std::vector<Components>&>(
+                                                    componentsTuple
+                                                )[i])...
                                         ),
                                         relationComponentTuple
                                     )
@@ -198,11 +200,9 @@ namespace IRECS {
                             }
                         }
                         else if constexpr (
-                            std::is_invocable_v<
+                            InvocableWithNodeVectors<
                                 FunctionTick,
-                                const Archetype&,
-                                std::vector<EntityId>&,
-                                std::vector<Components>&...
+                                Components...
                             >
                         )
                         {
