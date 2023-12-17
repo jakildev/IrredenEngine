@@ -126,17 +126,17 @@ namespace IRECS {
             RelationParams<RelationComponents...> extraParams
         )
         {
-            if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    EntityId&,
-                    Components&...
-                >
-            )
-            {
-                m_ticks.emplace_back(
-                    C_SystemEvent<TICK>{
-                        [functionTick](ArchetypeNode* node) {
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    [functionTick, extraParams](ArchetypeNode* node) {
+                        if constexpr (
+                            std::is_invocable_v<
+                                FunctionTick,
+                                EntityId&,
+                                Components&...
+                            >
+                        )
+                        {
                             auto componentsTuple = std::make_tuple(
                                 std::ref(node->entities_),
                                 std::ref(getComponentData<Components>(node))...
@@ -146,22 +146,14 @@ namespace IRECS {
                                     functionTick(components[i]...);
                                 }, componentsTuple);
                             }
-                        },
-                        getArchetype<Components...>()
-                    }
-                );
-                return;
-            }
-            else if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    Components&...
-                >
-            )
-            {
-                m_ticks.emplace_back(
-                    C_SystemEvent<TICK>{
-                        [functionTick](ArchetypeNode* node) {
+                        }
+                        else if constexpr (
+                            std::is_invocable_v<
+                                FunctionTick,
+                                Components&...
+                            >
+                        )
+                        {
                             auto componentsTuple = std::make_tuple(
                                 std::ref(getComponentData<Components>(node))...
                             );
@@ -170,22 +162,15 @@ namespace IRECS {
                                     functionTick(components[i]...);
                                 }, componentsTuple);
                             }
-                        },
-                        getArchetype<Components...>()
-                    }
-                );
-            }
-            else if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    Components&...,
-                    std::optional<RelationComponents*>...
-                >
-            )
-            {
-                m_ticks.emplace_back(
-                    C_SystemEvent<TICK>{
-                        [functionTick, extraParams](ArchetypeNode* node) {
+                        }
+                        else if constexpr (
+                            std::is_invocable_v<
+                                FunctionTick,
+                                Components&...,
+                                std::optional<RelationComponents*>...
+                            >
+                        )
+                        {
                             auto componentsTuple = std::make_tuple(
                                 std::ref(getComponentData<Components>(node))...
                             );
@@ -211,26 +196,16 @@ namespace IRECS {
                                     )
                                 );
                             }
-                        },
-                        getArchetype<Components...>()
-                    }
-                );
-                return;
-            }
-
-
-            else if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    const Archetype&,
-                    std::vector<EntityId>&,
-                    std::vector<Components>&...
-                >
-            )
-            {
-                m_ticks.emplace_back(
-                    C_SystemEvent<TICK>{
-                        [functionTick](ArchetypeNode* node) {
+                        }
+                        else if constexpr (
+                            std::is_invocable_v<
+                                FunctionTick,
+                                const Archetype&,
+                                std::vector<EntityId>&,
+                                std::vector<Components>&...
+                            >
+                        )
+                        {
                             auto paramTuple = std::make_tuple(
                                 node->type_,
                                 std::ref(node->entities_),
@@ -244,15 +219,14 @@ namespace IRECS {
                                 },
                                 paramTuple
                             );
-                        },
-                        getArchetype<Components...>()
-                    }
-                );
-                return;
-            }
-            else {
-                IR_ASSERT(false, "Invalid tick function signature.");
-            }
+                        }
+                        else {
+                            static_assert(false, "Invalid tick function signature.");
+                        }
+                    },
+                    getArchetype<Components...>()
+                }
+            );
         }
 
         template <typename FunctionEndTick>
