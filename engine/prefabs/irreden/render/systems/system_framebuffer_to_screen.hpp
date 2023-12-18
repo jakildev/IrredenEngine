@@ -7,8 +7,8 @@
  * Modified By: <your_name> <><Month> <YYYY>
  */
 
-#ifndef SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
-#define SYSTEM_FRAMEBUFFERS_TO_SCREEN_H
+#ifndef SYSTEM_FRAMEBUFFER_TO_SCREEN_Hs
+#define SYSTEM_FRAMEBUFFER_TO_SCREEN_H
 
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
@@ -208,4 +208,4 @@ namespace IRECS {
 
 } // namespace IRECS
 
-#endif /* SYSTEM_FRAMEBUFFERS_TO_SCREEN_H */
+#endif /* SYSTEM_FRAMEBUFFER_TO_SCREEN_H */
