@@ -27,6 +27,7 @@ namespace IRECS {
     template<>
     struct System<GLOBAL_POSITION_3D> {
         static constexpr SystemId create() {
+            // Example of heirarchical system that has optional parent
             return createSystem<
                 C_Position3D,
                 C_PositionGlobal3D
@@ -50,35 +51,6 @@ namespace IRECS {
                 }
             );
         }
-        // static constexpr SystemId create() {
-        //     return createSystem<C_Position3D, C_PositionGlobal3D>(
-        //         "UpdatePositionsGlobal",
-        //         [](
-        //             const Archetype& archetype,
-        //             std::vector<EntityId>& entities,
-        //             std::vector<C_Position3D>& positions,
-        //             std::vector<C_PositionGlobal3D>& positionsGlobal
-        //         )
-        //         {
-        //             C_PositionGlobal3D defaultParentPosition = {0, 0, 0};
-        //             std::optional<C_PositionGlobal3D*> parentPositionGlobal = std::nullopt;
-        //             EntityId parent = getRelatedEntityFromArchetype(archetype, Relation::CHILD_OF);
-        //             if(parent != kNullEntity) {
-        //                 parentPositionGlobal = IRECS::getComponentOptional<C_PositionGlobal3D>(parent);
-        //             }
-        //             for(int i=0; i < entities.size(); i++) {
-        //                 positionsGlobal[i].pos_ = positions[i].pos_ + parentPositionGlobal.value_or(
-        //                     &defaultParentPosition
-        //                 )->pos_;
-        //             }
-        //         },
-        //         nullptr,
-        //         nullptr,
-        //         {
-        //             .relation_ = Relation::CHILD_OF
-        //         }
-        //     );
-        // }
     };
 
 

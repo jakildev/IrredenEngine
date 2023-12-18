@@ -14,12 +14,14 @@
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_triangle_framebuffer.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 
 using namespace IRComponents;
 
@@ -40,6 +42,7 @@ namespace IRECS {
                 C_VoxelPool{voxelPoolSize},
                 C_SizeTriangles{triangleCanvasSize},
                 C_TriangleCanvasTextures{triangleCanvasSize},
+                C_FrameDataTrixelToFramebuffer{},
                 C_TriangleCanvasFramebuffer{
                     framebufferSize,
                     framebufferExtraPixelBufferSize

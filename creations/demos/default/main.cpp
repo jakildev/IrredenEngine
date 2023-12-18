@@ -28,6 +28,7 @@
 
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_trixel_to_framebuffer_frame_data.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
@@ -78,6 +79,7 @@ void initSystems() {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
         ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
         ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
+        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER_FRAME_DATA>()
         ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
         ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
         }

@@ -262,7 +262,10 @@ namespace IRECS {
             IR_ASSERT(
                 std::find(archetype.begin(), archetype.end(), componentType) !=
                     archetype.end(),
-                "Attempted to retrieve non-existant component from entity"
+                "Attempted to retrieve non-existant component {} from entity {}",
+                componentType,
+                entity
+
             );
             IComponentDataImpl<Component> *data =
                 castComponentDataPointer<Component>(
