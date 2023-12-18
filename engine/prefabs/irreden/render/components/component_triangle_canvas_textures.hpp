@@ -89,7 +89,7 @@ namespace IRComponents {
             textureTriangleDistances_.second->clear(
                 GL_RED_INTEGER,
                 GL_INT,
-                &ivec1(IRConstants::kTriangleDistanceMaxDistance)[0]
+                &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
             );
         }
 
@@ -211,7 +211,7 @@ namespace IRComponents {
             textureTriangleDistances_.second->clear(
                 GL_RED_INTEGER,
                 GL_INT,
-                &ivec1(IRConstants::kTriangleDistanceMaxDistance - 1)[0]
+                &ivec1(IRConstants::kTrixelDistanceMaxDistance - 1)[0]
             );
         }
     };

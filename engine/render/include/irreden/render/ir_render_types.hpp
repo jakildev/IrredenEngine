@@ -62,10 +62,10 @@ namespace IRRender {
     // Use 'static constexpr' for constexpr values at function scope
     // Use 'inline constexpr' for constexpr values at file scope
     inline constexpr struct GlobalConstantsGLSL {
-        ivec2 kCanvasTriangleOriginOffsetX1 = IRConstants::kScreenTriangleOriginOffsetX1;
-        ivec2 kCanvasTriangleOriginOffsetZ1 = IRConstants::kScreenTriangleOriginOffsetZ1;
-        int kMinTriangleDistance = IRConstants::kTriangleDistanceMinDistance;
-        int kMaxTriangleDistance = IRConstants::kTriangleDistanceMaxDistance;
+        ivec2 kCanvasTriangleOriginOffsetX1 = IRConstants::kScreenTrixelOriginOffsetX1;
+        ivec2 kCanvasTriangleOriginOffsetZ1 = IRConstants::kScreenTrixelOriginOffsetZ1;
+        int kMinTriangleDistance = IRConstants::kTrixelDistanceMinDistance;
+        int kMaxTriangleDistance = IRConstants::kTrixelDistanceMaxDistance;
     } kGlobalConstantsGLSL;
     constexpr GLuint kBufferIndex_GlobalConstantsGLSL = 1;
 

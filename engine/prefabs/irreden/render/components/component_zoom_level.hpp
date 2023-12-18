@@ -42,16 +42,16 @@ namespace IRComponents {
         void zoomIn() {
             zoom_ = round(glm::clamp(
                 zoom_ * vec2(2.0f),
-                IRConstants::kTriangleCanvasZoomMin,
-                IRConstants::kTriangleCanvasZoomMax
+                IRConstants::kTrixelCanvasZoomMin,
+                IRConstants::kTrixelCanvasZoomMax
             ));
         }
 
         void zoomOut() {
             zoom_ = round(glm::clamp(
                 zoom_ / vec2(2.0f),
-                IRConstants::kTriangleCanvasZoomMin,
-                IRConstants::kTriangleCanvasZoomMax
+                IRConstants::kTrixelCanvasZoomMin,
+                IRConstants::kTrixelCanvasZoomMax
             ));
         }
 

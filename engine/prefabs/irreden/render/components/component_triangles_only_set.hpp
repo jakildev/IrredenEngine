@@ -47,7 +47,7 @@ namespace IRComponents {
             std::fill(
                 triangleDistances_.begin(),
                 triangleDistances_.end(),
-                IRConstants::kTriangleDistanceMaxDistance
+                IRConstants::kTrixelDistanceMaxDistance
             );
 
         }
@@ -132,7 +132,7 @@ namespace IRComponents {
                     selectionDistance[selectionIndex] =
                         this->atTriangleDistance(startIndex + ivec2(x, y));
                     this->atTriangleColor(startIndex + ivec2(x, y)) = kBackgroundColor;
-                    this->atTriangleDistance(startIndex + ivec2(x, y)) = IRConstants::kTriangleDistanceMaxDistance;
+                    this->atTriangleDistance(startIndex + ivec2(x, y)) = IRConstants::kTrixelDistanceMaxDistance;
                 }
             }
 

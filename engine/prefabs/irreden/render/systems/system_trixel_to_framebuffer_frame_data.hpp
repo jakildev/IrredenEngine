@@ -17,7 +17,7 @@
 
 #include <irreden/common/components/component_position_2d.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
-#include <irreden/render/components/component_triangle_framebuffer.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 
 #include <glm/gtc/matrix_transform.hpp> // not this here
@@ -32,14 +32,14 @@ namespace IRECS {
     struct System<TRIXEL_TO_FRAMEBUFFER_FRAME_DATA> {
         static SystemId create() {
             return createSystem<
-                C_TriangleCanvasFramebuffer,
+                C_TrixelCanvasFramebuffer,
                 C_FrameDataTrixelToFramebuffer,
                 C_CameraPosition2DIso,
                 C_ZoomLevel
             >(
                 "CanvasToFramebufferFrameData",
                 [](
-                    const C_TriangleCanvasFramebuffer& framebuffer,
+                    const C_TrixelCanvasFramebuffer& framebuffer,
                     C_FrameDataTrixelToFramebuffer& frameData,
                     const C_CameraPosition2DIso& cameraPosition,
                     const C_ZoomLevel& zoomLevel

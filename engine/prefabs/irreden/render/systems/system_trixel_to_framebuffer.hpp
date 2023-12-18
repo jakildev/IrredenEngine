@@ -18,7 +18,7 @@
 #include <irreden/common/components/component_position_2d.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
-#include <irreden/render/components/component_triangle_framebuffer.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
 
@@ -50,13 +50,13 @@ namespace IRECS {
             );
             return createSystem<
                 C_TriangleCanvasTextures,
-                C_TriangleCanvasFramebuffer,
+                C_TrixelCanvasFramebuffer,
                 C_FrameDataTrixelToFramebuffer
             >(
                 "CanvasToFramebuffer",
                 [](
                     const C_TriangleCanvasTextures& triangleCanvasTextures,
-                    const C_TriangleCanvasFramebuffer& framebuffer,
+                    const C_TrixelCanvasFramebuffer& framebuffer,
                     const C_FrameDataTrixelToFramebuffer& frameData
                 )
                 {

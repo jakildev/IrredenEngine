@@ -15,10 +15,9 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/render/components/component_triangle_framebuffer.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-// #include <irreden/update/systems/system_update_screen_view.hpp>
 
 using namespace IRMath;
 
@@ -56,7 +55,7 @@ namespace IRECS {
             );
 
             return createSystem<
-                C_TriangleCanvasFramebuffer,
+                C_TrixelCanvasFramebuffer,
                 C_Position3D,
                 C_CameraPosition2DIso,
                 C_Name
@@ -64,7 +63,7 @@ namespace IRECS {
             (
                "FramebufferToScreen",
                [](
-                    const C_TriangleCanvasFramebuffer& framebuffer,
+                    const C_TrixelCanvasFramebuffer& framebuffer,
                     const C_Position3D& cameraPosition,
                     const C_CameraPosition2DIso& cameraPositionIso,
                     const C_Name& name

@@ -14,6 +14,8 @@
 #include <irreden/render/ir_gl_api.hpp>
 
 #include <irreden/render/entities/entity_canvas.hpp>
+#include <irreden/render/entities/entity_framebuffer.hpp>
+
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -40,7 +42,7 @@ namespace IRRender {
     //         IRECS::createEntity<kCanvas>(
     //             "background",
     //             ivec2(
-    //                 IRConstants::kScreenTriangleMaxCanvasSize /
+    //                 IRConstants::kScreenTrixelMaxCanvasSize /
     //                 uvec2(2)
     //             ),
     //             ivec3(8, 8, 8),
@@ -53,7 +55,7 @@ namespace IRRender {
             IRECS::createEntity<kCanvas>(
                 "main",
                 ivec2(
-                    IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
+                    IRConstants::kScreenTrixelMaxCanvasSizeWithBuffer
                 ),
                 IRConstants::kVoxelPoolSize,
                 IRConstants::kGameResolution,
@@ -64,7 +66,7 @@ namespace IRRender {
     //         IRECS::createEntity<kCanvas>(
     //             "player",
     //             ivec2(
-    //                 IRConstants::kScreenTriangleMaxCanvasSizeWithBuffer
+    //                 IRConstants::kScreenTrixelMaxCanvasSizeWithBuffer
     //             ),
     //             IRConstants::kVoxelPoolSize / ivec3(2),
     //             IRConstants::kGameResolution,
@@ -122,7 +124,7 @@ namespace IRRender {
         //     C_TriangleCanvasBackground{
         //         BackgroundTypes::kGradientRandom,
         //         colorPalette,
-        //         ivec2(IRConstants::kScreenTriangleMaxCanvasSize) /
+        //         ivec2(IRConstants::kScreenTrixelMaxCanvasSize) /
         //             ivec2(2)
         //     }
         // );

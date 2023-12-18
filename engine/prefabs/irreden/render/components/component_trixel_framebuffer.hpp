@@ -22,10 +22,10 @@ using namespace IRRender;
 namespace IRComponents {
 
     // TODO make a renderbuffer instead to test performance
-    struct C_TriangleCanvasFramebuffer {
+    struct C_TrixelCanvasFramebuffer {
         std::pair<ResourceId, Framebuffer*> framebuffer_;
 
-        C_TriangleCanvasFramebuffer(
+        C_TrixelCanvasFramebuffer(
             ivec2 size,
             ivec2 extraPixelBuffer = ivec2(0, 0)
         )
@@ -43,7 +43,7 @@ namespace IRComponents {
 
         }
 
-        C_TriangleCanvasFramebuffer() {}
+        C_TrixelCanvasFramebuffer() {}
 
         void onDestroy() {
             IRRender::destroyResource<Framebuffer>(

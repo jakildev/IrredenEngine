@@ -72,7 +72,7 @@ namespace IRECS {
     public:
         SystemCreatorTrianglesOnlyEntity
         (
-            uvec2 triangleCanvasSize = IRConstants::kScreenTriangleMaxCanvasSize,
+            uvec2 triangleCanvasSize = IRConstants::kScreenTrixelMaxCanvasSize,
             const char* palletFile = nullptr
         );
         ~SystemCreatorTrianglesOnlyEntity();
