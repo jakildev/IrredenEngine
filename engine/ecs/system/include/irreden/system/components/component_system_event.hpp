@@ -78,6 +78,28 @@ namespace IRComponents {
         }
     };
 
+    template <>
+    struct C_SystemEvent<IRECS::RELATION_TICK> {
+        std::function<void(IRECS::EntityRecord)> functionRelationTick_;
+        IRECS::Archetype archetype_;
+
+        C_SystemEvent(
+            const std::function<void(IRECS::EntityRecord)>& relationTickFunction
+        )
+        :   functionRelationTick_(relationTickFunction)
+        {
+
+        }
+
+        C_SystemEvent()
+        :   functionRelationTick_()
+        {
+
+        }
+    };
+
+
+
 }
 
 #endif /* COMPONENT_SYSTEM_EVENT_H */

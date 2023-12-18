@@ -31,7 +31,7 @@ namespace IRECS {
     EntityId getParentEntityFromArchetype(Archetype type);
     void setName(EntityId entity, const std::string& name);
     EntityId getEntity(const std::string& name);
-
+    EntityRecord getEntityRecord(EntityId entity);
 
 
     template <typename... Components>

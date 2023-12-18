@@ -28,6 +28,7 @@ namespace IRECS {
         BEGIN_TICK,
         TICK,
         END_TICK,
+        RELATION_TICK,
         START,
         STOP,
     };
@@ -76,7 +77,20 @@ namespace IRECS {
     template <typename... RelationComponents>
     struct RelationParams {
         Relation relation_ = Relation::NONE;
+
+        RelationParams(
+            Relation relation = Relation::NONE
+        )
+        :   relation_(relation)
+        {
+
+        }
+
     };
+    // // Deduction guide
+    // template <typename... RelationComponents>
+    // RelationParams(Relation, void (*)(const RelationComponents&...)) ->
+    //     RelationParams<void(*)(const RelationComponents&...), RelationComponents...>;
 
 
     // Acceptable tick function signatures

@@ -54,10 +54,34 @@ namespace IRECS {
                 m_ticks[system].archetype_
             );
         }
+        EntityId previousRelatedEntity = kNullEntity;
         for(auto node : nodes) {
+            previousRelatedEntity = handleRelationTick(
+                node,
+                system,
+                previousRelatedEntity
+            );
             m_ticks[system].functionTick_(node);
         }
         m_endTicks[system].functionEndTick_();
+    }
+
+    EntityId SystemManager::handleRelationTick(
+        ArchetypeNode* currentNode,
+        SystemId currentSystem,
+        EntityId previousRelatedEntity
+    )
+    {
+        EntityId relatedEntity = getRelatedEntityFromArchetype(
+            currentNode->type_,
+            m_relations[currentSystem].relation_
+        );
+        if(relatedEntity != previousRelatedEntity && relatedEntity != kNullEntity) {
+            m_relationTicks[currentSystem].functionRelationTick_(
+                getEntityRecord(relatedEntity)
+            );
+        }
+        return relatedEntity;
     }
 
 }

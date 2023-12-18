@@ -171,6 +171,9 @@ namespace IRECS {
         Relation relation
     )
     {
+        if(relation == NONE) {
+            return kNullEntity;
+        }
         if(relation == CHILD_OF) {
             return getParentEntityFromArchetype(type);
         }

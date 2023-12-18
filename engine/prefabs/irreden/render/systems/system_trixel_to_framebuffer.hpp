@@ -85,6 +85,59 @@ namespace IRECS {
         }
     };
 
+    // template <>
+    // struct System<TRIXEL_TO_FRAMEBUFFER> {
+    //     static SystemId create() {
+    //         IRRender::createNamedResource<ShaderProgram>(
+    //             "CanvasToFramebufferProgram",
+    //             std::vector{
+    //                 ShaderStage{
+    //                     IRRender::kFileVertTrixelToFramebuffer,
+    //                     GL_VERTEX_SHADER
+    //                 }.getHandle(),
+    //                 ShaderStage{
+    //                     IRRender::kFileFragTrixelToFramebuffer,
+    //                     GL_FRAGMENT_SHADER
+    //                 }.getHandle()
+    //             }
+    //         );
+    //         return createSystem<
+    //             C_TriangleCanvasTextures,
+    //             C_TrixelCanvasFramebuffer,
+    //             C_FrameDataTrixelToFramebuffer
+    //         >(
+    //             "CanvasToFramebuffer",
+    //             [](
+    //                 const C_TriangleCanvasTextures& triangleCanvasTextures,
+    //                 const C_TrixelCanvasFramebuffer& framebuffer,
+    //                 const C_FrameDataTrixelToFramebuffer& frameData
+    //             )
+    //             {
+    //                 frameData.updateFrameData();
+    //                 framebuffer.bindFramebuffer();
+    //                 framebuffer.clear();
+    //                 triangleCanvasTextures.bind(0, 1);
+
+    //                 ENG_API->glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
+    //                 ENG_API->glDrawElements(
+    //                     GL_TRIANGLES,
+    //                     IRShapes2D::kQuadIndicesLength,
+    //                     GL_UNSIGNED_SHORT,
+    //                     nullptr
+    //                 );
+    //             },
+    //             []() {
+    //                 IRRender::getNamedResource<ShaderProgram>(
+    //                     "CanvasToFramebufferProgram"
+    //                 )->use();
+    //                 IRRender::getNamedResource<VAO>(
+    //                     "QuadVAO"
+    //                 )->bind();
+    //             }
+    //         );
+    //     }
+    // };
+
 } // namespace System
 
 #endif /* SYSTEM_TRIXEL_TO_FRAMEBUFFER_H */

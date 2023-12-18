@@ -41,14 +41,17 @@ namespace IRECS {
             typename... RelationComponents,
             typename FunctionTick,
             typename FunctionBeginTick = std::nullptr_t,
-            typename FunctionEndTick = std::nullptr_t
+            typename FunctionEndTick = std::nullptr_t,
+            typename FunctionRelationTick = std::nullptr_t
         >
         SystemId createSystem(
             std::string name,
             FunctionTick functionTick,
             FunctionBeginTick functionBeginTick = nullptr,
             FunctionEndTick functionEndTick = nullptr,
-            RelationParams<RelationComponents...> extraParams = {}
+            RelationParams<RelationComponents...> extraParams = {},
+            FunctionRelationTick functionRelationTick = nullptr
+
         )
         {
             m_systemNames.emplace_back(C_Name{name});
@@ -59,6 +62,9 @@ namespace IRECS {
                 extraParams
             );
             insertEndTickFunction(functionEndTick);
+            insertRelationTickFunction<RelationComponents...>(
+                functionRelationTick
+            );
 
             m_relations.emplace_back(
                 C_SystemRelation{extraParams.relation_}
@@ -87,12 +93,14 @@ namespace IRECS {
         std::vector<C_SystemEvent<BEGIN_TICK>> m_beginTicks;
         std::vector<C_SystemEvent<TICK>> m_ticks;
         std::vector<C_SystemEvent<END_TICK>> m_endTicks;
+        std::vector<C_SystemEvent<RELATION_TICK>> m_relationTicks;
         std::vector<C_SystemRelation> m_relations;
         std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
         std::unordered_map<IRTime::Events, std::list<SystemId>>
             m_systemPipelinesNew;
 
+        // Begin tick functions happen once per system before tick function(s)
         template <typename FunctionBeginTick>
         void insertBeginTickFunction(
             FunctionBeginTick functionBeginTick
@@ -116,6 +124,8 @@ namespace IRECS {
             }
         }
 
+        // Tick functions are operated on each entity in the system
+        // matching the archetype. This can happen a variery of ways
         template <
             typename... Components,
             typename... RelationComponents,
@@ -221,7 +231,7 @@ namespace IRECS {
                             );
                         }
                         else {
-                            static_assert(false, "Invalid tick function signature.");
+                            static_assert(false, "Unsupported tick function signature.");
                         }
                     },
                     getArchetype<Components...>()
@@ -229,6 +239,7 @@ namespace IRECS {
             );
         }
 
+        // End tick functions happen once per system after tick function(s)
         template <typename FunctionEndTick>
         void insertEndTickFunction(
             FunctionEndTick functionEndTick
@@ -251,6 +262,57 @@ namespace IRECS {
                 );
             }
         }
+
+        // Relation tick functions execute once per related entity
+        // before the tick function on its children entities.
+        template <
+            typename... RelationComponents,
+            typename FunctionRelationTick>
+        void insertRelationTickFunction(
+            FunctionRelationTick functionRelationTick
+        )
+        {
+            if constexpr (
+                std::is_invocable_v<
+                    FunctionRelationTick,
+                    RelationComponents&...
+                >
+            )
+            {
+                m_relationTicks.emplace_back(
+                    C_SystemEvent<RELATION_TICK>{
+                        [functionRelationTick](EntityRecord entityRecord) {
+                            auto componentsTuple = std::make_tuple(
+                                std::ref(
+                                    getComponentData<RelationComponents>(
+                                        entityRecord.archetypeNode
+                                    )[entityRecord.row]
+                                )...
+                            );
+                            std::apply([functionRelationTick](auto&&... components) {
+                                functionRelationTick(components...);
+                            }, componentsTuple);
+                        }
+                    }
+                );
+            }
+            else if constexpr(std::is_same_v<FunctionRelationTick, std::nullptr_t>) {
+                m_relationTicks.emplace_back(
+                    C_SystemEvent<RELATION_TICK>{
+                        [](EntityRecord record){ return; }
+                    }
+                );
+            }
+            else {
+                static_assert(false, "Unsupported relation tick function signature.");
+            }
+        }
+
+        EntityId handleRelationTick(
+            ArchetypeNode* currentNode,
+            SystemId currentSystem,
+            EntityId previousRelatedEntity
+        );
 
     };
 

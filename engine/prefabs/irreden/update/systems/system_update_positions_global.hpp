@@ -47,7 +47,7 @@ namespace IRECS {
                 nullptr,
                 nullptr,
                 RelationParams<C_PositionGlobal3D>{
-                    .relation_ = Relation::CHILD_OF
+                    Relation::CHILD_OF
                 }
             );
         }

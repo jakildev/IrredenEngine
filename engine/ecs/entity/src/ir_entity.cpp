@@ -88,6 +88,10 @@ namespace IRECS {
         return getEntityManager().getEntityByName(name);
     }
 
+    EntityRecord getEntityRecord(EntityId entity) {
+        return getEntityManager().getRecord(entity);
+    }
+
     void handleCreateEntityExtraParams(
         EntityId entity,
         const CreateEntityExtraParams& params
@@ -105,6 +109,8 @@ namespace IRECS {
     EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation) {
         return getEntityManager().getRelatedEntityFromArchetype(type, relation);
     }
+
+
 
 
 

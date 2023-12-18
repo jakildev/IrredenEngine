@@ -25,14 +25,16 @@ namespace IRECS {
         typename... TickRelationComponents,
         typename FunctionTick,
         typename FunctionBeginTick = std::nullptr_t,
-        typename FunctionEndTick = std::nullptr_t
+        typename FunctionEndTick = std::nullptr_t,
+        typename FunctionRelationTick = std::nullptr_t
     >
     constexpr SystemId createSystem(
         std::string name,
         FunctionTick functionTick,
         FunctionBeginTick functionBeginTick = nullptr,
         FunctionEndTick functionEndTick = nullptr,
-        RelationParams<TickRelationComponents...> extraParams = {}
+        RelationParams<TickRelationComponents...> extraParams = {},
+        FunctionRelationTick functionRelationTick = nullptr
     )
     {
         return getSystemManager().createSystem<TickComponents...>(
@@ -40,7 +42,8 @@ namespace IRECS {
             functionTick,
             functionBeginTick,
             functionEndTick,
-            extraParams
+            extraParams,
+            functionRelationTick
         );
     }
 
