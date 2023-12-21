@@ -7,8 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef IR_RENDER_TYPES_HPP
-#define IR_RENDER_TYPES_HPP
+#ifndef IR_RENDER_TYPES_H
+#define IR_RENDER_TYPES_H
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
@@ -47,11 +47,7 @@ namespace IRRender {
         {GL_DEPTH24_STENCIL8, 4}
     };
 
-    struct FrameData {
-        mat4 mvpMatrix;
-        int isWireframe;
-    };
-    constexpr GLuint kBufferIndex_FrameDataUniform = 0;
+    constexpr GLuint kBufferIndex_FrameDataUniform = 0; // unused
 
     struct TrixelData {
         vec4 color_;
@@ -107,4 +103,4 @@ namespace IRRender {
 
 } // namespace IRRender
 
-#endif /* IR_RENDER_TYPES_HPP */
+#endif /* IR_RENDER_TYPES_H */
