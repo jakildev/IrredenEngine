@@ -55,6 +55,7 @@ namespace IRECS {
         )
         {
             m_systemNames.emplace_back(C_Name{name});
+            SystemId newSystemId = m_nextSystemId++;
 
             insertBeginTickFunction(functionBeginTick);
             insertTickFunction<Components...>(
@@ -69,7 +70,7 @@ namespace IRECS {
             m_relations.emplace_back(
                 C_SystemRelation{extraParams.relation_}
             );
-            return m_nextSystemId++;
+            return newSystemId;
         }
 
         template <typename Tag>

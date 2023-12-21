@@ -105,7 +105,7 @@ namespace IRComponents {
         void clearWithColorData(
             ivec2 size,
             const std::vector<Color>& colorData
-        ) const
+        )   const
         {
             textureTriangleColors_.second->subImage2D(
                 0,
@@ -204,6 +204,9 @@ namespace IRComponents {
                 GL_INT,
                 distanceData.data()
             );
+        }
+
+        void saveAsPNG() {
 
         }
     private:

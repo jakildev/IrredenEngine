@@ -9,6 +9,7 @@
 
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/image_data.hpp>
 
 #include <irreden/render/texture.hpp>
 
@@ -152,7 +153,8 @@ namespace IRRender {
         GLenum format,
         GLenum type,
         void* data
-    ) {
+    )   const
+    {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         glGetTextureSubImage(
             m_handle,
@@ -167,6 +169,26 @@ namespace IRRender {
             type,
             width * height * 4,
             data
+        );
+    }
+
+    void Texture2D::saveAsPNG(const char* file) const {
+        std::vector<unsigned char> data(m_width * m_height * 4);
+        getSubImage2D(
+            0,
+            0,
+            m_width,
+            m_height,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            data.data()
+        );
+        writePNG(
+            file,
+            m_width,
+            m_height,
+            4,
+            data.data()
         );
     }
 

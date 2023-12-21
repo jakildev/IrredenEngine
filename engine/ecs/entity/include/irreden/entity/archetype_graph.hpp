@@ -72,6 +72,7 @@ namespace IRECS {
                 includeComponents,
                 excludeComponents
             );
+            // IRE_LOG_INFO("Nodes: {}", nodes.size());
             return sortArchetypeNodesByRelation(relation, nodes);
         }
 

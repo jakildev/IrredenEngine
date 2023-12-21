@@ -9,34 +9,18 @@ namespace IRComponents {
 
     struct C_FrameDataTrixelToFramebuffer {
         FrameDataTrixelToFramebuffer frameData_;
-        std::pair<ResourceId, Buffer*> buffer_;
 
         C_FrameDataTrixelToFramebuffer()
         :   frameData_{}
-        ,   buffer_{
-                IRRender::createResource<Buffer>(
-                    nullptr,
-                    sizeof(FrameDataTrixelToFramebuffer),
-                    GL_DYNAMIC_STORAGE_BIT,
-                    GL_UNIFORM_BUFFER,
-                    kBufferIndex_FrameDataUniformIsoTriangles
-            )
-        }
         {
 
         }
 
-        void updateFrameData() const {
-            buffer_.second->subData(
+        void updateFrameData(const Buffer* frameDataBuffer) const {
+            frameDataBuffer->subData(
                 0,
                 sizeof(FrameDataTrixelToFramebuffer),
                 &frameData_
-            );
-        }
-
-        void onDestroy() {
-            IRRender::destroyResource<Buffer>(
-                buffer_.first
             );
         }
     };

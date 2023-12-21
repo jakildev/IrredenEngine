@@ -14,8 +14,8 @@ namespace IREngine {
         return *g_world;
     }
 
-    void init(int &argc, char **argv) {
-        g_world = std::make_unique<World>(argc, argv);
+    void init(WorldConfig config = kConfigDefaultHorizontal) {
+        g_world = std::make_unique<World>(config);
     }
 
     void gameLoop() {

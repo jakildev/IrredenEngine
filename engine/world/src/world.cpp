@@ -20,20 +20,18 @@ using namespace IRECS;
 namespace IREngine {
 //TODO: replace initalization constants with config file.
 
-    World::World(int &argc, char  **argv)
+    World::World(WorldConfig config)
     :   m_IRGLFWWindow{
-            IRConstants::kInitWindowSize
+            config.initWindowSize_
         }
     ,   m_entityManager{}
     ,   m_commandManager{}
     ,   m_systemManager{}
-    ,   m_inputManager{
-            m_IRGLFWWindow
-        }
+    ,   m_inputManager{}
     ,   m_renderingResourceManager{}
     ,   m_renderer{
-            m_IRGLFWWindow
-        }
+            config.gameResolution_
+    }
     ,   m_audioManager{}
     ,   m_timeManager{}
     {

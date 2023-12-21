@@ -21,6 +21,8 @@ layout(std140, binding = 1) uniform GlobalConstants {
 
 layout(std140, binding = 7) uniform FrameDataCommon {
     uniform vec2 frameCanvasOffset;
+    uniform ivec2 trixelCanvasOffsetZ1;
+
 };
 
 layout(std430, binding = 5) buffer PositionBuffer {
@@ -66,7 +68,7 @@ void main() {
     );
     const int voxelDistance = pos3DtoDistance(voxelPositionInt);
     const ivec2 canvasPixel =
-        kCanvasTriangleOriginOffsetZ1 +
+        trixelCanvasOffsetZ1 +
         ivec2(floor(frameCanvasOffset.x), floor(frameCanvasOffset.y)) +
         ivec2(gl_LocalInvocationID.x, gl_LocalInvocationID.y) +
         pos3DtoPos2DIso(voxelPositionInt);

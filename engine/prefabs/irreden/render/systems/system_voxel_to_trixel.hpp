@@ -7,8 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
-#define SYSTEM_SINGLE_VOXEL_TO_CANVAS_H
+#ifndef SYSTEM_VOXEL_TO_TRIXEL_H
+#define SYSTEM_VOXEL_TO_TRIXEL_H
 
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
@@ -71,25 +71,26 @@ namespace IRECS {
             );
             return createSystem<
                 C_VoxelPool,
-                C_TriangleCanvasTextures,
-                C_CameraPosition2DIso
+                C_TriangleCanvasTextures
             >(
                 "SingleVoxelToCanvasFirst",
                 []
                 (
                     const C_VoxelPool& voxelPool,
-                    C_TriangleCanvasTextures& triangleCanvasTextures,
-                    const C_CameraPosition2DIso& cameraPosition
+                    C_TriangleCanvasTextures& triangleCanvasTextures
                 )
                 {
-                    frameData.canvasOffset_ = cameraPosition.pos_;
+                    frameData.canvasOffset_ = IRRender::getCameraPosition2DIso();
+                    frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(
+                        triangleCanvasTextures.size_
+                    );
+
                     IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")->subData(
                         0,
                         sizeof(FrameDataVoxelToCanvas),
                         &frameData
                     );
                     triangleCanvasTextures.clear();
-                    // triangleCanvasTextures[i].clearWithColor(&tempColor);
                     // TODO: each voxel allocation should have own
                     // voxel GPU buffers as well.
                     IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")->subData(
@@ -110,18 +111,17 @@ namespace IRECS {
                         GL_READ_WRITE,
                         GL_R32I
                     );
+                    // IRE_LOG_INFO("Voxel pool size: {}", voxelPool.getVoxelPoolSize());
                     glDispatchCompute(
                         voxelPool.getVoxelPoolSize(),
                         1,
                         1
                     );
                     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
                 },
                 []() {
                     IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1")->use();
-                    IRECS::getComponent<C_CameraPosition2DIso>(
-                        IRRender::getCanvas("main")
-                    ).pos_ = IRRender::getCameraPosition2DIso();
                     // IRECS::getComponent<C_CameraPosition2DIso>(
                     //     IRRender::getCanvas("background")
                     // ).pos_ =
@@ -160,15 +160,13 @@ namespace IRECS {
             );
             return createSystem<
                 C_VoxelPool,
-                C_TriangleCanvasTextures,
-                C_CameraPosition2DIso
+                C_TriangleCanvasTextures
             >(
                 "SingleVoxelToCanvasSecond",
                 []
                 (
                     const C_VoxelPool& voxelPool,
-                    C_TriangleCanvasTextures& triangleCanvasTextures,
-                    const C_CameraPosition2DIso& cameraPosition
+                    C_TriangleCanvasTextures& triangleCanvasTextures
                 )
                 {
                     IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")->subData(
@@ -200,6 +198,9 @@ namespace IRECS {
                         1
                     );
                     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+                    // triangleCanvasTextures.textureTriangleColors_.second->saveAsPNG(
+                    //     "../save_files/triangleCanvasColors.png"
+                    // );
 
                 },
                 []() {
@@ -211,4 +212,4 @@ namespace IRECS {
 
 } // namespace System
 
-#endif /* SYSTEM_SINGLE_VOXEL_TO_CANVAS_H */
+#endif /* SYSTEM_VOXEL_TO_TRIXEL_H */

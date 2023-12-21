@@ -36,13 +36,14 @@ namespace IRECS {
         )
         {
             return IRECS::createEntity(
+                C_Name{framebufferName},
                 C_TrixelCanvasFramebuffer{
                     framebufferSize,
                     framebufferExtraPixelBufferSize
                 },
-                C_CameraPosition2DIso{vec2(0.0f)},
-                C_ZoomLevel{startZoomLevel},
-                C_Name{framebufferName}
+                C_Position3D{vec3(0.0f)},
+                C_FrameDataTrixelToFramebuffer{},
+                C_ZoomLevel{startZoomLevel}
             );
         }
     };

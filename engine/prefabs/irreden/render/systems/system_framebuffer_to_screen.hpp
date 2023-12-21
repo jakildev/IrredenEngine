@@ -57,7 +57,6 @@ namespace IRECS {
             return createSystem<
                 C_TrixelCanvasFramebuffer,
                 C_Position3D,
-                C_CameraPosition2DIso,
                 C_Name
             >
             (
@@ -65,11 +64,9 @@ namespace IRECS {
                [](
                     const C_TrixelCanvasFramebuffer& framebuffer,
                     const C_Position3D& cameraPosition,
-                    const C_CameraPosition2DIso& cameraPositionIso,
                     const C_Name& name
                 )
                 {
-
                     framebuffer.bindTextures(0, 1);
                     frameData.mvpMatrix =
                         calcProjectionMatrix() *
@@ -77,7 +74,7 @@ namespace IRECS {
                             framebuffer.getResolution(),
                             framebuffer.getResolutionPlusBuffer(),
                             cameraPosition.pos_,
-                            cameraPositionIso.pos_,
+                            IRRender::getCameraPosition2DIso(),
                             name.name_
                         );
                     IRRender::getNamedResource<Buffer>(
@@ -118,15 +115,14 @@ namespace IRECS {
             float xOffset = IRRender::getViewport().x / 2.0f;
             float yOffset = IRRender::getViewport().y / 2.0f;
             vec2 offset =
-                vec2(xOffset, yOffset) +
-                (pos3DtoPos2DScreen(
-                    cameraPosition,
-                    IRRender::getTriangleStepSizeScreen()
-                ) * vec2(-1, 1)
-                // -
-                // ( IRRender::getTriangleStepSizeScreen() / 2.0f
-                // ) * vec2(1, -1)
-                );
+                vec2(xOffset, yOffset) + (
+                    pos3DtoPos2DScreen(
+                        cameraPosition,
+                        IRRender::getTriangleStepSizeScreen()
+                    ) *
+                    vec2(-1, 1)
+                )
+            ;
 
             mat4 model = glm::mat4(1.0f);
 

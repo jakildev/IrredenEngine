@@ -22,6 +22,9 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
+#include <irreden/render/components/component_trixel_canvas_origin.hpp>
+
+#include <irreden/render/entities/entity_framebuffer.hpp>
 
 using namespace IRComponents;
 
@@ -31,27 +34,36 @@ namespace IRECS {
     struct Prefab<PrefabTypes::kCanvas> {
         static EntityId create(
             std::string canvasName,
-            ivec2 triangleCanvasSize,
             ivec3 voxelPoolSize,
             ivec2 framebufferSize,
             ivec2 framebufferExtraPixelBufferSize,
             float startZoomLevel = 1.0f
         )
         {
-            return IRECS::createEntity(
+            EntityId framebuffer = IRECS::createEntity<kFramebuffer>(
+                canvasName + "Framebuffer",
+                framebufferSize,
+                framebufferExtraPixelBufferSize,
+                startZoomLevel
+            );
+            ivec2 triangleCanvasSize = IRMath::gameResolutionToSize2DIso(
+                framebufferSize + framebufferExtraPixelBufferSize,
+                vec2(startZoomLevel)
+            );
+            EntityId canvas = IRECS::createEntity(
                 C_VoxelPool{voxelPoolSize},
                 C_SizeTriangles{triangleCanvasSize},
                 C_TriangleCanvasTextures{triangleCanvasSize},
-                C_FrameDataTrixelToFramebuffer{},
-                C_TrixelCanvasFramebuffer{
-                    framebufferSize,
-                    framebufferExtraPixelBufferSize
-                },
-                C_Position3D{vec3(0.0f)},
-                C_CameraPosition2DIso{vec2(0.0f)},
-                C_ZoomLevel{startZoomLevel},
                 C_Name{canvasName}
             );
+            IRECS::setParent(canvas, framebuffer);
+            IRE_LOG_INFO("Created canvas {} with framebuffer parent {}, size {},{}",
+                canvas,
+                framebuffer,
+                framebufferSize.x,
+                framebufferSize.y
+            );
+            return canvas;
         }
 
         static void saveCanvas(
@@ -66,6 +78,7 @@ namespace IRECS {
             //     filename
             // );
         }
+
     };
 }
 

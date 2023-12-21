@@ -30,7 +30,7 @@ namespace IRInput {
 
     class InputManager {
     public:
-        InputManager(IRGLFWWindow& window);
+        InputManager();
         ~InputManager();
 
         void tick();
@@ -54,7 +54,6 @@ namespace IRInput {
         ) const;
 
     private:
-        IRGLFWWindow& m_window;
         std::unordered_map<KeyMouseButtons, EntityId> m_keyMouseButtonEntities;
         std::vector<EntityId> m_gamepadEntities;
 

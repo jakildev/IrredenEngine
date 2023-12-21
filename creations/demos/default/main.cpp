@@ -45,7 +45,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
-    IREngine::init(argc, argv);
+    IREngine::init(IREngine::kConfigDefaultVertical);
     initSystems();
     initCommands();
     initEntities();
@@ -73,13 +73,13 @@ void initSystems() {
         ,   IRECS::createSystem<INPUT_GAMEPAD>()
         }
     );
+
     IRECS::registerPipeline(
         IRTime::Events::RENDER,
         {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
         ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
         ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
-        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER_FRAME_DATA>()
         ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
         ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
         }

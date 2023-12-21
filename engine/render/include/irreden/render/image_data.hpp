@@ -24,9 +24,16 @@ namespace IRRender {
         ImageData(const char* file);
         ~ImageData();
         Color getPixel(unsigned int x, unsigned int y) const;
-        void save(const char* file) const;
+
     };
 
+    void writePNG(
+        const char* filename,
+        int width,
+        int height,
+        int nrChannels,
+        const uint8_t* data
+    );
     std::vector<Color> createColorPaletteFromFile(const char* filename);
 }
 

@@ -9,6 +9,12 @@ using namespace IRMath;
 
 namespace IRAsset {
 
+    enum FileTypes {
+        kSpriteImage,
+        kTrixelImage,
+        kVoxelImage
+    };
+
     void saveTrixelTextureData(
         const std::string& name,
         const std::string& path,

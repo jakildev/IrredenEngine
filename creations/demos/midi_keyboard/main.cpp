@@ -8,7 +8,7 @@
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: your-creation-here");
 
-    IREngine::init(argc, argv);
+    IREngine::init();
 
     // Initialize entities, command, and systems here
     // ...

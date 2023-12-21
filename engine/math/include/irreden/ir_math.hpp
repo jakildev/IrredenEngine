@@ -439,6 +439,44 @@ namespace IRMath {
         );
     }
 
+    constexpr ivec2 trixelOriginOffsetX1(const ivec2& trixelCanvasSize) {
+        return trixelCanvasSize / ivec2(2);
+    }
+    constexpr ivec2 trixelOriginOffsetX2(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(0, 1);
+    }
+    constexpr ivec2 trixelOriginOffsetY1(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, 0);
+    }
+    constexpr ivec2 trixelOriginOffsetY2(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, 1);
+    }
+    constexpr ivec2 trixelOriginOffsetZ1(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
+    }
+    constexpr ivec2 trixelOriginOffsetZ2(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(0, -1);
+    }
+    // back faces
+    constexpr ivec2 trixelOriginOffsetX3(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetZ1(trixelCanvasSize);
+    }
+    constexpr ivec2 trixelOriginOffsetX4(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetY1(trixelCanvasSize);
+    }
+    constexpr ivec2 trixelOriginOffsetY3(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetZ2(trixelCanvasSize);
+    }
+    constexpr ivec2 trixelOriginOffsetY4(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX1(trixelCanvasSize);
+    }
+    constexpr ivec2 trixelOriginOffsetZ3(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetY2(trixelCanvasSize);
+    }
+    constexpr ivec2 trixelOriginOffsetZ4(const ivec2& trixelCanvasSize) {
+        return trixelOriginOffsetX2(trixelCanvasSize);
+    }
+
     Color colorHSVToColor(
         const ColorHSV& colorHSV
     );

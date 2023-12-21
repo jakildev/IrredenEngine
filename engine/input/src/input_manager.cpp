@@ -14,9 +14,8 @@
 #include <irreden/input/entities/entity_joystick.hpp>
 
 namespace IRInput {
-    InputManager::InputManager(IRGLFWWindow& window)
-    :   m_window{window}
-    ,   m_scrollEntitiesThisFrame{}
+    InputManager::InputManager()
+    :   m_scrollEntitiesThisFrame{}
     ,   m_buttonPressesThisFrame{}
     ,   m_buttonReleasesThisFrame{}
     ,   m_mousePositionUpdate{}
@@ -55,22 +54,22 @@ namespace IRInput {
         );
 
         processKeyMouseButtons(
-            m_window.getKeysPressedToProcess(),
+            getWindow().getKeysPressedToProcess(),
             ButtonStatuses::PRESSED
         );
         processKeyMouseButtons(
-            m_window.getKeysReleasedToProcess(),
+            getWindow().getKeysReleasedToProcess(),
             ButtonStatuses::RELEASED
         );
         processKeyMouseButtons(
-            m_window.getMouseButtonsPressedToProcess(),
+            getWindow().getMouseButtonsPressedToProcess(),
             ButtonStatuses::PRESSED
         );
         processKeyMouseButtons(
-            m_window.getMouseButtonsReleasedToProcess(),
+            getWindow().getMouseButtonsReleasedToProcess(),
             ButtonStatuses::RELEASED
         );
-        processScrolls(m_window.getScrollsToProcess());
+        processScrolls(getWindow().getScrollsToProcess());
         IRInput::getCursorPosition(
             m_mousePositionUpdate
         );
@@ -208,14 +207,14 @@ namespace IRInput {
     void InputManager::initJoystickEntities() {
         for(int i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++)
         {
-            if(m_window.joystickPresent(i)) {
+            if(getWindow().joystickPresent(i)) {
                 IRE_LOG_INFO("Creating joystick entity for joystick {}", i);
 
                 m_gamepadEntities.emplace_back(
                     IRECS::createEntity<kGLFWJoystick>(
                          i,
-                        m_window.getJoystickName(i),
-                        m_window.joystickIsGamepad(i)
+                        getWindow().getJoystickName(i),
+                        getWindow().joystickIsGamepad(i)
                     )
                 );
             }

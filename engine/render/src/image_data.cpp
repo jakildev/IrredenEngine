@@ -13,6 +13,8 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 namespace IRRender {
     ImageData::ImageData(const char* file) {
@@ -59,6 +61,25 @@ namespace IRRender {
             }
         }
         return res;
+    }
+
+    void writePNG(
+        const char* filename,
+        int width,
+        int height,
+        int nrChannels,
+        const uint8_t* data
+    ) {
+        int res = stbi_write_png(
+            filename,
+            width,
+            height,
+            nrChannels,
+            data,
+            width * nrChannels
+        );
+        IR_ASSERT(res, "Failed to write PNG file: {}", filename);
+        IRE_LOG_DEBUG("Wrote PNG file: {}", filename);
     }
 
 

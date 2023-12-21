@@ -68,9 +68,10 @@ namespace IRRender {
             GLenum format,
             GLenum type,
             void* data
-        );
+        )   const;
         void clear(GLenum format, GLenum type, const void* data);
         void* getData() const;
+        void saveAsPNG(const char* file) const;
     private:
         GLuint m_handle;
         unsigned int m_width, m_height;

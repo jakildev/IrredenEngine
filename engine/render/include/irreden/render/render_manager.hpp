@@ -32,7 +32,9 @@ namespace IRRender {
 
     class RenderManager {
     public:
-        RenderManager(IRInput::IRGLFWWindow& window);
+        RenderManager(
+            ivec2 gameResolution
+        );
         ~RenderManager() {}
 
         inline ivec2 getViewport() const { return m_viewport; }
@@ -75,7 +77,7 @@ namespace IRRender {
 
 
     private:
-        IRInput::IRGLFWWindow& m_window;
+        GlobalConstantsGLSL m_globalConstantsGLSL;
         Buffer m_bufferUniformConstantsGLSL;
         // Buffer m_bufferVoxelPositions;
         // Buffer m_bufferVoxelColors;

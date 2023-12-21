@@ -15,8 +15,6 @@ layout (binding = 0) uniform sampler2D triangleColors;
 layout (binding = 1) uniform isampler2D  triangleDistances;
 
 layout(std140, binding = 1) uniform GlobalConstants {
-    uniform ivec2 kCanvasTriangleOriginOffsetX1;
-    uniform ivec2 kCanvasTriangleOriginOffsetZ1;
     uniform int kMinTriangleDistance;
     uniform int kMaxTriangleDistance;
 };
@@ -36,21 +34,23 @@ float normalizeDistance(int dist) {
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
 
-// Left off here: Use canvasOffset to adjust
-// the origin of the triangles (no pixel perfect part yet)
+ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
+    return ivec2(trixelCanvasSize) / ivec2(2);
+}
+
+ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
+    return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
+}
 
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
-    // ivec2 zoomAdjustedSize = textureSize / round(zoomLevel);
-    // ivec2 screenSize = textureSize / ivec2(zoomLevel);
     ivec2 screenSize = textureSize;
     vec2 origin = TexCoords * screenSize;
-    // origin += fract(canvasOffset);
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
     int originModifier = (
-        kCanvasTriangleOriginOffsetZ1.x +
-        kCanvasTriangleOriginOffsetZ1.y +
+        trixelOriginOffsetZ1(textureSize).x +
+        trixelOriginOffsetZ1(textureSize).y +
         int(floor(canvasOffset.x)) +
         int(floor(canvasOffset.y))
    ) % 2;
@@ -79,7 +79,7 @@ void main() {
     );
    if(floor(
             mouseHoveredTriangleIndex +
-            kCanvasTriangleOriginOffsetX1 +
+            trixelOriginOffsetX1(textureSize) +
             canvasOffset
         ) ==
         floor(origin))

@@ -61,12 +61,11 @@ namespace IRRender {
     // C++ weekly ep 339
     // Use 'static constexpr' for constexpr values at function scope
     // Use 'inline constexpr' for constexpr values at file scope
-    inline constexpr struct GlobalConstantsGLSL {
-        ivec2 kCanvasTriangleOriginOffsetX1 = IRConstants::kScreenTrixelOriginOffsetX1;
-        ivec2 kCanvasTriangleOriginOffsetZ1 = IRConstants::kScreenTrixelOriginOffsetZ1;
+
+    struct GlobalConstantsGLSL {
         int kMinTriangleDistance = IRConstants::kTrixelDistanceMinDistance;
         int kMaxTriangleDistance = IRConstants::kTrixelDistanceMaxDistance;
-    } kGlobalConstantsGLSL;
+    };
     constexpr GLuint kBufferIndex_GlobalConstantsGLSL = 1;
 
     struct FrameDataFramebuffer {
@@ -98,7 +97,7 @@ namespace IRRender {
 
     struct FrameDataVoxelToCanvas {
         vec2 canvasOffset_;
-        ivec2 hoveredTriangleIndex_;
+        ivec2 trixelCanvasOffsetZ1_;
     };
 
     constexpr GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;

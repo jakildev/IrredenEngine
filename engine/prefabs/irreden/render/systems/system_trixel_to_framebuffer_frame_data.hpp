@@ -34,14 +34,12 @@ namespace IRECS {
             return createSystem<
                 C_TrixelCanvasFramebuffer,
                 C_FrameDataTrixelToFramebuffer,
-                C_CameraPosition2DIso,
                 C_ZoomLevel
             >(
                 "CanvasToFramebufferFrameData",
                 [](
                     const C_TrixelCanvasFramebuffer& framebuffer,
                     C_FrameDataTrixelToFramebuffer& frameData,
-                    const C_CameraPosition2DIso& cameraPosition,
                     const C_ZoomLevel& zoomLevel
                 )
                 {
@@ -50,7 +48,7 @@ namespace IRECS {
                     frameData.frameData_.canvasZoomLevel_ =
                         IRRender::getCameraZoom() *
                         zoomLevel.zoom_;
-                    frameData.frameData_.canvasOffset_ = cameraPosition.pos_;
+                    frameData.frameData_.canvasOffset_ = IRRender::getCameraPosition2DIso();
                     frameData.frameData_.textureOffset_ = vec2(0);
                     frameData.frameData_.mouseHoveredTriangleIndex_ =
                         IRRender::mouseTrixelPositionWorld();
@@ -63,7 +61,6 @@ namespace IRECS {
                             frameData.frameData_.canvasOffset_,
                             frameData.frameData_.canvasZoomLevel_
                         );
-
                 }
             );
         }

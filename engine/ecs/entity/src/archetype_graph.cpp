@@ -12,6 +12,7 @@
 #include <irreden/entity/archetype_graph.hpp>
 
 #include <iterator>
+#include <unordered_set>
 
 namespace IRECS {
 
@@ -75,13 +76,27 @@ namespace IRECS {
         // A breath first sort of nodes based on relation heirarchy
         std::vector<ArchetypeNode*> sortedNodes;
         std::queue<ArchetypeNode*> nodeQueue;
-        for(const auto& node : nodes) {
-            if(node->getChildOfRelation() == kNullRelation) {
+
+
+        // Step 1: Find all nodes that are children of some other nodes
+        std::unordered_set<NodeId> childNodes;
+        for (const auto& node : nodes) {
+            RelationId childOfRelation = node->getChildOfRelation();
+            if (childOfRelation != kNullRelation) {
+                NodeId childNodeId = IRECS::getParentNodeFromRelation(childOfRelation);
+                childNodes.insert(childNodeId);
+            }
+        }
+
+        // Step 2: Add nodes not in childNodes to the nodeQueue
+        for (const auto& node : nodes) {
+            if (childNodes.find(node->id_) == childNodes.end()) {
                 nodeQueue.push(node);
                 sortedNodes.push_back(node);
             }
         }
 
+        // Step 3: Main BFS logic
         while(!nodeQueue.empty()) {
             auto currentNode = nodeQueue.front();
             nodeQueue.pop();

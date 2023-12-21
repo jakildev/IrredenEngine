@@ -7,8 +7,8 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#ifndef IR_WORLD_H
-#define IR_WORLD_H
+#ifndef WORLD_H
+#define WORLD_H
 
 #include <irreden/input/ir_glfw_window.hpp>
 #include <irreden/input/input_manager.hpp>
@@ -22,12 +22,13 @@
 #include <irreden/audio/audio_manager.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/time/time_manager.hpp>
+#include <irreden/world/config.hpp>
 
 namespace IREngine {
 
     class World {
     public:
-        World(int &argc, char **argv);
+        World(WorldConfig config);
         virtual ~World();
         void gameLoop();
 
@@ -63,4 +64,4 @@ namespace IREngine {
 
 } // namespace IREngine
 
-#endif /* IR_WORLD_H */
+#endif /* WORLD_H */

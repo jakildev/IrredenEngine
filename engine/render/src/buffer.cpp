@@ -51,7 +51,8 @@ namespace IRRender {
         GLintptr offset,
         GLsizeiptr size,
         const void *data
-    ) {
+    )   const
+    {
         ENG_API->glNamedBufferSubData(
             m_handle,
             offset,

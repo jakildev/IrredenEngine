@@ -35,7 +35,7 @@ namespace IRRender {
             GLintptr offset,
             GLsizeiptr size,
             const void *data
-        );
+        )   const;
         void bindRange(
             GLenum target,
             GLuint index,

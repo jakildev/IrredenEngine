@@ -28,11 +28,13 @@
 namespace IRRender {
 
     RenderManager::RenderManager(
-        IRGLFWWindow& window
+        ivec2 gameResolution
     )
-    :   m_window{window}
+    :   m_globalConstantsGLSL{
+
+        }
     ,   m_bufferUniformConstantsGLSL{
-            &kGlobalConstantsGLSL,
+            &m_globalConstantsGLSL,
             sizeof(GlobalConstantsGLSL),
             GL_NONE,
             GL_UNIFORM_BUFFER,
@@ -54,11 +56,8 @@ namespace IRRender {
     ,   m_mainCanvas{
             IRECS::createEntity<kCanvas>(
                 "main",
-                ivec2(
-                    IRConstants::kScreenTrixelMaxCanvasSizeWithBuffer
-                ),
                 IRConstants::kVoxelPoolSize,
-                IRConstants::kGameResolution,
+                gameResolution,
                 IRConstants::kSizeExtraPixelBuffer
             )
         }
@@ -86,7 +85,7 @@ namespace IRRender {
             )
         }
     ,   m_viewport{0}
-    ,   m_gameResolution{IRConstants::kGameResolution}
+    ,   m_gameResolution{gameResolution}
     ,   m_outputResolution{0}
     // ,   m_bufferVoxelPositions{
     //         nullptr,
@@ -144,7 +143,7 @@ namespace IRRender {
         IRInput::getWindowSize(m_viewport);
         updateOutputResolution();
         IRECS::executePipeline(IRTime::Events::RENDER);
-        m_window.swapBuffers();
+        IRInput::getWindow().swapBuffers();
     }
 
     std::tuple<
