@@ -82,12 +82,6 @@ namespace IRRender {
     };
     constexpr GLuint kBufferIndex_FrameDataUniformIsoTriangles = 3;
 
-    struct FrameDataIsoTriangleCompute {
-        ivec2 imageOffset_;
-        unsigned int imageDistanceOffset_;
-    };
-    constexpr GLuint kBufferIndex_ComputeShaderImageOffset = 4;
-
     constexpr GLuint kBufferIndex_SingleVoxelPositions = 5;
     constexpr GLuint kBufferIndex_SingleVoxelColors = 6;
 

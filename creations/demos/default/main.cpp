@@ -28,7 +28,6 @@
 
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
-#include <irreden/render/systems/system_trixel_to_framebuffer_frame_data.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 

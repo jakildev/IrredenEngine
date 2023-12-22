@@ -21,6 +21,7 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/update/systems/system_update_screen_view.hpp>
+#include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 
 #include <glm/gtc/matrix_transform.hpp> // not this here
 
