@@ -1,41 +1,32 @@
 /*
  * Project: Irreden Engine
- * File: c_voxel_to_trixel_stage_1.glsl
+ * File: c_trixel_to_trixel.glsl
  * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
+ * Created Date: January 2024
  * -----
  * Modified By: <your_name> <Month> <YYYY>
  */
 
 #version 460 core
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std140, binding = 1) uniform GlobalConstants {
+    uniform ivec2 kCanvasTriangleOriginOffsetX1;
+    uniform ivec2 kCanvasTriangleOriginOffsetZ1;
+    uniform int kMinTriangleDistance;
+    uniform int kMaxTriangleDistance;
+};
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
 };
 
-layout(std430, binding = 5) buffer PositionBuffer {
-    vec4 positions[];
-};
-
-layout(std430, binding = 6) buffer ColorBuffer {
-    uint colors[];
-};
-
-layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
-
-int pos3DtoDistance(ivec3 position) {
-    return position.x + position.y + position.z;
-}
-
-ivec2 pos3DtoPos2DIso(const ivec3 position) {
-    return ivec2(
-        - position.x + position.y,
-        - position.x - position.y + (2 * position.z)
-    );
-}
+layout(rgba8, binding = 0) uniform image2D trixelColorsTo;
+layout(r32i, binding = 1) uniform iimage2D trixelDistancesTo;
+layout(rgba8, binding = 2) uniform image2D trixelColorsFrom;
+layout(r32i, binding = 3) uniform iimage2D trixelDistancesFrom;
 
 vec4 unpackColor(uint packedColor) {
     return vec4(
@@ -64,19 +55,17 @@ void main() {
         ivec2(gl_LocalInvocationID.x, gl_LocalInvocationID.y) +
         pos3DtoPos2DIso(voxelPositionInt);
 
-    if (canvasPixel.x < 0 || canvasPixel.x >= imageSize(triangleCanvasDistances).x) {
+    if (canvasPixel.x < 0 || canvasPixel.x >= imageSize(trixelDistancesTo).x) {
         return;
     }
 
-    if (canvasPixel.y < 0 || canvasPixel.y >= imageSize(triangleCanvasDistances).y) {
+    if (canvasPixel.y < 0 || canvasPixel.y >= imageSize(trixelDistancesTo).y) {
         return;
     }
 
     int canvasDistance = imageAtomicMin(
-        triangleCanvasDistances,
+        trixelDistancesTo,
         canvasPixel,
         voxelDistance
     );
-
-    // if(mouseHoveredTriangleIndex)
 }

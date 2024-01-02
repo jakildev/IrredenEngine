@@ -42,7 +42,7 @@ namespace IRECS {
             else {
                 IRECS::setParent(canvas, framebuffer);
             }
-            IRE_LOG_INFO("Created canvas {} with framebuffer parent {}, size {},{}",
+            IRE_LOG_INFO("Created voxel pool canvas {} with framebuffer parent {}, size {},{}",
                 canvas,
                 framebuffer,
                 triangleCanvasSize.x,

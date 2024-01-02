@@ -76,7 +76,7 @@ namespace IRRender {
     struct FrameDataTrixelToFramebuffer {
         mat4 mpMatrix_;
         vec2 canvasZoomLevel_;
-        vec2 canvasOffset_;
+        vec2 cameraTrixelOffset_;
         vec2 textureOffset_;
         vec2 mouseHoveredTriangleIndex_;
     };
@@ -86,7 +86,7 @@ namespace IRRender {
     constexpr GLuint kBufferIndex_SingleVoxelColors = 6;
 
     struct FrameDataVoxelToCanvas {
-        vec2 canvasOffset_;
+        vec2 cameraTrixelOffset_;
         ivec2 trixelCanvasOffsetZ1_;
     };
 
@@ -94,6 +94,15 @@ namespace IRRender {
 
     constexpr GLuint kBufferIndex_VoxelSetUnlockedPositions = 8;
     constexpr GLuint kBufferIndex_VoxelSetUnlockedColors = 9;
+
+    struct FrameDataTrixelToTrixel {
+        ivec2 cameraTrixelOffset_;
+        ivec2 trixelCanvasOffsetZ1_;
+        ivec2 trixelTextureOffsetZ1_;
+        vec2 texturePos2DIso_;
+    };
+
+    constexpr GLuint kBufferIndex_FrameDataTrixelToTrixel = 10;
 
 } // namespace IRRender
 

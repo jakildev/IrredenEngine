@@ -32,7 +32,7 @@ namespace IRECS {
             float startZoomLevel = 1.0f
         )
         {
-            return IRECS::createEntity(
+            EntityId framebufer = IRECS::createEntity(
                 C_Name{framebufferName},
                 C_TrixelCanvasFramebuffer{
                     framebufferSize,
@@ -42,6 +42,9 @@ namespace IRECS {
                 C_FrameDataTrixelToFramebuffer{},
                 C_ZoomLevel{startZoomLevel}
             );
+
+            IRECS::setName(framebufer, framebufferName);
+            return framebufer;
         }
     };
 }

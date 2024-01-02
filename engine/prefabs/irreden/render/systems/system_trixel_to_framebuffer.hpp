@@ -15,15 +15,11 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/common/components/component_position_2d.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
-#include <irreden/update/systems/system_update_screen_view.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
-
-#include <glm/gtc/matrix_transform.hpp> // not this here
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -106,7 +102,7 @@ namespace IRECS {
                     frameData.frameData_.canvasZoomLevel_ =
                         IRRender::getCameraZoom() *
                         zoomLevel.zoom_;
-                    frameData.frameData_.canvasOffset_ = IRRender::getCameraPosition2DIso();
+                    frameData.frameData_.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                     frameData.frameData_.textureOffset_ = vec2(0);
                     frameData.frameData_.mouseHoveredTriangleIndex_ =
                         IRRender::mouseTrixelPositionWorld();
@@ -116,7 +112,7 @@ namespace IRECS {
                         ) *
                         calcModelMatrix(
                             framebufferResolution,
-                            frameData.frameData_.canvasOffset_,
+                            frameData.frameData_.cameraTrixelOffset_,
                             frameData.frameData_.canvasZoomLevel_
                         );
                     frameData.updateFrameData(

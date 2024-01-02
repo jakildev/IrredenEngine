@@ -26,6 +26,8 @@ namespace IRRender {
         "shaders/c_voxel_to_trixel_stage_1.glsl";
     const char* const kFileCompVoxelToTrixelStage2 =
         "shaders/c_voxel_to_trixel_stage_2.glsl";
+    const char* const kFileCompTrixelToTrixel =
+        "shaders/c_trixel_to_trixel.glsl";
 
 }
 

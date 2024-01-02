@@ -14,6 +14,8 @@
 #include <irreden/math/easing_functions.hpp>
 #include <irreden/math/color_palettes.hpp>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <vector>
 
 // TODO: The game engine needs transformations for voxel sets

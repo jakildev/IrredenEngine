@@ -80,7 +80,7 @@ namespace IRECS {
                     C_TriangleCanvasTextures& triangleCanvasTextures
                 )
                 {
-                    frameData.canvasOffset_ = IRRender::getCameraPosition2DIso();
+                    frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                     frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(
                         triangleCanvasTextures.size_
                     );

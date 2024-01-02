@@ -11,14 +11,7 @@
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
-layout(std140, binding = 1) uniform GlobalConstants {
-    uniform ivec2 kCanvasTriangleOriginOffsetX1;
-    uniform ivec2 kCanvasTriangleOriginOffsetZ1;
-    uniform int kMinTriangleDistance;
-    uniform int kMaxTriangleDistance;
-};
-
-layout(std140, binding = 7) uniform FrameDataCommon {
+layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
 };

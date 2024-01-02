@@ -7,6 +7,9 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 
+// ENTITIES
+#include <irreden/render/entities/entity_trixel_canvas.hpp>
+
 // SYSTEMS
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
@@ -35,7 +38,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: YOUR_CREATION_NAME_HERE");
 
-    IREngine::init();
+    IREngine::init(IREngine::kConfigDefaultHorizontalSmall);
     initSystems();
     initCommands();
     initEntities();
@@ -135,5 +138,9 @@ void initCommands() {
 }
 
 void initEntities() {
-
+    EntityId fontCanvas = IRECS::createEntity<PrefabTypes::kTrixelCanvas>(
+        "fontCanvasLetters",
+        ivec2(26 * 4, 8)
+    );
+    Prefab<PrefabTypes::kTrixelCanvas>::setColor(fontCanvas, Color(44, 44, 240, 255));
 }

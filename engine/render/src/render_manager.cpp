@@ -55,7 +55,7 @@ namespace IRRender {
     //     }
     ,   m_mainFramebuffer{
             IRECS::createEntity<kFramebuffer>(
-                "main",
+                "mainFramebuffer",
                 gameResolution,
                 IRConstants::kSizeExtraPixelBuffer
             )

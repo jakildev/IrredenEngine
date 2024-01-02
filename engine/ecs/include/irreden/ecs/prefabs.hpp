@@ -27,6 +27,7 @@ namespace IRECS {
         kKeyMouseButton,
         kMouseScroll,
         kVoxelPoolCanvas,
+        kTrixelCanvas,
         kFramebuffer
     };
 
