@@ -81,6 +81,8 @@ namespace IRECS {
                         IRRender::getCameraPosition2DIso();
                 },
                 nullptr,
+                // TODO: Add position here and bind camera position to 
+                // main trixel canvas.
                 RelationParams<
                     C_TriangleCanvasTextures
                 >{
