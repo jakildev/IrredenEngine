@@ -82,6 +82,7 @@ namespace IRRender {
         // Buffer m_bufferVoxelPositions;
         // Buffer m_bufferVoxelColors;
         // EntityId m_backgroundCanvas;
+        EntityId m_mainFramebuffer; // TODO: Left off here
         EntityId m_mainCanvas;
         // EntityId m_playerCanvas;
         EntityId m_camera;

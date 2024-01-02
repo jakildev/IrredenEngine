@@ -26,7 +26,7 @@ namespace IRECS {
         kMidiSequenceAnimated,
         kKeyMouseButton,
         kMouseScroll,
-        kCanvas,
+        kVoxelPoolCanvas,
         kFramebuffer
     };
 

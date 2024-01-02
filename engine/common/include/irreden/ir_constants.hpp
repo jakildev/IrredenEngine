@@ -18,7 +18,7 @@ namespace IRConstants {
 
     constexpr int kFPS = 60;
 
-    constexpr uvec2 kSizeExtraPixelBuffer = uvec2(4, 2);
+    constexpr ivec2 kSizeExtraPixelBuffer = uvec2(4, 2);
 
     constexpr uvec3 kChunkSize = uvec3{32, 32, 32};
     constexpr uvec2 kChunkTriangleCanvasSize =

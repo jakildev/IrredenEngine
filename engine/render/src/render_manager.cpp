@@ -13,7 +13,7 @@
 #include <irreden/render/render_manager.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 
-#include <irreden/render/entities/entity_canvas.hpp>
+#include <irreden/render/entities/entity_voxel_pool_canvas.hpp>
 #include <irreden/render/entities/entity_framebuffer.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
@@ -41,7 +41,7 @@ namespace IRRender {
             kBufferIndex_GlobalConstantsGLSL
         }
     // ,   m_backgroundCanvas{
-    //         IRECS::createEntity<kCanvas>(
+    //         IRECS::createEntity<kVoxelPoolCanvas>(
     //             "background",
     //             ivec2(
     //                 IRConstants::kScreenTrixelMaxCanvasSize /
@@ -53,16 +53,25 @@ namespace IRRender {
     //             2.0f
     //         )
     //     }
-    ,   m_mainCanvas{
-            IRECS::createEntity<kCanvas>(
+    ,   m_mainFramebuffer{
+            IRECS::createEntity<kFramebuffer>(
                 "main",
-                IRConstants::kVoxelPoolSize,
                 gameResolution,
                 IRConstants::kSizeExtraPixelBuffer
             )
         }
+    ,   m_mainCanvas{
+            IRECS::createEntity<kVoxelPoolCanvas>(
+                "main",
+                IRConstants::kVoxelPoolSize,
+                IRMath::gameResolutionToSize2DIso(
+                    gameResolution + IRConstants::kSizeExtraPixelBuffer
+                ),
+                m_mainFramebuffer
+            )
+        }
     // ,   m_playerCanvas{
-    //         IRECS::createEntity<kCanvas>(
+    //         IRECS::createEntity<kVoxelPoolCanvas>(
     //             "player",
     //             ivec2(
     //                 IRConstants::kScreenTrixelMaxCanvasSizeWithBuffer

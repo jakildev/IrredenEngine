@@ -119,6 +119,7 @@ namespace IRECS {
         if(m_namedEntities.contains(name)) {
             return m_namedEntities.at(name);
         }
+        IR_ASSERT(false, "Entity with name {} does not exist", name);
         return kNullEntity;
     }
 

@@ -354,7 +354,7 @@ namespace IRMath {
 
     constexpr vec2 gameResolutionToSize2DIso(
         const vec2 gameResolution,
-        const vec2 scaleFactor
+        const vec2 scaleFactor = vec2(1.0f)
     )
     {
         // Floor division
