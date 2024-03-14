@@ -1,3 +1,12 @@
+/*
+ * Project: Particle Orthogonal Burst
+ * File: main.cpp
+ * Author: Evin Killian jakildev@gmail.com
+ * Created Date: November 2023
+ * -----
+ * Modified By: <your_name> <Month> <YYYY>
+ */
+
 #include <irreden/ir_engine.hpp>
 
 // COMPONENTS
@@ -18,9 +27,10 @@
 #include <irreden/input/systems/system_input_gamepad.hpp>
 
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
-#include <irreden/render/systems/system_single_voxel_to_canvas.hpp>
-#include <irreden/render/systems/system_canvas_to_framebuffer.hpp>
-#include <irreden/render/systems/system_framebuffers_to_screen.hpp>
+#include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_trixel_to_trixel.hpp>
+#include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 // COMMANDS
 #include <irreden/input/commands/command_close_window.hpp>
@@ -33,9 +43,9 @@ void initEntities();
 void initCommands();
 
 int main(int argc, char **argv) {
-    IR_LOG_INFO("Starting creation: YOUR_CREATION_NAME_HERE");
+    IR_LOG_INFO("Starting creation: default");
 
-    IREngine::init(argc, argv);
+    IREngine::init(IREngine::kConfigDefaultHorizontal);
     initSystems();
     initCommands();
     initEntities();
@@ -46,7 +56,7 @@ int main(int argc, char **argv) {
 
 void initSystems() {
     IRECS::registerPipeline(
-        SYSTEM_TYPE_UPDATE,
+        IRTime::Events::UPDATE,
         {
             IRECS::createSystem<VELOCITY_3D>()
         ,   IRECS::createSystem<GOTO_3D>()
@@ -57,20 +67,21 @@ void initSystems() {
     );
 
     IRECS::registerPipeline(
-        SYSTEM_TYPE_INPUT,
+        IRTime::Events::INPUT,
         {
             IRECS::createSystem<INPUT_KEY_MOUSE>()
         ,   IRECS::createSystem<INPUT_GAMEPAD>()
         }
     );
+
     IRECS::registerPipeline(
-        SYSTEM_TYPE_RENDER,
+        IRTime::Events::RENDER,
         {
             IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_FIRST>()
-        ,   IRECS::createSystem<RENDERING_SINGLE_VOXEL_TO_CANVAS_SECOND>()
-        ,   IRECS::createSystem<RENDERING_CANVAS_TO_FRAMEBUFFER>()
-        ,   IRECS::createSystem<RENDERING_FRAMEBUFFER_TO_SCREEN>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
+        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
+        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
+        ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
         }
     );
 
@@ -134,6 +145,35 @@ void initCommands() {
     );
 }
 
-void initEntities() {
+EntityId createFlower() {
+    EntityId flower = IRECS::createEntity(
+        C_Position3D{
+            0, 0, 0
+        },
+        C_VoxelSetNew{
+            ivec3(1, 1, 1),
+            Color{
+                212,
+                116,
+                204
+            }
+        },
+        C_HasGravity{}
+    );
+    return flower;
+}
 
+// EntityId createTrashcan() {
+//     EntityId trashcan = IRECS::createEntity();
+//     IRECS::addComponent<COMPONENT_POSITION_3D>(trashcan, vec3(0.0f, 0.0f, 0.0f));
+//     IRECS::addComponent<COMPONENT_VELOCITY_3D>(trashcan, vec3(0.0f, 0.0f, 0.0f));
+//     IRECS::addComponent<COMPONENT_ACCELERATION_3D>(trashcan, vec3(0.0f, 0.0f, 0.0f));
+//     IRECS::addComponent<COMPONENT_VOXEL_SET>(trashcan, "trashcan");
+//     IRECS::addComponent<COMPONENT_GOTO_EASING_3D>(trashcan, vec3(0.0f, 0.0f, 0.0f), 0.0f);
+//     return trashcan;
+// }
+
+void initEntities() {
+    createFlower();
+    // createTrashcan();
 }

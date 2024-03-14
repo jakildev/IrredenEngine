@@ -10,11 +10,15 @@
 #ifndef IR_MATH_TYPES_H
 #define IR_MATH_TYPES_H
 
+#define GLM_ENABLE_EXPERIMENTAL
+
+
 #include <glm/common.hpp>
 #include <glm/vec2.hpp>
 #include <glm/mat2x2.hpp>
 #include <glm/vector_relational.hpp>
 #include <glm/gtx/color_space.hpp>
+
 
 namespace IRMath {
      using vec2 = glm::vec2;
