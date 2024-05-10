@@ -20,6 +20,10 @@ namespace IREngine {
         .gameResolution_ = ivec2(1920, 1080) / ivec2(2),
         .initWindowSize_ = ivec2(1920, 1080) / ivec2(2)
     };
+    constexpr WorldConfig kConfigHorizontalLowResolution = {
+        .gameResolution_ = ivec2(1920, 1080) / ivec2(4),
+        .initWindowSize_ = ivec2(1920, 1080)
+    };
 
     constexpr WorldConfig kConfigDefaultVertical = {
         .gameResolution_ = ivec2(1080, 1920) / ivec2(2),
