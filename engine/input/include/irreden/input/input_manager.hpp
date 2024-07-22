@@ -10,9 +10,7 @@
 #ifndef INPUT_MANAGER_H
 #define INPUT_MANAGER_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_profile.hpp>
-
 
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/input/components/component_keyboard_key_status.hpp>

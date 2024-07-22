@@ -53,7 +53,7 @@ target_link_libraries(
     rtaudio
     rtmidi
     IrredenEngineProfile
-    IrredenEngineECS
+    IrredenEngineEntity
     IrredenEngineMath
 )
 target_include_directories(IrredenEngineAudio PRIVATE

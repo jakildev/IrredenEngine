@@ -8,7 +8,7 @@
  */
 
 #include <irreden/ir_input.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
 

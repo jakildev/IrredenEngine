@@ -45,7 +45,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
-    IREngine::init(IREngine::kConfigDefaultVertical);
+    IREngine::init(IREngine::kConfigDefaultHorizontalSmall);
     initSystems();
     initCommands();
     initEntities();

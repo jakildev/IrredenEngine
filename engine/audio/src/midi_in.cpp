@@ -8,7 +8,7 @@
  */
 
 #include <irreden/ir_audio.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/audio/midi_in.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
@@ -16,7 +16,7 @@
 #include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
-using namespace IRECS;
+// using namespace IREntity;
 
 namespace IRAudio {
 
@@ -132,7 +132,7 @@ namespace IRAudio {
 
         while(!m_messageQueue.empty()) {
             const C_MidiMessage& message = m_messageQueue.front();
-            IRECS::createEntity(
+            IREntity::createEntity(
                 C_MidiMessage{message},
                 C_MidiIn{},
                 C_Lifetime{1}

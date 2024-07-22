@@ -24,7 +24,9 @@ target_link_libraries(
     IrredenEngineProfile
     IrredenEngineMath
     IrredenEngineCommon
-    IrredenEngineECS
+    IrredenEngineEntity
+    IrredenEngineSystem
+
 )
 target_include_directories(
     IrredenEngineInput

@@ -10,7 +10,7 @@
 #ifndef ENTITY_JOYSTICK_H
 #define ENTITY_JOYSTICK_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
@@ -20,7 +20,7 @@
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IREntity {
 
     template <>
     struct Prefab<PrefabTypes::kGLFWJoystick> {
@@ -30,16 +30,16 @@ namespace IRECS {
             bool isGamepad
         )
         {
-            EntityId entity = IRECS::createEntity(
+            EntityId entity = createEntity(
                 C_GLFWJoystick{joystickId}
             );
             if(isGamepad)
-                IRECS::setComponent(entity, C_GLFWGamepadState{});
+                setComponent(entity, C_GLFWGamepadState{});
             return entity;
         }
 
         // static getArchetypeFromCreate()
     };
-} // namespace IRECS
+} // namespace IREntity
 
 #endif /* ENTITY_JOYSTICK_H */

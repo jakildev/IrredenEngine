@@ -10,7 +10,8 @@
 #ifndef ENTITY_KEY_MOUSE_BUTTON_H
 #define ENTITY_KEY_MOUSE_BUTTON_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
+
 #include <irreden/input/ir_input_types.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
@@ -22,7 +23,7 @@
 using namespace IRComponents;
 using namespace IRInput;
 
-namespace IRECS {
+namespace IREntity {
     template <>
     struct Prefab<PrefabTypes::kKeyMouseButton> {
         static EntityId create(
@@ -30,7 +31,7 @@ namespace IRECS {
             ButtonStatuses status = ButtonStatuses::NOT_HELD
         )
         {
-            return IRECS::createEntity(
+            return createEntity(
                 C_KeyMouseButton{button},
                 C_KeyStatus{status}
             );
@@ -52,7 +53,7 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IREntity
 
 
 #endif /* ENTITY_KEY_MOUSE_BUTTON_H */

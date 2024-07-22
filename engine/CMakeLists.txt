@@ -14,7 +14,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/render)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ecs)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
+# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/component)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
@@ -60,7 +62,9 @@ target_link_libraries(
     IrredenEngineRendering
     IrredenEngineVideo
     IrredenEngineMath
-    IrredenEngineECS
+    IrredenEngineEntity
+    IrredenEngineSystem
+    # IrredenEngineComponent
     IrredenEngineTime
     IrredenEngineCommand
     IrredenEngineWorld

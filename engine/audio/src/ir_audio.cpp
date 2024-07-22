@@ -8,7 +8,6 @@
  */
 
 #include <irreden/ir_audio.hpp>
-#include <irreden/ir_ecs.hpp>
 
 #include <irreden/audio/audio_manager.hpp>
 
