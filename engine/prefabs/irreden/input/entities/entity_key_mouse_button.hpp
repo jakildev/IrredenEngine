@@ -45,7 +45,7 @@ namespace IREntity {
             double yoffset
         )
         {
-            return IRECS::createEntity(
+            return IREntity::createEntity(
                 C_MouseScroll{xoffset, yoffset},
                 C_Lifetime{1}
             );

@@ -76,7 +76,7 @@ namespace IRSystem {
         template <typename Tag>
         void addSystemTag(SystemId system) {
             m_ticks[system].archetype_.insert(
-                IRECS::getComponentType<Tag>()
+                IREntity::getComponentType<Tag>()
             );
         }
 

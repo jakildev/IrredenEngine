@@ -14,6 +14,7 @@
 
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/entity/prefabs.hpp>
 
 #include <irreden/common/components/component_position_global_3d.hpp>
 

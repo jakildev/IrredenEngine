@@ -15,10 +15,10 @@
 namespace IRComponents {
 
     struct C_SystemRelation {
-        IRECS::Relation relation_;
+        IREntity::Relation relation_;
 
         C_SystemRelation(
-           IRECS::Relation relation
+           IREntity::Relation relation
         )
         :   relation_(relation)
         {
@@ -26,7 +26,7 @@ namespace IRComponents {
         }
 
         C_SystemRelation()
-        :   relation_(IRECS::Relation::NONE)
+        :   relation_(IREntity::Relation::NONE)
         {
 
         }
