@@ -99,6 +99,7 @@ namespace IREntity {
 
     };
 
+
     template <typename Component>
     IComponentDataImpl<Component>* castComponentDataPointer(IComponentData* data) {
         return static_cast<IComponentDataImpl<Component>*>(data);

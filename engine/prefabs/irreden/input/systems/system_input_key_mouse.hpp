@@ -19,6 +19,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRInput;
+using namespace IRSystem;
 
 namespace IRECS {
 

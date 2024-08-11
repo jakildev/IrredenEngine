@@ -10,7 +10,7 @@
 #ifndef COMPONENT_GLFW_JOYSTICK_H
 #define COMPONENT_GLFW_JOYSTICK_H
 
-namespace IRECS {
+namespace IRComponents {
 
         struct C_GLFWJoystick {
             int joystickId_;

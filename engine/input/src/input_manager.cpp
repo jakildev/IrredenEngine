@@ -8,6 +8,7 @@
  */
 
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/input/input_manager.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
@@ -82,7 +83,7 @@ namespace IRInput {
     }
 
     ButtonStatuses InputManager::getButtonStatus(KeyMouseButtons button) const {
-        return IRECS::getComponent<C_KeyStatus>(
+        return IREntity::getComponent<C_KeyStatus>(
             m_keyMouseButtonEntities.at(button)
         ).status_;
     }
@@ -143,7 +144,7 @@ namespace IRInput {
         int irGamepadId
     ) const
     {
-        return IRECS::getComponent<C_GLFWGamepadState>(
+        return IREntity::getComponent<C_GLFWGamepadState>(
             m_gamepadEntities.at(irGamepadId)
         ).getAxisValue(axis);
     }
@@ -180,7 +181,7 @@ namespace IRInput {
         while(!queueOfScrolls.empty()) {
             std::pair<double, double> scroll = queueOfScrolls.front();
             EntityId entityScroll =
-                IRECS::createEntity<kMouseScroll>(scroll.first, scroll.second);
+                IREntity::createEntity<kMouseScroll>(scroll.first, scroll.second);
             m_scrollEntitiesThisFrame.push_back(entityScroll);
             queueOfScrolls.pop();
 
@@ -211,7 +212,7 @@ namespace IRInput {
                 IRE_LOG_INFO("Creating joystick entity for joystick {}", i);
 
                 m_gamepadEntities.emplace_back(
-                    IRECS::createEntity<kGLFWJoystick>(
+                    IREntity::createEntity<kGLFWJoystick>(
                          i,
                         getWindow().getJoystickName(i),
                         getWindow().joystickIsGamepad(i)

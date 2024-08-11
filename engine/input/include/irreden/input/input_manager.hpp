@@ -22,7 +22,7 @@
 #include <queue>
 
 using namespace IRComponents;
-using namespace IRECS;
+using namespace IREntity;
 
 namespace IRInput {
 
