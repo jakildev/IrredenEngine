@@ -10,13 +10,11 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/command/ir_command_types.hpp>
 
-using namespace IRECS;
 
 namespace IRCommand {
 

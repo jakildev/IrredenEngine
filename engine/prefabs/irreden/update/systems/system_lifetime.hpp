@@ -10,7 +10,7 @@
 #ifndef SYSTEM_LIFETIME_H
 #define SYSTEM_LIFETIME_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
@@ -18,7 +18,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<LIFETIME> {
@@ -32,7 +32,7 @@ namespace IRECS {
                 {
                     lifetime.life_--;
                     if(lifetime.life_ <= 0) {
-                        IRECS::destroyEntity(entity);
+                        IREntity::destroyEntity(entity);
                     }
                 }
             );

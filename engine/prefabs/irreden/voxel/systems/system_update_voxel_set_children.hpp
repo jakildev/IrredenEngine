@@ -10,8 +10,6 @@
 #ifndef SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 #define SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 
-#include <irreden/ir_ecs.hpp>
-
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
@@ -20,7 +18,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
     template<>
     struct System<UPDATE_VOXEL_SET_CHILDREN>  {
         static SystemId create() {
@@ -39,6 +37,6 @@ namespace IRECS {
         }
 
     };
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H */

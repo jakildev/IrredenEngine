@@ -10,15 +10,13 @@
 #ifndef ENTITY_CANVAS_H
 #define ENTITY_CANVAS_H
 
-#include <irreden/ir_ecs.hpp>
-
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IREntity {
 
     template <>
     struct Prefab<PrefabTypes::kTrixelCanvas> {
@@ -28,7 +26,7 @@ namespace IRECS {
             EntityId framebuffer = kNullEntity
         )
         {
-            EntityId canvas = IRECS::createEntity(
+            EntityId canvas = IREntity::createEntity(
                 C_SizeTriangles{triangleCanvasSize},
                 C_TriangleCanvasTextures{triangleCanvasSize},
                 C_Name{canvasName}
@@ -37,7 +35,7 @@ namespace IRECS {
                 setParent(canvas, getEntity("mainFramebuffer"));
             }
             else {
-                IRECS::setParent(canvas, framebuffer);
+                IREntity::setParent(canvas, framebuffer);
             }
             IRE_LOG_INFO("Created trixel canvas {} with framebuffer parent {}, size {},{}",
                 canvas,
@@ -49,7 +47,7 @@ namespace IRECS {
         }
 
         static void setColor(EntityId canvas, Color color) {
-            IRECS::getComponent<C_TriangleCanvasTextures>(canvas).clearWithColor(color);
+            IREntity::getComponent<C_TriangleCanvasTextures>(canvas).clearWithColor(color);
         }
 
     };

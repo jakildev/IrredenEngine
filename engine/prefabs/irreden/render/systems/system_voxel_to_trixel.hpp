@@ -10,7 +10,6 @@
 #ifndef SYSTEM_VOXEL_TO_TRIXEL_H
 #define SYSTEM_VOXEL_TO_TRIXEL_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
@@ -30,7 +29,7 @@ using namespace IRComponents;
 using namespace IRMath;
 using namespace IRRender;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<VOXEL_TO_TRIXEL_STAGE_1> {
@@ -210,6 +209,6 @@ namespace IRECS {
         }
     };
 
-} // namespace System
+} // namespace IRSystem
 
 #endif /* SYSTEM_VOXEL_TO_TRIXEL_H */

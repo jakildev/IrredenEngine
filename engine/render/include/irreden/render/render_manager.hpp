@@ -10,8 +10,8 @@
 #ifndef RENDER_MANAGER_H
 #define RENDER_MANAGER_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
@@ -26,7 +26,7 @@
 #include <span>
 
 using namespace IRComponents;
-using IRECS::EntityId;
+using namespace IREntity;
 
 namespace IRRender {
 
@@ -90,7 +90,7 @@ namespace IRRender {
         ivec2 m_gameResolution;
         ivec2 m_outputResolution;
         int m_outputScaleFactor;
-        std::unordered_map<std::string, IRECS::EntityId> m_canvasMap;
+        std::unordered_map<std::string, EntityId> m_canvasMap;
 
         void initRenderingSystems();
         void initRenderingResources();

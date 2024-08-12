@@ -74,7 +74,8 @@ target_link_libraries(
     IrredenEngineMath
     IrredenEngineInput
     IrredenEngineCommon
-    IrredenEngineECS
+    IrredenEngineEntity
+    IrredenEngineSystem
     IrredenEngineAsset
     # assimp
     meshoptimizer

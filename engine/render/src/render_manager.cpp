@@ -7,7 +7,6 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/render_manager.hpp>
@@ -54,14 +53,14 @@ namespace IRRender {
     //         )
     //     }
     ,   m_mainFramebuffer{
-            IRECS::createEntity<kFramebuffer>(
+            IREntity::createEntity<kFramebuffer>(
                 "mainFramebuffer",
                 gameResolution,
                 IRConstants::kSizeExtraPixelBuffer
             )
         }
     ,   m_mainCanvas{
-            IRECS::createEntity<kVoxelPoolCanvas>(
+            IREntity::createEntity<kVoxelPoolCanvas>(
                 "main",
                 IRConstants::kVoxelPoolSize,
                 IRMath::gameResolutionToSize2DIso(
@@ -112,7 +111,7 @@ namespace IRRender {
     //     }
     {
 
-        IRECS::setName(m_camera, "camera");
+        IREntity::setName(m_camera, "camera");
         std::vector<Color> colorPalette = {
             kPinkTanOrange[1],
             IRColors::kBlack
@@ -151,7 +150,7 @@ namespace IRRender {
 
         IRInput::getWindowSize(m_viewport);
         updateOutputResolution();
-        IRECS::executePipeline(IRTime::Events::RENDER);
+        IRSystem::executePipeline(IRTime::Events::RENDER);
         IRInput::getWindow().swapBuffers();
     }
 
@@ -166,7 +165,7 @@ namespace IRRender {
     )
     {
         if(canvasName == "main") {
-            return IRECS::getComponent<C_VoxelPool>(m_mainCanvas).allocateVoxels(
+            return IREntity::getComponent<C_VoxelPool>(m_mainCanvas).allocateVoxels(
                 numVoxels
             );
         }
@@ -181,7 +180,7 @@ namespace IRRender {
     }
 
     vec2 RenderManager::getCameraPosition2DIso() const {
-        return IRECS::getComponent<C_Position2DIso>(m_camera).pos_;
+        return IREntity::getComponent<C_Position2DIso>(m_camera).pos_;
     }
 
     vec2 RenderManager::getTriangleStepSizeScreen() const {
@@ -200,7 +199,7 @@ namespace IRRender {
     }
 
     vec2 RenderManager::getCameraZoom() const {
-        return IRECS::getComponent<C_ZoomLevel>(m_camera).zoom_;
+        return IREntity::getComponent<C_ZoomLevel>(m_camera).zoom_;
     }
 
     void RenderManager::deallocateVoxels(
@@ -212,7 +211,7 @@ namespace IRRender {
     )
     {
         if(canvasName == "main") {
-            IRECS::getComponent<C_VoxelPool>(m_mainCanvas).deallocateVoxels(
+            IREntity::getComponent<C_VoxelPool>(m_mainCanvas).deallocateVoxels(
                 positions,
                 positionOffsets,
                 positionGlobals,
@@ -229,7 +228,7 @@ namespace IRRender {
     }
 
     ivec2 RenderManager::getMainCanvasSizeTriangles() const {
-        return IRECS::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
+        return IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     }
 
     void RenderManager::initRenderingResources() {

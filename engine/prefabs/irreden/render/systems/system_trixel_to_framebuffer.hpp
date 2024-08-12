@@ -11,7 +11,6 @@
 #define SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
 
 #include <irreden/ir_render.hpp>
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 
@@ -27,7 +26,7 @@ using namespace IRMath;
 
 // ADD ABLILITY TO TEXTURE OVER FACES!
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<TRIXEL_TO_FRAMEBUFFER> {
@@ -178,6 +177,6 @@ namespace IRECS {
         }
     };
 
-} // namespace System
+} // namespace IRSystem
 
 #endif /* SYSTEM_TRIXEL_TO_FRAMEBUFFER_H */

@@ -11,8 +11,6 @@
 #define ENTITY_FRAMEBUFFER_H
 
 
-#include <irreden/ir_ecs.hpp>
-
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
@@ -21,7 +19,7 @@
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IREntity {
 
     template <>
     struct Prefab<PrefabTypes::kFramebuffer> {
@@ -32,7 +30,7 @@ namespace IRECS {
             float startZoomLevel = 1.0f
         )
         {
-            EntityId framebufer = IRECS::createEntity(
+            EntityId framebufer = createEntity(
                 C_Name{framebufferName},
                 C_TrixelCanvasFramebuffer{
                     framebufferSize,
@@ -43,7 +41,7 @@ namespace IRECS {
                 C_ZoomLevel{startZoomLevel}
             );
 
-            IRECS::setName(framebufer, framebufferName);
+            setName(framebufer, framebufferName);
             return framebufer;
         }
     };

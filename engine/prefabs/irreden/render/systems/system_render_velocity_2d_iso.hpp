@@ -10,7 +10,6 @@
 #ifndef SYSTEM_RENDER_VELOCITY_2D_ISO_H
 #define SYSTEM_RENDER_VELOCITY_2D_ISO_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_time.hpp>
 
 #include <irreden/render/components/component_camera.hpp>
@@ -20,7 +19,7 @@
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<RENDERING_VELOCITY_2D_ISO> {
@@ -45,6 +44,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_RENDER_VELOCITY_2D_ISO_H */

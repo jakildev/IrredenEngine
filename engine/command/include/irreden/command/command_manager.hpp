@@ -11,7 +11,6 @@
 #define COMMAND_MANAGER_H
 
 #include <irreden/ir_input.hpp>
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/command/command.hpp>

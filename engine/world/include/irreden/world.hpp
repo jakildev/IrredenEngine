@@ -12,7 +12,6 @@
 
 #include <irreden/input/ir_glfw_window.hpp>
 #include <irreden/input/input_manager.hpp>
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
 #include <irreden/system/system_manager.hpp>
@@ -32,12 +31,12 @@ namespace IREngine {
         virtual ~World();
         void gameLoop();
 
-        // void setPlayer(const IRECS::EntityId& player);
+        // void setPlayer(const IREntity::EntityId& player);
         // void setCameraPosition3D(const vec3& position);
     private:
         IRInput::IRGLFWWindow m_IRGLFWWindow;
-        IRECS::EntityManager m_entityManager;
-        IRECS::SystemManager m_systemManager;
+        IREntity::EntityManager m_entityManager;
+        IRSystem::SystemManager m_systemManager;
         IRInput::InputManager m_inputManager;
         IRCommand::CommandManager m_commandManager;
         IRRender::RenderingResourceManager m_renderingResourceManager;

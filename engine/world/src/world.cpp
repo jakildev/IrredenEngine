@@ -15,7 +15,6 @@
 
 using namespace IRComponents;
 using namespace IRConstants;
-using namespace IRECS;
 
 namespace IREngine {
 //TODO: replace initalization constants with config file.

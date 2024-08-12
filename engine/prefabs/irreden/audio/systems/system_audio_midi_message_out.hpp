@@ -22,7 +22,7 @@ using namespace IRComponents;
 using namespace IRMath;
 using namespace IRAudio;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<OUTPUT_MIDI_MESSAGE_OUT> {

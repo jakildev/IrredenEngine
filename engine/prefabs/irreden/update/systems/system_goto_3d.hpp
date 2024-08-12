@@ -10,14 +10,12 @@
 #ifndef SYSTEM_GOTO_3D_H
 #define SYSTEM_GOTO_3D_H
 
-#include <irreden/ir_ecs.hpp>
-
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<GOTO_3D> {
@@ -57,6 +55,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_GOTO_3D_H */

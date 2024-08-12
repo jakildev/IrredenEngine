@@ -10,7 +10,7 @@
 #ifndef SYSTEM_FRAMEBUFFER_TO_SCREEN_Hs
 #define SYSTEM_FRAMEBUFFER_TO_SCREEN_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
@@ -26,7 +26,7 @@ using namespace IRMath;
 // MODIFY THIS TO JUST BE THE 2D SPRITE RENDERER.
 // CHANGE FRAMEBUFFERS TO RENDERBUFFERS
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<FRAMEBUFFER_TO_SCREEN> {
@@ -202,6 +202,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_FRAMEBUFFER_TO_SCREEN_H */

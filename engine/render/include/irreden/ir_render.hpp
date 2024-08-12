@@ -90,7 +90,7 @@ namespace IRRender {
         );
     }
 
-    inline IRECS::EntityId getCanvas(std::string canvasName) {
+    inline IREntity::EntityId getCanvas(std::string canvasName) {
         return getRenderManager().getCanvas(canvasName);
     }
 

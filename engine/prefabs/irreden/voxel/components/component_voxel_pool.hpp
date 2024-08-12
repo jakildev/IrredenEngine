@@ -11,7 +11,6 @@
 #define COMPONENT_VOXEL_POOL_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_ecs.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>
@@ -23,7 +22,7 @@
 #include <map>
 
 using namespace IRMath;
-using IRECS::EntityId;
+using IREntity::EntityId;
 
 namespace IRComponents {
 

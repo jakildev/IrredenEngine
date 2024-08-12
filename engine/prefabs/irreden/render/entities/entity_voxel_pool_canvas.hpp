@@ -10,7 +10,7 @@
 #ifndef ENTITY_CANVAS_H
 #define ENTITY_CANVAS_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -19,7 +19,7 @@
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IREntity {
 
     template <>
     struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
@@ -30,7 +30,7 @@ namespace IRECS {
             EntityId framebuffer = kNullEntity
         )
         {
-            EntityId canvas = IRECS::createEntity(
+            EntityId canvas = createEntity(
                 C_VoxelPool{voxelPoolSize},
                 C_SizeTriangles{triangleCanvasSize},
                 C_TriangleCanvasTextures{triangleCanvasSize},
@@ -40,7 +40,7 @@ namespace IRECS {
                 setParent(canvas, getEntity("mainFramebuffer"));
             }
             else {
-                IRECS::setParent(canvas, framebuffer);
+                setParent(canvas, framebuffer);
             }
             IRE_LOG_INFO("Created voxel pool canvas {} with framebuffer parent {}, size {},{}",
                 canvas,

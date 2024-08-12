@@ -79,6 +79,16 @@ namespace IREntity {
         );
     }
 
+    template <
+        PrefabTypes type,
+        typename... Args
+    >
+    EntityId createEntity(Args&&... args) {
+        return Prefab<type>::create(
+            args...
+        );
+    }
+
     // template <
     //     typename... Components
     // >

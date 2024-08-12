@@ -11,7 +11,7 @@
 #define SYSTEM_TRIXEL_TO_TRIXEL_H
 
 #include <irreden/ir_render.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 
@@ -21,7 +21,7 @@ using namespace IRComponents;
 using namespace IRRender;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<TRIXEL_TO_TRIXEL> {
@@ -104,6 +104,6 @@ namespace IRECS {
         }
     };
 
-} // namespace System
+} // namespace IRSystem
 
 #endif /* SYSTEM_TRIXEL_TO_TRIXEL_H */

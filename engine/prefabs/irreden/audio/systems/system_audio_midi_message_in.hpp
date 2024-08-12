@@ -10,7 +10,6 @@
 #ifndef SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 #define SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/audio/components/component_midi_device.hpp>
@@ -23,7 +22,7 @@ using namespace IRComponents;
 using namespace IRMath;
 using namespace IRAudio;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<INPUT_MIDI_MESSAGE_IN> {
@@ -53,7 +52,7 @@ namespace IRECS {
                     }
                 }
             );
-            IRECS::addSystemTag<C_MidiIn>(system);
+            addSystemTag<C_MidiIn>(system);
             return system;
         }
 

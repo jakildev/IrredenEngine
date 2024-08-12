@@ -10,8 +10,8 @@
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_system.hpp>
 
 #include <irreden/input/components/component_glfw_joystick.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
@@ -19,7 +19,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<INPUT_GAMEPAD> {

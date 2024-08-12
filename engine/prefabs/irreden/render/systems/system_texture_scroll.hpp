@@ -18,7 +18,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<TEXTURE_SCROLL>  {
@@ -46,6 +46,6 @@ namespace IRECS {
     };
 
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_TEXTURE_SCROLL_H */

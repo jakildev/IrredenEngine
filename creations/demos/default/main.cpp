@@ -55,33 +55,33 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    IRECS::registerPipeline(
+    IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {
-            IRECS::createSystem<VELOCITY_3D>()
-        ,   IRECS::createSystem<GOTO_3D>()
-        ,   IRECS::createSystem<GLOBAL_POSITION_3D>()
-        ,   IRECS::createSystem<UPDATE_VOXEL_SET_CHILDREN>()
-        ,   IRECS::createSystem<LIFETIME>()
+            IRSystem::createSystem<IRSystem::VELOCITY_3D>()
+        ,   IRSystem::createSystem<IRSystem::GOTO_3D>()
+        ,   IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>()
+        ,   IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()
+        ,   IRSystem::createSystem<IRSystem::LIFETIME>()
         }
     );
 
-    IRECS::registerPipeline(
+    IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {
-            IRECS::createSystem<INPUT_KEY_MOUSE>()
-        ,   IRECS::createSystem<INPUT_GAMEPAD>()
+            IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()
+        ,   IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()
         }
     );
 
-    IRECS::registerPipeline(
+    IRSystem::registerPipeline(
         IRTime::Events::RENDER,
         {
-            IRECS::createSystem<RENDERING_VELOCITY_2D_ISO>()
-        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_1>()
-        ,   IRECS::createSystem<VOXEL_TO_TRIXEL_STAGE_2>()
-        ,   IRECS::createSystem<TRIXEL_TO_FRAMEBUFFER>()
-        ,   IRECS::createSystem<FRAMEBUFFER_TO_SCREEN>()
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>()
+        ,   IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>()
+        ,   IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>()
+        ,   IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>()
+        ,   IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()
         }
     );
 
@@ -153,16 +153,16 @@ void initEntities() {
     for(int x = 0; x < partitions.x; x++) {
         for(int y = 0; y < partitions.y; y++) {
             for(int z = 0; z < partitions.z; z++) {
-                EntityId parent = IRECS::createEntity(
+                EntityId parent = IREntity::createEntity(
                     C_Position3D{
                         static_cast<float>(x * 16),
                         static_cast<float>(y * 16),
                         static_cast<float>(z * 16)
                     }
                 );
-                auto entities = IRECS::createEntityBatchWithFunctions_Ext(
+                auto entities = IREntity::createEntityBatchWithFunctions_Ext(
                     batchSize / partitions,
-                    IRECS::CreateEntityExtraParams{
+                    IREntity::CreateEntityExtraParams{
                         .relation = {
                             Relation::CHILD_OF,
                             parent

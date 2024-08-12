@@ -19,9 +19,8 @@
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRInput;
-using namespace IRSystem;
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<INPUT_KEY_MOUSE> {

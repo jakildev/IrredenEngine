@@ -17,10 +17,10 @@
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
-    struct System<IRECS::VELOCITY_3D>{
+    struct System<VELOCITY_3D>{
         static SystemId create() {
             return createSystem<C_Position3D, C_Velocity3D>(
                 "Velocity3D",
@@ -38,6 +38,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_VELOCITY_H */

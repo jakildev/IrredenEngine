@@ -26,7 +26,7 @@ using namespace IRMath;
 // MODIFY THIS TO JUST BE THE 2D SPRITE RENDERER.
 // CHANGE FRAMEBUFFERS TO RENDERBUFFERS
 
-namespace IRECS {
+namespace IRSystem {
 
     template <>
     struct System<SPRITE_TO_SCREEN> {
@@ -189,6 +189,6 @@ namespace IRECS {
         }
     };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_FRAMEBUFFER_TO_SCREEN_H */

@@ -3,7 +3,7 @@
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_command.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
@@ -14,8 +14,8 @@ namespace IRCommand {
     struct Command<ZOOM_IN> {
         static auto create() {
             return []() {
-                IRECS::getComponent<C_ZoomLevel>(
-                    IRECS::getEntity("camera")
+                IREntity::getComponent<C_ZoomLevel>(
+                    IREntity::getEntity("camera")
                 ).zoomIn();
             };
         }

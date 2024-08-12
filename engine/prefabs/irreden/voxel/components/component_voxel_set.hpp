@@ -11,7 +11,6 @@
 #define COMPONENT_VOXEL_SET_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_ecs.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_render.hpp>
 

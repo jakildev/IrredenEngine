@@ -19,7 +19,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     class System<system_name> : public SystemBase<
