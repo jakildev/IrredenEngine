@@ -14,4 +14,4 @@
 
 bool checkLua(lua_State *L, const int r);
 
-#endif
+#endif /* LUA_HELPER_H */

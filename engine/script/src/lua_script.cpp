@@ -24,7 +24,37 @@ LuaScript::LuaScript(const char* filename, bool withLibs) {
     IR_ASSERT(status == LUA_OK, "luaL_dofile failed with error");
 }
 
-
 LuaScript::~LuaScript() {
     if(L) lua_close(L);
+}
+
+bool LuaScript::getTableField(
+    const char* tableName,
+    const char* key
+) {
+    lua_getglobal(L, tableName);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        IR_LOG_WARN("getTableField: {} is not a table", tableName);
+        return false;
+    }
+    lua_getfield(L, -1, key);
+    lua_remove(L, -2);
+    return true;
+}
+
+bool LuaScript::getNestedTable(
+    const char* tableName,
+    const std::initializer_list<const char*>& keys
+) {
+    lua_getglobal(L, tableName);
+    for (const char* key : keys) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);  // Cleanup if table not found
+            return false;
+        }
+        lua_getfield(L, -1, key);  // Get nested field
+        lua_remove(L, -2);         // Remove the parent table from stack
+    }
+    return lua_istable(L, -1);  // Return true if final value is a table
 }
