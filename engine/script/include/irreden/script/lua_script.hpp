@@ -12,6 +12,12 @@
 
 #include <lua54/lua.hpp> // hpp file contains the extern "C" directive
 
+
+std::vector<std::string> splitString(
+    const std::string& input,
+    char delimiter
+);
+
 class LuaScript {
 public:
     LuaScript(const char* filename, bool withLibs = true);
