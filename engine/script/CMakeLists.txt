@@ -25,11 +25,29 @@ target_include_directories(
     IrredenEngineScripting
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lua54
 )
 
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic/lua54.dll
     ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
+)
+
+# Use sol2 library for C++ binding
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(sol2)
+target_link_libraries(
+    IrredenEngineScripting PUBLIC
+    sol2
+)
+target_include_directories(
+    IrredenEngineScripting
+    PRIVATE
+    ${sol2_SOURCE_DIR}/include
 )
 
 # add_custom_command(
