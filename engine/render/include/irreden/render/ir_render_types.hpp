@@ -104,6 +104,12 @@ namespace IRRender {
 
     constexpr GLuint kBufferIndex_FrameDataTrixelToTrixel = 10;
 
+    enum class FitMode {
+        FIT,
+        STRETCH,
+        UNKNOWN
+    };
+
 } // namespace IRRender
 
 #endif /* IR_RENDER_TYPES_H */

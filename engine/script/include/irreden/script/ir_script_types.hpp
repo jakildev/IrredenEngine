@@ -8,6 +8,7 @@ namespace IRScript {
         INTEGER, // DEFINED BY IRREDEN
         NUMBER,
         STRING,
+        ENUM,
         USERDATA,
         FUNCTION,
         THREAD,

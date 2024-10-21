@@ -47,7 +47,7 @@ namespace IRRender {
     ivec2 getViewport() {
         return getRenderManager().getViewport();
     }
-    int getOutputScaleFactor() {
+    ivec2 getOutputScaleFactor() {
         return getRenderManager().getOutputScaleFactor();
     }
     vec2 getMousePositionOutputView() {

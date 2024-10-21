@@ -13,8 +13,8 @@ namespace IREngine {
         return *g_world;
     }
 
-    void init(WorldConfig config = kConfigDefaultHorizontal) {
-        g_world = std::make_unique<World>(config);
+    void init(const char* configFileName = kTestLuaConfig) {
+        g_world = std::make_unique<World>(configFileName);
     }
 
     void gameLoop() {

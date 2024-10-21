@@ -98,7 +98,7 @@ namespace IRRender {
     vec2 getCameraZoom();
     vec2 getTriangleStepSizeScreen();
     ivec2 getViewport();
-    int getOutputScaleFactor();
+    ivec2 getOutputScaleFactor();
     vec2 getMousePositionOutputView();
     vec2 getGameResolution();
     vec2 getMainCanvasSizeTrixels();

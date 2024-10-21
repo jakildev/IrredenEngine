@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_script.hpp>
+#include <irreden/ir_render.hpp>
 
 #include <string>
 
@@ -10,46 +11,62 @@ using namespace IRMath;
 
 namespace IREngine {
 
-    class WorldConfigNew {
+    // TODO: https://chatgpt.com/c/67034198-ce68-8005-aa2c-d3a3e08d0d02
+    // Remove the interface and make this fully compile time.
+    class WorldConfig {
     public:
-        WorldConfigNew(
-            IRScript::ConfigOption<IRScript::TABLE> config
-        )
+        WorldConfig(const char* luaConfigFile)
+        :   m_lua{luaConfigFile}
+        ,   m_config{}
         {
-
-        }
-        ConfigOption<IRScript::NUMBER> gameResolutionInt_ = 
-            ConfigOption<IRScript::NUMBER>(
-                "game_resolution_x",
-                1920
+            m_config.addEntry(
+                "init_window_width",
+                std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1920)
             );
+            m_config.addEntry(
+                "init_window_height",
+                std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1080)
+            );
+            m_config.addEntry(
+                "game_resolution_width",
+                std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1920)
+            );
+            m_config.addEntry(
+                "game_resolution_height",
+                std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1080)
+            );
+            m_config.addEntry(
+                "fit_mode",
+                std::make_unique<
+                    IRScript::LuaValue<IRScript::ENUM, IRRender::FitMode>
+                >(
+                    IRRender::FitMode::FIT,
+                    [](
+                        const std::string& enumString
+                    )
+                    {
+                        if (enumString == "fit") return IRRender::FitMode::FIT;
+                        if (enumString == "stretch") return IRRender::FitMode::STRETCH;
+                        IR_ASSERT(false, "Invalid enum value for fit_mode");
+                        return IRRender::FitMode::UNKNOWN;
+                    }
+                )
+            );
+            sol::table configTable = m_lua.getTable("config");
+            m_config.parse(configTable);
+        }
+
+        IRScript::ILuaValue& operator[](const std::string& key) {
+            return m_config[key];
+        }
+
+
+
     private:
-        ivec2 gameResolution_;
-        ivec2 initWindowSize_;
+        IRScript::LuaScript m_lua;
+        IRScript::LuaConfig m_config;
     };
 
-    struct WorldConfig {
-        ivec2 gameResolution_ = ivec2(1920, 1080);
-        ivec2 initWindowSize_ = ivec2(1920, 1080);
-    };
-
-    constexpr WorldConfig kConfigDefaultHorizontal = {
-        .gameResolution_ = ivec2(1920, 1080),
-        .initWindowSize_ = ivec2(1920, 1080)
-    };
-    constexpr WorldConfig kConfigDefaultHorizontalSmall = {
-        .gameResolution_ = ivec2(1920, 1080) / ivec2(2),
-        .initWindowSize_ = ivec2(1920, 1080) / ivec2(2)
-    };
-    constexpr WorldConfig kConfigHorizontalLowResolution = {
-        .gameResolution_ = ivec2(1920, 1080) / ivec2(4),
-        .initWindowSize_ = ivec2(1920, 1080)
-    };
-
-    constexpr WorldConfig kConfigDefaultVertical = {
-        .gameResolution_ = ivec2(1080, 1920) / ivec2(2),
-        .initWindowSize_ = ivec2(1080, 1920) / ivec2(2)
-    };
 
 };
 

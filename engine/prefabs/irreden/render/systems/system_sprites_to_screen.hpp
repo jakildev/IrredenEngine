@@ -95,7 +95,7 @@ namespace IRSystem {
             std::string name
         )
         {
-            const int scaleFactor =
+            const ivec2 scaleFactor =
                 IRRender::getOutputScaleFactor();
 
             // also known as screen center

@@ -27,7 +27,8 @@
 namespace IRRender {
 
     RenderManager::RenderManager(
-        ivec2 gameResolution
+        ivec2 gameResolution,
+        FitMode fitMode
     )
     :   m_globalConstantsGLSL{
 
@@ -95,6 +96,7 @@ namespace IRRender {
     ,   m_viewport{0}
     ,   m_gameResolution{gameResolution}
     ,   m_outputResolution{0}
+    ,   m_fitMode{fitMode}
     // ,   m_bufferVoxelPositions{
     //         nullptr,
     //         IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
@@ -110,7 +112,7 @@ namespace IRRender {
     //         kBufferIndex_SingleVoxelColors
     //     }
     {
-
+        IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
         IREntity::setName(m_camera, "camera");
         std::vector<Color> colorPalette = {
             kPinkTanOrange[1],
@@ -288,20 +290,42 @@ namespace IRRender {
         );
     }
 
+    ivec2 RenderManager::calcOutputScaleByMode()
+    {
+        if(m_fitMode == FitMode::FIT) {
+            return ivec2(glm::min(
+                glm::floor(
+                    m_viewport.x /
+                    m_gameResolution.x
+                ),
+                glm::floor(
+                    m_viewport.y /
+                    m_gameResolution.y
+                )
+            ));
+        }
+        if(m_fitMode == FitMode::STRETCH) {
+            return ivec2(
+                glm::floor(
+                    m_viewport.x /
+                    m_gameResolution.x
+                ),
+                glm::floor(
+                    m_viewport.y /
+                    m_gameResolution.y
+                )
+            );
+        }
+        IR_ASSERT(false, "Unexpected FitMode type");
+        return ivec2(1);
+
+    }
+
     void RenderManager::updateOutputResolution() {
-        m_outputScaleFactor =  glm::min(
-            glm::floor(
-                m_viewport.x /
-                m_gameResolution.x
-            ),
-            glm::floor(
-                m_viewport.y /
-                m_gameResolution.y
-            )
-        );
+        m_outputScaleFactor = calcOutputScaleByMode();
         m_outputResolution = ivec2(
-            m_gameResolution.x * m_outputScaleFactor,
-            m_gameResolution.y * m_outputScaleFactor
+            m_gameResolution.x * m_outputScaleFactor.x,
+            m_gameResolution.y * m_outputScaleFactor.y
         );
     }
 

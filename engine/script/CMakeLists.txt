@@ -1,5 +1,5 @@
 add_library(IrredenEngineScripting STATIC
-    src/lua_helper.cpp
+
     src/lua_script.cpp
 )
 

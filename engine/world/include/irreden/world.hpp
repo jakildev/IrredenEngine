@@ -25,15 +25,18 @@
 
 namespace IREngine {
 
+    constexpr const char* kTestLuaConfig = "data/configs/default.irconf";
+
     class World {
     public:
-        World(WorldConfig config);
+        World(const char* configFileName);
         virtual ~World();
         void gameLoop();
 
         // void setPlayer(const IREntity::EntityId& player);
         // void setCameraPosition3D(const vec3& position);
     private:
+        WorldConfig m_worldConfig;
         IRInput::IRGLFWWindow m_IRGLFWWindow;
         IREntity::EntityManager m_entityManager;
         IRSystem::SystemManager m_systemManager;

@@ -108,7 +108,7 @@ namespace IRSystem {
             std::string name
         )
         {
-            const int scaleFactor =
+            const ivec2 scaleFactor =
                 IRRender::getOutputScaleFactor();
 
             // also known as screen center
@@ -164,8 +164,8 @@ namespace IRSystem {
             model = glm::scale(
                 model,
                 vec3(
-                    resolutionPlusBuffer.x * scaleFactor,
-                    resolutionPlusBuffer.y * scaleFactor,
+                    resolutionPlusBuffer.x * scaleFactor.x,
+                    resolutionPlusBuffer.y * scaleFactor.y,
                     1.0f
                 )
             );

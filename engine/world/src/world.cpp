@@ -16,12 +16,17 @@
 using namespace IRComponents;
 using namespace IRConstants;
 
+
 namespace IREngine {
 //TODO: replace initalization constants with config file.
 
-    World::World(WorldConfig config)
-    :   m_IRGLFWWindow{
-            config.initWindowSize_
+    World::World(const char* configFileName)
+    :   m_worldConfig{configFileName}
+    ,   m_IRGLFWWindow{
+            ivec2(
+                m_worldConfig["init_window_width"].get_integer(),
+                m_worldConfig["init_window_height"].get_integer()
+            )
         }
     ,   m_entityManager{}
     ,   m_commandManager{}
@@ -29,7 +34,11 @@ namespace IREngine {
     ,   m_inputManager{}
     ,   m_renderingResourceManager{}
     ,   m_renderer{
-            config.gameResolution_
+            ivec2(
+                m_worldConfig["game_resolution_width"].get_integer(),
+                m_worldConfig["game_resolution_height"].get_integer()
+            ),
+            static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())
     }
     ,   m_audioManager{}
     ,   m_timeManager{}

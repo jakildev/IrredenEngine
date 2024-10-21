@@ -33,14 +33,15 @@ namespace IRRender {
     class RenderManager {
     public:
         RenderManager(
-            ivec2 gameResolution
+            ivec2 gameResolution,
+            FitMode fitMode = FitMode::FIT
         );
         ~RenderManager() {}
 
         inline ivec2 getViewport() const { return m_viewport; }
         inline ivec2 getGameResolution() const { return m_gameResolution; }
         inline ivec2 getOutputResolution() const { return m_outputResolution; }
-        inline int getOutputScaleFactor() const { return m_outputScaleFactor; }
+        inline ivec2 getOutputScaleFactor() const { return m_outputScaleFactor; }
         // TODO: Remove once a better render pipeline creator is in place
         // inline const Buffer& getBufferVoxelPositions() const { return m_bufferVoxelPositions; }
         // inline const Buffer& getBufferVoxelColors() const { return m_bufferVoxelColors; }
@@ -89,12 +90,17 @@ namespace IRRender {
         ivec2 m_viewport;
         ivec2 m_gameResolution;
         ivec2 m_outputResolution;
-        int m_outputScaleFactor;
+        ivec2 m_outputScaleFactor;
         std::unordered_map<std::string, EntityId> m_canvasMap;
+        FitMode m_fitMode;
 
         void initRenderingSystems();
         void initRenderingResources();
         void updateOutputResolution();
+
+        ivec2 calcOutputScaleByMode();
+
+
     };
 
 } // namespace IRRender
