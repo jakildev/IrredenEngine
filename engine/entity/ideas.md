@@ -12,3 +12,6 @@ entity.set(C_Position2D, [](C_Position3D position3D)
 ```
 
 REAL TIME ANIMATOR/RECORDER
+
+Why not just generate files with C++ components?
+Should be the compilation phase of lua files?

@@ -1,0 +1,68 @@
+
+module(
+    name = "irengine",
+    version = "1.0",
+    compatibility_level = 1,
+)
+
+# tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
+# tools.cmake(version = "3.23.1")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Bazel rules
+
+bazel_dep(name = "rules_foreign_cc", version = "0.12.0")
+
+_ALL_CONTENT = """
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+"""
+
+# Engine depencies
+
+
+# IRAutio
+# RtAudio
+http_archive(
+    name = "rtaudio",
+    build_file_content = _ALL_CONTENT,
+    urls = ["https://github.com/thestk/rtaudio/archive/refs/tags/6.0.1.zip"],
+    strip_prefix = "rtaudio-6.0.1",
+    sha256 = "ac27dfbfa764441b2b14a7180861d044d944189b5d792cb231fbffc540220fc5",
+)
+
+# RtMidi
+http_archive(
+    name = "rtmidi",
+    build_file_content = _ALL_CONTENT,
+    urls = ["https://github.com/thestk/rtmidi/archive/refs/tags/6.0.0.zip"],
+    strip_prefix = "rtmidi-6.0.0",
+    sha256 = "55f1e7636160204a8b04dc7aacf959b7c66df0011124e7ddfa6d9c06c8b3363e",
+)
+
+
+# GLFW
+# GLM
+
+
+# IRProfile
+http_archive(
+    name = "easy_profiler",
+    build_file_content = _ALL_CONTENT,
+    urls = ["https://github.com/yse/easy_profiler/archive/refs/tags/v2.1.0.zip"],
+    strip_prefix = "easy_profiler-2.1.0",
+    sha256 = "15c1569550fd4afbcdf0780f7bc71c5457c51fff16d39fbafb66d1254a7e5502",
+)
+bazel_dep(name = "spdlog", version = "1.14.1")
+
+#IRRender
+# Glad 
+# OpenGL/glsl
+# StbImage
+# MeshOptimizer
+# Assimp
+# Lua
+# FFMpeg

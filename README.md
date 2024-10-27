@@ -7,6 +7,8 @@ The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 Created by and maintained by [jakildev](https://github.com/jakildev).
 
 ## Build
+- Windows: CMake, IRCreationDefault launch target.
+- MacOS: bazel (WIP)
 
 ### Prerequisites
 -   Windows OS
@@ -24,7 +26,6 @@ Created by and maintained by [jakildev](https://github.com/jakildev).
 | Platform | Account | Usage |
 | -------- | ----- | ---- | 
 | TikTok |  [@jakildev](https://www.tiktok.com/@jakildev) | Creations that I make. |
-| Patreon | [@jakildev](https://www.patreon.com/jakildev) | Support me and this project. |
 | Instagram | [@jakildev](https://www.instagram.com/jakildev) | More of my life. |
 | Youtube | [@jakildev](https://www.youtube.com/@jakildev) | Future long-form informative videos. | 
 
