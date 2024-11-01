@@ -1,0 +1,30 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+cmake(
+    name = "glm",
+    lib_source = "@glm//:all_srcs",
+    out_static_libs = ["libglm.a"],
+    # out_shared_libs = ["libeasy_profiler.dylib"],
+    visibility = ["//visibility:private"],
+    cache_entries = {
+        "CMAKE_CXX_FLAGS": "-Wno-error",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.6",
+        "GLM_TEST_ENABLE": "OFF",
+    },
+)
+
+cc_library(
+    name = "ir_math",
+    srcs = 
+        glob(["src/**/*.cpp"])
+    ,
+    hdrs = glob(
+        ["include/**/*.hpp", "include/**/*.tpp", ]
+    ),
+    deps = [
+        ':glm',
+    ],
+    strip_include_prefix = "include",
+    include_prefix = "",
+    visibility = ["//visibility:public"],
+)

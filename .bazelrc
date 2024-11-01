@@ -1,1 +1,11 @@
 try-import %workspace%/user.bazelrc
+build --cxxopt="-std=c++20" 
+build --macos_minimum_os=14.6 
+build --apple_platform_type=macos 
+build --cpu=darwin_arm64 
+build --features=use_header_modules
+build --cxxopt="-I/Library/Developer/CommandLineTools/usr/lib/clang/16/include"
+
+# build --cxxopt="-isystem/Library/Developer/CommandLineTools/usr/lib/clang/16/include"
+
+# build --crosstool_top=@bazel_tools//tools/cpp:toolchain

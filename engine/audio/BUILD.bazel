@@ -1,0 +1,32 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+cmake(
+    name = "rtaudio",
+    lib_source = "@rtaudio//:all_srcs",
+    # out_static_libs = ["libeasy_profiler.a"],
+    out_shared_libs = ["librtaudio.dylib"],
+    visibility = ["//visibility:private"],
+    cache_entries = {
+        
+    },
+)
+
+cc_library(
+    name = "ir_audio",
+    srcs = 
+        glob(["src/**/*.cpp"])
+    ,
+    hdrs = glob(
+        ["include/**/*.hpp", "include/**/*.tpp"]
+    ),
+    includes = [
+        "//engine/prefabs"
+    ],
+    deps = [
+        ':rtaudio',
+        '//engine/profile:ir_profile'
+    ],
+    strip_include_prefix = "include",
+    include_prefix = "",
+    visibility = ["//visibility:public"],
+)

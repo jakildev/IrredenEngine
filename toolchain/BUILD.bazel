@@ -1,0 +1,38 @@
+package(default_visibility = ["//visibility:public"])
+
+load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+
+cc_toolchain_config(name = "macos_arm_toolchain_config")
+
+filegroup(
+    name = "empty",
+    srcs = [],
+)
+
+
+cc_toolchain(
+    name = "macos_toolchain",
+    toolchain_identifier = "macos-toolchain",
+    toolchain_config = ":macos_arm_toolchain_config",
+    all_files = ":empty",
+    compiler_files = ":empty",
+    dwp_files = ":empty",
+    linker_files = ":empty",
+    objcopy_files = ":empty",
+    strip_files = ":empty",
+    supports_param_files = 0,
+)
+
+toolchain(
+    name = "cc_toolchain_for_macos",
+    toolchain = ":macos_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    exec_compatible_with = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:macos",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:macos",
+    ],
+)

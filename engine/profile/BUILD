@@ -7,8 +7,12 @@ cmake(
     out_shared_libs = ["libeasy_profiler.dylib"],
     visibility = ["//visibility:private"],
     cache_entries = {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_SYSTEM_NAME": "Darwin",  # Correct system name for macOS
+        "CMAKE_SYSTEM_PROCESSOR": "arm64",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
     },
+    # build_script= "//:custom_build_cmake.sh"
 )
 
 cc_library(
@@ -17,7 +21,7 @@ cc_library(
         glob(["src/**/*.cpp"])
     ,
     hdrs = glob(
-        ["include/**/*.hpp", "include/**/*.tpp"]
+        ["include/**/*.hpp", "include/**/*.tpp", ]
     ),
     deps = [
         '@spdlog',

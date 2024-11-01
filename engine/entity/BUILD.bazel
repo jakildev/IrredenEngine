@@ -1,0 +1,15 @@
+cc_library(
+    name = "ir_entity",
+    srcs = 
+        glob(["src/**/*.cpp"])
+    ,
+    hdrs = glob(
+        ["include/**/*.hpp", "include/**/*.tpp", ]
+    ),
+    deps = [
+
+    ],
+    strip_include_prefix = "include",
+    include_prefix = "",
+    visibility = ["//visibility:public"],
+)

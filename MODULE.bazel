@@ -4,15 +4,44 @@ module(
     version = "1.0",
     compatibility_level = 1,
 )
-
-# tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
-# tools.cmake(version = "3.23.1")
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
-# Bazel rules
-
 bazel_dep(name = "rules_foreign_cc", version = "0.12.0")
+bazel_dep(name = "platforms", version = "0.0.10")
+bazel_dep(name = "bazel_features", version = "1.20.0")
 
+host_platform = "@platforms//os:macos_arm64"
+
+http_archive = use_repo_rule(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive"
+)
+rules_foreign_cc_ext = use_extension(
+    "@rules_foreign_cc//foreign_cc:extensions.bzl",
+    "rules_foreign_cc_dependencies",
+)
+
+use_repo(rules_foreign_cc_ext, "rules_foreign_cc_dependencies")
+
+use_extension("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
+
+# Use the extension for additional setup if needed
+bazel_features_ext = use_extension("@bazel_features//:deps.bzl", "bazel_features_deps")
+use_repo(bazel_features_ext, "bazel_features_deps")
+
+# BEGIN trying to add custom toolchain------------------------
+
+# register_toolchains(
+#     "//toolchain:cc_toolchain_for_macos"
+# )
+# rules_foreign_cc_ext.rules_foreign_cc_dependencies(
+#     register_default_tools = False,
+#     register_built_tools = False,
+# )
+# Declare the rules_foreign_cc dependency
+
+# END trying to add custom toolchain------------------------
+
+
+# cmake build file templates
 _ALL_CONTENT = """
 filegroup(
     name = "all_srcs",
@@ -46,7 +75,13 @@ http_archive(
 
 # GLFW
 # GLM
-
+http_archive(
+    name = "glm",
+    build_file_content = _ALL_CONTENT,
+    urls = ["https://github.com/g-truc/glm/archive/refs/tags/1.0.1.zip"],
+    strip_prefix = "glm-1.0.1",
+    sha256 = "09c5716296787e1f7fcb87b1cbdbf26814ec1288ed6259ccd30d5d9795809fa5",
+)
 
 # IRProfile
 http_archive(
