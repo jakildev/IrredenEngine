@@ -11,7 +11,6 @@
 #define COMPONENT_PERIODIC_IDLE_H
 
 #include <irreden/ir_math.hpp>
-
 #include <cmath>
 
 using namespace IRMath;
@@ -90,6 +89,7 @@ namespace IRComponents {
             return m_currentValue;
         }
 
+        // This is slow and should probably be redone
         void tick()
         {
             tickCount_++;

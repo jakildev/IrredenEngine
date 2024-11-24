@@ -34,6 +34,9 @@ namespace IRECS {
     // this should also just use single createEntity call!
     template <>
     struct Prefab<PrefabTypes::kVoxelParticle> {
+
+        static void bindToLua();
+
         static EntityId create(
             vec3 position,
             Color color,

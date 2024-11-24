@@ -34,6 +34,8 @@ namespace IREntity {
     EntityId getEntity(const std::string& name);
     EntityRecord getEntityRecord(EntityId entity);
 
+    template <typename Component>
+    using LuaCreateEntityFunction = std::function<Component(IRMath::ivec3)>;
 
     template <typename... Components>
     Archetype getArchetype() {
@@ -184,14 +186,20 @@ namespace IREntity {
         Functions... functions
     )
     {
+        const IRMath::vec3 center = vec3(numEntities) / vec3(2);
+        IREntity::CreateEntityCallbackParams callbackParams{
+            IRMath::ivec3{0, 0, 0},
+            center
+        };
         std::vector<EntityId> res;
         for(int i = 0; i < numEntities.x; i++) {
             for(int j = 0; j < numEntities.y; j++) {
                 for(int k = 0; k < numEntities.z; k++) {
+                    callbackParams.index = IRMath::ivec3{i, j, k};
                     res.push_back(
                         createEntity(
                             functions(
-                                IRMath::ivec3{i, j, k}
+                                callbackParams
                             )...
                         )
                     );

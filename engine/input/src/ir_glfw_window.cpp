@@ -17,7 +17,8 @@ namespace IRInput {
 
     // TODO: implement multiple sub-windows if necessary
     IRGLFWWindow::IRGLFWWindow(
-        ivec2 windowSize
+        ivec2 windowSize,
+        bool fullscreen
     )
     {
         setCallbackError(irglfwCallback_error);
@@ -39,8 +40,8 @@ namespace IRInput {
             windowSize.x,
             windowSize.y,
             "IRREDEN GAME ENGINE",
-            // m_monitors[0], // Cant do this in debug mode with breakpoints
-            NULL,
+            fullscreen ? m_monitors[0] : NULL, // Cant do this in debug mode with breakpoints
+            // NULL,
             NULL
         );
 

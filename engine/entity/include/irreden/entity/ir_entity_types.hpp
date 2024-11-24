@@ -5,6 +5,8 @@
 #include <set>
 #include <memory>
 
+#include <irreden/ir_math.hpp>
+
 namespace IREntity {
 
     class EntityManager;
@@ -54,6 +56,25 @@ namespace IREntity {
             NONE,
             kNullEntity
         };
+    };
+
+    struct CreateEntityCallbackParams {
+        IRMath::vec3 center;
+        IRMath::ivec3 index;
+
+        CreateEntityCallbackParams(IRMath::ivec3 index, IRMath::vec3 center)
+        :   center{center}
+        ,   index{index}
+        {
+
+        }
+
+        CreateEntityCallbackParams()
+        :   center{0.0f}
+        ,   index{0, 0, 0}
+        {
+
+        }
     };
 
 } // namespace IREntity

@@ -10,7 +10,7 @@
 #ifndef SYSTEM_PERIODIC_IDLE_H
 #define SYSTEM_PERIODIC_IDLE_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_system.hpp>
 
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -18,7 +18,7 @@
 using namespace IRComponents;
 using namespace IRMath;
 
-namespace IRECS {
+namespace IRSystem {
 
     template<>
     struct System<PERIODIC_IDLE> {
@@ -41,6 +41,6 @@ namespace IRECS {
         }
     };
 
-} // namespace System
+} // namespace IRSystem
 
 #endif /* SYSTEM_PERIODIC_IDLE_H */

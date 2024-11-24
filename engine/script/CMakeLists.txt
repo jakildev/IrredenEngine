@@ -43,6 +43,7 @@ FetchContent_MakeAvailable(sol2)
 target_link_libraries(
     IrredenEngineScripting PUBLIC
     sol2
+    IrredenEngineEntity
 )
 target_include_directories(
     IrredenEngineScripting

@@ -24,6 +24,10 @@ namespace IRScript {
             IR_ASSERT(false, "Not a table type");
             throw std::runtime_error("Not a table type");
         }
+        virtual bool get_boolean() const {
+            IR_ASSERT(false, "Not a boolean type");
+            throw std::runtime_error("Not a boolean type");
+        }
         virtual double get_number() const {
             IR_ASSERT(false, "Not a number type");
             throw std::runtime_error("Not a number type");
@@ -46,6 +50,32 @@ namespace IRScript {
 
     template<LuaType Type, typename EnumType = void>
     struct LuaValue;
+
+    template<>
+    struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
+        bool value_;
+        bool defaultValue_;
+
+        LuaValue(bool defaultValue)
+        :   value_(defaultValue)
+        ,   defaultValue_(defaultValue)
+        {
+
+        }
+
+        void parse(const sol::object& obj) override {
+            IR_ASSERT(obj.is<bool>(), "Expected boolean");
+            value_ = obj.as<bool>();
+        }
+
+        void reset_to_default() override {
+            value_ = defaultValue_;
+        }
+
+        bool get_boolean() const override {
+            return value_;
+        }
+    };
 
     template<>
     struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {

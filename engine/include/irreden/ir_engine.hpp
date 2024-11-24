@@ -15,6 +15,11 @@ namespace IREngine {
 
     void init(const char* configFileName = kTestLuaConfig) {
         g_world = std::make_unique<World>(configFileName);
+        g_world->setupLuaBindings();
+    }
+
+    void runScript(const char* scriptFileName) {
+        g_world->runScript(scriptFileName);
     }
 
     void gameLoop() {

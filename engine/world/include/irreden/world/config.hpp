@@ -52,6 +52,10 @@ namespace IREngine {
                     }
                 )
             );
+            m_config.addEntry(
+                "fullscreen",
+                std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+            );
             sol::table configTable = m_lua.getTable("config");
             m_config.parse(configTable);
         }

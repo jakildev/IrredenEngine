@@ -77,6 +77,14 @@ namespace IRMath {
     };
 
 
+    // Can be used for 2DIso, when given a heading/direction, and some
+    // points
+    enum Shape1D {
+        LINE,
+        CURVED_LINE,
+        NONE_SHAPE_1D
+    };
+
     enum Shape2D {
         RECTANGLE,
         TRIANGLE,
@@ -84,6 +92,8 @@ namespace IRMath {
         TRAPEZOID,
         NONE_SHAPE_2D
     };
+
+
 
     enum class Shape3D {
         RECTANGULAR_PRISM,

@@ -7,6 +7,9 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
+// How can i get voxels to render shapes by just specifying a few points,
+// params, or things like that
+
 #ifndef COMPONENT_GEOMETRIC_SHAPE_H
 #define COMPONENT_GEOMETRIC_SHAPE_H
 

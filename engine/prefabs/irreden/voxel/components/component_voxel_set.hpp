@@ -28,9 +28,16 @@ namespace IRComponents {
     struct C_VoxelSetNew {
         int numVoxels_;
         ivec3 size_;
+
+        // local voxel position
         std::span<C_Position3D> positions_;
-        std::span<C_PositionOffset3D> positionOffsets_; // WIP
+
+        // offset to local voxel position
+        std::span<C_PositionOffset3D> positionOffsets_;
+
+        // global voxel position recalculated each update
         std::span<C_PositionGlobal3D> globalPositions_;
+
         std::span<C_Voxel> voxels_;
 
         C_VoxelSetNew(

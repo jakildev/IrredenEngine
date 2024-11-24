@@ -22,7 +22,7 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/time/time_manager.hpp>
 #include <irreden/world/config.hpp>
-
+#include <sol/sol.hpp>
 namespace IREngine {
 
     constexpr const char* kTestLuaConfig = "data/configs/default.irconf";
@@ -32,6 +32,8 @@ namespace IREngine {
         World(const char* configFileName);
         virtual ~World();
         void gameLoop();
+        void setupLuaBindings();
+        void runScript(const char* fileName);
 
         // void setPlayer(const IREntity::EntityId& player);
         // void setCameraPosition3D(const vec3& position);
@@ -46,6 +48,7 @@ namespace IREngine {
         IRRender::RenderManager m_renderer;
         IRAudio::AudioManager m_audioManager;
         IRTime::TimeManager m_timeManager;
+        IRScript::LuaScript m_lua;
         // adding to world for user should just be attaching things to world ecs
         // entity! I have tried this before btw but wasnt ready
         // EntityHandle m_worldEngine;

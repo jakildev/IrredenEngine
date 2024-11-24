@@ -5,6 +5,7 @@ include(FetchContent)
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/prefabs
 )
+# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
@@ -48,7 +49,7 @@ target_compile_options(
 
 # below could be helpful if trying to pull in package and build here.
 #   target_link_libraries(IrredenEngine PUBLIC easy_profiler)
-#   target_compile_definitions(IrredenEngine PUBLIC USING_EASY_PROFILER)
+# target_compile_definitions(IrredenEngine PUBLIC USING_EASY_PROFILER)
 #   target_link_libraries(IrredenEngine PUBLIC ${IrredenEngine_STATIC_LIB_DIR}/easy_profiler.lib)
 
 # I built this manually and link here

@@ -39,13 +39,13 @@ namespace IRConstants {
     constexpr Distance kTrixelDistanceMaxDistance =       65535;
 
     // TODO: Dynamic based on current GPU
-    constexpr ivec3 kVoxelPoolMaxAllocationSize = ivec3{32, 32, 32};
+    constexpr ivec3 kVoxelPoolMaxAllocationSize = ivec3{64, 64, 64};
     constexpr int kVoxelPoolMaxAllocationSizeTotal =
         kVoxelPoolMaxAllocationSize.x *
         kVoxelPoolMaxAllocationSize.y *
         kVoxelPoolMaxAllocationSize.z;
 
-    constexpr ivec3 kVoxelPoolSize = ivec3{32, 32, 32};
+    constexpr ivec3 kVoxelPoolSize = ivec3{64, 64, 64};
     // TODO: initalize buffer based on GPU stats, and make multiple to
     // make up the difference
     constexpr int kMaxSingleVoxels =

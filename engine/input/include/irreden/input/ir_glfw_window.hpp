@@ -56,7 +56,8 @@ namespace IRInput {
     class IRGLFWWindow {
     public:
         IRGLFWWindow(
-            ivec2 initWindowSize
+            ivec2 initWindowSize,
+            bool fullscreen
         );
         ~IRGLFWWindow();
 
