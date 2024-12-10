@@ -12,14 +12,14 @@ target_compile_options(
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm
-    GIT_TAG master
+    GIT_TAG 
 )
 FetchContent_MakeAvailable(glm)
 
 target_link_libraries(
     IrredenEngineMath
     PUBLIC
-    # glm
+    glm
 )
 
 target_include_directories(

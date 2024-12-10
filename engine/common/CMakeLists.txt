@@ -1,5 +1,5 @@
 add_library(IrredenEngineCommon STATIC
-    include/irreden/ir_constants.hpp
+    src/ir_constants.cpp
 )
 
 target_link_libraries(

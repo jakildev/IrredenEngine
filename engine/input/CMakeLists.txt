@@ -23,7 +23,6 @@ target_link_libraries(
     glfw
     IrredenEngineProfile
     IrredenEngineMath
-    IrredenEngineCommon
     IrredenEngineEntity
     IrredenEngineSystem
 
@@ -35,12 +34,10 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-add_custom_command(
-    TARGET IrredenEngineInput
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${glfw_BINARY_DIR}/src/glfw3d.dll
-        ${PROJECT_BINARY_DIR}/glfw3d.dll
+IR_copyDLL(
+    IrredenEngineInput
+    glfw3d
+    ${glfw_BINARY_DIR}/src
 )
 
 # target_link_libraries()

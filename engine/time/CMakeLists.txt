@@ -16,6 +16,7 @@ target_include_directories(
 
 target_link_libraries(
     IrredenEngineTime PUBLIC
+    IrredenEngineMath
     IrredenEngineCommon
     IrredenEngineProfile
 )

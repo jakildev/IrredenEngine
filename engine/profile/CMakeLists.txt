@@ -16,12 +16,11 @@ FetchContent_Declare(fmt
   GIT_TAG 10.1.1
 )
 FetchContent_MakeAvailable(fmt)
-add_custom_command(
-    TARGET IrredenEngineProfile
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${fmt_BINARY_DIR}/bin/libfmtd.dll
-        ${PROJECT_BINARY_DIR}/libfmtd.dll
+
+IR_copyDLL(
+    IrredenEngineProfile
+    libfmtd
+    ${fmt_BINARY_DIR}/bin
 )
 
 # spdlog
@@ -50,14 +49,11 @@ target_include_directories(IrredenEngineProfile PRIVATE
     ${spdlog_SOURCE_DIR}/include
 )
 
-add_custom_command(
-    TARGET IrredenEngineProfile
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${spdlog_BINARY_DIR}/libspdlogd.dll
-    ${PROJECT_BINARY_DIR}/libspdlogd.dll
+IR_copyDLL(
+    IrredenEngineProfile
+    libspdlogd
+    ${spdlog_BINARY_DIR}
 )
-
 # easy_profiler
 
 # Remove to disable profiling
@@ -80,12 +76,10 @@ target_include_directories(
     ${easy_profiler_SOURCE_DIR}/easy_profiler_core/include
 )
 
-add_custom_command(
-    TARGET IrredenEngineProfile
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${easy_profiler_BINARY_DIR}/bin/libeasy_profilerd.dll
-        ${PROJECT_BINARY_DIR}/libeasy_profilerd.dll
+IR_copyDLL(
+    IrredenEngineProfile
+    libeasy_profilerd.dll
+    ${easy_profiler_BINARY_DIR}/bin
 )
 
 target_include_directories(

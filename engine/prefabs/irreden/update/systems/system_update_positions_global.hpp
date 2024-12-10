@@ -24,7 +24,7 @@ namespace IRSystem {
 
     template<>
     struct System<GLOBAL_POSITION_3D> {
-        static constexpr SystemId create() {
+        static SystemId create() {
             // Example of heirarchical system that has optional parent
             return createSystem<
                 C_Position3D,

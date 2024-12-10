@@ -80,30 +80,30 @@ namespace IREngine {
         // Regular types
 
         // IRMath ------------------------------
-        m_lua.registerType<Color, Color(int, int, int, int)>("Color",
-            "r", &Color::red_,
-            "g", &Color::green_,
-            "b", &Color::blue_,
-            "a", &Color::alpha_
-        );
-        m_lua.registerType<ivec3, ivec3(int, int, int)>("ivec3",
-            "x", &ivec3::x,
-            "y", &ivec3::y,
-            "z", &ivec3::z
-        );
-        auto vec3_type = m_lua.registerType<vec3, vec3(float, float, float)>("vec3",
-            "x", &vec3::x,
-            "y", &vec3::y,
-            "z", &vec3::z
-        );
+        // m_lua.registerType<Color, Color(int, int, int, int)>("Color",
+        //     "r", &Color::red_,
+        //     "g", &Color::green_,
+        //     "b", &Color::blue_,
+        //     "a", &Color::alpha_
+        // );
+        // m_lua.registerType<ivec3, ivec3(int, int, int)>("ivec3",
+        //     "x", &ivec3::x,
+        //     "y", &ivec3::y,
+        //     "z", &ivec3::z
+        // );
+        // auto vec3_type = m_lua.registerType<vec3, vec3(float, float, float)>("vec3",
+        //     "x", &vec3::x,
+        //     "y", &vec3::y,
+        //     "z", &vec3::z
+        // );
 
         // TODO: Make this in engine, not sol
-        vec3_type[sol::meta_function::addition] = [](const vec3& a, const vec3& b) {
-            return a + b;
-        };
-        vec3_type[sol::meta_function::subtraction] = [](const vec3& a, const vec3& b) {
-            return a - b;
-        };
+        // vec3_type[sol::meta_function::addition] = [](const vec3& a, const vec3& b) {
+        //     return a + b;
+        // };
+        // vec3_type[sol::meta_function::subtraction] = [](const vec3& a, const vec3& b) {
+        //     return a - b;
+        // };
 
         m_lua.registerEnum<IREasingFunctions>("IREasingFunction",
             {
@@ -163,8 +163,8 @@ namespace IREngine {
         m_lua.registerType<C_PeriodicIdle, C_PeriodicIdle(float, float, float)>("C_PeriodicIdle",
             "addStageDurationSeconds", &C_PeriodicIdle::addStageDurationSeconds
         );
-        m_lua.registerType<IRScript::LuaEntity, IRScript::LuaEntity(IREntity::EntityId)>("LuaEntity",
-            "entity", &IRScript::LuaEntity::entity
+        m_lua.registerType<IRScript::LuaEntity, IRScript::LuaEntity(EntityId)>("LuaEntity",
+            "entity", [](IRScript::LuaEntity& obj) { return obj.entity; }
         );
 
         // m_lua.registerFunctionEntityBatch<C_Position3D, C_VoxelSetNew>("createEntityBatchVoxelStatic");
@@ -173,11 +173,11 @@ namespace IREngine {
 
         // IREntity --------------------------------------------------
         m_lua.lua()["IREntity"] = m_lua.lua().create_table(); // should be handled at lua module level
-        m_lua.registerType<IREntity::CreateEntityCallbackParams, IREntity::CreateEntityCallbackParams(ivec3, vec3)>(
-            "CreateEntityCallbackParams",
-            "center", &IREntity::CreateEntityCallbackParams::center,
-            "index", &IREntity::CreateEntityCallbackParams::index
-        );
+        // m_lua.registerType<IREntity::CreateEntityCallbackParams, IREntity::CreateEntityCallbackParams(ivec3, vec3)>(
+        //     "CreateEntityCallbackParams",
+        //     "center", &IREntity::CreateEntityCallbackParams::center,
+        //     "index", &IREntity::CreateEntityCallbackParams::index
+        // );
 
         // auto createEntityBatchVoxelStatic = [this](
         //     IRMath::ivec3 partitions,

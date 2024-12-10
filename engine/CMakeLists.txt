@@ -1,10 +1,13 @@
-
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 include(FetchContent)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/prefabs
 )
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/include
+)
+
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
@@ -16,16 +19,23 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/render)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
-# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/component)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
 
 add_library(IrredenEngine STATIC
     engine.cpp
 )
+IrredenEngine_setSystemCompileDefinitions(IrredenEngine)
+if(IR_isLinux)
+    message(STATUS "Linux-specific code will be compiled.")
+elseif(IR_isDarwin)
+    message(STATUS "macOS-specific code will be compiled.")
+elseif(IR_isWindows)
+    message(STATUS "Windows-specific code will be compiled.")
+endif()
 
 # ------------------ Dependencies start --------------------
 

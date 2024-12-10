@@ -7,7 +7,7 @@
  * Modified By: <your_name> <><Month> <YYYY>
  */
 
-#ifndef SYSTEM_FRAMEBUFFER_TO_SCREEN_Hs
+#ifndef SYSTEM_FRAMEBUFFER_TO_SCREEN_H
 #define SYSTEM_FRAMEBUFFER_TO_SCREEN_H
 
 #include <irreden/ir_system.hpp>

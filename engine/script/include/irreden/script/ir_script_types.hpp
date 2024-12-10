@@ -19,6 +19,18 @@ namespace IRScript {
 
      struct LuaEntity {
         IREntity::EntityId entity;
+
+        LuaEntity(IREntity::EntityId entity)
+        :   entity{entity}
+        {
+
+        }
+
+        LuaEntity()
+        :   entity{0}
+        {
+
+        }
     };
 
     template <typename Component>

@@ -30,6 +30,58 @@ function(
     endif()
 endfunction()
 
+# function(
+#     IR_isWindows
+# )
+#     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+#         set(${result} TRUE PARENT_SCOPE)
+#     else()
+#         set(${result} FALSE PARENT_SCOPE)
+#     endif()
+# endfunction()
+
+# function(
+#     IR_isDarwin
+# )
+#     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+#         set(${result} TRUE PARENT_SCOPE)
+#     else()
+#         set(${result} FALSE PARENT_SCOPE)
+#     endif()
+# endfunction()
+
+# function(
+#     IR_isLinux
+# )
+#     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+#         set(${result} TRUE PARENT_SCOPE)
+#     else()
+#         set(${result} FALSE PARENT_SCOPE)
+#     endif()
+# endfunction()
+
+function(
+    IrredenEngine_setSystemCompileDefinitions
+    targetName
+)
+    # let the preprocessor know about the system name
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message("IrredenEngine: Linux system detected.")
+        set(IR_isLinux TRUE PARENT_SCOPE)
+        target_compile_definitions(${targetName} PUBLIC "IS_LINUX")
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        message("IrredenEngine: Darwin system detected.")
+        set(IR_isDarwin TRUE PARENT_SCOPE)
+        target_compile_definitions(${targetName} PUBLIC "IS_MACOS")
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        message("IrredenEngine: Windows system detected.")
+        set(IR_isWindows TRUE PARENT_SCOPE)
+        target_compile_definitions(${targetName} PUBLIC "IS_WINDOWS")
+    endif()
+endfunction()
+
 function(
     IrredenEngine_copyLuaFiles
 )
@@ -53,11 +105,31 @@ function(
             COMMENT "Copying ${LUA_FILE} to ${DEST_FILE}"
             VERBATIM
         )
-
+ 
         # Add to target
         list(APPEND COPY_COMMANDS "${DEST_FILE}")
     endforeach()
 
     # Add a custom target that depends on all copy commands
     add_custom_target(copy_all_lua_files ALL DEPENDS ${COPY_COMMANDS})
+endfunction()
+
+# copyDLL copies dll file on windows build into dest path
+function(
+    IR_copyDLL
+    target
+    dllName
+    sourceDir
+)
+    if(IR_isWindows)
+        cmake_path(APPEND tempFullSourcePath ${sourceDir} ${dllName}.dll)
+        cmake_path(APPEND tempFullDestPath ${PROJECT_BINARY_DIR} ${dllName}.dll)
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+                ${tempFullSourcePath}
+                ${tempFullDestPath}
+        )
+    endif()
 endfunction()

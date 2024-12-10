@@ -73,7 +73,6 @@ target_link_libraries(
     IrredenEngineProfile
     IrredenEngineMath
     IrredenEngineInput
-    IrredenEngineCommon
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset

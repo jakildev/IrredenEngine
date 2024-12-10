@@ -1,7 +1,8 @@
 add_library(IrredenEngineScripting STATIC
-
     src/lua_script.cpp
 )
+
+add_subdirectory(third_party/lua54)
 
 target_compile_options(
     IrredenEngineProfile
@@ -16,22 +17,28 @@ target_compile_options(
 
 # Use precompiled lua54 and include files
 
-target_link_libraries(
-    IrredenEngineScripting PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/static/liblua54.a
-    IrredenEngineProfile
-)
-target_include_directories(
-    IrredenEngineScripting
-    PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lua54
-)
+# target_link_libraries(
+#     IrredenEngineScripting PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/static/liblua54.a
+#     IrredenEngineProfile
+# )
+# target_include_directories(
+#     IrredenEngineScripting
+#     PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include/lua54
+# )
 
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic/lua54.dll
-    ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
-)
+# IR_copyDLL(
+#     IrredenEngineScripting
+#     lua54
+#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic
+# )
+
+# configure_file(
+#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic/lua54.dll
+#     ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
+# )
 
 # Use sol2 library for C++ binding
 FetchContent_Declare(
@@ -42,13 +49,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(sol2)
 target_link_libraries(
     IrredenEngineScripting PUBLIC
+    lua
     sol2
     IrredenEngineEntity
 )
 target_include_directories(
     IrredenEngineScripting
-    PRIVATE
+    PUBLIC
     ${sol2_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # add_custom_command(
