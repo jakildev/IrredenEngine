@@ -13,12 +13,7 @@
 #include <irreden/render/render_manager.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/rendering_rm.hpp>
-#include <irreden/render/buffer.hpp>
-#include <irreden/render/texture.hpp>
-#include <irreden/render/vao.hpp>
 #include <irreden/render/shapes_2d.hpp>
-#include <irreden/render/shader.hpp>
-#include <irreden/render/shader_names.hpp>
 #include <irreden/render/image_data.hpp>
 
 namespace IRRender {

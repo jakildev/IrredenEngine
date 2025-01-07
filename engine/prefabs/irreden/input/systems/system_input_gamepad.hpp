@@ -10,7 +10,7 @@
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
-#include <irreden/ir_input.hpp>
+#include <irreden/ir_window.hpp>
 #include <irreden/ir_system.hpp>
 
 #include <irreden/input/components/component_glfw_joystick.hpp>
@@ -32,7 +32,7 @@ namespace IRSystem {
                 )
                 {
                     gamepadState.updateState(
-                        IRInput::getWindow().getGamepadState(joystick.joystickId_)
+                        IRWindow::getWindow().getGamepadState(joystick.joystickId_)
                     );
                 }
             );

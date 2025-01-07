@@ -12,7 +12,7 @@
 
 #include <irreden/ir_math.hpp>
 
-#include <irreden/input/ir_input_types.hpp>
+#include <GLFW/glfw3.h>
 
 #include <vector>
 #include <functional>
@@ -22,7 +22,7 @@
 
 using namespace IRMath;
 
-namespace IRInput {
+namespace IRWindow {
 
     struct IRGLFWJoystickInfo {
         int joystickId_;
@@ -119,7 +119,6 @@ namespace IRInput {
     };
 
     void irglfwCallback_error(int error, const char* msg);
-    void irglfwCallback_framebuffer_size(GLFWwindow* window, int width, int height);
     void irglfwCallback_key(
         GLFWwindow* window,
         int key,
@@ -139,6 +138,6 @@ namespace IRInput {
         double yoffset
     );
 
-} // namespace IRInput
+} // namespace IRWindow
 
 #endif /* IR_GLFW_WINDOW_H */

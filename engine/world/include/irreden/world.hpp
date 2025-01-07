@@ -10,7 +10,7 @@
 #ifndef WORLD_H
 #define WORLD_H
 
-#include <irreden/input/ir_glfw_window.hpp>
+#include <irreden/window/ir_glfw_window.hpp>
 #include <irreden/input/input_manager.hpp>
 #include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
@@ -23,6 +23,7 @@
 #include <irreden/time/time_manager.hpp>
 #include <irreden/world/config.hpp>
 #include <sol/sol.hpp>
+
 namespace IREngine {
 
     constexpr const char* kTestLuaConfig = "data/configs/default.irconf";
@@ -39,7 +40,7 @@ namespace IREngine {
         // void setCameraPosition3D(const vec3& position);
     private:
         WorldConfig m_worldConfig;
-        IRInput::IRGLFWWindow m_IRGLFWWindow;
+        IRWindow::IRGLFWWindow m_IRGLFWWindow;
         IREntity::EntityManager m_entityManager;
         IRSystem::SystemManager m_systemManager;
         IRInput::InputManager m_inputManager;

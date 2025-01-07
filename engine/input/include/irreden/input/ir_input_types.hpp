@@ -10,7 +10,7 @@
 #ifndef IR_INPUT_TYPES_H
 #define IR_INPUT_TYPES_H
 
-#include <glad/glad.h>
+// #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include <unordered_map>

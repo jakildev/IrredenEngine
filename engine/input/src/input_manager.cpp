@@ -8,7 +8,9 @@
  */
 
 #include <irreden/ir_input.hpp>
+
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_window.hpp>
 
 #include <irreden/input/input_manager.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
@@ -55,29 +57,29 @@ namespace IRInput {
         );
 
         processKeyMouseButtons(
-            getWindow().getKeysPressedToProcess(),
+            IRWindow::getWindow().getKeysPressedToProcess(),
             ButtonStatuses::PRESSED
         );
         processKeyMouseButtons(
-            getWindow().getKeysReleasedToProcess(),
+            IRWindow::getWindow().getKeysReleasedToProcess(),
             ButtonStatuses::RELEASED
         );
         processKeyMouseButtons(
-            getWindow().getMouseButtonsPressedToProcess(),
+            IRWindow::getWindow().getMouseButtonsPressedToProcess(),
             ButtonStatuses::PRESSED
         );
         processKeyMouseButtons(
-            getWindow().getMouseButtonsReleasedToProcess(),
+            IRWindow::getWindow().getMouseButtonsReleasedToProcess(),
             ButtonStatuses::RELEASED
         );
-        processScrolls(getWindow().getScrollsToProcess());
-        IRInput::getCursorPosition(
+        processScrolls(IRWindow::getWindow().getScrollsToProcess());
+        IRWindow::getCursorPosition(
             m_mousePositionUpdate
         );
     }
 
     void InputManager::tickRender() {
-        IRInput::getCursorPosition(
+        IRWindow::getCursorPosition(
             m_mousePositionRender
         );
     }
@@ -208,14 +210,14 @@ namespace IRInput {
     void InputManager::initJoystickEntities() {
         for(int i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++)
         {
-            if(getWindow().joystickPresent(i)) {
+            if(IRWindow::getWindow().joystickPresent(i)) {
                 IRE_LOG_INFO("Creating joystick entity for joystick {}", i);
 
                 m_gamepadEntities.emplace_back(
                     IREntity::createEntity<kGLFWJoystick>(
                          i,
-                        getWindow().getJoystickName(i),
-                        getWindow().joystickIsGamepad(i)
+                        IRWindow::getWindow().getJoystickName(i),
+                        IRWindow::getWindow().joystickIsGamepad(i)
                     )
                 );
             }

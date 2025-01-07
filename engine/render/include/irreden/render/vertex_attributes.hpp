@@ -11,6 +11,7 @@
 #define VERTEX_ATTRIBUTES_H
 
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/opengl/opengl_types.hpp>
 
 namespace IRRender {
     struct VertexArrayAttribute {

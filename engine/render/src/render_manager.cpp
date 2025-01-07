@@ -9,6 +9,8 @@
 
 #include <irreden/ir_render.hpp>
 
+#include <irreden/ir_window.hpp>
+
 #include <irreden/render/render_manager.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 
@@ -111,6 +113,7 @@ namespace IRRender {
     //         GL_SHADER_STORAGE_BUFFER,
     //         kBufferIndex_SingleVoxelColors
     //     }
+    ,   m_renderImpl{createRenderer()}
     {
         IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
         IREntity::setName(m_camera, "camera");
@@ -150,10 +153,10 @@ namespace IRRender {
     void RenderManager::tick() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        IRInput::getWindowSize(m_viewport);
+        IRWindow::getWindowSize(m_viewport);
         updateOutputResolution();
         IRSystem::executePipeline(IRTime::Events::RENDER);
-        IRInput::getWindow().swapBuffers();
+        IRWindow::getWindow().swapBuffers();
     }
 
     std::tuple<

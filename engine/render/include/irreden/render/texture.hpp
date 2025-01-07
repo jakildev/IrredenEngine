@@ -14,32 +14,17 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 
 using namespace IRMath;
 
 namespace IRRender {
 
-    class Texture2D {
+    class ITexture2D {
     public:
-        Texture2D(
-            GLenum type,
-            unsigned int width,
-            unsigned int height,
-            GLenum internalFormat,
-            GLint wrap = GL_REPEAT,
-            GLint filter = GL_NEAREST,
-            int alignment = 1
-        );
-        ~Texture2D();
-        Texture2D(const Texture2D& other);
-        Texture2D& operator=(const Texture2D& other);
-        Texture2D(Texture2D&& other);
-        Texture2D& operator=(Texture2D&& other);
-
-        inline unsigned int getWidth() const { return m_width; }
-        inline unsigned int getHeight() const { return m_height; }
-        inline uvec2 getSize() const { return uvec2(m_width, m_height); }
+        virtual ~ITexture2D() = default;
+        inline uvec2 getSize() const { return ivec2(m_width, m_height); }
         GLuint getHandle() const;
         void bind(GLuint unit = 0) const;
         void bindImage(

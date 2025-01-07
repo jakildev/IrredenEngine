@@ -1,4 +1,3 @@
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 include(FetchContent)
 
 include_directories(
@@ -8,7 +7,12 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/common/include
 )
 
+add_library(IrredenEngine STATIC
+    engine.cpp
+)
+
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+IrredenEngine_setSystemCompileDefinitions(IrredenEngine)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
@@ -23,12 +27,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
 
-add_library(IrredenEngine STATIC
-    engine.cpp
-)
-IrredenEngine_setSystemCompileDefinitions(IrredenEngine)
 if(IR_isLinux)
     message(STATUS "Linux-specific code will be compiled.")
 elseif(IR_isDarwin)
@@ -42,17 +43,11 @@ endif()
 # Toggle release build
 # target_compile_definitions(IrredenEngine PUBLIC IRREDEN_RELEASE_BUILD)
 
-# target_include_directories(IrredenEngine PUBLIC include
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-
-# )
-
 target_compile_options(
     IrredenEngine
     PUBLIC
     -O3
 )
-
 
 # set(IrredenEngine_STATIC_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/static)
 # set(IrredenEngine_DYNAMIC_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic)
@@ -79,6 +74,7 @@ target_link_libraries(
     IrredenEngineTime
     IrredenEngineCommand
     IrredenEngineWorld
+    IrredenEngineWindow
 )
 
 target_include_directories(

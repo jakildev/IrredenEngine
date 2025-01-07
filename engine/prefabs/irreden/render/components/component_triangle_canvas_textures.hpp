@@ -14,6 +14,8 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_asset.hpp>
 
+#include <irrenen/render/texture.hpp>
+
 using namespace IRMath;
 using namespace IRRender;
 

@@ -11,6 +11,7 @@
 #define SHADER_H
 
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/opengl/opengl_types.hpp>
 
 #include <string>
 #include <vector>

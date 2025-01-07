@@ -42,8 +42,8 @@ namespace IRInput {
             KeyMouseButtons button,
             ButtonStatuses status
         ) const;
-        vec2 getMousePositionUpdate() const; // Should be stored in ECS
-        vec2 getMousePositionRender() const; // Should be stored in ECS
+        IRMath::vec2 getMousePositionUpdate() const; // Should be stored in ECS
+        IRMath::vec2 getMousePositionRender() const; // Should be stored in ECS
         int getButtonPressesThisFrame(KeyMouseButtons button) const;
         int getButtonReleasesThisFrame(KeyMouseButtons button) const;
         float getAxisValue(

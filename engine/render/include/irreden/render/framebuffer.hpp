@@ -13,6 +13,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/texture.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/vao.hpp>

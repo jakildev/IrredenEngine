@@ -25,7 +25,6 @@ namespace IREntity {
         ,   m_pureComponentVectors{}
         ,   m_liveEntityCount{0}
         ,   m_entitiesMarkedForDeletion{}
-
         {
         for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
             m_entityPool.push(entity);

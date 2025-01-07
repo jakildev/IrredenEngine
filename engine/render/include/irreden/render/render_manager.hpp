@@ -10,16 +10,19 @@
 #ifndef RENDER_MANAGER_H
 #define RENDER_MANAGER_H
 
-#include <irreden/ir_input.hpp>
+// #include <irreden/ir_input.hpp>
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/renderer_impl.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
+
+#include <Metal/Metal.hpp>
 
 #include <tuple>
 #include <string>
@@ -78,6 +81,7 @@ namespace IRRender {
 
 
     private:
+        // tmp
         GlobalConstantsGLSL m_globalConstantsGLSL;
         Buffer m_bufferUniformConstantsGLSL;
         // Buffer m_bufferVoxelPositions;
@@ -93,6 +97,7 @@ namespace IRRender {
         ivec2 m_outputScaleFactor;
         std::unordered_map<std::string, EntityId> m_canvasMap;
         FitMode m_fitMode;
+        std::unique_ptr<RenderImpl> m_renderImpl;
 
         void initRenderingSystems();
         void initRenderingResources();

@@ -7,13 +7,15 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
+#include <irreden/ir_window.hpp>
+
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_input.hpp>
-#include <irreden/input/ir_glfw_window.hpp>
+// #include <irreden/ir_window_types.hpp>
+#include <irreden/window/ir_glfw_window.hpp>
 
 #include <iostream>
 
-namespace IRInput {
+namespace IRWindow {
 
     // TODO: implement multiple sub-windows if necessary
     IRGLFWWindow::IRGLFWWindow(
@@ -55,13 +57,14 @@ namespace IRInput {
 
         glfwSwapInterval(0); // Remove for vsync?
 
-        status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-        IR_ASSERT(status, "Failed to initalize GLAD");
+        // This needs to get put back somewhere for openGL impl
+        // status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+        // IR_ASSERT(status, "Failed to initalize GLAD");
 
         setWindowUserPointer(this);
         // setWindowIcon();
 
-        setCallbackFramebufferSize(irglfwCallback_framebuffer_size);
+        // setCallbackFramebufferSize(openGLCallback_framebuffer_size);
         setCallbackKey(irglfwCallback_key);
         setCallbackMouseButton(irglfwCallback_mouseButton);
         setCallbackScroll(irglfwCallback_scroll);
@@ -180,7 +183,6 @@ namespace IRInput {
         GLFWkeyfun keyCallbackFunction
     )
     {
-
         glfwSetKeyCallback(m_window, keyCallbackFunction);
     }
     void IRGLFWWindow::setCallbackMouseButton(
@@ -209,12 +211,6 @@ namespace IRInput {
 
     void irglfwCallback_error(int error, const char* msg) {
         IRE_LOG_ERROR("GLFW error {}: {}", error, msg);
-    }
-
-    void irglfwCallback_framebuffer_size(GLFWwindow* window, int width, int height)
-    {
-        glViewport(0, 0, width, height);
-        IRE_LOG_INFO("Resized viewport to {}x{}", width, height);
     }
 
     void irglfwCallback_mouseButton(
@@ -275,5 +271,5 @@ namespace IRInput {
         IRE_LOG_INFO("Scroll: xoffset: {}, yoffset: {}", xoffset, yoffset);
     }
 
-} // namespace IRInput
+} // namespace IRWindow
 
