@@ -104,7 +104,6 @@ target_link_libraries(
     IrredenEngineWindow
     # assimp
     meshoptimizer
-    glfw
     # stbimage
     ${PLATFORM_LIBS}
 )

@@ -9,15 +9,7 @@ target_compile_options(
     -O3
 )
 
-target_link_libraries(
-    IrredenEngineInput PUBLIC
-    IrredenEngineProfile
-    IrredenEngineMath
-    IrredenEngineEntity
-    IrredenEngineSystem
-    IrredenEngineWindow
 
-)
 target_include_directories(
     IrredenEngineInput
     PUBLIC
@@ -25,8 +17,11 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-IR_copyDLL(
-    IrredenEngineInput
-    glfw3d
-    ${glfw_BINARY_DIR}/src
+target_link_libraries(
+    IrredenEngineInput PUBLIC
+    IrredenEngineProfile
+    IrredenEngineMath
+    IrredenEngineEntity
+    IrredenEngineSystem
+    IrredenEngineWindow
 )

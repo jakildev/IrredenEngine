@@ -78,7 +78,7 @@ target_include_directories(
 
 IR_copyDLL(
     IrredenEngineProfile
-    libeasy_profilerd.dll
+    libeasy_profilerd
     ${easy_profiler_BINARY_DIR}/bin
 )
 

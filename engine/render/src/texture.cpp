@@ -15,8 +15,6 @@
 
 namespace IRRender {
 
-    virtual ~ITexture2D
-
     Texture2D::~Texture2D() {
         IRE_LOG_INFO("Deleting texture 2D: {}", m_handle);
         ENG_API->glDeleteTextures(1, &this->m_handle);
