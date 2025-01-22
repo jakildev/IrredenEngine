@@ -63,7 +63,7 @@ namespace IREngine {
         m_IRGLFWWindow.setWindowIcon(
             &iconGlfw
         );
-        m_renderer.printGLSystemInfo();
+        m_renderer.printRenderInfo();
         IR_PROFILE_MAIN_THREAD;
 
         IRE_LOG_INFO("Initalized game world");

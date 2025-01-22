@@ -28,6 +28,8 @@
 
 namespace IRRender {
 
+    
+
     RenderManager::RenderManager(
         ivec2 gameResolution,
         FitMode fitMode
@@ -274,23 +276,8 @@ namespace IRRender {
 
     }
 
-    void RenderManager::printGLSystemInfo() {
-        int intAttr;
-        ENG_API->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &intAttr);
-        IRE_LOG_INFO(
-            "Maximum nr of vertex attributes supported: {}",
-            intAttr
-        );
-        ENG_API->glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &intAttr);
-        IRE_LOG_INFO(
-            "Max 3d texture size: {}",
-            intAttr
-        );
-        ENG_API->glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &intAttr);
-        IRE_LOG_INFO(
-            "Max uniform block size: {}",
-            intAttr
-        );
+    void RenderManager::printRenderInfo() {
+        m_renderImpl->printInfo();
     }
 
     ivec2 RenderManager::calcOutputScaleByMode()

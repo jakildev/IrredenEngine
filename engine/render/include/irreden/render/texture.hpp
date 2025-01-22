@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: texture.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef TEXTURE_H
 #define TEXTURE_H
 

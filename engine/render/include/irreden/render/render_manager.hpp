@@ -56,8 +56,7 @@ namespace IRRender {
         vec2 screenToOutputWindowOffset() const;
 
         void tick();
-
-        void printGLSystemInfo();
+        void printRenderInfo();
 
         std::tuple<
             std::span<C_Position3D>,
