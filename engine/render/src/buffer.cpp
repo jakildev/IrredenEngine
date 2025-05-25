@@ -9,8 +9,8 @@
 
 #include <irreden/ir_profile.hpp>
 
-#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/ir_gl_api.hpp>
 
 namespace IRRender {
 

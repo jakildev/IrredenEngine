@@ -15,6 +15,8 @@
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/image_data.hpp>
+#include <irreden/render/shader.hpp>
+
 
 namespace IRRender {
 

@@ -11,9 +11,41 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/render/image_data.hpp>
 
+#include <irreden/render/ir_gl_api.hpp>
+
 #include <irreden/render/texture.hpp>
 
 namespace IRRender {
+
+    Texture2D::Texture2D(
+        GLenum type,
+        unsigned int width,
+        unsigned int height,
+        GLenum internalFormat,
+        GLint wrap,
+        GLint filter,
+        int alignment
+    )
+    :   m_width(width),
+        m_height(height)
+    {
+        ENG_API->glCreateTextures(type, 1, &m_handle);
+        ENG_API->glTextureStorage2D(m_handle, 1, internalFormat, width, height);
+        ENG_API->glTextureParameteri(m_handle, GL_TEXTURE_WRAP_S, wrap);
+        ENG_API->glTextureParameteri(m_handle, GL_TEXTURE_WRAP_T, wrap);
+        ENG_API->glTextureParameteri(m_handle, GL_TEXTURE_MIN_FILTER, filter);
+        ENG_API->glTextureParameteri(m_handle, GL_TEXTURE_MAG_FILTER, filter);
+        ENG_API->glPixelStorei(
+            GL_PACK_ALIGNMENT,
+            alignment
+        );
+        ENG_API->glPixelStorei(
+            GL_UNPACK_ALIGNMENT,
+            alignment
+        );
+
+        IRE_LOG_INFO("Created texture 2D: {}", m_handle);
+    }
 
     Texture2D::~Texture2D() {
         IRE_LOG_INFO("Deleting texture 2D: {}", m_handle);

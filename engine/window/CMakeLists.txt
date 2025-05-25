@@ -41,3 +41,9 @@ target_include_directories(
     IrredenEngineWindow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+IR_copyDLL(
+    IrredenEngineWindow
+    glfw3d
+    ${glfw_BINARY_DIR}/src
+)

@@ -10,7 +10,6 @@
 #ifndef VAO_H
 #define VAO_H
 
-#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/vertex_attributes.hpp>

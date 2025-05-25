@@ -14,6 +14,7 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/render/texture.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 
 using namespace IRMath;

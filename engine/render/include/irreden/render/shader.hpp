@@ -10,7 +10,6 @@
 #ifndef SHADER_H
 #define SHADER_H
 
-#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 
 #include <string>

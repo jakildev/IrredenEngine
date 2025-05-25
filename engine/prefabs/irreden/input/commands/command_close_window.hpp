@@ -11,7 +11,7 @@ namespace IRCommand {
     struct Command<CLOSE_WINDOW> {
         static auto create() {
             return []() {
-                IRInput::closeWindow();
+                IRWindow::closeWindow();
             };
         }
     };

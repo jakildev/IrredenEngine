@@ -118,6 +118,7 @@ namespace IRRender {
     ,   m_renderImpl{createRenderer()}
     {
         IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
+        m_renderImpl->init();
         IREntity::setName(m_camera, "camera");
         std::vector<Color> colorPalette = {
             kPinkTanOrange[1],
