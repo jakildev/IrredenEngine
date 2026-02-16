@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 
     // Initialize entities, command, and systems here
     // ...
-    IRECS::createEntity(
+    IREntity::createEntity(
         C_Position3D{
             0, 0, 0
         },
@@ -21,11 +21,11 @@ int main(int argc, char **argv) {
             Color{150, 100, 50, 255}
         }
     );
-    IRECS::createEntity<kMidiDevice>(
+    IREntity::createEntity<IREntity::kMidiDevice>(
         "UMC1820 MIDI In",
         MidiDeviceType::MIDI_DEVICE_TYPE_IN
     );
-    IRECS::createEntity<kMidiDevice>(
+    IREntity::createEntity<IREntity::kMidiDevice>(
         "UMC1820 MIDI Out",
         MidiDeviceType::MIDI_DEVICE_TYPE_OUT
     );

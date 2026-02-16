@@ -14,11 +14,11 @@ namespace {
                 // Do tear-down work for each test here.
             }
 
-           IRECS::EntityManager m_entityManager;
+           IREntity::EntityManager m_entityManager;
     };
 
     TEST_F(IREntityTest, CreateEntity) {
-        IRECS::EntityId newEntity = m_entityManager.createEntity();
-        EXPECT_NE(newEntity, IRECS::kNullEntity);
+        IREntity::EntityId newEntity = m_entityManager.createEntity();
+        EXPECT_NE(newEntity, IREntity::kNullEntity);
     }
 }

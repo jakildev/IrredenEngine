@@ -12,7 +12,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_audio.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/audio/components/component_midi_device.hpp>
@@ -22,7 +22,7 @@
 using namespace IRComponents;
 using namespace IRAudio;
 
-namespace IRECS {
+namespace IREntity {
 
     template <>
     struct Prefab<PrefabTypes::kMidiDevice> {
@@ -32,27 +32,27 @@ namespace IRECS {
             MidiDeviceType type
         )
         {
-            EntityId entity = IRECS::createEntity(
+            EntityId entity = IREntity::createEntity(
                 C_Name{name}
             );
             if(type == MidiDeviceType::MIDI_DEVICE_TYPE_IN) {
-                IRECS::setComponent(entity, C_MidiDevice{
+                IREntity::setComponent(entity, C_MidiDevice{
                     IRAudio::openPortMidiIn(
                         name
                     )
                 });
-                IRECS::setComponent(
+                IREntity::setComponent(
                     entity,
                     C_MidiIn{}
                 );
             }
             if(type == MidiDeviceType::MIDI_DEVICE_TYPE_OUT) {
-                IRECS::setComponent(entity, C_MidiDevice{
+                IREntity::setComponent(entity, C_MidiDevice{
                     IRAudio::openPortMidiOut(
                         name
                     )
                 });
-                IRECS::setComponent(
+                IREntity::setComponent(
                     entity,
                     C_MidiOut{}
                 );

@@ -38,7 +38,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: YOUR_CREATION_NAME_HERE");
 
-    IREngine::init(IREngine::kConfigDefaultHorizontalSmall);
+    IREngine::init(IREngine::kTestLuaConfig);
     initSystems();
     initCommands();
     initEntities();
