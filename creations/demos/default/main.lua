@@ -4,7 +4,6 @@ IREntity.createEntityBatchVoxelPeriodicIdle(
     ivec3.new(8, 8, 8),
     function(params)
         local index = params.index
-        print(params.center.x)
         local basePosition = vec3.new(index.x, index.y, index.z) - params.center
         return C_Position3D.new(
             vec3.new(

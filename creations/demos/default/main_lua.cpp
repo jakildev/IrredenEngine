@@ -8,6 +8,7 @@
  */
 
 #include <irreden/ir_engine.hpp>
+#include "lua_bindings.hpp"
 
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
@@ -46,6 +47,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
+    IRDefaultCreation::registerLuaBindings();
     IREngine::init("config.lua");
     initSystems();
     initCommands();

@@ -23,6 +23,8 @@
 #include <irreden/time/time_manager.hpp>
 #include <irreden/world/config.hpp>
 #include <sol/sol.hpp>
+#include <functional>
+#include <vector>
 
 namespace IREngine {
 
@@ -30,10 +32,14 @@ namespace IREngine {
 
     class World {
     public:
+        using LuaBindingRegistration =
+            std::function<void(IRScript::LuaScript&)>;
         World(const char* configFileName);
         virtual ~World();
         void gameLoop();
-        void setupLuaBindings();
+        void setupLuaBindings(
+            const std::vector<LuaBindingRegistration>& bindings
+        );
         void runScript(const char* fileName);
 
         // void setPlayer(const IREntity::EntityId& player);

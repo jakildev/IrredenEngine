@@ -14,11 +14,13 @@
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
+#include <stdexcept>
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/script/ir_script_types.hpp>
+#include <irreden/script/lua_binding_traits.hpp>
 
 namespace IRScript {
 
@@ -37,6 +39,20 @@ namespace IRScript {
         void scriptFile(const char* filename);
 
         void bindCreateEntityBatchFunction();
+
+    template <typename T>
+    void registerTypeFromTraits() {
+        static_assert(
+            kHasLuaBinding<T>,
+            "Lua binding specialization missing for this type."
+        );
+        bindLuaType<T>(*this);
+    }
+
+    template <typename... Types>
+    void registerTypesFromTraits() {
+        (registerTypeFromTraits<Types>(), ...);
+    }
 
     template <typename Enum>
     void registerEnum(
@@ -87,7 +103,7 @@ namespace IRScript {
             m_lua["IREntity"] = m_lua.create_table();
         }
         auto wrappedFunction = wrapCreateEntityBatchWithFunctions<Components...>();
-        m_lua["IREntity"][funcName] = &wrappedFunction;
+        m_lua["IREntity"][funcName] = wrappedFunction;
     }
 
     private: //----------------------------------------------------------------
@@ -98,11 +114,14 @@ namespace IRScript {
         return [function](IREntity::CreateEntityCallbackParams params) {
             sol::protected_function_result result = function(params);
 
-            IR_ASSERT(
-                result.valid(),
-                "Error in protected_function_result: {}",
-                sol::error{result}.what()
-            );
+            if(!result.valid()) {
+                sol::error err = result;
+                IRE_LOG_ERROR(
+                    "Error in protected_function_result: {}",
+                    err.what()
+                );
+                throw std::runtime_error(err.what());
+            }
 
             Component component = result;
             return component;
