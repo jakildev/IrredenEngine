@@ -1,0 +1,70 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Debug",
+      "description": "Default local configuration for development.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-all",
+      "displayName": "Build All Targets",
+      "configurePreset": "default"
+    },
+    {
+      "name": "format-check",
+      "displayName": "Format Check",
+      "configurePreset": "default",
+      "targets": [
+        "format-check"
+      ]
+    },
+    {
+      "name": "format",
+      "displayName": "Format",
+      "configurePreset": "default",
+      "targets": [
+        "format"
+      ]
+    },
+    {
+      "name": "lint",
+      "displayName": "Lint",
+      "configurePreset": "default",
+      "targets": [
+        "lint"
+      ]
+    },
+    {
+      "name": "tests",
+      "displayName": "Build Tests",
+      "configurePreset": "default",
+      "targets": [
+        "IrredenEngineTest"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default-tests",
+      "displayName": "Run CTest",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_hitbox_rect.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_HITBOX_RECT_H
 #define COMPONENT_HITBOX_RECT_H
 
@@ -16,23 +7,14 @@ using IRMath::u8vec2;
 
 namespace IRComponents {
 
-    struct C_HitboxRect {
-        u8vec2 size_;
+struct C_HitboxRect {
+    u8vec2 size_;
 
-        C_HitboxRect(u8vec2 size)
-        :   size_{size}
-        {
+    C_HitboxRect(u8vec2 size) : size_{size} {}
 
-        }
-
-        // Default
-        C_HitboxRect()
-        :   size_{u8vec2{1, 1}}
-        {
-
-        }
-
-    };
+    // Default
+    C_HitboxRect() : size_{u8vec2{1, 1}} {}
+};
 
 } // namespace IRComponents
 

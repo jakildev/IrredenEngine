@@ -9,19 +9,16 @@
 
 namespace IRCommand {
 
-    template<>
-    struct Command<SAVE_MAIN_CANVAS_TRIXELS> {
-        static auto create() {
-            return []() {
-                auto& textures =
-                    IRECS::getComponent<C_TriangleCanvasTextures>(
-                        IRRender::getCanvas("main")
-                    );
-                textures.saveToFile("main_canvas");
-            };
-        }
-    };
+template <> struct Command<SAVE_MAIN_CANVAS_TRIXELS> {
+    static auto create() {
+        return []() {
+            auto &textures =
+                IRECS::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("main"));
+            textures.saveToFile("main_canvas");
+        };
+    }
+};
 
-}
+} // namespace IRCommand
 
 #endif /* COMMAND_SAVE_MAIN_CANVAS_TRIXELS_H */

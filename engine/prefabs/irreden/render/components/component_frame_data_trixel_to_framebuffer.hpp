@@ -7,23 +7,15 @@ using namespace IRRender;
 
 namespace IRComponents {
 
-    struct C_FrameDataTrixelToFramebuffer {
-        FrameDataTrixelToFramebuffer frameData_;
+struct C_FrameDataTrixelToFramebuffer {
+    FrameDataTrixelToFramebuffer frameData_;
 
-        C_FrameDataTrixelToFramebuffer()
-        :   frameData_{}
-        {
+    C_FrameDataTrixelToFramebuffer() : frameData_{} {}
 
-        }
-
-        void updateFrameData(const Buffer* frameDataBuffer) const {
-            frameDataBuffer->subData(
-                0,
-                sizeof(FrameDataTrixelToFramebuffer),
-                &frameData_
-            );
-        }
-    };
+    void updateFrameData(const Buffer *frameDataBuffer) const {
+        frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &frameData_);
+    }
+};
 
 } // namespace IRComponents
 

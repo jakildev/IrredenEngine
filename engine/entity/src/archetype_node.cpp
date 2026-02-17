@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: archetype_node.cpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 
@@ -23,33 +14,25 @@
 
 namespace IREntity {
 
-    ArchetypeNode::ArchetypeNode(NodeId nodeId, const Archetype& archetype)
-    :   type_{archetype}
-    ,   entities_{}
-    ,   edges_{}
-    ,   length_(0)
-    ,   id_(nodeId)
-    {
-        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        for(auto itr = archetype.begin(); itr != archetype.end(); itr++) {
-            if(isPureComponent(*itr)) {
-                components_[*itr] =
-                    createComponentData(*itr);
-            }
+ArchetypeNode::ArchetypeNode(NodeId nodeId, const Archetype &archetype)
+    : type_{archetype}, entities_{}, edges_{}, length_(0), id_(nodeId) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    for (auto itr = archetype.begin(); itr != archetype.end(); itr++) {
+        if (isPureComponent(*itr)) {
+            components_[*itr] = createComponentData(*itr);
         }
-        IRE_LOG_INFO("Created archetype node with components: {}, id={}",
-            makeComponentStringInternal(archetype),
-            id_
-        );
     }
+    IRE_LOG_INFO("Created archetype node with components: {}, id={}",
+                 makeComponentStringInternal(archetype), id_);
+}
 
-    RelationId ArchetypeNode::getChildOfRelation() {
-        for(RelationId relation : type_) {
-            if(isChildOfRelation(relation)) {
-                return relation;
-            }
+RelationId ArchetypeNode::getChildOfRelation() {
+    for (RelationId relation : type_) {
+        if (isChildOfRelation(relation)) {
+            return relation;
         }
-        return kNullRelation;
     }
+    return kNullRelation;
+}
 
 } // namespace IREntity

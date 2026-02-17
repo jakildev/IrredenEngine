@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: midi_in.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef MIDI_IN_H
 #define MIDI_IN_H
 
@@ -26,103 +17,60 @@ using IRComponents::C_MidiMessage;
 
 namespace IRAudio {
 
-    struct MidiMessageQueues {
-        std::queue<MidiMessage<kMidiStatus_NOTE_OFF>>
-            m_messageQueueNoteOff;
-        std::queue<MidiMessage<kMidiStatus_NOTE_ON>>
-            m_messageQueueNoteOn;
-        std::queue<MidiMessage<kMidiStatus_POLYPHONIC_KEY_PRESSURE>>
-            m_messagePolyKeyPressure;
-        std::queue<MidiMessage<kMidiStatus_CONTROL_CHANGE>>
-            m_messageQueueControlChange;
-        std::queue<MidiMessage<kMidiStatus_PROGRAM_CHANGE>>
-            m_messageQueueProgramChange;
-        std::queue<MidiMessage<kMidiStatus_CHANNEL_PRESSURE>>
-            m_messageQueueChannelPressure;
-        std::queue<MidiMessage<kMidiStatus_PITCH_BEND>>
-            m_messageQueuePitchBend;
-    };
+struct MidiMessageQueues {
+    std::queue<MidiMessage<kMidiStatus_NOTE_OFF>> m_messageQueueNoteOff;
+    std::queue<MidiMessage<kMidiStatus_NOTE_ON>> m_messageQueueNoteOn;
+    std::queue<MidiMessage<kMidiStatus_POLYPHONIC_KEY_PRESSURE>> m_messagePolyKeyPressure;
+    std::queue<MidiMessage<kMidiStatus_CONTROL_CHANGE>> m_messageQueueControlChange;
+    std::queue<MidiMessage<kMidiStatus_PROGRAM_CHANGE>> m_messageQueueProgramChange;
+    std::queue<MidiMessage<kMidiStatus_CHANNEL_PRESSURE>> m_messageQueueChannelPressure;
+    std::queue<MidiMessage<kMidiStatus_PITCH_BEND>> m_messageQueuePitchBend;
+};
 
-    class MidiIn {
-        public:
-            MidiIn();
-            ~MidiIn();
+class MidiIn {
+  public:
+    MidiIn();
+    ~MidiIn();
 
-            void tick();
+    void tick();
 
-            // void openPort(unsigned int portNumber);
+    // void openPort(unsigned int portNumber);
 
-            int openPort(MidiInInterfaces midiInInterface);
-            int openPort(const std::string& deviceName);
-            void processMidiMessageQueue();
-            CCData checkCCMessageThisFrame(
-                MidiChannel channel,
-                CCMessage ccNumber
-            )   const;
-            const std::vector<C_MidiMessage>& getMidiNotesOnThisFrame(
-                MidiChannel channel
-            )   const;
-            const std::vector<C_MidiMessage>& getMidiNotesOffThisFrame(
-                MidiChannel channel
-            )   const;
+    int openPort(MidiInInterfaces midiInInterface);
+    int openPort(const std::string &deviceName);
+    void processMidiMessageQueue();
+    CCData checkCCMessageThisFrame(MidiChannel channel, CCMessage ccNumber) const;
+    const std::vector<C_MidiMessage> &getMidiNotesOnThisFrame(MidiChannel channel) const;
+    const std::vector<C_MidiMessage> &getMidiNotesOffThisFrame(MidiChannel channel) const;
 
-            void insertNoteOffMessage(
-                MidiChannel channel,
-                const C_MidiMessage& midiMessage
-            );
-            void insertNoteOnMessage(
-                MidiChannel channel,
-                const C_MidiMessage& midiMessage
-            );
-            void insertCCMessage(
-                MidiChannel channel,
-                const C_MidiMessage& midiMessage
-            );
-        private:
-            RtMidiIn m_rtMidiIn;
-            std::unordered_map<MidiInInterfaces, RtMidiIn> m_rtMidiInMap;
-            unsigned int m_numberPorts;
-            std::vector<std::string> m_portNames;
-            std::vector<unsigned int> m_openPorts;
-            std::string m_portName;
-            MidiMessageQueues m_messageQueues;
-            std::queue<IRComponents::C_MidiMessage> m_messageQueue;
+    void insertNoteOffMessage(MidiChannel channel, const C_MidiMessage &midiMessage);
+    void insertNoteOnMessage(MidiChannel channel, const C_MidiMessage &midiMessage);
+    void insertCCMessage(MidiChannel channel, const C_MidiMessage &midiMessage);
 
-            std::unordered_map<
-                MidiChannel,
-                std::unordered_map<
-                    CCMessage,
-                    CCData
-                >
-            > m_ccMessagesThisFrame;
-            std::unordered_map<
-                MidiChannel,
-                std::vector<C_MidiMessage>
-            > m_midiNoteOnMessagesThisFrame;
-            std::unordered_map<
-                MidiChannel,
-                std::vector<C_MidiMessage>
-            > m_midiNoteOffMessagesThisFrame;
+  private:
+    RtMidiIn m_rtMidiIn;
+    std::unordered_map<MidiInInterfaces, RtMidiIn> m_rtMidiInMap;
+    unsigned int m_numberPorts;
+    std::vector<std::string> m_portNames;
+    std::vector<unsigned int> m_openPorts;
+    std::string m_portName;
+    MidiMessageQueues m_messageQueues;
+    std::queue<IRComponents::C_MidiMessage> m_messageQueue;
 
+    std::unordered_map<MidiChannel, std::unordered_map<CCMessage, CCData>> m_ccMessagesThisFrame;
+    std::unordered_map<MidiChannel, std::vector<C_MidiMessage>> m_midiNoteOnMessagesThisFrame;
+    std::unordered_map<MidiChannel, std::vector<C_MidiMessage>> m_midiNoteOffMessagesThisFrame;
 
+    void clearPreviousMessages();
 
-            void clearPreviousMessages();
+    void setCallback(RtMidiIn &rtMidiIn,
+                     void (*midiInputCallback)(double timeStamp,
+                                               std::vector<unsigned char> *message,
+                                               void *userData));
+};
 
-            void setCallback(
-                RtMidiIn& rtMidiIn,
-                void(*midiInputCallback)(
-                    double timeStamp,
-                    std::vector<unsigned char> *message,
-                    void *userData
-                )
-            );
-    };
-
-    void readMessageTestCallbackNew(
-        double deltaTime,
-        std::vector<unsigned char> *message,
-        void* userdata
-    );
+void readMessageTestCallbackNew(double deltaTime, std::vector<unsigned char> *message,
+                                void *userdata);
 
 } // namespace IRAudio
 

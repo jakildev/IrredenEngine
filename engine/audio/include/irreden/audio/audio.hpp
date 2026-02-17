@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: audio.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef AUDIO_H
 #define AUDIO_H
 
@@ -21,27 +12,22 @@
 
 namespace IRAudio {
 
-    class Audio {
-    public:
-        Audio();
+class Audio {
+  public:
+    Audio();
 
-        void openStreamIn(
-            std::string deviceName,
-            RtAudioCallback callback
-        );
-    private:
-        RtAudio m_rtAudio;
-        std::unordered_map<
-            unsigned int,
-            RtAudio::DeviceInfo
-        > m_deviceInfo;
-        int m_numDevices;
+    void openStreamIn(std::string deviceName, RtAudioCallback callback);
 
-        void logDeviceInfoAll();
-        int getDeviceIndexByName(std::string deviceName);
-    };
+  private:
+    RtAudio m_rtAudio;
+    std::unordered_map<unsigned int, RtAudio::DeviceInfo> m_deviceInfo;
+    int m_numDevices;
 
-    int audioInCallback();
+    void logDeviceInfoAll();
+    int getDeviceIndexByName(std::string deviceName);
+};
+
+int audioInCallback();
 
 } // namespace IRAudio
 

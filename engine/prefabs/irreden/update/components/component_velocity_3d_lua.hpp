@@ -5,15 +5,11 @@
 #include <irreden/script/lua_script.hpp>
 
 namespace IRScript {
-    template <>
-    inline constexpr bool kHasLuaBinding<IRComponents::C_Velocity3D> = true;
+template <> inline constexpr bool kHasLuaBinding<IRComponents::C_Velocity3D> = true;
 
-    template <>
-    inline void bindLuaType<IRComponents::C_Velocity3D>(LuaScript& luaScript) {
-        luaScript.registerType<IRComponents::C_Velocity3D, float, float, float>(
-            "C_Velocity3D"
-        );
-    }
+template <> inline void bindLuaType<IRComponents::C_Velocity3D>(LuaScript &luaScript) {
+    luaScript.registerType<IRComponents::C_Velocity3D, float, float, float>("C_Velocity3D");
 }
+} // namespace IRScript
 
 #endif /* COMPONENT_VELOCITY_3D_LUA_H */

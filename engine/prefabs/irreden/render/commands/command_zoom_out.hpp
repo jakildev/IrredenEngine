@@ -9,16 +9,12 @@
 
 namespace IRCommand {
 
-    template<>
-    struct Command<ZOOM_OUT> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_ZoomLevel>(
-                    IREntity::getEntity("camera")
-                ).zoomOut();
-            };
-        }
-    };
+template <> struct Command<ZOOM_OUT> {
+    static auto create() {
+        return
+            []() { IREntity::getComponent<C_ZoomLevel>(IREntity::getEntity("camera")).zoomOut(); };
+    }
+};
 
 } // namespace IRCommand
 

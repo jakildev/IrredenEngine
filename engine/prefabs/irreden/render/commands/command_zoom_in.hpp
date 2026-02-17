@@ -10,16 +10,12 @@
 
 namespace IRCommand {
 
-    template<>
-    struct Command<ZOOM_IN> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_ZoomLevel>(
-                    IREntity::getEntity("camera")
-                ).zoomIn();
-            };
-        }
-    };
+template <> struct Command<ZOOM_IN> {
+    static auto create() {
+        return
+            []() { IREntity::getComponent<C_ZoomLevel>(IREntity::getEntity("camera")).zoomIn(); };
+    }
+};
 
 } // namespace IRCommand
 

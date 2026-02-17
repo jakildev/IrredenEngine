@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: vao.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef VAO_H
 #define VAO_H
 
@@ -16,30 +7,24 @@
 
 namespace IRRender {
 
-    const unsigned int kMaxVertexAttributes = 16;
+const unsigned int kMaxVertexAttributes = 16;
 
-    class VAO {
-    public:
-        VAO(
-            GLuint vertexBufferHandle,
-            GLuint indexBufferHandle,
-            unsigned int numAttributes,
-            const VertexArrayAttribute* attributes
-        );
-        ~VAO();
+class VAO {
+  public:
+    VAO(GLuint vertexBufferHandle, GLuint indexBufferHandle, unsigned int numAttributes,
+        const VertexArrayAttribute *attributes);
+    ~VAO();
 
-        void bind() const;
-    private:
-        GLuint m_handle;
-        GLsizei m_stride;
+    void bind() const;
 
-        void initVertexBufferAttributes(
-            unsigned int numAttributes,
-            const VertexArrayAttribute* attributes,
-            const size_t* attributeSizes,
-            GLuint bindingIndex
-        );
-    };
+  private:
+    GLuint m_handle;
+    GLsizei m_stride;
+
+    void initVertexBufferAttributes(unsigned int numAttributes,
+                                    const VertexArrayAttribute *attributes,
+                                    const size_t *attributeSizes, GLuint bindingIndex);
+};
 
 } // namespace IRRender
 

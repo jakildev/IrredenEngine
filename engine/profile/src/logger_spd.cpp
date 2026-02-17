@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: logger_spd.cpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #include <irreden/profile/logger_spd.hpp>
 
 #include <spdlog/sinks/stdout_sinks.h>
@@ -21,7 +12,7 @@ LoggerSpd::LoggerSpd() {
     // consoleSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l] [%n] %v%$");
 
     /* add more sinks here */
-    std::vector<spdlog::sink_ptr> sinks{ consoleSink};
+    std::vector<spdlog::sink_ptr> sinks{consoleSink};
     /* Logger for general game engine stuff */
     m_engineLogger = std::make_shared<spdlog::logger>("EngineLog", sinks.begin(), sinks.end());
     m_engineLogger->set_level(spdlog::level::info);
@@ -40,10 +31,8 @@ LoggerSpd::LoggerSpd() {
     spdlog::register_logger(m_clientLogger);
 }
 
-LoggerSpd* LoggerSpd::instance() {
+LoggerSpd *LoggerSpd::instance() {
     /* cant use make_unique here because of private constructor */
-    static std::unique_ptr<LoggerSpd> instance =
-        std::unique_ptr<LoggerSpd>(new LoggerSpd{});
+    static std::unique_ptr<LoggerSpd> instance = std::unique_ptr<LoggerSpd>(new LoggerSpd{});
     return instance.get();
 }
-

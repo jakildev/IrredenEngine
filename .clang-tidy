@@ -1,0 +1,24 @@
+Checks: >
+  -*,
+  modernize-use-nullptr,
+  modernize-use-override,
+  readability-identifier-naming
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(?!.*(third_party|build|_deps|engine/render/include/glad|engine/render/include/KHR|engine/render/include/irreden/render/gl_wrap|engine/script/include/lua54|engine/render/third_party/metal-cpp)).*'
+
+CheckOptions:
+  - key: readability-identifier-naming.PrivateMemberPrefix
+    value: m_
+  - key: readability-identifier-naming.PublicMemberSuffix
+    value: _
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.NamespaceCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: k
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case

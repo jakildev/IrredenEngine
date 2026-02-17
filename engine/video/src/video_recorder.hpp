@@ -3,15 +3,15 @@
 
 namespace IRVideo {
 
-    class VideoRecorder {
-    public:
-        VideoRecorder();
-        ~VideoRecorder();
+class VideoRecorder {
+  public:
+    VideoRecorder();
+    ~VideoRecorder();
 
-        void startRecording();
-        void stopRecording();
-        void recordFrame();
-    };
+    void startRecording();
+    void stopRecording();
+    void recordFrame();
+};
 
 } // namespace IRVideo
 

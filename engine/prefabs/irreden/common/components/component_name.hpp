@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_name.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_NAME_H
 #define COMPONENT_NAME_H
 
@@ -14,23 +5,13 @@
 
 namespace IRComponents {
 
-    struct C_Name {
-        std::string name_;
+struct C_Name {
+    std::string name_;
 
+    C_Name(std::string name) : name_(name) {}
 
-        C_Name(std::string name)
-        :   name_(name)
-        {
-
-        }
-
-        C_Name()
-        :   name_("Default name component.")
-        {
-
-        }
-
-    };
+    C_Name() : name_("Default name component.") {}
+};
 
 } // namespace IRComponents
 

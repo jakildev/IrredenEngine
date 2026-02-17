@@ -1,15 +1,5 @@
-// /*
-//  * Project: Irreden Engine
-//  * File: system_video_encoder.hpp
-//  * Author: Evin Killian jakildev@gmail.com
-//  * Created Date: October 2023
-//  * -----
-//  * Modified By: <your_name> <Month> <YYYY>
-//  */
-
 // #ifndef SYSTEM_VIDEO_ENCODER_H
 // #define SYSTEM_VIDEO_ENCODER_H
-
 
 // #include <irreden/ir_constants.hpp>
 // #include <irreden/system/system_base.hpp>
@@ -86,7 +76,6 @@
 //             m_dtvEncoder.stop();
 //         }
 
-
 //         void tickWithArchetype(
 //             Archetype type,
 //             std::vector<EntityId>& entities
@@ -158,11 +147,8 @@
 
 //         }
 
-
 //     };
 
-
 // } // namespace IRECS
-
 
 // #endif /* SYSTEM_VIDEO_ENCODER_H */

@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: ir_input.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef IR_INPUT_H
 #define IR_INPUT_H
 
@@ -17,21 +8,18 @@
 
 namespace IRInput {
 
-    extern InputManager* g_inputManager;
-    InputManager& getInputManager();
+extern InputManager *g_inputManager;
+InputManager &getInputManager();
 
-    bool checkKeyMouseButton(
-        KeyMouseButtons button,
-        ButtonStatuses buttonStatus
-    );
+bool checkKeyMouseButton(KeyMouseButtons button, ButtonStatuses buttonStatus);
 
-    // Everything should just use render mouse position prob...
-    IRMath::vec2 getMousePositionUpdate();
-    IRMath::vec2 getMousePositionRender();
+// Everything should just use render mouse position prob...
+IRMath::vec2 getMousePositionUpdate();
+IRMath::vec2 getMousePositionRender();
 
-    // Internal use for key mouse input system
-    int getNumButtonPressesThisFrame(KeyMouseButtons button);
-    int getNumButtonReleasesThisFrame(KeyMouseButtons button);
-}
+// Internal use for key mouse input system
+int getNumButtonPressesThisFrame(KeyMouseButtons button);
+int getNumButtonReleasesThisFrame(KeyMouseButtons button);
+} // namespace IRInput
 
 #endif /* IR_INPUT_H */

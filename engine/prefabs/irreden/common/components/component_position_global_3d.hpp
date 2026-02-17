@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_position_global_3D.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_POSITION_GLOBAL_3D_H
 #define COMPONENT_POSITION_GLOBAL_3D_H
 
@@ -16,35 +7,16 @@ using IRMath::vec3;
 
 namespace IRComponents {
 
-    struct C_PositionGlobal3D {
-        vec3 pos_;
-        float tempPackBuffer_;
+struct C_PositionGlobal3D {
+    vec3 pos_;
+    float tempPackBuffer_;
 
-        C_PositionGlobal3D(
-            vec3 pos
-        )
-        :   pos_{pos}
-        {
+    C_PositionGlobal3D(vec3 pos) : pos_{pos} {}
 
-        }
+    C_PositionGlobal3D(float x, float y, float z) : C_PositionGlobal3D{vec3(x, y, z)} {}
 
-        C_PositionGlobal3D(
-            float x,
-            float y,
-            float z
-        )
-        :   C_PositionGlobal3D{vec3(x, y, z)}
-        {
-
-        }
-
-        C_PositionGlobal3D()
-        :   C_PositionGlobal3D{vec3(0, 0, 0)}
-        {
-
-        }
-
-    };
+    C_PositionGlobal3D() : C_PositionGlobal3D{vec3(0, 0, 0)} {}
+};
 
 } // namespace IRComponents
 

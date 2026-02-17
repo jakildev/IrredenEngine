@@ -1,12 +1,3 @@
-// /*
-//  * Project: Irreden Engine
-//  * File: system_update_screen_view.hpp
-//  * Author: Evin Killian jakildev@gmail.com
-//  * Created Date: October 2023
-//  * -----
-//  * Modified By: <your_name> <Month> <YYYY>
-//  */
-
 // #ifndef SYSTEM_UPDATE_SCREEN_VIEW_H
 // #define SYSTEM_UPDATE_SCREEN_VIEW_H
 
@@ -17,7 +8,6 @@
 // #include <irreden/input/components/component_cursor_position.hpp>
 // #include <irreden/common/components/component_position_3d.hpp>
 // #include <irreden/render/components/component_camera.hpp>
-
 
 // #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -46,7 +36,6 @@
 //         ,   m_cursorPosition{}
 //         // ,   m_cameraFollowEntity{kNullEntity}
 //         {
-
 
 //             // TODO: Pull commands out somewhere else
 //             // so that all commands can be visualized and assigned
@@ -105,9 +94,6 @@
 //             //         IRECS::getComponent<C_Camera>(m_camera).moveRight();
 //             //     }
 //             // );
-
-
-
 
 //             IRE_LOG_INFO("Created system SCREEN_VIEW");
 //         }

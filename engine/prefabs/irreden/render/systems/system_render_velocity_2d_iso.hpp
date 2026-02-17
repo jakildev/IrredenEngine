@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: system_render_velocity_2d_iso.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: December 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef SYSTEM_RENDER_VELOCITY_2D_ISO_H
 #define SYSTEM_RENDER_VELOCITY_2D_ISO_H
 
@@ -21,28 +12,16 @@ using namespace IRComponents;
 
 namespace IRSystem {
 
-    template <>
-    struct System<RENDERING_VELOCITY_2D_ISO> {
-        static SystemId create() {
-            return createSystem<
-                C_Position2DIso,
-                C_Velocity2DIso
-            >
-            (
-                "Camera",
-                [](
-                    C_Position2DIso& position,
-                    const C_Velocity2DIso& velocity
-                )
-                {
-                    position.pos_ +=
-                        velocity.velocity_ *
-                        // TODO: Delta time based on event registered in pipeline
-                        vec2(IRTime::deltaTime(IRTime::RENDER));
-                }
-            );
-        }
-    };
+template <> struct System<RENDERING_VELOCITY_2D_ISO> {
+    static SystemId create() {
+        return createSystem<C_Position2DIso, C_Velocity2DIso>(
+            "Camera", [](C_Position2DIso &position, const C_Velocity2DIso &velocity) {
+                position.pos_ += velocity.velocity_ *
+                                 // TODO: Delta time based on event registered in pipeline
+                                 vec2(IRTime::deltaTime(IRTime::RENDER));
+            });
+    }
+};
 
 } // namespace IRSystem
 

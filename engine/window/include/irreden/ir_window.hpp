@@ -3,11 +3,11 @@
 
 namespace IRWindow {
 
-    extern IRGLFWWindow* g_irglfwWindow;
-    IRGLFWWindow& getWindow();
+extern IRGLFWWindow *g_irglfwWindow;
+IRGLFWWindow &getWindow();
 
-    void closeWindow();
-    void getWindowSize(IRMath::ivec2& size);
-    void getCursorPosition(IRMath::dvec2& pos);
+void closeWindow();
+void getWindowSize(IRMath::ivec2 &size);
+void getCursorPosition(IRMath::dvec2 &pos);
 
-}
+} // namespace IRWindow

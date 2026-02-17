@@ -9,87 +9,71 @@
 
 namespace IRCommand {
 
-    static constexpr float kCameraMoveSpeed = 20.0f;
+static constexpr float kCameraMoveSpeed = 20.0f;
 
-    template<>
-    struct Command<MOVE_CAMERA_LEFT_START> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.x += kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_LEFT_START> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.x += kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_RIGHT_START> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.x -= kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_RIGHT_START> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.x -= kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_UP_START> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.y += kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_UP_START> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.y += kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_DOWN_START> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.y -= kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_DOWN_START> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.y -= kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_LEFT_END> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.x -= kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_LEFT_END> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.x -= kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_RIGHT_END> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.x += kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_RIGHT_END> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.x += kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_UP_END> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.y -= kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_UP_END> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.y -= kCameraMoveSpeed;
+        };
+    }
+};
 
-    template<>
-    struct Command<MOVE_CAMERA_DOWN_END> {
-        static auto create() {
-            return []() {
-                IREntity::getComponent<C_Velocity2DIso>("camera")
-                    .velocity_.y += kCameraMoveSpeed;
-            };
-        }
-    };
+template <> struct Command<MOVE_CAMERA_DOWN_END> {
+    static auto create() {
+        return []() {
+            IREntity::getComponent<C_Velocity2DIso>("camera").velocity_.y += kCameraMoveSpeed;
+        };
+    }
+};
 
 } // namespace IRCommand
 

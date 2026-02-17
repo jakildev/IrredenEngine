@@ -1,12 +1,3 @@
-    /*
- * Project: Irreden Engine
- * File: system_input_gamepad.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef SYSTEM_INPUT_GAMEPAD_H
 #define SYSTEM_INPUT_GAMEPAD_H
 
@@ -21,25 +12,16 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-    template<>
-    struct System<INPUT_GAMEPAD> {
-        static SystemId create() {
-            return createSystem<C_GLFWJoystick, C_GLFWGamepadState>(
-                "InputGamepad",
-                [](
-                    C_GLFWJoystick& joystick,
-                    C_GLFWGamepadState& gamepadState
-                )
-                {
-                    gamepadState.updateState(
-                        IRWindow::getWindow().getGamepadState(joystick.joystickId_)
-                    );
-                }
-            );
-        }
+template <> struct System<INPUT_GAMEPAD> {
+    static SystemId create() {
+        return createSystem<C_GLFWJoystick, C_GLFWGamepadState>(
+            "InputGamepad", [](C_GLFWJoystick &joystick, C_GLFWGamepadState &gamepadState) {
+                gamepadState.updateState(
+                    IRWindow::getWindow().getGamepadState(joystick.joystickId_));
+            });
+    }
+};
 
-    };
-
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_INPUT_GAMEPAD_H */

@@ -3,8 +3,6 @@
 
 namespace SystemFontMaker {
 
-    SystemId create() {
-        
-    }
+SystemId create() {}
 
-} // SystemFontMaker
+} // namespace SystemFontMaker

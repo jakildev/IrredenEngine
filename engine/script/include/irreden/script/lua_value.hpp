@@ -13,216 +13,183 @@
 
 namespace IRScript {
 
+struct ILuaValue {
+    virtual ~ILuaValue() = default;
 
-    struct ILuaValue {
-        virtual ~ILuaValue() = default;
+    virtual void parse(const sol::object &obj) = 0;
+    virtual void reset_to_default() = 0;
 
-        virtual void parse(const sol::object& obj) = 0;
-        virtual void reset_to_default() = 0;
+    virtual ILuaValue &operator[](const std::string &key) {
+        IR_ASSERT(false, "Not a table type");
+        throw std::runtime_error("Not a table type");
+    }
+    virtual bool get_boolean() const {
+        IR_ASSERT(false, "Not a boolean type");
+        throw std::runtime_error("Not a boolean type");
+    }
+    virtual double get_number() const {
+        IR_ASSERT(false, "Not a number type");
+        throw std::runtime_error("Not a number type");
+    }
+    virtual int get_integer() const {
+        IR_ASSERT(false, "Not an integer type");
+        throw std::runtime_error("Not an integer type");
+    }
+    virtual std::string get_string() const {
+        IR_ASSERT(false, "Not a string type");
+        throw std::runtime_error("Not a string type");
+    }
 
-        virtual ILuaValue& operator[](const std::string& key) {
-            IR_ASSERT(false, "Not a table type");
-            throw std::runtime_error("Not a table type");
-        }
-        virtual bool get_boolean() const {
-            IR_ASSERT(false, "Not a boolean type");
-            throw std::runtime_error("Not a boolean type");
-        }
-        virtual double get_number() const {
-            IR_ASSERT(false, "Not a number type");
-            throw std::runtime_error("Not a number type");
-        }
-        virtual int get_integer() const {
-            IR_ASSERT(false, "Not an integer type");
-            throw std::runtime_error("Not an integer type");
-        }
-        virtual std::string get_string() const {
-            IR_ASSERT(false, "Not a string type");
-            throw std::runtime_error("Not a string type");
-        }
+    virtual int get_enum() const {
+        IR_ASSERT(false, "Not an enum type");
+        throw std::runtime_error("Not an enum type");
+    }
+};
 
-        virtual int get_enum() const {
-            IR_ASSERT(false, "Not an enum type");
-            throw std::runtime_error("Not an enum type");
+template <LuaType Type, typename EnumType = void> struct LuaValue;
 
-        }
-    };
+template <> struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
+    bool value_;
+    bool defaultValue_;
 
-    template<LuaType Type, typename EnumType = void>
-    struct LuaValue;
+    LuaValue(bool defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
 
-    template<>
-    struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
-        bool value_;
-        bool defaultValue_;
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<bool>(), "Expected boolean");
+        value_ = obj.as<bool>();
+    }
 
-        LuaValue(bool defaultValue)
-        :   value_(defaultValue)
-        ,   defaultValue_(defaultValue)
-        {
+    void reset_to_default() override {
+        value_ = defaultValue_;
+    }
 
-        }
+    bool get_boolean() const override {
+        return value_;
+    }
+};
 
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<bool>(), "Expected boolean");
-            value_ = obj.as<bool>();
-        }
+template <> struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {
+    double value_;
+    double defaultValue_;
 
-        void reset_to_default() override {
-            value_ = defaultValue_;
-        }
+    LuaValue(double defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
 
-        bool get_boolean() const override {
-            return value_;
-        }
-    };
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<double>(), "Expected number");
+        value_ = obj.as<double>();
+    }
 
-    template<>
-    struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {
-        double value_;
-        double defaultValue_;
+    void reset_to_default() override {
+        value_ = defaultValue_;
+    }
 
-        LuaValue(double defaultValue)
-        :   value_(defaultValue)
-        ,   defaultValue_(defaultValue)
-        {
+    double get_number() const override {
+        return value_;
+    }
+};
 
-        }
+template <> struct LuaValue<LuaType::INTEGER> : ILuaValue {
+    int value_;
+    int defaultValue_;
 
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<double>(), "Expected number");
-            value_ = obj.as<double>();
-        }
+    LuaValue(int defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
 
-        void reset_to_default() override {
-            value_ = defaultValue_;
-        }
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<int>(), "Expected integer");
+        value_ = obj.as<int>();
+    }
 
-        double get_number() const override {
-            return value_;
-        }
+    void reset_to_default() override {
+        value_ = defaultValue_;
+    }
 
-    };
+    int get_integer() const override {
+        return value_;
+    }
+};
 
-    template<>
-    struct LuaValue<LuaType::INTEGER> : ILuaValue {
-        int value_;
-        int defaultValue_;
+template <> struct LuaValue<LuaType::STRING> : ILuaValue {
+    std::string value_;
+    std::string defaultValue_;
 
-        LuaValue(int defaultValue)
-        :   value_(defaultValue)
-        ,   defaultValue_(defaultValue)
-        {
+    LuaValue(const std::string &defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
 
-        }
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<std::string>(), "Expected string");
+        value_ = obj.as<std::string>();
+    }
 
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<int>(), "Expected integer");
-            value_ = obj.as<int>();
-        }
+    void reset_to_default() override {
+        value_ = defaultValue_;
+    }
 
-        void reset_to_default() override {
-            value_ = defaultValue_;
-        }
+    std::string get_string() const override {
+        return value_;
+    }
+};
 
-        int get_integer() const override {
-            return value_;
-        }
-    };
+template <typename EnumType> struct LuaValue<LuaType::ENUM, EnumType> : ILuaValue {
+    using EnumMappingFunction = std::function<EnumType(const std::string &)>;
 
-    template<>
-    struct LuaValue<LuaType::STRING> : ILuaValue {
-        std::string value_;
-        std::string defaultValue_;
+    EnumType value_;
+    EnumType defaultValue_;
+    EnumMappingFunction stringToEnum_;
 
-        LuaValue(const std::string& defaultValue)
-        :   value_(defaultValue)
-        ,   defaultValue_(defaultValue)
-        {
+    LuaValue(EnumType defaultValue, EnumMappingFunction stringToEnum)
+        : value_(defaultValue), defaultValue_(defaultValue), stringToEnum_(stringToEnum) {}
 
-        }
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<std::string>(), "Expected string for enum");
+        value_ = stringToEnum_(obj.as<std::string>());
+    }
 
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<std::string>(), "Expected string");
-            value_ = obj.as<std::string>();
-        }
+    void reset_to_default() override {
+        value_ = defaultValue_;
+    }
 
-        void reset_to_default() override {
-            value_ = defaultValue_;
-        }
+    EnumType get_enum_value() const {
+        return value_;
+    }
 
-        std::string get_string() const override {
-            return value_;
-        }
-    };
+    int get_enum() const override {
+        return static_cast<int>(value_);
+    }
+};
 
-    template<typename EnumType>
-    struct LuaValue<LuaType::ENUM, EnumType> : ILuaValue {
-        using EnumMappingFunction = std::function<EnumType(const std::string&)>;
+template <> struct LuaValue<LuaType::TABLE> : ILuaValue {
+    std::map<std::string, std::unique_ptr<ILuaValue>> value_;
 
-        EnumType value_;
-        EnumType defaultValue_;
-        EnumMappingFunction stringToEnum_;
+    void parse(const sol::object &obj) override {
+        IR_ASSERT(obj.is<sol::table>(), "Expected table");
+        sol::table table = obj.as<sol::table>();
+        for (auto &pair : value_) {
+            const std::string &key = pair.first;
+            sol::object luaValue = table[key];
 
-        LuaValue(EnumType defaultValue, EnumMappingFunction stringToEnum)
-        :   value_(defaultValue)
-        ,   defaultValue_(defaultValue)
-        ,   stringToEnum_(stringToEnum)
-        {}
-
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<std::string>(), "Expected string for enum");
-            value_ = stringToEnum_(obj.as<std::string>());
-        }
-
-        void reset_to_default() override {
-            value_ = defaultValue_;
-        }
-
-        EnumType get_enum_value() const {
-            return value_;
-        }
-
-        int get_enum() const override {
-            return static_cast<int>(value_);
-        }
-    };
-
-    template<>
-    struct LuaValue<LuaType::TABLE> : ILuaValue {
-        std::map<std::string, std::unique_ptr<ILuaValue>> value_;
-
-        void parse(const sol::object& obj) override {
-            IR_ASSERT(obj.is<sol::table>(), "Expected table");
-            sol::table table = obj.as<sol::table>();
-            for (auto& pair : value_) {
-                const std::string& key = pair.first;
-                sol::object luaValue = table[key];
-
-                if (luaValue.valid()) {
-                    pair.second->parse(luaValue);  // Parse the Lua value if valid
-                } else {
-                    pair.second->reset_to_default();  // Use default if missing
-                }
-            }
-        }
-
-        void reset_to_default() override {
-            for (auto& kv : value_) {
-                kv.second->reset_to_default();
-            }
-        }
-
-        ILuaValue& operator[](const std::string& key) override {
-            auto it = value_.find(key);
-            if (it != value_.end()) {
-                return *(it->second);
+            if (luaValue.valid()) {
+                pair.second->parse(luaValue); // Parse the Lua value if valid
             } else {
-                IR_ASSERT(false, "Key not found");
-                throw std::runtime_error("Key not found: " + key);
+                pair.second->reset_to_default(); // Use default if missing
             }
         }
-    };
+    }
+
+    void reset_to_default() override {
+        for (auto &kv : value_) {
+            kv.second->reset_to_default();
+        }
+    }
+
+    ILuaValue &operator[](const std::string &key) override {
+        auto it = value_.find(key);
+        if (it != value_.end()) {
+            return *(it->second);
+        } else {
+            IR_ASSERT(false, "Key not found");
+            throw std::runtime_error("Key not found: " + key);
+        }
+    }
+};
 
 } // namespace IRScript
 

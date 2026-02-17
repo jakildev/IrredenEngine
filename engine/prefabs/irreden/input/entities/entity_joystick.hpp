@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_joystick.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_JOYSTICK_H
 #define ENTITY_JOYSTICK_H
 
@@ -22,24 +13,16 @@ using namespace IRComponents;
 
 namespace IREntity {
 
-    template <>
-    struct Prefab<PrefabTypes::kGLFWJoystick> {
-        static EntityId create(
-            int joystickId,
-            std::string name,
-            bool isGamepad
-        )
-        {
-            EntityId entity = createEntity(
-                C_GLFWJoystick{joystickId}
-            );
-            if(isGamepad)
-                setComponent(entity, C_GLFWGamepadState{});
-            return entity;
-        }
+template <> struct Prefab<PrefabTypes::kGLFWJoystick> {
+    static EntityId create(int joystickId, std::string name, bool isGamepad) {
+        EntityId entity = createEntity(C_GLFWJoystick{joystickId});
+        if (isGamepad)
+            setComponent(entity, C_GLFWGamepadState{});
+        return entity;
+    }
 
-        // static getArchetypeFromCreate()
-    };
+    // static getArchetypeFromCreate()
+};
 } // namespace IREntity
 
 #endif /* ENTITY_JOYSTICK_H */

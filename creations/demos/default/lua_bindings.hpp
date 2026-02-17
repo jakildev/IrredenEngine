@@ -2,7 +2,7 @@
 #define CREATIONS_DEFAULT_LUA_BINDINGS_H
 
 namespace IRDefaultCreation {
-    void registerLuaBindings();
+void registerLuaBindings();
 }
 
 #endif /* CREATIONS_DEFAULT_LUA_BINDINGS_H */

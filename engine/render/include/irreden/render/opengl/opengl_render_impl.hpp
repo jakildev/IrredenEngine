@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_window.hpp>
 
@@ -11,16 +10,15 @@
 
 namespace IRRender {
 
-    class OpenGLRenderImpl : public RenderImpl {
-    public:
-        OpenGLRenderImpl() {
-            IR_LOG_INFO("Initalizing OpenGL render implementation.");
-        }
-        void init();
-        void printInfo();
+class OpenGLRenderImpl : public RenderImpl {
+  public:
+    OpenGLRenderImpl() {
+        IR_LOG_INFO("Initalizing OpenGL render implementation.");
+    }
+    void init();
+    void printInfo();
+};
 
-    };
-
-    void openGLCallback_framebuffer_size(GLFWwindow* window, int width, int height);
+void openGLCallback_framebuffer_size(GLFWwindow *window, int width, int height);
 
 } // namespace IRRender

@@ -7,14 +7,11 @@
 
 namespace IRCommand {
 
-    template <>
-    struct Command<CLOSE_WINDOW> {
-        static auto create() {
-            return []() {
-                IRWindow::closeWindow();
-            };
-        }
-    };
-}
+template <> struct Command<CLOSE_WINDOW> {
+    static auto create() {
+        return []() { IRWindow::closeWindow(); };
+    }
+};
+} // namespace IRCommand
 
 #endif /* COMMAND_CLOSE_WINDOW_H */

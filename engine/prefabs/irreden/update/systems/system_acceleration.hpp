@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: system_acceleration.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef SYSTEM_ACCELERATION_H
 #define SYSTEM_ACCELERATION_H
 
@@ -19,23 +10,15 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-    template<>
-    struct System<ACCELERATION_3D>{
-        static SystemId create() {
-            return createSystem<C_Velocity3D, C_Acceleration3D>(
-                "Acceleration3D",
-                [](
-                    C_Velocity3D& velocity,
-                    const C_Acceleration3D& acceleration
-                )
-                {
-                    velocity.velocity_ +=
-                        acceleration.acceleration_ *
-                        vec3(IRTime::deltaTime(IRTime::UPDATE));
-                }
-            );
-        }
-    };
+template <> struct System<ACCELERATION_3D> {
+    static SystemId create() {
+        return createSystem<C_Velocity3D, C_Acceleration3D>(
+            "Acceleration3D", [](C_Velocity3D &velocity, const C_Acceleration3D &acceleration) {
+                velocity.velocity_ +=
+                    acceleration.acceleration_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
+            });
+    }
+};
 
 } // namespace IRECS
 

@@ -1,15 +1,5 @@
-/*
- * Project: Irreden Engine
- * File: entity_framebuffer.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: December 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_FRAMEBUFFER_H
 #define ENTITY_FRAMEBUFFER_H
-
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
@@ -21,30 +11,19 @@ using namespace IRComponents;
 
 namespace IREntity {
 
-    template <>
-    struct Prefab<PrefabTypes::kFramebuffer> {
-        static EntityId create(
-            std::string framebufferName,
-            ivec2 framebufferSize,
-            ivec2 framebufferExtraPixelBufferSize,
-            float startZoomLevel = 1.0f
-        )
-        {
-            EntityId framebufer = createEntity(
-                C_Name{framebufferName},
-                C_TrixelCanvasFramebuffer{
-                    framebufferSize,
-                    framebufferExtraPixelBufferSize
-                },
-                C_Position3D{vec3(0.0f)},
-                C_FrameDataTrixelToFramebuffer{},
-                C_ZoomLevel{startZoomLevel}
-            );
+template <> struct Prefab<PrefabTypes::kFramebuffer> {
+    static EntityId create(std::string framebufferName, ivec2 framebufferSize,
+                           ivec2 framebufferExtraPixelBufferSize, float startZoomLevel = 1.0f) {
+        EntityId framebufer = createEntity(
+            C_Name{framebufferName},
+            C_TrixelCanvasFramebuffer{framebufferSize, framebufferExtraPixelBufferSize},
+            C_Position3D{vec3(0.0f)}, C_FrameDataTrixelToFramebuffer{},
+            C_ZoomLevel{startZoomLevel});
 
-            setName(framebufer, framebufferName);
-            return framebufer;
-        }
-    };
-}
+        setName(framebufer, framebufferName);
+        return framebufer;
+    }
+};
+} // namespace IREntity
 
 #endif /* ENTITY_FRAMEBUFFER_H */

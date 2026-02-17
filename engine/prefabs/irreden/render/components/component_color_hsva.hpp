@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_color_hsva.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_COLOR_HSVA_H
 #define COMPONENT_COLOR_HSVA_H
 
@@ -21,28 +12,15 @@ using IRMath::vec3;
 
 namespace IRComponents {
 
-    struct C_ColorHSV {
-        vec3 color_;
+struct C_ColorHSV {
+    vec3 color_;
 
+    C_ColorHSV(ColorHSV base) : color_{vec3(base.hue_, base.saturation_, base.value_)} {}
 
-        C_ColorHSV(ColorHSV base)
-        :   color_{vec3(base.hue_, base.saturation_, base.value_)}
-        {
-        }
-
-        // Default
-        C_ColorHSV()
-        :   color_{vec3(150.0f, 0.10f, 0.80f)}
-        {
-        }
-
-
-
-    };
+    // Default
+    C_ColorHSV() : color_{vec3(150.0f, 0.10f, 0.80f)} {}
+};
 
 } // namespace IRComponents
-
-
-
 
 #endif /* COMPONENT_COLOR_PALLET_H */

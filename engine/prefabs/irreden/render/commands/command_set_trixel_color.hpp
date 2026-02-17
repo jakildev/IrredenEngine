@@ -10,20 +10,15 @@
 
 namespace IRCommand {
 
-    // WIP WIP WIP WIP WIP
-    template<>
-    struct Command<SET_TRIXEL_COLOR> {
-        static auto create() {
-            return []() {
-                IRECS::getComponent<C_TriangleCanvasTextures>(
-                    IRRender::getCanvas("main")
-                ).setTrixel(
-                    IRRender::mouseTrixelPositionWorld(),
-                    Color{44, 20, 200, 255}
-                );
-            };
-        }
-    };
+// WIP WIP WIP WIP WIP
+template <> struct Command<SET_TRIXEL_COLOR> {
+    static auto create() {
+        return []() {
+            IRECS::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("main"))
+                .setTrixel(IRRender::mouseTrixelPositionWorld(), Color{44, 20, 200, 255});
+        };
+    }
+};
 
 } // namespace IRCommand
 

@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: ir_audio.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef IR_AUDIO_H
 #define IR_AUDIO_H
 
@@ -19,36 +10,23 @@
 
 namespace IRAudio {
 
-    class AudioManager;
-    extern AudioManager* g_audioManager;
-    AudioManager& getAudioManager();
+class AudioManager;
+extern AudioManager *g_audioManager;
+AudioManager &getAudioManager();
 
-    int openPortMidiIn(MidiInInterfaces midiInInterface);
-    int openPortMidiIn(const std::string& deviceName);
-    int openPortMidiOut(MidiOutInterfaces midiOutInterface);
-    int openPortMidiOut(const std::string& midiOutInterface);
-    void sendMidiMessage(const std::vector<unsigned char>& message);
+int openPortMidiIn(MidiInInterfaces midiInInterface);
+int openPortMidiIn(const std::string &deviceName);
+int openPortMidiOut(MidiOutInterfaces midiOutInterface);
+int openPortMidiOut(const std::string &midiOutInterface);
+void sendMidiMessage(const std::vector<unsigned char> &message);
 
-    CCData checkCCMessage(int device, CCMessage ccMessage);
-    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOnThisFrame(
-        int device
-    );
-    const std::vector<IRComponents::C_MidiMessage>& getMidiNotesOffThisFrame(
-        int device
-    );
+CCData checkCCMessage(int device, CCMessage ccMessage);
+const std::vector<IRComponents::C_MidiMessage> &getMidiNotesOnThisFrame(int device);
+const std::vector<IRComponents::C_MidiMessage> &getMidiNotesOffThisFrame(int device);
 
-    void insertNoteOffMessage(
-        MidiChannel channel,
-        const IRComponents::C_MidiMessage& message
-    );
-    void insertNoteOnMessage(
-        MidiChannel channel,
-        const IRComponents::C_MidiMessage& message
-    );
-    void insertCCMessage(
-        MidiChannel channel,
-        const IRComponents::C_MidiMessage& message
-    );
+void insertNoteOffMessage(MidiChannel channel, const IRComponents::C_MidiMessage &message);
+void insertNoteOnMessage(MidiChannel channel, const IRComponents::C_MidiMessage &message);
+void insertCCMessage(MidiChannel channel, const IRComponents::C_MidiMessage &message);
 
 } // namespace IRAudio
 

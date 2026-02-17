@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: system_creator_chunk.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 // Depricated but still some useful stuff here so keeping
 // around for now.
 
@@ -64,7 +55,6 @@
 //         template<Shape3D shapeType>
 //         void shapeEnd();
 //     };
-
 
 // } // namespace IRECS
 

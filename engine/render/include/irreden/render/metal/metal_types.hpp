@@ -8,8 +8,4 @@
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
 
-namespace IRRender {
-
-
-
-} // namespace IRRender
+namespace IRRender {} // namespace IRRender

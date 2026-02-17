@@ -3,12 +3,16 @@ project(BuildCreation VERSION 0.1.0)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 include(cmake/ir_functions.cmake)
+include(cmake/ir_quality_tools.cmake)
 
 include_directories(${PROJECT_SOURCE_DIR}/engine/prefabs)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+
+irreden_add_quality_targets()

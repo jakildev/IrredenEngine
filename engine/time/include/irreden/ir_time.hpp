@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: ir_time.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef IR_TIME_H
 #define IR_TIME_H
 
@@ -14,11 +5,11 @@
 
 namespace IRTime {
 
-    extern TimeManager* g_timeManager;
-    TimeManager& getTimeManager();
+extern TimeManager *g_timeManager;
+TimeManager &getTimeManager();
 
-    double deltaTime(Events eventType);
-    bool shouldUpdate();
-}
+double deltaTime(Events eventType);
+bool shouldUpdate();
+} // namespace IRTime
 
 #endif /* IR_TIME_H */

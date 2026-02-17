@@ -4,10 +4,9 @@
 
 namespace IRVideo {
 
-    VideoRecorder::VideoRecorder() {
+VideoRecorder::VideoRecorder() {
 
-
-        IR_LOG_INFO("Created Video Recorder.");
-    }
+    IR_LOG_INFO("Created Video Recorder.");
+}
 
 } // namespace IRVideo

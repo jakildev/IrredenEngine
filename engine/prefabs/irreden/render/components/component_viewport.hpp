@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_viewport_state.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_VIEWPORT_H
 #define COMPONENT_VIEWPORT_H
 
@@ -16,30 +7,17 @@ using IRMath::vec2;
 
 namespace IRComponents {
 
-    struct C_Viewport {
+struct C_Viewport {
 
-        ivec2 size_;
+    ivec2 size_;
 
-        C_Viewport(ivec2 size)
-        :   size_(size)
-        {
+    C_Viewport(ivec2 size) : size_(size) {}
 
-        }
+    C_Viewport(int x, int y) : C_Viewport(ivec2{x, y}) {}
 
-        C_Viewport(int x, int y)
-        :   C_Viewport(ivec2{x, y})
-        {
-
-        }
-
-        // Default
-        C_Viewport()
-        :   C_Viewport(ivec2{0, 0})
-        {
-
-        }
-
-    };
+    // Default
+    C_Viewport() : C_Viewport(ivec2{0, 0}) {}
+};
 
 } // namespace IRComponents
 

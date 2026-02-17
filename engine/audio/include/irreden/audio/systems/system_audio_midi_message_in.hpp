@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: system_input_midi_message_in.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 #define SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 
@@ -24,72 +15,63 @@ using namespace IRAudio;
 
 namespace IRSystem {
 
-    template<>
-    struct System<INPUT_MIDI_MESSAGE_IN> {
-        static SystemId create() {
-            SystemId system = createSystem<C_MidiMessage>(
-                "InputMidiMessageIn",
-                [](
-                    C_MidiMessage& midiMessage
-                )
-                {
-                    const MidiStatus statusBits =
-                        midiMessage.getStatusBits();
-                    const MidiChannel channel =
-                        midiMessage.getChannelBits();
+template <> struct System<INPUT_MIDI_MESSAGE_IN> {
+    static SystemId create() {
+        SystemId system =
+            createSystem<C_MidiMessage>("InputMidiMessageIn", [](C_MidiMessage &midiMessage) {
+                const MidiStatus statusBits = midiMessage.getStatusBits();
+                const MidiChannel channel = midiMessage.getChannelBits();
 
-                    if(statusBits == IRAudio::kMidiStatus_NOTE_ON) {
-                        IRE_LOG_INFO("Midi message note on!");
-                        IRAudio::insertNoteOnMessage(channel, midiMessage);
-                    }
-                    if(statusBits == IRAudio::kMidiStatus_NOTE_OFF) {
-                        IRE_LOG_INFO("Midi message note off!");
-                        IRAudio::insertNoteOffMessage(channel, midiMessage);
-                    }
-                    if(statusBits == IRAudio::kMidiStatus_CONTROL_CHANGE) {
-                        IRE_LOG_DEBUG("Midi message control change!");
-                        IRAudio::insertCCMessage(channel, midiMessage);
-                    }
+                if (statusBits == IRAudio::kMidiStatus_NOTE_ON) {
+                    IRE_LOG_INFO("Midi message note on!");
+                    IRAudio::insertNoteOnMessage(channel, midiMessage);
                 }
-            );
-            addSystemTag<C_MidiIn>(system);
-            return system;
-        }
+                if (statusBits == IRAudio::kMidiStatus_NOTE_OFF) {
+                    IRE_LOG_INFO("Midi message note off!");
+                    IRAudio::insertNoteOffMessage(channel, midiMessage);
+                }
+                if (statusBits == IRAudio::kMidiStatus_CONTROL_CHANGE) {
+                    IRE_LOG_DEBUG("Midi message control change!");
+                    IRAudio::insertCCMessage(channel, midiMessage);
+                }
+            });
+        addSystemTag<C_MidiIn>(system);
+        return system;
+    }
 
-        // EntityId createMidiDeviceIn(
-        //     std::string name,
-        //     MidiChannels channel
-        // )
-        // {
-        //     MidiChannel channelValue = (MidiChannel)channel;
-        //     if(m_midiChannelToDeviceMappings.contains(channelValue)) {
-        //         IRE_LOG_ERROR("Device already exists for channel, skipping {}", channelValue);
-        //         return m_midiInDevices[m_midiChannelToDeviceMappings[channelValue]];
-        //     }
+    // EntityId createMidiDeviceIn(
+    //     std::string name,
+    //     MidiChannels channel
+    // )
+    // {
+    //     MidiChannel channelValue = (MidiChannel)channel;
+    //     if(m_midiChannelToDeviceMappings.contains(channelValue)) {
+    //         IRE_LOG_ERROR("Device already exists for channel, skipping {}", channelValue);
+    //         return m_midiInDevices[m_midiChannelToDeviceMappings[channelValue]];
+    //     }
 
-        //     int newDeviceId = m_nextDeviceId++;
-        //     EntityId device = IRECS::createEntity(
-        //         C_Name{name},
-        //         C_MidiChannel{channelValue},
-        //         C_MidiIn{},
-        //         C_MidiDevice{newDeviceId}
-        //     );
-        //     m_midiChannelToDeviceMappings.insert({channel, newDeviceId});
-        //     m_midiDeviceToChannelMappings.insert({newDeviceId, channel});
-        //     m_midiInDevices.push_back(device);
-        //     IRE_LOG_INFO("
-        //         "Created MIDI device {} (id: {}) on channel {} (value: {})",
-        //         name,
-        //         newDeviceId,
-        //         static_cast<int>(channelValue) + 1,
-        //         static_cast<int>(channelValue)
-        //     );
-        //     return device;
+    //     int newDeviceId = m_nextDeviceId++;
+    //     EntityId device = IRECS::createEntity(
+    //         C_Name{name},
+    //         C_MidiChannel{channelValue},
+    //         C_MidiIn{},
+    //         C_MidiDevice{newDeviceId}
+    //     );
+    //     m_midiChannelToDeviceMappings.insert({channel, newDeviceId});
+    //     m_midiDeviceToChannelMappings.insert({newDeviceId, channel});
+    //     m_midiInDevices.push_back(device);
+    //     IRE_LOG_INFO("
+    //         "Created MIDI device {} (id: {}) on channel {} (value: {})",
+    //         name,
+    //         newDeviceId,
+    //         static_cast<int>(channelValue) + 1,
+    //         static_cast<int>(channelValue)
+    //     );
+    //     return device;
 
-        // }
+    // }
+};
 
-    };
-
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_AUDIO_MIDI_MESSAGE_IN_H */

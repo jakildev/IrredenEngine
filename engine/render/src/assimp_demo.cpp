@@ -1,12 +1,3 @@
-// /*
-//  * Project: Irreden Engine
-//  * File: assimp_demo.cpp
-//  * Author: Evin Killian jakildev@gmail.com
-//  * Created Date: October 2023
-//  * -----
-//  * Modified By: <your_name> <Month> <YYYY>
-//  */
-
 // #include "assimp_demo.hpp"
 
 // #include <assimp/scene.h>

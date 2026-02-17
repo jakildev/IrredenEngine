@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: rendering_rm.cpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/rendering_rm.hpp>
@@ -20,7 +11,8 @@ namespace IRRender {
 
 RenderingResourceManager::RenderingResourceManager() {
     m_liveResourceCount = 0;
-    IRE_LOG_INFO("Creating an resource id pool. IR_MAX_RESOURCES={}", static_cast<int>(IR_MAX_RESOURCES));
+    IRE_LOG_INFO("Creating an resource id pool. IR_MAX_RESOURCES={}",
+                 static_cast<int>(IR_MAX_RESOURCES));
     for (ResourceId resource = 0; resource < IR_MAX_RESOURCES; resource++) {
         m_resourcePool.push(resource);
     }

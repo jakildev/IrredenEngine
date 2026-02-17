@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_midi_sequence_animated.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_MIDI_SEQUENCE_ANIMATED_H
 #define ENTITY_MIDI_SEQUENCE_ANIMATED_H
 
@@ -20,18 +11,16 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-    // TODO
-    template <>
-    struct Prefab<PrefabTypes::kMidiSequenceAnimated> {
-        static EntityHandle create(
+// TODO
+template <> struct Prefab<PrefabTypes::kMidiSequenceAnimated> {
+    static EntityHandle create(
 
-        )
-        {
-            EntityHandle entity{};
+    ) {
+        EntityHandle entity{};
 
-            return entity;
-        }
-    };
+        return entity;
+    }
+};
 
 } // namespace IRECS
 

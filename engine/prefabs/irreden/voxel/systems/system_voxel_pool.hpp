@@ -1,12 +1,3 @@
-// /*
-//  * Project: Irreden Engine
-//  * File: system_voxel_pool.hpp
-//  * Author: Evin Killian jakildev@gmail.com
-//  * Created Date: October 2023
-//  * -----
-//  * Modified By: <your_name> <Month> <YYYY>
-//  */
-
 // // Must be extended to sort heirarchies and the like
 
 // #ifndef SYSTEM_VOXEL_POOL_H

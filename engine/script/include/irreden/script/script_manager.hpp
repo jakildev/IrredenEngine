@@ -1,5 +1,4 @@
 #ifndef SCRIPT_MANAGER_H
 #define SCRIPT_MANAGER_H
 
-
 #endif /* SCRIPT_MANAGER_H */

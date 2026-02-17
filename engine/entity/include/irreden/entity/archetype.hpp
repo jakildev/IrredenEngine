@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: archetype.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: November 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ARCHETYPE_H
 #define ARCHETYPE_H
 
@@ -15,7 +6,7 @@
 #include <sstream>
 
 namespace IREntity {
-    std::string makeComponentStringInternal(const Archetype& type);
+std::string makeComponentStringInternal(const Archetype &type);
 
 } // namespace IREntity
 

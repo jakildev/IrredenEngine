@@ -4,3 +4,13 @@ bazel-IrredenEngine/
 bazel-bin/
 bazel-out/
 bazel-testlogs/
+
+# local build and tooling output
+build/
+cmake-build-*/
+compile_commands.json
+.cache/
+CMakeUserPresets.json
+
+# editor files
+.vscode/

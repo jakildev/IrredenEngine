@@ -3,27 +3,14 @@
 
 namespace IRComponents {
 
-    struct C_MouseScroll {
-        double xoffset_;
-        double yoffset_;
+struct C_MouseScroll {
+    double xoffset_;
+    double yoffset_;
 
-        C_MouseScroll(
-            double xoffset,
-            double yoffset
-        )
-        :   xoffset_(xoffset)
-        ,   yoffset_(yoffset)
-        {
+    C_MouseScroll(double xoffset, double yoffset) : xoffset_(xoffset), yoffset_(yoffset) {}
 
-        }
-
-        C_MouseScroll()
-        :   xoffset_(0)
-        ,   yoffset_(0)
-        {
-
-        }
-    };
+    C_MouseScroll() : xoffset_(0), yoffset_(0) {}
+};
 
 } // namespace IRComponents
 

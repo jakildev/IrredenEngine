@@ -6,2187 +6,2178 @@
 #include <inttypes.h>
 #include <irreden/ir_profile.hpp>
 
-namespace
-{
-	GL4API apiHook;
+namespace {
+GL4API apiHook;
 } // namespace
 
-using PFNGETGLPROC = void* (const char*);
+using PFNGETGLPROC = void *(const char *);
 
-#define E2S( en ) Enum2String( en ).c_str()
-extern std::string Enum2String( GLenum e );
+#define E2S(en) Enum2String(en).c_str()
+extern std::string Enum2String(GLenum e);
 
-void GLTracer_glCullFace(GLenum mode)
-{
-	IRE_GL_LOG_DEBUG("glCullFace({})", E2S(mode));
-	apiHook.glCullFace(mode);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glCullFace(GLenum mode) {
+    IRE_GL_LOG_DEBUG("glCullFace({})", E2S(mode));
+    apiHook.glCullFace(mode);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glPolygonMode(GLenum face, GLenum mode)
-{
-	IRE_GL_LOG_DEBUG("glPolygonMode({}, {})", E2S(face), E2S(mode));
-	apiHook.glPolygonMode(face, mode);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glPolygonMode(GLenum face, GLenum mode) {
+    IRE_GL_LOG_DEBUG("glPolygonMode({}, {})", E2S(face), E2S(mode));
+    apiHook.glPolygonMode(face, mode);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glScissor({}, {}, {}, {})", x, y, width, height);
-	apiHook.glScissor(x, y, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
+    IRE_GL_LOG_DEBUG("glScissor({}, {}, {}, {})", x, y, width, height);
+    apiHook.glScissor(x, y, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glTexParameterf(GLenum target, GLenum pname, GLfloat param)
-{
-	IRE_GL_LOG_DEBUG("glTexParameterf({}, {}, {})", E2S(target), E2S(pname), param);
-	apiHook.glTexParameterf(target, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glTexParameterf(GLenum target, GLenum pname, GLfloat param) {
+    IRE_GL_LOG_DEBUG("glTexParameterf({}, {}, {})", E2S(target), E2S(pname), param);
+    apiHook.glTexParameterf(target, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glTexParameterfv(GLenum target, GLenum pname, const GLfloat* params)
-{
-	IRE_GL_LOG_DEBUG("glTexParameterfv({}, {}, {})", E2S(target), E2S(pname), (const void*)(params));
-	apiHook.glTexParameterfv(target, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glTexParameterfv(GLenum target, GLenum pname, const GLfloat *params) {
+    IRE_GL_LOG_DEBUG("glTexParameterfv({}, {}, {})", E2S(target), E2S(pname),
+                     (const void *)(params));
+    apiHook.glTexParameterfv(target, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glTexParameteri(GLenum target, GLenum pname, GLint param)
-{
-	IRE_GL_LOG_DEBUG("glTexParameteri({}, {}, {})", E2S(target), E2S(pname), param);
-	apiHook.glTexParameteri(target, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glTexParameteri(GLenum target, GLenum pname, GLint param) {
+    IRE_GL_LOG_DEBUG("glTexParameteri({}, {}, {})", E2S(target), E2S(pname), param);
+    apiHook.glTexParameteri(target, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glTexParameteriv(GLenum target, GLenum pname, const GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glTexParameteriv({}, {}, {})", E2S(target), E2S(pname), (const void*)(params));
-	apiHook.glTexParameteriv(target, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glTexParameteriv(GLenum target, GLenum pname, const GLint *params) {
+    IRE_GL_LOG_DEBUG("glTexParameteriv({}, {}, {})", E2S(target), E2S(pname),
+                     (const void *)(params));
+    apiHook.glTexParameteriv(target, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTexImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, internalformat, width, height, border, E2S(format), E2S(type), pixels);
-	apiHook.glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width,
+                           GLsizei height, GLint border, GLenum format, GLenum type,
+                           const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTexImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level,
+                     internalformat, width, height, border, E2S(format), E2S(type), pixels);
+    apiHook.glTexImage2D(target, level, internalformat, width, height, border, format, type,
+                         pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glClear(GLbitfield mask)
-{
-	IRE_GL_LOG_DEBUG("glClear({})", (unsigned int)(mask));
-	apiHook.glClear(mask);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glClear(GLbitfield mask) {
+    IRE_GL_LOG_DEBUG("glClear({})", (unsigned int)(mask));
+    apiHook.glClear(mask);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
-{
-	IRE_GL_LOG_DEBUG("glClearColor({}, {}, {}, {})", red, green, blue, alpha);
-	apiHook.glClearColor(red, green, blue, alpha);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) {
+    IRE_GL_LOG_DEBUG("glClearColor({}, {}, {}, {})", red, green, blue, alpha);
+    apiHook.glClearColor(red, green, blue, alpha);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glClearStencil(GLint s)
-{
-	IRE_GL_LOG_DEBUG("glClearStencil({})", s);
-	apiHook.glClearStencil(s);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glClearStencil(GLint s) {
+    IRE_GL_LOG_DEBUG("glClearStencil({})", s);
+    apiHook.glClearStencil(s);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glClearDepth(GLdouble depth)
-{
-	IRE_GL_LOG_DEBUG("glClearDepth({})", depth);
-	apiHook.glClearDepth(depth);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glClearDepth(GLdouble depth) {
+    IRE_GL_LOG_DEBUG("glClearDepth({})", depth);
+    apiHook.glClearDepth(depth);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha)
-{
-	IRE_GL_LOG_DEBUG("glColorMask({}, {}, {}, {})", (unsigned int)(red), (unsigned int)(green), (unsigned int)(blue), (unsigned int)(alpha));
-	apiHook.glColorMask(red, green, blue, alpha);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha) {
+    IRE_GL_LOG_DEBUG("glColorMask({}, {}, {}, {})", (unsigned int)(red), (unsigned int)(green),
+                     (unsigned int)(blue), (unsigned int)(alpha));
+    apiHook.glColorMask(red, green, blue, alpha);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glDepthMask(GLboolean flag)
-{
-	IRE_GL_LOG_DEBUG("glDepthMask({})", (unsigned int)(flag));
-	apiHook.glDepthMask(flag);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glDepthMask(GLboolean flag) {
+    IRE_GL_LOG_DEBUG("glDepthMask({})", (unsigned int)(flag));
+    apiHook.glDepthMask(flag);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glDisable(GLenum cap)
-{
-	IRE_GL_LOG_DEBUG("glDisable({})", E2S(cap));
-	apiHook.glDisable(cap);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glDisable(GLenum cap) {
+    IRE_GL_LOG_DEBUG("glDisable({})", E2S(cap));
+    apiHook.glDisable(cap);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glEnable(GLenum cap)
-{
-	IRE_GL_LOG_DEBUG("glEnable({})", E2S(cap));
-	apiHook.glEnable(cap);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glEnable(GLenum cap) {
+    IRE_GL_LOG_DEBUG("glEnable({})", E2S(cap));
+    apiHook.glEnable(cap);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glFinish()
-{
-	IRE_GL_LOG_DEBUG("glFinish()\n");
-	apiHook.glFinish();
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glFinish() {
+    IRE_GL_LOG_DEBUG("glFinish()\n");
+    apiHook.glFinish();
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glFlush()
-{
-	IRE_GL_LOG_DEBUG("glFlush()\n");
-	apiHook.glFlush();
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glFlush() {
+    IRE_GL_LOG_DEBUG("glFlush()\n");
+    apiHook.glFlush();
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glBlendFunc(GLenum sfactor, GLenum dfactor)
-{
-	IRE_GL_LOG_DEBUG("glBlendFunc({}, {})", E2S(sfactor), E2S(dfactor));
-	apiHook.glBlendFunc(sfactor, dfactor);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glBlendFunc(GLenum sfactor, GLenum dfactor) {
+    IRE_GL_LOG_DEBUG("glBlendFunc({}, {})", E2S(sfactor), E2S(dfactor));
+    apiHook.glBlendFunc(sfactor, dfactor);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glDepthFunc(GLenum func)
-{
-	IRE_GL_LOG_DEBUG("glDepthFunc({})", E2S(func));
-	apiHook.glDepthFunc(func);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glDepthFunc(GLenum func) {
+    IRE_GL_LOG_DEBUG("glDepthFunc({})", E2S(func));
+    apiHook.glDepthFunc(func);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glPixelStorei(GLenum pname, GLint param)
-{
-	IRE_GL_LOG_DEBUG("glPixelStorei({}, {})", E2S(pname), param);
-	apiHook.glPixelStorei(pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glPixelStorei(GLenum pname, GLint param) {
+    IRE_GL_LOG_DEBUG("glPixelStorei({}, {})", E2S(pname), param);
+    apiHook.glPixelStorei(pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glReadBuffer(GLenum src)
-{
-	IRE_GL_LOG_DEBUG("glReadBuffer({})", E2S(src));
-	apiHook.glReadBuffer(src);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glReadBuffer(GLenum src) {
+    IRE_GL_LOG_DEBUG("glReadBuffer({})", E2S(src));
+    apiHook.glReadBuffer(src);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glReadPixels({}, {}, {}, {}, {}, {}, {})", x, y, width, height, E2S(format), E2S(type), pixels);
-	apiHook.glReadPixels(x, y, width, height, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+void GLTracer_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,
+                           GLenum type, void *pixels) {
+    IRE_GL_LOG_DEBUG("glReadPixels({}, {}, {}, {}, {}, {}, {})", x, y, width, height, E2S(format),
+                     E2S(type), pixels);
+    apiHook.glReadPixels(x, y, width, height, format, type, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-GLenum GLTracer_glGetError()
-{
-	IRE_GL_LOG_DEBUG("glGetError()\n");
-	GLenum const r = apiHook.glGetError();
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
+GLenum GLTracer_glGetError() {
+    IRE_GL_LOG_DEBUG("glGetError()\n");
+    GLenum const r = apiHook.glGetError();
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
 }
-
-void GLTracer_glGetIntegerv(GLenum pname, GLint* data)
-{
-	IRE_GL_LOG_DEBUG("glGetIntegerv({}, {})", E2S(pname), (void*)(data));
-	apiHook.glGetIntegerv(pname, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+
+void GLTracer_glGetIntegerv(GLenum pname, GLint *data) {
+    IRE_GL_LOG_DEBUG("glGetIntegerv({}, {})", E2S(pname), (void *)(data));
+    apiHook.glGetIntegerv(pname, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+const GLubyte *GLTracer_glGetString(GLenum name) {
+    IRE_GL_LOG_DEBUG("glGetString({})", E2S(name));
+    const GLubyte *const r = apiHook.glGetString(name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, void *pixels) {
+    IRE_GL_LOG_DEBUG("glGetTexImage({}, {}, {}, {}, {})", E2S(target), level, E2S(format),
+                     E2S(type), pixels);
+    apiHook.glGetTexImage(target, level, format, type, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetTexLevelParameteriv({}, {}, {}, {})", E2S(target), level, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetTexLevelParameteriv(target, level, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
+    IRE_GL_LOG_DEBUG("glViewport({}, {}, {}, {})", x, y, width, height);
+    apiHook.glViewport(x, y, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDrawArrays(GLenum mode, GLint first, GLsizei count) {
+    IRE_GL_LOG_DEBUG("glDrawArrays({}, {}, {})", E2S(mode), first, count);
+    apiHook.glDrawArrays(mode, first, count);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void *indices) {
+    IRE_GL_LOG_DEBUG("glDrawElements({}, {}, {}, {})", E2S(mode), count, E2S(type), indices);
+    apiHook.glDrawElements(mode, count, type, indices);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
+                              GLsizei width, GLsizei height, GLenum format, GLenum type,
+                              const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTexSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level,
+                     xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
+    apiHook.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteTextures(GLsizei n, const GLuint *textures) {
+    IRE_GL_LOG_DEBUG("glDeleteTextures({}, {})", n, (const void *)(textures));
+    apiHook.glDeleteTextures(n, textures);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenTextures(GLsizei n, GLuint *textures) {
+    IRE_GL_LOG_DEBUG("glGenTextures({}, {})", n, (void *)(textures));
+    apiHook.glGenTextures(n, textures);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width,
+                           GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type,
+                           const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level,
+                     internalformat, width, height, depth, border, E2S(format), E2S(type), pixels);
+    apiHook.glTexImage3D(target, level, internalformat, width, height, depth, border, format, type,
+                         pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glActiveTexture(GLenum texture) {
+    IRE_GL_LOG_DEBUG("glActiveTexture({})", E2S(texture));
+    apiHook.glActiveTexture(texture);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat,
+                                     GLsizei width, GLsizei height, GLsizei depth, GLint border,
+                                     GLsizei imageSize, const void *data) {
+    IRE_GL_LOG_DEBUG("glCompressedTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target),
+                     level, E2S(internalformat), width, height, depth, border, imageSize, data);
+    apiHook.glCompressedTexImage3D(target, level, internalformat, width, height, depth, border,
+                                   imageSize, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat,
+                                     GLsizei width, GLsizei height, GLint border, GLsizei imageSize,
+                                     const void *data) {
+    IRE_GL_LOG_DEBUG("glCompressedTexImage2D({}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level,
+                     E2S(internalformat), width, height, border, imageSize, data);
+    apiHook.glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize,
+                                   data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetCompressedTexImage(GLenum target, GLint level, void *img) {
+    IRE_GL_LOG_DEBUG("glGetCompressedTexImage({}, {}, {})", E2S(target), level, img);
+    apiHook.glGetCompressedTexImage(target, level, img);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenQueries(GLsizei n, GLuint *ids) {
+    IRE_GL_LOG_DEBUG("glGenQueries({}, {})", n, (void *)(ids));
+    apiHook.glGenQueries(n, ids);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteQueries(GLsizei n, const GLuint *ids) {
+    IRE_GL_LOG_DEBUG("glDeleteQueries({}, {})", n, (const void *)(ids));
+    apiHook.glDeleteQueries(n, ids);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBeginQuery(GLenum target, GLuint id) {
+    IRE_GL_LOG_DEBUG("glBeginQuery({}, {})", E2S(target), id);
+    apiHook.glBeginQuery(target, id);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glEndQuery(GLenum target) {
+    IRE_GL_LOG_DEBUG("glEndQuery({})", E2S(target));
+    apiHook.glEndQuery(target);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetQueryObjectiv({}, {}, {})", id, E2S(pname), (void *)(params));
+    apiHook.glGetQueryObjectiv(id, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindBuffer(GLenum target, GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glBindBuffer({}, {})", E2S(target), buffer);
+    apiHook.glBindBuffer(target, buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteBuffers(GLsizei n, const GLuint *buffers) {
+    IRE_GL_LOG_DEBUG("glDeleteBuffers({}, {})", n, (const void *)(buffers));
+    apiHook.glDeleteBuffers(n, buffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError), "glDeleteBuffers({}, {})", n,
+              (const void *)(buffers));
+}
+
+void GLTracer_glGenBuffers(GLsizei n, GLuint *buffers) {
+    IRE_GL_LOG_DEBUG("glGenBuffers({}, {})", n, (void *)(buffers));
+    apiHook.glGenBuffers(n, buffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage) {
+    IRE_GL_LOG_DEBUG("glBufferData({}, {}, {}, {})", E2S(target), size, data, E2S(usage));
+    apiHook.glBufferData(target, size, data, usage);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data) {
+    IRE_GL_LOG_DEBUG("glBufferSubData({}, {}, {}, {})", E2S(target), offset, size, data);
+    apiHook.glBufferSubData(target, offset, size, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDrawBuffers(GLsizei n, const GLenum *bufs) {
+    IRE_GL_LOG_DEBUG("glDrawBuffers({}, {})", n, (const void *)(bufs));
+    apiHook.glDrawBuffers(n, bufs);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glAttachShader(GLuint program, GLuint shader) {
+    IRE_GL_LOG_DEBUG("glAttachShader({}, {})", program, shader);
+    apiHook.glAttachShader(program, shader);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindAttribLocation(GLuint program, GLuint index, const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glBindAttribLocation({}, {}, {})", program, index, (const void *)(name));
+    apiHook.glBindAttribLocation(program, index, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompileShader(GLuint shader) {
+    IRE_GL_LOG_DEBUG("glCompileShader({})", shader);
+    apiHook.glCompileShader(shader);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLuint GLTracer_glCreateProgram() {
+    IRE_GL_LOG_DEBUG("glCreateProgram()\n");
+    GLuint const r = apiHook.glCreateProgram();
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+GLuint GLTracer_glCreateShader(GLenum type) {
+    IRE_GL_LOG_DEBUG("glCreateShader({})", E2S(type));
+    GLuint const r = apiHook.glCreateShader(type);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glDeleteProgram(GLuint program) {
+    IRE_GL_LOG_DEBUG("glDeleteProgram({})", program);
+    apiHook.glDeleteProgram(program);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteShader(GLuint shader) {
+    IRE_GL_LOG_DEBUG("glDeleteShader({})", shader);
+    apiHook.glDeleteShader(shader);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDisableVertexAttribArray(GLuint index) {
+    IRE_GL_LOG_DEBUG("glDisableVertexAttribArray({})", index);
+    apiHook.glDisableVertexAttribArray(index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glEnableVertexAttribArray(GLuint index) {
+    IRE_GL_LOG_DEBUG("glEnableVertexAttribArray({})", index);
+    apiHook.glEnableVertexAttribArray(index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetActiveAttrib(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,
+                                GLint *size, GLenum *type, GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetActiveAttrib({}, {}, {}, {}, {}, {}, {})", program, index, bufSize,
+                     (void *)(length), (void *)(size), (void *)(type), (void *)(name));
+    apiHook.glGetActiveAttrib(program, index, bufSize, length, size, type, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,
+                                 GLint *size, GLenum *type, GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetActiveUniform({}, {}, {}, {}, {}, {}, {})", program, index, bufSize,
+                     (void *)(length), (void *)(size), (void *)(type), (void *)(name));
+    apiHook.glGetActiveUniform(program, index, bufSize, length, size, type, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLint GLTracer_glGetAttribLocation(GLuint program, const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetAttribLocation({}, {})", program, (const void *)(name));
+    GLint const r = apiHook.glGetAttribLocation(program, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glGetProgramiv(GLuint program, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetProgramiv({}, {}, {})", program, E2S(pname), (void *)(params));
+    apiHook.glGetProgramiv(program, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei *length,
+                                  GLchar *infoLog) {
+    IRE_GL_LOG_DEBUG("glGetProgramInfoLog({}, {}, {}, {})", program, bufSize, (void *)(length),
+                     (void *)(infoLog));
+    apiHook.glGetProgramInfoLog(program, bufSize, length, infoLog);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetShaderiv(GLuint shader, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetShaderiv({}, {}, {})", shader, E2S(pname), (void *)(params));
+    apiHook.glGetShaderiv(shader, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog) {
+    IRE_GL_LOG_DEBUG("glGetShaderInfoLog({}, {}, {}, {})", shader, bufSize, (void *)(length),
+                     (void *)(infoLog));
+    apiHook.glGetShaderInfoLog(shader, bufSize, length, infoLog);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLint GLTracer_glGetUniformLocation(GLuint program, const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetUniformLocation({}, {})", program, (const void *)(name));
+    GLint const r = apiHook.glGetUniformLocation(program, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+GLboolean GLTracer_glIsProgram(GLuint program) {
+    IRE_GL_LOG_DEBUG("glIsProgram({})", program);
+    GLboolean const r = apiHook.glIsProgram(program);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+GLboolean GLTracer_glIsShader(GLuint shader) {
+    IRE_GL_LOG_DEBUG("glIsShader({})", shader);
+    GLboolean const r = apiHook.glIsShader(shader);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glLinkProgram(GLuint program) {
+    IRE_GL_LOG_DEBUG("glLinkProgram({})", program);
+    apiHook.glLinkProgram(program);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glShaderSource(GLuint shader, GLsizei count, const GLchar *const *string,
+                             const GLint *length) {
+    IRE_GL_LOG_DEBUG("glShaderSource({}, {}, {}, {})", shader, count, (const void *)(string),
+                     (const void *)(length));
+    apiHook.glShaderSource(shader, count, string, length);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUseProgram(GLuint program) {
+    IRE_GL_LOG_DEBUG("glUseProgram({})", program);
+    apiHook.glUseProgram(program);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform1f(GLint location, GLfloat v0) {
+    IRE_GL_LOG_DEBUG("glUniform1f({}, {})", location, v0);
+    apiHook.glUniform1f(location, v0);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform1i(GLint location, GLint v0) {
+    IRE_GL_LOG_DEBUG("glUniform1i({}, {})", location, v0);
+    apiHook.glUniform1i(location, v0);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform1fv(GLint location, GLsizei count, const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glUniform1fv({}, {}, {})", location, count, (const void *)(value));
+    apiHook.glUniform1fv(location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform3fv(GLint location, GLsizei count, const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glUniform3fv({}, {}, {})", location, count, (const void *)(value));
+    apiHook.glUniform3fv(location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform4fv(GLint location, GLsizei count, const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glUniform4fv({}, {}, {})", location, count, (const void *)(value));
+    apiHook.glUniform4fv(location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniform1iv(GLint location, GLsizei count, const GLint *value) {
+    IRE_GL_LOG_DEBUG("glUniform1iv({}, {}, {})", location, count, (const void *)(value));
+    apiHook.glUniform1iv(location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transpose,
+                                 const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glUniformMatrix3fv({}, {}, {}, {})", location, count,
+                     (unsigned int)(transpose), (const void *)(value));
+    apiHook.glUniformMatrix3fv(location, count, transpose, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniformMatrix4fv(GLint location, GLsizei count, GLboolean transpose,
+                                 const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glUniformMatrix4fv({}, {}, {}, {})", location, count,
+                     (unsigned int)(transpose), (const void *)(value));
+    apiHook.glUniformMatrix4fv(location, count, transpose, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glValidateProgram(GLuint program) {
+    IRE_GL_LOG_DEBUG("glValidateProgram({})", program);
+    apiHook.glValidateProgram(program);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized,
+                                    GLsizei stride, const void *pointer) {
+    IRE_GL_LOG_DEBUG("glVertexAttribPointer({}, {}, {}, {}, {}, {})", index, size, E2S(type),
+                     (unsigned int)(normalized), stride, pointer);
+    apiHook.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glEnablei(GLenum target, GLuint index) {
+    IRE_GL_LOG_DEBUG("glEnablei({}, {})", E2S(target), index);
+    apiHook.glEnablei(target, index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDisablei(GLenum target, GLuint index) {
+    IRE_GL_LOG_DEBUG("glDisablei({}, {})", E2S(target), index);
+    apiHook.glDisablei(target, index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset,
+                                GLsizeiptr size) {
+    IRE_GL_LOG_DEBUG("glBindBufferRange({}, {}, {}, {}, {})", E2S(target), index, buffer, offset,
+                     size);
+    apiHook.glBindBufferRange(target, index, buffer, offset, size);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindBufferBase(GLenum target, GLuint index, GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glBindBufferBase({}, {}, {})", E2S(target), index, buffer);
+    apiHook.glBindBufferBase(target, index, buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindFragDataLocation(GLuint program, GLuint color, const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glBindFragDataLocation({}, {}, {})", program, color, (const void *)(name));
+    apiHook.glBindFragDataLocation(program, color, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+const GLubyte *GLTracer_glGetStringi(GLenum name, GLuint index) {
+    IRE_GL_LOG_DEBUG("glGetStringi({}, {})", E2S(name), index);
+    const GLubyte *const r = apiHook.glGetStringi(name, index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glBindFramebuffer(GLenum target, GLuint framebuffer) {
+    IRE_GL_LOG_DEBUG("glBindFramebuffer({}, {})", E2S(target), framebuffer);
+    apiHook.glBindFramebuffer(target, framebuffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteFramebuffers(GLsizei n, const GLuint *framebuffers) {
+    IRE_GL_LOG_DEBUG("glDeleteFramebuffers({}, {})", n, (const void *)(framebuffers));
+    apiHook.glDeleteFramebuffers(n, framebuffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenFramebuffers(GLsizei n, GLuint *framebuffers) {
+    IRE_GL_LOG_DEBUG("glGenFramebuffers({}, {})", n, (void *)(framebuffers));
+    apiHook.glGenFramebuffers(n, framebuffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLenum GLTracer_glCheckFramebufferStatus(GLenum target) {
+    IRE_GL_LOG_DEBUG("glCheckFramebufferStatus({})", E2S(target));
+    GLenum const r = apiHook.glCheckFramebufferStatus(target);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget,
+                                     GLuint texture, GLint level) {
+    IRE_GL_LOG_DEBUG("glFramebufferTexture2D({}, {}, {}, {}, {})", E2S(target), E2S(attachment),
+                     E2S(textarget), texture, level);
+    apiHook.glFramebufferTexture2D(target, attachment, textarget, texture, level);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
-
-const GLubyte* GLTracer_glGetString(GLenum name)
-{
-	IRE_GL_LOG_DEBUG("glGetString({})", E2S(name));
-	const GLubyte* const r = apiHook.glGetString(name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glGetTexImage({}, {}, {}, {}, {})", E2S(target), level, E2S(format), E2S(type), pixels);
-	apiHook.glGetTexImage(target, level, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTexLevelParameteriv({}, {}, {}, {})", E2S(target), level, E2S(pname), (void*)(params));
-	apiHook.glGetTexLevelParameteriv(target, level, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glViewport({}, {}, {}, {})", x, y, width, height);
-	apiHook.glViewport(x, y, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDrawArrays(GLenum mode, GLint first, GLsizei count)
-{
-	IRE_GL_LOG_DEBUG("glDrawArrays({}, {}, {})", E2S(mode), first, count);
-	apiHook.glDrawArrays(mode, first, count);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices)
-{
-	IRE_GL_LOG_DEBUG("glDrawElements({}, {}, {}, {})", E2S(mode), count, E2S(type), indices);
-	apiHook.glDrawElements(mode, count, type, indices);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTexSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
-	apiHook.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteTextures(GLsizei n, const GLuint* textures)
-{
-	IRE_GL_LOG_DEBUG("glDeleteTextures({}, {})", n, (const void*)(textures));
-	apiHook.glDeleteTextures(n, textures);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenTextures(GLsizei n, GLuint* textures)
-{
-	IRE_GL_LOG_DEBUG("glGenTextures({}, {})", n, (void*)(textures));
-	apiHook.glGenTextures(n, textures);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, internalformat, width, height, depth, border, E2S(format), E2S(type), pixels);
-	apiHook.glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glActiveTexture(GLenum texture)
-{
-	IRE_GL_LOG_DEBUG("glActiveTexture({})", E2S(texture));
-	apiHook.glActiveTexture(texture);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glCompressedTexImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, E2S(internalformat), width, height, depth, border, imageSize, data);
-	apiHook.glCompressedTexImage3D(target, level, internalformat, width, height, depth, border, imageSize, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glCompressedTexImage2D({}, {}, {}, {}, {}, {}, {}, {})", E2S(target), level, E2S(internalformat), width, height, border, imageSize, data);
-	apiHook.glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetCompressedTexImage(GLenum target, GLint level, void* img)
-{
-	IRE_GL_LOG_DEBUG("glGetCompressedTexImage({}, {}, {})", E2S(target), level, img);
-	apiHook.glGetCompressedTexImage(target, level, img);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenQueries(GLsizei n, GLuint* ids)
-{
-	IRE_GL_LOG_DEBUG("glGenQueries({}, {})", n, (void*)(ids));
-	apiHook.glGenQueries(n, ids);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteQueries(GLsizei n, const GLuint* ids)
-{
-	IRE_GL_LOG_DEBUG("glDeleteQueries({}, {})", n, (const void*)(ids));
-	apiHook.glDeleteQueries(n, ids);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBeginQuery(GLenum target, GLuint id)
-{
-	IRE_GL_LOG_DEBUG("glBeginQuery({}, {})", E2S(target), id);
-	apiHook.glBeginQuery(target, id);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glEndQuery(GLenum target)
-{
-	IRE_GL_LOG_DEBUG("glEndQuery({})", E2S(target));
-	apiHook.glEndQuery(target);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetQueryObjectiv(GLuint id, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetQueryObjectiv({}, {}, {})", id, E2S(pname), (void*)(params));
-	apiHook.glGetQueryObjectiv(id, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindBuffer(GLenum target, GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glBindBuffer({}, {})", E2S(target), buffer);
-	apiHook.glBindBuffer(target, buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteBuffers(GLsizei n, const GLuint* buffers)
-{
-	IRE_GL_LOG_DEBUG("glDeleteBuffers({}, {})", n, (const void*)(buffers));
-	apiHook.glDeleteBuffers(n, buffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError), "glDeleteBuffers({}, {})", n, (const void*)(buffers));
-}
-
-void GLTracer_glGenBuffers(GLsizei n, GLuint* buffers)
-{
-	IRE_GL_LOG_DEBUG("glGenBuffers({}, {})", n, (void*)(buffers));
-	apiHook.glGenBuffers(n, buffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage)
-{
-	IRE_GL_LOG_DEBUG("glBufferData({}, {}, {}, {})", E2S(target), size, data, E2S(usage));
-	apiHook.glBufferData(target, size, data, usage);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glBufferSubData({}, {}, {}, {})", E2S(target), offset, size, data);
-	apiHook.glBufferSubData(target, offset, size, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDrawBuffers(GLsizei n, const GLenum* bufs)
-{
-	IRE_GL_LOG_DEBUG("glDrawBuffers({}, {})", n, (const void*)(bufs));
-	apiHook.glDrawBuffers(n, bufs);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glAttachShader(GLuint program, GLuint shader)
-{
-	IRE_GL_LOG_DEBUG("glAttachShader({}, {})", program, shader);
-	apiHook.glAttachShader(program, shader);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindAttribLocation(GLuint program, GLuint index, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glBindAttribLocation({}, {}, {})", program, index, (const void*)(name));
-	apiHook.glBindAttribLocation(program, index, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompileShader(GLuint shader)
-{
-	IRE_GL_LOG_DEBUG("glCompileShader({})", shader);
-	apiHook.glCompileShader(shader);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLuint GLTracer_glCreateProgram()
-{
-	IRE_GL_LOG_DEBUG("glCreateProgram()\n");
-	GLuint const r = apiHook.glCreateProgram();
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-GLuint GLTracer_glCreateShader(GLenum type)
-{
-	IRE_GL_LOG_DEBUG("glCreateShader({})", E2S(type));
-	GLuint const r = apiHook.glCreateShader(type);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glDeleteProgram(GLuint program)
-{
-	IRE_GL_LOG_DEBUG("glDeleteProgram({})", program);
-	apiHook.glDeleteProgram(program);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteShader(GLuint shader)
-{
-	IRE_GL_LOG_DEBUG("glDeleteShader({})", shader);
-	apiHook.glDeleteShader(shader);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDisableVertexAttribArray(GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glDisableVertexAttribArray({})", index);
-	apiHook.glDisableVertexAttribArray(index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glEnableVertexAttribArray(GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glEnableVertexAttribArray({})", index);
-	apiHook.glEnableVertexAttribArray(index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetActiveAttrib(GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetActiveAttrib({}, {}, {}, {}, {}, {}, {})", program, index, bufSize, (void*)(length), (void*)(size), (void*)(type), (void*)(name));
-	apiHook.glGetActiveAttrib(program, index, bufSize, length, size, type, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetActiveUniform({}, {}, {}, {}, {}, {}, {})", program, index, bufSize, (void*)(length), (void*)(size), (void*)(type), (void*)(name));
-	apiHook.glGetActiveUniform(program, index, bufSize, length, size, type, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLint GLTracer_glGetAttribLocation(GLuint program, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetAttribLocation({}, {})", program, (const void*)(name));
-	GLint const r = apiHook.glGetAttribLocation(program, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glGetProgramiv(GLuint program, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetProgramiv({}, {}, {})", program, E2S(pname), (void*)(params));
-	apiHook.glGetProgramiv(program, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog)
-{
-	IRE_GL_LOG_DEBUG("glGetProgramInfoLog({}, {}, {}, {})", program, bufSize, (void*)(length), (void*)(infoLog));
-	apiHook.glGetProgramInfoLog(program, bufSize, length, infoLog);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetShaderiv(GLuint shader, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetShaderiv({}, {}, {})", shader, E2S(pname), (void*)(params));
-	apiHook.glGetShaderiv(shader, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog)
-{
-	IRE_GL_LOG_DEBUG("glGetShaderInfoLog({}, {}, {}, {})", shader, bufSize, (void*)(length), (void*)(infoLog));
-	apiHook.glGetShaderInfoLog(shader, bufSize, length, infoLog);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLint GLTracer_glGetUniformLocation(GLuint program, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetUniformLocation({}, {})", program, (const void*)(name));
-	GLint const r = apiHook.glGetUniformLocation(program, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-GLboolean GLTracer_glIsProgram(GLuint program)
-{
-	IRE_GL_LOG_DEBUG("glIsProgram({})", program);
-	GLboolean const r = apiHook.glIsProgram(program);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-GLboolean GLTracer_glIsShader(GLuint shader)
-{
-	IRE_GL_LOG_DEBUG("glIsShader({})", shader);
-	GLboolean const r = apiHook.glIsShader(shader);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glLinkProgram(GLuint program)
-{
-	IRE_GL_LOG_DEBUG("glLinkProgram({})", program);
-	apiHook.glLinkProgram(program);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glShaderSource(GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length)
-{
-	IRE_GL_LOG_DEBUG("glShaderSource({}, {}, {}, {})", shader, count, (const void*)(string), (const void*)(length));
-	apiHook.glShaderSource(shader, count, string, length);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUseProgram(GLuint program)
-{
-	IRE_GL_LOG_DEBUG("glUseProgram({})", program);
-	apiHook.glUseProgram(program);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform1f(GLint location, GLfloat v0)
-{
-	IRE_GL_LOG_DEBUG("glUniform1f({}, {})", location, v0);
-	apiHook.glUniform1f(location, v0);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform1i(GLint location, GLint v0)
-{
-	IRE_GL_LOG_DEBUG("glUniform1i({}, {})", location, v0);
-	apiHook.glUniform1i(location, v0);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform1fv(GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glUniform1fv({}, {}, {})", location, count, (const void*)(value));
-	apiHook.glUniform1fv(location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform3fv(GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glUniform3fv({}, {}, {})", location, count, (const void*)(value));
-	apiHook.glUniform3fv(location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform4fv(GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glUniform4fv({}, {}, {})", location, count, (const void*)(value));
-	apiHook.glUniform4fv(location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniform1iv(GLint location, GLsizei count, const GLint* value)
-{
-	IRE_GL_LOG_DEBUG("glUniform1iv({}, {}, {})", location, count, (const void*)(value));
-	apiHook.glUniform1iv(location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glUniformMatrix3fv({}, {}, {}, {})", location, count, (unsigned int)(transpose), (const void*)(value));
-	apiHook.glUniformMatrix3fv(location, count, transpose, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniformMatrix4fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glUniformMatrix4fv({}, {}, {}, {})", location, count, (unsigned int)(transpose), (const void*)(value));
-	apiHook.glUniformMatrix4fv(location, count, transpose, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glValidateProgram(GLuint program)
-{
-	IRE_GL_LOG_DEBUG("glValidateProgram({})", program);
-	apiHook.glValidateProgram(program);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer)
-{
-	IRE_GL_LOG_DEBUG("glVertexAttribPointer({}, {}, {}, {}, {}, {})", index, size, E2S(type), (unsigned int)(normalized), stride, pointer);
-	apiHook.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glEnablei(GLenum target, GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glEnablei({}, {})", E2S(target), index);
-	apiHook.glEnablei(target, index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDisablei(GLenum target, GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glDisablei({}, {})", E2S(target), index);
-	apiHook.glDisablei(target, index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)
-{
-	IRE_GL_LOG_DEBUG("glBindBufferRange({}, {}, {}, {}, {})", E2S(target), index, buffer, offset, size);
-	apiHook.glBindBufferRange(target, index, buffer, offset, size);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindBufferBase(GLenum target, GLuint index, GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glBindBufferBase({}, {}, {})", E2S(target), index, buffer);
-	apiHook.glBindBufferBase(target, index, buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindFragDataLocation(GLuint program, GLuint color, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glBindFragDataLocation({}, {}, {})", program, color, (const void*)(name));
-	apiHook.glBindFragDataLocation(program, color, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-const GLubyte* GLTracer_glGetStringi(GLenum name, GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glGetStringi({}, {})", E2S(name), index);
-	const GLubyte* const r = apiHook.glGetStringi(name, index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glBindFramebuffer(GLenum target, GLuint framebuffer)
-{
-	IRE_GL_LOG_DEBUG("glBindFramebuffer({}, {})", E2S(target), framebuffer);
-	apiHook.glBindFramebuffer(target, framebuffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteFramebuffers(GLsizei n, const GLuint* framebuffers)
-{
-	IRE_GL_LOG_DEBUG("glDeleteFramebuffers({}, {})", n, (const void*)(framebuffers));
-	apiHook.glDeleteFramebuffers(n, framebuffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenFramebuffers(GLsizei n, GLuint* framebuffers)
-{
-	IRE_GL_LOG_DEBUG("glGenFramebuffers({}, {})", n, (void*)(framebuffers));
-	apiHook.glGenFramebuffers(n, framebuffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLenum GLTracer_glCheckFramebufferStatus(GLenum target)
-{
-	IRE_GL_LOG_DEBUG("glCheckFramebufferStatus({})", E2S(target));
-	GLenum const r = apiHook.glCheckFramebufferStatus(target);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
-{
-	IRE_GL_LOG_DEBUG("glFramebufferTexture2D({}, {}, {}, {}, {})", E2S(target), E2S(attachment), E2S(textarget), texture, level);
-	apiHook.glFramebufferTexture2D(target, attachment, textarget, texture, level);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset)
-{
-	IRE_GL_LOG_DEBUG("glFramebufferTexture3D({}, {}, {}, {}, {}, {})", E2S(target), E2S(attachment), E2S(textarget), texture, level, zoffset);
-	apiHook.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenerateMipmap(GLenum target)
-{
-	IRE_GL_LOG_DEBUG("glGenerateMipmap({})", E2S(target));
-	apiHook.glGenerateMipmap(target);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindVertexArray(GLuint array)
-{
-	IRE_GL_LOG_DEBUG("glBindVertexArray({})", array);
-	apiHook.glBindVertexArray(array);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDeleteVertexArrays(GLsizei n, const GLuint* arrays)
-{
-	IRE_GL_LOG_DEBUG("glDeleteVertexArrays({}, {})", n, (const void*)(arrays));
-	apiHook.glDeleteVertexArrays(n, arrays);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenVertexArrays(GLsizei n, GLuint* arrays)
-{
-	IRE_GL_LOG_DEBUG("glGenVertexArrays({}, {})", n, (void*)(arrays));
-	apiHook.glGenVertexArrays(n, arrays);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instancecount)
-{
-	IRE_GL_LOG_DEBUG("glDrawArraysInstanced({}, {}, {}, {})", E2S(mode), first, count, instancecount);
-	apiHook.glDrawArraysInstanced(mode, first, count, instancecount);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount)
-{
-	IRE_GL_LOG_DEBUG("glDrawElementsInstanced({}, {}, {}, {}, {})", E2S(mode), count, E2S(type), indices, instancecount);
-	apiHook.glDrawElementsInstanced(mode, count, type, indices, instancecount);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetActiveUniformBlockiv(GLuint program, GLuint uniformBlockIndex, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetActiveUniformBlockiv({}, {}, {}, {})", program, uniformBlockIndex, E2S(pname), (void*)(params));
-	apiHook.glGetActiveUniformBlockiv(program, uniformBlockIndex, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniformBlockBinding(GLuint program, GLuint uniformBlockIndex, GLuint uniformBlockBinding)
-{
-	IRE_GL_LOG_DEBUG("glUniformBlockBinding({}, {}, {})", program, uniformBlockIndex, uniformBlockBinding);
-	apiHook.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64* params)
-{
-	IRE_GL_LOG_DEBUG("glGetQueryObjectui64v({}, {}, {})", id, E2S(pname), (void*)(params));
-	apiHook.glGetQueryObjectui64v(id, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLint GLTracer_glGetSubroutineUniformLocation(GLuint program, GLenum shadertype, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetSubroutineUniformLocation({}, {}, {})", program, E2S(shadertype), (const void*)(name));
-	GLint const r = apiHook.glGetSubroutineUniformLocation(program, shadertype, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-GLuint GLTracer_glGetSubroutineIndex(GLuint program, GLenum shadertype, const GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetSubroutineIndex({}, {}, {})", program, E2S(shadertype), (const void*)(name));
-	GLuint const r = apiHook.glGetSubroutineIndex(program, shadertype, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glGetActiveSubroutineUniformiv(GLuint program, GLenum shadertype, GLuint index, GLenum pname, GLint* values)
-{
-	IRE_GL_LOG_DEBUG("glGetActiveSubroutineUniformiv({}, {}, {}, {}, {})", program, E2S(shadertype), index, E2S(pname), (void*)(values));
-	apiHook.glGetActiveSubroutineUniformiv(program, shadertype, index, pname, values);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetActiveSubroutineName(GLuint program, GLenum shadertype, GLuint index, GLsizei bufsize, GLsizei* length, GLchar* name)
-{
-	IRE_GL_LOG_DEBUG("glGetActiveSubroutineName({}, {}, {}, {}, {}, {})", program, E2S(shadertype), index, bufsize, (void*)(length), (void*)(name));
-	apiHook.glGetActiveSubroutineName(program, shadertype, index, bufsize, length, name);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glUniformSubroutinesuiv(GLenum shadertype, GLsizei count, const GLuint* indices)
-{
-	IRE_GL_LOG_DEBUG("glUniformSubroutinesuiv({}, {}, {})", E2S(shadertype), count, (const void*)(indices));
-	apiHook.glUniformSubroutinesuiv(shadertype, count, indices);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetProgramStageiv(GLuint program, GLenum shadertype, GLenum pname, GLint* values)
-{
-	IRE_GL_LOG_DEBUG("glGetProgramStageiv({}, {}, {}, {})", program, E2S(shadertype), E2S(pname), (void*)(values));
-	apiHook.glGetProgramStageiv(program, shadertype, pname, values);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glPatchParameteri(GLenum pname, GLint value)
-{
-	IRE_GL_LOG_DEBUG("glPatchParameteri({}, {})", E2S(pname), value);
-	apiHook.glPatchParameteri(pname, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetProgramBinary(GLuint program, GLsizei bufSize, GLsizei* length, GLenum* binaryFormat, void* binary)
-{
-	IRE_GL_LOG_DEBUG("glGetProgramBinary({}, {}, {}, {}, {})", program, bufSize, (void*)(length), (void*)(binaryFormat), binary);
-	apiHook.glGetProgramBinary(program, bufSize, length, binaryFormat, binary);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramBinary(GLuint program, GLenum binaryFormat, const void* binary, GLsizei length)
-{
-	IRE_GL_LOG_DEBUG("glProgramBinary({}, {}, {}, {})", program, E2S(binaryFormat), binary, length);
-	apiHook.glProgramBinary(program, binaryFormat, binary, length);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramParameteri(GLuint program, GLenum pname, GLint value)
-{
-	IRE_GL_LOG_DEBUG("glProgramParameteri({}, {}, {})", program, E2S(pname), value);
-	apiHook.glProgramParameteri(program, pname, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform1i(GLuint program, GLint location, GLint v0)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform1i({}, {}, {})", program, location, v0);
-	apiHook.glProgramUniform1i(program, location, v0);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform1f(GLuint program, GLint location, GLfloat v0)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform1f({}, {}, {})", program, location, v0);
-	apiHook.glProgramUniform1f(program, location, v0);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform2iv(GLuint program, GLint location, GLsizei count, const GLint* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform2iv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform2iv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform2fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform2fv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform2fv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform3iv(GLuint program, GLint location, GLsizei count, const GLint* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform3iv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform3iv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform3fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform3fv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform3fv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform4iv(GLuint program, GLint location, GLsizei count, const GLint* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform4iv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform4iv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glProgramUniform4fv(GLuint program, GLint location, GLsizei count, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glProgramUniform4fv({}, {}, {}, {})", program, location, count, (const void*)(value));
-	apiHook.glProgramUniform4fv(program, location, count, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindTextures(GLuint first, GLsizei count, const GLuint* textures)
-{
-	IRE_GL_LOG_DEBUG("glBindTextures({}, {}, {})", first, count, (const void*)(textures));
-	apiHook.glBindTextures(first, count, textures);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateTransformFeedbacks(GLsizei n, GLuint* ids)
-{
-	IRE_GL_LOG_DEBUG("glCreateTransformFeedbacks({}, {})", n, (void*)(ids));
-	apiHook.glCreateTransformFeedbacks(n, ids);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glTransformFeedbackBufferBase({}, {}, {})", xfb, index, buffer);
-	apiHook.glTransformFeedbackBufferBase(xfb, index, buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint buffer, GLintptr offset, GLsizei size)
-{
-	IRE_GL_LOG_DEBUG("glTransformFeedbackBufferRange({}, {}, {}, {}, {})", xfb, index, buffer, offset, size);
-	apiHook.glTransformFeedbackBufferRange(xfb, index, buffer, offset, size);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTransformFeedbackiv(GLuint xfb, GLenum pname, GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glGetTransformFeedbackiv({}, {}, {})", xfb, E2S(pname), (void*)(param));
-	apiHook.glGetTransformFeedbackiv(xfb, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint index, GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glGetTransformFeedbacki_v({}, {}, {}, {})", xfb, E2S(pname), index, (void*)(param));
-	apiHook.glGetTransformFeedbacki_v(xfb, pname, index, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index, GLint64* param)
-{
-	IRE_GL_LOG_DEBUG("glGetTransformFeedbacki64_v({}, {}, {}, {})", xfb, E2S(pname), index, (void*)(param));
-	apiHook.glGetTransformFeedbacki64_v(xfb, pname, index, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateBuffers(GLsizei n, GLuint* buffers)
-{
-	IRE_GL_LOG_DEBUG("glCreateBuffers({}, {})", n, (void*)(buffers));
-	apiHook.glCreateBuffers(n, buffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void* data, GLbitfield flags)
-{
-	IRE_GL_LOG_DEBUG("glNamedBufferStorage({}, {}, {}, {})", buffer, size, data, (unsigned int)(flags));
-	apiHook.glNamedBufferStorage(buffer, size, data, flags);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedBufferData(GLuint buffer, GLsizei size, const void* data, GLenum usage)
-{
-	IRE_GL_LOG_DEBUG("glNamedBufferData({}, {}, {}, {})", buffer, size, data, E2S(usage));
-	apiHook.glNamedBufferData(buffer, size, data, usage);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
-	apiHook.glNamedBufferSubData(buffer, offset, size, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer, GLintptr readOffset, GLintptr writeOffset, GLsizei size)
-{
-	IRE_GL_LOG_DEBUG("glCopyNamedBufferSubData({}, {}, {}, {}, {})", readBuffer, writeBuffer, readOffset, writeOffset, size);
-	apiHook.glCopyNamedBufferSubData(readBuffer, writeBuffer, readOffset, writeOffset, size);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenum format, GLenum type, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedBufferData({}, {}, {}, {}, {})", buffer, E2S(internalformat), E2S(format), E2S(type), data);
-	apiHook.glClearNamedBufferData(buffer, internalformat, format, type, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GLintptr offset, GLsizei size, GLenum format, GLenum type, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedBufferSubData({}, {}, {}, {}, {}, {}, {})", buffer, E2S(internalformat), offset, size, E2S(format), E2S(type), data);
-	apiHook.glClearNamedBufferSubData(buffer, internalformat, offset, size, format, type, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void* GLTracer_glMapNamedBuffer(GLuint buffer, GLenum access)
-{
-	IRE_GL_LOG_DEBUG("glMapNamedBuffer({}, {})", buffer, E2S(access));
-	void* const r = apiHook.glMapNamedBuffer(buffer, access);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void* GLTracer_glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length, GLbitfield access)
-{
-	IRE_GL_LOG_DEBUG("glMapNamedBufferRange({}, {}, {}, {})", buffer, offset, length, (unsigned int)(access));
-	void* const r = apiHook.glMapNamedBufferRange(buffer, offset, length, access);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-GLboolean GLTracer_glUnmapNamedBuffer(GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glUnmapNamedBuffer({})", buffer);
-	GLboolean const r = apiHook.glUnmapNamedBuffer(buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length)
-{
-	IRE_GL_LOG_DEBUG("glFlushMappedNamedBufferRange({}, {}, {})", buffer, offset, length);
-	apiHook.glFlushMappedNamedBufferRange(buffer, offset, length);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedBufferParameteriv(GLuint buffer, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedBufferParameteriv({}, {}, {})", buffer, E2S(pname), (void*)(params));
-	apiHook.glGetNamedBufferParameteriv(buffer, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedBufferParameteri64v(GLuint buffer, GLenum pname, GLint64* params)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedBufferParameteri64v({}, {}, {})", buffer, E2S(pname), (void*)(params));
-	apiHook.glGetNamedBufferParameteri64v(buffer, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void** params)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedBufferPointerv({}, {}, {})", buffer, E2S(pname), (void*)(params));
-	apiHook.glGetNamedBufferPointerv(buffer, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, void* data)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
-	apiHook.glGetNamedBufferSubData(buffer, offset, size, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateFramebuffers(GLsizei n, GLuint* framebuffers)
-{
-	IRE_GL_LOG_DEBUG("glCreateFramebuffers({}, {})", n, (void*)(framebuffers));
-	apiHook.glCreateFramebuffers(n, framebuffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferRenderbuffer(GLuint framebuffer, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferRenderbuffer({}, {}, {}, {})", framebuffer, E2S(attachment), E2S(renderbuffertarget), renderbuffer);
-	apiHook.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferParameteri(GLuint framebuffer, GLenum pname, GLint param)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferParameteri({}, {}, {})", framebuffer, E2S(pname), param);
-	apiHook.glNamedFramebufferParameteri(framebuffer, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferTexture(GLuint framebuffer, GLenum attachment, GLuint texture, GLint level)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferTexture({}, {}, {}, {})", framebuffer, E2S(attachment), texture, level);
-	apiHook.glNamedFramebufferTexture(framebuffer, attachment, texture, level);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferTextureLayer(GLuint framebuffer, GLenum attachment, GLuint texture, GLint level, GLint layer)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferTextureLayer({}, {}, {}, {}, {})", framebuffer, E2S(attachment), texture, level, layer);
-	apiHook.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferDrawBuffer(GLuint framebuffer, GLenum buf)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferDrawBuffer({}, {})", framebuffer, E2S(buf));
-	apiHook.glNamedFramebufferDrawBuffer(framebuffer, buf);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferDrawBuffers(GLuint framebuffer, GLsizei n, const GLenum* bufs)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferDrawBuffers({}, {}, {})", framebuffer, n, (const void*)(bufs));
-	apiHook.glNamedFramebufferDrawBuffers(framebuffer, n, bufs);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedFramebufferReadBuffer(GLuint framebuffer, GLenum src)
-{
-	IRE_GL_LOG_DEBUG("glNamedFramebufferReadBuffer({}, {})", framebuffer, E2S(src));
-	apiHook.glNamedFramebufferReadBuffer(framebuffer, src);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glInvalidateNamedFramebufferData(GLuint framebuffer, GLsizei numAttachments, const GLenum* attachments)
-{
-	IRE_GL_LOG_DEBUG("glInvalidateNamedFramebufferData({}, {}, {})", framebuffer, numAttachments, (const void*)(attachments));
-	apiHook.glInvalidateNamedFramebufferData(framebuffer, numAttachments, attachments);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glInvalidateNamedFramebufferSubData(GLuint framebuffer, GLsizei numAttachments, const GLenum* attachments, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glInvalidateNamedFramebufferSubData({}, {}, {}, {}, {}, {}, {})", framebuffer, numAttachments, (const void*)(attachments), x, y, width, height);
-	apiHook.glInvalidateNamedFramebufferSubData(framebuffer, numAttachments, attachments, x, y, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedFramebufferiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLint* value)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedFramebufferiv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
-	apiHook.glClearNamedFramebufferiv(framebuffer, buffer, drawbuffer, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedFramebufferuiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLuint* value)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedFramebufferuiv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
-	apiHook.glClearNamedFramebufferuiv(framebuffer, buffer, drawbuffer, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedFramebufferfv(GLuint framebuffer, GLenum buffer, GLint drawbuffer, const GLfloat* value)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedFramebufferfv({}, {}, {}, {})", framebuffer, E2S(buffer), drawbuffer, (const void*)(value));
-	apiHook.glClearNamedFramebufferfv(framebuffer, buffer, drawbuffer, value);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glClearNamedFramebufferfi(GLuint framebuffer, GLenum buffer, const GLfloat depth, GLint stencil)
-{
-	IRE_GL_LOG_DEBUG("glClearNamedFramebufferfi({}, {}, {}, {})", framebuffer, E2S(buffer), depth, stencil);
-	apiHook.glClearNamedFramebufferfi(framebuffer, buffer, depth, stencil);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBlitNamedFramebuffer(GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)
-{
-	IRE_GL_LOG_DEBUG("glBlitNamedFramebuffer({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, (unsigned int)(mask), E2S(filter));
-	apiHook.glBlitNamedFramebuffer(readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-GLenum GLTracer_glCheckNamedFramebufferStatus(GLuint framebuffer, GLenum target)
-{
-	IRE_GL_LOG_DEBUG("glCheckNamedFramebufferStatus({}, {})", framebuffer, E2S(target));
-	GLenum const r = apiHook.glCheckNamedFramebufferStatus(framebuffer, target);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-	return r;
-}
-
-void GLTracer_glGetNamedFramebufferParameteriv(GLuint framebuffer, GLenum pname, GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedFramebufferParameteriv({}, {}, {})", framebuffer, E2S(pname), (void*)(param));
-	apiHook.glGetNamedFramebufferParameteriv(framebuffer, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedFramebufferAttachmentParameteriv(GLuint framebuffer, GLenum attachment, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedFramebufferAttachmentParameteriv({}, {}, {}, {})", framebuffer, E2S(attachment), E2S(pname), (void*)(params));
-	apiHook.glGetNamedFramebufferAttachmentParameteriv(framebuffer, attachment, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateRenderbuffers(GLsizei n, GLuint* renderbuffers)
-{
-	IRE_GL_LOG_DEBUG("glCreateRenderbuffers({}, {})", n, (void*)(renderbuffers));
-	apiHook.glCreateRenderbuffers(n, renderbuffers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedRenderbufferStorage(GLuint renderbuffer, GLenum internalformat, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glNamedRenderbufferStorage({}, {}, {}, {})", renderbuffer, E2S(internalformat), width, height);
-	apiHook.glNamedRenderbufferStorage(renderbuffer, internalformat, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glNamedRenderbufferStorageMultisample(GLuint renderbuffer, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glNamedRenderbufferStorageMultisample({}, {}, {}, {}, {})", renderbuffer, samples, E2S(internalformat), width, height);
-	apiHook.glNamedRenderbufferStorageMultisample(renderbuffer, samples, internalformat, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetNamedRenderbufferParameteriv(GLuint renderbuffer, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetNamedRenderbufferParameteriv({}, {}, {})", renderbuffer, E2S(pname), (void*)(params));
-	apiHook.glGetNamedRenderbufferParameteriv(renderbuffer, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateTextures(GLenum target, GLsizei n, GLuint* textures)
-{
-	IRE_GL_LOG_DEBUG("glCreateTextures({}, {}, {})", E2S(target), n, (void*)(textures));
-	apiHook.glCreateTextures(target, n, textures);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glTextureBuffer({}, {}, {})", texture, E2S(internalformat), buffer);
-	apiHook.glTextureBuffer(texture, internalformat, buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint buffer, GLintptr offset, GLsizei size)
-{
-	IRE_GL_LOG_DEBUG("glTextureBufferRange({}, {}, {}, {}, {})", texture, E2S(internalformat), buffer, offset, size);
-	apiHook.glTextureBufferRange(texture, internalformat, buffer, offset, size);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureStorage1D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width)
-{
-	IRE_GL_LOG_DEBUG("glTextureStorage1D({}, {}, {}, {})", texture, levels, E2S(internalformat), width);
-	apiHook.glTextureStorage1D(texture, levels, internalformat, width);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glTextureStorage2D({}, {}, {}, {}, {})", texture, levels, E2S(internalformat), width, height);
-	apiHook.glTextureStorage2D(texture, levels, internalformat, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureStorage3D(GLuint texture, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth)
-{
-	IRE_GL_LOG_DEBUG("glTextureStorage3D({}, {}, {}, {}, {}, {})", texture, levels, E2S(internalformat), width, height, depth);
-	apiHook.glTextureStorage3D(texture, levels, internalformat, width, height, depth);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureStorage2DMultisample(GLuint texture, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLboolean fixedsamplelocations)
-{
-	IRE_GL_LOG_DEBUG("glTextureStorage2DMultisample({}, {}, {}, {}, {}, {})", texture, samples, E2S(internalformat), width, height, (unsigned int)(fixedsamplelocations));
-	apiHook.glTextureStorage2DMultisample(texture, samples, internalformat, width, height, fixedsamplelocations);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureStorage3DMultisample(GLuint texture, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLboolean fixedsamplelocations)
-{
-	IRE_GL_LOG_DEBUG("glTextureStorage3DMultisample({}, {}, {}, {}, {}, {}, {})", texture, samples, E2S(internalformat), width, height, depth, (unsigned int)(fixedsamplelocations));
-	apiHook.glTextureStorage3DMultisample(texture, samples, internalformat, width, height, depth, fixedsamplelocations);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, width, E2S(format), E2S(type), pixels);
-	apiHook.glTextureSubImage1D(texture, level, xoffset, width, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
-	apiHook.glTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), E2S(type), pixels);
-	apiHook.glTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompressedTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glCompressedTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, width, E2S(format), imageSize, data);
-	apiHook.glCompressedTextureSubImage1D(texture, level, xoffset, width, format, imageSize, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompressedTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glCompressedTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, width, height, E2S(format), imageSize, data);
-	apiHook.glCompressedTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format, imageSize, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCompressedTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void* data)
-{
-	IRE_GL_LOG_DEBUG("glCompressedTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), imageSize, data);
-	apiHook.glCompressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, data);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCopyTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width)
-{
-	IRE_GL_LOG_DEBUG("glCopyTextureSubImage1D({}, {}, {}, {}, {}, {})", texture, level, xoffset, x, y, width);
-	apiHook.glCopyTextureSubImage1D(texture, level, xoffset, x, y, width);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCopyTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glCopyTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, x, y, width, height);
-	apiHook.glCopyTextureSubImage2D(texture, level, xoffset, yoffset, x, y, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCopyTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-	IRE_GL_LOG_DEBUG("glCopyTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level, xoffset, yoffset, zoffset, x, y, width, height);
-	apiHook.glCopyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameterf(GLuint texture, GLenum pname, GLfloat param)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameterf({}, {}, {})", texture, E2S(pname), param);
-	apiHook.glTextureParameterf(texture, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameterfv(GLuint texture, GLenum pname, const GLfloat* param)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameterfv({}, {}, {})", texture, E2S(pname), (const void*)(param));
-	apiHook.glTextureParameterfv(texture, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameteri(GLuint texture, GLenum pname, GLint param)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameteri({}, {}, {})", texture, E2S(pname), param);
-	apiHook.glTextureParameteri(texture, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameterIiv(GLuint texture, GLenum pname, const GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameterIiv({}, {}, {})", texture, E2S(pname), (const void*)(params));
-	apiHook.glTextureParameterIiv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameterIuiv(GLuint texture, GLenum pname, const GLuint* params)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameterIuiv({}, {}, {})", texture, E2S(pname), (const void*)(params));
-	apiHook.glTextureParameterIuiv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glTextureParameteriv(GLuint texture, GLenum pname, const GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glTextureParameteriv({}, {}, {})", texture, E2S(pname), (const void*)(param));
-	apiHook.glTextureParameteriv(texture, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGenerateTextureMipmap(GLuint texture)
-{
-	IRE_GL_LOG_DEBUG("glGenerateTextureMipmap({})", texture);
-	apiHook.glGenerateTextureMipmap(texture);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glBindTextureUnit(GLuint unit, GLuint texture)
-{
-	IRE_GL_LOG_DEBUG("glBindTextureUnit({}, {})", unit, texture);
-	apiHook.glBindTextureUnit(unit, texture);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureImage(GLuint texture, GLint level, GLenum format, GLenum type, GLsizei bufSize, void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureImage({}, {}, {}, {}, {}, {})", texture, level, E2S(format), E2S(type), bufSize, pixels);
-	apiHook.glGetTextureImage(texture, level, format, type, bufSize, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetCompressedTextureImage(GLuint texture, GLint level, GLsizei bufSize, void* pixels)
-{
-	IRE_GL_LOG_DEBUG("glGetCompressedTextureImage({}, {}, {}, {})", texture, level, bufSize, pixels);
-	apiHook.glGetCompressedTextureImage(texture, level, bufSize, pixels);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureLevelParameterfv(GLuint texture, GLint level, GLenum pname, GLfloat* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureLevelParameterfv({}, {}, {}, {})", texture, level, E2S(pname), (void*)(params));
-	apiHook.glGetTextureLevelParameterfv(texture, level, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureLevelParameteriv(GLuint texture, GLint level, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureLevelParameteriv({}, {}, {}, {})", texture, level, E2S(pname), (void*)(params));
-	apiHook.glGetTextureLevelParameteriv(texture, level, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureParameterfv(GLuint texture, GLenum pname, GLfloat* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureParameterfv({}, {}, {})", texture, E2S(pname), (void*)(params));
-	apiHook.glGetTextureParameterfv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureParameterIiv(GLuint texture, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureParameterIiv({}, {}, {})", texture, E2S(pname), (void*)(params));
-	apiHook.glGetTextureParameterIiv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureParameterIuiv(GLuint texture, GLenum pname, GLuint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureParameterIuiv({}, {}, {})", texture, E2S(pname), (void*)(params));
-	apiHook.glGetTextureParameterIuiv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetTextureParameteriv(GLuint texture, GLenum pname, GLint* params)
-{
-	IRE_GL_LOG_DEBUG("glGetTextureParameteriv({}, {}, {})", texture, E2S(pname), (void*)(params));
-	apiHook.glGetTextureParameteriv(texture, pname, params);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateVertexArrays(GLsizei n, GLuint* arrays)
-{
-	IRE_GL_LOG_DEBUG("glCreateVertexArrays({}, {})", n, (void*)(arrays));
-	apiHook.glCreateVertexArrays(n, arrays);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glDisableVertexArrayAttrib(GLuint vaobj, GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glDisableVertexArrayAttrib({}, {})", vaobj, index);
-	apiHook.glDisableVertexArrayAttrib(vaobj, index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glEnableVertexArrayAttrib(GLuint vaobj, GLuint index)
-{
-	IRE_GL_LOG_DEBUG("glEnableVertexArrayAttrib({}, {})", vaobj, index);
-	apiHook.glEnableVertexArrayAttrib(vaobj, index);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayElementBuffer(GLuint vaobj, GLuint buffer)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayElementBuffer({}, {})", vaobj, buffer);
-	apiHook.glVertexArrayElementBuffer(vaobj, buffer);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayVertexBuffer(GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayVertexBuffer({}, {}, {}, {}, {})", vaobj, bindingindex, buffer, offset, stride);
-	apiHook.glVertexArrayVertexBuffer(vaobj, bindingindex, buffer, offset, stride);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayVertexBuffers(GLuint vaobj, GLuint first, GLsizei count, const GLuint* buffers, const GLintptr* offsets, const GLsizei* strides)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayVertexBuffers({}, {}, {}, {}, {}, {})", vaobj, first, count, (const void*)(buffers), (const void*)(offsets), (const void*)(strides));
-	apiHook.glVertexArrayVertexBuffers(vaobj, first, count, buffers, offsets, strides);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayAttribBinding(GLuint vaobj, GLuint attribindex, GLuint bindingindex)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayAttribBinding({}, {}, {})", vaobj, attribindex, bindingindex);
-	apiHook.glVertexArrayAttribBinding(vaobj, attribindex, bindingindex);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayAttribFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLboolean normalized, GLuint relativeoffset)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayAttribFormat({}, {}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), (unsigned int)(normalized), relativeoffset);
-	apiHook.glVertexArrayAttribFormat(vaobj, attribindex, size, type, normalized, relativeoffset);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayAttribIFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayAttribIFormat({}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), relativeoffset);
-	apiHook.glVertexArrayAttribIFormat(vaobj, attribindex, size, type, relativeoffset);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayAttribLFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayAttribLFormat({}, {}, {}, {}, {})", vaobj, attribindex, size, E2S(type), relativeoffset);
-	apiHook.glVertexArrayAttribLFormat(vaobj, attribindex, size, type, relativeoffset);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glVertexArrayBindingDivisor(GLuint vaobj, GLuint bindingindex, GLuint divisor)
-{
-	IRE_GL_LOG_DEBUG("glVertexArrayBindingDivisor({}, {}, {})", vaobj, bindingindex, divisor);
-	apiHook.glVertexArrayBindingDivisor(vaobj, bindingindex, divisor);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetVertexArrayiv(GLuint vaobj, GLenum pname, GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glGetVertexArrayiv({}, {}, {})", vaobj, E2S(pname), (void*)(param));
-	apiHook.glGetVertexArrayiv(vaobj, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetVertexArrayIndexediv(GLuint vaobj, GLuint index, GLenum pname, GLint* param)
-{
-	IRE_GL_LOG_DEBUG("glGetVertexArrayIndexediv({}, {}, {}, {})", vaobj, index, E2S(pname), (void*)(param));
-	apiHook.glGetVertexArrayIndexediv(vaobj, index, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glGetVertexArrayIndexed64iv(GLuint vaobj, GLuint index, GLenum pname, GLint64* param)
-{
-	IRE_GL_LOG_DEBUG("glGetVertexArrayIndexed64iv({}, {}, {}, {})", vaobj, index, E2S(pname), (void*)(param));
-	apiHook.glGetVertexArrayIndexed64iv(vaobj, index, pname, param);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateSamplers(GLsizei n, GLuint* samplers)
-{
-	IRE_GL_LOG_DEBUG("glCreateSamplers({}, {})", n, (void*)(samplers));
-	apiHook.glCreateSamplers(n, samplers);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateProgramPipelines(GLsizei n, GLuint* pipelines)
-{
-	IRE_GL_LOG_DEBUG("glCreateProgramPipelines({}, {})", n, (void*)(pipelines));
-	apiHook.glCreateProgramPipelines(n, pipelines);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
-}
-
-void GLTracer_glCreateQueries(GLenum target, GLsizei n, GLuint* ids)
-{
-	IRE_GL_LOG_DEBUG("glCreateQueries({}, {}, {})", E2S(target), n, (void*)(ids));
-	apiHook.glCreateQueries(target, n, ids);
-	GLenum glError = apiHook.glGetError();
-	IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+
+void GLTracer_glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget,
+                                     GLuint texture, GLint level, GLint zoffset) {
+    IRE_GL_LOG_DEBUG("glFramebufferTexture3D({}, {}, {}, {}, {}, {})", E2S(target), E2S(attachment),
+                     E2S(textarget), texture, level, zoffset);
+    apiHook.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenerateMipmap(GLenum target) {
+    IRE_GL_LOG_DEBUG("glGenerateMipmap({})", E2S(target));
+    apiHook.glGenerateMipmap(target);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindVertexArray(GLuint array) {
+    IRE_GL_LOG_DEBUG("glBindVertexArray({})", array);
+    apiHook.glBindVertexArray(array);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDeleteVertexArrays(GLsizei n, const GLuint *arrays) {
+    IRE_GL_LOG_DEBUG("glDeleteVertexArrays({}, {})", n, (const void *)(arrays));
+    apiHook.glDeleteVertexArrays(n, arrays);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenVertexArrays(GLsizei n, GLuint *arrays) {
+    IRE_GL_LOG_DEBUG("glGenVertexArrays({}, {})", n, (void *)(arrays));
+    apiHook.glGenVertexArrays(n, arrays);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count,
+                                    GLsizei instancecount) {
+    IRE_GL_LOG_DEBUG("glDrawArraysInstanced({}, {}, {}, {})", E2S(mode), first, count,
+                     instancecount);
+    apiHook.glDrawArraysInstanced(mode, first, count, instancecount);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void *indices,
+                                      GLsizei instancecount) {
+    IRE_GL_LOG_DEBUG("glDrawElementsInstanced({}, {}, {}, {}, {})", E2S(mode), count, E2S(type),
+                     indices, instancecount);
+    apiHook.glDrawElementsInstanced(mode, count, type, indices, instancecount);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetActiveUniformBlockiv(GLuint program, GLuint uniformBlockIndex, GLenum pname,
+                                        GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetActiveUniformBlockiv({}, {}, {}, {})", program, uniformBlockIndex,
+                     E2S(pname), (void *)(params));
+    apiHook.glGetActiveUniformBlockiv(program, uniformBlockIndex, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniformBlockBinding(GLuint program, GLuint uniformBlockIndex,
+                                    GLuint uniformBlockBinding) {
+    IRE_GL_LOG_DEBUG("glUniformBlockBinding({}, {}, {})", program, uniformBlockIndex,
+                     uniformBlockBinding);
+    apiHook.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64 *params) {
+    IRE_GL_LOG_DEBUG("glGetQueryObjectui64v({}, {}, {})", id, E2S(pname), (void *)(params));
+    apiHook.glGetQueryObjectui64v(id, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLint GLTracer_glGetSubroutineUniformLocation(GLuint program, GLenum shadertype,
+                                              const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetSubroutineUniformLocation({}, {}, {})", program, E2S(shadertype),
+                     (const void *)(name));
+    GLint const r = apiHook.glGetSubroutineUniformLocation(program, shadertype, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+GLuint GLTracer_glGetSubroutineIndex(GLuint program, GLenum shadertype, const GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetSubroutineIndex({}, {}, {})", program, E2S(shadertype),
+                     (const void *)(name));
+    GLuint const r = apiHook.glGetSubroutineIndex(program, shadertype, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glGetActiveSubroutineUniformiv(GLuint program, GLenum shadertype, GLuint index,
+                                             GLenum pname, GLint *values) {
+    IRE_GL_LOG_DEBUG("glGetActiveSubroutineUniformiv({}, {}, {}, {}, {})", program, E2S(shadertype),
+                     index, E2S(pname), (void *)(values));
+    apiHook.glGetActiveSubroutineUniformiv(program, shadertype, index, pname, values);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetActiveSubroutineName(GLuint program, GLenum shadertype, GLuint index,
+                                        GLsizei bufsize, GLsizei *length, GLchar *name) {
+    IRE_GL_LOG_DEBUG("glGetActiveSubroutineName({}, {}, {}, {}, {}, {})", program, E2S(shadertype),
+                     index, bufsize, (void *)(length), (void *)(name));
+    apiHook.glGetActiveSubroutineName(program, shadertype, index, bufsize, length, name);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glUniformSubroutinesuiv(GLenum shadertype, GLsizei count, const GLuint *indices) {
+    IRE_GL_LOG_DEBUG("glUniformSubroutinesuiv({}, {}, {})", E2S(shadertype), count,
+                     (const void *)(indices));
+    apiHook.glUniformSubroutinesuiv(shadertype, count, indices);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetProgramStageiv(GLuint program, GLenum shadertype, GLenum pname, GLint *values) {
+    IRE_GL_LOG_DEBUG("glGetProgramStageiv({}, {}, {}, {})", program, E2S(shadertype), E2S(pname),
+                     (void *)(values));
+    apiHook.glGetProgramStageiv(program, shadertype, pname, values);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glPatchParameteri(GLenum pname, GLint value) {
+    IRE_GL_LOG_DEBUG("glPatchParameteri({}, {})", E2S(pname), value);
+    apiHook.glPatchParameteri(pname, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetProgramBinary(GLuint program, GLsizei bufSize, GLsizei *length,
+                                 GLenum *binaryFormat, void *binary) {
+    IRE_GL_LOG_DEBUG("glGetProgramBinary({}, {}, {}, {}, {})", program, bufSize, (void *)(length),
+                     (void *)(binaryFormat), binary);
+    apiHook.glGetProgramBinary(program, bufSize, length, binaryFormat, binary);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramBinary(GLuint program, GLenum binaryFormat, const void *binary,
+                              GLsizei length) {
+    IRE_GL_LOG_DEBUG("glProgramBinary({}, {}, {}, {})", program, E2S(binaryFormat), binary, length);
+    apiHook.glProgramBinary(program, binaryFormat, binary, length);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramParameteri(GLuint program, GLenum pname, GLint value) {
+    IRE_GL_LOG_DEBUG("glProgramParameteri({}, {}, {})", program, E2S(pname), value);
+    apiHook.glProgramParameteri(program, pname, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform1i(GLuint program, GLint location, GLint v0) {
+    IRE_GL_LOG_DEBUG("glProgramUniform1i({}, {}, {})", program, location, v0);
+    apiHook.glProgramUniform1i(program, location, v0);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform1f(GLuint program, GLint location, GLfloat v0) {
+    IRE_GL_LOG_DEBUG("glProgramUniform1f({}, {}, {})", program, location, v0);
+    apiHook.glProgramUniform1f(program, location, v0);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform2iv(GLuint program, GLint location, GLsizei count,
+                                  const GLint *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform2iv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform2iv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform2fv(GLuint program, GLint location, GLsizei count,
+                                  const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform2fv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform2fv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform3iv(GLuint program, GLint location, GLsizei count,
+                                  const GLint *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform3iv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform3iv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform3fv(GLuint program, GLint location, GLsizei count,
+                                  const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform3fv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform3fv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform4iv(GLuint program, GLint location, GLsizei count,
+                                  const GLint *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform4iv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform4iv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glProgramUniform4fv(GLuint program, GLint location, GLsizei count,
+                                  const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glProgramUniform4fv({}, {}, {}, {})", program, location, count,
+                     (const void *)(value));
+    apiHook.glProgramUniform4fv(program, location, count, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindTextures(GLuint first, GLsizei count, const GLuint *textures) {
+    IRE_GL_LOG_DEBUG("glBindTextures({}, {}, {})", first, count, (const void *)(textures));
+    apiHook.glBindTextures(first, count, textures);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateTransformFeedbacks(GLsizei n, GLuint *ids) {
+    IRE_GL_LOG_DEBUG("glCreateTransformFeedbacks({}, {})", n, (void *)(ids));
+    apiHook.glCreateTransformFeedbacks(n, ids);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glTransformFeedbackBufferBase({}, {}, {})", xfb, index, buffer);
+    apiHook.glTransformFeedbackBufferBase(xfb, index, buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint buffer,
+                                             GLintptr offset, GLsizei size) {
+    IRE_GL_LOG_DEBUG("glTransformFeedbackBufferRange({}, {}, {}, {}, {})", xfb, index, buffer,
+                     offset, size);
+    apiHook.glTransformFeedbackBufferRange(xfb, index, buffer, offset, size);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTransformFeedbackiv(GLuint xfb, GLenum pname, GLint *param) {
+    IRE_GL_LOG_DEBUG("glGetTransformFeedbackiv({}, {}, {})", xfb, E2S(pname), (void *)(param));
+    apiHook.glGetTransformFeedbackiv(xfb, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint index, GLint *param) {
+    IRE_GL_LOG_DEBUG("glGetTransformFeedbacki_v({}, {}, {}, {})", xfb, E2S(pname), index,
+                     (void *)(param));
+    apiHook.glGetTransformFeedbacki_v(xfb, pname, index, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index, GLint64 *param) {
+    IRE_GL_LOG_DEBUG("glGetTransformFeedbacki64_v({}, {}, {}, {})", xfb, E2S(pname), index,
+                     (void *)(param));
+    apiHook.glGetTransformFeedbacki64_v(xfb, pname, index, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateBuffers(GLsizei n, GLuint *buffers) {
+    IRE_GL_LOG_DEBUG("glCreateBuffers({}, {})", n, (void *)(buffers));
+    apiHook.glCreateBuffers(n, buffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void *data,
+                                   GLbitfield flags) {
+    IRE_GL_LOG_DEBUG("glNamedBufferStorage({}, {}, {}, {})", buffer, size, data,
+                     (unsigned int)(flags));
+    apiHook.glNamedBufferStorage(buffer, size, data, flags);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedBufferData(GLuint buffer, GLsizei size, const void *data, GLenum usage) {
+    IRE_GL_LOG_DEBUG("glNamedBufferData({}, {}, {}, {})", buffer, size, data, E2S(usage));
+    apiHook.glNamedBufferData(buffer, size, data, usage);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, const void *data) {
+    IRE_GL_LOG_DEBUG("glNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
+    apiHook.glNamedBufferSubData(buffer, offset, size, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer, GLintptr readOffset,
+                                       GLintptr writeOffset, GLsizei size) {
+    IRE_GL_LOG_DEBUG("glCopyNamedBufferSubData({}, {}, {}, {}, {})", readBuffer, writeBuffer,
+                     readOffset, writeOffset, size);
+    apiHook.glCopyNamedBufferSubData(readBuffer, writeBuffer, readOffset, writeOffset, size);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenum format,
+                                     GLenum type, const void *data) {
+    IRE_GL_LOG_DEBUG("glClearNamedBufferData({}, {}, {}, {}, {})", buffer, E2S(internalformat),
+                     E2S(format), E2S(type), data);
+    apiHook.glClearNamedBufferData(buffer, internalformat, format, type, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GLintptr offset,
+                                        GLsizei size, GLenum format, GLenum type,
+                                        const void *data) {
+    IRE_GL_LOG_DEBUG("glClearNamedBufferSubData({}, {}, {}, {}, {}, {}, {})", buffer,
+                     E2S(internalformat), offset, size, E2S(format), E2S(type), data);
+    apiHook.glClearNamedBufferSubData(buffer, internalformat, offset, size, format, type, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void *GLTracer_glMapNamedBuffer(GLuint buffer, GLenum access) {
+    IRE_GL_LOG_DEBUG("glMapNamedBuffer({}, {})", buffer, E2S(access));
+    void *const r = apiHook.glMapNamedBuffer(buffer, access);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void *GLTracer_glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length,
+                                     GLbitfield access) {
+    IRE_GL_LOG_DEBUG("glMapNamedBufferRange({}, {}, {}, {})", buffer, offset, length,
+                     (unsigned int)(access));
+    void *const r = apiHook.glMapNamedBufferRange(buffer, offset, length, access);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+GLboolean GLTracer_glUnmapNamedBuffer(GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glUnmapNamedBuffer({})", buffer);
+    GLboolean const r = apiHook.glUnmapNamedBuffer(buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length) {
+    IRE_GL_LOG_DEBUG("glFlushMappedNamedBufferRange({}, {}, {})", buffer, offset, length);
+    apiHook.glFlushMappedNamedBufferRange(buffer, offset, length);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedBufferParameteriv(GLuint buffer, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetNamedBufferParameteriv({}, {}, {})", buffer, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetNamedBufferParameteriv(buffer, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedBufferParameteri64v(GLuint buffer, GLenum pname, GLint64 *params) {
+    IRE_GL_LOG_DEBUG("glGetNamedBufferParameteri64v({}, {}, {})", buffer, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetNamedBufferParameteri64v(buffer, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void **params) {
+    IRE_GL_LOG_DEBUG("glGetNamedBufferPointerv({}, {}, {})", buffer, E2S(pname), (void *)(params));
+    apiHook.glGetNamedBufferPointerv(buffer, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, void *data) {
+    IRE_GL_LOG_DEBUG("glGetNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
+    apiHook.glGetNamedBufferSubData(buffer, offset, size, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateFramebuffers(GLsizei n, GLuint *framebuffers) {
+    IRE_GL_LOG_DEBUG("glCreateFramebuffers({}, {})", n, (void *)(framebuffers));
+    apiHook.glCreateFramebuffers(n, framebuffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferRenderbuffer(GLuint framebuffer, GLenum attachment,
+                                             GLenum renderbuffertarget, GLuint renderbuffer) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferRenderbuffer({}, {}, {}, {})", framebuffer, E2S(attachment),
+                     E2S(renderbuffertarget), renderbuffer);
+    apiHook.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget,
+                                           renderbuffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferParameteri(GLuint framebuffer, GLenum pname, GLint param) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferParameteri({}, {}, {})", framebuffer, E2S(pname), param);
+    apiHook.glNamedFramebufferParameteri(framebuffer, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferTexture(GLuint framebuffer, GLenum attachment, GLuint texture,
+                                        GLint level) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferTexture({}, {}, {}, {})", framebuffer, E2S(attachment),
+                     texture, level);
+    apiHook.glNamedFramebufferTexture(framebuffer, attachment, texture, level);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferTextureLayer(GLuint framebuffer, GLenum attachment, GLuint texture,
+                                             GLint level, GLint layer) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferTextureLayer({}, {}, {}, {}, {})", framebuffer,
+                     E2S(attachment), texture, level, layer);
+    apiHook.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferDrawBuffer(GLuint framebuffer, GLenum buf) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferDrawBuffer({}, {})", framebuffer, E2S(buf));
+    apiHook.glNamedFramebufferDrawBuffer(framebuffer, buf);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferDrawBuffers(GLuint framebuffer, GLsizei n, const GLenum *bufs) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferDrawBuffers({}, {}, {})", framebuffer, n,
+                     (const void *)(bufs));
+    apiHook.glNamedFramebufferDrawBuffers(framebuffer, n, bufs);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedFramebufferReadBuffer(GLuint framebuffer, GLenum src) {
+    IRE_GL_LOG_DEBUG("glNamedFramebufferReadBuffer({}, {})", framebuffer, E2S(src));
+    apiHook.glNamedFramebufferReadBuffer(framebuffer, src);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glInvalidateNamedFramebufferData(GLuint framebuffer, GLsizei numAttachments,
+                                               const GLenum *attachments) {
+    IRE_GL_LOG_DEBUG("glInvalidateNamedFramebufferData({}, {}, {})", framebuffer, numAttachments,
+                     (const void *)(attachments));
+    apiHook.glInvalidateNamedFramebufferData(framebuffer, numAttachments, attachments);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glInvalidateNamedFramebufferSubData(GLuint framebuffer, GLsizei numAttachments,
+                                                  const GLenum *attachments, GLint x, GLint y,
+                                                  GLsizei width, GLsizei height) {
+    IRE_GL_LOG_DEBUG("glInvalidateNamedFramebufferSubData({}, {}, {}, {}, {}, {}, {})", framebuffer,
+                     numAttachments, (const void *)(attachments), x, y, width, height);
+    apiHook.glInvalidateNamedFramebufferSubData(framebuffer, numAttachments, attachments, x, y,
+                                                width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedFramebufferiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer,
+                                        const GLint *value) {
+    IRE_GL_LOG_DEBUG("glClearNamedFramebufferiv({}, {}, {}, {})", framebuffer, E2S(buffer),
+                     drawbuffer, (const void *)(value));
+    apiHook.glClearNamedFramebufferiv(framebuffer, buffer, drawbuffer, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedFramebufferuiv(GLuint framebuffer, GLenum buffer, GLint drawbuffer,
+                                         const GLuint *value) {
+    IRE_GL_LOG_DEBUG("glClearNamedFramebufferuiv({}, {}, {}, {})", framebuffer, E2S(buffer),
+                     drawbuffer, (const void *)(value));
+    apiHook.glClearNamedFramebufferuiv(framebuffer, buffer, drawbuffer, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedFramebufferfv(GLuint framebuffer, GLenum buffer, GLint drawbuffer,
+                                        const GLfloat *value) {
+    IRE_GL_LOG_DEBUG("glClearNamedFramebufferfv({}, {}, {}, {})", framebuffer, E2S(buffer),
+                     drawbuffer, (const void *)(value));
+    apiHook.glClearNamedFramebufferfv(framebuffer, buffer, drawbuffer, value);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glClearNamedFramebufferfi(GLuint framebuffer, GLenum buffer, const GLfloat depth,
+                                        GLint stencil) {
+    IRE_GL_LOG_DEBUG("glClearNamedFramebufferfi({}, {}, {}, {})", framebuffer, E2S(buffer), depth,
+                     stencil);
+    apiHook.glClearNamedFramebufferfi(framebuffer, buffer, depth, stencil);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBlitNamedFramebuffer(GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0,
+                                     GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0,
+                                     GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask,
+                                     GLenum filter) {
+    IRE_GL_LOG_DEBUG("glBlitNamedFramebuffer({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0,
+                     dstX1, dstY1, (unsigned int)(mask), E2S(filter));
+    apiHook.glBlitNamedFramebuffer(readFramebuffer, drawFramebuffer, srcX0, srcY0, srcX1, srcY1,
+                                   dstX0, dstY0, dstX1, dstY1, mask, filter);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+GLenum GLTracer_glCheckNamedFramebufferStatus(GLuint framebuffer, GLenum target) {
+    IRE_GL_LOG_DEBUG("glCheckNamedFramebufferStatus({}, {})", framebuffer, E2S(target));
+    GLenum const r = apiHook.glCheckNamedFramebufferStatus(framebuffer, target);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+    return r;
+}
+
+void GLTracer_glGetNamedFramebufferParameteriv(GLuint framebuffer, GLenum pname, GLint *param) {
+    IRE_GL_LOG_DEBUG("glGetNamedFramebufferParameteriv({}, {}, {})", framebuffer, E2S(pname),
+                     (void *)(param));
+    apiHook.glGetNamedFramebufferParameteriv(framebuffer, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedFramebufferAttachmentParameteriv(GLuint framebuffer, GLenum attachment,
+                                                         GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetNamedFramebufferAttachmentParameteriv({}, {}, {}, {})", framebuffer,
+                     E2S(attachment), E2S(pname), (void *)(params));
+    apiHook.glGetNamedFramebufferAttachmentParameteriv(framebuffer, attachment, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateRenderbuffers(GLsizei n, GLuint *renderbuffers) {
+    IRE_GL_LOG_DEBUG("glCreateRenderbuffers({}, {})", n, (void *)(renderbuffers));
+    apiHook.glCreateRenderbuffers(n, renderbuffers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedRenderbufferStorage(GLuint renderbuffer, GLenum internalformat, GLsizei width,
+                                         GLsizei height) {
+    IRE_GL_LOG_DEBUG("glNamedRenderbufferStorage({}, {}, {}, {})", renderbuffer,
+                     E2S(internalformat), width, height);
+    apiHook.glNamedRenderbufferStorage(renderbuffer, internalformat, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glNamedRenderbufferStorageMultisample(GLuint renderbuffer, GLsizei samples,
+                                                    GLenum internalformat, GLsizei width,
+                                                    GLsizei height) {
+    IRE_GL_LOG_DEBUG("glNamedRenderbufferStorageMultisample({}, {}, {}, {}, {})", renderbuffer,
+                     samples, E2S(internalformat), width, height);
+    apiHook.glNamedRenderbufferStorageMultisample(renderbuffer, samples, internalformat, width,
+                                                  height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetNamedRenderbufferParameteriv(GLuint renderbuffer, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetNamedRenderbufferParameteriv({}, {}, {})", renderbuffer, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetNamedRenderbufferParameteriv(renderbuffer, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateTextures(GLenum target, GLsizei n, GLuint *textures) {
+    IRE_GL_LOG_DEBUG("glCreateTextures({}, {}, {})", E2S(target), n, (void *)(textures));
+    apiHook.glCreateTextures(target, n, textures);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glTextureBuffer({}, {}, {})", texture, E2S(internalformat), buffer);
+    apiHook.glTextureBuffer(texture, internalformat, buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint buffer,
+                                   GLintptr offset, GLsizei size) {
+    IRE_GL_LOG_DEBUG("glTextureBufferRange({}, {}, {}, {}, {})", texture, E2S(internalformat),
+                     buffer, offset, size);
+    apiHook.glTextureBufferRange(texture, internalformat, buffer, offset, size);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureStorage1D(GLuint texture, GLsizei levels, GLenum internalformat,
+                                 GLsizei width) {
+    IRE_GL_LOG_DEBUG("glTextureStorage1D({}, {}, {}, {})", texture, levels, E2S(internalformat),
+                     width);
+    apiHook.glTextureStorage1D(texture, levels, internalformat, width);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internalformat,
+                                 GLsizei width, GLsizei height) {
+    IRE_GL_LOG_DEBUG("glTextureStorage2D({}, {}, {}, {}, {})", texture, levels, E2S(internalformat),
+                     width, height);
+    apiHook.glTextureStorage2D(texture, levels, internalformat, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureStorage3D(GLuint texture, GLsizei levels, GLenum internalformat,
+                                 GLsizei width, GLsizei height, GLsizei depth) {
+    IRE_GL_LOG_DEBUG("glTextureStorage3D({}, {}, {}, {}, {}, {})", texture, levels,
+                     E2S(internalformat), width, height, depth);
+    apiHook.glTextureStorage3D(texture, levels, internalformat, width, height, depth);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureStorage2DMultisample(GLuint texture, GLsizei samples, GLenum internalformat,
+                                            GLsizei width, GLsizei height,
+                                            GLboolean fixedsamplelocations) {
+    IRE_GL_LOG_DEBUG("glTextureStorage2DMultisample({}, {}, {}, {}, {}, {})", texture, samples,
+                     E2S(internalformat), width, height, (unsigned int)(fixedsamplelocations));
+    apiHook.glTextureStorage2DMultisample(texture, samples, internalformat, width, height,
+                                          fixedsamplelocations);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureStorage3DMultisample(GLuint texture, GLsizei samples, GLenum internalformat,
+                                            GLsizei width, GLsizei height, GLsizei depth,
+                                            GLboolean fixedsamplelocations) {
+    IRE_GL_LOG_DEBUG("glTextureStorage3DMultisample({}, {}, {}, {}, {}, {}, {})", texture, samples,
+                     E2S(internalformat), width, height, depth,
+                     (unsigned int)(fixedsamplelocations));
+    apiHook.glTextureStorage3DMultisample(texture, samples, internalformat, width, height, depth,
+                                          fixedsamplelocations);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLsizei width,
+                                  GLenum format, GLenum type, const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level, xoffset,
+                     width, E2S(format), E2S(type), pixels);
+    apiHook.glTextureSubImage1D(texture, level, xoffset, width, format, type, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset,
+                                  GLsizei width, GLsizei height, GLenum format, GLenum type,
+                                  const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level,
+                     xoffset, yoffset, width, height, E2S(format), E2S(type), pixels);
+    apiHook.glTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format, type,
+                                pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset,
+                                  GLint zoffset, GLsizei width, GLsizei height, GLsizei depth,
+                                  GLenum format, GLenum type, const void *pixels) {
+    IRE_GL_LOG_DEBUG("glTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture,
+                     level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), E2S(type),
+                     pixels);
+    apiHook.glTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth,
+                                format, type, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompressedTextureSubImage1D(GLuint texture, GLint level, GLint xoffset,
+                                            GLsizei width, GLenum format, GLsizei imageSize,
+                                            const void *data) {
+    IRE_GL_LOG_DEBUG("glCompressedTextureSubImage1D({}, {}, {}, {}, {}, {}, {})", texture, level,
+                     xoffset, width, E2S(format), imageSize, data);
+    apiHook.glCompressedTextureSubImage1D(texture, level, xoffset, width, format, imageSize, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompressedTextureSubImage2D(GLuint texture, GLint level, GLint xoffset,
+                                            GLint yoffset, GLsizei width, GLsizei height,
+                                            GLenum format, GLsizei imageSize, const void *data) {
+    IRE_GL_LOG_DEBUG("glCompressedTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture,
+                     level, xoffset, yoffset, width, height, E2S(format), imageSize, data);
+    apiHook.glCompressedTextureSubImage2D(texture, level, xoffset, yoffset, width, height, format,
+                                          imageSize, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCompressedTextureSubImage3D(GLuint texture, GLint level, GLint xoffset,
+                                            GLint yoffset, GLint zoffset, GLsizei width,
+                                            GLsizei height, GLsizei depth, GLenum format,
+                                            GLsizei imageSize, const void *data) {
+    IRE_GL_LOG_DEBUG("glCompressedTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     texture, level, xoffset, yoffset, zoffset, width, height, depth, E2S(format),
+                     imageSize, data);
+    apiHook.glCompressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height,
+                                          depth, format, imageSize, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCopyTextureSubImage1D(GLuint texture, GLint level, GLint xoffset, GLint x, GLint y,
+                                      GLsizei width) {
+    IRE_GL_LOG_DEBUG("glCopyTextureSubImage1D({}, {}, {}, {}, {}, {})", texture, level, xoffset, x,
+                     y, width);
+    apiHook.glCopyTextureSubImage1D(texture, level, xoffset, x, y, width);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCopyTextureSubImage2D(GLuint texture, GLint level, GLint xoffset, GLint yoffset,
+                                      GLint x, GLint y, GLsizei width, GLsizei height) {
+    IRE_GL_LOG_DEBUG("glCopyTextureSubImage2D({}, {}, {}, {}, {}, {}, {}, {})", texture, level,
+                     xoffset, yoffset, x, y, width, height);
+    apiHook.glCopyTextureSubImage2D(texture, level, xoffset, yoffset, x, y, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCopyTextureSubImage3D(GLuint texture, GLint level, GLint xoffset, GLint yoffset,
+                                      GLint zoffset, GLint x, GLint y, GLsizei width,
+                                      GLsizei height) {
+    IRE_GL_LOG_DEBUG("glCopyTextureSubImage3D({}, {}, {}, {}, {}, {}, {}, {}, {})", texture, level,
+                     xoffset, yoffset, zoffset, x, y, width, height);
+    apiHook.glCopyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameterf(GLuint texture, GLenum pname, GLfloat param) {
+    IRE_GL_LOG_DEBUG("glTextureParameterf({}, {}, {})", texture, E2S(pname), param);
+    apiHook.glTextureParameterf(texture, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameterfv(GLuint texture, GLenum pname, const GLfloat *param) {
+    IRE_GL_LOG_DEBUG("glTextureParameterfv({}, {}, {})", texture, E2S(pname),
+                     (const void *)(param));
+    apiHook.glTextureParameterfv(texture, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameteri(GLuint texture, GLenum pname, GLint param) {
+    IRE_GL_LOG_DEBUG("glTextureParameteri({}, {}, {})", texture, E2S(pname), param);
+    apiHook.glTextureParameteri(texture, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameterIiv(GLuint texture, GLenum pname, const GLint *params) {
+    IRE_GL_LOG_DEBUG("glTextureParameterIiv({}, {}, {})", texture, E2S(pname),
+                     (const void *)(params));
+    apiHook.glTextureParameterIiv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameterIuiv(GLuint texture, GLenum pname, const GLuint *params) {
+    IRE_GL_LOG_DEBUG("glTextureParameterIuiv({}, {}, {})", texture, E2S(pname),
+                     (const void *)(params));
+    apiHook.glTextureParameterIuiv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glTextureParameteriv(GLuint texture, GLenum pname, const GLint *param) {
+    IRE_GL_LOG_DEBUG("glTextureParameteriv({}, {}, {})", texture, E2S(pname),
+                     (const void *)(param));
+    apiHook.glTextureParameteriv(texture, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGenerateTextureMipmap(GLuint texture) {
+    IRE_GL_LOG_DEBUG("glGenerateTextureMipmap({})", texture);
+    apiHook.glGenerateTextureMipmap(texture);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glBindTextureUnit(GLuint unit, GLuint texture) {
+    IRE_GL_LOG_DEBUG("glBindTextureUnit({}, {})", unit, texture);
+    apiHook.glBindTextureUnit(unit, texture);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureImage(GLuint texture, GLint level, GLenum format, GLenum type,
+                                GLsizei bufSize, void *pixels) {
+    IRE_GL_LOG_DEBUG("glGetTextureImage({}, {}, {}, {}, {}, {})", texture, level, E2S(format),
+                     E2S(type), bufSize, pixels);
+    apiHook.glGetTextureImage(texture, level, format, type, bufSize, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetCompressedTextureImage(GLuint texture, GLint level, GLsizei bufSize,
+                                          void *pixels) {
+    IRE_GL_LOG_DEBUG("glGetCompressedTextureImage({}, {}, {}, {})", texture, level, bufSize,
+                     pixels);
+    apiHook.glGetCompressedTextureImage(texture, level, bufSize, pixels);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureLevelParameterfv(GLuint texture, GLint level, GLenum pname,
+                                           GLfloat *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureLevelParameterfv({}, {}, {}, {})", texture, level, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetTextureLevelParameterfv(texture, level, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureLevelParameteriv(GLuint texture, GLint level, GLenum pname,
+                                           GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureLevelParameteriv({}, {}, {}, {})", texture, level, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetTextureLevelParameteriv(texture, level, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureParameterfv(GLuint texture, GLenum pname, GLfloat *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureParameterfv({}, {}, {})", texture, E2S(pname), (void *)(params));
+    apiHook.glGetTextureParameterfv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureParameterIiv(GLuint texture, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureParameterIiv({}, {}, {})", texture, E2S(pname), (void *)(params));
+    apiHook.glGetTextureParameterIiv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureParameterIuiv(GLuint texture, GLenum pname, GLuint *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureParameterIuiv({}, {}, {})", texture, E2S(pname),
+                     (void *)(params));
+    apiHook.glGetTextureParameterIuiv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureParameteriv(GLuint texture, GLenum pname, GLint *params) {
+    IRE_GL_LOG_DEBUG("glGetTextureParameteriv({}, {}, {})", texture, E2S(pname), (void *)(params));
+    apiHook.glGetTextureParameteriv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateVertexArrays(GLsizei n, GLuint *arrays) {
+    IRE_GL_LOG_DEBUG("glCreateVertexArrays({}, {})", n, (void *)(arrays));
+    apiHook.glCreateVertexArrays(n, arrays);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDisableVertexArrayAttrib(GLuint vaobj, GLuint index) {
+    IRE_GL_LOG_DEBUG("glDisableVertexArrayAttrib({}, {})", vaobj, index);
+    apiHook.glDisableVertexArrayAttrib(vaobj, index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glEnableVertexArrayAttrib(GLuint vaobj, GLuint index) {
+    IRE_GL_LOG_DEBUG("glEnableVertexArrayAttrib({}, {})", vaobj, index);
+    apiHook.glEnableVertexArrayAttrib(vaobj, index);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayElementBuffer(GLuint vaobj, GLuint buffer) {
+    IRE_GL_LOG_DEBUG("glVertexArrayElementBuffer({}, {})", vaobj, buffer);
+    apiHook.glVertexArrayElementBuffer(vaobj, buffer);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayVertexBuffer(GLuint vaobj, GLuint bindingindex, GLuint buffer,
+                                        GLintptr offset, GLsizei stride) {
+    IRE_GL_LOG_DEBUG("glVertexArrayVertexBuffer({}, {}, {}, {}, {})", vaobj, bindingindex, buffer,
+                     offset, stride);
+    apiHook.glVertexArrayVertexBuffer(vaobj, bindingindex, buffer, offset, stride);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayVertexBuffers(GLuint vaobj, GLuint first, GLsizei count,
+                                         const GLuint *buffers, const GLintptr *offsets,
+                                         const GLsizei *strides) {
+    IRE_GL_LOG_DEBUG("glVertexArrayVertexBuffers({}, {}, {}, {}, {}, {})", vaobj, first, count,
+                     (const void *)(buffers), (const void *)(offsets), (const void *)(strides));
+    apiHook.glVertexArrayVertexBuffers(vaobj, first, count, buffers, offsets, strides);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayAttribBinding(GLuint vaobj, GLuint attribindex, GLuint bindingindex) {
+    IRE_GL_LOG_DEBUG("glVertexArrayAttribBinding({}, {}, {})", vaobj, attribindex, bindingindex);
+    apiHook.glVertexArrayAttribBinding(vaobj, attribindex, bindingindex);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayAttribFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type,
+                                        GLboolean normalized, GLuint relativeoffset) {
+    IRE_GL_LOG_DEBUG("glVertexArrayAttribFormat({}, {}, {}, {}, {}, {})", vaobj, attribindex, size,
+                     E2S(type), (unsigned int)(normalized), relativeoffset);
+    apiHook.glVertexArrayAttribFormat(vaobj, attribindex, size, type, normalized, relativeoffset);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayAttribIFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type,
+                                         GLuint relativeoffset) {
+    IRE_GL_LOG_DEBUG("glVertexArrayAttribIFormat({}, {}, {}, {}, {})", vaobj, attribindex, size,
+                     E2S(type), relativeoffset);
+    apiHook.glVertexArrayAttribIFormat(vaobj, attribindex, size, type, relativeoffset);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayAttribLFormat(GLuint vaobj, GLuint attribindex, GLint size, GLenum type,
+                                         GLuint relativeoffset) {
+    IRE_GL_LOG_DEBUG("glVertexArrayAttribLFormat({}, {}, {}, {}, {})", vaobj, attribindex, size,
+                     E2S(type), relativeoffset);
+    apiHook.glVertexArrayAttribLFormat(vaobj, attribindex, size, type, relativeoffset);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glVertexArrayBindingDivisor(GLuint vaobj, GLuint bindingindex, GLuint divisor) {
+    IRE_GL_LOG_DEBUG("glVertexArrayBindingDivisor({}, {}, {})", vaobj, bindingindex, divisor);
+    apiHook.glVertexArrayBindingDivisor(vaobj, bindingindex, divisor);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetVertexArrayiv(GLuint vaobj, GLenum pname, GLint *param) {
+    IRE_GL_LOG_DEBUG("glGetVertexArrayiv({}, {}, {})", vaobj, E2S(pname), (void *)(param));
+    apiHook.glGetVertexArrayiv(vaobj, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetVertexArrayIndexediv(GLuint vaobj, GLuint index, GLenum pname, GLint *param) {
+    IRE_GL_LOG_DEBUG("glGetVertexArrayIndexediv({}, {}, {}, {})", vaobj, index, E2S(pname),
+                     (void *)(param));
+    apiHook.glGetVertexArrayIndexediv(vaobj, index, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetVertexArrayIndexed64iv(GLuint vaobj, GLuint index, GLenum pname,
+                                          GLint64 *param) {
+    IRE_GL_LOG_DEBUG("glGetVertexArrayIndexed64iv({}, {}, {}, {})", vaobj, index, E2S(pname),
+                     (void *)(param));
+    apiHook.glGetVertexArrayIndexed64iv(vaobj, index, pname, param);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateSamplers(GLsizei n, GLuint *samplers) {
+    IRE_GL_LOG_DEBUG("glCreateSamplers({}, {})", n, (void *)(samplers));
+    apiHook.glCreateSamplers(n, samplers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateProgramPipelines(GLsizei n, GLuint *pipelines) {
+    IRE_GL_LOG_DEBUG("glCreateProgramPipelines({}, {})", n, (void *)(pipelines));
+    apiHook.glCreateProgramPipelines(n, pipelines);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glCreateQueries(GLenum target, GLsizei n, GLuint *ids) {
+    IRE_GL_LOG_DEBUG("glCreateQueries({}, {}, {})", E2S(target), n, (void *)(ids));
+    apiHook.glCreateQueries(target, n, ids);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 #define INJECT(S) api->S = &GLTracer_##S;
 
-void InjectAPITracer4(GL4API* api)
-{
-	apiHook = *api;
-	INJECT(glActiveTexture);
-	INJECT(glAttachShader);
-	INJECT(glBeginQuery);
-	INJECT(glBindAttribLocation);
-	INJECT(glBindBuffer);
-	INJECT(glBindBufferBase);
-	INJECT(glBindBufferRange);
-	INJECT(glBindFragDataLocation);
-	INJECT(glBindFramebuffer);
-	INJECT(glBindTextureUnit);
-	INJECT(glBindTextures);
-	INJECT(glBindVertexArray);
-	INJECT(glBlendFunc);
-	INJECT(glBlitNamedFramebuffer);
-	INJECT(glBufferData);
-	INJECT(glBufferSubData);
-	INJECT(glCheckFramebufferStatus);
-	INJECT(glCheckNamedFramebufferStatus);
-	INJECT(glClear);
-	INJECT(glClearColor);
-	INJECT(glClearDepth);
-	INJECT(glClearNamedBufferData);
-	INJECT(glClearNamedBufferSubData);
-	INJECT(glClearNamedFramebufferfi);
-	INJECT(glClearNamedFramebufferfv);
-	INJECT(glClearNamedFramebufferiv);
-	INJECT(glClearNamedFramebufferuiv);
-	INJECT(glClearStencil);
-	INJECT(glColorMask);
-	INJECT(glCompileShader);
-	INJECT(glCompressedTexImage2D);
-	INJECT(glCompressedTexImage3D);
-	INJECT(glCompressedTextureSubImage1D);
-	INJECT(glCompressedTextureSubImage2D);
-	INJECT(glCompressedTextureSubImage3D);
-	INJECT(glCopyNamedBufferSubData);
-	INJECT(glCopyTextureSubImage1D);
-	INJECT(glCopyTextureSubImage2D);
-	INJECT(glCopyTextureSubImage3D);
-	INJECT(glCreateBuffers);
-	INJECT(glCreateFramebuffers);
-	INJECT(glCreateProgram);
-	INJECT(glCreateProgramPipelines);
-	INJECT(glCreateQueries);
-	INJECT(glCreateRenderbuffers);
-	INJECT(glCreateSamplers);
-	INJECT(glCreateShader);
-	INJECT(glCreateTextures);
-	INJECT(glCreateTransformFeedbacks);
-	INJECT(glCreateVertexArrays);
-	INJECT(glCullFace);
-	INJECT(glDeleteBuffers);
-	INJECT(glDeleteFramebuffers);
-	INJECT(glDeleteProgram);
-	INJECT(glDeleteQueries);
-	INJECT(glDeleteShader);
-	INJECT(glDeleteTextures);
-	INJECT(glDeleteVertexArrays);
-	INJECT(glDepthFunc);
-	INJECT(glDepthMask);
-	INJECT(glDisable);
-	INJECT(glDisableVertexArrayAttrib);
-	INJECT(glDisableVertexAttribArray);
-	INJECT(glDisablei);
-	INJECT(glDrawArrays);
-	INJECT(glDrawArraysInstanced);
-	INJECT(glDrawBuffers);
-	INJECT(glDrawElements);
-	INJECT(glDrawElementsInstanced);
-	INJECT(glEnable);
-	INJECT(glEnableVertexArrayAttrib);
-	INJECT(glEnableVertexAttribArray);
-	INJECT(glEnablei);
-	INJECT(glEndQuery);
-	INJECT(glFinish);
-	INJECT(glFlush);
-	INJECT(glFlushMappedNamedBufferRange);
-	INJECT(glFramebufferTexture2D);
-	INJECT(glFramebufferTexture3D);
-	INJECT(glGenBuffers);
-	INJECT(glGenFramebuffers);
-	INJECT(glGenQueries);
-	INJECT(glGenTextures);
-	INJECT(glGenVertexArrays);
-	INJECT(glGenerateMipmap);
-	INJECT(glGenerateTextureMipmap);
-	INJECT(glGetActiveAttrib);
-	INJECT(glGetActiveSubroutineName);
-	INJECT(glGetActiveSubroutineUniformiv);
-	INJECT(glGetActiveUniform);
-	INJECT(glGetActiveUniformBlockiv);
-	INJECT(glGetAttribLocation);
-	INJECT(glGetCompressedTexImage);
-	INJECT(glGetCompressedTextureImage);
-	INJECT(glGetIntegerv);
-	INJECT(glGetNamedBufferParameteri64v);
-	INJECT(glGetNamedBufferParameteriv);
-	INJECT(glGetNamedBufferPointerv);
-	INJECT(glGetNamedBufferSubData);
-	INJECT(glGetNamedFramebufferAttachmentParameteriv);
-	INJECT(glGetNamedFramebufferParameteriv);
-	INJECT(glGetNamedRenderbufferParameteriv);
-	INJECT(glGetProgramBinary);
-	INJECT(glGetProgramInfoLog);
-	INJECT(glGetProgramStageiv);
-	INJECT(glGetProgramiv);
-	INJECT(glGetQueryObjectiv);
-	INJECT(glGetQueryObjectui64v);
-	INJECT(glGetShaderInfoLog);
-	INJECT(glGetShaderiv);
-	INJECT(glGetSubroutineIndex);
-	INJECT(glGetSubroutineUniformLocation);
-	INJECT(glGetTexImage);
-	INJECT(glGetTexLevelParameteriv);
-	INJECT(glGetTextureImage);
-	INJECT(glGetTextureLevelParameterfv);
-	INJECT(glGetTextureLevelParameteriv);
-	INJECT(glGetTextureParameterIiv);
-	INJECT(glGetTextureParameterIuiv);
-	INJECT(glGetTextureParameterfv);
-	INJECT(glGetTextureParameteriv);
-	INJECT(glGetTransformFeedbacki64_v);
-	INJECT(glGetTransformFeedbacki_v);
-	INJECT(glGetTransformFeedbackiv);
-	INJECT(glGetUniformLocation);
-	INJECT(glGetVertexArrayIndexed64iv);
-	INJECT(glGetVertexArrayIndexediv);
-	INJECT(glGetVertexArrayiv);
-	INJECT(glInvalidateNamedFramebufferData);
-	INJECT(glInvalidateNamedFramebufferSubData);
-	INJECT(glIsProgram);
-	INJECT(glIsShader);
-	INJECT(glLinkProgram);
-	INJECT(glMapNamedBuffer);
-	INJECT(glMapNamedBufferRange);
-	INJECT(glNamedBufferData);
-	INJECT(glNamedBufferStorage);
-	INJECT(glNamedBufferSubData);
-	INJECT(glNamedFramebufferDrawBuffer);
-	INJECT(glNamedFramebufferDrawBuffers);
-	INJECT(glNamedFramebufferParameteri);
-	INJECT(glNamedFramebufferReadBuffer);
-	INJECT(glNamedFramebufferRenderbuffer);
-	INJECT(glNamedFramebufferTexture);
-	INJECT(glNamedFramebufferTextureLayer);
-	INJECT(glNamedRenderbufferStorage);
-	INJECT(glNamedRenderbufferStorageMultisample);
-	INJECT(glPatchParameteri);
-	INJECT(glPixelStorei);
-	INJECT(glPolygonMode);
-	INJECT(glProgramBinary);
-	INJECT(glProgramParameteri);
-	INJECT(glProgramUniform1f);
-	INJECT(glProgramUniform1i);
-	INJECT(glProgramUniform2fv);
-	INJECT(glProgramUniform2iv);
-	INJECT(glProgramUniform3fv);
-	INJECT(glProgramUniform3iv);
-	INJECT(glProgramUniform4fv);
-	INJECT(glProgramUniform4iv);
-	INJECT(glReadBuffer);
-	INJECT(glReadPixels);
-	INJECT(glScissor);
-	INJECT(glShaderSource);
-	INJECT(glTexImage2D);
-	INJECT(glTexImage3D);
-	INJECT(glTexParameterf);
-	INJECT(glTexParameterfv);
-	INJECT(glTexParameteri);
-	INJECT(glTexParameteriv);
-	INJECT(glTexSubImage2D);
-	INJECT(glTextureBuffer);
-	INJECT(glTextureBufferRange);
-	INJECT(glTextureParameterIiv);
-	INJECT(glTextureParameterIuiv);
-	INJECT(glTextureParameterf);
-	INJECT(glTextureParameterfv);
-	INJECT(glTextureParameteri);
-	INJECT(glTextureParameteriv);
-	INJECT(glTextureStorage1D);
-	INJECT(glTextureStorage2D);
-	INJECT(glTextureStorage2DMultisample);
-	INJECT(glTextureStorage3D);
-	INJECT(glTextureStorage3DMultisample);
-	INJECT(glTextureSubImage1D);
-	INJECT(glTextureSubImage2D);
-	INJECT(glTextureSubImage3D);
-	INJECT(glTransformFeedbackBufferBase);
-	INJECT(glTransformFeedbackBufferRange);
-	INJECT(glUniform1f);
-	INJECT(glUniform1fv);
-	INJECT(glUniform1i);
-	INJECT(glUniform1iv);
-	INJECT(glUniform3fv);
-	INJECT(glUniform4fv);
-	INJECT(glUniformBlockBinding);
-	INJECT(glUniformMatrix3fv);
-	INJECT(glUniformMatrix4fv);
-	INJECT(glUniformSubroutinesuiv);
-	INJECT(glUnmapNamedBuffer);
-	INJECT(glUseProgram);
-	INJECT(glValidateProgram);
-	INJECT(glVertexArrayAttribBinding);
-	INJECT(glVertexArrayAttribFormat);
-	INJECT(glVertexArrayAttribIFormat);
-	INJECT(glVertexArrayAttribLFormat);
-	INJECT(glVertexArrayBindingDivisor);
-	INJECT(glVertexArrayElementBuffer);
-	INJECT(glVertexArrayVertexBuffer);
-	INJECT(glVertexArrayVertexBuffers);
-	INJECT(glVertexAttribPointer);
-	INJECT(glViewport);
+void InjectAPITracer4(GL4API *api) {
+    apiHook = *api;
+    INJECT(glActiveTexture);
+    INJECT(glAttachShader);
+    INJECT(glBeginQuery);
+    INJECT(glBindAttribLocation);
+    INJECT(glBindBuffer);
+    INJECT(glBindBufferBase);
+    INJECT(glBindBufferRange);
+    INJECT(glBindFragDataLocation);
+    INJECT(glBindFramebuffer);
+    INJECT(glBindTextureUnit);
+    INJECT(glBindTextures);
+    INJECT(glBindVertexArray);
+    INJECT(glBlendFunc);
+    INJECT(glBlitNamedFramebuffer);
+    INJECT(glBufferData);
+    INJECT(glBufferSubData);
+    INJECT(glCheckFramebufferStatus);
+    INJECT(glCheckNamedFramebufferStatus);
+    INJECT(glClear);
+    INJECT(glClearColor);
+    INJECT(glClearDepth);
+    INJECT(glClearNamedBufferData);
+    INJECT(glClearNamedBufferSubData);
+    INJECT(glClearNamedFramebufferfi);
+    INJECT(glClearNamedFramebufferfv);
+    INJECT(glClearNamedFramebufferiv);
+    INJECT(glClearNamedFramebufferuiv);
+    INJECT(glClearStencil);
+    INJECT(glColorMask);
+    INJECT(glCompileShader);
+    INJECT(glCompressedTexImage2D);
+    INJECT(glCompressedTexImage3D);
+    INJECT(glCompressedTextureSubImage1D);
+    INJECT(glCompressedTextureSubImage2D);
+    INJECT(glCompressedTextureSubImage3D);
+    INJECT(glCopyNamedBufferSubData);
+    INJECT(glCopyTextureSubImage1D);
+    INJECT(glCopyTextureSubImage2D);
+    INJECT(glCopyTextureSubImage3D);
+    INJECT(glCreateBuffers);
+    INJECT(glCreateFramebuffers);
+    INJECT(glCreateProgram);
+    INJECT(glCreateProgramPipelines);
+    INJECT(glCreateQueries);
+    INJECT(glCreateRenderbuffers);
+    INJECT(glCreateSamplers);
+    INJECT(glCreateShader);
+    INJECT(glCreateTextures);
+    INJECT(glCreateTransformFeedbacks);
+    INJECT(glCreateVertexArrays);
+    INJECT(glCullFace);
+    INJECT(glDeleteBuffers);
+    INJECT(glDeleteFramebuffers);
+    INJECT(glDeleteProgram);
+    INJECT(glDeleteQueries);
+    INJECT(glDeleteShader);
+    INJECT(glDeleteTextures);
+    INJECT(glDeleteVertexArrays);
+    INJECT(glDepthFunc);
+    INJECT(glDepthMask);
+    INJECT(glDisable);
+    INJECT(glDisableVertexArrayAttrib);
+    INJECT(glDisableVertexAttribArray);
+    INJECT(glDisablei);
+    INJECT(glDrawArrays);
+    INJECT(glDrawArraysInstanced);
+    INJECT(glDrawBuffers);
+    INJECT(glDrawElements);
+    INJECT(glDrawElementsInstanced);
+    INJECT(glEnable);
+    INJECT(glEnableVertexArrayAttrib);
+    INJECT(glEnableVertexAttribArray);
+    INJECT(glEnablei);
+    INJECT(glEndQuery);
+    INJECT(glFinish);
+    INJECT(glFlush);
+    INJECT(glFlushMappedNamedBufferRange);
+    INJECT(glFramebufferTexture2D);
+    INJECT(glFramebufferTexture3D);
+    INJECT(glGenBuffers);
+    INJECT(glGenFramebuffers);
+    INJECT(glGenQueries);
+    INJECT(glGenTextures);
+    INJECT(glGenVertexArrays);
+    INJECT(glGenerateMipmap);
+    INJECT(glGenerateTextureMipmap);
+    INJECT(glGetActiveAttrib);
+    INJECT(glGetActiveSubroutineName);
+    INJECT(glGetActiveSubroutineUniformiv);
+    INJECT(glGetActiveUniform);
+    INJECT(glGetActiveUniformBlockiv);
+    INJECT(glGetAttribLocation);
+    INJECT(glGetCompressedTexImage);
+    INJECT(glGetCompressedTextureImage);
+    INJECT(glGetIntegerv);
+    INJECT(glGetNamedBufferParameteri64v);
+    INJECT(glGetNamedBufferParameteriv);
+    INJECT(glGetNamedBufferPointerv);
+    INJECT(glGetNamedBufferSubData);
+    INJECT(glGetNamedFramebufferAttachmentParameteriv);
+    INJECT(glGetNamedFramebufferParameteriv);
+    INJECT(glGetNamedRenderbufferParameteriv);
+    INJECT(glGetProgramBinary);
+    INJECT(glGetProgramInfoLog);
+    INJECT(glGetProgramStageiv);
+    INJECT(glGetProgramiv);
+    INJECT(glGetQueryObjectiv);
+    INJECT(glGetQueryObjectui64v);
+    INJECT(glGetShaderInfoLog);
+    INJECT(glGetShaderiv);
+    INJECT(glGetSubroutineIndex);
+    INJECT(glGetSubroutineUniformLocation);
+    INJECT(glGetTexImage);
+    INJECT(glGetTexLevelParameteriv);
+    INJECT(glGetTextureImage);
+    INJECT(glGetTextureLevelParameterfv);
+    INJECT(glGetTextureLevelParameteriv);
+    INJECT(glGetTextureParameterIiv);
+    INJECT(glGetTextureParameterIuiv);
+    INJECT(glGetTextureParameterfv);
+    INJECT(glGetTextureParameteriv);
+    INJECT(glGetTransformFeedbacki64_v);
+    INJECT(glGetTransformFeedbacki_v);
+    INJECT(glGetTransformFeedbackiv);
+    INJECT(glGetUniformLocation);
+    INJECT(glGetVertexArrayIndexed64iv);
+    INJECT(glGetVertexArrayIndexediv);
+    INJECT(glGetVertexArrayiv);
+    INJECT(glInvalidateNamedFramebufferData);
+    INJECT(glInvalidateNamedFramebufferSubData);
+    INJECT(glIsProgram);
+    INJECT(glIsShader);
+    INJECT(glLinkProgram);
+    INJECT(glMapNamedBuffer);
+    INJECT(glMapNamedBufferRange);
+    INJECT(glNamedBufferData);
+    INJECT(glNamedBufferStorage);
+    INJECT(glNamedBufferSubData);
+    INJECT(glNamedFramebufferDrawBuffer);
+    INJECT(glNamedFramebufferDrawBuffers);
+    INJECT(glNamedFramebufferParameteri);
+    INJECT(glNamedFramebufferReadBuffer);
+    INJECT(glNamedFramebufferRenderbuffer);
+    INJECT(glNamedFramebufferTexture);
+    INJECT(glNamedFramebufferTextureLayer);
+    INJECT(glNamedRenderbufferStorage);
+    INJECT(glNamedRenderbufferStorageMultisample);
+    INJECT(glPatchParameteri);
+    INJECT(glPixelStorei);
+    INJECT(glPolygonMode);
+    INJECT(glProgramBinary);
+    INJECT(glProgramParameteri);
+    INJECT(glProgramUniform1f);
+    INJECT(glProgramUniform1i);
+    INJECT(glProgramUniform2fv);
+    INJECT(glProgramUniform2iv);
+    INJECT(glProgramUniform3fv);
+    INJECT(glProgramUniform3iv);
+    INJECT(glProgramUniform4fv);
+    INJECT(glProgramUniform4iv);
+    INJECT(glReadBuffer);
+    INJECT(glReadPixels);
+    INJECT(glScissor);
+    INJECT(glShaderSource);
+    INJECT(glTexImage2D);
+    INJECT(glTexImage3D);
+    INJECT(glTexParameterf);
+    INJECT(glTexParameterfv);
+    INJECT(glTexParameteri);
+    INJECT(glTexParameteriv);
+    INJECT(glTexSubImage2D);
+    INJECT(glTextureBuffer);
+    INJECT(glTextureBufferRange);
+    INJECT(glTextureParameterIiv);
+    INJECT(glTextureParameterIuiv);
+    INJECT(glTextureParameterf);
+    INJECT(glTextureParameterfv);
+    INJECT(glTextureParameteri);
+    INJECT(glTextureParameteriv);
+    INJECT(glTextureStorage1D);
+    INJECT(glTextureStorage2D);
+    INJECT(glTextureStorage2DMultisample);
+    INJECT(glTextureStorage3D);
+    INJECT(glTextureStorage3DMultisample);
+    INJECT(glTextureSubImage1D);
+    INJECT(glTextureSubImage2D);
+    INJECT(glTextureSubImage3D);
+    INJECT(glTransformFeedbackBufferBase);
+    INJECT(glTransformFeedbackBufferRange);
+    INJECT(glUniform1f);
+    INJECT(glUniform1fv);
+    INJECT(glUniform1i);
+    INJECT(glUniform1iv);
+    INJECT(glUniform3fv);
+    INJECT(glUniform4fv);
+    INJECT(glUniformBlockBinding);
+    INJECT(glUniformMatrix3fv);
+    INJECT(glUniformMatrix4fv);
+    INJECT(glUniformSubroutinesuiv);
+    INJECT(glUnmapNamedBuffer);
+    INJECT(glUseProgram);
+    INJECT(glValidateProgram);
+    INJECT(glVertexArrayAttribBinding);
+    INJECT(glVertexArrayAttribFormat);
+    INJECT(glVertexArrayAttribIFormat);
+    INJECT(glVertexArrayAttribLFormat);
+    INJECT(glVertexArrayBindingDivisor);
+    INJECT(glVertexArrayElementBuffer);
+    INJECT(glVertexArrayVertexBuffer);
+    INJECT(glVertexArrayVertexBuffers);
+    INJECT(glVertexAttribPointer);
+    INJECT(glViewport);
 }
 
-#define LOAD_GL_FUNC(func) api->func = ( decltype(api->func) )GetGLProc(#func);
+#define LOAD_GL_FUNC(func) api->func = (decltype(api->func))GetGLProc(#func);
 
-void GetAPI4(GL4API* api, PFNGETGLPROC GetGLProc)
-{
-	LOAD_GL_FUNC(glActiveTexture);
-	LOAD_GL_FUNC(glAttachShader);
-	LOAD_GL_FUNC(glBeginQuery);
-	LOAD_GL_FUNC(glBindAttribLocation);
-	LOAD_GL_FUNC(glBindBuffer);
-	LOAD_GL_FUNC(glBindBufferBase);
-	LOAD_GL_FUNC(glBindBufferRange);
-	LOAD_GL_FUNC(glBindFragDataLocation);
-	LOAD_GL_FUNC(glBindFramebuffer);
-	LOAD_GL_FUNC(glBindTextureUnit);
-	LOAD_GL_FUNC(glBindTextures);
-	LOAD_GL_FUNC(glBindVertexArray);
-	LOAD_GL_FUNC(glBlendFunc);
-	LOAD_GL_FUNC(glBlitNamedFramebuffer);
-	LOAD_GL_FUNC(glBufferData);
-	LOAD_GL_FUNC(glBufferSubData);
-	LOAD_GL_FUNC(glCheckFramebufferStatus);
-	LOAD_GL_FUNC(glCheckNamedFramebufferStatus);
-	LOAD_GL_FUNC(glClear);
-	LOAD_GL_FUNC(glClearColor);
-	LOAD_GL_FUNC(glClearDepth);
-	LOAD_GL_FUNC(glClearNamedBufferData);
-	LOAD_GL_FUNC(glClearNamedBufferSubData);
-	LOAD_GL_FUNC(glClearNamedFramebufferfi);
-	LOAD_GL_FUNC(glClearNamedFramebufferfv);
-	LOAD_GL_FUNC(glClearNamedFramebufferiv);
-	LOAD_GL_FUNC(glClearNamedFramebufferuiv);
-	LOAD_GL_FUNC(glClearStencil);
-	LOAD_GL_FUNC(glColorMask);
-	LOAD_GL_FUNC(glCompileShader);
-	LOAD_GL_FUNC(glCompressedTexImage2D);
-	LOAD_GL_FUNC(glCompressedTexImage3D);
-	LOAD_GL_FUNC(glCompressedTextureSubImage1D);
-	LOAD_GL_FUNC(glCompressedTextureSubImage2D);
-	LOAD_GL_FUNC(glCompressedTextureSubImage3D);
-	LOAD_GL_FUNC(glCopyNamedBufferSubData);
-	LOAD_GL_FUNC(glCopyTextureSubImage1D);
-	LOAD_GL_FUNC(glCopyTextureSubImage2D);
-	LOAD_GL_FUNC(glCopyTextureSubImage3D);
-	LOAD_GL_FUNC(glCreateBuffers);
-	LOAD_GL_FUNC(glCreateFramebuffers);
-	LOAD_GL_FUNC(glCreateProgram);
-	LOAD_GL_FUNC(glCreateProgramPipelines);
-	LOAD_GL_FUNC(glCreateQueries);
-	LOAD_GL_FUNC(glCreateRenderbuffers);
-	LOAD_GL_FUNC(glCreateSamplers);
-	LOAD_GL_FUNC(glCreateShader);
-	LOAD_GL_FUNC(glCreateTextures);
-	LOAD_GL_FUNC(glCreateTransformFeedbacks);
-	LOAD_GL_FUNC(glCreateVertexArrays);
-	LOAD_GL_FUNC(glCullFace);
-	LOAD_GL_FUNC(glDeleteBuffers);
-	LOAD_GL_FUNC(glDeleteFramebuffers);
-	LOAD_GL_FUNC(glDeleteProgram);
-	LOAD_GL_FUNC(glDeleteQueries);
-	LOAD_GL_FUNC(glDeleteShader);
-	LOAD_GL_FUNC(glDeleteTextures);
-	LOAD_GL_FUNC(glDeleteVertexArrays);
-	LOAD_GL_FUNC(glDepthFunc);
-	LOAD_GL_FUNC(glDepthMask);
-	LOAD_GL_FUNC(glDisable);
-	LOAD_GL_FUNC(glDisableVertexArrayAttrib);
-	LOAD_GL_FUNC(glDisableVertexAttribArray);
-	LOAD_GL_FUNC(glDisablei);
-	LOAD_GL_FUNC(glDrawArrays);
-	LOAD_GL_FUNC(glDrawArraysInstanced);
-	LOAD_GL_FUNC(glDrawBuffers);
-	LOAD_GL_FUNC(glDrawElements);
-	LOAD_GL_FUNC(glDrawElementsInstanced);
-	LOAD_GL_FUNC(glEnable);
-	LOAD_GL_FUNC(glEnableVertexArrayAttrib);
-	LOAD_GL_FUNC(glEnableVertexAttribArray);
-	LOAD_GL_FUNC(glEnablei);
-	LOAD_GL_FUNC(glEndQuery);
-	LOAD_GL_FUNC(glFinish);
-	LOAD_GL_FUNC(glFlush);
-	LOAD_GL_FUNC(glFlushMappedNamedBufferRange);
-	LOAD_GL_FUNC(glFramebufferTexture2D);
-	LOAD_GL_FUNC(glFramebufferTexture3D);
-	LOAD_GL_FUNC(glGenBuffers);
-	LOAD_GL_FUNC(glGenFramebuffers);
-	LOAD_GL_FUNC(glGenQueries);
-	LOAD_GL_FUNC(glGenTextures);
-	LOAD_GL_FUNC(glGenVertexArrays);
-	LOAD_GL_FUNC(glGenerateMipmap);
-	LOAD_GL_FUNC(glGenerateTextureMipmap);
-	LOAD_GL_FUNC(glGetActiveAttrib);
-	LOAD_GL_FUNC(glGetActiveSubroutineName);
-	LOAD_GL_FUNC(glGetActiveSubroutineUniformiv);
-	LOAD_GL_FUNC(glGetActiveUniform);
-	LOAD_GL_FUNC(glGetActiveUniformBlockiv);
-	LOAD_GL_FUNC(glGetAttribLocation);
-	LOAD_GL_FUNC(glGetCompressedTexImage);
-	LOAD_GL_FUNC(glGetCompressedTextureImage);
-	LOAD_GL_FUNC(glGetError);
-	LOAD_GL_FUNC(glGetIntegerv);
-	LOAD_GL_FUNC(glGetNamedBufferParameteri64v);
-	LOAD_GL_FUNC(glGetNamedBufferParameteriv);
-	LOAD_GL_FUNC(glGetNamedBufferPointerv);
-	LOAD_GL_FUNC(glGetNamedBufferSubData);
-	LOAD_GL_FUNC(glGetNamedFramebufferAttachmentParameteriv);
-	LOAD_GL_FUNC(glGetNamedFramebufferParameteriv);
-	LOAD_GL_FUNC(glGetNamedRenderbufferParameteriv);
-	LOAD_GL_FUNC(glGetProgramBinary);
-	LOAD_GL_FUNC(glGetProgramInfoLog);
-	LOAD_GL_FUNC(glGetProgramStageiv);
-	LOAD_GL_FUNC(glGetProgramiv);
-	LOAD_GL_FUNC(glGetQueryObjectiv);
-	LOAD_GL_FUNC(glGetQueryObjectui64v);
-	LOAD_GL_FUNC(glGetShaderInfoLog);
-	LOAD_GL_FUNC(glGetShaderiv);
-	LOAD_GL_FUNC(glGetSubroutineIndex);
-	LOAD_GL_FUNC(glGetSubroutineUniformLocation);
-	LOAD_GL_FUNC(glGetTexImage);
-	LOAD_GL_FUNC(glGetTexLevelParameteriv);
-	LOAD_GL_FUNC(glGetTextureImage);
-	LOAD_GL_FUNC(glGetTextureLevelParameterfv);
-	LOAD_GL_FUNC(glGetTextureLevelParameteriv);
-	LOAD_GL_FUNC(glGetTextureParameterIiv);
-	LOAD_GL_FUNC(glGetTextureParameterIuiv);
-	LOAD_GL_FUNC(glGetTextureParameterfv);
-	LOAD_GL_FUNC(glGetTextureParameteriv);
-	LOAD_GL_FUNC(glGetTransformFeedbacki64_v);
-	LOAD_GL_FUNC(glGetTransformFeedbacki_v);
-	LOAD_GL_FUNC(glGetTransformFeedbackiv);
-	LOAD_GL_FUNC(glGetUniformLocation);
-	LOAD_GL_FUNC(glGetVertexArrayIndexed64iv);
-	LOAD_GL_FUNC(glGetVertexArrayIndexediv);
-	LOAD_GL_FUNC(glGetVertexArrayiv);
-	LOAD_GL_FUNC(glInvalidateNamedFramebufferData);
-	LOAD_GL_FUNC(glInvalidateNamedFramebufferSubData);
-	LOAD_GL_FUNC(glIsProgram);
-	LOAD_GL_FUNC(glIsShader);
-	LOAD_GL_FUNC(glLinkProgram);
-	LOAD_GL_FUNC(glMapNamedBuffer);
-	LOAD_GL_FUNC(glMapNamedBufferRange);
-	LOAD_GL_FUNC(glNamedBufferData);
-	LOAD_GL_FUNC(glNamedBufferStorage);
-	LOAD_GL_FUNC(glNamedBufferSubData);
-	LOAD_GL_FUNC(glNamedFramebufferDrawBuffer);
-	LOAD_GL_FUNC(glNamedFramebufferDrawBuffers);
-	LOAD_GL_FUNC(glNamedFramebufferParameteri);
-	LOAD_GL_FUNC(glNamedFramebufferReadBuffer);
-	LOAD_GL_FUNC(glNamedFramebufferRenderbuffer);
-	LOAD_GL_FUNC(glNamedFramebufferTexture);
-	LOAD_GL_FUNC(glNamedFramebufferTextureLayer);
-	LOAD_GL_FUNC(glNamedRenderbufferStorage);
-	LOAD_GL_FUNC(glNamedRenderbufferStorageMultisample);
-	LOAD_GL_FUNC(glPatchParameteri);
-	LOAD_GL_FUNC(glPixelStorei);
-	LOAD_GL_FUNC(glPolygonMode);
-	LOAD_GL_FUNC(glProgramBinary);
-	LOAD_GL_FUNC(glProgramParameteri);
-	LOAD_GL_FUNC(glProgramUniform1f);
-	LOAD_GL_FUNC(glProgramUniform1i);
-	LOAD_GL_FUNC(glProgramUniform2fv);
-	LOAD_GL_FUNC(glProgramUniform2iv);
-	LOAD_GL_FUNC(glProgramUniform3fv);
-	LOAD_GL_FUNC(glProgramUniform3iv);
-	LOAD_GL_FUNC(glProgramUniform4fv);
-	LOAD_GL_FUNC(glProgramUniform4iv);
-	LOAD_GL_FUNC(glReadBuffer);
-	LOAD_GL_FUNC(glReadPixels);
-	LOAD_GL_FUNC(glScissor);
-	LOAD_GL_FUNC(glShaderSource);
-	LOAD_GL_FUNC(glTexImage2D);
-	LOAD_GL_FUNC(glTexImage3D);
-	LOAD_GL_FUNC(glTexParameterf);
-	LOAD_GL_FUNC(glTexParameterfv);
-	LOAD_GL_FUNC(glTexParameteri);
-	LOAD_GL_FUNC(glTexParameteriv);
-	LOAD_GL_FUNC(glTexSubImage2D);
-	LOAD_GL_FUNC(glTextureBuffer);
-	LOAD_GL_FUNC(glTextureBufferRange);
-	LOAD_GL_FUNC(glTextureParameterIiv);
-	LOAD_GL_FUNC(glTextureParameterIuiv);
-	LOAD_GL_FUNC(glTextureParameterf);
-	LOAD_GL_FUNC(glTextureParameterfv);
-	LOAD_GL_FUNC(glTextureParameteri);
-	LOAD_GL_FUNC(glTextureParameteriv);
-	LOAD_GL_FUNC(glTextureStorage1D);
-	LOAD_GL_FUNC(glTextureStorage2D);
-	LOAD_GL_FUNC(glTextureStorage2DMultisample);
-	LOAD_GL_FUNC(glTextureStorage3D);
-	LOAD_GL_FUNC(glTextureStorage3DMultisample);
-	LOAD_GL_FUNC(glTextureSubImage1D);
-	LOAD_GL_FUNC(glTextureSubImage2D);
-	LOAD_GL_FUNC(glTextureSubImage3D);
-	LOAD_GL_FUNC(glTransformFeedbackBufferBase);
-	LOAD_GL_FUNC(glTransformFeedbackBufferRange);
-	LOAD_GL_FUNC(glUniform1f);
-	LOAD_GL_FUNC(glUniform1fv);
-	LOAD_GL_FUNC(glUniform1i);
-	LOAD_GL_FUNC(glUniform1iv);
-	LOAD_GL_FUNC(glUniform3fv);
-	LOAD_GL_FUNC(glUniform4fv);
-	LOAD_GL_FUNC(glUniformBlockBinding);
-	LOAD_GL_FUNC(glUniformMatrix3fv);
-	LOAD_GL_FUNC(glUniformMatrix4fv);
-	LOAD_GL_FUNC(glUniformSubroutinesuiv);
-	LOAD_GL_FUNC(glUnmapNamedBuffer);
-	LOAD_GL_FUNC(glUseProgram);
-	LOAD_GL_FUNC(glValidateProgram);
-	LOAD_GL_FUNC(glVertexArrayAttribBinding);
-	LOAD_GL_FUNC(glVertexArrayAttribFormat);
-	LOAD_GL_FUNC(glVertexArrayAttribIFormat);
-	LOAD_GL_FUNC(glVertexArrayAttribLFormat);
-	LOAD_GL_FUNC(glVertexArrayBindingDivisor);
-	LOAD_GL_FUNC(glVertexArrayElementBuffer);
-	LOAD_GL_FUNC(glVertexArrayVertexBuffer);
-	LOAD_GL_FUNC(glVertexArrayVertexBuffers);
-	LOAD_GL_FUNC(glVertexAttribPointer);
-	LOAD_GL_FUNC(glViewport);
+void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
+    LOAD_GL_FUNC(glActiveTexture);
+    LOAD_GL_FUNC(glAttachShader);
+    LOAD_GL_FUNC(glBeginQuery);
+    LOAD_GL_FUNC(glBindAttribLocation);
+    LOAD_GL_FUNC(glBindBuffer);
+    LOAD_GL_FUNC(glBindBufferBase);
+    LOAD_GL_FUNC(glBindBufferRange);
+    LOAD_GL_FUNC(glBindFragDataLocation);
+    LOAD_GL_FUNC(glBindFramebuffer);
+    LOAD_GL_FUNC(glBindTextureUnit);
+    LOAD_GL_FUNC(glBindTextures);
+    LOAD_GL_FUNC(glBindVertexArray);
+    LOAD_GL_FUNC(glBlendFunc);
+    LOAD_GL_FUNC(glBlitNamedFramebuffer);
+    LOAD_GL_FUNC(glBufferData);
+    LOAD_GL_FUNC(glBufferSubData);
+    LOAD_GL_FUNC(glCheckFramebufferStatus);
+    LOAD_GL_FUNC(glCheckNamedFramebufferStatus);
+    LOAD_GL_FUNC(glClear);
+    LOAD_GL_FUNC(glClearColor);
+    LOAD_GL_FUNC(glClearDepth);
+    LOAD_GL_FUNC(glClearNamedBufferData);
+    LOAD_GL_FUNC(glClearNamedBufferSubData);
+    LOAD_GL_FUNC(glClearNamedFramebufferfi);
+    LOAD_GL_FUNC(glClearNamedFramebufferfv);
+    LOAD_GL_FUNC(glClearNamedFramebufferiv);
+    LOAD_GL_FUNC(glClearNamedFramebufferuiv);
+    LOAD_GL_FUNC(glClearStencil);
+    LOAD_GL_FUNC(glColorMask);
+    LOAD_GL_FUNC(glCompileShader);
+    LOAD_GL_FUNC(glCompressedTexImage2D);
+    LOAD_GL_FUNC(glCompressedTexImage3D);
+    LOAD_GL_FUNC(glCompressedTextureSubImage1D);
+    LOAD_GL_FUNC(glCompressedTextureSubImage2D);
+    LOAD_GL_FUNC(glCompressedTextureSubImage3D);
+    LOAD_GL_FUNC(glCopyNamedBufferSubData);
+    LOAD_GL_FUNC(glCopyTextureSubImage1D);
+    LOAD_GL_FUNC(glCopyTextureSubImage2D);
+    LOAD_GL_FUNC(glCopyTextureSubImage3D);
+    LOAD_GL_FUNC(glCreateBuffers);
+    LOAD_GL_FUNC(glCreateFramebuffers);
+    LOAD_GL_FUNC(glCreateProgram);
+    LOAD_GL_FUNC(glCreateProgramPipelines);
+    LOAD_GL_FUNC(glCreateQueries);
+    LOAD_GL_FUNC(glCreateRenderbuffers);
+    LOAD_GL_FUNC(glCreateSamplers);
+    LOAD_GL_FUNC(glCreateShader);
+    LOAD_GL_FUNC(glCreateTextures);
+    LOAD_GL_FUNC(glCreateTransformFeedbacks);
+    LOAD_GL_FUNC(glCreateVertexArrays);
+    LOAD_GL_FUNC(glCullFace);
+    LOAD_GL_FUNC(glDeleteBuffers);
+    LOAD_GL_FUNC(glDeleteFramebuffers);
+    LOAD_GL_FUNC(glDeleteProgram);
+    LOAD_GL_FUNC(glDeleteQueries);
+    LOAD_GL_FUNC(glDeleteShader);
+    LOAD_GL_FUNC(glDeleteTextures);
+    LOAD_GL_FUNC(glDeleteVertexArrays);
+    LOAD_GL_FUNC(glDepthFunc);
+    LOAD_GL_FUNC(glDepthMask);
+    LOAD_GL_FUNC(glDisable);
+    LOAD_GL_FUNC(glDisableVertexArrayAttrib);
+    LOAD_GL_FUNC(glDisableVertexAttribArray);
+    LOAD_GL_FUNC(glDisablei);
+    LOAD_GL_FUNC(glDrawArrays);
+    LOAD_GL_FUNC(glDrawArraysInstanced);
+    LOAD_GL_FUNC(glDrawBuffers);
+    LOAD_GL_FUNC(glDrawElements);
+    LOAD_GL_FUNC(glDrawElementsInstanced);
+    LOAD_GL_FUNC(glEnable);
+    LOAD_GL_FUNC(glEnableVertexArrayAttrib);
+    LOAD_GL_FUNC(glEnableVertexAttribArray);
+    LOAD_GL_FUNC(glEnablei);
+    LOAD_GL_FUNC(glEndQuery);
+    LOAD_GL_FUNC(glFinish);
+    LOAD_GL_FUNC(glFlush);
+    LOAD_GL_FUNC(glFlushMappedNamedBufferRange);
+    LOAD_GL_FUNC(glFramebufferTexture2D);
+    LOAD_GL_FUNC(glFramebufferTexture3D);
+    LOAD_GL_FUNC(glGenBuffers);
+    LOAD_GL_FUNC(glGenFramebuffers);
+    LOAD_GL_FUNC(glGenQueries);
+    LOAD_GL_FUNC(glGenTextures);
+    LOAD_GL_FUNC(glGenVertexArrays);
+    LOAD_GL_FUNC(glGenerateMipmap);
+    LOAD_GL_FUNC(glGenerateTextureMipmap);
+    LOAD_GL_FUNC(glGetActiveAttrib);
+    LOAD_GL_FUNC(glGetActiveSubroutineName);
+    LOAD_GL_FUNC(glGetActiveSubroutineUniformiv);
+    LOAD_GL_FUNC(glGetActiveUniform);
+    LOAD_GL_FUNC(glGetActiveUniformBlockiv);
+    LOAD_GL_FUNC(glGetAttribLocation);
+    LOAD_GL_FUNC(glGetCompressedTexImage);
+    LOAD_GL_FUNC(glGetCompressedTextureImage);
+    LOAD_GL_FUNC(glGetError);
+    LOAD_GL_FUNC(glGetIntegerv);
+    LOAD_GL_FUNC(glGetNamedBufferParameteri64v);
+    LOAD_GL_FUNC(glGetNamedBufferParameteriv);
+    LOAD_GL_FUNC(glGetNamedBufferPointerv);
+    LOAD_GL_FUNC(glGetNamedBufferSubData);
+    LOAD_GL_FUNC(glGetNamedFramebufferAttachmentParameteriv);
+    LOAD_GL_FUNC(glGetNamedFramebufferParameteriv);
+    LOAD_GL_FUNC(glGetNamedRenderbufferParameteriv);
+    LOAD_GL_FUNC(glGetProgramBinary);
+    LOAD_GL_FUNC(glGetProgramInfoLog);
+    LOAD_GL_FUNC(glGetProgramStageiv);
+    LOAD_GL_FUNC(glGetProgramiv);
+    LOAD_GL_FUNC(glGetQueryObjectiv);
+    LOAD_GL_FUNC(glGetQueryObjectui64v);
+    LOAD_GL_FUNC(glGetShaderInfoLog);
+    LOAD_GL_FUNC(glGetShaderiv);
+    LOAD_GL_FUNC(glGetSubroutineIndex);
+    LOAD_GL_FUNC(glGetSubroutineUniformLocation);
+    LOAD_GL_FUNC(glGetTexImage);
+    LOAD_GL_FUNC(glGetTexLevelParameteriv);
+    LOAD_GL_FUNC(glGetTextureImage);
+    LOAD_GL_FUNC(glGetTextureLevelParameterfv);
+    LOAD_GL_FUNC(glGetTextureLevelParameteriv);
+    LOAD_GL_FUNC(glGetTextureParameterIiv);
+    LOAD_GL_FUNC(glGetTextureParameterIuiv);
+    LOAD_GL_FUNC(glGetTextureParameterfv);
+    LOAD_GL_FUNC(glGetTextureParameteriv);
+    LOAD_GL_FUNC(glGetTransformFeedbacki64_v);
+    LOAD_GL_FUNC(glGetTransformFeedbacki_v);
+    LOAD_GL_FUNC(glGetTransformFeedbackiv);
+    LOAD_GL_FUNC(glGetUniformLocation);
+    LOAD_GL_FUNC(glGetVertexArrayIndexed64iv);
+    LOAD_GL_FUNC(glGetVertexArrayIndexediv);
+    LOAD_GL_FUNC(glGetVertexArrayiv);
+    LOAD_GL_FUNC(glInvalidateNamedFramebufferData);
+    LOAD_GL_FUNC(glInvalidateNamedFramebufferSubData);
+    LOAD_GL_FUNC(glIsProgram);
+    LOAD_GL_FUNC(glIsShader);
+    LOAD_GL_FUNC(glLinkProgram);
+    LOAD_GL_FUNC(glMapNamedBuffer);
+    LOAD_GL_FUNC(glMapNamedBufferRange);
+    LOAD_GL_FUNC(glNamedBufferData);
+    LOAD_GL_FUNC(glNamedBufferStorage);
+    LOAD_GL_FUNC(glNamedBufferSubData);
+    LOAD_GL_FUNC(glNamedFramebufferDrawBuffer);
+    LOAD_GL_FUNC(glNamedFramebufferDrawBuffers);
+    LOAD_GL_FUNC(glNamedFramebufferParameteri);
+    LOAD_GL_FUNC(glNamedFramebufferReadBuffer);
+    LOAD_GL_FUNC(glNamedFramebufferRenderbuffer);
+    LOAD_GL_FUNC(glNamedFramebufferTexture);
+    LOAD_GL_FUNC(glNamedFramebufferTextureLayer);
+    LOAD_GL_FUNC(glNamedRenderbufferStorage);
+    LOAD_GL_FUNC(glNamedRenderbufferStorageMultisample);
+    LOAD_GL_FUNC(glPatchParameteri);
+    LOAD_GL_FUNC(glPixelStorei);
+    LOAD_GL_FUNC(glPolygonMode);
+    LOAD_GL_FUNC(glProgramBinary);
+    LOAD_GL_FUNC(glProgramParameteri);
+    LOAD_GL_FUNC(glProgramUniform1f);
+    LOAD_GL_FUNC(glProgramUniform1i);
+    LOAD_GL_FUNC(glProgramUniform2fv);
+    LOAD_GL_FUNC(glProgramUniform2iv);
+    LOAD_GL_FUNC(glProgramUniform3fv);
+    LOAD_GL_FUNC(glProgramUniform3iv);
+    LOAD_GL_FUNC(glProgramUniform4fv);
+    LOAD_GL_FUNC(glProgramUniform4iv);
+    LOAD_GL_FUNC(glReadBuffer);
+    LOAD_GL_FUNC(glReadPixels);
+    LOAD_GL_FUNC(glScissor);
+    LOAD_GL_FUNC(glShaderSource);
+    LOAD_GL_FUNC(glTexImage2D);
+    LOAD_GL_FUNC(glTexImage3D);
+    LOAD_GL_FUNC(glTexParameterf);
+    LOAD_GL_FUNC(glTexParameterfv);
+    LOAD_GL_FUNC(glTexParameteri);
+    LOAD_GL_FUNC(glTexParameteriv);
+    LOAD_GL_FUNC(glTexSubImage2D);
+    LOAD_GL_FUNC(glTextureBuffer);
+    LOAD_GL_FUNC(glTextureBufferRange);
+    LOAD_GL_FUNC(glTextureParameterIiv);
+    LOAD_GL_FUNC(glTextureParameterIuiv);
+    LOAD_GL_FUNC(glTextureParameterf);
+    LOAD_GL_FUNC(glTextureParameterfv);
+    LOAD_GL_FUNC(glTextureParameteri);
+    LOAD_GL_FUNC(glTextureParameteriv);
+    LOAD_GL_FUNC(glTextureStorage1D);
+    LOAD_GL_FUNC(glTextureStorage2D);
+    LOAD_GL_FUNC(glTextureStorage2DMultisample);
+    LOAD_GL_FUNC(glTextureStorage3D);
+    LOAD_GL_FUNC(glTextureStorage3DMultisample);
+    LOAD_GL_FUNC(glTextureSubImage1D);
+    LOAD_GL_FUNC(glTextureSubImage2D);
+    LOAD_GL_FUNC(glTextureSubImage3D);
+    LOAD_GL_FUNC(glTransformFeedbackBufferBase);
+    LOAD_GL_FUNC(glTransformFeedbackBufferRange);
+    LOAD_GL_FUNC(glUniform1f);
+    LOAD_GL_FUNC(glUniform1fv);
+    LOAD_GL_FUNC(glUniform1i);
+    LOAD_GL_FUNC(glUniform1iv);
+    LOAD_GL_FUNC(glUniform3fv);
+    LOAD_GL_FUNC(glUniform4fv);
+    LOAD_GL_FUNC(glUniformBlockBinding);
+    LOAD_GL_FUNC(glUniformMatrix3fv);
+    LOAD_GL_FUNC(glUniformMatrix4fv);
+    LOAD_GL_FUNC(glUniformSubroutinesuiv);
+    LOAD_GL_FUNC(glUnmapNamedBuffer);
+    LOAD_GL_FUNC(glUseProgram);
+    LOAD_GL_FUNC(glValidateProgram);
+    LOAD_GL_FUNC(glVertexArrayAttribBinding);
+    LOAD_GL_FUNC(glVertexArrayAttribFormat);
+    LOAD_GL_FUNC(glVertexArrayAttribIFormat);
+    LOAD_GL_FUNC(glVertexArrayAttribLFormat);
+    LOAD_GL_FUNC(glVertexArrayBindingDivisor);
+    LOAD_GL_FUNC(glVertexArrayElementBuffer);
+    LOAD_GL_FUNC(glVertexArrayVertexBuffer);
+    LOAD_GL_FUNC(glVertexArrayVertexBuffers);
+    LOAD_GL_FUNC(glVertexAttribPointer);
+    LOAD_GL_FUNC(glViewport);
 }
-

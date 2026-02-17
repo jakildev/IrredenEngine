@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_voxel_sprite.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 // NOTES: Needs to be reintegrated.
 
 // #ifndef ENTITY_VOXEL_SPRITE_H

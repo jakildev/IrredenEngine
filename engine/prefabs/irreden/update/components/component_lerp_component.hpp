@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_lerp_component.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_LERP_COMPONENT_H
 #define COMPONENT_LERP_COMPONENT_H
 
@@ -24,33 +15,20 @@ using namespace IRMath;
 
 namespace IRComponents {
 
-    struct C_LerpEntity {
-        EntityId boundEntity_;
-        std::function<void(EntityId)> func_;
+struct C_LerpEntity {
+    EntityId boundEntity_;
+    std::function<void(EntityId)> func_;
 
-        template <typename Function>
-        C_LerpComponent(EntityId entity, Function func)
-        :   func_(func)
-        {
+    template <typename Function> C_LerpComponent(EntityId entity, Function func) : func_(func) {}
 
-        }
+    // Default
+    C_LerpComponent() : {}
 
-        // Default
-        C_LerpComponent()
-        :
-        {
-
-        }
-
-        void tick() {
-            func_(boundEntity_);
-        }
-
-    };
+    void tick() {
+        func_(boundEntity_);
+    }
+};
 
 } // namespace IRComponents
-
-
-
 
 #endif /* COMPONENT_LERP_COMPONENT_H */

@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_mouse_button.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_KEY_MOUSE_BUTTON_H
 #define ENTITY_KEY_MOUSE_BUTTON_H
 
@@ -24,36 +15,19 @@ using namespace IRComponents;
 using namespace IRInput;
 
 namespace IREntity {
-    template <>
-    struct Prefab<PrefabTypes::kKeyMouseButton> {
-        static EntityId create(
-            KeyMouseButtons button,
-            ButtonStatuses status = ButtonStatuses::NOT_HELD
-        )
-        {
-            return createEntity(
-                C_KeyMouseButton{button},
-                C_KeyStatus{status}
-            );
-        }
-    };
+template <> struct Prefab<PrefabTypes::kKeyMouseButton> {
+    static EntityId create(KeyMouseButtons button,
+                           ButtonStatuses status = ButtonStatuses::NOT_HELD) {
+        return createEntity(C_KeyMouseButton{button}, C_KeyStatus{status});
+    }
+};
 
-    template <>
-    struct Prefab<PrefabTypes::kMouseScroll> {
-        static EntityId create(
-            double xoffset,
-            double yoffset
-        )
-        {
-            return IREntity::createEntity(
-                C_MouseScroll{xoffset, yoffset},
-                C_Lifetime{1}
-            );
-
-        }
-    };
+template <> struct Prefab<PrefabTypes::kMouseScroll> {
+    static EntityId create(double xoffset, double yoffset) {
+        return IREntity::createEntity(C_MouseScroll{xoffset, yoffset}, C_Lifetime{1});
+    }
+};
 
 } // namespace IREntity
-
 
 #endif /* ENTITY_KEY_MOUSE_BUTTON_H */

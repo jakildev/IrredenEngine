@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_single_voxel.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_SINGLE_VOXEL_H
 #define ENTITY_SINGLE_VOXEL_H
 
@@ -23,22 +14,13 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-    template <>
-    struct Prefab<PrefabTypes::kSingleVoxel> {
-        static EntityId create(
-            vec3 position,
-            Color color = IRColors::kGreen
-        )
-        {
-            return IRECS::createEntity(
-                C_Position3D{position},
-                C_PositionGlobal3D{position},
-                C_PositionOffset3D{vec3(0, 0, 0)},
-                C_Voxel{color}
-            );
-        }
-    };
+template <> struct Prefab<PrefabTypes::kSingleVoxel> {
+    static EntityId create(vec3 position, Color color = IRColors::kGreen) {
+        return IRECS::createEntity(C_Position3D{position}, C_PositionGlobal3D{position},
+                                   C_PositionOffset3D{vec3(0, 0, 0)}, C_Voxel{color});
+    }
+};
 
-}
+} // namespace IRECS
 
 #endif /* ENTITY_SINGLE_VOXEL_H */

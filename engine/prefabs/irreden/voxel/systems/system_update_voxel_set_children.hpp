@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: system_update_voxel_set_children.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 #define SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H
 
@@ -19,24 +10,14 @@ using namespace IRComponents;
 using namespace IRMath;
 
 namespace IRSystem {
-    template<>
-    struct System<UPDATE_VOXEL_SET_CHILDREN>  {
-        static SystemId create() {
-            return createSystem<C_VoxelSetNew, C_PositionGlobal3D>(
-                "UpdateVoxelSetChildren",
-                [](
-                    C_VoxelSetNew& voxelSet,
-                    C_PositionGlobal3D& position
-                )
-                {
-                    voxelSet.updateAsChild(
-                        position.pos_
-                    );
-                }
-            );
-        }
-
-    };
+template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
+    static SystemId create() {
+        return createSystem<C_VoxelSetNew, C_PositionGlobal3D>(
+            "UpdateVoxelSetChildren", [](C_VoxelSetNew &voxelSet, C_PositionGlobal3D &position) {
+                voxelSet.updateAsChild(position.pos_);
+            });
+    }
+};
 } // namespace IRSystem
 
 #endif /* SYSTEM_UPDATE_VOXEL_SET_CHILDREN_H */

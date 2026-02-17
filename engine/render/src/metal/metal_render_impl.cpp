@@ -4,8 +4,8 @@
 
 namespace IRRender {
 
-    std::unique_ptr<RenderImpl> createRenderer() {
-        return std::make_unique<MetalRenderImpl>();
-    }
+std::unique_ptr<RenderImpl> createRenderer() {
+    return std::make_unique<MetalRenderImpl>();
+}
 
 } // namespace IRRender

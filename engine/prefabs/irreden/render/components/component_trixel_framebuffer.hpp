@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: component_rendering_triangle_framebuffer.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef COMPONENT_TRIANGLE_FRAMEBUFFER_H
 #define COMPONENT_TRIANGLE_FRAMEBUFFER_H
 
@@ -21,62 +12,43 @@ using namespace IRRender;
 
 namespace IRComponents {
 
-    // TODO make a renderbuffer instead to test performance
-    struct C_TrixelCanvasFramebuffer {
-        std::pair<ResourceId, Framebuffer*> framebuffer_;
+// TODO make a renderbuffer instead to test performance
+struct C_TrixelCanvasFramebuffer {
+    std::pair<ResourceId, Framebuffer *> framebuffer_;
 
-        C_TrixelCanvasFramebuffer(
-            ivec2 size,
-            ivec2 extraPixelBuffer = ivec2(0, 0)
-        )
-        :   framebuffer_{
-                IRRender::createResource<
-                    IRRender::Framebuffer
-                >(
-                    size,
-                    extraPixelBuffer,
-                    GL_RGBA8,
-                    GL_DEPTH24_STENCIL8
-                )
-            }
-        {
+    C_TrixelCanvasFramebuffer(ivec2 size, ivec2 extraPixelBuffer = ivec2(0, 0))
+        : framebuffer_{IRRender::createResource<IRRender::Framebuffer>(
+              size, extraPixelBuffer, GL_RGBA8, GL_DEPTH24_STENCIL8)} {}
 
-        }
+    C_TrixelCanvasFramebuffer() {}
 
-        C_TrixelCanvasFramebuffer() {}
+    void onDestroy() {
+        IRRender::destroyResource<Framebuffer>(framebuffer_.first);
+    }
 
-        void onDestroy() {
-            IRRender::destroyResource<Framebuffer>(
-                framebuffer_.first
-            );
-        }
+    void bindFramebuffer() const {
+        framebuffer_.second->bind();
+    }
 
-        void bindFramebuffer() const {
-            framebuffer_.second->bind();
-        }
+    void clear() const {
+        framebuffer_.second->clear();
+    }
 
-        void clear() const {
-            framebuffer_.second->clear();
-        }
+    void draw() {}
 
-        void draw() {
+    void bindTextures(int bindingColor, int bindingDepth) const {
+        framebuffer_.second->getTextureColor().bind(bindingColor);
+        framebuffer_.second->getTextureDepth().bind(bindingDepth);
+    }
 
-        }
+    const ivec2 getResolution() const {
+        return framebuffer_.second->getResolution();
+    }
+    const ivec2 getResolutionPlusBuffer() const {
+        return framebuffer_.second->getResolutionPlusBuffer();
+    }
+};
 
-        void bindTextures(int bindingColor, int bindingDepth) const {
-            framebuffer_.second->getTextureColor().bind(bindingColor);
-            framebuffer_.second->getTextureDepth().bind(bindingDepth);
-        }
-
-        const ivec2 getResolution() const {
-            return framebuffer_.second->getResolution();
-        }
-        const ivec2 getResolutionPlusBuffer() const {
-            return framebuffer_.second->getResolutionPlusBuffer();
-        }
-
-    };
-
-} // IRComponents
+} // namespace IRComponents
 
 #endif /* COMPONENT_RENDERING_TRIANGLE_CANVAS_TEXTURES_H */

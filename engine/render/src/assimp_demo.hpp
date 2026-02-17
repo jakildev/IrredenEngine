@@ -1,12 +1,3 @@
-// /*
-//  * Project: Irreden Engine
-//  * File: assimp_demo.hpp
-//  * Author: Evin Killian jakildev@gmail.com
-//  * Created Date: October 2023
-//  * -----
-//  * Modified By: <your_name> <Month> <YYYY>
-//  */
-
 // // This file is left over from experimenting with meshes
 // // in the engine with the assimp library. I think it could
 // // be useful in the future, because I might want to be able

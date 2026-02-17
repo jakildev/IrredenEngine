@@ -1,0 +1,40 @@
+name: Quality
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  quality-checks:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Setup LLVM (clang-format, clang-tidy)
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "18"
+
+      - name: Configure
+        run: cmake --preset default
+
+      - name: Format check
+        run: cmake --build --preset format-check
+
+      - name: Lint
+        run: cmake --build --preset lint
+
+      - name: Build tests
+        run: cmake --build --preset tests
+
+      - name: Run tests
+        run: ctest --preset default-tests

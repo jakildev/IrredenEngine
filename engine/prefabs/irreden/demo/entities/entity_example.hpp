@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: entity_example.hpp
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #ifndef ENTITY_EXAMPLE_H
 #define ENTITY_EXAMPLE_H
 
@@ -21,14 +12,13 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-    template<>
-    struct Prefab<PrefabTypes::kExample> {
-        static EntityHandle create() {
-            EntityHandle entity{};
-            entity.set(C_Example{});
-            return entity;
-        }
-    };
-}
+template <> struct Prefab<PrefabTypes::kExample> {
+    static EntityHandle create() {
+        EntityHandle entity{};
+        entity.set(C_Example{});
+        return entity;
+    }
+};
+} // namespace IRECS
 
 #endif /* ENTITY_EXAMPLE_H */
