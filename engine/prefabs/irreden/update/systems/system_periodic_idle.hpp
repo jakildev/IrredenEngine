@@ -17,8 +17,9 @@ template <> struct System<PERIODIC_IDLE> {
         return createSystem<C_PeriodicIdle, C_VoxelSetNew>(
             "PeriodicIdle", [](C_PeriodicIdle &periodicIdle, C_VoxelSetNew &voxelSet) {
                 periodicIdle.tick();
+                vec3 offset = periodicIdle.getValue();
                 for (int i = 0; i < voxelSet.positionOffsets_.size(); i++) {
-                    voxelSet.positionOffsets_[i] = vec3(0.0f, 0.0f, periodicIdle.getValue());
+                    voxelSet.positionOffsets_[i] = offset;
                 }
             });
     }

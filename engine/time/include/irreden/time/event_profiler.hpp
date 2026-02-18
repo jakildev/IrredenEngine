@@ -5,6 +5,7 @@
 #include <irreden/ir_profile.hpp>
 
 constexpr int kUpdateTimeWarningThresholdMs = 10;
+constexpr unsigned int kUpdateWarningCooldownTicks = 60;
 
 namespace IRTime {
 
@@ -37,8 +38,18 @@ template <> class EventProfiler<UPDATE> {
     void endEvent() {
         TimePoint current = Clock::now();
         auto newTick = current - m_timePointBeginEvent;
-        if (MilliDuration(newTick).count() > kUpdateTimeWarningThresholdMs) {
-            IRE_LOG_WARN("Update took {} ms", MilliDuration(newTick).count());
+        const auto tickMs = MilliDuration(newTick).count();
+        if (tickMs > kUpdateTimeWarningThresholdMs) {
+            if (m_warningLogCooldownTicks == 0) {
+                IRE_LOG_WARN("Update took {} ms", tickMs);
+                m_warningLogCooldownTicks = kUpdateWarningCooldownTicks;
+            }
+        } else {
+            m_warningLogCooldownTicks = 0;
+        }
+
+        if (m_warningLogCooldownTicks > 0) {
+            --m_warningLogCooldownTicks;
         }
         m_sum -= m_tickList[m_tickCount % kProfileHistoryBufferSize];
         m_sum += newTick;
@@ -82,6 +93,7 @@ template <> class EventProfiler<UPDATE> {
     MilliDuration m_sum;
     SecondsDuration m_deltaTimeActual;
     const double m_deltaTimeFixed;
+    unsigned int m_warningLogCooldownTicks = 0;
     unsigned int m_tickCount;
 };
 

@@ -20,8 +20,8 @@ local config_1080_windowed = {
     -- WINDOW AND RENDER SETTINGS
     init_window_width = 1920,
     init_window_height = 1080,
-    game_resolution_width = 1920,
-    game_resolution_height = 1080,
+    game_resolution_width = 1920 / 4,
+    game_resolution_height = 1080 / 4,
     fit_mode = "stretch", -- WIP
     fullscreen = false,
 

@@ -22,9 +22,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
 }
 
 void SystemManager::executeSystem(SystemId system) {
-    std::stringstream ss;
-    ss << "Execute System: " << m_systemNames[system].name_;
-    IR_PROFILE_BLOCK(ss.str().c_str(), IR_PROFILER_COLOR_SYSTEMS);
+    IR_PROFILE_BLOCK(m_systemNames[system].name_.c_str(), IR_PROFILER_COLOR_SYSTEMS);
     m_beginTicks[system].functionBeginTick_();
     std::vector<ArchetypeNode *> nodes;
     if (m_relations[system].relation_ == Relation::NONE) {

@@ -17,7 +17,8 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_PeriodicIdle> =
 
 template <> inline void bindLuaType<IRComponents::C_PeriodicIdle>(LuaScript &luaScript) {
     luaScript.registerType<IRComponents::C_PeriodicIdle,
-                           IRComponents::C_PeriodicIdle(float, float, float)>(
+                           IRComponents::C_PeriodicIdle(float, float, float),
+                           IRComponents::C_PeriodicIdle(IRMath::vec3, float, float)>(
         "C_PeriodicIdle", "addStageDurationSeconds",
         &IRComponents::C_PeriodicIdle::addStageDurationSeconds);
 }

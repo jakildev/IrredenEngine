@@ -39,6 +39,7 @@ class ArchetypeGraph {
                               const Archetype &excludeComponents = Archetype{}) const {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
         std::vector<ArchetypeNode *> nodes;
+        nodes.reserve(m_nodes.size());
         for (auto &node : m_nodes) {
             if (node->length_ > 0 &&
                 std::includes(node->type_.begin(), node->type_.end(), includeComponents.begin(),

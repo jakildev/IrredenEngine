@@ -25,21 +25,24 @@ struct PeriodStage {
 struct C_PeriodicIdle {
     int tickCount_;
     float angle_;
-    float amplitude_;
+    vec3 amplitude_;
     float periodLengthSeconds_;
     std::vector<PeriodStage> stages_;
     int currentStageIndex_;
 
     C_PeriodicIdle(float amplitude, float periodLengthSeconds, float offset = 0.0f)
+        : C_PeriodicIdle{vec3{0.0f, 0.0f, amplitude}, periodLengthSeconds, offset} {}
+
+    C_PeriodicIdle(vec3 amplitude, float periodLengthSeconds, float offset = 0.0f)
         : tickCount_{0}, angle_{offset}, amplitude_{amplitude},
           periodLengthSeconds_{periodLengthSeconds}, stages_{}, currentStageIndex_{0},
           m_angleIncrementPerTick{(2.0f * static_cast<float>(M_PI)) / periodLengthSeconds_ /
                                   static_cast<float>(IRConstants::kFPS)} {}
 
     // Default
-    C_PeriodicIdle() : C_PeriodicIdle{0.0f, 0.0f} {}
+    C_PeriodicIdle() : C_PeriodicIdle{vec3{0.0f, 0.0f, 0.0f}, 0.0f} {}
 
-    float getValue() {
+    vec3 getValue() {
         return m_currentValue;
     }
 
@@ -62,8 +65,9 @@ struct C_PeriodicIdle {
     void updateValue() {
         PeriodStage &stage = stages_[currentStageIndex_];
         float mappedAngle = mapAngleToStageTValue(angle_, stage);
-        m_currentValue = glm::mix(stage.startTValue_ * amplitude_, stage.endTValue_ * amplitude_,
-                                  kEasingFunctions.at(stage.easingFunction_)(mappedAngle));
+        float easedValue = glm::mix(stage.startTValue_, stage.endTValue_,
+                                    kEasingFunctions.at(stage.easingFunction_)(mappedAngle));
+        m_currentValue = amplitude_ * easedValue;
     }
 
     void addStagePeriodRange(float startAngle, float endAngle, float startTValue, float endTValue,
@@ -130,8 +134,8 @@ struct C_PeriodicIdle {
 
   private:
     float m_angleIncrementPerTick;
-    float m_currentValue = 0.0f;
-    float m_previousValue = 0.0f;
+    vec3 m_currentValue = vec3{0.0f, 0.0f, 0.0f};
+    vec3 m_previousValue = vec3{0.0f, 0.0f, 0.0f};
 
     void sortSequence() {
         std::sort(stages_.begin(), stages_.end(),
