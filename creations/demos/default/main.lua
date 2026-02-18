@@ -1,7 +1,7 @@
 local grid_size = 32
 local grid_span = grid_size - 1
 local total_voxels = grid_size * grid_size * grid_size
-local base_period_seconds = 20.0
+local base_period_seconds = 200.0
 local tau = math.pi * 2.0
 
 local function fract(x)

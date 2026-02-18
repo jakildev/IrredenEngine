@@ -71,6 +71,12 @@ vec2 mousePosition2DIsoWorldRender();
 vec2 mousePosition2DIsoUpdate();
 ivec2 mouseTrixelPositionWorld();
 
+void setVoxelRenderMode(VoxelRenderMode mode);
+VoxelRenderMode getVoxelRenderMode();
+void setVoxelRenderSubdivisions(int subdivisions);
+int getVoxelRenderSubdivisions();
+int getVoxelRenderEffectiveSubdivisions();
+
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */

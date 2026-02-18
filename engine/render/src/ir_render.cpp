@@ -64,4 +64,24 @@ ivec2 mouseTrixelPositionWorld() {
         ));
 }
 
+void setVoxelRenderMode(VoxelRenderMode mode) {
+    getRenderManager().setVoxelRenderMode(mode);
+}
+
+VoxelRenderMode getVoxelRenderMode() {
+    return getRenderManager().getVoxelRenderMode();
+}
+
+void setVoxelRenderSubdivisions(int subdivisions) {
+    getRenderManager().setVoxelRenderSubdivisions(subdivisions);
+}
+
+int getVoxelRenderSubdivisions() {
+    return getRenderManager().getVoxelRenderSubdivisions();
+}
+
+int getVoxelRenderEffectiveSubdivisions() {
+    return getRenderManager().getVoxelRenderEffectiveSubdivisions();
+}
+
 } // namespace IRRender

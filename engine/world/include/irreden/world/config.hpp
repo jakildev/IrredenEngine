@@ -37,6 +37,21 @@ class WorldConfig {
         m_config.addEntry("fullscreen",
                           std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false));
         m_config.addEntry(
+            "voxel_render_mode",
+            std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRRender::VoxelRenderMode>>(
+                IRRender::VoxelRenderMode::SNAPPED,
+                [](const std::string &enumString) {
+                    if (enumString == "snapped")
+                        return IRRender::VoxelRenderMode::SNAPPED;
+                    if (enumString == "smooth")
+                        return IRRender::VoxelRenderMode::SMOOTH;
+                    IR_ASSERT(false, "Invalid enum value for voxel_render_mode");
+                    return IRRender::VoxelRenderMode::SNAPPED;
+                }));
+        m_config.addEntry(
+            "voxel_render_subdivisions",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1));
+        m_config.addEntry(
             "video_capture_output_file",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("capture.mp4"));
         m_config.addEntry("video_capture_fps",
@@ -44,6 +59,9 @@ class WorldConfig {
         m_config.addEntry(
             "video_capture_bitrate",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(10'000'000));
+        m_config.addEntry(
+            "screenshot_output_dir",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("save_files/screenshots"));
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }

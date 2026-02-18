@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
 
 namespace IRVideo {
 
@@ -23,12 +26,25 @@ void VideoManager::configureCapture(const std::string &outputFilePath, int targe
     m_videoBitrate = std::max(videoBitrate, 250000);
 }
 
+void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
+    m_screenshotOutputDirPath = outputDirPath;
+}
+
 void VideoManager::toggleRecording() {
     m_toggleRequested = true;
 }
 
+void VideoManager::requestScreenshot() {
+    m_screenshotRequested = true;
+}
+
 void VideoManager::render() {
     joinFinalizeThreadIfDone();
+
+    if (m_screenshotRequested) {
+        m_screenshotRequested = false;
+        captureScreenshot();
+    }
 
     if (m_toggleRequested) {
         m_toggleRequested = false;
@@ -143,6 +159,50 @@ void VideoManager::toggleCapture() {
     m_captureAccumulatorSeconds = 0.0;
     m_loggedResizeWarning = false;
     m_captureEnabled = true;
+}
+
+std::string VideoManager::getNextScreenshotFilePath() {
+    std::filesystem::path outputDir = std::filesystem::path(m_screenshotOutputDirPath);
+    std::filesystem::create_directories(outputDir);
+
+    for (;;) {
+        std::ostringstream fileName;
+        fileName << "screenshot_" << std::setfill('0') << std::setw(6) << m_nextScreenshotIndex
+                 << ".png";
+        std::filesystem::path candidatePath = outputDir / fileName.str();
+        if (!std::filesystem::exists(candidatePath)) {
+            ++m_nextScreenshotIndex;
+            return candidatePath.string();
+        }
+        ++m_nextScreenshotIndex;
+    }
+}
+
+bool VideoManager::captureScreenshot() {
+    const auto &framebuffer =
+        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
+            IREntity::getEntity("mainFramebuffer"));
+    const ivec2 sourceResolution = framebuffer.getResolution();
+    const std::size_t pixelCount =
+        static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
+    std::vector<std::uint8_t> imageData(pixelCount * 4U);
+    framebuffer.framebuffer_.second->getTextureColor().getSubImage2D(
+        0, 0, sourceResolution.x, sourceResolution.y, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+
+    // OpenGL texture origin is lower-left, flip for PNG output.
+    const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
+    std::vector<std::uint8_t> flippedImageData(pixelCount * 4U);
+    for (int y = 0; y < sourceResolution.y; ++y) {
+        const int flippedY = sourceResolution.y - 1 - y;
+        std::memcpy(flippedImageData.data() + static_cast<std::size_t>(y) * rowBytes,
+                    imageData.data() + static_cast<std::size_t>(flippedY) * rowBytes, rowBytes);
+    }
+
+    const std::string outputPath = getNextScreenshotFilePath();
+    IRRender::writePNG(outputPath.c_str(), sourceResolution.x, sourceResolution.y, 4,
+                       flippedImageData.data());
+    IRE_LOG_INFO("Saved screenshot: {}", outputPath);
+    return true;
 }
 
 bool VideoManager::captureFrame() {

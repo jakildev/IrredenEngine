@@ -177,6 +177,31 @@ vec2 RenderManager::getCameraZoom() const {
     return IREntity::getComponent<C_ZoomLevel>(m_camera).zoom_;
 }
 
+void RenderManager::setVoxelRenderMode(VoxelRenderMode mode) {
+    m_voxelRenderMode = mode;
+}
+
+VoxelRenderMode RenderManager::getVoxelRenderMode() const {
+    return m_voxelRenderMode;
+}
+
+void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
+    m_voxelRenderSubdivisions = glm::max(1, subdivisions);
+}
+
+int RenderManager::getVoxelRenderSubdivisions() const {
+    return m_voxelRenderSubdivisions;
+}
+
+int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
+    if (m_voxelRenderMode == VoxelRenderMode::SNAPPED) {
+        return 1;
+    }
+    const int zoomScale =
+        static_cast<int>(glm::round(glm::max(getCameraZoom().x, getCameraZoom().y)));
+    return glm::clamp(m_voxelRenderSubdivisions * glm::max(1, zoomScale), 1, 16);
+}
+
 void RenderManager::deallocateVoxels(std::span<C_Position3D> positions,
                                      std::span<C_PositionOffset3D> positionOffsets,
                                      std::span<C_PositionGlobal3D> positionGlobals,

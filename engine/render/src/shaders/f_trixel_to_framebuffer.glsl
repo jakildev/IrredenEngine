@@ -42,10 +42,25 @@ ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
     return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
 }
 
+vec2 snapToTriangleIndex(vec2 position, int originModifier) {
+    vec2 snapped = position;
+    vec2 flooredComp = floor(position);
+    vec2 fractComp = fract(position);
+    if (mod(flooredComp.x + flooredComp.y + originModifier, 2.0) >= 1.0) {
+        if (fractComp.y < fractComp.x) {
+            snapped.y -= 1.0;
+        }
+    } else {
+        if (fractComp.y < 1.0 - fractComp.x) {
+            snapped.y -= 1.0;
+        }
+    }
+    return floor(snapped);
+}
+
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
-    ivec2 screenSize = textureSize;
-    vec2 origin = TexCoords * screenSize;
+    vec2 origin = TexCoords * vec2(textureSize);
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
     int originModifier = (
@@ -53,7 +68,7 @@ void main() {
         trixelOriginOffsetZ1(textureSize).y +
         int(floor(canvasOffset.x)) +
         int(floor(canvasOffset.y))
-   ) % 2;
+   ) & 1;
 
     // See IRMath::pos2DIsoToTriangleIndex
     if(mod(originFlooredComp.x + originFlooredComp.y + originModifier, 2.0) >= 1) {
@@ -77,14 +92,15 @@ void main() {
     float depth = normalizeDistance(
         textureLod(triangleDistances, origin / textureSize, 0).r
     );
-   if(floor(
-            mouseHoveredTriangleIndex +
-            trixelOriginOffsetX1(textureSize) +
-            canvasOffset
-        ) ==
-        floor(origin))
-    {
-        // color = mix(color, vec4(0, 0, 0, 1), 0.3);
+    vec2 hoveredPosition =
+        mouseHoveredTriangleIndex +
+        trixelOriginOffsetX1(textureSize) +
+        canvasOffset;
+    ivec2 originIndex = ivec2(floor(origin));
+    ivec2 hoveredIndex =
+        ivec2(snapToTriangleIndex(hoveredPosition, originModifier));
+    bool isMouseHovered = all(equal(hoveredIndex, originIndex));
+    if (isMouseHovered) {
         color = vec4(255, 0, 0, 1);
         depth = 0.0;
     }

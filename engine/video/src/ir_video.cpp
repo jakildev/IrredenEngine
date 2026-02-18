@@ -23,6 +23,14 @@ bool recordFrame(const std::uint8_t *rgbaData, int strideBytes) {
     return getVideoManager().recordFrame(rgbaData, strideBytes);
 }
 
+void configureScreenshotOutputDir(const std::string &outputDirPath) {
+    getVideoManager().configureScreenshotOutputDir(outputDirPath);
+}
+
+void requestScreenshot() {
+    getVideoManager().requestScreenshot();
+}
+
 void toggleRecording() {
     getVideoManager().toggleRecording();
 }

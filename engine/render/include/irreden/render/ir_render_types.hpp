@@ -5,7 +5,6 @@
 #include <irreden/ir_constants.hpp>
 
 #include <cstdint>
-#include <unordered_map>
 
 using namespace IRMath;
 
@@ -40,6 +39,7 @@ struct FrameDataTrixelToFramebuffer {
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;
+    ivec2 voxelRenderOptions_;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -50,6 +50,7 @@ struct FrameDataTrixelToTrixel {
 };
 
 enum class FitMode { FIT, STRETCH, UNKNOWN };
+enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
 
 } // namespace IRRender
 

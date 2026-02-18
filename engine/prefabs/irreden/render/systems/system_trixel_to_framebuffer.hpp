@@ -53,15 +53,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             [](const C_TrixelCanvasFramebuffer &framebuffer,
                C_FrameDataTrixelToFramebuffer &frameData, const C_ZoomLevel &zoomLevel) {
                 vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
+                const vec2 cameraTrixelOffset = IRRender::getCameraPosition2DIso();
+                const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
+                const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
                 frameData.frameData_.canvasZoomLevel_ = IRRender::getCameraZoom() * zoomLevel.zoom_;
-                frameData.frameData_.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+                if (renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    frameData.frameData_.canvasZoomLevel_ /=
+                        vec2(effectiveSubdivisions);
+                }
+                frameData.frameData_.cameraTrixelOffset_ = cameraTrixelOffset;
+                if (renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    // Fragment trixel sampling operates in the smooth-mode scaled canvas space.
+                    frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
+                }
                 frameData.frameData_.textureOffset_ = vec2(0);
                 frameData.frameData_.mouseHoveredTriangleIndex_ =
                     IRRender::mouseTrixelPositionWorld();
+                if (renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    // Disable hover in smooth mode by placing it out of canvas bounds.
+                    frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+                }
                 frameData.frameData_.mpMatrix_ =
-                    calcProjectionMatrix(framebufferResolution) *
-                    calcModelMatrix(framebufferResolution, frameData.frameData_.cameraTrixelOffset_,
-                                    frameData.frameData_.canvasZoomLevel_);
+                    calcProjectionMatrix(framebufferResolution) * calcModelMatrix(
+                        framebufferResolution, cameraTrixelOffset, frameData.frameData_.canvasZoomLevel_);
                 frameData.updateFrameData(
                     IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData"));
                 framebuffer.bindFramebuffer();

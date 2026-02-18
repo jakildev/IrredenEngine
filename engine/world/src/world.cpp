@@ -18,6 +18,9 @@ World::World(const char *configFileName)
                        m_worldConfig["game_resolution_height"].get_integer()),
                  static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())},
       m_audioManager{}, m_timeManager{}, m_videoManager{}, m_lua{} {
+    IRRender::setVoxelRenderMode(
+        static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum()));
+    IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
@@ -26,6 +29,7 @@ World::World(const char *configFileName)
         m_worldConfig["video_capture_output_file"].get_string(),
         m_worldConfig["video_capture_fps"].get_integer(),
         m_worldConfig["video_capture_bitrate"].get_integer());
+    m_videoManager.configureScreenshotOutputDir(m_worldConfig["screenshot_output_dir"].get_string());
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }

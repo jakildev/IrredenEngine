@@ -17,8 +17,10 @@ class VideoManager {
     ~VideoManager() = default;
 
     void configureCapture(const std::string &outputFilePath, int targetFps, int videoBitrate);
+    void configureScreenshotOutputDir(const std::string &outputDirPath);
 
     void toggleRecording();
+    void requestScreenshot();
     void render();
     void shutdown();
 
@@ -39,6 +41,9 @@ class VideoManager {
     int m_targetFps = 60;
     int m_videoBitrate = 10'000'000;
     std::string m_outputFilePath = "capture.mp4";
+    std::string m_screenshotOutputDirPath = "save_files/screenshots";
+    std::uint64_t m_nextScreenshotIndex = 1;
+    bool m_screenshotRequested = false;
     int m_sourceFrameWidth = 0;
     int m_sourceFrameHeight = 0;
     int m_frameWidth = 0;
@@ -55,6 +60,8 @@ class VideoManager {
     std::mutex m_recorderMutex;
 
     void toggleCapture();
+    bool captureScreenshot();
+    std::string getNextScreenshotFilePath();
     bool captureFrame();
     void initReadbackPbos();
     void releaseReadbackPbos();

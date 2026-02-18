@@ -10,6 +10,11 @@ set(IR_DEFAULT_MAIN_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)
 set(IR_DEFAULT_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
 set(IR_DEFAULT_MAIN_LUA_DST ${PROJECT_BINARY_DIR}/main.lua)
 set(IR_DEFAULT_CONFIG_LUA_DST ${PROJECT_BINARY_DIR}/config.lua)
+set(IR_DEFAULT_SHADERS_SRC_DIR ${PROJECT_SOURCE_DIR}/engine/render/src/shaders)
+set(IR_DEFAULT_SHADERS_DST_DIR ${PROJECT_BINARY_DIR}/shaders)
+set(IR_DEFAULT_SHADERS_STAMP ${PROJECT_BINARY_DIR}/.ir_default_shaders.stamp)
+
+file(GLOB IR_DEFAULT_SHADER_FILES "${IR_DEFAULT_SHADERS_SRC_DIR}/*.glsl")
 
 # Track script files as build dependencies so normal UI build/run workflows
 # refresh Lua assets without requiring a C++ recompile.
@@ -27,10 +32,19 @@ add_custom_command(
     COMMENT "Syncing default demo config.lua"
 )
 
+add_custom_command(
+    OUTPUT ${IR_DEFAULT_SHADERS_STAMP}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${IR_DEFAULT_SHADERS_SRC_DIR} ${IR_DEFAULT_SHADERS_DST_DIR}
+    COMMAND ${CMAKE_COMMAND} -E touch ${IR_DEFAULT_SHADERS_STAMP}
+    DEPENDS ${IR_DEFAULT_SHADER_FILES}
+    COMMENT "Syncing render shaders"
+)
+
 add_custom_target(IRCreationDefaultAssets
     DEPENDS
         ${IR_DEFAULT_MAIN_LUA_DST}
         ${IR_DEFAULT_CONFIG_LUA_DST}
+        ${IR_DEFAULT_SHADERS_STAMP}
 )
 
 add_dependencies(IRCreationDefault IRCreationDefaultAssets)
@@ -44,6 +58,8 @@ add_custom_target(IRCreationDefaultRun
     ${CMAKE_CURRENT_SOURCE_DIR}/main.lua ${PROJECT_BINARY_DIR}/main.lua
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${PROJECT_BINARY_DIR}/config.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${IR_DEFAULT_SHADERS_SRC_DIR} ${IR_DEFAULT_SHADERS_DST_DIR}
     COMMAND $<TARGET_FILE:IRCreationDefault>
     DEPENDS IRCreationDefault
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}

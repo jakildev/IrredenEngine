@@ -44,6 +44,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                 frameData.trixelCanvasOffsetZ1_ =
                     IRMath::trixelOriginOffsetZ1(triangleCanvasTextures.size_);
+                const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
+                const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
+                const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
+                frameData.voxelRenderOptions_ = ivec2(
+                    static_cast<int>(renderMode),
+                    effectiveSubdivisions
+                );
+                static int previousRenderMode = -1;
+                static int previousEffectiveSubdivisions = -1;
+                if (static_cast<int>(renderMode) != previousRenderMode ||
+                    effectiveSubdivisions != previousEffectiveSubdivisions) {
+                    IRE_LOG_INFO(
+                        "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
+                        "effective_subdivisions={}",
+                        static_cast<int>(renderMode), baseSubdivisions,
+                        static_cast<int>(glm::round(glm::max(IRRender::getCameraZoom().x,
+                                                             IRRender::getCameraZoom().y))),
+                        effectiveSubdivisions);
+                    previousRenderMode = static_cast<int>(renderMode);
+                    previousEffectiveSubdivisions = effectiveSubdivisions;
+                }
 
                 IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")
                     ->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData);

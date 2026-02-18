@@ -50,6 +50,11 @@ class RenderManager {
     vec2 getTriangleStepSizeGameResolution() const;
     ivec2 getMainCanvasSizeTriangles() const;
     vec2 screenToOutputWindowOffset() const;
+    void setVoxelRenderMode(VoxelRenderMode mode);
+    VoxelRenderMode getVoxelRenderMode() const;
+    void setVoxelRenderSubdivisions(int subdivisions);
+    int getVoxelRenderSubdivisions() const;
+    int getVoxelRenderEffectiveSubdivisions() const;
 
     void tick();
     void printRenderInfo();
@@ -80,6 +85,8 @@ class RenderManager {
     ivec2 m_outputScaleFactor;
     std::unordered_map<std::string, EntityId> m_canvasMap;
     FitMode m_fitMode;
+    VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
+    int m_voxelRenderSubdivisions = 1;
     std::unique_ptr<RenderImpl> m_renderImpl;
 
     void initRenderingSystems();

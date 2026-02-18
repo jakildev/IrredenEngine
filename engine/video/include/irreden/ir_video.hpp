@@ -3,6 +3,7 @@
 
 #include <irreden/video/ir_video_types.hpp>
 #include <irreden/video/video_recorder.hpp>
+#include <string>
 
 namespace IRVideo {
 
@@ -12,6 +13,8 @@ VideoManager &getVideoManager();
 bool startRecording(const VideoRecorderConfig &config);
 void stopRecording();
 bool recordFrame(const std::uint8_t *rgbaData, int strideBytes);
+void configureScreenshotOutputDir(const std::string &outputDirPath);
+void requestScreenshot();
 void toggleRecording();
 bool isRecording();
 std::uint64_t getFrameCount();
