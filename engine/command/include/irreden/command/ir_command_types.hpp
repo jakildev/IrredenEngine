@@ -24,6 +24,7 @@ enum CommandNames {
     SCREENSHOT,   // todo
     RECORD_START, // todo
     RECORD_STOP,  // todo
+    RECORD_TOGGLE,
     STOP_VELOCITY,
     RESHAPE_SPHERE,
     RESHAPE_RECTANGULAR_PRISM,

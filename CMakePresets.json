@@ -10,7 +10,7 @@
       "name": "default",
       "displayName": "Default Debug",
       "description": "Default local configuration for development.",
-      "generator": "Ninja",
+      "generator": "MinGW Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",

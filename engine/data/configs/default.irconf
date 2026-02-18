@@ -6,7 +6,12 @@ config = {
     init_window_height = 1080,
     game_resolution_width = 1920 / 4,
     game_resolution_height = 1080 / 4,
-    fit_mode = "stretch" -- WIP
+    fit_mode = "stretch", -- WIP
+
+    -- VIDEO CAPTURE SETTINGS
+    video_capture_output_file = "capture.mp4",
+    video_capture_fps = 60,
+    video_capture_bitrate = 10000000
 
     -- END
 

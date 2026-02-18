@@ -7,7 +7,12 @@ local config_2kfullscreen = {
     game_resolution_width = 2560,
     game_resolution_height = 1440,
     fit_mode = "stretch", -- WIP
-    fullscreen = true
+    fullscreen = true,
+
+    -- VIDEO CAPTURE SETTINGS
+    video_capture_output_file = "capture.mp4",
+    video_capture_fps = 60,
+    video_capture_bitrate = 10000000
     -- END
 
 }
@@ -18,7 +23,12 @@ local config_1080_windowed = {
     game_resolution_width = 1920,
     game_resolution_height = 1080,
     fit_mode = "stretch", -- WIP
-    fullscreen = false
+    fullscreen = false,
+
+    -- VIDEO CAPTURE SETTINGS
+    video_capture_output_file = "capture.mp4",
+    video_capture_fps = 60,
+    video_capture_bitrate = 10000000
     -- END
 
 }

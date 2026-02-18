@@ -30,6 +30,7 @@
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
+#include <irreden/video/commands/command_toggle_recording.hpp>
 
 void initSystems();
 void initEntities();
@@ -89,6 +90,8 @@ void initCommands() {
         InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonD);
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
         InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonA);
+    IRCommand::createCommand<IRCommand::RECORD_TOGGLE>(
+        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonF9);
 }
 
 void initEntities() {

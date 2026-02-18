@@ -1,6 +1,6 @@
-include(ExternalProject)
-
 add_library(IrredenEngineVideo STATIC
+    src/ir_video.cpp
+    src/video_manager.cpp
     src/video_recorder.cpp
 )
 
@@ -15,27 +15,8 @@ target_compile_options(
 
 target_link_libraries(
     IrredenEngineVideo PUBLIC
-    # # FFmpeg libraries and dependencies
-    # -lole32
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libavdevice.dll.a
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libavfilter.dll.a
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libavformat.dll.a
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libswresample.dll.a
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libswscale.dll.a
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libavcodec.dll.a
-    # -lstrmiids
-    # -lmfuuid
-    # ${IR_VIDEO_STATIC_LIB_DIR}/libavutil.dll.a
-    # -lbz2
-    # -lsecur32
-    # -lws2_32
-    # -liconv
-    # -llzma
-    # -lz
-    # -lm
-    # -luser32
-    # -lbcrypt
     IrredenEngineProfile
+    IrredenEngineTime
     IrredenEngineRendering
 )
 
@@ -44,110 +25,89 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include/
 )
 
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/avcodec-60.dll
-#         ${PROJECT_BINARY_DIR}/avcodec-60.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/avdevice-60.dll
-#         ${PROJECT_BINARY_DIR}/avdevice-60.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/avfilter-9.dll
-#         ${PROJECT_BINARY_DIR}/avfilter-9.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/avformat-60.dll
-#         ${PROJECT_BINARY_DIR}/avformat-60.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/avutil-58.dll
-#         ${PROJECT_BINARY_DIR}/avutil-58.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/swresample-4.dll
-#         ${PROJECT_BINARY_DIR}/swresample-4.dll
-# )
-# add_custom_command(
-#     TARGET IrredenEngineVideo
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${IR_VIDEO_DYNAMIC_LIB_DIR}/swscale-7.dll
-#         ${PROJECT_BINARY_DIR}/swscale-7.dll
-# )
+option(
+    IRREDEN_VIDEO_ENABLE_FFMPEG
+    "Enable FFmpeg-based video export support"
+    ON
+)
+set(
+    IRREDEN_FFMPEG_ROOT
+    ""
+    CACHE PATH
+    "Optional FFmpeg root that contains include/, lib/, and bin/"
+)
 
-## NOTES: FFmpeg attempts at not using precompiled binaries. Might
-## revisit in the future so leaving here for now.
+set(IRREDEN_VIDEO_HAS_FFMPEG FALSE)
+set(IRREDEN_VIDEO_FFMPEG_LIBS "")
 
-# ExternalProject_Add(
-#     NASM
-#     PREFIX ${CMAKE_BINARY_DIR}/_deps/nasm
-#     URL https://www.nasm.us/pub/nasm/releasebuilds/2.15.05/win64/nasm-2.15.05-win64.zip
-#     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-#     CONFIGURE_COMMAND bash -c "sh configure"
-#     BUILD_COMMAND make everything
-#     INSTALL_COMMAND ""
-#     LOG_DOWNLOAD ON
-# )
+if(IRREDEN_VIDEO_ENABLE_FFMPEG)
+    set(_ffmpeg_components avcodec avformat avutil swscale)
 
-# ExternalProject_Add(
-#     FFmpeg
-#     PREFIX ${CMAKE_BINARY_DIR}/_deps/ffmpeg
-#     GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
-#     GIT_TAG master
-#     # CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/_deps/ffmpeg/src/FFmpeg-build
-#     # CONFIGURE_COMMAND ./<SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/_deps/ffmpeg/src/FFmpeg-build
-#     # CONFIGURE_COMMAND cmd /c "<SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/_deps/ffmpeg/src/FFmpeg-build"
-#     CONFIGURE_COMMAND bash -c "cd  <SOURCE_DIR> && ./configure --prefix=<BINARY_DIR>"
-#     LOG_CONFIGURE ON
-#     LOG_BUILD ON
-#     LOG_INSTALL ON
-#     BUILD_COMMAND make
-#     INSTALL_COMMAND make install
-#     BUILD_ALWAYS 1
-#     DEPENDS NASM
-# )
+    if(IRREDEN_FFMPEG_ROOT)
+        find_path(
+            IRREDEN_FFMPEG_INCLUDE_DIR
+            NAMES libavcodec/avcodec.h
+            HINTS ${IRREDEN_FFMPEG_ROOT}/include
+        )
 
-# find_package(FFmpeg REQUIRED)
+        foreach(_ffmpeg_lib IN LISTS _ffmpeg_components)
+            string(TOUPPER "${_ffmpeg_lib}" _ffmpeg_lib_upper)
+            find_library(
+                IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY
+                NAMES ${_ffmpeg_lib}
+                HINTS ${IRREDEN_FFMPEG_ROOT}/lib
+            )
+            if(IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY)
+                list(APPEND IRREDEN_VIDEO_FFMPEG_LIBS ${IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY})
+            endif()
+        endforeach()
 
-# FetchContent_Declare(
-#     ffmpeg
-#     GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg
-#     GIT_TAG master
-# )
-# FetchContent_MakeAvailable(ffmpeg)
-# execute_process(
-#     COMMAND ./configure --prefix=${ffmpeg_BINARY_DIR}
-#     WORKING_DIRECTORY ${ffmpeg_SOURCE_DIR}
-# )
-# execute_process(
-#     COMMAND make
-#     WORKING_DIRECTORY ${ffmpeg_SOURCE_DIR}
-# )
-# execute_process(
-#     COMMAND make install
-#     WORKING_DIRECTORY ${ffmpeg_SOURCE_DIR}
-# )
-# add_custom_target(
-#     BuildFFmpeg
-#     COMMAND ${CMAKE_COMMAND} -E chdir ${ffmpeg_SOURCE_DIR} make
-#     WORKING_DIRECTORY ${ffmpeg_SOURCE_DIR}
-# )
+        if(IRREDEN_FFMPEG_INCLUDE_DIR AND IRREDEN_VIDEO_FFMPEG_LIBS)
+            list(LENGTH IRREDEN_VIDEO_FFMPEG_LIBS _found_ffmpeg_libs)
+            list(LENGTH _ffmpeg_components _required_ffmpeg_libs)
+            if(_found_ffmpeg_libs EQUAL _required_ffmpeg_libs)
+                set(IRREDEN_VIDEO_HAS_FFMPEG TRUE)
+                target_include_directories(
+                    IrredenEngineVideo PRIVATE
+                    ${IRREDEN_FFMPEG_INCLUDE_DIR}
+                )
+                target_link_libraries(
+                    IrredenEngineVideo PUBLIC
+                    ${IRREDEN_VIDEO_FFMPEG_LIBS}
+                )
+            endif()
+        endif()
+    endif()
+
+    if(NOT IRREDEN_VIDEO_HAS_FFMPEG)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(
+                IRREDEN_FFMPEG QUIET IMPORTED_TARGET
+                libavcodec libavformat libavutil libswscale
+            )
+            if(IRREDEN_FFMPEG_FOUND)
+                set(IRREDEN_VIDEO_HAS_FFMPEG TRUE)
+                target_link_libraries(IrredenEngineVideo PUBLIC PkgConfig::IRREDEN_FFMPEG)
+            endif()
+        endif()
+    endif()
+endif()
+
+if(IRREDEN_VIDEO_HAS_FFMPEG)
+    target_compile_definitions(IrredenEngineVideo PUBLIC IR_VIDEO_HAS_FFMPEG=1)
+    message(STATUS "IrredenEngineVideo: FFmpeg enabled.")
+
+    if(IR_isWindows AND IRREDEN_FFMPEG_ROOT)
+        add_custom_command(
+            TARGET IrredenEngineVideo
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${IRREDEN_FFMPEG_ROOT}/bin
+            ${PROJECT_BINARY_DIR}
+        )
+    endif()
+else()
+    target_compile_definitions(IrredenEngineVideo PUBLIC IR_VIDEO_HAS_FFMPEG=0)
+    message(STATUS "IrredenEngineVideo: FFmpeg not found, recorder will run in stub mode.")
+endif()

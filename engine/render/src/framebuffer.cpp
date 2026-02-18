@@ -52,7 +52,7 @@ void Framebuffer::unbind() {
 
 void Framebuffer::clear() const {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    ENG_API->glClearColor(0.3f, 0.0f, 0.0f, 1.0f);
+    ENG_API->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     ENG_API->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 

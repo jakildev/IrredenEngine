@@ -12,6 +12,7 @@
 #include <irreden/audio/audio_manager.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/time/time_manager.hpp>
+#include <irreden/video/video_manager.hpp>
 #include <irreden/world/config.hpp>
 #include <sol/sol.hpp>
 #include <functional>
@@ -43,6 +44,7 @@ class World {
     IRRender::RenderManager m_renderer;
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
+    IRVideo::VideoManager m_videoManager;
     IRScript::LuaScript m_lua;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready

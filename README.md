@@ -91,7 +91,7 @@ ctest --preset default-tests
 | IRRender | - Meshless voxel rendering using compute shaders to write 3D voxels to 2D isometric canvases. <br> - Fixed orthographic isometric view for rendering voxels removing the need for raymarching. <br>  - Interpolated pixel scrolling for a smooth pixel-art camera. <br> - Multiple voxel canvases allows for select game entities to be unlocked from voxel grid. |
 | IRScript | - Provides a wrapper for common Lua C API functionality (WIP). <br> - Runtime configuration for engine such as window size, resolution, etc. (WIP). <br> - User can define entire implementation using just Lua files (Future). |
 | IRTime | - Fixed FPS events for consistent number of update ticks per second. <br> - Uncapped FPS events with delta time for faster rendering updates. <br> - Constructable event pipelines using custom and built-in systems. |
-| IRVideo | - MP4 Video output of framebuffers in real-time (WIP). |
+| IRVideo | - MP4/H264 framebuffer capture is enabled via FFmpeg. <br> - Runtime toggle recording support (F9). |
 
 ## Usage
 

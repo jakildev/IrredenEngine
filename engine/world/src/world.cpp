@@ -17,13 +17,16 @@ World::World(const char *configFileName)
       m_renderer{ivec2(m_worldConfig["game_resolution_width"].get_integer(),
                        m_worldConfig["game_resolution_height"].get_integer()),
                  static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())},
-      m_audioManager{}, m_timeManager{}, m_lua{} {
+      m_audioManager{}, m_timeManager{}, m_videoManager{}, m_lua{} {
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
     m_renderer.printRenderInfo();
+    m_videoManager.configureCapture(
+        m_worldConfig["video_capture_output_file"].get_string(),
+        m_worldConfig["video_capture_fps"].get_integer(),
+        m_worldConfig["video_capture_bitrate"].get_integer());
     IR_PROFILE_MAIN_THREAD;
-
     IRE_LOG_INFO("Initalized game world");
 }
 
@@ -75,7 +78,9 @@ void World::start() {
     IRProfile::CPUProfiler::instance().mainThread();
 }
 
-void World::end() {}
+void World::end() {
+    m_videoManager.shutdown();
+}
 
 void World::update() {
     m_timeManager.beginEvent<IRTime::UPDATE>();
@@ -98,6 +103,7 @@ void World::render() {
 
     m_inputManager.tickRender();
     m_renderer.tick();
+    m_videoManager.render();
 
     m_timeManager.endEvent<IRTime::RENDER>();
 }

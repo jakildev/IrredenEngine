@@ -36,6 +36,14 @@ class WorldConfig {
                               }));
         m_config.addEntry("fullscreen",
                           std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false));
+        m_config.addEntry(
+            "video_capture_output_file",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("capture.mp4"));
+        m_config.addEntry("video_capture_fps",
+                          std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(60));
+        m_config.addEntry(
+            "video_capture_bitrate",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(10'000'000));
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }
