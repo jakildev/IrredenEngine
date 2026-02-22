@@ -9,8 +9,11 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_Velocity3D> = t
 
 template <> inline void bindLuaType<IRComponents::C_Velocity3D>(LuaScript &luaScript) {
     using IRComponents::C_Velocity3D;
-    luaScript.registerType<C_Velocity3D, C_Velocity3D(float, float, float), C_Velocity3D(IRMath::vec3),
-                           C_Velocity3D()>("C_Velocity3D");
+    luaScript.registerType<
+        C_Velocity3D,
+        C_Velocity3D(float, float, float),
+        C_Velocity3D(IRMath::vec3),
+        C_Velocity3D()>("C_Velocity3D");
 }
 } // namespace IRScript
 

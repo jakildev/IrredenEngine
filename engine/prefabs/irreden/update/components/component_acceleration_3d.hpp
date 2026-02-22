@@ -12,11 +12,14 @@ namespace IRComponents {
 struct C_Acceleration3D {
     vec3 acceleration_;
 
-    C_Acceleration3D(vec3 acceleration) : acceleration_(acceleration) {}
+    C_Acceleration3D(vec3 acceleration)
+        : acceleration_(acceleration) {}
 
-    C_Acceleration3D(float x, float y, float z) : C_Acceleration3D(vec3{x, y, z}) {}
+    C_Acceleration3D(float x, float y, float z)
+        : C_Acceleration3D(vec3{x, y, z}) {}
 
-    C_Acceleration3D() : acceleration_(vec3(0.0f)) {}
+    C_Acceleration3D()
+        : acceleration_(vec3(0.0f)) {}
 };
 
 } // namespace IRComponents

@@ -22,11 +22,22 @@ struct C_TriggerGlow {
     float elapsedSeconds_;
     bool active_;
 
-    C_TriggerGlow(Color targetColor, float holdSeconds, float fadeSeconds,
-                  IREasingFunctions easingFunction, bool triggerOnContactEnter = true)
-        : baseColor_{IRColors::kWhite}, baseColorInitialized_{false}, targetColor_{targetColor},
-          holdSeconds_{holdSeconds}, fadeSeconds_{fadeSeconds}, easingFunction_{easingFunction},
-          triggerOnContactEnter_{triggerOnContactEnter}, elapsedSeconds_{0.0f}, active_{false} {}
+    C_TriggerGlow(
+        Color targetColor,
+        float holdSeconds,
+        float fadeSeconds,
+        IREasingFunctions easingFunction,
+        bool triggerOnContactEnter = true
+    )
+        : baseColor_{IRColors::kWhite}
+        , baseColorInitialized_{false}
+        , targetColor_{targetColor}
+        , holdSeconds_{holdSeconds}
+        , fadeSeconds_{fadeSeconds}
+        , easingFunction_{easingFunction}
+        , triggerOnContactEnter_{triggerOnContactEnter}
+        , elapsedSeconds_{0.0f}
+        , active_{false} {}
 
     C_TriggerGlow()
         : C_TriggerGlow(IRColors::kWhite, 0.03f, 0.22f, IREasingFunctions::kCubicEaseOut, true) {}

@@ -12,8 +12,9 @@ extern InputManager *g_inputManager;
 InputManager &getInputManager();
 
 bool checkKeyMouseButton(KeyMouseButtons button, ButtonStatuses buttonStatus);
-bool checkKeyMouseModifiers(KeyModifierMask requiredModifiers,
-                            KeyModifierMask blockedModifiers = kModifierNone);
+bool checkKeyMouseModifiers(
+    KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers = kModifierNone
+);
 
 // Everything should just use render mouse position prob...
 IRMath::vec2 getMousePositionUpdate();

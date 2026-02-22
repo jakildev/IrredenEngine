@@ -16,7 +16,8 @@ template <> struct System<APPLY_POSITION_OFFSET> {
             "ApplyPositionOffset",
             [](C_PositionOffset3D &offset, C_PositionGlobal3D &globalPos) {
                 globalPos.pos_ += offset.pos_;
-            });
+            }
+        );
     }
 };
 

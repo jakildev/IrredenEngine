@@ -29,19 +29,28 @@ template <> struct System<PERIODIC_IDLE_MIDI_TRIGGER> {
                 unsigned char channel = normalizeMidiChannel(midiNote.channel_);
                 // NOTE_ON: sent immediately
                 IREntity::createEntity(
-                    C_MidiMessage{buildMidiStatus(kMidiStatus_NOTE_ON, channel),
-                                  midiNote.note_, midiNote.velocity_},
-                    C_MidiOut{}, C_Lifetime{1});
+                    C_MidiMessage{
+                        buildMidiStatus(kMidiStatus_NOTE_ON, channel),
+                        midiNote.note_,
+                        midiNote.velocity_
+                    },
+                    C_MidiOut{},
+                    C_Lifetime{1}
+                );
                 // NOTE_OFF: delayed by hold duration
-                int holdFrames =
-                    static_cast<int>(midiNote.holdSeconds_ * IRConstants::kFPS);
+                int holdFrames = static_cast<int>(midiNote.holdSeconds_ * IRConstants::kFPS);
                 holdFrames = std::max(holdFrames, 1);
                 IREntity::createEntity(
-                    C_MidiMessage{buildMidiStatus(kMidiStatus_NOTE_OFF, channel),
-                                  midiNote.note_, midiNote.velocity_},
+                    C_MidiMessage{
+                        buildMidiStatus(kMidiStatus_NOTE_OFF, channel),
+                        midiNote.note_,
+                        midiNote.velocity_
+                    },
                     C_MidiDelay{holdFrames},
-                    C_Lifetime{holdFrames + 10});
-            });
+                    C_Lifetime{holdFrames + 10}
+                );
+            }
+        );
     }
 };
 

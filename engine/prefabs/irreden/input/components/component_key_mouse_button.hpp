@@ -8,9 +8,11 @@ namespace IRComponents {
 struct C_KeyMouseButton {
     IRInput::KeyMouseButtons button_;
 
-    C_KeyMouseButton(IRInput::KeyMouseButtons mouseButton) : button_(mouseButton) {}
+    C_KeyMouseButton(IRInput::KeyMouseButtons mouseButton)
+        : button_(mouseButton) {}
 
-    C_KeyMouseButton() : button_(IRInput::KeyMouseButtons::kNullButton) {}
+    C_KeyMouseButton()
+        : button_(IRInput::KeyMouseButtons::kNullButton) {}
 };
 
 } // namespace IRComponents

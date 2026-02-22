@@ -11,8 +11,14 @@
 namespace IRDefaultCreation {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
     using namespace IRComponents;
-    luaScript.registerTypesFromTraits<C_Position3D, C_Velocity3D, C_VoxelSetNew, PeriodStage,
-                                      C_PeriodicIdle, C_MidiNote, C_MidiSequence>();
+    luaScript.registerTypesFromTraits<
+        C_Position3D,
+        C_Velocity3D,
+        C_VoxelSetNew,
+        PeriodStage,
+        C_PeriodicIdle,
+        C_MidiNote,
+        C_MidiSequence>();
 }
 } // namespace IRDefaultCreation
 

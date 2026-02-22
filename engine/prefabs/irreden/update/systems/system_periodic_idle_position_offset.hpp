@@ -14,9 +14,8 @@ template <> struct System<PERIODIC_IDLE_POSITION_OFFSET> {
     static SystemId create() {
         return createSystem<C_PeriodicIdle, C_PositionOffset3D>(
             "PeriodicIdlePositionOffset",
-            [](C_PeriodicIdle &idle, C_PositionOffset3D &offset) {
-                offset.pos_ = idle.getValue();
-            });
+            [](C_PeriodicIdle &idle, C_PositionOffset3D &offset) { offset.pos_ = idle.getValue(); }
+        );
     }
 };
 

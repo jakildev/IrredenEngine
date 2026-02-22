@@ -12,7 +12,8 @@ struct LuaConfigEntry {
     std::unique_ptr<ILuaValue> value;
 
     LuaConfigEntry(const std::string &name, std::unique_ptr<ILuaValue> val)
-        : luaName(name), value(std::move(val)) {}
+        : luaName(name)
+        , value(std::move(val)) {}
 };
 
 class LuaConfig {

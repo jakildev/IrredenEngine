@@ -29,10 +29,12 @@ const std::unordered_map<GLenum, GLint> kMapSizeofGLType = {
     {GL_UNSIGNED_INT, sizeof(GLuint)},
     {GL_INT_2_10_10_10_REV, sizeof(GLuint)},
     {GL_UNSIGNED_INT_2_10_10_10_REV, sizeof(GLuint)},
-    {GL_UNSIGNED_INT_10F_11F_11F_REV, sizeof(GLuint)}};
+    {GL_UNSIGNED_INT_10F_11F_11F_REV, sizeof(GLuint)}
+};
 
 const std::unordered_map<GLenum, GLint> kMapUnpackAlignmentofGLType = {
-    {GL_R8, 1}, {GL_RGB8, 4}, {GL_RGBA8, 4}, {GL_DEPTH24_STENCIL8, 4}};
+    {GL_R8, 1}, {GL_RGB8, 4}, {GL_RGBA8, 4}, {GL_DEPTH24_STENCIL8, 4}
+};
 
 constexpr GLuint kBufferIndex_FrameDataUniform = 0; // unused
 constexpr GLuint kBufferIndex_GlobalConstantsGLSL = 1;

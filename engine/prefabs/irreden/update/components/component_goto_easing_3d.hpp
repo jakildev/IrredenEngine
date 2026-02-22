@@ -18,13 +18,20 @@ struct C_GotoEasing3D {
     GLMEasingFunction easingFunction_;
     bool done_ = false;
 
-    C_GotoEasing3D(C_Position3D start, C_Position3D end, float durationSeconds,
-                   IREasingFunctions easingFunction = IREasingFunctions::kLinearInterpolation)
-        : startPos_{start}, endPos_{end},
-          durationFrames_{IRMath::secondsToFrames<IRConstants::kFPS>(durationSeconds)},
-          currentFrame_{0}, easingFunction_{kEasingFunctions.at(easingFunction)} {}
+    C_GotoEasing3D(
+        C_Position3D start,
+        C_Position3D end,
+        float durationSeconds,
+        IREasingFunctions easingFunction = IREasingFunctions::kLinearInterpolation
+    )
+        : startPos_{start}
+        , endPos_{end}
+        , durationFrames_{IRMath::secondsToFrames<IRConstants::kFPS>(durationSeconds)}
+        , currentFrame_{0}
+        , easingFunction_{kEasingFunctions.at(easingFunction)} {}
 
-    C_GotoEasing3D() : C_GotoEasing3D{C_Position3D{}, C_Position3D{}, 0.0f} {}
+    C_GotoEasing3D()
+        : C_GotoEasing3D{C_Position3D{}, C_Position3D{}, 0.0f} {}
 };
 
 } // namespace IRComponents

@@ -11,12 +11,15 @@ struct C_CameraPosition2DIso {
     vec2 pos_;
     float tempPackBuffer_;
 
-    C_CameraPosition2DIso(vec2 pos) : pos_{pos} {}
+    C_CameraPosition2DIso(vec2 pos)
+        : pos_{pos} {}
 
-    C_CameraPosition2DIso(float x, float y) : C_CameraPosition2DIso{vec2(x, y)} {}
+    C_CameraPosition2DIso(float x, float y)
+        : C_CameraPosition2DIso{vec2(x, y)} {}
 
     // Default
-    C_CameraPosition2DIso() : C_CameraPosition2DIso{vec2(0, 0)} {}
+    C_CameraPosition2DIso()
+        : C_CameraPosition2DIso{vec2(0, 0)} {}
 };
 
 } // namespace IRComponents

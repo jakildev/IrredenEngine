@@ -21,19 +21,28 @@ namespace IRComponents {
 struct C_VoxelPool {
   public:
     C_VoxelPool(ivec3 numVoxels)
-        : m_voxelPoolSize{numVoxels.x * numVoxels.y * numVoxels.z}, m_voxelPositions{},
-          m_voxelPositionsOffset{}, m_voxelPositionsGlobal{}, m_voxelColors{} {
+        : m_voxelPoolSize{numVoxels.x * numVoxels.y * numVoxels.z}
+        , m_voxelPositions{}
+        , m_voxelPositionsOffset{}
+        , m_voxelPositionsGlobal{}
+        , m_voxelColors{} {
 
         m_voxelPositions.resize(m_voxelPoolSize);
         std::fill(m_voxelPositions.begin(), m_voxelPositions.end(), C_Position3D{vec3(0, 0, 0)});
 
         m_voxelPositionsOffset.resize(m_voxelPoolSize);
-        std::fill(m_voxelPositionsOffset.begin(), m_voxelPositionsOffset.end(),
-                  C_PositionOffset3D{vec3(0, 0, 0)});
+        std::fill(
+            m_voxelPositionsOffset.begin(),
+            m_voxelPositionsOffset.end(),
+            C_PositionOffset3D{vec3(0, 0, 0)}
+        );
 
         m_voxelPositionsGlobal.resize(m_voxelPoolSize);
-        std::fill(m_voxelPositionsGlobal.begin(), m_voxelPositionsGlobal.end(),
-                  C_PositionGlobal3D{vec3(0, 0, 0)});
+        std::fill(
+            m_voxelPositionsGlobal.begin(),
+            m_voxelPositionsGlobal.end(),
+            C_PositionGlobal3D{vec3(0, 0, 0)}
+        );
 
         m_voxelColors.resize(m_voxelPoolSize);
         std::fill(m_voxelColors.begin(), m_voxelColors.end(), C_Voxel{Color{0, 0, 0, 0}});
@@ -43,8 +52,11 @@ struct C_VoxelPool {
 
     // EntityId addVoxel
 
-    std::tuple<std::span<C_Position3D>, std::span<C_PositionOffset3D>,
-               std::span<C_PositionGlobal3D>, std::span<C_Voxel>>
+    std::tuple<
+        std::span<C_Position3D>,
+        std::span<C_PositionOffset3D>,
+        std::span<C_PositionGlobal3D>,
+        std::span<C_Voxel>>
     allocateVoxels(unsigned int size) {
         auto freeSpan = findFreeSpan(size);
         if (freeSpan.has_value()) {
@@ -58,7 +70,8 @@ struct C_VoxelPool {
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
                 std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
-                std::span<C_Voxel>{m_voxelColors.data() + startIndex, size});
+                std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
+            );
         }
 
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
@@ -69,19 +82,26 @@ struct C_VoxelPool {
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
                 std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
-                std::span<C_Voxel>{m_voxelColors.data() + startIndex, size});
+                std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
+            );
         }
 
         IR_ASSERT(false, "Ran out of voxels");
 
-        return std::make_tuple(std::span<C_Position3D>{}, std::span<C_PositionOffset3D>{},
-                               std::span<C_PositionGlobal3D>{}, std::span<C_Voxel>{});
+        return std::make_tuple(
+            std::span<C_Position3D>{},
+            std::span<C_PositionOffset3D>{},
+            std::span<C_PositionGlobal3D>{},
+            std::span<C_Voxel>{}
+        );
     }
 
-    void deallocateVoxels(std::span<C_Position3D> positions,
-                          std::span<C_PositionOffset3D> positionOffsets,
-                          std::span<C_PositionGlobal3D> positionGlobals,
-                          std::span<C_Voxel> colors) {
+    void deallocateVoxels(
+        std::span<C_Position3D> positions,
+        std::span<C_PositionOffset3D> positionOffsets,
+        std::span<C_PositionGlobal3D> positionGlobals,
+        std::span<C_Voxel> colors
+    ) {
         for (int i = 0; i < colors.size(); i++) {
             C_Voxel &voxel = colors[i];
             voxel.color_ = Color{0, 0, 0, 0};

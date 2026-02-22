@@ -13,11 +13,13 @@ namespace IRSystem {
 template <> struct System<VELOCITY_3D> {
     static SystemId create() {
         return createSystem<C_Position3D, C_Velocity3D>(
-            "Velocity3D", [](C_Position3D &position, const C_Velocity3D &velocity) {
+            "Velocity3D",
+            [](C_Position3D &position, const C_Velocity3D &velocity) {
                 position.pos_ +=
                     // velocity.velocity_;
                     velocity.velocity_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
-            });
+            }
+        );
     }
 };
 

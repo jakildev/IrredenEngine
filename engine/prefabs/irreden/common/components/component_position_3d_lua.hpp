@@ -11,9 +11,14 @@ template <> inline void bindLuaType<IRComponents::C_Position3D>(LuaScript &luaSc
     using IRComponents::C_Position3D;
     luaScript
         .registerType<C_Position3D, C_Position3D(float, float, float), C_Position3D(IRMath::vec3)>(
-            "C_Position3D", "x", [](C_Position3D &obj) { return obj.pos_.x; }, "y",
-            [](C_Position3D &obj) { return obj.pos_.y; }, "z",
-            [](C_Position3D &obj) { return obj.pos_.z; });
+            "C_Position3D",
+            "x",
+            [](C_Position3D &obj) { return obj.pos_.x; },
+            "y",
+            [](C_Position3D &obj) { return obj.pos_.y; },
+            "z",
+            [](C_Position3D &obj) { return obj.pos_.z; }
+        );
 }
 } // namespace IRScript
 

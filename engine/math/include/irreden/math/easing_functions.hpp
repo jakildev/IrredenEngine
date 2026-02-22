@@ -80,7 +80,8 @@ const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions 
     {kBackEaseInOut, [](float t) { return glm::backEaseInOut(t, 0.5f); }},
     {kBounceEaseIn, glm::bounceEaseIn<float>},
     {kBounceEaseOut, glm::bounceEaseOut<float>},
-    {kBounceEaseInOut, glm::bounceEaseInOut<float>}};
+    {kBounceEaseInOut, glm::bounceEaseInOut<float>}
+};
 } // namespace IRMath
 
 #endif /* EASING_FUNCTIONS_H */

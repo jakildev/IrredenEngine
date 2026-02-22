@@ -72,25 +72,36 @@ class EntityManager {
         ArchetypeNode *archetypeNode = m_archetypeGraph.findCreateArchetypeNode(archetype);
         int index = insertEntityToNode(archetypeNode, entity, components...);
         updateRecord(entity, archetypeNode, index);
-        IRE_LOG_DEBUG("Created entity={} with archetype={}", entity,
-                      makeComponentStringInternal(archetype).c_str());
+        IRE_LOG_DEBUG(
+            "Created entity={} with archetype={}",
+            entity,
+            makeComponentStringInternal(archetype).c_str()
+        );
         return entity;
     }
 
     template <typename Component, typename... Args> ComponentId registerComponent(Args &&...args) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         std::string typeName = typeid(Component).name();
-        IR_ASSERT(m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
-                  "Regestering the same component twice");
+        IR_ASSERT(
+            m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
+            "Regestering the same component twice"
+        );
         ComponentId componentId = createEntity();
         m_pureComponentTypes.insert({typeName, componentId});
-        m_pureComponentVectors.emplace(componentId,
-                                       std::make_unique<IComponentDataImpl<Component>>());
+        m_pureComponentVectors.emplace(
+            componentId,
+            std::make_unique<IComponentDataImpl<Component>>()
+        );
         // TODO: Make a component for a pure component and put there...
         // Same for relation
 
-        IRE_LOG_INFO("Regestered component type={}, sizeof={} with id={}", typeName,
-                     sizeof(Component), static_cast<int>(componentId));
+        IRE_LOG_INFO(
+            "Regestered component type={}, sizeof={} with id={}",
+            typeName,
+            sizeof(Component),
+            static_cast<int>(componentId)
+        );
         return componentId;
     }
 
@@ -125,14 +136,20 @@ class EntityManager {
         int insertedIndex =
             insertComponent<Component>(toNode->components_[componentType].get(), Component{});
 
-        IR_ASSERT(insertedIndex == toNode->length_ - 1,
-                  "Component inserted at unexpected location.");
+        IR_ASSERT(
+            insertedIndex == toNode->length_ - 1,
+            "Component inserted at unexpected location."
+        );
 
-        IRE_LOG_DEBUG("Added default component type={} to entity={}: \n\
+        IRE_LOG_DEBUG(
+            "Added default component type={} to entity={}: \n\
                 \tnew row={}\n\
                 \tnew type={}",
-                      componentType, toNode->entities_[record.row], record.row,
-                      makeComponentStringInternal(type).c_str());
+            componentType,
+            toNode->entities_[record.row],
+            record.row,
+            makeComponentStringInternal(type).c_str()
+        );
     }
 
     EntityId setRelation(Relation relation, EntityId entity, EntityId relatedEntity);
@@ -189,8 +206,12 @@ class EntityManager {
 
         fromNode->components_[componentType]->removeDataAndPack(row);
 
-        IRE_LOG_DEBUG("Removed component type={} from entity={} (new row={})", componentType,
-                      entity, record.row);
+        IRE_LOG_DEBUG(
+            "Removed component type={} from entity={} (new row={})",
+            componentType,
+            entity,
+            record.row
+        );
     }
 
     template <typename Component> Component &getComponent(EntityId entity) {
@@ -200,9 +221,11 @@ class EntityManager {
         Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
-        IR_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
-                  "Attempted to retrieve non-existant component {} from entity {}", componentType,
-                  entity
+        IR_ASSERT(
+            std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
+            "Attempted to retrieve non-existant component {} from entity {}",
+            componentType,
+            entity
 
         );
         IComponentDataImpl<Component> *data =
@@ -235,10 +258,13 @@ class EntityManager {
         Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
-        IR_ASSERT(std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
-                  "Attempted to retrieve non-existant component vector from node: archetype={}, "
-                  "componentType={}",
-                  makeComponentStringInternal(archetype).c_str(), componentType);
+        IR_ASSERT(
+            std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
+            "Attempted to retrieve non-existant component vector from node: archetype={}, "
+            "componentType={}",
+            makeComponentStringInternal(archetype).c_str(),
+            componentType
+        );
         IComponentDataImpl<Component> *data =
             castComponentDataPointer<Component>(node->components_[componentType].get());
 
@@ -250,9 +276,14 @@ class EntityManager {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         std::vector<EntityId> res;
         size_t sizes[] = {componentVectors.size()...};
-        IR_ASSERT(std::all_of(std::begin(sizes), std::end(sizes),
-                              [&sizes](size_t cur) { return cur == sizes[0]; }),
-                  "Create batch entities with different sized component vectors");
+        IR_ASSERT(
+            std::all_of(
+                std::begin(sizes),
+                std::end(sizes),
+                [&sizes](size_t cur) { return cur == sizes[0]; }
+            ),
+            "Create batch entities with different sized component vectors"
+        );
         size_t numEntities = sizes[0];
         for (int i = 0; i < numEntities; i++) {
             res.push_back(allocateEntity());
@@ -282,15 +313,21 @@ class EntityManager {
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);
     void returnEntityToPool(EntityId entity);
-    void pushCopyData(IComponentData *fromStructure, unsigned int fromIndex,
-                      IComponentData *toStructure);
-    int moveEntityByArchetype(EntityRecord &entity, const Archetype &type, ArchetypeNode *fromNode,
-                              ArchetypeNode *toNode);
-    void handleComponentMove(const ComponentId component, ArchetypeNode *fromNode,
-                             ArchetypeNode *toNode, const unsigned int row);
+    void pushCopyData(
+        IComponentData *fromStructure, unsigned int fromIndex, IComponentData *toStructure
+    );
+    int moveEntityByArchetype(
+        EntityRecord &entity, const Archetype &type, ArchetypeNode *fromNode, ArchetypeNode *toNode
+    );
+    void handleComponentMove(
+        const ComponentId component,
+        ArchetypeNode *fromNode,
+        ArchetypeNode *toNode,
+        const unsigned int row
+    );
     void removeEntityFromArchetypeNode(ArchetypeNode *node, unsigned int index);
-    void handleComponentRemove(const ComponentId component, ArchetypeNode *node,
-                               const unsigned int row);
+    void
+    handleComponentRemove(const ComponentId component, ArchetypeNode *node, const unsigned int row);
     void updateBackEntityPosition(ArchetypeNode *node, unsigned int newPos);
     void destroyComponents(EntityId entity);
     void destroyComponent(ComponentId component, ArchetypeNode *node, unsigned int row);
@@ -313,16 +350,20 @@ class EntityManager {
     }
 
     template <typename... Components>
-    int insertEntityToNode(ArchetypeNode *toNode, EntityId entity,
-                           const Components &...components) {
+    int
+    insertEntityToNode(ArchetypeNode *toNode, EntityId entity, const Components &...components) {
         int newIndex = toNode->length_;
 
         std::tuple<IComponentDataImpl<Components> *...> dataPointers = {
             castComponentDataPointer<Components>(
-                toNode->components_[getComponentType<Components>()].get())...};
+                toNode->components_[getComponentType<Components>()].get()
+            )...
+        };
 
-        std::apply([&](auto &&...args) { (args->dataVector.emplace_back(components), ...); },
-                   dataPointers);
+        std::apply(
+            [&](auto &&...args) { (args->dataVector.emplace_back(components), ...); },
+            dataPointers
+        );
 
         toNode->entities_.push_back(entity);
         toNode->length_++;
@@ -331,13 +372,17 @@ class EntityManager {
     }
 
     template <typename... Components>
-    std::vector<int> inserComponentsBatch(ArchetypeNode *toNode,
-                                          const std::vector<EntityId> &entityIds,
-                                          const std::vector<Components> &...componentVectors) {
+    std::vector<int> inserComponentsBatch(
+        ArchetypeNode *toNode,
+        const std::vector<EntityId> &entityIds,
+        const std::vector<Components> &...componentVectors
+    ) {
         std::vector<int> indices;
         std::tuple<IComponentDataImpl<Components> *...> dataPointers = {
             castComponentDataPointer<Components>(
-                toNode->components_[getComponentType<Components>()].get())...};
+                toNode->components_[getComponentType<Components>()].get()
+            )...
+        };
         int numEntities = entityIds.size();
         for (int i = 0; i < numEntities; i++) {
             indices.push_back(toNode->length_);
@@ -345,7 +390,8 @@ class EntityManager {
             toNode->entities_.push_back(entityIds[i]);
             std::apply(
                 [&](auto &&...args) { (args->dataVector.emplace_back(componentVectors[i]), ...); },
-                dataPointers);
+                dataPointers
+            );
         }
         return indices;
     }

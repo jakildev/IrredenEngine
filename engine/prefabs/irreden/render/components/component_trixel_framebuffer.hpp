@@ -18,7 +18,8 @@ struct C_TrixelCanvasFramebuffer {
 
     C_TrixelCanvasFramebuffer(ivec2 size, ivec2 extraPixelBuffer = ivec2(0, 0))
         : framebuffer_{IRRender::createResource<IRRender::Framebuffer>(
-              size, extraPixelBuffer, GL_RGBA8, GL_DEPTH24_STENCIL8)} {}
+              size, extraPixelBuffer, GL_RGBA8, GL_DEPTH24_STENCIL8
+          )} {}
 
     C_TrixelCanvasFramebuffer() {}
 

@@ -10,7 +10,8 @@
 namespace IRRender {
 
 ShaderStage::ShaderStage(const char *filepath, GLenum type)
-    : m_handle(ENG_API->glCreateShader(type)), m_type(type) {
+    : m_handle(ENG_API->glCreateShader(type))
+    , m_type(type) {
     compileShader(readFileAsString(filepath));
     checkSuccess();
 }

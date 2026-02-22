@@ -11,9 +11,9 @@ namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE> {
     static SystemId create() {
-        return createSystem<C_PeriodicIdle>(
-            "PeriodicIdle",
-            [](C_PeriodicIdle &periodicIdle) { periodicIdle.tick(); });
+        return createSystem<C_PeriodicIdle>("PeriodicIdle", [](C_PeriodicIdle &periodicIdle) {
+            periodicIdle.tick();
+        });
     }
 };
 

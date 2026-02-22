@@ -88,55 +88,111 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::MIDI_DELAY_PROCESS>(),
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::LIFETIME>()});
+         IRSystem::createSystem<IRSystem::LIFETIME>()}
+    );
 
-    IRSystem::registerPipeline(IRTime::Events::INPUT,
-                               {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
-                                IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()});
+    IRSystem::registerPipeline(
+        IRTime::Events::INPUT,
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
+         IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
+    );
 
-    IRSystem::registerPipeline(IRTime::Events::RENDER,
-                               {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-                                IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-                                IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-                                IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-                                IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()});
+    IRSystem::registerPipeline(
+        IRTime::Events::RENDER,
+        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
+         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
+    );
 }
 
 void initCommands() {
     IRCommand::createCommand<IRCommand::CLOSE_WINDOW>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonEscape);
-    IRCommand::createCommand<IRCommand::ZOOM_IN>(InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
-                                                 KeyMouseButtons::kKeyButtonEqual);
-    IRCommand::createCommand<IRCommand::ZOOM_OUT>(InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
-                                                  KeyMouseButtons::kKeyButtonMinus);
-    IRCommand::createCommand<IRCommand::ZOOM_IN>(InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
-                                                 KeyMouseButtons::kKeyButtonKPAdd);
-    IRCommand::createCommand<IRCommand::ZOOM_OUT>(InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
-                                                  KeyMouseButtons::kKeyButtonKPSubtract);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEscape
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEqual
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonMinus
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonKPAdd
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonKPSubtract
+    );
     IRCommand::createCommand<IRCommand::BACKGROUND_ZOOM_IN>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonEqual,
-        kModifierShift);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEqual,
+        kModifierShift
+    );
     IRCommand::createCommand<IRCommand::BACKGROUND_ZOOM_OUT>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonMinus,
-        kModifierShift);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonMinus,
+        kModifierShift
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonS);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonS
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonW);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonW
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonD);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonD
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonA);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonA
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonS);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonS
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonW);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonW
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonD);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonD
+    );
     IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::RELEASED, KeyMouseButtons::kKeyButtonA);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::RELEASED,
+        KeyMouseButtons::kKeyButtonA
+    );
     IRCommand::createCommand<IRCommand::SCREENSHOT>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonF8);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonF8
+    );
     IRCommand::createCommand<IRCommand::RECORD_TOGGLE>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED, KeyMouseButtons::kKeyButtonF9);
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonF9
+    );
 }

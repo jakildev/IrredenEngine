@@ -55,8 +55,10 @@ template <> struct System<CONTACT_TRIGGER_GLOW> {
                 }
 
                 voxelSet.changeVoxelColorAll(
-                    IRMath::lerpColor(glow.baseColor_, glow.targetColor_, blendToTarget));
-            });
+                    IRMath::lerpColor(glow.baseColor_, glow.targetColor_, blendToTarget)
+                );
+            }
+        );
     }
 };
 

@@ -6,9 +6,11 @@ namespace IRComponents {
 struct C_GLFWJoystick {
     int joystickId_;
 
-    C_GLFWJoystick(int joystickId) : joystickId_(joystickId) {}
+    C_GLFWJoystick(int joystickId)
+        : joystickId_(joystickId) {}
 
-    C_GLFWJoystick() : joystickId_(-1) {}
+    C_GLFWJoystick()
+        : joystickId_(-1) {}
 };
 
 } // namespace IRComponents

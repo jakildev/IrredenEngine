@@ -6,8 +6,11 @@ namespace IRTime {
 // I forgot about this, maybe I can apply this elsewhere
 // like for systems and such...
 TimeManager::TimeManager()
-    : m_profilerUpdate{}, m_profilerRender{}, m_start{}, m_mainLoopPrevious{},
-      m_mainLoopElapsed{0} {
+    : m_profilerUpdate{}
+    , m_profilerRender{}
+    , m_start{}
+    , m_mainLoopPrevious{}
+    , m_mainLoopElapsed{0} {
     g_timeManager = this;
     IRE_LOG_INFO("TimeManager initalized");
 }

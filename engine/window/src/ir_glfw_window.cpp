@@ -20,15 +20,22 @@ void logMonitors(const std::vector<GLFWmonitor *> &monitors) {
         int monitorY = 0;
         glfwGetMonitorPos(monitor, &monitorX, &monitorY);
 
-        IRE_LOG_INFO("Monitor {}: '{}' @ ({}, {}), mode={}x{} {}Hz", i,
-                     name != nullptr ? name : "<unnamed>", monitorX, monitorY,
-                     mode != nullptr ? mode->width : 0, mode != nullptr ? mode->height : 0,
-                     mode != nullptr ? mode->refreshRate : 0);
+        IRE_LOG_INFO(
+            "Monitor {}: '{}' @ ({}, {}), mode={}x{} {}Hz",
+            i,
+            name != nullptr ? name : "<unnamed>",
+            monitorX,
+            monitorY,
+            mode != nullptr ? mode->width : 0,
+            mode != nullptr ? mode->height : 0,
+            mode != nullptr ? mode->refreshRate : 0
+        );
     }
 }
 
-GLFWmonitor *getPreferredMonitor(const std::vector<GLFWmonitor *> &monitors, int monitorIndex,
-                                 const std::string &monitorName) {
+GLFWmonitor *getPreferredMonitor(
+    const std::vector<GLFWmonitor *> &monitors, int monitorIndex, const std::string &monitorName
+) {
     if (monitors.empty()) {
         return nullptr;
     }
@@ -40,16 +47,21 @@ GLFWmonitor *getPreferredMonitor(const std::vector<GLFWmonitor *> &monitors, int
                 return monitor;
             }
         }
-        IRE_LOG_WARN("Monitor name '{}' not found. Falling back to index/default monitor.",
-                     monitorName);
+        IRE_LOG_WARN(
+            "Monitor name '{}' not found. Falling back to index/default monitor.",
+            monitorName
+        );
     }
 
     if (monitorIndex >= 0 && monitorIndex < static_cast<int>(monitors.size())) {
         return monitors[monitorIndex];
     }
     if (monitorIndex >= 0) {
-        IRE_LOG_WARN("Monitor index {} is out of range [0, {}). Falling back to primary monitor.",
-                     monitorIndex, monitors.size());
+        IRE_LOG_WARN(
+            "Monitor index {} is out of range [0, {}). Falling back to primary monitor.",
+            monitorIndex,
+            monitors.size()
+        );
     }
 
     return monitors[0];
@@ -57,10 +69,13 @@ GLFWmonitor *getPreferredMonitor(const std::vector<GLFWmonitor *> &monitors, int
 } // namespace
 
 // TODO: implement multiple sub-windows if necessary
-IRGLFWWindow::IRGLFWWindow(ivec2 windowSize, bool fullscreen, int monitorIndex,
-                           std::string monitorName)
-    : m_initWindowSize{windowSize}, m_isFullscreen{fullscreen}, m_monitorIndex{monitorIndex},
-      m_monitorName{std::move(monitorName)} {
+IRGLFWWindow::IRGLFWWindow(
+    ivec2 windowSize, bool fullscreen, int monitorIndex, std::string monitorName
+)
+    : m_initWindowSize{windowSize}
+    , m_isFullscreen{fullscreen}
+    , m_monitorIndex{monitorIndex}
+    , m_monitorName{std::move(monitorName)} {
     setCallbackError(irglfwCallback_error);
 
     int status = glfwInit();
@@ -79,11 +94,14 @@ IRGLFWWindow::IRGLFWWindow(ivec2 windowSize, bool fullscreen, int monitorIndex,
 
     GLFWmonitor *selectedMonitor =
         m_isFullscreen ? getPreferredMonitor(m_monitors, m_monitorIndex, m_monitorName) : nullptr;
-    m_window = glfwCreateWindow(windowSize.x, windowSize.y, "IRREDEN GAME ENGINE",
-                                m_isFullscreen ? selectedMonitor
-                                           : NULL, // Cant do this in debug mode with breakpoints
-                                // NULL,
-                                NULL);
+    m_window = glfwCreateWindow(
+        windowSize.x,
+        windowSize.y,
+        "IRREDEN GAME ENGINE",
+        m_isFullscreen ? selectedMonitor : NULL, // Cant do this in debug mode with breakpoints
+        // NULL,
+        NULL
+    );
 
     IR_ASSERT(m_window != nullptr, "Failed to create window: glfwCreateWindow returned null");
 
@@ -225,7 +243,8 @@ void IRGLFWWindow::setCallbackError(GLFWerrorfun callbackFunction) {
 }
 
 void IRGLFWWindow::setCallbackFramebufferSize(
-    GLFWframebuffersizefun framebufferSizeCallbackFunction) {
+    GLFWframebuffersizefun framebufferSizeCallbackFunction
+) {
     glfwSetFramebufferSizeCallback(m_window, framebufferSizeCallbackFunction);
 }
 

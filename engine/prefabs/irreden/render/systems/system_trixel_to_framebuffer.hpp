@@ -27,19 +27,25 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             "CanvasToFramebufferProgram",
             std::vector{
                 ShaderStage{IRRender::kFileVertTrixelToFramebuffer, GL_VERTEX_SHADER}.getHandle(),
-                ShaderStage{IRRender::kFileFragTrixelToFramebuffer, GL_FRAGMENT_SHADER}
-                    .getHandle()});
+                ShaderStage{IRRender::kFileFragTrixelToFramebuffer, GL_FRAGMENT_SHADER}.getHandle()
+            }
+        );
         IRRender::createNamedResource<Buffer>(
-            "TrixelToFramebufferFrameData", nullptr, sizeof(FrameDataTrixelToFramebuffer),
-            GL_DYNAMIC_STORAGE_BIT, GL_UNIFORM_BUFFER, kBufferIndex_FrameDataUniformIsoTriangles);
+            "TrixelToFramebufferFrameData",
+            nullptr,
+            sizeof(FrameDataTrixelToFramebuffer),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_UNIFORM_BUFFER,
+            kBufferIndex_FrameDataUniformIsoTriangles
+        );
 
         return createSystem<C_TriangleCanvasTextures, C_Name>(
             "CanvasToFramebuffer",
             [](const C_TriangleCanvasTextures &triangleCanvasTextures, const C_Name &canvasName) {
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>(
-                    "mainFramebuffer");
+                auto &frameData =
+                    IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
                 vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
                 const bool isBackground = canvasName.name_ == "background";
                 const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
@@ -58,22 +64,28 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 }
                 frameData.frameData_.textureOffset_ = vec2(0);
                 frameData.frameData_.mouseHoveredTriangleIndex_ =
-                    isBackground ? vec2(-1000000.0f)
-                                 : vec2(IRRender::mouseTrixelPositionWorld());
+                    isBackground ? vec2(-1000000.0f) : vec2(IRRender::mouseTrixelPositionWorld());
                 if (!isBackground && renderMode != IRRender::VoxelRenderMode::SNAPPED) {
                     frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
                 }
                 frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                                 calcModelMatrix(framebufferResolution,
-                                                                 frameData.frameData_.cameraTrixelOffset_,
-                                                                 frameData.frameData_.canvasZoomLevel_);
+                                                 calcModelMatrix(
+                                                     framebufferResolution,
+                                                     frameData.frameData_.cameraTrixelOffset_,
+                                                     frameData.frameData_.canvasZoomLevel_
+                                                 );
                 frameData.updateFrameData(
-                    IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData"));
+                    IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData")
+                );
 
                 triangleCanvasTextures.bind(0, 1);
                 ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                ENG_API->glDrawElements(GL_TRIANGLES, IRShapes2D::kQuadIndicesLength,
-                                        GL_UNSIGNED_SHORT, nullptr);
+                ENG_API->glDrawElements(
+                    GL_TRIANGLES,
+                    IRShapes2D::kQuadIndicesLength,
+                    GL_UNSIGNED_SHORT,
+                    nullptr
+                );
             },
             []() {
                 IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
@@ -92,14 +104,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         return projection;
     }
 
-    static mat4 calcModelMatrix(const vec2 &resolution, const vec2 &cameraPositionIso,
-                                const vec2 &zoomLevel) {
-        vec2 isoPixelOffset = IRMath::floor(IRMath::pos2DIsoToPos2DGameResolution(
-                                  IRMath::fract(cameraPositionIso), zoomLevel)) *
-                              vec2(1, -1);
+    static mat4
+    calcModelMatrix(const vec2 &resolution, const vec2 &cameraPositionIso, const vec2 &zoomLevel) {
+        vec2 isoPixelOffset =
+            IRMath::floor(
+                IRMath::pos2DIsoToPos2DGameResolution(IRMath::fract(cameraPositionIso), zoomLevel)
+            ) *
+            vec2(1, -1);
         mat4 model = mat4(1.0f);
-        model = translate(model, vec3(resolution.x / 2 + isoPixelOffset.x,
-                                      resolution.y / 2 + isoPixelOffset.y, 0.0f));
+        model = translate(
+            model,
+            vec3(resolution.x / 2 + isoPixelOffset.x, resolution.y / 2 + isoPixelOffset.y, 0.0f)
+        );
         model = scale(model, vec3(resolution.x * zoomLevel.x, resolution.y * zoomLevel.y, 1.0f));
         return model;
     }

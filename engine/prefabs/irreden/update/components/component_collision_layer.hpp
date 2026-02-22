@@ -18,7 +18,9 @@ struct C_CollisionLayer {
     bool isSolid_;
 
     C_CollisionLayer(std::uint32_t layer, std::uint32_t collidesWithMask, bool isSolid = true)
-        : layer_{layer}, collidesWithMask_{collidesWithMask}, isSolid_{isSolid} {}
+        : layer_{layer}
+        , collidesWithMask_{collidesWithMask}
+        , isSolid_{isSolid} {}
 
     C_CollisionLayer()
         : C_CollisionLayer(COLLISION_LAYER_DEFAULT, COLLISION_LAYER_DEFAULT, true) {}

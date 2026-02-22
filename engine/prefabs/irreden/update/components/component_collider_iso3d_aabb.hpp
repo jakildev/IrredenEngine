@@ -13,12 +13,14 @@ struct C_ColliderIso3DAABB {
     vec3 centerOffset_;
 
     C_ColliderIso3DAABB(vec3 halfExtents, vec3 centerOffset = vec3(0.0f))
-        : halfExtents_{halfExtents}, centerOffset_{centerOffset} {}
+        : halfExtents_{halfExtents}
+        , centerOffset_{centerOffset} {}
 
     C_ColliderIso3DAABB(float hx, float hy, float hz)
         : C_ColliderIso3DAABB(vec3(hx, hy, hz), vec3(0.0f)) {}
 
-    C_ColliderIso3DAABB() : C_ColliderIso3DAABB(vec3(0.5f), vec3(0.0f)) {}
+    C_ColliderIso3DAABB()
+        : C_ColliderIso3DAABB(vec3(0.5f), vec3(0.0f)) {}
 };
 
 } // namespace IRComponents

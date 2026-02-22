@@ -12,9 +12,14 @@ namespace IRTime {
 template <> class EventProfiler<UPDATE> {
   public:
     EventProfiler()
-        : m_start{}, m_timePointBeginEvent{}, m_lag{kFPSNanoDuration}, m_tickCount(0), m_sum{0},
-          m_deltaTimeActual{0}, m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)},
-          m_fixedStepCount(0) {}
+        : m_start{}
+        , m_timePointBeginEvent{}
+        , m_lag{kFPSNanoDuration}
+        , m_tickCount(0)
+        , m_sum{0}
+        , m_deltaTimeActual{0}
+        , m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)}
+        , m_fixedStepCount(0) {}
 
     void start() {
         auto current = Clock::now();
@@ -69,10 +74,14 @@ template <> class EventProfiler<UPDATE> {
             if (elapsedMs <= 0.0) {
                 return;
             }
-            IRE_LOG_INFO("Average fixed step slots per second: {} updates",
-                         m_fixedStepCount * 1000.0f / elapsedMs);
-            IRE_LOG_INFO("Average fixed updates per second: {} updates",
-                         m_tickCount * 1000.0f / elapsedMs);
+            IRE_LOG_INFO(
+                "Average fixed step slots per second: {} updates",
+                m_fixedStepCount * 1000.0f / elapsedMs
+            );
+            IRE_LOG_INFO(
+                "Average fixed updates per second: {} updates",
+                m_tickCount * 1000.0f / elapsedMs
+            );
         }
     }
 
@@ -116,7 +125,11 @@ template <> class EventProfiler<UPDATE> {
 template <> class EventProfiler<RENDER> {
   public:
     EventProfiler()
-        : m_start{}, m_timePointBeginEvent{}, m_tickCount(0), m_sum{0}, m_deltaTimeActual{0} {}
+        : m_start{}
+        , m_timePointBeginEvent{}
+        , m_tickCount(0)
+        , m_sum{0}
+        , m_deltaTimeActual{0} {}
 
     void start() {
         auto current = Clock::now();
@@ -151,8 +164,10 @@ template <> class EventProfiler<RENDER> {
             IRE_LOG_DEBUG("Render FPS: {} ms", m_sum.count() / (float)kProfileHistoryBufferSize);
 
             MilliDuration totalElapsedTime = current - m_start;
-            IRE_LOG_INFO("Average render calls per second: {} updates",
-                         m_tickCount * 1000.0f / totalElapsedTime.count());
+            IRE_LOG_INFO(
+                "Average render calls per second: {} updates",
+                m_tickCount * 1000.0f / totalElapsedTime.count()
+            );
         }
     }
 

@@ -11,16 +11,29 @@ extern SystemManager *g_systemManager;
 SystemManager &getSystemManager();
 
 // Create a new system
-template <typename... TickComponents, typename... TickRelationComponents, typename FunctionTick,
-          typename FunctionBeginTick = std::nullptr_t, typename FunctionEndTick = std::nullptr_t,
-          typename FunctionRelationTick = std::nullptr_t>
-constexpr SystemId createSystem(std::string name, FunctionTick functionTick,
-                                FunctionBeginTick functionBeginTick = nullptr,
-                                FunctionEndTick functionEndTick = nullptr,
-                                RelationParams<TickRelationComponents...> extraParams = {},
-                                FunctionRelationTick functionRelationTick = nullptr) {
+template <
+    typename... TickComponents,
+    typename... TickRelationComponents,
+    typename FunctionTick,
+    typename FunctionBeginTick = std::nullptr_t,
+    typename FunctionEndTick = std::nullptr_t,
+    typename FunctionRelationTick = std::nullptr_t>
+constexpr SystemId createSystem(
+    std::string name,
+    FunctionTick functionTick,
+    FunctionBeginTick functionBeginTick = nullptr,
+    FunctionEndTick functionEndTick = nullptr,
+    RelationParams<TickRelationComponents...> extraParams = {},
+    FunctionRelationTick functionRelationTick = nullptr
+) {
     return getSystemManager().createSystem<TickComponents...>(
-        name, functionTick, functionBeginTick, functionEndTick, extraParams, functionRelationTick);
+        name,
+        functionTick,
+        functionBeginTick,
+        functionEndTick,
+        extraParams,
+        functionRelationTick
+    );
 }
 
 // Create a prefab system

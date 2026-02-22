@@ -8,9 +8,11 @@ namespace IRComponents {
 struct C_SystemRelation {
     IREntity::Relation relation_;
 
-    C_SystemRelation(IREntity::Relation relation) : relation_(relation) {}
+    C_SystemRelation(IREntity::Relation relation)
+        : relation_(relation) {}
 
-    C_SystemRelation() : relation_(IREntity::Relation::NONE) {}
+    C_SystemRelation()
+        : relation_(IREntity::Relation::NONE) {}
 };
 
 } // namespace IRComponents

@@ -6,9 +6,13 @@
 
 namespace IRAsset {
 
-void saveTrixelTextureData(const std::string &name, const std::string &path, ivec2 size,
-                           const std::vector<Color> &colors,
-                           const std::vector<Distance> &distances) {
+void saveTrixelTextureData(
+    const std::string &name,
+    const std::string &path,
+    ivec2 size,
+    const std::vector<Color> &colors,
+    const std::vector<Distance> &distances
+) {
     std::string filename = path + name + ".txl";
     FILE *f = fopen(filename.c_str(), "wb");
     fwrite(&size, sizeof(size), 1, f);
@@ -18,8 +22,13 @@ void saveTrixelTextureData(const std::string &name, const std::string &path, ive
     IRE_LOG_INFO("Saved trixel data to {}", filename);
 }
 
-void loadTrixelTextureData(const std::string &name, const std::string &path, ivec2 &size,
-                           std::vector<Color> &colors, std::vector<Distance> &distances) {
+void loadTrixelTextureData(
+    const std::string &name,
+    const std::string &path,
+    ivec2 &size,
+    std::vector<Color> &colors,
+    std::vector<Distance> &distances
+) {
     std::string filename = path + name + ".irtxl";
     FILE *f = fopen(filename.c_str(), "rb");
     fread(&size, sizeof(size), 1, f);

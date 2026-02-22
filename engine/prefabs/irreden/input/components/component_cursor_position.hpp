@@ -14,9 +14,13 @@ struct C_CursorPosition {
     vec2 hoveredTriangleIndexScreen_;
 
     C_CursorPosition(double x, double y)
-        : posX_{x}, posY_{y}, hoveredTriangleIndexScreen_{-1, -1} {}
+        : posX_{x}
+        , posY_{y}
+        , hoveredTriangleIndexScreen_{-1, -1} {}
 
-    C_CursorPosition() : posX_{0.0}, posY_{0.0} {}
+    C_CursorPosition()
+        : posX_{0.0}
+        , posY_{0.0} {}
 };
 
 } // namespace IRComponents

@@ -5,9 +5,14 @@
 
 namespace IRRender {
 
-VAO::VAO(GLuint vertexBufferHandle, GLuint indexBufferHandle, unsigned int numAttributes,
-         const VertexArrayAttribute *attributes)
-    : m_handle(0), m_stride(0) {
+VAO::VAO(
+    GLuint vertexBufferHandle,
+    GLuint indexBufferHandle,
+    unsigned int numAttributes,
+    const VertexArrayAttribute *attributes
+)
+    : m_handle(0)
+    , m_stride(0) {
     ENG_API->glCreateVertexArrays(1, &m_handle);
     GLuint bindingIndex = 0; // TODO: change to param if need more than one
     IR_ASSERT(numAttributes <= kMaxVertexAttributes, "Too many vertex attributes for VAO");
@@ -36,14 +41,23 @@ void VAO::bind() const {
     ENG_API->glBindVertexArray(m_handle);
 }
 
-void VAO::initVertexBufferAttributes(unsigned int numAttributes,
-                                     const VertexArrayAttribute *attributes,
-                                     const size_t *attributeSizes, GLuint bindingIndex) {
+void VAO::initVertexBufferAttributes(
+    unsigned int numAttributes,
+    const VertexArrayAttribute *attributes,
+    const size_t *attributeSizes,
+    GLuint bindingIndex
+) {
     GLuint offset = 0;
     for (int i = 0; i < numAttributes; i++) {
         ENG_API->glEnableVertexArrayAttrib(m_handle, i);
-        ENG_API->glVertexArrayAttribFormat(m_handle, i, attributes[i].size_, attributes[i].type_,
-                                           attributes[i].normalized_, offset);
+        ENG_API->glVertexArrayAttribFormat(
+            m_handle,
+            i,
+            attributes[i].size_,
+            attributes[i].type_,
+            attributes[i].normalized_,
+            offset
+        );
         ENG_API->glVertexArrayAttribBinding(m_handle, i, bindingIndex);
         offset += attributeSizes[i];
     }

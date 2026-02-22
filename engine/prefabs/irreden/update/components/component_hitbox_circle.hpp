@@ -6,10 +6,12 @@ namespace IRComponents {
 struct C_HitboxCircle {
     int radius_;
 
-    C_HitboxCircle(int radius) : radius_(radius) {}
+    C_HitboxCircle(int radius)
+        : radius_(radius) {}
 
     // Default
-    C_HitboxCircle() : radius_(0) {}
+    C_HitboxCircle()
+        : radius_(0) {}
 };
 
 } // namespace IRComponents

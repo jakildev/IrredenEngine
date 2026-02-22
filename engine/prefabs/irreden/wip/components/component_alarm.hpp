@@ -10,10 +10,12 @@ namespace IRComponents {
 struct C_Alarm {
     int alarmTime_;
 
-    C_Alarm(int alarmTime) : alarmTime_(alarmTime) {}
+    C_Alarm(int alarmTime)
+        : alarmTime_(alarmTime) {}
 
     // Default
-    C_Alarm() : {}
+    C_Alarm()
+        : {}
 };
 
 } // namespace IRComponents

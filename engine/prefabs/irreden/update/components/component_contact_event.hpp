@@ -18,8 +18,13 @@ struct C_ContactEvent {
     vec3 normal_;
 
     C_ContactEvent()
-        : entered_{false}, stayed_{false}, exited_{false}, touching_{false}, wasTouching_{false},
-          otherEntity_{IREntity::kNullEntity}, normal_{vec3(0.0f)} {}
+        : entered_{false}
+        , stayed_{false}
+        , exited_{false}
+        , touching_{false}
+        , wasTouching_{false}
+        , otherEntity_{IREntity::kNullEntity}
+        , normal_{vec3(0.0f)} {}
 };
 
 } // namespace IRComponents

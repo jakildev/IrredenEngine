@@ -47,9 +47,12 @@ struct CreateEntityCallbackParams {
     IRMath::ivec3 index;
 
     CreateEntityCallbackParams(IRMath::ivec3 index, IRMath::vec3 center)
-        : center{center}, index{index} {}
+        : center{center}
+        , index{index} {}
 
-    CreateEntityCallbackParams() : center{0.0f}, index{0, 0, 0} {}
+    CreateEntityCallbackParams()
+        : center{0.0f}
+        , index{0, 0, 0} {}
 };
 
 } // namespace IREntity

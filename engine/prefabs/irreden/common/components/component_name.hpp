@@ -8,9 +8,11 @@ namespace IRComponents {
 struct C_Name {
     std::string name_;
 
-    C_Name(std::string name) : name_(name) {}
+    C_Name(std::string name)
+        : name_(name) {}
 
-    C_Name() : name_("Default name component.") {}
+    C_Name()
+        : name_("Default name component.") {}
 };
 
 } // namespace IRComponents

@@ -10,11 +10,14 @@ namespace IRComponents {
 struct C_Position2DIso {
     vec2 pos_;
 
-    C_Position2DIso(vec2 pos) : pos_{pos} {}
+    C_Position2DIso(vec2 pos)
+        : pos_{pos} {}
 
-    C_Position2DIso(float x, float y) : C_Position2DIso{vec2(x, y)} {}
+    C_Position2DIso(float x, float y)
+        : C_Position2DIso{vec2(x, y)} {}
 
-    C_Position2DIso() : C_Position2DIso{vec2(0, 0)} {}
+    C_Position2DIso()
+        : C_Position2DIso{vec2(0, 0)} {}
 };
 
 } // namespace IRComponents

@@ -8,10 +8,12 @@ namespace IRComponents {
 struct C_TextSegment {
     std::string text_;
 
-    C_TextSegment(std::string text) : text_(text) {}
+    C_TextSegment(std::string text)
+        : text_(text) {}
 
     // Default
-    C_TextSegment() : text_("This is the default text segment...") {}
+    C_TextSegment()
+        : text_("This is the default text segment...") {}
 };
 
 } // namespace IRComponents

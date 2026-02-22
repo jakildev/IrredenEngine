@@ -13,10 +13,12 @@ namespace IRECS {
 template <> struct System<ACCELERATION_3D> {
     static SystemId create() {
         return createSystem<C_Velocity3D, C_Acceleration3D>(
-            "Acceleration3D", [](C_Velocity3D &velocity, const C_Acceleration3D &acceleration) {
+            "Acceleration3D",
+            [](C_Velocity3D &velocity, const C_Acceleration3D &acceleration) {
                 velocity.velocity_ +=
                     acceleration.acceleration_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
-            });
+            }
+        );
     }
 };
 

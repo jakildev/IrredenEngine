@@ -30,7 +30,9 @@ template <> class System<system_name> : public SystemBase<system_name, component
         template <typename... Components>
         tickWithArchetypeStandalone(
             auto nodes = IRECS::getEntityManager().getArchetypeGraph()->queryArchetypeNodesSimple(
-                IRECS::getEntityManager().getArchetype<Components...>());)
+                IRECS::getEntityManager().getArchetype<Components...>()
+            );
+        )
 
         // this can be first experiment with unorthodox
         // tickWithArchetype call

@@ -17,7 +17,9 @@ template <unsigned char status> class MidiMessage;
 template <> class MidiMessage<kMidiStatus_NOTE_OFF> {
   public:
     MidiMessage(unsigned char channel, unsigned char keyNumber, unsigned char offVelocity)
-        : m_channel(channel), m_keyNumber(keyNumber), m_offVelocity(offVelocity) {
+        : m_channel(channel)
+        , m_keyNumber(keyNumber)
+        , m_offVelocity(offVelocity) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -30,7 +32,9 @@ template <> class MidiMessage<kMidiStatus_NOTE_OFF> {
 template <> class MidiMessage<kMidiStatus_NOTE_ON> {
   public:
     MidiMessage(unsigned char channel, unsigned char keyNumber, unsigned char onVelocity)
-        : m_channel(channel), m_keyNumber(keyNumber), m_onVelocity(onVelocity) {
+        : m_channel(channel)
+        , m_keyNumber(keyNumber)
+        , m_onVelocity(onVelocity) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -53,7 +57,9 @@ template <> class MidiMessage<kMidiStatus_NOTE_ON> {
 template <> class MidiMessage<kMidiStatus_POLYPHONIC_KEY_PRESSURE> {
   public:
     MidiMessage(unsigned char channel, unsigned char keyNumber, unsigned char pressure)
-        : m_channel(channel), m_keyNumber(keyNumber), m_pressure(pressure) {
+        : m_channel(channel)
+        , m_keyNumber(keyNumber)
+        , m_pressure(pressure) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -65,10 +71,12 @@ template <> class MidiMessage<kMidiStatus_POLYPHONIC_KEY_PRESSURE> {
 
 template <> class MidiMessage<kMidiStatus_CONTROL_CHANGE> {
   public:
-    MidiMessage(unsigned char channel, unsigned char controllerNumber,
-                unsigned char controllerValue)
-        : m_channel(channel), m_controllerNumber(controllerNumber),
-          m_controllerValue(controllerValue) {
+    MidiMessage(
+        unsigned char channel, unsigned char controllerNumber, unsigned char controllerValue
+    )
+        : m_channel(channel)
+        , m_controllerNumber(controllerNumber)
+        , m_controllerValue(controllerValue) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -81,7 +89,8 @@ template <> class MidiMessage<kMidiStatus_CONTROL_CHANGE> {
 template <> class MidiMessage<kMidiStatus_PROGRAM_CHANGE> {
   public:
     MidiMessage(unsigned char channel, unsigned char programNumber)
-        : m_channel(channel), m_programNumber(programNumber) {
+        : m_channel(channel)
+        , m_programNumber(programNumber) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -93,7 +102,8 @@ template <> class MidiMessage<kMidiStatus_PROGRAM_CHANGE> {
 template <> class MidiMessage<kMidiStatus_CHANNEL_PRESSURE> {
   public:
     MidiMessage(unsigned char channel, unsigned char pressureValue)
-        : m_channel(channel), m_pressureValue(pressureValue) {
+        : m_channel(channel)
+        , m_pressureValue(pressureValue) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 
@@ -105,7 +115,9 @@ template <> class MidiMessage<kMidiStatus_CHANNEL_PRESSURE> {
 template <> class MidiMessage<kMidiStatus_PITCH_BEND> {
   public:
     MidiMessage(unsigned char channel, unsigned char msbValue, unsigned char lsbValue)
-        : m_channel(channel), m_msbValue(msbValue), m_lsbValue(lsbValue) {
+        : m_channel(channel)
+        , m_msbValue(msbValue)
+        , m_lsbValue(lsbValue) {
         IR_ASSERT(channel <= 0x0F, "Invalid midi channel");
     }
 

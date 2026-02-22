@@ -19,7 +19,9 @@ struct C_GLFWGamepadState {
         std::memcpy(axes_, state.axes, sizeof(axes_));
     }
 
-    C_GLFWGamepadState() : buttons_{}, axes_{} {}
+    C_GLFWGamepadState()
+        : buttons_{}
+        , axes_{} {}
 
     void updateState(const GLFWgamepadstate &state) {
         for (int i = 0; i < sizeof(state.buttons); i++) {

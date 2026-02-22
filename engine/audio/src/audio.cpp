@@ -2,7 +2,9 @@
 
 namespace IRAudio {
 
-Audio::Audio() : m_rtAudio(), m_numDevices(m_rtAudio.getDeviceCount()) {
+Audio::Audio()
+    : m_rtAudio()
+    , m_numDevices(m_rtAudio.getDeviceCount()) {
     IRE_LOG_INFO("Number of devices found: {}", m_numDevices);
     std::vector<unsigned int> deviceIds = m_rtAudio.getDeviceIds();
     for (auto &id : deviceIds) {

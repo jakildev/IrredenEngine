@@ -12,13 +12,19 @@ using namespace IRComponents;
 namespace IREntity {
 
 template <> struct Prefab<PrefabTypes::kFramebuffer> {
-    static EntityId create(std::string framebufferName, ivec2 framebufferSize,
-                           ivec2 framebufferExtraPixelBufferSize, float startZoomLevel = 1.0f) {
+    static EntityId create(
+        std::string framebufferName,
+        ivec2 framebufferSize,
+        ivec2 framebufferExtraPixelBufferSize,
+        float startZoomLevel = 1.0f
+    ) {
         EntityId framebufer = createEntity(
             C_Name{framebufferName},
             C_TrixelCanvasFramebuffer{framebufferSize, framebufferExtraPixelBufferSize},
-            C_Position3D{vec3(0.0f)}, C_FrameDataTrixelToFramebuffer{},
-            C_ZoomLevel{startZoomLevel});
+            C_Position3D{vec3(0.0f)},
+            C_FrameDataTrixelToFramebuffer{},
+            C_ZoomLevel{startZoomLevel}
+        );
 
         setName(framebufer, framebufferName);
         return framebufer;

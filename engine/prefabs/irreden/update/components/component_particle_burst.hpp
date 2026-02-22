@@ -9,9 +9,12 @@ struct C_ParticleBurst {
     float speed_;
 
     C_ParticleBurst(int count, int lifetime, float speed)
-        : count_{count}, lifetime_{lifetime}, speed_{speed} {}
+        : count_{count}
+        , lifetime_{lifetime}
+        , speed_{speed} {}
 
-    C_ParticleBurst() : C_ParticleBurst(6, 40, 12.0f) {}
+    C_ParticleBurst()
+        : C_ParticleBurst(6, 40, 12.0f) {}
 };
 
 } // namespace IRComponents

@@ -15,12 +15,15 @@ struct C_GameGrid2D {
     uvec2 size_;
     std::vector<EntityId> grid_;
 
-    C_GameGrid2D(uvec2 size) : size_{size}, grid_{} {
+    C_GameGrid2D(uvec2 size)
+        : size_{size}
+        , grid_{} {
         grid_.resize(size.x * size.y);
         std::fill(grid_.begin(), grid_.end(), IRECS::kNullEntity);
     }
 
-    C_GameGrid2D(unsigned int x, unsigned int y) : C_GameGrid2D{uvec2(x, y)} {}
+    C_GameGrid2D(unsigned int x, unsigned int y)
+        : C_GameGrid2D{uvec2(x, y)} {}
 
     C_GameGrid2D() {}
 

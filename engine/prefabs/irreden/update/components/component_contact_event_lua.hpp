@@ -9,7 +9,8 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_ContactEvent> =
 
 template <> inline void bindLuaType<IRComponents::C_ContactEvent>(LuaScript &luaScript) {
     luaScript.registerType<IRComponents::C_ContactEvent, IRComponents::C_ContactEvent()>(
-        "C_ContactEvent");
+        "C_ContactEvent"
+    );
 }
 } // namespace IRScript
 

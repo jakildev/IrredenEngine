@@ -28,15 +28,27 @@ struct C_ReactiveReturn3D {
     float settleSpeed_;
     bool active_;
 
-    C_ReactiveReturn3D(vec3 triggerImpulseVelocity, float springStrength, float dampingPerSecond,
-                       int maxRebounds, float settleDistance, float settleSpeed,
-                       bool triggerOnContactEnter = true)
-        : origin_{vec3(0.0f)}, originInitialized_{false},
-          triggerImpulseVelocity_{triggerImpulseVelocity},
-          triggerOnContactEnter_{triggerOnContactEnter}, springStrength_{springStrength},
-          dampingPerSecond_{dampingPerSecond}, maxRebounds_{maxRebounds}, reboundCount_{0},
-          previousError_{vec3(0.0f)}, settleDistance_{settleDistance}, settleSpeed_{settleSpeed},
-          active_{false} {}
+    C_ReactiveReturn3D(
+        vec3 triggerImpulseVelocity,
+        float springStrength,
+        float dampingPerSecond,
+        int maxRebounds,
+        float settleDistance,
+        float settleSpeed,
+        bool triggerOnContactEnter = true
+    )
+        : origin_{vec3(0.0f)}
+        , originInitialized_{false}
+        , triggerImpulseVelocity_{triggerImpulseVelocity}
+        , triggerOnContactEnter_{triggerOnContactEnter}
+        , springStrength_{springStrength}
+        , dampingPerSecond_{dampingPerSecond}
+        , maxRebounds_{maxRebounds}
+        , reboundCount_{0}
+        , previousError_{vec3(0.0f)}
+        , settleDistance_{settleDistance}
+        , settleSpeed_{settleSpeed}
+        , active_{false} {}
 
     C_ReactiveReturn3D()
         : C_ReactiveReturn3D(vec3(0.0f, 0.0f, 18.0f), 55.0f, 10.0f, 2, 0.03f, 0.05f, true) {}

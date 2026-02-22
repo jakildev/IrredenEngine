@@ -12,11 +12,14 @@ namespace IRComponents {
 struct C_SizeInt2D {
     ivec2 size_;
 
-    C_SizeInt2D(ivec2 size) : size_{size} {}
+    C_SizeInt2D(ivec2 size)
+        : size_{size} {}
 
-    C_SizeInt2D(int x, int y) : C_SizeInt2D{ivec2(x, y)} {}
+    C_SizeInt2D(int x, int y)
+        : C_SizeInt2D{ivec2(x, y)} {}
 
-    C_SizeInt2D() : C_SizeInt2D{ivec2(0, 0)} {}
+    C_SizeInt2D()
+        : C_SizeInt2D{ivec2(0, 0)} {}
 };
 
 } // namespace IRComponents

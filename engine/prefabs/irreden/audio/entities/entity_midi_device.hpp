@@ -18,7 +18,9 @@ namespace IREntity {
 template <> struct Prefab<PrefabTypes::kMidiDevice> {
     static EntityId create(
         // MidiChannel channel,
-        std::string name, MidiDeviceType type) {
+        std::string name,
+        MidiDeviceType type
+    ) {
         EntityId entity = IREntity::createEntity(C_Name{name});
         if (type == MidiDeviceType::MIDI_DEVICE_TYPE_IN) {
             IREntity::setComponent(entity, C_MidiDevice{IRAudio::openPortMidiIn(name)});

@@ -17,9 +17,17 @@ namespace IRComponents {
 enum class BackgroundTypes { kSingleColor, kGradient, kGradientRandom, kPulsePattern };
 
 struct C_TriangleCanvasBackground {
-    C_TriangleCanvasBackground(BackgroundTypes type, const std::vector<Color> &colors, ivec2 size,
-                               float pulseSpeed = 1.0f, int patternScale = 10)
-        : m_size{size}, m_type{type}, m_colors{colors}, m_randomColorData{} {
+    C_TriangleCanvasBackground(
+        BackgroundTypes type,
+        const std::vector<Color> &colors,
+        ivec2 size,
+        float pulseSpeed = 1.0f,
+        int patternScale = 10
+    )
+        : m_size{size}
+        , m_type{type}
+        , m_colors{colors}
+        , m_randomColorData{} {
         m_pulseSpeed = pulseSpeed;
         m_patternScale = IRMath::max(1, patternScale);
         m_pulsePhase = 0.0f;
@@ -48,7 +56,8 @@ struct C_TriangleCanvasBackground {
     // Default
     C_TriangleCanvasBackground()
         : C_TriangleCanvasBackground{
-              BackgroundTypes::kSingleColor, {IRColors::kInvisable}, ivec2{1, 1}} {
+              BackgroundTypes::kSingleColor, {IRColors::kInvisable}, ivec2{1, 1}
+          } {
         for (int y = 0; y < m_size.y; y++) {
             for (int x = 0; x < m_size.x; x++) {
                 setRandomColor(ivec2(x, y), randomColor(m_colors));

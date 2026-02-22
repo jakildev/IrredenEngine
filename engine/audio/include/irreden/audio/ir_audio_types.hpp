@@ -63,13 +63,19 @@ const char *const kMidiOutInterfaceName_OP1 = "OP-1 Midi Device";
 
 // map midi in interface to name
 const char *const kMidiInInterfaceNames[NUM_MIDI_IN_INTERFACES] = {
-    kMidiInInterfaceName_UMC, kMidiInInterfaceName_FOCUSRITE, kMidiInInterfaceName_MPK,
-    kMidiInInterfaceName_OP1};
+    kMidiInInterfaceName_UMC,
+    kMidiInInterfaceName_FOCUSRITE,
+    kMidiInInterfaceName_MPK,
+    kMidiInInterfaceName_OP1
+};
 
 // map midi out interface to name
 const char *const kMidiOutInterfaceNames[NUM_MIDI_OUT_INTERFACES] = {
-    kMidiOutInterfaceName_UMC, kMidiOutInterfaceName_FOCUSRITE, kMidiOutInterfaceName_MPK,
-    kMidiOutInterfaceName_OP1};
+    kMidiOutInterfaceName_UMC,
+    kMidiOutInterfaceName_FOCUSRITE,
+    kMidiOutInterfaceName_MPK,
+    kMidiOutInterfaceName_OP1
+};
 
 const unsigned char kMidiMessageBits_STATUS = 0xF0;
 const unsigned char kMidiMessageBits_CHANNEL = 0x0F;

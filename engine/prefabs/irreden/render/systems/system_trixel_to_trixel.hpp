@@ -20,10 +20,17 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
         IRRender::createNamedResource<ShaderProgram>(
             "TrixelToTrixelProgram",
             std::vector{
-                ShaderStage{IRRender::kFileCompTrixelToTrixel, GL_COMPUTE_SHADER}.getHandle()});
+                ShaderStage{IRRender::kFileCompTrixelToTrixel, GL_COMPUTE_SHADER}.getHandle()
+            }
+        );
         IRRender::createNamedResource<Buffer>(
-            "TrixelToTrixelFrameData", nullptr, sizeof(FrameDataTrixelToTrixel),
-            GL_DYNAMIC_STORAGE_BIT, GL_UNIFORM_BUFFER, kBufferIndex_FrameDataTrixelToTrixel);
+            "TrixelToTrixelFrameData",
+            nullptr,
+            sizeof(FrameDataTrixelToTrixel),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_UNIFORM_BUFFER,
+            kBufferIndex_FrameDataTrixelToTrixel
+        );
 
         return createSystem<C_TriangleCanvasTextures, C_Position2DIso>(
             "CanvasToFramebuffer",

@@ -10,9 +10,11 @@ namespace IRComponents {
 struct C_MidiChannel {
     MidiChannel channel_;
 
-    C_MidiChannel(MidiChannel channel) : channel_(channel) {}
+    C_MidiChannel(MidiChannel channel)
+        : channel_(channel) {}
 
-    C_MidiChannel() : channel_(0) {}
+    C_MidiChannel()
+        : channel_(0) {}
 };
 } // namespace IRComponents
 

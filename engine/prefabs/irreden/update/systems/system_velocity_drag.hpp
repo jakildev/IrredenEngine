@@ -15,7 +15,8 @@ namespace IRSystem {
 template <> struct System<VELOCITY_DRAG> {
     static SystemId create() {
         return createSystem<C_Velocity3D, C_VelocityDrag>(
-            "VelocityDrag", [](C_Velocity3D &velocity, C_VelocityDrag &drag) {
+            "VelocityDrag",
+            [](C_Velocity3D &velocity, C_VelocityDrag &drag) {
                 float deltaSeconds = IRTime::deltaTime(IRTime::UPDATE);
                 drag.elapsedSeconds_ += deltaSeconds;
 
@@ -29,7 +30,8 @@ template <> struct System<VELOCITY_DRAG> {
                 if (drag.elapsedSeconds_ >= drag.driftDelaySeconds_) {
                     velocity.velocity_.z -= drag.driftUpAccelPerSecond_ * deltaSeconds;
                 }
-            });
+            }
+        );
     }
 };
 

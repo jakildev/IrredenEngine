@@ -7,7 +7,8 @@
 
 namespace IREntity {
 
-ArchetypeGraph::ArchetypeGraph() : m_nodes{} {
+ArchetypeGraph::ArchetypeGraph()
+    : m_nodes{} {
     m_nodes.push_back(std::make_unique<ArchetypeNode>(m_nodeCount++, Archetype{}));
     m_baseNode = m_nodes[0].get();
 }
@@ -52,7 +53,8 @@ void ArchetypeGraph::createAndConnectNode(ArchetypeNode *prevNode, ComponentId n
 // Not sure what happens here if a node has a parent with
 // a different archetype.
 std::vector<ArchetypeNode *> ArchetypeGraph::sortArchetypeNodesByRelationChildOf(
-    const std::vector<ArchetypeNode *> &nodes) const {
+    const std::vector<ArchetypeNode *> &nodes
+) const {
     // A breath first sort of nodes based on relation heirarchy
     std::vector<ArchetypeNode *> sortedNodes;
     std::queue<ArchetypeNode *> nodeQueue;
@@ -134,8 +136,11 @@ ArchetypeNode *ArchetypeGraph::createNodeChainToBase(ArchetypeNode *node, Archet
             //     edge->add->components.emplace(*jtr, node->components[*jtr]->cloneEmpty());
             // }
             edge->add->edges_[*itr].remove = tempNode;
-            IRE_LOG_INFO("Created archetype node with components HERE: {}, id={}",
-                         makeComponentStringInternal(tempType), edge->add->id_);
+            IRE_LOG_INFO(
+                "Created archetype node with components HERE: {}, id={}",
+                makeComponentStringInternal(tempType),
+                edge->add->id_
+            );
         }
         tempNode = edge->add;
     }

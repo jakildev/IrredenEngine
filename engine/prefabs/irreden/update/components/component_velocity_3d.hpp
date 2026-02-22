@@ -15,12 +15,15 @@ struct C_Velocity3D {
     // Velocity is defined in blocks per second
     // TODO: Use the fixed update delta time instead of converting
     // to frames per second here!
-    C_Velocity3D(vec3 velocity) : velocity_(velocity) {}
+    C_Velocity3D(vec3 velocity)
+        : velocity_(velocity) {}
 
-    C_Velocity3D(float x, float y, float z) : C_Velocity3D(vec3{x, y, z}) {}
+    C_Velocity3D(float x, float y, float z)
+        : C_Velocity3D(vec3{x, y, z}) {}
 
     // Default
-    C_Velocity3D() : C_Velocity3D(vec3(0.0f)) {}
+    C_Velocity3D()
+        : C_Velocity3D(vec3(0.0f)) {}
 
     void tick() {}
 };

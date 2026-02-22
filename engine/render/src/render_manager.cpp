@@ -129,8 +129,12 @@ RenderManager::RenderManager(
     const ivec2 mainCanvasSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     IREntity::setComponent(
         m_backgroundCanvas,
-        C_TriangleCanvasBackground{BackgroundTypes::kSingleColor, {IRColors::kInvisable},
-                                   mainCanvasSize});
+        C_TriangleCanvasBackground{
+            BackgroundTypes::kSingleColor,
+            {IRColors::kInvisable},
+            mainCanvasSize
+        }
+    );
 
     m_canvasMap["background"] = m_backgroundCanvas;
     m_canvasMap["main"] = m_mainCanvas;
@@ -151,16 +155,23 @@ void RenderManager::tick() {
     IRWindow::getWindow().swapBuffers();
 }
 
-std::tuple<std::span<C_Position3D>, std::span<C_PositionOffset3D>, std::span<C_PositionGlobal3D>,
-           std::span<C_Voxel>>
+std::tuple<
+    std::span<C_Position3D>,
+    std::span<C_PositionOffset3D>,
+    std::span<C_PositionGlobal3D>,
+    std::span<C_Voxel>>
 RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
     if (canvasName == "main") {
         return IREntity::getComponent<C_VoxelPool>(m_mainCanvas).allocateVoxels(numVoxels);
     }
 
     IR_ASSERT(false, "only allocating main voxels for now.");
-    return std::make_tuple(std::span<C_Position3D>{}, std::span<C_PositionOffset3D>{},
-                           std::span<C_PositionGlobal3D>{}, std::span<C_Voxel>{});
+    return std::make_tuple(
+        std::span<C_Position3D>{},
+        std::span<C_PositionOffset3D>{},
+        std::span<C_PositionGlobal3D>{},
+        std::span<C_Voxel>{}
+    );
 }
 
 vec2 RenderManager::getCameraPosition2DIso() const {
@@ -168,8 +179,11 @@ vec2 RenderManager::getCameraPosition2DIso() const {
 }
 
 vec2 RenderManager::getTriangleStepSizeScreen() const {
-    return IRMath::calcTriangleStepSizeScreen(m_gameResolution, getCameraZoom(),
-                                              m_outputScaleFactor);
+    return IRMath::calcTriangleStepSizeScreen(
+        m_gameResolution,
+        getCameraZoom(),
+        m_outputScaleFactor
+    );
 }
 
 vec2 RenderManager::getTriangleStepSizeGameResolution() const {
@@ -223,10 +237,13 @@ void RenderManager::zoomMainBackgroundPatternOut() {
     (*background.value()).zoomPatternOut();
 }
 
-void RenderManager::deallocateVoxels(std::span<C_Position3D> positions,
-                                     std::span<C_PositionOffset3D> positionOffsets,
-                                     std::span<C_PositionGlobal3D> positionGlobals,
-                                     std::span<C_Voxel> voxels, std::string canvasName) {
+void RenderManager::deallocateVoxels(
+    std::span<C_Position3D> positions,
+    std::span<C_PositionOffset3D> positionOffsets,
+    std::span<C_PositionGlobal3D> positionGlobals,
+    std::span<C_Voxel> voxels,
+    std::string canvasName
+) {
     if (canvasName == "main") {
         IREntity::getComponent<C_VoxelPool>(m_mainCanvas)
             .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
@@ -245,21 +262,39 @@ ivec2 RenderManager::getMainCanvasSizeTriangles() const {
 }
 
 void RenderManager::initRenderingResources() {
-    Buffer *vertexBuffer = IRRender::createResource<Buffer>(IRShapes2D::kQuadVertices,
-                                                            sizeof(IRShapes2D::kQuadVertices), 0)
+    Buffer *vertexBuffer = IRRender::createResource<Buffer>(
+                               IRShapes2D::kQuadVertices,
+                               sizeof(IRShapes2D::kQuadVertices),
+                               0
+    )
                                .second;
-    Buffer *indexBuffer = IRRender::createResource<Buffer>(IRShapes2D::kQuadIndices,
-                                                           sizeof(IRShapes2D::kQuadIndices), 0)
+    Buffer *indexBuffer = IRRender::createResource<Buffer>(
+                              IRShapes2D::kQuadIndices,
+                              sizeof(IRShapes2D::kQuadIndices),
+                              0
+    )
                               .second;
-    IRRender::createNamedResource<VAO>("QuadVAO", vertexBuffer->getHandle(),
-                                       indexBuffer->getHandle(), 1, &kAttrFloat2);
+    IRRender::createNamedResource<VAO>(
+        "QuadVAO",
+        vertexBuffer->getHandle(),
+        indexBuffer->getHandle(),
+        1,
+        &kAttrFloat2
+    );
 
-    Buffer *vertexBufferTextured =
-        IRRender::createResource<Buffer>(IRShapes2D::k2DQuadTextured,
-                                         sizeof(IRShapes2D::k2DQuadTextured), 0)
-            .second;
-    IRRender::createNamedResource<VAO>("QuadVAOArrays", vertexBufferTextured->getHandle(), 0, 2,
-                                       kAttrList2Float2);
+    Buffer *vertexBufferTextured = IRRender::createResource<Buffer>(
+                                       IRShapes2D::k2DQuadTextured,
+                                       sizeof(IRShapes2D::k2DQuadTextured),
+                                       0
+    )
+                                       .second;
+    IRRender::createNamedResource<VAO>(
+        "QuadVAOArrays",
+        vertexBufferTextured->getHandle(),
+        0,
+        2,
+        kAttrList2Float2
+    );
 }
 
 void RenderManager::initRenderingSystems() {}
@@ -270,12 +305,18 @@ void RenderManager::printRenderInfo() {
 
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
-        return ivec2(IRMath::min(IRMath::floor(m_viewport.x / m_gameResolution.x),
-                                 IRMath::floor(m_viewport.y / m_gameResolution.y)));
+        return ivec2(
+            IRMath::min(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            )
+        );
     }
     if (m_fitMode == FitMode::STRETCH) {
-        return ivec2(IRMath::floor(m_viewport.x / m_gameResolution.x),
-                     IRMath::floor(m_viewport.y / m_gameResolution.y));
+        return ivec2(
+            IRMath::floor(m_viewport.x / m_gameResolution.x),
+            IRMath::floor(m_viewport.y / m_gameResolution.y)
+        );
     }
     IR_ASSERT(false, "Unexpected FitMode type");
     return ivec2(1);
@@ -283,8 +324,10 @@ ivec2 RenderManager::calcOutputScaleByMode() {
 
 void RenderManager::updateOutputResolution() {
     m_outputScaleFactor = calcOutputScaleByMode();
-    m_outputResolution = ivec2(m_gameResolution.x * m_outputScaleFactor.x,
-                               m_gameResolution.y * m_outputScaleFactor.y);
+    m_outputResolution = ivec2(
+        m_gameResolution.x * m_outputScaleFactor.x,
+        m_gameResolution.y * m_outputScaleFactor.y
+    );
 }
 
 vec2 RenderManager::screenToOutputWindowOffset() const {

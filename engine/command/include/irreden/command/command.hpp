@@ -13,12 +13,20 @@ template <CommandTypes CommandType> class CommandStruct;
 template <> class CommandStruct<COMMAND_BUTTON> {
   public:
     template <typename Function>
-    CommandStruct(IRInput::InputTypes type, IRInput::ButtonStatuses triggerStatus, int button,
-                  Function func, IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
-                  IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone)
-        : m_type(type), m_button{button}, m_triggerStatus{triggerStatus},
-          m_requiredModifiers{requiredModifiers}, m_blockedModifiers{blockedModifiers},
-          m_func([func]() { func(); }) {}
+    CommandStruct(
+        IRInput::InputTypes type,
+        IRInput::ButtonStatuses triggerStatus,
+        int button,
+        Function func,
+        IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
+        IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone
+    )
+        : m_type(type)
+        , m_button{button}
+        , m_triggerStatus{triggerStatus}
+        , m_requiredModifiers{requiredModifiers}
+        , m_blockedModifiers{blockedModifiers}
+        , m_func([func]() { func(); }) {}
 
     void execute() const {
         m_func();
@@ -57,8 +65,8 @@ template <> class CommandStruct<COMMAND_MIDI_NOTE> {
   public:
     template <typename Function, typename... Args>
     CommandStruct(IRInput::InputTypes type, IRInput::ButtonStatuses triggerStatus, Function func)
-        : m_type(type),
-          m_func([func](unsigned char note, unsigned char velocity) { func(note, velocity); }) {}
+        : m_type(type)
+        , m_func([func](unsigned char note, unsigned char velocity) { func(note, velocity); }) {}
 
     void execute(unsigned char note, unsigned char velocity) const {
         m_func(note, velocity);
@@ -82,8 +90,9 @@ template <> class CommandStruct<COMMAND_MIDI_CC> {
   public:
     template <typename Function>
     CommandStruct(IRInput::InputTypes type, IRAudio::CCMessage ccMessage, Function func)
-        : m_type(type), m_ccMessage(ccMessage),
-          m_func([func](unsigned char value) { func(value); }) {}
+        : m_type(type)
+        , m_ccMessage(ccMessage)
+        , m_func([func](unsigned char value) { func(value); }) {}
 
     void execute(unsigned char value) const {
         m_func(value);

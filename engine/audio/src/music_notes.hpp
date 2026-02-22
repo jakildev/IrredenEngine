@@ -24,10 +24,12 @@ constexpr int kMusicNoteOffestB = 11;
 
 constexpr bool isWhiteKey(int note) {
     const int noteType = note % kNumMusicNotes;
-    return (noteType == kMusicNoteOffestC || noteType == kMusicNoteOffestD ||
-            noteType == kMusicNoteOffestE || noteType == kMusicNoteOffestF ||
-            noteType == kMusicNoteOffestG || noteType == kMusicNoteOffestA ||
-            noteType == kMusicNoteOffestB);
+    return (
+        noteType == kMusicNoteOffestC || noteType == kMusicNoteOffestD ||
+        noteType == kMusicNoteOffestE || noteType == kMusicNoteOffestF ||
+        noteType == kMusicNoteOffestG || noteType == kMusicNoteOffestA ||
+        noteType == kMusicNoteOffestB
+    );
 }
 
 constexpr bool isBlackKey(int note) {

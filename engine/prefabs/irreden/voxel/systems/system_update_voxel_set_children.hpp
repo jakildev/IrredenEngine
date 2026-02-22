@@ -13,9 +13,11 @@ namespace IRSystem {
 template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     static SystemId create() {
         return createSystem<C_VoxelSetNew, C_PositionGlobal3D>(
-            "UpdateVoxelSetChildren", [](C_VoxelSetNew &voxelSet, C_PositionGlobal3D &position) {
+            "UpdateVoxelSetChildren",
+            [](C_VoxelSetNew &voxelSet, C_PositionGlobal3D &position) {
                 voxelSet.updateAsChild(position.pos_);
-            });
+            }
+        );
     }
 };
 } // namespace IRSystem

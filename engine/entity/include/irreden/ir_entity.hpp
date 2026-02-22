@@ -41,21 +41,26 @@ template <typename Component> std::vector<Component> &getComponentData(Archetype
     return getEntityManager().getComponentData<Component>(node);
 }
 
-std::vector<ArchetypeNode *>
-queryArchetypeNodesSimple(const Archetype &includeComponents,
-                          const Archetype &excludeComponents = Archetype{});
+std::vector<ArchetypeNode *> queryArchetypeNodesSimple(
+    const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}
+);
 
-std::vector<ArchetypeNode *>
-queryArchetypeNodesRelational(const Relation relation, const Archetype &includeComponents,
-                              const Archetype &excludeComponents = Archetype{});
+std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
+    const Relation relation,
+    const Archetype &includeComponents,
+    const Archetype &excludeComponents = Archetype{}
+);
 
 bool isPureComponent(ComponentId component);
 bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 
 template <typename... Components> EntityId createEntity(const Components &...components) {
-    return getEntityManager().createEntity(IRComponents::C_PositionGlobal3D{},
-                                           IRComponents::C_PositionOffset3D{}, components...);
+    return getEntityManager().createEntity(
+        IRComponents::C_PositionGlobal3D{},
+        IRComponents::C_PositionOffset3D{},
+        components...
+    );
 }
 
 template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...args) {
@@ -116,8 +121,8 @@ void handleCreateEntityExtraParams(EntityId entity, const CreateEntityExtraParam
 // TODO: Pack vectors and send to entityManager all at once
 // TODO: Consolidate with Ext version
 template <typename... Functions>
-std::vector<EntityId> createEntityBatchWithFunctions(IRMath::ivec3 numEntities,
-                                                     Functions... functions) {
+std::vector<EntityId>
+createEntityBatchWithFunctions(IRMath::ivec3 numEntities, Functions... functions) {
     std::vector<EntityId> res;
     for (int i = 0; i < numEntities.x; i++) {
         for (int j = 0; j < numEntities.y; j++) {
@@ -131,9 +136,9 @@ std::vector<EntityId> createEntityBatchWithFunctions(IRMath::ivec3 numEntities,
 
 // TODO: Pack vectors and send to entityManager all at once
 template <typename... Functions>
-std::vector<EntityId> createEntityBatchWithFunctions_Ext(IRMath::ivec3 numEntities,
-                                                         const CreateEntityExtraParams &params,
-                                                         Functions... functions) {
+std::vector<EntityId> createEntityBatchWithFunctions_Ext(
+    IRMath::ivec3 numEntities, const CreateEntityExtraParams &params, Functions... functions
+) {
     const IRMath::vec3 center = vec3(numEntities) / vec3(2);
     IREntity::CreateEntityCallbackParams callbackParams{IRMath::ivec3{0, 0, 0}, center};
     std::vector<EntityId> res;

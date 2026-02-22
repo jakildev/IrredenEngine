@@ -11,23 +11,38 @@ namespace IRComponents {
 struct C_ZoomLevel {
     vec2 zoom_;
 
-    C_ZoomLevel(vec2 zoom) : zoom_{zoom} {}
+    C_ZoomLevel(vec2 zoom)
+        : zoom_{zoom} {}
 
-    C_ZoomLevel(float zoom) : C_ZoomLevel{vec2(zoom, zoom)} {}
+    C_ZoomLevel(float zoom)
+        : C_ZoomLevel{vec2(zoom, zoom)} {}
 
     // Default
-    C_ZoomLevel() : C_ZoomLevel{vec2(1, 1)} {}
+    C_ZoomLevel()
+        : C_ZoomLevel{vec2(1, 1)} {}
 
     void zoomIn() {
-        zoom_ = vec2(IRMath::roundVec(IRMath::clamp(zoom_ * vec2(2.0f),
-                                                    IRConstants::kTrixelCanvasZoomMin,
-                                                    IRConstants::kTrixelCanvasZoomMax)));
+        zoom_ = vec2(
+            IRMath::roundVec(
+                IRMath::clamp(
+                    zoom_ * vec2(2.0f),
+                    IRConstants::kTrixelCanvasZoomMin,
+                    IRConstants::kTrixelCanvasZoomMax
+                )
+            )
+        );
     }
 
     void zoomOut() {
-        zoom_ = vec2(IRMath::roundVec(IRMath::clamp(zoom_ / vec2(2.0f),
-                                                    IRConstants::kTrixelCanvasZoomMin,
-                                                    IRConstants::kTrixelCanvasZoomMax)));
+        zoom_ = vec2(
+            IRMath::roundVec(
+                IRMath::clamp(
+                    zoom_ / vec2(2.0f),
+                    IRConstants::kTrixelCanvasZoomMin,
+                    IRConstants::kTrixelCanvasZoomMax
+                )
+            )
+        );
     }
 };
 

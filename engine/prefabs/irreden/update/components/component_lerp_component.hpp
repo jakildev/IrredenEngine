@@ -19,10 +19,13 @@ struct C_LerpEntity {
     EntityId boundEntity_;
     std::function<void(EntityId)> func_;
 
-    template <typename Function> C_LerpComponent(EntityId entity, Function func) : func_(func) {}
+    template <typename Function>
+    C_LerpComponent(EntityId entity, Function func)
+        : func_(func) {}
 
     // Default
-    C_LerpComponent() : {}
+    C_LerpComponent()
+        : {}
 
     void tick() {
         func_(boundEntity_);

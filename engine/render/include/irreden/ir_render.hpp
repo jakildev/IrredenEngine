@@ -37,18 +37,24 @@ template <typename T> T *getNamedResource(std::string resourceName) {
     return getRenderingResourceManager().getNamed<T>(resourceName);
 }
 
-inline std::tuple<std::span<C_Position3D>, std::span<C_PositionOffset3D>,
-                  std::span<C_PositionGlobal3D>, std::span<C_Voxel>>
+inline std::tuple<
+    std::span<C_Position3D>,
+    std::span<C_PositionOffset3D>,
+    std::span<C_PositionGlobal3D>,
+    std::span<C_Voxel>>
 allocateVoxels(unsigned int size, std::string canvasName = "main") {
     return getRenderManager().allocateVoxels(size, canvasName);
 }
 
-inline void deallocateVoxels(std::span<C_Position3D> positions,
-                             std::span<C_PositionOffset3D> positionOffsets,
-                             std::span<C_PositionGlobal3D> positionGlobals,
-                             std::span<C_Voxel> voxels, std::string canvasName = "main") {
-    getRenderManager().deallocateVoxels(positions, positionOffsets, positionGlobals, voxels,
-                                        canvasName);
+inline void deallocateVoxels(
+    std::span<C_Position3D> positions,
+    std::span<C_PositionOffset3D> positionOffsets,
+    std::span<C_PositionGlobal3D> positionGlobals,
+    std::span<C_Voxel> voxels,
+    std::string canvasName = "main"
+) {
+    getRenderManager()
+        .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels, canvasName);
 }
 
 inline IREntity::EntityId getCanvas(std::string canvasName) {

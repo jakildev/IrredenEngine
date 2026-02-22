@@ -17,6 +17,12 @@ AllowShortLoopsOnASingleLine: false
 
 SortIncludes: Never
 SpaceBeforeParens: ControlStatements
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
+AllowAllArgumentsOnNextLine: false
 
 Standard: Latest
 ...

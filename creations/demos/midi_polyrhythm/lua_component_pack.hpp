@@ -17,11 +17,20 @@
 namespace MidiPolyrhythm {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
     using namespace IRComponents;
-    luaScript.registerTypesFromTraits<C_Position3D, C_Velocity3D, C_VoxelSetNew, PeriodStage,
-                                      C_PeriodicIdle, C_MidiNote, C_MidiSequence,
-                                      C_ParticleBurst, C_ColliderIso3DAABB, C_CollisionLayer,
-                                      C_ContactEvent,
-                                      C_ReactiveReturn3D, C_TriggerGlow>();
+    luaScript.registerTypesFromTraits<
+        C_Position3D,
+        C_Velocity3D,
+        C_VoxelSetNew,
+        PeriodStage,
+        C_PeriodicIdle,
+        C_MidiNote,
+        C_MidiSequence,
+        C_ParticleBurst,
+        C_ColliderIso3DAABB,
+        C_CollisionLayer,
+        C_ContactEvent,
+        C_ReactiveReturn3D,
+        C_TriggerGlow>();
 }
 } // namespace MidiPolyrhythm
 

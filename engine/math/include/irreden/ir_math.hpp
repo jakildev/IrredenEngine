@@ -155,8 +155,8 @@ constexpr vec2 pos2DScreenToPos2DIso(const vec2 screenPos, const vec2 triangleSt
     return screenPos / triangleStepSizeScreen;
 }
 
-constexpr vec2 offsetScreenToIsoTriangles(const vec2 offsetScreen,
-                                          const vec2 triangleStepSizeScreen) {
+constexpr vec2
+offsetScreenToIsoTriangles(const vec2 offsetScreen, const vec2 triangleStepSizeScreen) {
     return offsetScreen / triangleStepSizeScreen;
 }
 
@@ -211,13 +211,19 @@ template <uvec3 size> constexpr ivec3 pos2DIsoToPos3DRectSurface(const ivec2 pos
     }
 
     if (faceType == FaceType::Y_FACE) {
-        return ivec3(-positionFromOrigin.x - 1, 0,
-                     (-positionFromOrigin.x - 1 + positionFromOrigin.y) / 2);
+        return ivec3(
+            -positionFromOrigin.x - 1,
+            0,
+            (-positionFromOrigin.x - 1 + positionFromOrigin.y) / 2
+        );
     }
 
     if (faceType == FaceType::Z_FACE) {
-        return ivec3(-(positionFromOrigin.x + positionFromOrigin.y + 1) / 2,
-                     (positionFromOrigin.x - positionFromOrigin.y) / 2, 0);
+        return ivec3(
+            -(positionFromOrigin.x + positionFromOrigin.y + 1) / 2,
+            (positionFromOrigin.x - positionFromOrigin.y) / 2,
+            0
+        );
     }
 
     return ivec3(-1, -1, -1);
@@ -233,21 +239,30 @@ constexpr ivec3 pos2DIsoToPos3DAtZLevel(const ivec2 position, const int zLevel) 
     // Origin set to lower right Z face at correct Z level
     ivec2 origin = size3DtoOriginOffset2DX1(size) + ivec2(-1, 0) + ivec2(0, zLevel * 2);
     ivec2 positionFromOrigin = position - origin;
-    return ivec3(glm::ceil(-(positionFromOrigin.x + positionFromOrigin.y) / 2.0),
-                 (positionFromOrigin.x - positionFromOrigin.y) / 2, zLevel);
+    return ivec3(
+        glm::ceil(-(positionFromOrigin.x + positionFromOrigin.y) / 2.0),
+        (positionFromOrigin.x - positionFromOrigin.y) / 2,
+        zLevel
+    );
 }
 
 // Selects from bottom Z face
 constexpr ivec3 pos2DIsoToPos3DAtZLevelNew(const ivec2 positionFromOrigin, const int zLevel) {
     ivec2 positionZLevelAdjusted = positionFromOrigin - ivec2(0, zLevel * 2);
-    return ivec3(glm::ceil(-(positionZLevelAdjusted.x + positionZLevelAdjusted.y) / 2.0),
-                 (positionZLevelAdjusted.x - positionZLevelAdjusted.y) / 2, zLevel);
+    return ivec3(
+        glm::ceil(-(positionZLevelAdjusted.x + positionZLevelAdjusted.y) / 2.0),
+        (positionZLevelAdjusted.x - positionZLevelAdjusted.y) / 2,
+        zLevel
+    );
 }
 
 // Alt from above TODO remove above
 constexpr ivec3 pos2DIsoToPos3DAtZLevelAlt(const ivec2 position, const int zLevel) {
-    return ivec3(glm::ceil(-(position.x + position.y) / 2.0), (position.x - position.y) / 2,
-                 zLevel);
+    return ivec3(
+        glm::ceil(-(position.x + position.y) / 2.0),
+        (position.x - position.y) / 2,
+        zLevel
+    );
 }
 
 constexpr int index2DtoIndex1D(const ivec2 index, const ivec2 size) {
@@ -287,8 +302,9 @@ template <> constexpr ivec2 calculatePartnerTriangleIndex<FaceType::Z_FACE>(ivec
 }
 
 constexpr ivec2 size3DtoSize2DIso(const ivec3 size) {
-    return ivec2(size.x + size.y,
-                 (size.x + size.y) + (size.z * 2) - 1 // TODO: check this
+    return ivec2(
+        size.x + size.y,
+        (size.x + size.y) + (size.z * 2) - 1 // TODO: check this
     );
 }
 
@@ -297,20 +313,23 @@ constexpr uvec2 gameResolutionToSize2DIso(const uvec2 gameResolution, const uvec
     return gameResolution / uvec2(2, 1) / scaleFactor;
 }
 
-constexpr vec2 gameResolutionToSize2DIso(const vec2 gameResolution,
-                                         const vec2 scaleFactor = vec2(1.0f)) {
+constexpr vec2
+gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = vec2(1.0f)) {
     // Floor division
     return gameResolution / vec2(2, 1) / scaleFactor;
 }
 
-constexpr ivec2 calcTriangleStepSizeScreen(const vec2 gameResolution, const vec2 zoomLevel,
-                                           const ivec2 pixelScaleFactor) {
-    return (ivec2(gameResolution / gameResolutionToSize2DIso(gameResolution, zoomLevel)) *
-            pixelScaleFactor);
+constexpr ivec2 calcTriangleStepSizeScreen(
+    const vec2 gameResolution, const vec2 zoomLevel, const ivec2 pixelScaleFactor
+) {
+    return (
+        ivec2(gameResolution / gameResolutionToSize2DIso(gameResolution, zoomLevel)) *
+        pixelScaleFactor
+    );
 }
 
-constexpr ivec2 calcTriangleStepSizeGameResolution(const vec2 gameResolution,
-                                                   const vec2 zoomLevel) {
+constexpr ivec2
+calcTriangleStepSizeGameResolution(const vec2 gameResolution, const vec2 zoomLevel) {
     return calcTriangleStepSizeScreen(gameResolution, zoomLevel, ivec2(1));
 }
 
@@ -327,13 +346,13 @@ vec3 hsvToRgb(const vec3 &colorHSV);
 
 u8vec3 hsvToRgbBytes(const vec3 &colorHSV);
 
-constexpr int calcResolutionWidthFromHeightAndAspectRatio(const int height,
-                                                          const ivec2 aspectRatio) {
+constexpr int
+calcResolutionWidthFromHeightAndAspectRatio(const int height, const ivec2 aspectRatio) {
     return static_cast<int>(height * static_cast<float>(aspectRatio.y) / aspectRatio.x);
 }
 
-constexpr int calcResolutionHeightFromWidthAndAspectRatio(const int width,
-                                                          const ivec2 aspectRatio) {
+constexpr int
+calcResolutionHeightFromWidthAndAspectRatio(const int width, const ivec2 aspectRatio) {
     return static_cast<int>(width * static_cast<float>(aspectRatio.x) / aspectRatio.y);
 }
 
@@ -354,8 +373,12 @@ constexpr uint8_t lerpByte(uint8_t from, uint8_t to, float t) {
 }
 
 constexpr Color lerpColor(const Color &from, const Color &to, float t) {
-    return Color{lerpByte(from.red_, to.red_, t), lerpByte(from.green_, to.green_, t),
-                 lerpByte(from.blue_, to.blue_, t), lerpByte(from.alpha_, to.alpha_, t)};
+    return Color{
+        lerpByte(from.red_, to.red_, t),
+        lerpByte(from.green_, to.green_, t),
+        lerpByte(from.blue_, to.blue_, t),
+        lerpByte(from.alpha_, to.alpha_, t)
+    };
 }
 
 constexpr ivec3 roundVec3ToIVec3(vec3 value) {
@@ -425,26 +448,47 @@ constexpr mat2 k2DGridToScreenIsoTransform =
 // X = 0 face (left)
 
 constexpr ivec3 kRaymarchStepsXFaceLower[] = {
-    ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 0, 1), ivec3(0, 1, 0), ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 0, 1),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
 };
 
 constexpr ivec3 kRaymarchStepXFaceUpper[] = {
-    ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(0, 0, 1), ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(0, 0, 1),
+    ivec3(1, 0, 0),
 };
 
 constexpr ivec3 kRaymarchStepYFaceUpper[] = {
-    ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 0, 1), ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 0, 1),
+    ivec3(0, 1, 0),
 };
 
-constexpr ivec3 kRaymarchStepsYFaceLower[] = {ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(0, 0, 1),
-                                              ivec3(1, 0, 0), ivec3(0, 1, 0)};
+constexpr ivec3 kRaymarchStepsYFaceLower[] = {
+    ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(0, 0, 1), ivec3(1, 0, 0), ivec3(0, 1, 0)
+};
 
 constexpr ivec3 kRaymarchStepsZFaceLeft[] = {
-    ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(0, 0, 1),
+    ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(0, 0, 1),
 };
 
 constexpr ivec3 kRaymarchStepsZFaceRight[] = {
-    ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(0, 0, 1),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 1, 0),
+    ivec3(1, 0, 0),
+    ivec3(0, 0, 1),
 };
 
 template <int FPS> constexpr int secondsToFrames(float seconds) {

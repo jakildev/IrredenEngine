@@ -23,7 +23,9 @@ template <> struct System<PERIODIC_IDLE_NOTE_BURST> {
     static SystemId create() {
         return createSystem<C_PeriodicIdle, C_ParticleBurst, C_VoxelSetNew, C_PositionGlobal3D>(
             "PeriodicIdleNoteBurst",
-            [](C_PeriodicIdle &idle, C_ParticleBurst &burst, C_VoxelSetNew &voxelSet,
+            [](C_PeriodicIdle &idle,
+               C_ParticleBurst &burst,
+               C_VoxelSetNew &voxelSet,
                C_PositionGlobal3D &globalPos) {
                 if (!idle.cycleCompleted_) {
                     return;
@@ -32,14 +34,20 @@ template <> struct System<PERIODIC_IDLE_NOTE_BURST> {
                 float spd = burst.speed_;
                 for (int i = 0; i < burst.count_; i++) {
                     // Wide horizontal spread + upward launch for impact-splash feel
-                    vec3 vel = randomVec(vec3(-spd * 2.0f, -spd * 2.0f, spd * 0.2f),
-                                         vec3(spd * 2.0f, spd * 2.0f, spd * 1.5f));
-                    IREntity::createEntity(C_Position3D{globalPos.pos_},
-                                           C_VoxelSetNew{ivec3(1, 1, 1), color},
-                                           C_Velocity3D{vel}, C_VelocityDrag{},
-                                           C_Lifetime{burst.lifetime_});
+                    vec3 vel = randomVec(
+                        vec3(-spd * 2.0f, -spd * 2.0f, spd * 0.2f),
+                        vec3(spd * 2.0f, spd * 2.0f, spd * 1.5f)
+                    );
+                    IREntity::createEntity(
+                        C_Position3D{globalPos.pos_},
+                        C_VoxelSetNew{ivec3(1, 1, 1), color},
+                        C_Velocity3D{vel},
+                        C_VelocityDrag{},
+                        C_Lifetime{burst.lifetime_}
+                    );
                 }
-            });
+            }
+        );
     }
 };
 

@@ -16,8 +16,8 @@ using namespace IRInput;
 
 namespace IREntity {
 template <> struct Prefab<PrefabTypes::kKeyMouseButton> {
-    static EntityId create(KeyMouseButtons button,
-                           ButtonStatuses status = ButtonStatuses::NOT_HELD) {
+    static EntityId
+    create(KeyMouseButtons button, ButtonStatuses status = ButtonStatuses::NOT_HELD) {
         return createEntity(C_KeyMouseButton{button}, C_KeyStatus{status});
     }
 };

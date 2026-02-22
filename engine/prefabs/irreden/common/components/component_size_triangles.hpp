@@ -12,11 +12,14 @@ namespace IRComponents {
 struct C_SizeTriangles {
     ivec2 size_;
 
-    C_SizeTriangles(ivec2 size) : size_{size} {}
+    C_SizeTriangles(ivec2 size)
+        : size_{size} {}
 
-    C_SizeTriangles(int x, int y) : C_SizeTriangles{ivec2(x, y)} {}
+    C_SizeTriangles(int x, int y)
+        : C_SizeTriangles{ivec2(x, y)} {}
 
-    C_SizeTriangles() : C_SizeTriangles{ivec2(0, 0)} {}
+    C_SizeTriangles()
+        : C_SizeTriangles{ivec2(0, 0)} {}
 };
 
 } // namespace IRComponents

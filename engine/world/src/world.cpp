@@ -9,23 +9,42 @@ namespace IREngine {
 // TODO: replace initalization constants with config file.
 
 World::World(const char *configFileName)
-    : m_worldConfig{configFileName},
-      m_IRGLFWWindow{ivec2(m_worldConfig["init_window_width"].get_integer(),
-                           m_worldConfig["init_window_height"].get_integer()),
-                     m_worldConfig["fullscreen"].get_boolean(),
-                     m_worldConfig["monitor_index"].get_integer(),
-                     m_worldConfig["monitor_name"].get_string()},
-      m_entityManager{}, m_commandManager{}, m_systemManager{}, m_inputManager{},
-      m_renderingResourceManager{},
-      m_renderer{ivec2(m_worldConfig["game_resolution_width"].get_integer(),
-                       m_worldConfig["game_resolution_height"].get_integer()),
-                 static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())},
-      m_audioManager{}, m_timeManager{}, m_videoManager{}, m_lua{},
-      m_waitForFirstUpdateInput{m_worldConfig["start_updates_on_first_key_press"].get_boolean()},
-      m_startRecordingOnFirstInput{m_worldConfig["start_recording_on_first_key_press"].get_boolean()},
-      m_hasHandledFirstInput{false} {
+    : m_worldConfig{configFileName}
+    , m_IRGLFWWindow{
+          ivec2(
+              m_worldConfig["init_window_width"].get_integer(),
+              m_worldConfig["init_window_height"].get_integer()
+          ),
+          m_worldConfig["fullscreen"].get_boolean(),
+          m_worldConfig["monitor_index"].get_integer(),
+          m_worldConfig["monitor_name"].get_string()
+      }
+    , m_entityManager{}
+    , m_commandManager{}
+    , m_systemManager{}
+    , m_inputManager{}
+    , m_renderingResourceManager{}
+    , m_renderer{
+          ivec2(
+              m_worldConfig["game_resolution_width"].get_integer(),
+              m_worldConfig["game_resolution_height"].get_integer()
+          ),
+          static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())
+      }
+    , m_audioManager{}
+    , m_timeManager{}
+    , m_videoManager{}
+    , m_lua{}
+    , m_waitForFirstUpdateInput{
+          m_worldConfig["start_updates_on_first_key_press"].get_boolean()
+      }
+    , m_startRecordingOnFirstInput{
+          m_worldConfig["start_recording_on_first_key_press"].get_boolean()
+      }
+    , m_hasHandledFirstInput{false} {
     IRRender::setVoxelRenderMode(
-        static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum()));
+        static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum())
+    );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
@@ -35,8 +54,11 @@ World::World(const char *configFileName)
     m_videoManager.configureCapture(
         m_worldConfig["video_capture_output_file"].get_string(),
         m_worldConfig["video_capture_fps"].get_integer(),
-        m_worldConfig["video_capture_bitrate"].get_integer());
-    m_videoManager.configureScreenshotOutputDir(m_worldConfig["screenshot_output_dir"].get_string());
+        m_worldConfig["video_capture_bitrate"].get_integer()
+    );
+    m_videoManager.configureScreenshotOutputDir(
+        m_worldConfig["screenshot_output_dir"].get_string()
+    );
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }

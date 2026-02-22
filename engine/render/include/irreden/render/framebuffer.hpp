@@ -14,8 +14,9 @@ namespace IRRender {
 
 class Framebuffer {
   public:
-    Framebuffer(ivec2 resolution, ivec2 extraPixelBuffer, GLenum formatColor,
-                GLenum formatDepthStencil);
+    Framebuffer(
+        ivec2 resolution, ivec2 extraPixelBuffer, GLenum formatColor, GLenum formatDepthStencil
+    );
     ~Framebuffer();
 
     void bind() const;

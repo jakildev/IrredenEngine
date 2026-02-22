@@ -6,9 +6,11 @@ namespace IRComponents {
 struct C_Magnitude {
     float magnitude_;
 
-    C_Magnitude(float value) : magnitude_{abs(value)} {}
+    C_Magnitude(float value)
+        : magnitude_{abs(value)} {}
 
-    C_Magnitude() : C_Magnitude(1.0f) {}
+    C_Magnitude()
+        : C_Magnitude(1.0f) {}
 
     void set(float value) {
         magnitude_ = abs(value);

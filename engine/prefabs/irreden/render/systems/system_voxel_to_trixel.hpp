@@ -28,20 +28,38 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         static FrameDataVoxelToCanvas frameData{};
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
-            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, GL_COMPUTE_SHADER}
-                            .getHandle()});
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, GL_COMPUTE_SHADER}.getHandle()
+            }
+        );
         IRRender::createNamedResource<Buffer>(
-            "SingleVoxelFrameData", nullptr, sizeof(FrameDataVoxelToCanvas), GL_DYNAMIC_STORAGE_BIT,
-            GL_UNIFORM_BUFFER, kBufferIndex_FrameDataVoxelToCanvas);
+            "SingleVoxelFrameData",
+            nullptr,
+            sizeof(FrameDataVoxelToCanvas),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_UNIFORM_BUFFER,
+            kBufferIndex_FrameDataVoxelToCanvas
+        );
         IRRender::createNamedResource<Buffer>(
-            "VoxelPositionBuffer", nullptr, IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
-            GL_DYNAMIC_STORAGE_BIT, GL_SHADER_STORAGE_BUFFER, kBufferIndex_SingleVoxelPositions);
+            "VoxelPositionBuffer",
+            nullptr,
+            IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_SHADER_STORAGE_BUFFER,
+            kBufferIndex_SingleVoxelPositions
+        );
         IRRender::createNamedResource<Buffer>(
-            "VoxelColorBuffer", nullptr, IRConstants::kMaxSingleVoxels * sizeof(C_Voxel),
-            GL_DYNAMIC_STORAGE_BIT, GL_SHADER_STORAGE_BUFFER, kBufferIndex_SingleVoxelColors);
+            "VoxelColorBuffer",
+            nullptr,
+            IRConstants::kMaxSingleVoxels * sizeof(C_Voxel),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_SHADER_STORAGE_BUFFER,
+            kBufferIndex_SingleVoxelColors
+        );
         return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasFirst",
-            [](IREntity::EntityId &entity, const C_VoxelPool &voxelPool,
+            [](IREntity::EntityId &entity,
+               const C_VoxelPool &voxelPool,
                C_TriangleCanvasTextures &triangleCanvasTextures) {
                 frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                 frameData.trixelCanvasOffsetZ1_ =
@@ -49,10 +67,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
                 const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
                 const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-                frameData.voxelRenderOptions_ = ivec2(
-                    static_cast<int>(renderMode),
-                    effectiveSubdivisions
-                );
+                frameData.voxelRenderOptions_ =
+                    ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
                 static int previousRenderMode = -1;
                 static int previousEffectiveSubdivisions = -1;
                 if (static_cast<int>(renderMode) != previousRenderMode ||
@@ -60,10 +76,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     IRE_LOG_INFO(
                         "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
                         "effective_subdivisions={}",
-                        static_cast<int>(renderMode), baseSubdivisions,
-                        static_cast<int>(IRMath::round(IRMath::max(IRRender::getCameraZoom().x,
-                                                                   IRRender::getCameraZoom().y))),
-                        effectiveSubdivisions);
+                        static_cast<int>(renderMode),
+                        baseSubdivisions,
+                        static_cast<int>(IRMath::round(
+                            IRMath::max(IRRender::getCameraZoom().x, IRRender::getCameraZoom().y)
+                        )),
+                        effectiveSubdivisions
+                    );
                     previousRenderMode = static_cast<int>(renderMode);
                     previousEffectiveSubdivisions = effectiveSubdivisions;
                 }
@@ -80,11 +99,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // TODO: each voxel allocation should have own
                 // voxel GPU buffers as well.
                 IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")
-                    ->subData(0, voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
-                              voxelPool.getPositionGlobals().data());
+                    ->subData(
+                        0,
+                        voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
+                        voxelPool.getPositionGlobals().data()
+                    );
                 IRRender::getNamedResource<Buffer>("VoxelColorBuffer")
-                    ->subData(0, voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
-                              voxelPool.getColors().data());
+                    ->subData(
+                        0,
+                        voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
+                        voxelPool.getColors().data()
+                    );
 
                 triangleCanvasTextures.getTextureDistances()->bindImage(1, GL_READ_WRITE, GL_R32I);
                 // IRE_LOG_INFO("Voxel pool size: {}", voxelPool.getVoxelPoolSize());
@@ -94,17 +119,18 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             []() {
                 IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1")->use();
                 IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
-                auto background = IREntity::getComponentOptional<C_TriangleCanvasBackground>(
-                    backgroundCanvas);
-                auto backgroundTextures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
-                    backgroundCanvas);
+                auto background =
+                    IREntity::getComponentOptional<C_TriangleCanvasBackground>(backgroundCanvas);
+                auto backgroundTextures =
+                    IREntity::getComponentOptional<C_TriangleCanvasTextures>(backgroundCanvas);
                 if (background.has_value() && backgroundTextures.has_value()) {
                     (*background.value()).clearCanvasWithBackground(*backgroundTextures.value());
                 }
             },
             []() {
 
-            });
+            }
+        );
     }
 };
 
@@ -112,17 +138,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
-            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, GL_COMPUTE_SHADER}
-                            .getHandle()});
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, GL_COMPUTE_SHADER}.getHandle()
+            }
+        );
         return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasSecond",
             [](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
                 IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")
-                    ->subData(0, voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
-                              voxelPool.getPositionGlobals().data());
+                    ->subData(
+                        0,
+                        voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
+                        voxelPool.getPositionGlobals().data()
+                    );
                 IRRender::getNamedResource<Buffer>("VoxelColorBuffer")
-                    ->subData(0, voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
-                              voxelPool.getColors().data());
+                    ->subData(
+                        0,
+                        voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
+                        voxelPool.getColors().data()
+                    );
                 triangleCanvasTextures.getTextureColors()->bindImage(0, GL_WRITE_ONLY, GL_RGBA8);
                 triangleCanvasTextures.getTextureDistances()->bindImage(1, GL_READ_ONLY, GL_R32I);
 
@@ -132,7 +166,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                 //     "../save_files/triangleCanvasColors.png"
                 // );
             },
-            []() { IRRender::getNamedResource<ShaderProgram>("SingleVoxel2")->use(); });
+            []() { IRRender::getNamedResource<ShaderProgram>("SingleVoxel2")->use(); }
+        );
     }
 };
 

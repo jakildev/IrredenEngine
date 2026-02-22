@@ -61,14 +61,20 @@ class RenderManager {
     void tick();
     void printRenderInfo();
 
-    std::tuple<std::span<C_Position3D>, std::span<C_PositionOffset3D>,
-               std::span<C_PositionGlobal3D>, std::span<C_Voxel>>
+    std::tuple<
+        std::span<C_Position3D>,
+        std::span<C_PositionOffset3D>,
+        std::span<C_PositionGlobal3D>,
+        std::span<C_Voxel>>
     allocateVoxels(unsigned int size, std::string canvasName = "main");
 
-    void deallocateVoxels(std::span<C_Position3D> positions,
-                          std::span<C_PositionOffset3D> positionsOffset,
-                          std::span<C_PositionGlobal3D> positionsGlobal, std::span<C_Voxel> voxels,
-                          std::string canvasName = "main");
+    void deallocateVoxels(
+        std::span<C_Position3D> positions,
+        std::span<C_PositionOffset3D> positionsOffset,
+        std::span<C_PositionGlobal3D> positionsGlobal,
+        std::span<C_Voxel> voxels,
+        std::string canvasName = "main"
+    );
 
   private:
     // tmp

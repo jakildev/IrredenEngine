@@ -9,8 +9,13 @@
 namespace IREntity {
 
 EntityManager::EntityManager()
-    : m_entityPool{}, m_entityIndex{}, m_archetypeGraph{}, m_pureComponentTypes{},
-      m_pureComponentVectors{}, m_liveEntityCount{0}, m_entitiesMarkedForDeletion{} {
+    : m_entityPool{}
+    , m_entityIndex{}
+    , m_archetypeGraph{}
+    , m_pureComponentTypes{}
+    , m_pureComponentVectors{}
+    , m_liveEntityCount{0}
+    , m_entitiesMarkedForDeletion{} {
     for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
         m_entityPool.push(entity);
     }
@@ -91,8 +96,9 @@ EntityId EntityManager::getEntityByName(const std::string &name) const {
     return kNullEntity;
 }
 
-void EntityManager::destroyComponent(ComponentId component, ArchetypeNode *node,
-                                     unsigned int index) {
+void EntityManager::destroyComponent(
+    ComponentId component, ArchetypeNode *node, unsigned int index
+) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     if (!isPureComponent(component)) {
         return;
@@ -175,9 +181,12 @@ RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEn
         setFlags(newRelation, kEntityFlagIsRelation);
         m_parentRelations.insert({entityBits(relatedEntity), newRelation});
         m_childOfRelations.insert({newRelation, entityBits(relatedEntity)});
-        IRE_LOG_INFO("Regestered relation type={} id={} related to entity={}",
-                     static_cast<int>(relation), static_cast<int>(newRelation),
-                     static_cast<int>(relatedEntity));
+        IRE_LOG_INFO(
+            "Regestered relation type={} id={} related to entity={}",
+            static_cast<int>(relation),
+            static_cast<int>(newRelation),
+            static_cast<int>(relatedEntity)
+        );
         return newRelation;
     }
 
@@ -186,8 +195,8 @@ RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEn
     return kNullEntity;
 }
 
-EntityId EntityManager::setRelation(Relation relation, EntityId subjectEntity,
-                                    EntityId targetEntity) {
+EntityId
+EntityManager::setRelation(Relation relation, EntityId subjectEntity, EntityId targetEntity) {
     if (relation == CHILD_OF) {
 
         if (!m_parentRelations.contains(entityBits(targetEntity))) {
@@ -216,13 +225,15 @@ smart_ComponentData EntityManager::createComponentDataVector(ComponentId compone
     return m_pureComponentVectors[component]->cloneEmpty();
 }
 
-void EntityManager::pushCopyData(IComponentData *fromStructure, unsigned int fromIndex,
-                                 IComponentData *toStructure) {
+void EntityManager::pushCopyData(
+    IComponentData *fromStructure, unsigned int fromIndex, IComponentData *toStructure
+) {
     fromStructure->pushCopyData(toStructure, fromIndex);
 }
 
-int EntityManager::moveEntityByArchetype(EntityRecord &record, const Archetype &type,
-                                         ArchetypeNode *fromNode, ArchetypeNode *toNode) {
+int EntityManager::moveEntityByArchetype(
+    EntityRecord &record, const Archetype &type, ArchetypeNode *fromNode, ArchetypeNode *toNode
+) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
 
     if (fromNode == toNode) {
@@ -231,9 +242,12 @@ int EntityManager::moveEntityByArchetype(EntityRecord &record, const Archetype &
 
     IR_ASSERT(
         std::includes(fromNode->type_.begin(), fromNode->type_.end(), type.begin(), type.end()),
-        "Entity move type is not a subset of fromNode type");
-    IR_ASSERT(std::includes(toNode->type_.begin(), toNode->type_.end(), type.begin(), type.end()),
-              "Entity move type is not a subset of to node type");
+        "Entity move type is not a subset of fromNode type"
+    );
+    IR_ASSERT(
+        std::includes(toNode->type_.begin(), toNode->type_.end(), type.begin(), type.end()),
+        "Entity move type is not a subset of to node type"
+    );
     // EntityRecord& record = getRecord(entity);
     for (auto itr = type.begin(); itr != type.end(); itr++) {
         handleComponentMove(*itr, fromNode, toNode, record.row);
@@ -249,14 +263,20 @@ int EntityManager::moveEntityByArchetype(EntityRecord &record, const Archetype &
 }
 
 // TODO: Be able to move things in batches (when performance requires it)
-void EntityManager::handleComponentMove(const ComponentId component, ArchetypeNode *fromNode,
-                                        ArchetypeNode *toNode, const unsigned int row) {
+void EntityManager::handleComponentMove(
+    const ComponentId component,
+    ArchetypeNode *fromNode,
+    ArchetypeNode *toNode,
+    const unsigned int row
+) {
     if (!isPureComponent(component)) {
         // IR_ASSERT(false, "non pure components not supported rn");
         return; // Like for relation components with no data, tags maybe, etc
     }
-    fromNode->components_.at(component)->moveDataAndPack(toNode->components_.at(component).get(),
-                                                         row);
+    fromNode->components_.at(component)->moveDataAndPack(
+        toNode->components_.at(component).get(),
+        row
+    );
 }
 
 void EntityManager::removeEntityFromArchetypeNode(ArchetypeNode *node, unsigned int index) {
@@ -268,8 +288,9 @@ void EntityManager::removeEntityFromArchetypeNode(ArchetypeNode *node, unsigned 
     node->length_--;
 }
 
-void EntityManager::handleComponentRemove(const ComponentId component, ArchetypeNode *node,
-                                          const unsigned int row) {
+void EntityManager::handleComponentRemove(
+    const ComponentId component, ArchetypeNode *node, const unsigned int row
+) {
 
     if (!isPureComponent(component)) {
         return;

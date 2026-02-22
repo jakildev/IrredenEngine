@@ -52,8 +52,13 @@ struct C_MidiSequence {
 
     // Default
     C_MidiSequence()
-        : C_MidiSequence{120.0f, std::pair<int, int>{4, 4}, 1, true,
-                         std::vector<std::pair<int, C_MidiMessage>>{}} {}
+        : C_MidiSequence{
+              120.0f,
+              std::pair<int, int>{4, 4},
+              1,
+              true,
+              std::vector<std::pair<int, C_MidiMessage>>{}
+          } {}
 
     void tick() {}
 
@@ -81,16 +86,20 @@ struct C_MidiSequence {
 
     // 0.0 is at start of first measure, 0.5 is middle, 1.0 is start
     // of second measure, etc
-    void insertNote(double start, double holdDurationSeconds, unsigned char note,
-                    unsigned char velocity) {
+    void insertNote(
+        double start, double holdDurationSeconds, unsigned char note, unsigned char velocity
+    ) {
         int startTick = start * m_ticksPerMeasure;
         int holdDurationTicks = holdDurationSeconds * m_ticksPerSecond;
-        IR_ASSERT(startTick >= 0.0 && startTick + holdDurationTicks <= lengthMidiTicks_,
-                  "Attempted to insert note on outside of sequence");
+        IR_ASSERT(
+            startTick >= 0.0 && startTick + holdDurationTicks <= lengthMidiTicks_,
+            "Attempted to insert note on outside of sequence"
+        );
 
         messageSequence_.push_back({startTick, C_MidiMessage{kMidiStatus_NOTE_ON, note, velocity}});
         messageSequence_.push_back(
-            {startTick + holdDurationTicks, C_MidiMessage{kMidiStatus_NOTE_OFF, note, velocity}});
+            {startTick + holdDurationTicks, C_MidiMessage{kMidiStatus_NOTE_OFF, note, velocity}}
+        );
         sortSequence();
     }
 
@@ -108,8 +117,11 @@ struct C_MidiSequence {
     float m_measuresPerSecond;
     double m_ticksPerSecond;
     void sortSequence() {
-        std::sort(messageSequence_.begin(), messageSequence_.end(),
-                  [](const auto &a, const auto &b) { return a.first < b.first; });
+        std::sort(
+            messageSequence_.begin(),
+            messageSequence_.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; }
+        );
     }
 };
 

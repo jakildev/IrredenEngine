@@ -41,8 +41,9 @@ class LuaScript {
     }
 
     template <typename Enum>
-    void registerEnum(const char *name,
-                      std::initializer_list<std::pair<std::string_view, Enum>> values) {
+    void registerEnum(
+        const char *name, std::initializer_list<std::pair<std::string_view, Enum>> values
+    ) {
 
         m_lua.new_enum<Enum>(name, values);
     }
@@ -125,7 +126,10 @@ class LuaScript {
         IR_LOG_INFO("Creating entity batch with 1 component");
         return [this](IRMath::ivec3 partitions, sol::protected_function funcA) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -137,11 +141,17 @@ class LuaScript {
 
     template <typename ComponentA, typename ComponentB> auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 2 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -154,11 +164,19 @@ class LuaScript {
     template <typename ComponentA, typename ComponentB, typename ComponentC>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 3 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -171,13 +189,21 @@ class LuaScript {
     template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 4 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -187,17 +213,31 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 5 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -207,19 +247,34 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE, typename ComponentF>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 6 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE,
-                      sol::protected_function funcF) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE),
-                wrapLuaFunction<ComponentF>(funcF));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -229,19 +284,37 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE, typename ComponentF, typename ComponentG>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF,
+        typename ComponentG>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 7 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE,
-                      sol::protected_function funcF, sol::protected_function funcG) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF,
+                   sol::protected_function funcG
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE),
-                wrapLuaFunction<ComponentF>(funcF), wrapLuaFunction<ComponentG>(funcG));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF),
+                wrapLuaFunction<ComponentG>(funcG)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -251,21 +324,40 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE, typename ComponentF, typename ComponentG, typename ComponentH>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF,
+        typename ComponentG,
+        typename ComponentH>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 8 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE,
-                      sol::protected_function funcF, sol::protected_function funcG,
-                      sol::protected_function funcH) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF,
+                   sol::protected_function funcG,
+                   sol::protected_function funcH
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE),
-                wrapLuaFunction<ComponentF>(funcF), wrapLuaFunction<ComponentG>(funcG),
-                wrapLuaFunction<ComponentH>(funcH));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF),
+                wrapLuaFunction<ComponentG>(funcG),
+                wrapLuaFunction<ComponentH>(funcH)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -275,22 +367,43 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE, typename ComponentF, typename ComponentG, typename ComponentH,
-              typename ComponentI>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF,
+        typename ComponentG,
+        typename ComponentH,
+        typename ComponentI>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 9 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE,
-                      sol::protected_function funcF, sol::protected_function funcG,
-                      sol::protected_function funcH, sol::protected_function funcI) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF,
+                   sol::protected_function funcG,
+                   sol::protected_function funcH,
+                   sol::protected_function funcI
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE),
-                wrapLuaFunction<ComponentF>(funcF), wrapLuaFunction<ComponentG>(funcG),
-                wrapLuaFunction<ComponentH>(funcH), wrapLuaFunction<ComponentI>(funcI));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF),
+                wrapLuaFunction<ComponentG>(funcG),
+                wrapLuaFunction<ComponentH>(funcH),
+                wrapLuaFunction<ComponentI>(funcI)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {
@@ -300,24 +413,46 @@ class LuaScript {
         };
     }
 
-    template <typename ComponentA, typename ComponentB, typename ComponentC, typename ComponentD,
-              typename ComponentE, typename ComponentF, typename ComponentG, typename ComponentH,
-              typename ComponentI, typename ComponentJ>
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF,
+        typename ComponentG,
+        typename ComponentH,
+        typename ComponentI,
+        typename ComponentJ>
     auto wrapCreateEntityBatchWithFunctions() {
         IR_LOG_INFO("Creating entity batch with 10 components");
-        return [this](IRMath::ivec3 partitions, sol::protected_function funcA,
-                      sol::protected_function funcB, sol::protected_function funcC,
-                      sol::protected_function funcD, sol::protected_function funcE,
-                      sol::protected_function funcF, sol::protected_function funcG,
-                      sol::protected_function funcH, sol::protected_function funcI,
-                      sol::protected_function funcJ) {
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF,
+                   sol::protected_function funcG,
+                   sol::protected_function funcH,
+                   sol::protected_function funcI,
+                   sol::protected_function funcJ
+               ) {
             std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
-                partitions, {}, wrapLuaFunction<ComponentA>(funcA),
-                wrapLuaFunction<ComponentB>(funcB), wrapLuaFunction<ComponentC>(funcC),
-                wrapLuaFunction<ComponentD>(funcD), wrapLuaFunction<ComponentE>(funcE),
-                wrapLuaFunction<ComponentF>(funcF), wrapLuaFunction<ComponentG>(funcG),
-                wrapLuaFunction<ComponentH>(funcH), wrapLuaFunction<ComponentI>(funcI),
-                wrapLuaFunction<ComponentJ>(funcJ));
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF),
+                wrapLuaFunction<ComponentG>(funcG),
+                wrapLuaFunction<ComponentH>(funcH),
+                wrapLuaFunction<ComponentI>(funcI),
+                wrapLuaFunction<ComponentJ>(funcJ)
+            );
             std::vector<IRScript::LuaEntity> luaEntities;
             luaEntities.resize(entities.size());
             for (int i = 0; i < entities.size(); i++) {

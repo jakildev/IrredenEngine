@@ -16,26 +16,34 @@ template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
 
     // std::vector<std::function<void(IRECS::ArchetypeNode*)>> tickFunctions_ ;
 
-    C_SystemEvent(const std::function<void()> &function) : functionBeginTick_(function) {}
-    C_SystemEvent() : functionBeginTick_() {}
+    C_SystemEvent(const std::function<void()> &function)
+        : functionBeginTick_(function) {}
+    C_SystemEvent()
+        : functionBeginTick_() {}
 };
 
 template <> struct C_SystemEvent<IRSystem::TICK> {
     std::function<void(IREntity::ArchetypeNode *)> functionTick_;
     IREntity::Archetype archetype_;
 
-    C_SystemEvent(const std::function<void(IREntity::ArchetypeNode *)> &tickFunctions,
-                  const IREntity::Archetype &archetype)
-        : functionTick_(tickFunctions), archetype_(archetype) {}
+    C_SystemEvent(
+        const std::function<void(IREntity::ArchetypeNode *)> &tickFunctions,
+        const IREntity::Archetype &archetype
+    )
+        : functionTick_(tickFunctions)
+        , archetype_(archetype) {}
 
-    C_SystemEvent() : functionTick_() {}
+    C_SystemEvent()
+        : functionTick_() {}
 };
 
 template <> struct C_SystemEvent<IRSystem::END_TICK> {
     std::function<void()> functionEndTick_;
 
-    C_SystemEvent(const std::function<void()> &function) : functionEndTick_(function) {}
-    C_SystemEvent() : functionEndTick_() {}
+    C_SystemEvent(const std::function<void()> &function)
+        : functionEndTick_(function) {}
+    C_SystemEvent()
+        : functionEndTick_() {}
 };
 
 template <> struct C_SystemEvent<IRSystem::RELATION_TICK> {
@@ -45,7 +53,8 @@ template <> struct C_SystemEvent<IRSystem::RELATION_TICK> {
     C_SystemEvent(const std::function<void(IREntity::EntityRecord)> &relationTickFunction)
         : functionRelationTick_(relationTickFunction) {}
 
-    C_SystemEvent() : functionRelationTick_() {}
+    C_SystemEvent()
+        : functionRelationTick_() {}
 };
 
 } // namespace IRComponents

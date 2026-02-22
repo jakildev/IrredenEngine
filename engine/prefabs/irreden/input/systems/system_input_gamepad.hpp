@@ -15,10 +15,13 @@ namespace IRSystem {
 template <> struct System<INPUT_GAMEPAD> {
     static SystemId create() {
         return createSystem<C_GLFWJoystick, C_GLFWGamepadState>(
-            "InputGamepad", [](C_GLFWJoystick &joystick, C_GLFWGamepadState &gamepadState) {
+            "InputGamepad",
+            [](C_GLFWJoystick &joystick, C_GLFWGamepadState &gamepadState) {
                 gamepadState.updateState(
-                    IRWindow::getWindow().getGamepadState(joystick.joystickId_));
-            });
+                    IRWindow::getWindow().getGamepadState(joystick.joystickId_)
+                );
+            }
+        );
     }
 };
 

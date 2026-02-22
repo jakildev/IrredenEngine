@@ -6,10 +6,12 @@ namespace IRComponents {
 struct C_Lifetime {
     int life_;
 
-    C_Lifetime(int life) : life_(life) {}
+    C_Lifetime(int life)
+        : life_(life) {}
 
     // Default
-    C_Lifetime() : life_(1) {}
+    C_Lifetime()
+        : life_(1) {}
 };
 
 } // namespace IRComponents

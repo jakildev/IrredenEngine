@@ -22,19 +22,27 @@ struct C_TrianglesOnlySet {
     std::vector<Distance> triangleDistances_;
 
     C_TrianglesOnlySet(ivec2 size, ivec2 origin)
-        : size_{size}, origin_{origin}, triangleColors_{}
+        : size_{size}
+        , origin_{origin}
+        , triangleColors_{}
 
     {
         triangleColors_.resize(size_.x * size_.y);
         triangleDistances_.resize(size_.x * size_.y);
 
-        std::fill(triangleDistances_.begin(), triangleDistances_.end(),
-                  IRConstants::kTrixelDistanceMaxDistance);
+        std::fill(
+            triangleDistances_.begin(),
+            triangleDistances_.end(),
+            IRConstants::kTrixelDistanceMaxDistance
+        );
     }
 
     // Default
     C_TrianglesOnlySet()
-        : size_{ivec2(0, 0)}, origin_{ivec2(0, 0)}, triangleColors_{}, triangleDistances_{} {}
+        : size_{ivec2(0, 0)}
+        , origin_{ivec2(0, 0)}
+        , triangleColors_{}
+        , triangleDistances_{} {}
 
     void resize(ivec2 size) {
         size_ = size;
@@ -47,9 +55,11 @@ struct C_TrianglesOnlySet {
     }
 
     void setTriangle(ivec2 pos, Color color, uint32_t distance = 0) {
-        IR_ASSERT(IRMath::all(IRMath::lessThan(pos, size_)) &&
-                      IRMath::all(IRMath::greaterThanEqual(pos, ivec2(0))),
-                  "TRIANGLE INDEX OUT OF BOUNDS.");
+        IR_ASSERT(
+            IRMath::all(IRMath::lessThan(pos, size_)) &&
+                IRMath::all(IRMath::greaterThanEqual(pos, ivec2(0))),
+            "TRIANGLE INDEX OUT OF BOUNDS."
+        );
         Color &triangleColorCurrent = this->atTriangleColor(pos);
         Distance &triangleDistanceCurrent = this->atTriangleDistance(pos);
 

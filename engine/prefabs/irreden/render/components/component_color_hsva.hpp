@@ -15,10 +15,12 @@ namespace IRComponents {
 struct C_ColorHSV {
     vec3 color_;
 
-    C_ColorHSV(ColorHSV base) : color_{vec3(base.hue_, base.saturation_, base.value_)} {}
+    C_ColorHSV(ColorHSV base)
+        : color_{vec3(base.hue_, base.saturation_, base.value_)} {}
 
     // Default
-    C_ColorHSV() : color_{vec3(150.0f, 0.10f, 0.80f)} {}
+    C_ColorHSV()
+        : color_{vec3(150.0f, 0.10f, 0.80f)} {}
 };
 
 } // namespace IRComponents

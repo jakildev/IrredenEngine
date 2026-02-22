@@ -20,9 +20,11 @@ enum LuaType {
 struct LuaEntity {
     IREntity::EntityId entity;
 
-    LuaEntity(IREntity::EntityId entity) : entity{entity} {}
+    LuaEntity(IREntity::EntityId entity)
+        : entity{entity} {}
 
-    LuaEntity() : entity{0} {}
+    LuaEntity()
+        : entity{0} {}
 };
 
 template <typename Component>

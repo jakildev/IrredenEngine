@@ -13,9 +13,13 @@ struct C_MidiMessageData {
     unsigned char data1_;
     unsigned char data2_;
 
-    C_MidiMessageData(unsigned char data1, unsigned char data2) : data1_(data1), data2_(data2) {}
+    C_MidiMessageData(unsigned char data1, unsigned char data2)
+        : data1_(data1)
+        , data2_(data2) {}
 
-    C_MidiMessageData() : data1_(0), data2_(0) {}
+    C_MidiMessageData()
+        : data1_(0)
+        , data2_(0) {}
 
     const unsigned char getMidiNoteNumber() const {
         return data1_;
@@ -40,7 +44,8 @@ struct C_MidiMessageStatus {
     C_MidiMessageStatus(unsigned char status, unsigned char channel)
         : status_(buildMidiStatus(status, channel)) {}
 
-    C_MidiMessageStatus() : status_(0) {}
+    C_MidiMessageStatus()
+        : status_(0) {}
 
     const unsigned char getChannelBits() const {
         return normalizeMidiChannel(status_);
@@ -68,9 +73,14 @@ struct C_MidiMessage {
     unsigned char data2_;
 
     C_MidiMessage(unsigned char status, unsigned char data1, unsigned char data2)
-        : status_(status), data1_(data1), data2_(data2) {}
+        : status_(status)
+        , data1_(data1)
+        , data2_(data2) {}
 
-    C_MidiMessage() : status_(0), data1_(0), data2_(0) {}
+    C_MidiMessage()
+        : status_(0)
+        , data1_(0)
+        , data2_(0) {}
 
     const unsigned char getChannelBits() const {
         return normalizeMidiChannel(status_);

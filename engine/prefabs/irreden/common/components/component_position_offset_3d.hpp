@@ -14,11 +14,14 @@ struct C_PositionOffset3D {
     vec3 pos_;
     float tempPackBuffer_;
 
-    C_PositionOffset3D(vec3 pos) : pos_{pos} {}
+    C_PositionOffset3D(vec3 pos)
+        : pos_{pos} {}
 
-    C_PositionOffset3D(float x, float y, float z) : C_PositionOffset3D{vec3(x, y, z)} {}
+    C_PositionOffset3D(float x, float y, float z)
+        : C_PositionOffset3D{vec3(x, y, z)} {}
 
-    C_PositionOffset3D() : C_PositionOffset3D{vec3(0, 0, 0)} {}
+    C_PositionOffset3D()
+        : C_PositionOffset3D{vec3(0, 0, 0)} {}
 };
 
 } // namespace IRComponents

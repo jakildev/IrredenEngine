@@ -11,11 +11,14 @@ struct C_Position3D {
     vec3 pos_;
     float tempPackBuffer_;
 
-    C_Position3D(vec3 pos) : pos_{pos} {}
+    C_Position3D(vec3 pos)
+        : pos_{pos} {}
 
-    C_Position3D(float x, float y, float z) : C_Position3D{vec3(x, y, z)} {}
+    C_Position3D(float x, float y, float z)
+        : C_Position3D{vec3(x, y, z)} {}
 
-    C_Position3D() : C_Position3D{vec3(0, 0, 0)} {}
+    C_Position3D()
+        : C_Position3D{vec3(0, 0, 0)} {}
 
     void moveDown(float amount) {
         pos_.z += amount;

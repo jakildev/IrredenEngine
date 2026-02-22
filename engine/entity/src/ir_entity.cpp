@@ -24,17 +24,22 @@ std::string makeComponentString(const Archetype &type) {
     return makeComponentStringInternal(type);
 }
 
-std::vector<ArchetypeNode *> queryArchetypeNodesSimple(const Archetype &includeComponents,
-                                                       const Archetype &excludeComponents) {
-    return getEntityManager().getArchetypeGraph()->queryArchetypeNodesSimple(includeComponents,
-                                                                             excludeComponents);
+std::vector<ArchetypeNode *>
+queryArchetypeNodesSimple(const Archetype &includeComponents, const Archetype &excludeComponents) {
+    return getEntityManager().getArchetypeGraph()->queryArchetypeNodesSimple(
+        includeComponents,
+        excludeComponents
+    );
 }
 
-std::vector<ArchetypeNode *> queryArchetypeNodesRelational(const Relation relation,
-                                                           const Archetype &includeComponents,
-                                                           const Archetype &excludeComponents) {
+std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
+    const Relation relation, const Archetype &includeComponents, const Archetype &excludeComponents
+) {
     return getEntityManager().getArchetypeGraph()->queryArchetypeNodesRelational(
-        relation, includeComponents, excludeComponents);
+        relation,
+        includeComponents,
+        excludeComponents
+    );
 }
 
 bool isPureComponent(ComponentId component) {

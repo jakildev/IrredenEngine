@@ -9,26 +9,37 @@
 
 namespace IRRender {
 
-Framebuffer::Framebuffer(ivec2 resolution, ivec2 extraPixelBuffer, GLenum formatColor,
-                         GLenum formatDepthStencil)
-    : m_resolution(resolution), m_extraPixelBuffer(extraPixelBuffer),
-      m_resolutionPlusBuffer(m_resolution + m_extraPixelBuffer),
-      m_textureColor{GL_TEXTURE_2D,
-                     (GLuint)m_resolutionPlusBuffer.x,
-                     (GLuint)m_resolutionPlusBuffer.y,
-                     formatColor,
-                     GL_REPEAT,
-                     GL_NEAREST},
-      m_textureDepth{GL_TEXTURE_2D, (GLuint)m_resolutionPlusBuffer.x,
-                     (GLuint)m_resolutionPlusBuffer.y, formatDepthStencil} {
+Framebuffer::Framebuffer(
+    ivec2 resolution, ivec2 extraPixelBuffer, GLenum formatColor, GLenum formatDepthStencil
+)
+    : m_resolution(resolution)
+    , m_extraPixelBuffer(extraPixelBuffer)
+    , m_resolutionPlusBuffer(m_resolution + m_extraPixelBuffer)
+    , m_textureColor{GL_TEXTURE_2D, (GLuint)m_resolutionPlusBuffer.x, (GLuint)m_resolutionPlusBuffer.y, formatColor, GL_REPEAT, GL_NEAREST}
+    , m_textureDepth{
+          GL_TEXTURE_2D,
+          (GLuint)m_resolutionPlusBuffer.x,
+          (GLuint)m_resolutionPlusBuffer.y,
+          formatDepthStencil
+      } {
     ENG_API->glCreateFramebuffers(1, &m_id);
     ENG_API->glNamedFramebufferTexture(m_id, GL_COLOR_ATTACHMENT0, m_textureColor.getHandle(), 0);
-    ENG_API->glNamedFramebufferTexture(m_id, GL_DEPTH_STENCIL_ATTACHMENT,
-                                       m_textureDepth.getHandle(), 0);
+    ENG_API->glNamedFramebufferTexture(
+        m_id,
+        GL_DEPTH_STENCIL_ATTACHMENT,
+        m_textureDepth.getHandle(),
+        0
+    );
     checkSuccess();
 
-    IRE_LOG_INFO("Created framebuffer with id={}, resolution={},{}, extraPixelBuffer={},{}", m_id,
-                 m_resolution.x, m_resolution.y, m_extraPixelBuffer.x, m_extraPixelBuffer.y);
+    IRE_LOG_INFO(
+        "Created framebuffer with id={}, resolution={},{}, extraPixelBuffer={},{}",
+        m_id,
+        m_resolution.x,
+        m_resolution.y,
+        m_extraPixelBuffer.x,
+        m_extraPixelBuffer.y
+    );
 }
 
 Framebuffer::~Framebuffer() {

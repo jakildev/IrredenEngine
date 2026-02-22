@@ -316,7 +316,8 @@ const std::unordered_map<int, KeyMouseButtons> kMapGLFWtoIRKeyMouseButtons = {
     // Mouse
     {GLFW_MOUSE_BUTTON_LEFT, kMouseButtonLeft},
     {GLFW_MOUSE_BUTTON_RIGHT, kMouseButtonRight},
-    {GLFW_MOUSE_BUTTON_MIDDLE, kMouseButtonMiddle}};
+    {GLFW_MOUSE_BUTTON_MIDDLE, kMouseButtonMiddle}
+};
 
 const std::unordered_map<int, GamepadButtons> kGLFWtoGamepadButtons = {
     {GLFW_GAMEPAD_BUTTON_A, kGamepadButtonA},
@@ -333,7 +334,8 @@ const std::unordered_map<int, GamepadButtons> kGLFWtoGamepadButtons = {
     {GLFW_GAMEPAD_BUTTON_DPAD_UP, kGamepadButtonDPadUp},
     {GLFW_GAMEPAD_BUTTON_DPAD_RIGHT, kGamepadButtonDPadRight},
     {GLFW_GAMEPAD_BUTTON_DPAD_DOWN, kGamepadButtonDPadDown},
-    {GLFW_GAMEPAD_BUTTON_DPAD_LEFT, kGamepadButtonDPadLeft}};
+    {GLFW_GAMEPAD_BUTTON_DPAD_LEFT, kGamepadButtonDPadLeft}
+};
 
 const std::unordered_map<int, GamepadAxes> kGLFWtoGamepadAxes = {
     {GLFW_GAMEPAD_AXIS_LEFT_X, kGamepadAxisLeftX},
@@ -341,7 +343,8 @@ const std::unordered_map<int, GamepadAxes> kGLFWtoGamepadAxes = {
     {GLFW_GAMEPAD_AXIS_RIGHT_X, kGamepadAxisRightX},
     {GLFW_GAMEPAD_AXIS_RIGHT_Y, kGamepadAxisRightY},
     {GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, kGamepadAxisLeftTrigger},
-    {GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER, kGamepadAxisRightTrigger}};
+    {GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER, kGamepadAxisRightTrigger}
+};
 
 } // namespace IRInput
 

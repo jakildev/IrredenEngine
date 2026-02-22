@@ -3,7 +3,10 @@
 namespace IRAudio {
 
 MidiOut::MidiOut()
-    : m_rtMidiOut{}, m_numberPorts(m_rtMidiOut.getPortCount()), m_portNames{}, m_openPorts{} {
+    : m_rtMidiOut{}
+    , m_numberPorts(m_rtMidiOut.getPortCount())
+    , m_portNames{}
+    , m_openPorts{} {
 
     IRE_LOG_INFO("Descovered {} MIDI output sources", m_numberPorts);
     for (int i = 0; i < m_numberPorts; i++) {

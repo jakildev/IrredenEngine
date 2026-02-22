@@ -21,15 +21,17 @@ void CommandManager::executeDeviceMidiCCCommandsAll() {
 }
 
 void CommandManager::executeDeviceMidiCCCommands(
-    int device, std::vector<CommandStruct<COMMAND_MIDI_CC>> &commands) {
+    int device, std::vector<CommandStruct<COMMAND_MIDI_CC>> &commands
+) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
     for (int i = 0; i < commands.size(); ++i) {
         executeDeviceMidiCCCommand(device, commands[i]);
     }
 }
 
-void CommandManager::executeDeviceMidiCCCommand(int device,
-                                                CommandStruct<COMMAND_MIDI_CC> &command) {
+void CommandManager::executeDeviceMidiCCCommand(
+    int device, CommandStruct<COMMAND_MIDI_CC> &command
+) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
     CCData ccData = checkCCMessage(device, command.getCCMessage());
     if (ccData != kCCFalse) {
@@ -50,19 +52,27 @@ void CommandManager::executeUserKeyboardCommandsAll() {
         if (command.getRequiredModifiers() == kModifierNone) {
             continue;
         }
-        if (IRInput::checkKeyMouseButton(static_cast<IRInput::KeyMouseButtons>(command.getButton()),
-                                         command.getTriggerStatus()) &&
-            IRInput::checkKeyMouseModifiers(command.getRequiredModifiers(),
-                                            command.getBlockedModifiers())) {
+        if (IRInput::checkKeyMouseButton(
+                static_cast<IRInput::KeyMouseButtons>(command.getButton()),
+                command.getTriggerStatus()
+            ) &&
+            IRInput::checkKeyMouseModifiers(
+                command.getRequiredModifiers(),
+                command.getBlockedModifiers()
+            )) {
             buttonsWithModifierSpecificMatch.insert(command.getButton());
         }
     }
 
     for (auto &command : m_userCommands) {
-        if (IRInput::checkKeyMouseButton(static_cast<IRInput::KeyMouseButtons>(command.getButton()),
-                                         command.getTriggerStatus()) &&
-            IRInput::checkKeyMouseModifiers(command.getRequiredModifiers(),
-                                            command.getBlockedModifiers())) {
+        if (IRInput::checkKeyMouseButton(
+                static_cast<IRInput::KeyMouseButtons>(command.getButton()),
+                command.getTriggerStatus()
+            ) &&
+            IRInput::checkKeyMouseModifiers(
+                command.getRequiredModifiers(),
+                command.getBlockedModifiers()
+            )) {
             if (command.getRequiredModifiers() == kModifierNone &&
                 buttonsWithModifierSpecificMatch.contains(command.getButton())) {
                 continue;
@@ -73,15 +83,17 @@ void CommandManager::executeUserKeyboardCommandsAll() {
 }
 
 void CommandManager::executeDeviceMidiNoteCommands(
-    int device, std::vector<CommandStruct<COMMAND_MIDI_NOTE>> &commands) {
+    int device, std::vector<CommandStruct<COMMAND_MIDI_NOTE>> &commands
+) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
     for (int i = 0; i < commands.size(); ++i) {
         executeDeviceMidiNoteCommand(device, commands[i]);
     }
 }
 
-void CommandManager::executeDeviceMidiNoteCommand(int device,
-                                                  CommandStruct<COMMAND_MIDI_NOTE> &command) {
+void CommandManager::executeDeviceMidiNoteCommand(
+    int device, CommandStruct<COMMAND_MIDI_NOTE> &command
+) {
     if (command.getType() == MIDI_NOTE && command.getTriggerStatus() == PRESSED) {
         auto &notes = IRAudio::getMidiNotesOnThisFrame(device);
         for (int i = 0; i < notes.size(); ++i) {

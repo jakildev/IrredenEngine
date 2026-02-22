@@ -16,7 +16,8 @@ namespace IRSystem {
 template <> struct System<INPUT_KEY_MOUSE> {
     static SystemId create() {
         return createSystem<C_KeyStatus, C_KeyMouseButton>(
-            "InputKeyMouse", [](C_KeyStatus &keyStatus, const C_KeyMouseButton &mouseButton) {
+            "InputKeyMouse",
+            [](C_KeyStatus &keyStatus, const C_KeyMouseButton &mouseButton) {
                 int mouseButtonPressCount =
                     IRInput::getNumButtonPressesThisFrame(mouseButton.button_);
                 int mouseButtonReleaseCount =
@@ -36,7 +37,8 @@ template <> struct System<INPUT_KEY_MOUSE> {
                 }
                 keyStatus.pressedThisFrameCount_ = mouseButtonPressCount;
                 keyStatus.releasedThisFrameCount_ = mouseButtonReleaseCount;
-            });
+            }
+        );
     }
 };
 

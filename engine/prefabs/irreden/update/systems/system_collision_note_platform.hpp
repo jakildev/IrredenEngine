@@ -21,15 +21,23 @@ inline bool overlaps1D(float minA, float maxA, float minB, float maxB) {
     return minA <= maxB && maxA >= minB;
 }
 
-inline void getAabbWorld(const C_PositionGlobal3D &position, const C_ColliderIso3DAABB &collider,
-                         vec3 &outMin, vec3 &outMax) {
+inline void getAabbWorld(
+    const C_PositionGlobal3D &position,
+    const C_ColliderIso3DAABB &collider,
+    vec3 &outMin,
+    vec3 &outMax
+) {
     vec3 center = position.pos_ + collider.centerOffset_;
     outMin = center - collider.halfExtents_;
     outMax = center + collider.halfExtents_;
 }
 
-inline bool broadPhaseIsoDepth(const C_PositionGlobal3D &positionA, const C_ColliderIso3DAABB &a,
-                               const C_PositionGlobal3D &positionB, const C_ColliderIso3DAABB &b) {
+inline bool broadPhaseIsoDepth(
+    const C_PositionGlobal3D &positionA,
+    const C_ColliderIso3DAABB &a,
+    const C_PositionGlobal3D &positionB,
+    const C_ColliderIso3DAABB &b
+) {
     vec3 centerA = positionA.pos_ + a.centerOffset_;
     vec3 centerB = positionB.pos_ + b.centerOffset_;
 
@@ -50,9 +58,16 @@ inline bool broadPhaseIsoDepth(const C_PositionGlobal3D &positionA, const C_Coll
            IRMath::abs(depthA - depthB) <= (depthExtentA + depthExtentB);
 }
 
-inline bool narrowPhaseAabb(const C_PositionGlobal3D &positionA, const C_ColliderIso3DAABB &a,
-                            const C_PositionGlobal3D &positionB, const C_ColliderIso3DAABB &b,
-                            vec3 &outMinA, vec3 &outMaxA, vec3 &outMinB, vec3 &outMaxB) {
+inline bool narrowPhaseAabb(
+    const C_PositionGlobal3D &positionA,
+    const C_ColliderIso3DAABB &a,
+    const C_PositionGlobal3D &positionB,
+    const C_ColliderIso3DAABB &b,
+    vec3 &outMinA,
+    vec3 &outMaxA,
+    vec3 &outMinB,
+    vec3 &outMaxB
+) {
     getAabbWorld(positionA, a, outMinA, outMaxA);
     getAabbWorld(positionB, b, outMinB, outMaxB);
 
@@ -76,17 +91,27 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
 
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
-        return createSystem<C_PositionGlobal3D, C_ColliderIso3DAABB, C_CollisionLayer, C_ContactEvent>(
+        return createSystem<
+            C_PositionGlobal3D,
+            C_ColliderIso3DAABB,
+            C_CollisionLayer,
+            C_ContactEvent>(
             "CollisionNotePlatform",
-            [](const Archetype &, std::vector<IREntity::EntityId> &entities,
+            [](const Archetype &,
+               std::vector<IREntity::EntityId> &entities,
                std::vector<C_PositionGlobal3D> &positions,
-               std::vector<C_ColliderIso3DAABB> &colliders, std::vector<C_CollisionLayer> &layers,
+               std::vector<C_ColliderIso3DAABB> &colliders,
+               std::vector<C_CollisionLayer> &layers,
                std::vector<C_ContactEvent> &events) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
                 auto allColliderNodes = IREntity::queryArchetypeNodesSimple(
-                    IREntity::getArchetype<C_PositionGlobal3D, C_ColliderIso3DAABB, C_CollisionLayer,
-                                           C_ContactEvent>());
+                    IREntity::getArchetype<
+                        C_PositionGlobal3D,
+                        C_ColliderIso3DAABB,
+                        C_CollisionLayer,
+                        C_ContactEvent>()
+                );
 
                 for (int i = 0; i < static_cast<int>(entities.size()); i++) {
                     IR_PROFILE_BLOCK("CollisionBlockScan", IR_PROFILER_COLOR_UPDATE);
@@ -105,8 +130,10 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
 
                     for (auto *otherNode : allColliderNodes) {
                         auto &otherEntities = otherNode->entities_;
-                        auto &otherPositions = IREntity::getComponentData<C_PositionGlobal3D>(otherNode);
-                        auto &otherColliders = IREntity::getComponentData<C_ColliderIso3DAABB>(otherNode);
+                        auto &otherPositions =
+                            IREntity::getComponentData<C_PositionGlobal3D>(otherNode);
+                        auto &otherColliders =
+                            IREntity::getComponentData<C_ColliderIso3DAABB>(otherNode);
                         auto &otherLayers = IREntity::getComponentData<C_CollisionLayer>(otherNode);
                         auto &otherEvents = IREntity::getComponentData<C_ContactEvent>(otherNode);
 
@@ -123,13 +150,25 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             auto &otherPos = otherPositions[j];
                             auto &otherCollider = otherColliders[j];
 
-                            if (!broadPhaseIsoDepth(selfPos, selfCollider, otherPos, otherCollider)) {
+                            if (!broadPhaseIsoDepth(
+                                    selfPos,
+                                    selfCollider,
+                                    otherPos,
+                                    otherCollider
+                                )) {
                                 continue;
                             }
 
-                            if (!narrowPhaseAabb(selfPos, selfCollider, otherPos, otherCollider, blockMin,
-                                                 blockMax, platformMin,
-                                                 platformMax)) {
+                            if (!narrowPhaseAabb(
+                                    selfPos,
+                                    selfCollider,
+                                    otherPos,
+                                    otherCollider,
+                                    blockMin,
+                                    blockMax,
+                                    platformMin,
+                                    platformMax
+                                )) {
                                 continue;
                             }
 
@@ -143,7 +182,8 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                         }
                     }
                 }
-            });
+            }
+        );
     }
 };
 

@@ -111,8 +111,10 @@ class RenderingResourceManager {
     template <typename T> void registerResource() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         std::string typeName = typeid(T).name();
-        IR_ASSERT(m_resourceTypes.find(typeName) == m_resourceTypes.end(),
-                  "Regestering the same component twice");
+        IR_ASSERT(
+            m_resourceTypes.find(typeName) == m_resourceTypes.end(),
+            "Regestering the same component twice"
+        );
         m_resourceTypes.insert({typeName, m_nextResourceType});
         m_resourceMaps.emplace(m_nextResourceType, std::make_unique<ResourceDataImpl<T>>());
         IRE_LOG_INFO("Registered resource type {} with ID={}", typeName, m_nextResourceType);
@@ -122,8 +124,10 @@ class RenderingResourceManager {
     template <typename T> ResourceType getResourceType() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         std::string typeName = typeid(T).name();
-        IR_ASSERT(m_resourceTypes.find(typeName) != m_resourceTypes.end(),
-                  "Attempted to find a non-existent resource");
+        IR_ASSERT(
+            m_resourceTypes.find(typeName) != m_resourceTypes.end(),
+            "Attempted to find a non-existent resource"
+        );
 
         return m_resourceTypes[typeName];
     }

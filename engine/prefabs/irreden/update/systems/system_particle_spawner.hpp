@@ -30,16 +30,20 @@ template <> struct System<PARTICLE_SPAWNER> {
                 if (particleSpawner.tickCount_ % particleSpawner.spawnRate_ == 0) {
                     for (int j = 0; j < particleSpawner.spawnCount_; j++) {
                         IRECS::createEntity<kVoxelParticle>(
-                            randomVec(particleSpawner.spawnRangeMin_,
-                                      particleSpawner.spawnRangeMax_) +
-                                vec3(0.0f, 0.0f, 5.0f), // TEMP
-                            particleSpawner.color_, particleSpawner.spawnLifetime_);
+                            randomVec(
+                                particleSpawner.spawnRangeMin_,
+                                particleSpawner.spawnRangeMax_
+                            ) + vec3(0.0f, 0.0f, 5.0f), // TEMP
+                            particleSpawner.color_,
+                            particleSpawner.spawnLifetime_
+                        );
                         // TODO: add particle spawner to scene
                         // IRECS::getEngineSystem<UPDATE_VOXEL_SET_CHILDREN>()
                         //     .addEntityToScene(newParticle, entities[i]);
                     }
                 }
-            });
+            }
+        );
     }
 };
 

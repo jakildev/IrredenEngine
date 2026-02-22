@@ -34,33 +34,38 @@ class ArchetypeGraph {
         return m_nodes;
     }
 
-    std::vector<ArchetypeNode *>
-    queryArchetypeNodesSimple(const Archetype &includeComponents,
-                              const Archetype &excludeComponents = Archetype{}) const {
+    std::vector<ArchetypeNode *> queryArchetypeNodesSimple(
+        const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}
+    ) const {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
         std::vector<ArchetypeNode *> nodes;
         nodes.reserve(m_nodes.size());
         for (auto &node : m_nodes) {
-            if (node->length_ > 0 &&
-                std::includes(node->type_.begin(), node->type_.end(), includeComponents.begin(),
-                              includeComponents.end())) {
+            if (node->length_ > 0 && std::includes(
+                                         node->type_.begin(),
+                                         node->type_.end(),
+                                         includeComponents.begin(),
+                                         includeComponents.end()
+                                     )) {
                 nodes.push_back(node.get());
             }
         }
         return nodes;
     }
 
-    std::vector<ArchetypeNode *>
-    queryArchetypeNodesRelational(const Relation relation, const Archetype &includeComponents,
-                                  const Archetype &excludeComponents = Archetype{}) const {
+    std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
+        const Relation relation,
+        const Archetype &includeComponents,
+        const Archetype &excludeComponents = Archetype{}
+    ) const {
         auto nodes = queryArchetypeNodesSimple(includeComponents, excludeComponents);
         // IRE_LOG_INFO("Nodes: {}", nodes.size());
         return sortArchetypeNodesByRelation(relation, nodes);
     }
 
-    std::vector<ArchetypeNode *>
-    sortArchetypeNodesByRelation(const Relation relation,
-                                 const std::vector<ArchetypeNode *> &nodes) const {
+    std::vector<ArchetypeNode *> sortArchetypeNodesByRelation(
+        const Relation relation, const std::vector<ArchetypeNode *> &nodes
+    ) const {
         if (relation == CHILD_OF) {
             return sortArchetypeNodesByRelationChildOf(nodes);
         }

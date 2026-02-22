@@ -63,14 +63,17 @@ class MidiIn {
 
     void clearPreviousMessages();
 
-    void setCallback(RtMidiIn &rtMidiIn,
-                     void (*midiInputCallback)(double timeStamp,
-                                               std::vector<unsigned char> *message,
-                                               void *userData));
+    void setCallback(
+        RtMidiIn &rtMidiIn,
+        void (*midiInputCallback)(
+            double timeStamp, std::vector<unsigned char> *message, void *userData
+        )
+    );
 };
 
-void readMessageTestCallbackNew(double deltaTime, std::vector<unsigned char> *message,
-                                void *userdata);
+void readMessageTestCallbackNew(
+    double deltaTime, std::vector<unsigned char> *message, void *userdata
+);
 
 } // namespace IRAudio
 

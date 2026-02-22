@@ -38,10 +38,17 @@ template <> struct Prefab<PrefabTypes::kVoxelParticle> {
         // IRECS::setComponent(entity, C_Acceleration3D{vec3(0, 0, -3.5f)});
 
         auto &periodicIdle = IRECS::setComponent(
-            entity, C_PeriodicIdle{gotoHeight, (float)lifetime / IRConstants::kFPS});
+            entity,
+            C_PeriodicIdle{gotoHeight, (float)lifetime / IRConstants::kFPS}
+        );
 
-        periodicIdle.addStagePeriodRange(0.0f, static_cast<float>(M_PI) * 2.0f, 0.0f, 1.75f,
-                                         IREasingFunctions::kQuadraticEaseOut);
+        periodicIdle.addStagePeriodRange(
+            0.0f,
+            static_cast<float>(M_PI) * 2.0f,
+            0.0f,
+            1.75f,
+            IREasingFunctions::kQuadraticEaseOut
+        );
         // periodicIdle.appendStageDurationPeriod(
         //     static_cast<float>(M_PI) / 2.0f,
         //     0.50f,

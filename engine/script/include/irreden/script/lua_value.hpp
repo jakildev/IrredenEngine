@@ -52,7 +52,9 @@ template <> struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
     bool value_;
     bool defaultValue_;
 
-    LuaValue(bool defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
+    LuaValue(bool defaultValue)
+        : value_(defaultValue)
+        , defaultValue_(defaultValue) {}
 
     void parse(const sol::object &obj) override {
         IR_ASSERT(obj.is<bool>(), "Expected boolean");
@@ -72,7 +74,9 @@ template <> struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {
     double value_;
     double defaultValue_;
 
-    LuaValue(double defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
+    LuaValue(double defaultValue)
+        : value_(defaultValue)
+        , defaultValue_(defaultValue) {}
 
     void parse(const sol::object &obj) override {
         IR_ASSERT(obj.is<double>(), "Expected number");
@@ -92,7 +96,9 @@ template <> struct LuaValue<LuaType::INTEGER> : ILuaValue {
     int value_;
     int defaultValue_;
 
-    LuaValue(int defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
+    LuaValue(int defaultValue)
+        : value_(defaultValue)
+        , defaultValue_(defaultValue) {}
 
     void parse(const sol::object &obj) override {
         IR_ASSERT(obj.is<int>(), "Expected integer");
@@ -112,7 +118,9 @@ template <> struct LuaValue<LuaType::STRING> : ILuaValue {
     std::string value_;
     std::string defaultValue_;
 
-    LuaValue(const std::string &defaultValue) : value_(defaultValue), defaultValue_(defaultValue) {}
+    LuaValue(const std::string &defaultValue)
+        : value_(defaultValue)
+        , defaultValue_(defaultValue) {}
 
     void parse(const sol::object &obj) override {
         IR_ASSERT(obj.is<std::string>(), "Expected string");
@@ -136,7 +144,9 @@ template <typename EnumType> struct LuaValue<LuaType::ENUM, EnumType> : ILuaValu
     EnumMappingFunction stringToEnum_;
 
     LuaValue(EnumType defaultValue, EnumMappingFunction stringToEnum)
-        : value_(defaultValue), defaultValue_(defaultValue), stringToEnum_(stringToEnum) {}
+        : value_(defaultValue)
+        , defaultValue_(defaultValue)
+        , stringToEnum_(stringToEnum) {}
 
     void parse(const sol::object &obj) override {
         IR_ASSERT(obj.is<std::string>(), "Expected string for enum");

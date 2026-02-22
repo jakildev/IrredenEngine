@@ -10,10 +10,12 @@ struct C_AudioFile {
     // should be a pointer to the location of the audio data
     // that gets loaded.
 
-    C_AudioFile(std::string fileName) : {}
+    C_AudioFile(std::string fileName)
+        : {}
 
     // Default
-    C_AudioFile() : {}
+    C_AudioFile()
+        : {}
 };
 
 } // namespace IRComponents

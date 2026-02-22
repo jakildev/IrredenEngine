@@ -22,7 +22,9 @@ struct IRGLFWJoystickInfo {
     bool isGamepad_;
 
     IRGLFWJoystickInfo(int joystickId, std::string joystickName, bool isGamepad)
-        : joystickId_{joystickId}, joystickName_{joystickName}, isGamepad_{isGamepad} {}
+        : joystickId_{joystickId}
+        , joystickName_{joystickName}
+        , isGamepad_{isGamepad} {}
 };
 
 const std::pair<int, int> kWindowHints[] = {

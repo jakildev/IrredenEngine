@@ -3,7 +3,10 @@
 #include <irreden/audio/audio_manager.hpp>
 
 namespace IRAudio {
-AudioManager::AudioManager() : m_audio{}, m_midiIn{}, m_midiOut{} {
+AudioManager::AudioManager()
+    : m_audio{}
+    , m_midiIn{}
+    , m_midiOut{} {
     // for(auto& midiInInterface : midiInInterfaces) {
     //     m_midiIn.openPort(midiInInterface);
     // }

@@ -24,20 +24,27 @@ constexpr std::pair<KeyMouseButtons, EnumPaintingModes> kKeyCommandsPaintingMode
     {kKeyButtonF, FACES},
     {kKeyButtonC, CUBES},
     {kKeyButtonS, SELECTION},
-    {kKeyButtonP, PASTE_SELECTION}};
+    {kKeyButtonP, PASTE_SELECTION}
+};
 constexpr int kNumKeyCommandsPaintingMode =
     sizeof(kKeyCommandsPaintingModes) / sizeof(kKeyCommandsPaintingModes[0]);
 
 constexpr std::pair<KeyMouseButtons, int> kKeyCommandsPaletteColor[] = {
-    {kKeyButton1, 0}, {kKeyButton2, 1}, {kKeyButton3, 2},
-    {kKeyButton4, 3}, {kKeyButton5, 4}, {kKeyButton6, 5}};
+    {kKeyButton1, 0},
+    {kKeyButton2, 1},
+    {kKeyButton3, 2},
+    {kKeyButton4, 3},
+    {kKeyButton5, 4},
+    {kKeyButton6, 5}
+};
 constexpr int kNumKeyCommandsPaletteColor =
     sizeof(kKeyCommandsPaletteColor) / sizeof(kKeyCommandsPaletteColor[0]);
 
 constexpr std::pair<KeyMouseButtons, FaceType> kKeyCommandsFaceType[] = {
     {kKeyButtonX, FaceType::X_FACE},
     {kKeyButtonY, FaceType::Y_FACE},
-    {kKeyButtonZ, FaceType::Z_FACE}};
+    {kKeyButtonZ, FaceType::Z_FACE}
+};
 constexpr int kNumKeyCommandsFaceType =
     sizeof(kKeyCommandsFaceType) / sizeof(kKeyCommandsFaceType[0]);
 
@@ -45,7 +52,8 @@ struct System<IRECS::> {
   public:
     SystemCreatorTrianglesOnlyEntity(
         uvec2 triangleCanvasSize = IRConstants::kScreenTrixelMaxCanvasSize,
-        const char *palletFile = nullptr);
+        const char *palletFile = nullptr
+    );
     ~SystemCreatorTrianglesOnlyEntity();
 
     void beginExecute();

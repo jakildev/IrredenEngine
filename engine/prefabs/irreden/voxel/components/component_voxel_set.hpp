@@ -32,10 +32,12 @@ struct C_VoxelSetNew {
 
     std::span<C_Voxel> voxels_;
 
-    C_VoxelSetNew(ivec3 size, Color color = IRColors::kGreen
-                  // int voxelPoolId = 0
-                  )
-        : numVoxels_{size.x * size.y * size.z}, size_{size} {
+    C_VoxelSetNew(
+        ivec3 size, Color color = IRColors::kGreen
+        // int voxelPoolId = 0
+    )
+        : numVoxels_{size.x * size.y * size.z}
+        , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
         auto voxels = IRRender::allocateVoxels(requestedVoxels);
         positions_ = std::get<0>(voxels);
@@ -46,12 +48,18 @@ struct C_VoxelSetNew {
         // Keep runtime-safe bounds even if allocation returns an unexpected span size.
         numVoxels_ = static_cast<int>(IRMath::min(
             IRMath::min(positions_.size(), positionOffsets_.size()),
-            IRMath::min(globalPositions_.size(), voxels_.size())));
+            IRMath::min(globalPositions_.size(), voxels_.size())
+        ));
         if (numVoxels_ != requestedVoxels) {
-            IRE_LOG_ERROR("VoxelSet allocation mismatch: requested={}, positions={}, offsets={}, "
-                          "globals={}, colors={}",
-                          requestedVoxels, positions_.size(), positionOffsets_.size(),
-                          globalPositions_.size(), voxels_.size());
+            IRE_LOG_ERROR(
+                "VoxelSet allocation mismatch: requested={}, positions={}, offsets={}, "
+                "globals={}, colors={}",
+                requestedVoxels,
+                positions_.size(),
+                positionOffsets_.size(),
+                globalPositions_.size(),
+                voxels_.size()
+            );
             size_ = ivec3(0);
             return;
         }
@@ -68,13 +76,15 @@ struct C_VoxelSetNew {
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
 
-    C_VoxelSetNew(int width, int height, int depth) : C_VoxelSetNew(ivec3(width, height, depth)) {}
+    C_VoxelSetNew(int width, int height, int depth)
+        : C_VoxelSetNew(ivec3(width, height, depth)) {}
 
     C_VoxelSetNew(int width, int height, int depth, Color color)
         : C_VoxelSetNew(ivec3(width, height, depth), color) {}
 
     // default constructor
-    C_VoxelSetNew() : C_VoxelSetNew(ivec3(0, 0, 0)) {}
+    C_VoxelSetNew()
+        : C_VoxelSetNew(ivec3(0, 0, 0)) {}
 
     // TODO: should a similar onCreate method be used for allocating
     // voxels, just in case the constructor might be called in more than
@@ -158,7 +168,9 @@ struct C_VoxelSetNew {
             numVoxels_,
             static_cast<int>(IRMath::min(
                 IRMath::min(positions_.size(), positionOffsets_.size()),
-                IRMath::min(globalPositions_.size(), voxels_.size()))));
+                IRMath::min(globalPositions_.size(), voxels_.size())
+            ))
+        );
         for (int i = 0; i < safeCount; i++) {
             globalPositions_[i].pos_ = getLocalPosition(i) + parentPosition.pos_;
         }

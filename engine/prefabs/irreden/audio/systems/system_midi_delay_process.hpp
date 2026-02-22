@@ -16,7 +16,8 @@ namespace IRSystem {
 template <> struct System<MIDI_DELAY_PROCESS> {
     static SystemId create() {
         return createSystem<C_MidiMessage, C_MidiDelay>(
-            "MidiDelayProcess", [](C_MidiMessage &msg, C_MidiDelay &delay) {
+            "MidiDelayProcess",
+            [](C_MidiMessage &msg, C_MidiDelay &delay) {
                 if (delay.framesRemaining_ > 0) {
                     delay.framesRemaining_--;
                     return;
@@ -25,7 +26,8 @@ template <> struct System<MIDI_DELAY_PROCESS> {
                     IREntity::createEntity(msg, C_MidiOut{}, C_Lifetime{1});
                     delay.framesRemaining_ = -1;
                 }
-            });
+            }
+        );
     }
 };
 

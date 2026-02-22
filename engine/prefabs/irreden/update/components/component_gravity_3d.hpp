@@ -17,9 +17,11 @@ struct C_Gravity3D {
     C_Magnitude magnitude_;
 
     C_Gravity3D(C_Magnitude magnitude, C_Direction3D direction)
-        : magnitude_{magnitude}, direction_{direction} {}
+        : magnitude_{magnitude}
+        , direction_{direction} {}
 
-    C_Gravity3D(C_Magnitude magnitude) : C_Gravity3D{magnitude, C_Direction3D{}} {}
+    C_Gravity3D(C_Magnitude magnitude)
+        : C_Gravity3D{magnitude, C_Direction3D{}} {}
 
     C_Gravity3D()
         : C_Gravity3D{C_Magnitude{kGravityMagnitudeDefault}, C_Direction3D{kDirecton3DDown}} {}

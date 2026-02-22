@@ -24,9 +24,15 @@ namespace IRProfile {
 #define IR_PROFILER_COLOR_INPUT 0xff4444ff
 
 template <typename... Args>
-inline void engAssert(bool condition, const char *filepath, const char *functionName,
-                      int lineNumber, const char *assertionString, const char *format,
-                      Args &&...args);
+inline void engAssert(
+    bool condition,
+    const char *filepath,
+    const char *functionName,
+    int lineNumber,
+    const char *assertionString,
+    const char *format,
+    Args &&...args
+);
 
 // Game logging commands
 template <typename... Args> inline void logTrace(const char *format, Args &&...args);

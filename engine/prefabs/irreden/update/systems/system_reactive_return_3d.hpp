@@ -18,7 +18,9 @@ template <> struct System<REACTIVE_RETURN_3D> {
     static SystemId create() {
         return createSystem<C_Position3D, C_Velocity3D, C_ContactEvent, C_ReactiveReturn3D>(
             "ReactiveReturn3D",
-            [](C_Position3D &position, C_Velocity3D &velocity, const C_ContactEvent &contact,
+            [](C_Position3D &position,
+               C_Velocity3D &velocity,
+               const C_ContactEvent &contact,
                C_ReactiveReturn3D &reactive) {
                 float dt = IRTime::deltaTime(IRTime::UPDATE);
 
@@ -59,7 +61,8 @@ template <> struct System<REACTIVE_RETURN_3D> {
                 velocity.velocity_ += error * (reactive.springStrength_ * dt);
                 float damp = IRMath::max(0.0f, 1.0f - reactive.dampingPerSecond_ * dt);
                 velocity.velocity_ *= damp;
-            });
+            }
+        );
     }
 };
 

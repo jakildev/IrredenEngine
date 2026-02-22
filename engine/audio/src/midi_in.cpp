@@ -12,9 +12,14 @@ using namespace IRComponents;
 namespace IRAudio {
 
 MidiIn::MidiIn()
-    : m_rtMidiIn{}, m_numberPorts(m_rtMidiIn.getPortCount()), m_portNames{}, m_openPorts{},
-      m_rtMidiInMap{}, m_ccMessagesThisFrame{}, m_midiNoteOffMessagesThisFrame{},
-      m_midiNoteOnMessagesThisFrame{} {
+    : m_rtMidiIn{}
+    , m_numberPorts(m_rtMidiIn.getPortCount())
+    , m_portNames{}
+    , m_openPorts{}
+    , m_rtMidiInMap{}
+    , m_ccMessagesThisFrame{}
+    , m_midiNoteOffMessagesThisFrame{}
+    , m_midiNoteOnMessagesThisFrame{} {
     IRE_LOG_INFO("Descovered {} MIDI input sources", m_numberPorts);
     for (int i = 0; i < m_numberPorts; i++) {
         m_portNames.push_back(m_rtMidiIn.getPortName(i));
@@ -108,17 +113,18 @@ void MidiIn::insertCCMessage(MidiChannel channel, const C_MidiMessage &midiMessa
     m_ccMessagesThisFrame[channel][midiMessage.getCCNumber()] = midiMessage.getCCValue();
 }
 
-void MidiIn::setCallback(RtMidiIn &rtMidiIn,
-                         void (*midiInputCallback)(double timeStamp,
-                                                   std::vector<unsigned char> *message,
-                                                   void *userData)) {
+void MidiIn::setCallback(
+    RtMidiIn &rtMidiIn,
+    void (*midiInputCallback)(double timeStamp, std::vector<unsigned char> *message, void *userData)
+) {
     rtMidiIn.setCallback(midiInputCallback, &m_messageQueue);
 }
 
 //-----------Callback---------//
 
-void readMessageTestCallbackNew(double deltaTime, std::vector<unsigned char> *message,
-                                void *userdata) {
+void readMessageTestCallbackNew(
+    double deltaTime, std::vector<unsigned char> *message, void *userdata
+) {
     // Audio messages will be processed async
     // Game input messages will be added to synchronous queue
 
@@ -130,8 +136,11 @@ void readMessageTestCallbackNew(double deltaTime, std::vector<unsigned char> *me
     }
 
     auto messageQueue = static_cast<std::queue<IRComponents::C_MidiMessage> *>(userdata);
-    C_MidiMessage newMessage{message->at(0), messageSize > 1 ? message->at(1) : (unsigned char)0,
-                             messageSize > 2 ? message->at(2) : (unsigned char)0};
+    C_MidiMessage newMessage{
+        message->at(0),
+        messageSize > 1 ? message->at(1) : (unsigned char)0,
+        messageSize > 2 ? message->at(2) : (unsigned char)0
+    };
     messageQueue->push(newMessage);
 }
 

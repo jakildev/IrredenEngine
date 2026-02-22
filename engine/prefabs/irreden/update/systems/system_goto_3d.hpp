@@ -19,9 +19,13 @@ template <> struct System<GOTO_3D> {
                     return;
                 gotoComp.currentFrame_++;
                 position.pos_ = IRMath::mix(
-                    gotoComp.startPos_.pos_, gotoComp.endPos_.pos_,
-                    gotoComp.easingFunction_(static_cast<float>(gotoComp.currentFrame_) /
-                                             static_cast<float>(gotoComp.durationFrames_)));
+                    gotoComp.startPos_.pos_,
+                    gotoComp.endPos_.pos_,
+                    gotoComp.easingFunction_(
+                        static_cast<float>(gotoComp.currentFrame_) /
+                        static_cast<float>(gotoComp.durationFrames_)
+                    )
+                );
                 if (gotoComp.currentFrame_ >= gotoComp.durationFrames_) {
                     gotoComp.done_ = true;
                     // m_finishedEntities.push_back(entities[i]);
@@ -34,7 +38,8 @@ template <> struct System<GOTO_3D> {
                 // for(auto& entity : m_finishedEntities) {
                 //     IRECS::removeComponent<C_GotoEasing3D>(entity);
                 // }
-            });
+            }
+        );
     }
 };
 

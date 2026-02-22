@@ -6,9 +6,11 @@ namespace IRComponents {
 struct C_MidiDelay {
     int framesRemaining_;
 
-    C_MidiDelay(int frames) : framesRemaining_{frames} {}
+    C_MidiDelay(int frames)
+        : framesRemaining_{frames} {}
 
-    C_MidiDelay() : framesRemaining_{0} {}
+    C_MidiDelay()
+        : framesRemaining_{0} {}
 };
 
 } // namespace IRComponents

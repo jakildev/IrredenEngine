@@ -11,7 +11,8 @@ struct C_MousePosition {
     dvec2 pos_;
 
     // default
-    C_MousePosition() : pos_{0.0} {}
+    C_MousePosition()
+        : pos_{0.0} {}
 };
 
 } // namespace IRComponents

@@ -14,10 +14,14 @@ struct C_KeyStatus {
     int releasedThisFrameCount_;
 
     C_KeyStatus(ButtonStatuses status)
-        : status_{status}, pressedThisFrameCount_{0}, releasedThisFrameCount_{0} {}
+        : status_{status}
+        , pressedThisFrameCount_{0}
+        , releasedThisFrameCount_{0} {}
 
     C_KeyStatus()
-        : status_(ButtonStatuses::NOT_HELD), pressedThisFrameCount_{0}, releasedThisFrameCount_{0}
+        : status_(ButtonStatuses::NOT_HELD)
+        , pressedThisFrameCount_{0}
+        , releasedThisFrameCount_{0}
 
     {}
 };

@@ -8,10 +8,12 @@ using IRMath::Color;
 struct C_Voxel {
     Color color_;
 
-    C_Voxel(Color color) : color_{color} {}
+    C_Voxel(Color color)
+        : color_{color} {}
 
     // Default
-    C_Voxel() : C_Voxel{Color{0, 0, 0, 255}} {}
+    C_Voxel()
+        : C_Voxel{Color{0, 0, 0, 255}} {}
 
     void activate() {
         color_.alpha_ = 255;

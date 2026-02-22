@@ -6,23 +6,27 @@ namespace IRScript {
 
 // lua_dofile runs a lua script. Global functions and variables
 // can be accessed via the lua stack.
-LuaScript::LuaScript() : m_lua{} {
-    m_lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table,
-                         sol::lib::math);
+LuaScript::LuaScript()
+    : m_lua{} {
+    m_lua.open_libraries(
+        sol::lib::base,
+        sol::lib::package,
+        sol::lib::string,
+        sol::lib::table,
+        sol::lib::math
+    );
 
     // Engine-provided utility functions that are available to all Lua creations.
     m_lua["IRMath"] = m_lua.create_table();
-    m_lua["IRMath"]["fract"] = [](float value) {
-        return IRMath::fract(value);
-    };
-    m_lua["IRMath"]["clamp01"] = [](float value) {
-        return IRMath::clamp(value, 0.0f, 1.0f);
-    };
+    m_lua["IRMath"]["fract"] = [](float value) { return IRMath::fract(value); };
+    m_lua["IRMath"]["clamp01"] = [](float value) { return IRMath::clamp(value, 0.0f, 1.0f); };
     m_lua["IRMath"]["lerp"] = [](float a, float b, float t) {
         return IRMath::mix(a, b, IRMath::clamp(t, 0.0f, 1.0f));
     };
     m_lua["IRMath"]["lerpByte"] = [](int a, int b, float t) {
-        return static_cast<int>(IRMath::lerpByte(static_cast<uint8_t>(a), static_cast<uint8_t>(b), t));
+        return static_cast<int>(
+            IRMath::lerpByte(static_cast<uint8_t>(a), static_cast<uint8_t>(b), t)
+        );
     };
     m_lua["IRMath"]["hsvToRgb"] = [](float h, float s, float v) {
         const IRMath::vec3 rgb = IRMath::hsvToRgb(IRMath::vec3(h, s, v));
@@ -30,12 +34,16 @@ LuaScript::LuaScript() : m_lua{} {
     };
     m_lua["IRMath"]["hsvToRgbBytes"] = [](float h, float s, float v) {
         const IRMath::u8vec3 rgbBytes = IRMath::hsvToRgbBytes(IRMath::vec3(h, s, v));
-        return std::make_tuple(static_cast<int>(rgbBytes.r), static_cast<int>(rgbBytes.g),
-                               static_cast<int>(rgbBytes.b));
+        return std::make_tuple(
+            static_cast<int>(rgbBytes.r),
+            static_cast<int>(rgbBytes.g),
+            static_cast<int>(rgbBytes.b)
+        );
     };
 }
 
-LuaScript::LuaScript(const char *filename) : LuaScript{} {
+LuaScript::LuaScript(const char *filename)
+    : LuaScript{} {
 
     scriptFile(filename);
 }
@@ -64,8 +72,7 @@ void LuaScript::scriptFile(const char *filename) {
     } catch (const sol::error &e) {
         IRE_LOG_ERROR("Exception during Lua script loading ({}): {}", filename, e.what());
     } catch (const std::exception &e) {
-        IRE_LOG_ERROR("Standard exception during Lua script loading ({}): {}", filename,
-                      e.what());
+        IRE_LOG_ERROR("Standard exception during Lua script loading ({}): {}", filename, e.what());
     }
 }
 

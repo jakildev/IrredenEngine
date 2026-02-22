@@ -27,10 +27,13 @@ class System<VOXEL_SCENE>
     // WIP WIP WIP LEFT OFF HERE WIP WIP WIP
     // simply a matter of updating positions for now based
     // on a depth first traversal alg in a flat array...
-    void tickWithArchetype(Archetype archetype, std::vector<EntityId> &entities,
-                           std::vector<C_Position3D> &positions,
-                           std::vector<C_PositionGlobal3D> positionsGlobal,
-                           std::vector<C_VoxelSceneNode> &voxelSceneNodes) {
+    void tickWithArchetype(
+        Archetype archetype,
+        std::vector<EntityId> &entities,
+        std::vector<C_Position3D> &positions,
+        std::vector<C_PositionGlobal3D> positionsGlobal,
+        std::vector<C_VoxelSceneNode> &voxelSceneNodes
+    ) {
         IR_PROFILE_FUNCTION("System<VOXEL_SCENE>::tickWithArchetype");
         for (int i = 0; i < entities.size(); i++) {
             voxelSets[i].updateChildren(positions[i].pos_);

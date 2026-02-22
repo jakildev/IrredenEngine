@@ -15,15 +15,22 @@
 namespace IREntity {
 
 ArchetypeNode::ArchetypeNode(NodeId nodeId, const Archetype &archetype)
-    : type_{archetype}, entities_{}, edges_{}, length_(0), id_(nodeId) {
+    : type_{archetype}
+    , entities_{}
+    , edges_{}
+    , length_(0)
+    , id_(nodeId) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     for (auto itr = archetype.begin(); itr != archetype.end(); itr++) {
         if (isPureComponent(*itr)) {
             components_[*itr] = createComponentData(*itr);
         }
     }
-    IRE_LOG_INFO("Created archetype node with components: {}, id={}",
-                 makeComponentStringInternal(archetype), id_);
+    IRE_LOG_INFO(
+        "Created archetype node with components: {}, id={}",
+        makeComponentStringInternal(archetype),
+        id_
+    );
 }
 
 RelationId ArchetypeNode::getChildOfRelation() {

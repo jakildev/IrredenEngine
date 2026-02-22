@@ -5,7 +5,8 @@
 
 namespace IRSystem {
 
-SystemManager::SystemManager() : m_nextSystemId{0} {
+SystemManager::SystemManager()
+    : m_nextSystemId{0} {
     g_systemManager = this;
     IRE_LOG_INFO("Created SystemManager");
 }
@@ -29,8 +30,10 @@ void SystemManager::executeSystem(SystemId system) {
         nodes = IREntity::queryArchetypeNodesSimple(m_ticks[system].archetype_);
     }
     if (m_relations[system].relation_ == Relation::CHILD_OF) {
-        nodes = IREntity::queryArchetypeNodesRelational(m_relations[system].relation_,
-                                                        m_ticks[system].archetype_);
+        nodes = IREntity::queryArchetypeNodesRelational(
+            m_relations[system].relation_,
+            m_ticks[system].archetype_
+        );
     }
     EntityId previousRelatedEntity = kNullEntity;
     for (auto node : nodes) {
@@ -40,8 +43,9 @@ void SystemManager::executeSystem(SystemId system) {
     m_endTicks[system].functionEndTick_();
 }
 
-EntityId SystemManager::handleRelationTick(ArchetypeNode *currentNode, SystemId currentSystem,
-                                           EntityId previousRelatedEntity) {
+EntityId SystemManager::handleRelationTick(
+    ArchetypeNode *currentNode, SystemId currentSystem, EntityId previousRelatedEntity
+) {
     EntityId relatedEntity =
         getRelatedEntityFromArchetype(currentNode->type_, m_relations[currentSystem].relation_);
     if (relatedEntity != previousRelatedEntity && relatedEntity != kNullEntity) {

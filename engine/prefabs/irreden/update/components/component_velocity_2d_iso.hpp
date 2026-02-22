@@ -13,12 +13,15 @@ struct C_Velocity2DIso {
     vec2 velocity_;
 
     // Velocity is defined in trixels per second
-    C_Velocity2DIso(vec2 velocity) : velocity_{velocity} {}
+    C_Velocity2DIso(vec2 velocity)
+        : velocity_{velocity} {}
 
-    C_Velocity2DIso(float x, float y) : C_Velocity2DIso(vec2{x, y}) {}
+    C_Velocity2DIso(float x, float y)
+        : C_Velocity2DIso(vec2{x, y}) {}
 
     // Default
-    C_Velocity2DIso() : C_Velocity2DIso(vec2(0.0f)) {}
+    C_Velocity2DIso()
+        : C_Velocity2DIso(vec2(0.0f)) {}
 };
 
 } // namespace IRComponents

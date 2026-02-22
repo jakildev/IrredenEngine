@@ -8,19 +8,24 @@ namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::PeriodStage> = true;
 
 template <> inline void bindLuaType<IRComponents::PeriodStage>(LuaScript &luaScript) {
-    luaScript.registerType<IRComponents::PeriodStage,
-                           IRComponents::PeriodStage(float, float, float, float, IREasingFunctions,
-                                                     bool)>("PeriodStage");
+    luaScript.registerType<
+        IRComponents::PeriodStage,
+        IRComponents::PeriodStage(float, float, float, float, IREasingFunctions, bool)>(
+        "PeriodStage"
+    );
 }
 
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_PeriodicIdle> = true;
 
 template <> inline void bindLuaType<IRComponents::C_PeriodicIdle>(LuaScript &luaScript) {
-    luaScript.registerType<IRComponents::C_PeriodicIdle,
-                           IRComponents::C_PeriodicIdle(float, float, float),
-                           IRComponents::C_PeriodicIdle(IRMath::vec3, float, float)>(
-        "C_PeriodicIdle", "addStageDurationSeconds",
-        &IRComponents::C_PeriodicIdle::addStageDurationSeconds);
+    luaScript.registerType<
+        IRComponents::C_PeriodicIdle,
+        IRComponents::C_PeriodicIdle(float, float, float),
+        IRComponents::C_PeriodicIdle(IRMath::vec3, float, float)>(
+        "C_PeriodicIdle",
+        "addStageDurationSeconds",
+        &IRComponents::C_PeriodicIdle::addStageDurationSeconds
+    );
 }
 } // namespace IRScript
 

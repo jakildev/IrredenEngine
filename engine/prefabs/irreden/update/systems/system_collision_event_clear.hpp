@@ -11,15 +11,18 @@ namespace IRSystem {
 
 template <> struct System<COLLISION_EVENT_CLEAR> {
     static SystemId create() {
-        return createSystem<C_ContactEvent>("CollisionEventClear", [](C_ContactEvent &contactEvent) {
-            contactEvent.wasTouching_ = contactEvent.touching_;
-            contactEvent.entered_ = false;
-            contactEvent.stayed_ = false;
-            contactEvent.exited_ = contactEvent.wasTouching_;
-            contactEvent.touching_ = false;
-            contactEvent.otherEntity_ = IREntity::kNullEntity;
-            contactEvent.normal_ = vec3(0.0f);
-        });
+        return createSystem<C_ContactEvent>(
+            "CollisionEventClear",
+            [](C_ContactEvent &contactEvent) {
+                contactEvent.wasTouching_ = contactEvent.touching_;
+                contactEvent.entered_ = false;
+                contactEvent.stayed_ = false;
+                contactEvent.exited_ = contactEvent.wasTouching_;
+                contactEvent.touching_ = false;
+                contactEvent.otherEntity_ = IREntity::kNullEntity;
+                contactEvent.normal_ = vec3(0.0f);
+            }
+        );
     }
 };
 

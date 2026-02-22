@@ -19,8 +19,9 @@ VideoManager::VideoManager() {
     g_videoManager = this;
 }
 
-void VideoManager::configureCapture(const std::string &outputFilePath, int targetFps,
-                                    int videoBitrate) {
+void VideoManager::configureCapture(
+    const std::string &outputFilePath, int targetFps, int videoBitrate
+) {
     m_outputFilePath = outputFilePath;
     m_targetFps = std::max(targetFps, 1);
     m_videoBitrate = std::max(videoBitrate, 250000);
@@ -125,9 +126,9 @@ void VideoManager::toggleCapture() {
         return;
     }
 
-    const auto &framebuffer =
-        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
-            IREntity::getEntity("mainFramebuffer"));
+    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
+        IREntity::getEntity("mainFramebuffer")
+    );
     const ivec2 sourceResolution = framebuffer.getResolution();
     ivec2 outputResolution = IRRender::getRenderManager().getOutputResolution();
     if (outputResolution.x <= 0 || outputResolution.y <= 0) {
@@ -179,52 +180,81 @@ std::string VideoManager::getNextScreenshotFilePath() {
 }
 
 bool VideoManager::captureScreenshot() {
-    const auto &framebuffer =
-        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
-            IREntity::getEntity("mainFramebuffer"));
+    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
+        IREntity::getEntity("mainFramebuffer")
+    );
     const ivec2 sourceResolution = framebuffer.getResolution();
     const std::size_t pixelCount =
         static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
     std::vector<std::uint8_t> imageData(pixelCount * 4U);
     framebuffer.framebuffer_.second->getTextureColor().getSubImage2D(
-        0, 0, sourceResolution.x, sourceResolution.y, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+        0,
+        0,
+        sourceResolution.x,
+        sourceResolution.y,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        imageData.data()
+    );
 
     // OpenGL texture origin is lower-left, flip for PNG output.
     const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
     std::vector<std::uint8_t> flippedImageData(pixelCount * 4U);
     for (int y = 0; y < sourceResolution.y; ++y) {
         const int flippedY = sourceResolution.y - 1 - y;
-        std::memcpy(flippedImageData.data() + static_cast<std::size_t>(y) * rowBytes,
-                    imageData.data() + static_cast<std::size_t>(flippedY) * rowBytes, rowBytes);
+        std::memcpy(
+            flippedImageData.data() + static_cast<std::size_t>(y) * rowBytes,
+            imageData.data() + static_cast<std::size_t>(flippedY) * rowBytes,
+            rowBytes
+        );
     }
 
     const std::string outputPath = getNextScreenshotFilePath();
-    IRRender::writePNG(outputPath.c_str(), sourceResolution.x, sourceResolution.y, 4,
-                       flippedImageData.data());
+    IRRender::writePNG(
+        outputPath.c_str(),
+        sourceResolution.x,
+        sourceResolution.y,
+        4,
+        flippedImageData.data()
+    );
     IRE_LOG_INFO("Saved screenshot: {}", outputPath);
     return true;
 }
 
 bool VideoManager::captureFrame() {
-    const auto &framebuffer =
-        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
-            IREntity::getEntity("mainFramebuffer"));
+    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
+        IREntity::getEntity("mainFramebuffer")
+    );
 
     if (!m_readbackPbos.empty()) {
         const int pboWrite = m_pboWriteIndex;
         const int pboRead = (m_pboWriteIndex + 1) % kReadbackPboCount;
 
         glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPbos[pboWrite]);
-        glGetTextureSubImage(framebuffer.framebuffer_.second->getTextureColor().getHandle(), 0, 0, 0, 0,
-                             m_sourceFrameWidth, m_sourceFrameHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE,
-                             static_cast<GLsizei>(m_sourceFrameBytes), nullptr);
+        glGetTextureSubImage(
+            framebuffer.framebuffer_.second->getTextureColor().getHandle(),
+            0,
+            0,
+            0,
+            0,
+            m_sourceFrameWidth,
+            m_sourceFrameHeight,
+            1,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            static_cast<GLsizei>(m_sourceFrameBytes),
+            nullptr
+        );
 
         bool hasCpuFrame = false;
         if (m_pboPrimingFrames >= (kReadbackPboCount - 1)) {
             glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPbos[pboRead]);
-            void *mappedPtr =
-                glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(m_sourceFrameBytes),
-                                 GL_MAP_READ_BIT);
+            void *mappedPtr = glMapBufferRange(
+                GL_PIXEL_PACK_BUFFER,
+                0,
+                static_cast<GLsizeiptr>(m_sourceFrameBytes),
+                GL_MAP_READ_BIT
+            );
             if (mappedPtr != nullptr) {
                 std::memcpy(m_rawFrameBuffer.data(), mappedPtr, m_sourceFrameBytes);
                 glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
@@ -245,8 +275,14 @@ bool VideoManager::captureFrame() {
     }
 
     framebuffer.framebuffer_.second->getTextureColor().getSubImage2D(
-        0, 0, m_sourceFrameWidth, m_sourceFrameHeight, GL_RGBA, GL_UNSIGNED_BYTE,
-        m_rawFrameBuffer.data());
+        0,
+        0,
+        m_sourceFrameWidth,
+        m_sourceFrameHeight,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        m_rawFrameBuffer.data()
+    );
 
     return encodeCurrentRawFrame();
 }
@@ -281,9 +317,11 @@ bool VideoManager::encodeCurrentRawFrame() {
         const std::size_t rowBytes = static_cast<std::size_t>(m_frameWidth) * 4U;
         for (int y = 0; y < m_frameHeight; ++y) {
             const int flippedY = m_frameHeight - 1 - y;
-            std::memcpy(m_uploadFrameBuffer.data() + static_cast<std::size_t>(y) * rowBytes,
-                        m_rawFrameBuffer.data() + static_cast<std::size_t>(flippedY) * rowBytes,
-                        rowBytes);
+            std::memcpy(
+                m_uploadFrameBuffer.data() + static_cast<std::size_t>(y) * rowBytes,
+                m_rawFrameBuffer.data() + static_cast<std::size_t>(flippedY) * rowBytes,
+                rowBytes
+            );
         }
     } else {
         for (int y = 0; y < m_frameHeight; ++y) {
@@ -291,10 +329,10 @@ bool VideoManager::encodeCurrentRawFrame() {
             const int flippedSrcY = m_sourceFrameHeight - 1 - srcY;
             for (int x = 0; x < m_frameWidth; ++x) {
                 const int srcX = (x * m_sourceFrameWidth) / m_frameWidth;
-                const std::size_t srcIndex =
-                    (static_cast<std::size_t>(flippedSrcY) * static_cast<std::size_t>(m_sourceFrameWidth) +
-                     static_cast<std::size_t>(srcX)) *
-                    4U;
+                const std::size_t srcIndex = (static_cast<std::size_t>(flippedSrcY) *
+                                                  static_cast<std::size_t>(m_sourceFrameWidth) +
+                                              static_cast<std::size_t>(srcX)) *
+                                             4U;
                 const std::size_t dstIndex =
                     (static_cast<std::size_t>(y) * static_cast<std::size_t>(m_frameWidth) +
                      static_cast<std::size_t>(x)) *
@@ -320,8 +358,12 @@ void VideoManager::initReadbackPbos() {
     glGenBuffers(kReadbackPboCount, m_readbackPbos.data());
     for (unsigned int pbo : m_readbackPbos) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
-        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(m_sourceFrameBytes), nullptr,
-                     GL_STREAM_READ);
+        glBufferData(
+            GL_PIXEL_PACK_BUFFER,
+            static_cast<GLsizeiptr>(m_sourceFrameBytes),
+            nullptr,
+            GL_STREAM_READ
+        );
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     m_pboWriteIndex = 0;

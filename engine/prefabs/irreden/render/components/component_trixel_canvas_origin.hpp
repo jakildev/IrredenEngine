@@ -8,7 +8,8 @@ namespace IRComponents {
 struct C_TrixelCanvasOrigin {
     ivec2 offsetZ1_;
 
-    C_TrixelCanvasOrigin(ivec2 offset) : offsetZ1_{offset} {}
+    C_TrixelCanvasOrigin(ivec2 offset)
+        : offsetZ1_{offset} {}
 
     C_TrixelCanvasOrigin() {}
 };

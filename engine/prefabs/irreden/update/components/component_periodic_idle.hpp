@@ -16,10 +16,20 @@ struct PeriodStage {
     IREasingFunctions easingFunction_;
     bool isReversed_ = false;
 
-    PeriodStage(float startAngle, float endAngle, float startTValue, float endTValue,
-                IREasingFunctions easingFunction, bool isReversed = false)
-        : startAngle_{startAngle}, endAngle_{endAngle}, startTValue_{startTValue},
-          endTValue_{endTValue}, easingFunction_{easingFunction}, isReversed_{isReversed} {}
+    PeriodStage(
+        float startAngle,
+        float endAngle,
+        float startTValue,
+        float endTValue,
+        IREasingFunctions easingFunction,
+        bool isReversed = false
+    )
+        : startAngle_{startAngle}
+        , endAngle_{endAngle}
+        , startTValue_{startTValue}
+        , endTValue_{endTValue}
+        , easingFunction_{easingFunction}
+        , isReversed_{isReversed} {}
 };
 
 struct C_PeriodicIdle {
@@ -35,14 +45,21 @@ struct C_PeriodicIdle {
         : C_PeriodicIdle{vec3{0.0f, 0.0f, amplitude}, periodLengthSeconds, offset} {}
 
     C_PeriodicIdle(vec3 amplitude, float periodLengthSeconds, float offset = 0.0f)
-        : tickCount_{0}, angle_{offset}, amplitude_{amplitude},
-          periodLengthSeconds_{periodLengthSeconds}, stages_{}, currentStageIndex_{0},
-          cycleCompleted_{false},
-          m_angleIncrementPerTick{(2.0f * static_cast<float>(M_PI)) / periodLengthSeconds_ /
-                                  static_cast<float>(IRConstants::kFPS)} {}
+        : tickCount_{0}
+        , angle_{offset}
+        , amplitude_{amplitude}
+        , periodLengthSeconds_{periodLengthSeconds}
+        , stages_{}
+        , currentStageIndex_{0}
+        , cycleCompleted_{false}
+        , m_angleIncrementPerTick{
+              (2.0f * static_cast<float>(M_PI)) / periodLengthSeconds_ /
+              static_cast<float>(IRConstants::kFPS)
+          } {}
 
     // Default
-    C_PeriodicIdle() : C_PeriodicIdle{vec3{0.0f, 0.0f, 0.0f}, 0.0f} {}
+    C_PeriodicIdle()
+        : C_PeriodicIdle{vec3{0.0f, 0.0f, 0.0f}, 0.0f} {}
 
     vec3 getValue() {
         return m_currentValue;
@@ -68,13 +85,22 @@ struct C_PeriodicIdle {
     void updateValue() {
         PeriodStage &stage = stages_[currentStageIndex_];
         float mappedAngle = mapAngleToStageTValue(angle_, stage);
-        float easedValue = IRMath::mix(stage.startTValue_, stage.endTValue_,
-                                       kEasingFunctions.at(stage.easingFunction_)(mappedAngle));
+        float easedValue = IRMath::mix(
+            stage.startTValue_,
+            stage.endTValue_,
+            kEasingFunctions.at(stage.easingFunction_)(mappedAngle)
+        );
         m_currentValue = amplitude_ * easedValue;
     }
 
-    void addStagePeriodRange(float startAngle, float endAngle, float startTValue, float endTValue,
-                             IREasingFunctions easingFunction, bool isReversed = false) {
+    void addStagePeriodRange(
+        float startAngle,
+        float endAngle,
+        float startTValue,
+        float endTValue,
+        IREasingFunctions easingFunction,
+        bool isReversed = false
+    ) {
         // Values gets optimized out and assert crashes in debug mode
         // IRE_LOG_INFO("startAngle: ", startAngle);
         // IR_ASSERT(
@@ -88,32 +114,59 @@ struct C_PeriodicIdle {
         //     "End angle is not in range startAngle-2PI"
         // );
         stages_.push_back(
-            PeriodStage{startAngle, endAngle, startTValue, endTValue, easingFunction, isReversed});
+            PeriodStage{startAngle, endAngle, startTValue, endTValue, easingFunction, isReversed}
+        );
         sortSequence();
     }
 
-    void addStageDurationSeconds(float startTime, float durationSeconds, float startTValue,
-                                 float endTValue, IREasingFunctions easingFunction) {
-        addStagePeriodRange(secondsToRadians(startTime),
-                            secondsToRadians(durationSeconds + startTime), startTValue, endTValue,
-                            easingFunction);
+    void addStageDurationSeconds(
+        float startTime,
+        float durationSeconds,
+        float startTValue,
+        float endTValue,
+        IREasingFunctions easingFunction
+    ) {
+        addStagePeriodRange(
+            secondsToRadians(startTime),
+            secondsToRadians(durationSeconds + startTime),
+            startTValue,
+            endTValue,
+            easingFunction
+        );
     }
 
     void appendStageFillEnd(float startTValue, float endTValue, IREasingFunctions easingFunction) {
-        addStagePeriodRange(stages_.back().endAngle_, 2.0f * static_cast<float>(M_PI), startTValue,
-                            endTValue, easingFunction);
+        addStagePeriodRange(
+            stages_.back().endAngle_,
+            2.0f * static_cast<float>(M_PI),
+            startTValue,
+            endTValue,
+            easingFunction
+        );
     }
 
-    void appendStageDurationPeriod(float durationPeriod, float startTValue, float endTValue,
-                                   IREasingFunctions easingFunction) {
-        addStagePeriodRange(stages_.back().endAngle_, stages_.back().endAngle_ + durationPeriod,
-                            startTValue, endTValue, easingFunction);
+    void appendStageDurationPeriod(
+        float durationPeriod, float startTValue, float endTValue, IREasingFunctions easingFunction
+    ) {
+        addStagePeriodRange(
+            stages_.back().endAngle_,
+            stages_.back().endAngle_ + durationPeriod,
+            startTValue,
+            endTValue,
+            easingFunction
+        );
     }
 
-    void appendStageDurationSeconds(float durationSeconds, float startTValue, float endTValue,
-                                    IREasingFunctions easingFunction) {
-        addStageDurationSeconds(radiansToSeconds(stages_.back().endAngle_), durationSeconds,
-                                startTValue, endTValue, easingFunction);
+    void appendStageDurationSeconds(
+        float durationSeconds, float startTValue, float endTValue, IREasingFunctions easingFunction
+    ) {
+        addStageDurationSeconds(
+            radiansToSeconds(stages_.back().endAngle_),
+            durationSeconds,
+            startTValue,
+            endTValue,
+            easingFunction
+        );
     }
 
     void setOffsetSeconds(float offsetSeconds) {
@@ -121,17 +174,24 @@ struct C_PeriodicIdle {
     }
 
     void makeReverseLoop() {
-        IR_ASSERT(stages_.back().endAngle_ <= static_cast<float>(M_PI),
-                  "Cannot make reverse loop with end angle greater than PI");
+        IR_ASSERT(
+            stages_.back().endAngle_ <= static_cast<float>(M_PI),
+            "Cannot make reverse loop with end angle greater than PI"
+        );
         for (auto &stage : stages_) {
             // TEMP
             IREasingFunctions easingFunction = stage.easingFunction_;
             if (easingFunction == IREasingFunctions::kBackEaseOut) {
                 easingFunction = IREasingFunctions::kCubicEaseOut;
             }
-            addStagePeriodRange(2.0f * static_cast<float>(M_PI) - stage.endAngle_,
-                                2.0f * static_cast<float>(M_PI) - stage.startAngle_,
-                                stage.startTValue_, stage.endTValue_, easingFunction, true);
+            addStagePeriodRange(
+                2.0f * static_cast<float>(M_PI) - stage.endAngle_,
+                2.0f * static_cast<float>(M_PI) - stage.startAngle_,
+                stage.startTValue_,
+                stage.endTValue_,
+                easingFunction,
+                true
+            );
         }
     }
 
@@ -141,8 +201,9 @@ struct C_PeriodicIdle {
     vec3 m_previousValue = vec3{0.0f, 0.0f, 0.0f};
 
     void sortSequence() {
-        std::sort(stages_.begin(), stages_.end(),
-                  [](const auto &a, const auto &b) { return a.startAngle_ < b.startAngle_; });
+        std::sort(stages_.begin(), stages_.end(), [](const auto &a, const auto &b) {
+            return a.startAngle_ < b.startAngle_;
+        });
     }
 
     float secondsToRadians(float seconds) {

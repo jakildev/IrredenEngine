@@ -4,7 +4,8 @@
 namespace {
 class IREntityTest : public testing::Test {
   protected:
-    IREntityTest() : m_entityManager{} {}
+    IREntityTest()
+        : m_entityManager{} {}
 
     ~IREntityTest() override {
         // Do tear-down work for each test here.

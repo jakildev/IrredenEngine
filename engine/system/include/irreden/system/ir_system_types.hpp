@@ -80,7 +80,8 @@ enum SystemName {
 template <typename... RelationComponents> struct RelationParams {
     Relation relation_ = Relation::NONE;
 
-    RelationParams(Relation relation = Relation::NONE) : relation_(relation) {}
+    RelationParams(Relation relation = Relation::NONE)
+        : relation_(relation) {}
 };
 // // Deduction guide
 // template <typename... RelationComponents>
@@ -109,9 +110,11 @@ concept InvocableWithEntityId = std::is_invocable_v<FunctionTick, EntityId &, Co
 // >;
 
 template <typename FunctionTick, typename... Components>
-concept InvocableWithNodeVectors =
-    std::is_invocable_v<FunctionTick, const Archetype &, std::vector<EntityId> &,
-                        std::vector<Components> &...>;
+concept InvocableWithNodeVectors = std::is_invocable_v<
+    FunctionTick,
+    const Archetype &,
+    std::vector<EntityId> &,
+    std::vector<Components> &...>;
 
 template <SystemName system> class System;
 

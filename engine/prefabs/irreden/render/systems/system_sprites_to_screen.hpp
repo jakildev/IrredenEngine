@@ -23,19 +23,28 @@ template <> struct System<SPRITE_TO_SCREEN> {
     static SystemId create() {
         static FrameDataFramebuffer frameData{};
         IRRender::createNamedResource<Buffer>(
-            "FramebufferToScreenFrameData", nullptr, sizeof(FrameDataFramebuffer),
-            GL_DYNAMIC_STORAGE_BIT, GL_UNIFORM_BUFFER, kBufferIndex_FramebufferFrameDataUniform);
+            "FramebufferToScreenFrameData",
+            nullptr,
+            sizeof(FrameDataFramebuffer),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_UNIFORM_BUFFER,
+            kBufferIndex_FramebufferFrameDataUniform
+        );
 
         return createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
             "FramebufferToScreen",
-            [](const C_TrixelCanvasFramebuffer &framebuffer, const C_Position3D &cameraPosition,
+            [](const C_TrixelCanvasFramebuffer &framebuffer,
+               const C_Position3D &cameraPosition,
                const C_Name &name) {
                 framebuffer.bindTextures(0, 1);
                 frameData.mvpMatrix =
-                    calcProjectionMatrix() *
-                    calcModelMatrix(framebuffer.getResolution(),
-                                    framebuffer.getResolutionPlusBuffer(), cameraPosition.pos_,
-                                    IRRender::getCameraPosition2DIso(), name.name_);
+                    calcProjectionMatrix() * calcModelMatrix(
+                                                 framebuffer.getResolution(),
+                                                 framebuffer.getResolutionPlusBuffer(),
+                                                 cameraPosition.pos_,
+                                                 IRRender::getCameraPosition2DIso(),
+                                                 name.name_
+                                             );
                 IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData")
                     ->subData(0, sizeof(FrameDataFramebuffer), &frameData);
                 ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -46,12 +55,18 @@ template <> struct System<SPRITE_TO_SCREEN> {
                 clearDefaultFramebuffer();
                 IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram")->use();
                 IRRender::getNamedResource<VAO>("QuadVAOArrays")->bind();
-            });
+            }
+        );
     }
 
   private:
-    static mat4 calcModelMatrix(ivec2 resolution, ivec2 resolutionPlusBuffer, vec3 cameraPosition,
-                                vec2 cameraPositionIso, std::string name) {
+    static mat4 calcModelMatrix(
+        ivec2 resolution,
+        ivec2 resolutionPlusBuffer,
+        vec3 cameraPosition,
+        vec2 cameraPositionIso,
+        std::string name
+    ) {
         const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
 
         // also known as screen center
@@ -65,10 +80,15 @@ template <> struct System<SPRITE_TO_SCREEN> {
 
         // Pixel perfect part
         if (name == "main") {
-            vec2 framebufferPositionOffset =
-                IRMath::floor(IRMath::fract(IRMath::pos2DIsoToPos2DGameResolution(
-                                  IRMath::fract(cameraPositionIso), IRRender::getCameraZoom())) *
-                              vec2(1, -1) * vec2(scaleFactor));
+            vec2 framebufferPositionOffset = IRMath::floor(
+                IRMath::fract(
+                    IRMath::pos2DIsoToPos2DGameResolution(
+                        IRMath::fract(cameraPositionIso),
+                        IRRender::getCameraZoom()
+                    )
+                ) *
+                vec2(1, -1) * vec2(scaleFactor)
+            );
             offset += framebufferPositionOffset;
         } else if (name == "background") {
             // Need to offset by one pixel here but not exactly sure why atm
@@ -80,14 +100,22 @@ template <> struct System<SPRITE_TO_SCREEN> {
             // );
         }
         model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
-        model = IRMath::scale(model, vec3(resolutionPlusBuffer.x * scaleFactor,
-                                          resolutionPlusBuffer.y * scaleFactor, 1.0f));
+        model = IRMath::scale(
+            model,
+            vec3(resolutionPlusBuffer.x * scaleFactor, resolutionPlusBuffer.y * scaleFactor, 1.0f)
+        );
         return model;
     }
 
     static mat4 calcProjectionMatrix() {
-        mat4 projection = IRMath::ortho(0.0f, (float)IRRender::getViewport().x, 0.0f,
-                                        (float)IRRender::getViewport().y, -1.0f, 100.0f);
+        mat4 projection = IRMath::ortho(
+            0.0f,
+            (float)IRRender::getViewport().x,
+            0.0f,
+            (float)IRRender::getViewport().y,
+            -1.0f,
+            100.0f
+        );
         return projection;
     }
 

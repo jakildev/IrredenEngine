@@ -80,7 +80,8 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     m_videoFrameCount = 0;
 
     if (config.width_ <= 0 || config.height_ <= 0 || config.target_fps_ <= 0) {
-        m_lastError = "Invalid video recorder config. Width, height, and fps must be greater than zero.";
+        m_lastError =
+            "Invalid video recorder config. Width, height, and fps must be greater than zero.";
         IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
         return false;
     }
@@ -100,8 +101,12 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
         return false;
     }
 
-    int result = avformat_alloc_output_context2(&state->formatContext, nullptr, nullptr,
-                                                config.output_file_path_.c_str());
+    int result = avformat_alloc_output_context2(
+        &state->formatContext,
+        nullptr,
+        nullptr,
+        config.output_file_path_.c_str()
+    );
     if (result < 0 || state->formatContext == nullptr) {
         m_lastError = "Could not allocate output context: " + makeErrorString(result);
         IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
@@ -152,7 +157,8 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
         return false;
     }
 
-    result = avcodec_parameters_from_context(state->videoStream->codecpar, state->videoCodecContext);
+    result =
+        avcodec_parameters_from_context(state->videoStream->codecpar, state->videoCodecContext);
     if (result < 0) {
         m_lastError = "Could not copy stream parameters: " + makeErrorString(result);
         IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
@@ -162,7 +168,8 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     state->videoStream->time_base = state->videoCodecContext->time_base;
 
     if ((state->formatContext->oformat->flags & AVFMT_NOFILE) == 0) {
-        result = avio_open(&state->formatContext->pb, config.output_file_path_.c_str(), AVIO_FLAG_WRITE);
+        result =
+            avio_open(&state->formatContext->pb, config.output_file_path_.c_str(), AVIO_FLAG_WRITE);
         if (result < 0) {
             m_lastError = "Could not open output file: " + makeErrorString(result);
             IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
@@ -179,9 +186,18 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
         return false;
     }
 
-    state->scaleContext = sws_getContext(config.width_, config.height_, AV_PIX_FMT_RGBA, config.width_,
-                                         config.height_, state->videoCodecContext->pix_fmt, SWS_BILINEAR,
-                                         nullptr, nullptr, nullptr);
+    state->scaleContext = sws_getContext(
+        config.width_,
+        config.height_,
+        AV_PIX_FMT_RGBA,
+        config.width_,
+        config.height_,
+        state->videoCodecContext->pix_fmt,
+        SWS_BILINEAR,
+        nullptr,
+        nullptr,
+        nullptr
+    );
     if (state->scaleContext == nullptr) {
         m_lastError = "Could not create RGBA->YUV420P conversion context.";
         IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
@@ -253,8 +269,15 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
 
             const std::uint8_t *srcSlices[4] = {frameBuffer.data(), nullptr, nullptr, nullptr};
             const int srcStride[4] = {state->rgbaStrideBytes, 0, 0, 0};
-            sws_scale(state->scaleContext, srcSlices, srcStride, 0, state->videoCodecContext->height,
-                      state->videoFrame->data, state->videoFrame->linesize);
+            sws_scale(
+                state->scaleContext,
+                srcSlices,
+                srcStride,
+                0,
+                state->videoCodecContext->height,
+                state->videoFrame->data,
+                state->videoFrame->linesize
+            );
 
             state->videoFrame->pts = state->nextVideoPts++;
             result = avcodec_send_frame(state->videoCodecContext, state->videoFrame);
@@ -282,8 +305,11 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                     break;
                 }
 
-                av_packet_rescale_ts(state->packet, state->videoCodecContext->time_base,
-                                     state->videoStream->time_base);
+                av_packet_rescale_ts(
+                    state->packet,
+                    state->videoCodecContext->time_base,
+                    state->videoStream->time_base
+                );
                 state->packet->stream_index = state->videoStream->index;
                 result = av_interleaved_write_frame(state->formatContext, state->packet);
                 av_packet_unref(state->packet);
@@ -323,8 +349,11 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                     break;
                 }
 
-                av_packet_rescale_ts(state->packet, state->videoCodecContext->time_base,
-                                     state->videoStream->time_base);
+                av_packet_rescale_ts(
+                    state->packet,
+                    state->videoCodecContext->time_base,
+                    state->videoStream->time_base
+                );
                 state->packet->stream_index = state->videoStream->index;
                 result = av_interleaved_write_frame(state->formatContext, state->packet);
                 av_packet_unref(state->packet);
@@ -338,8 +367,13 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
             }
         }
     });
-    IRE_LOG_INFO("VideoRecorder started output to {} at {}x{} @ {} FPS",
-                 config.output_file_path_.c_str(), config.width_, config.height_, config.target_fps_);
+    IRE_LOG_INFO(
+        "VideoRecorder started output to {} at {}x{} @ {} FPS",
+        config.output_file_path_.c_str(),
+        config.width_,
+        config.height_,
+        config.target_fps_
+    );
     return true;
 #endif
 }
@@ -434,8 +468,8 @@ bool VideoRecorder::submitVideoFrame(const std::uint8_t *rgbaData, int strideByt
             return false;
         }
 
-        const std::size_t frameBytes =
-            static_cast<std::size_t>(state->rgbaStrideBytes) * static_cast<std::size_t>(state->frameHeight);
+        const std::size_t frameBytes = static_cast<std::size_t>(state->rgbaStrideBytes) *
+                                       static_cast<std::size_t>(state->frameHeight);
         std::vector<std::uint8_t> frame(frameBytes);
         std::memcpy(frame.data(), rgbaData, frameBytes);
 

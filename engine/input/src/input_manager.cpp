@@ -9,8 +9,11 @@
 
 namespace IRInput {
 InputManager::InputManager()
-    : m_scrollEntitiesThisFrame{}, m_buttonPressesThisFrame{}, m_buttonReleasesThisFrame{},
-      m_mousePositionUpdate{}, m_mousePositionRender{} {
+    : m_scrollEntitiesThisFrame{}
+    , m_buttonPressesThisFrame{}
+    , m_buttonReleasesThisFrame{}
+    , m_mousePositionUpdate{}
+    , m_mousePositionRender{} {
     m_buttonPressesThisFrame.resize(static_cast<int>(kNumKeyMouseButtons));
     m_buttonReleasesThisFrame.resize(static_cast<int>(kNumKeyMouseButtons));
 
@@ -31,14 +34,22 @@ void InputManager::tick() {
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
 
-    processKeyMouseButtons(IRWindow::getWindow().getKeysPressedToProcess(),
-                           ButtonStatuses::PRESSED);
-    processKeyMouseButtons(IRWindow::getWindow().getKeysReleasedToProcess(),
-                           ButtonStatuses::RELEASED);
-    processKeyMouseButtons(IRWindow::getWindow().getMouseButtonsPressedToProcess(),
-                           ButtonStatuses::PRESSED);
-    processKeyMouseButtons(IRWindow::getWindow().getMouseButtonsReleasedToProcess(),
-                           ButtonStatuses::RELEASED);
+    processKeyMouseButtons(
+        IRWindow::getWindow().getKeysPressedToProcess(),
+        ButtonStatuses::PRESSED
+    );
+    processKeyMouseButtons(
+        IRWindow::getWindow().getKeysReleasedToProcess(),
+        ButtonStatuses::RELEASED
+    );
+    processKeyMouseButtons(
+        IRWindow::getWindow().getMouseButtonsPressedToProcess(),
+        ButtonStatuses::PRESSED
+    );
+    processKeyMouseButtons(
+        IRWindow::getWindow().getMouseButtonsReleasedToProcess(),
+        ButtonStatuses::RELEASED
+    );
     processScrolls(IRWindow::getWindow().getScrollsToProcess());
     IRWindow::getCursorPosition(m_mousePositionUpdate);
 }
@@ -149,8 +160,12 @@ void InputManager::initJoystickEntities() {
             IRE_LOG_INFO("Creating joystick entity for joystick {}", i);
 
             m_gamepadEntities.emplace_back(
-                IREntity::createEntity<kGLFWJoystick>(i, IRWindow::getWindow().getJoystickName(i),
-                                                      IRWindow::getWindow().joystickIsGamepad(i)));
+                IREntity::createEntity<kGLFWJoystick>(
+                    i,
+                    IRWindow::getWindow().getJoystickName(i),
+                    IRWindow::getWindow().joystickIsGamepad(i)
+                )
+            );
         }
     }
 }

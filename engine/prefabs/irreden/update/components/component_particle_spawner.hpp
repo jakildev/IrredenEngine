@@ -21,17 +21,30 @@ struct C_ParticleSpawner {
     float minGotoHeight_;
     float maxGotoHeight_;
 
-    C_ParticleSpawner(int spawnRate, int spawnCount, int spawnLifetime, Color color,
-                      vec3 spawnRangeMin = vec3(0, 0, 0), vec3 spawnRangeMax = vec3(0, 0, 0),
-                      float minGotoHeight = 0.0f, float maxGotoHeight = 0.0f,
-                      int maxParticles = 1000)
-        : tickCount_{0}, spawnRate_{spawnRate}, spawnCount_{spawnCount},
-          spawnLifetime_{spawnLifetime}, color_{color}, spawnRangeMin_{spawnRangeMin},
-          spawnRangeMax_{spawnRangeMax}, minGotoHeight_{minGotoHeight},
-          maxGotoHeight_{maxGotoHeight} {}
+    C_ParticleSpawner(
+        int spawnRate,
+        int spawnCount,
+        int spawnLifetime,
+        Color color,
+        vec3 spawnRangeMin = vec3(0, 0, 0),
+        vec3 spawnRangeMax = vec3(0, 0, 0),
+        float minGotoHeight = 0.0f,
+        float maxGotoHeight = 0.0f,
+        int maxParticles = 1000
+    )
+        : tickCount_{0}
+        , spawnRate_{spawnRate}
+        , spawnCount_{spawnCount}
+        , spawnLifetime_{spawnLifetime}
+        , color_{color}
+        , spawnRangeMin_{spawnRangeMin}
+        , spawnRangeMax_{spawnRangeMax}
+        , minGotoHeight_{minGotoHeight}
+        , maxGotoHeight_{maxGotoHeight} {}
 
     // Default
-    C_ParticleSpawner() : C_ParticleSpawner(1, 0, 0, Color(255, 255, 255, 255)) {}
+    C_ParticleSpawner()
+        : C_ParticleSpawner(1, 0, 0, Color(255, 255, 255, 255)) {}
 
     void activate() {
         active_ = true;

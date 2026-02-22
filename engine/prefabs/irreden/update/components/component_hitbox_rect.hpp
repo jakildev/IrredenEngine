@@ -10,10 +10,12 @@ namespace IRComponents {
 struct C_HitboxRect {
     u8vec2 size_;
 
-    C_HitboxRect(u8vec2 size) : size_{size} {}
+    C_HitboxRect(u8vec2 size)
+        : size_{size} {}
 
     // Default
-    C_HitboxRect() : size_{u8vec2{1, 1}} {}
+    C_HitboxRect()
+        : size_{u8vec2{1, 1}} {}
 };
 
 } // namespace IRComponents

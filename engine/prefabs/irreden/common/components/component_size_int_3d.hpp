@@ -10,11 +10,14 @@ namespace IRComponents {
 struct C_SizeInt3D {
     ivec3 size_;
 
-    C_SizeInt3D(ivec3 size) : size_{size} {}
+    C_SizeInt3D(ivec3 size)
+        : size_{size} {}
 
-    C_SizeInt3D(int x, int y, int z) : C_SizeInt3D{ivec3(x, y, z)} {}
+    C_SizeInt3D(int x, int y, int z)
+        : C_SizeInt3D{ivec3(x, y, z)} {}
 
-    C_SizeInt3D() : C_SizeInt3D{ivec3(0, 0, 0)} {}
+    C_SizeInt3D()
+        : C_SizeInt3D{ivec3(0, 0, 0)} {}
 };
 
 } // namespace IRComponents

@@ -8,12 +8,18 @@ namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_CollisionLayer> = true;
 
 template <> inline void bindLuaType<IRComponents::C_CollisionLayer>(LuaScript &luaScript) {
-    luaScript.registerType<IRComponents::C_CollisionLayer,
-                           IRComponents::C_CollisionLayer(std::uint32_t, std::uint32_t, bool),
-                           IRComponents::C_CollisionLayer()>(
-        "C_CollisionLayer", "layer", &IRComponents::C_CollisionLayer::layer_, "collidesWithMask",
-        &IRComponents::C_CollisionLayer::collidesWithMask_, "isSolid",
-        &IRComponents::C_CollisionLayer::isSolid_);
+    luaScript.registerType<
+        IRComponents::C_CollisionLayer,
+        IRComponents::C_CollisionLayer(std::uint32_t, std::uint32_t, bool),
+        IRComponents::C_CollisionLayer()>(
+        "C_CollisionLayer",
+        "layer",
+        &IRComponents::C_CollisionLayer::layer_,
+        "collidesWithMask",
+        &IRComponents::C_CollisionLayer::collidesWithMask_,
+        "isSolid",
+        &IRComponents::C_CollisionLayer::isSolid_
+    );
 }
 } // namespace IRScript
 

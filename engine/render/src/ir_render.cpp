@@ -58,10 +58,12 @@ vec2 mousePosition2DIsoWorldRender() {
 }
 
 ivec2 mouseTrixelPositionWorld() {
-    return IRMath::floor(IRMath::pos2DIsoToTriangleIndex(
-        IRRender::mousePosition2DIsoWorldRender(),
-        ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
-        ));
+    return IRMath::floor(
+        IRMath::pos2DIsoToTriangleIndex(
+            IRRender::mousePosition2DIsoWorldRender(),
+            ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
+        )
+    );
 }
 
 void setVoxelRenderMode(VoxelRenderMode mode) {

@@ -11,7 +11,9 @@ const unsigned int kMaxVertexAttributes = 16;
 
 class VAO {
   public:
-    VAO(GLuint vertexBufferHandle, GLuint indexBufferHandle, unsigned int numAttributes,
+    VAO(GLuint vertexBufferHandle,
+        GLuint indexBufferHandle,
+        unsigned int numAttributes,
         const VertexArrayAttribute *attributes);
     ~VAO();
 
@@ -21,9 +23,12 @@ class VAO {
     GLuint m_handle;
     GLsizei m_stride;
 
-    void initVertexBufferAttributes(unsigned int numAttributes,
-                                    const VertexArrayAttribute *attributes,
-                                    const size_t *attributeSizes, GLuint bindingIndex);
+    void initVertexBufferAttributes(
+        unsigned int numAttributes,
+        const VertexArrayAttribute *attributes,
+        const size_t *attributeSizes,
+        GLuint bindingIndex
+    );
 };
 
 } // namespace IRRender

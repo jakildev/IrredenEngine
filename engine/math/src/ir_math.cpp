@@ -14,8 +14,12 @@ const float randomFloat(const float min, const float max) {
     return min + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX / (max - min)));
 }
 const Color randomColor() {
-    return Color{static_cast<uint8_t>(randomInt(0, 255)), static_cast<uint8_t>(randomInt(0, 255)),
-                 static_cast<uint8_t>(randomInt(0, 255)), 255};
+    return Color{
+        static_cast<uint8_t>(randomInt(0, 255)),
+        static_cast<uint8_t>(randomInt(0, 255)),
+        static_cast<uint8_t>(randomInt(0, 255)),
+        255
+    };
 }
 
 const Color randomColor(const std::vector<Color> &colorPalette) {
@@ -68,29 +72,42 @@ float fract(float value) {
 
 vec3 hsvToRgb(const vec3 &colorHSV) {
     // Engine-facing hue is normalized [0, 1). GLM expects degrees.
-    const vec3 hsvDegrees =
-        vec3(IRMath::fract(colorHSV.x) * 360.0f, colorHSV.y, colorHSV.z);
+    const vec3 hsvDegrees = vec3(IRMath::fract(colorHSV.x) * 360.0f, colorHSV.y, colorHSV.z);
     return glm::rgbColor(hsvDegrees);
 }
 
 u8vec3 hsvToRgbBytes(const vec3 &colorHSV) {
     const vec3 colorRGB = hsvToRgb(colorHSV);
-    return u8vec3(roundFloatToByte(colorRGB.r), roundFloatToByte(colorRGB.g),
-                  roundFloatToByte(colorRGB.b));
+    return u8vec3(
+        roundFloatToByte(colorRGB.r),
+        roundFloatToByte(colorRGB.g),
+        roundFloatToByte(colorRGB.b)
+    );
 }
 
 Color colorHSVToColor(const ColorHSV &colorHSV) {
     vec3 rgbColor = hsvToRgb(vec3(colorHSV.hue_, colorHSV.saturation_, colorHSV.value_));
 
-    return Color{roundFloatToByte(rgbColor.r), roundFloatToByte(rgbColor.g),
-                 roundFloatToByte(rgbColor.b), roundFloatToByte(colorHSV.alpha_)};
+    return Color{
+        roundFloatToByte(rgbColor.r),
+        roundFloatToByte(rgbColor.g),
+        roundFloatToByte(rgbColor.b),
+        roundFloatToByte(colorHSV.alpha_)
+    };
 }
 
 ColorHSV colorToColorHSV(const Color &color) {
-    vec3 colorHSV = glm::hsvColor(vec3(roundByteToFloat(color.red_), roundByteToFloat(color.green_),
-                                       roundByteToFloat(color.blue_)));
-    return ColorHSV{IRMath::fract(colorHSV.r / 360.0f), colorHSV.g, colorHSV.b,
-                    (float)color.alpha_ / 255.0f};
+    vec3 colorHSV = glm::hsvColor(vec3(
+        roundByteToFloat(color.red_),
+        roundByteToFloat(color.green_),
+        roundByteToFloat(color.blue_)
+    ));
+    return ColorHSV{
+        IRMath::fract(colorHSV.r / 360.0f),
+        colorHSV.g,
+        colorHSV.b,
+        (float)color.alpha_ / 255.0f
+    };
 }
 
 } // namespace IRMath
