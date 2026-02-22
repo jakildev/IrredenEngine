@@ -55,6 +55,8 @@ class RenderManager {
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
+    void zoomMainBackgroundPatternIn();
+    void zoomMainBackgroundPatternOut();
 
     void tick();
     void printRenderInfo();
@@ -74,9 +76,9 @@ class RenderManager {
     Buffer m_bufferUniformConstantsGLSL;
     // Buffer m_bufferVoxelPositions;
     // Buffer m_bufferVoxelColors;
-    // EntityId m_backgroundCanvas;
-    EntityId m_mainFramebuffer; // TODO: Left off here
+    EntityId m_mainFramebuffer;
     EntityId m_mainCanvas;
+    EntityId m_backgroundCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;
     ivec2 m_viewport;

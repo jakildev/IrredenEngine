@@ -55,6 +55,7 @@ class EntityManager {
     bool isChildOfRelation(RelationId relation);
     smart_ComponentData createComponentDataVector(ComponentId component);
     void destroyEntity(EntityId entity);
+    void destroyAllEntities();
     void markEntityForDeletion(EntityId &entity);
     void destroyMarkedEntities();
     NodeId getParentNodeFromRelation(RelationId relation);

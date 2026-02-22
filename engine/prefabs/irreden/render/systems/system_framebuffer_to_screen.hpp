@@ -67,14 +67,14 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                       (pos3DtoPos2DScreen(cameraPosition, IRRender::getTriangleStepSizeScreen()) *
                        vec2(-1, 1));
 
-        mat4 model = glm::mat4(1.0f);
+        mat4 model = mat4(1.0f);
 
         // Pixel perfect part
         if (name == "main") {
             vec2 framebufferPositionOffset =
-                glm::floor(glm::fract(IRMath::pos2DIsoToPos2DGameResolution(
-                               glm::fract(cameraPositionIso), IRRender::getCameraZoom())) *
-                           vec2(1, -1) * vec2(scaleFactor));
+                IRMath::floor(IRMath::fract(IRMath::pos2DIsoToPos2DGameResolution(
+                                  IRMath::fract(cameraPositionIso), IRRender::getCameraZoom())) *
+                              vec2(1, -1) * vec2(scaleFactor));
             offset += framebufferPositionOffset;
         } else if (name == "background") {
             // Need to offset by one pixel here but not exactly sure why atm
@@ -85,15 +85,15 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             //     vec2(1, -1)
             // );
         }
-        model = glm::translate(model, vec3(offset.x, offset.y, 0.0f));
-        model = glm::scale(model, vec3(resolutionPlusBuffer.x * scaleFactor.x,
-                                       resolutionPlusBuffer.y * scaleFactor.y, 1.0f));
+        model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
+        model = IRMath::scale(model, vec3(resolutionPlusBuffer.x * scaleFactor.x,
+                                          resolutionPlusBuffer.y * scaleFactor.y, 1.0f));
         return model;
     }
 
     static mat4 calcProjectionMatrix() {
-        mat4 projection = glm::ortho(0.0f, (float)IRRender::getViewport().x, 0.0f,
-                                     (float)IRRender::getViewport().y, -1.0f, 100.0f);
+        mat4 projection = IRMath::ortho(0.0f, (float)IRRender::getViewport().x, 0.0f,
+                                        (float)IRRender::getViewport().y, -1.0f, 100.0f);
         return projection;
     }
 

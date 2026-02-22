@@ -95,6 +95,15 @@ int InputManager::getButtonReleasesThisFrame(KeyMouseButtons button) const {
     return m_buttonReleasesThisFrame.at(static_cast<int>(button));
 }
 
+bool InputManager::hasAnyButtonPressedThisFrame() const {
+    for (const int presses : m_buttonPressesThisFrame) {
+        if (presses > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 float InputManager::getAxisValue(GamepadAxes axis, int irGamepadId) const {
     return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities.at(irGamepadId))
         .getAxisValue(axis);

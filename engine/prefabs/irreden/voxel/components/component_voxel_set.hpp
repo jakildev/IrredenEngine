@@ -36,11 +36,25 @@ struct C_VoxelSetNew {
                   // int voxelPoolId = 0
                   )
         : numVoxels_{size.x * size.y * size.z}, size_{size} {
-        auto voxels = IRRender::allocateVoxels(size.x * size.y * size.z);
+        const int requestedVoxels = size.x * size.y * size.z;
+        auto voxels = IRRender::allocateVoxels(requestedVoxels);
         positions_ = std::get<0>(voxels);
         positionOffsets_ = std::get<1>(voxels);
         globalPositions_ = std::get<2>(voxels);
         voxels_ = std::get<3>(voxels);
+
+        // Keep runtime-safe bounds even if allocation returns an unexpected span size.
+        numVoxels_ = static_cast<int>(IRMath::min(
+            IRMath::min(positions_.size(), positionOffsets_.size()),
+            IRMath::min(globalPositions_.size(), voxels_.size())));
+        if (numVoxels_ != requestedVoxels) {
+            IRE_LOG_ERROR("VoxelSet allocation mismatch: requested={}, positions={}, offsets={}, "
+                          "globals={}, colors={}",
+                          requestedVoxels, positions_.size(), positionOffsets_.size(),
+                          globalPositions_.size(), voxels_.size());
+            size_ = ivec3(0);
+            return;
+        }
 
         for (int x = 0; x < size.x; x++) {
             for (int y = 0; y < size.y; y++) {
@@ -140,8 +154,12 @@ struct C_VoxelSetNew {
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
     void updateAsChild(C_Position3D parentPosition) {
-
-        for (int i = 0; i < numVoxels_; i++) {
+        int safeCount = IRMath::min(
+            numVoxels_,
+            static_cast<int>(IRMath::min(
+                IRMath::min(positions_.size(), positionOffsets_.size()),
+                IRMath::min(globalPositions_.size(), voxels_.size()))));
+        for (int i = 0; i < safeCount; i++) {
             globalPositions_[i].pos_ = getLocalPosition(i) + parentPosition.pos_;
         }
     }

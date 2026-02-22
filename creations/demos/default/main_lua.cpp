@@ -7,6 +7,7 @@
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
+#include <irreden/audio/components/component_midi_note.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_velocity.hpp>
@@ -15,6 +16,11 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
+#include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
+#include <irreden/update/systems/system_apply_position_offset.hpp>
+#include <irreden/audio/systems/system_periodic_idle_midi_trigger.hpp>
+#include <irreden/audio/systems/system_midi_sequence_out.hpp>
+#include <irreden/audio/systems/system_audio_midi_message_out.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_input_gamepad.hpp>
@@ -41,10 +47,10 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
     IRDefaultCreation::registerLuaBindings();
-    IREngine::init("config.lua");
+    IREngine::init(argv[0]);
     initSystems();
     initCommands();
-    IREngine::runScript("main.lua");
+    // IREngine::runScript("main.lua");
     IREngine::gameLoop();
 
     return 0;
@@ -54,8 +60,13 @@ void initSystems() {
     IRSystem::registerPipeline(IRTime::Events::UPDATE,
                                {IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
                                 IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
+                                IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
+                                IRSystem::createSystem<IRSystem::PERIODIC_IDLE_MIDI_TRIGGER>(),
+                                IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),
+                                IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
                                 IRSystem::createSystem<IRSystem::GOTO_3D>(),
                                 IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+                                IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
                                 IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
                                 IRSystem::createSystem<IRSystem::LIFETIME>()});
 

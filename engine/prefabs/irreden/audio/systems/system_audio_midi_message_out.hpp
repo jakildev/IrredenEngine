@@ -19,13 +19,13 @@ template <> struct System<OUTPUT_MIDI_MESSAGE_OUT> {
     static SystemId create() {
         SystemId system = createSystem<C_MidiMessage>(
             "OutputMidiMessageOut", [](const C_MidiMessage &midiMessage) {
-                IRE_LOG_INFO(
+                IRE_LOG_DEBUG(
                     "Sending midi message (type 0x{:02X}, channel 0x{:02X}, data1 {}, data2 {})",
                     midiMessage.getStatusBits(), midiMessage.getChannelBits(), midiMessage.data1_,
                     midiMessage.data2_);
                 IRAudio::sendMidiMessage(midiMessage.toRtMidiMessage());
             });
-        IRECS::addSystemTag<C_MidiOut>(system);
+        IRSystem::addSystemTag<C_MidiOut>(system);
         return system;
     }
 

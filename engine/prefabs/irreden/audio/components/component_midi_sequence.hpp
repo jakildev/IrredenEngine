@@ -31,12 +31,14 @@ struct C_MidiSequence {
     int nextMessageIndex_;
     int lengthMeasures_;
     double lengthMidiTicks_;
+    bool looping_;
 
     C_MidiSequence(float bpm, std::pair<int, int> timeSignature, int lengthMeasures,
+                   bool looping = true,
                    std::vector<std::pair<int, C_MidiMessage>> messageSequence = {})
         : bpm_{bpm}, m_bps{bpm / 60.0f}, timeSignature_{timeSignature},
           lengthMeasures_{lengthMeasures}, messageSequence_{messageSequence}, nextMessageIndex_{0},
-          tickCount_{0},
+          tickCount_{0}, looping_{looping},
           lengthMidiTicks_{kTicksPerWholeNote *
                            (static_cast<double>(timeSignature_.first) / timeSignature_.second) *
                            lengthMeasures_},
@@ -45,9 +47,12 @@ struct C_MidiSequence {
           m_measuresPerSecond{m_bps / timeSignature_.first * (4.0f / timeSignature_.second)},
           m_ticksPerSecond{m_ticksPerMeasure * m_measuresPerSecond} {}
 
+    C_MidiSequence(float bpm, int tsNum, int tsDen, int lengthMeasures, bool looping = true)
+        : C_MidiSequence{bpm, std::pair<int, int>{tsNum, tsDen}, lengthMeasures, looping} {}
+
     // Default
     C_MidiSequence()
-        : C_MidiSequence{120.0f, std::pair<int, int>{4, 4}, 1,
+        : C_MidiSequence{120.0f, std::pair<int, int>{4, 4}, 1, true,
                          std::vector<std::pair<int, C_MidiMessage>>{}} {}
 
     void tick() {}

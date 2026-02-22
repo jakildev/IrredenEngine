@@ -12,6 +12,10 @@ void destroyEntity(EntityId entity) {
     getEntityManager().markEntityForDeletion(entity);
 }
 
+void destroyAllEntities() {
+    getEntityManager().destroyAllEntities();
+}
+
 smart_ComponentData createComponentData(ComponentId type) {
     return getEntityManager().createComponentDataVector(type);
 }

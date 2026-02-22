@@ -14,8 +14,10 @@ template <> class CommandStruct<COMMAND_BUTTON> {
   public:
     template <typename Function>
     CommandStruct(IRInput::InputTypes type, IRInput::ButtonStatuses triggerStatus, int button,
-                  Function func)
+                  Function func, IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
+                  IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone)
         : m_type(type), m_button{button}, m_triggerStatus{triggerStatus},
+          m_requiredModifiers{requiredModifiers}, m_blockedModifiers{blockedModifiers},
           m_func([func]() { func(); }) {}
 
     void execute() const {
@@ -34,10 +36,20 @@ template <> class CommandStruct<COMMAND_BUTTON> {
         return m_triggerStatus;
     }
 
+    const IRInput::KeyModifierMask getRequiredModifiers() const {
+        return m_requiredModifiers;
+    }
+
+    const IRInput::KeyModifierMask getBlockedModifiers() const {
+        return m_blockedModifiers;
+    }
+
   private:
     IRInput::InputTypes m_type;
     IRInput::ButtonStatuses m_triggerStatus;
     int m_button;
+    IRInput::KeyModifierMask m_requiredModifiers;
+    IRInput::KeyModifierMask m_blockedModifiers;
     std::function<void()> m_func;
 };
 

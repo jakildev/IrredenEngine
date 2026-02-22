@@ -34,6 +34,7 @@ class InputManager {
     IRMath::vec2 getMousePositionRender() const; // Should be stored in ECS
     int getButtonPressesThisFrame(KeyMouseButtons button) const;
     int getButtonReleasesThisFrame(KeyMouseButtons button) const;
+    bool hasAnyButtonPressedThisFrame() const;
     float getAxisValue(GamepadAxes axis, int irGamepadId = 0) const;
 
   private:

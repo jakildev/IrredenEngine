@@ -19,13 +19,15 @@ struct C_ZoomLevel {
     C_ZoomLevel() : C_ZoomLevel{vec2(1, 1)} {}
 
     void zoomIn() {
-        zoom_ = round(glm::clamp(zoom_ * vec2(2.0f), IRConstants::kTrixelCanvasZoomMin,
-                                 IRConstants::kTrixelCanvasZoomMax));
+        zoom_ = vec2(IRMath::roundVec(IRMath::clamp(zoom_ * vec2(2.0f),
+                                                    IRConstants::kTrixelCanvasZoomMin,
+                                                    IRConstants::kTrixelCanvasZoomMax)));
     }
 
     void zoomOut() {
-        zoom_ = round(glm::clamp(zoom_ / vec2(2.0f), IRConstants::kTrixelCanvasZoomMin,
-                                 IRConstants::kTrixelCanvasZoomMax));
+        zoom_ = vec2(IRMath::roundVec(IRMath::clamp(zoom_ / vec2(2.0f),
+                                                    IRConstants::kTrixelCanvasZoomMin,
+                                                    IRConstants::kTrixelCanvasZoomMax)));
     }
 };
 

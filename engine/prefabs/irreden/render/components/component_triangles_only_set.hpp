@@ -47,8 +47,8 @@ struct C_TrianglesOnlySet {
     }
 
     void setTriangle(ivec2 pos, Color color, uint32_t distance = 0) {
-        IR_ASSERT(glm::all(glm::lessThan(pos, size_)) &&
-                      glm::all(glm::greaterThanEqual(pos, ivec2(0))),
+        IR_ASSERT(IRMath::all(IRMath::lessThan(pos, size_)) &&
+                      IRMath::all(IRMath::greaterThanEqual(pos, ivec2(0))),
                   "TRIANGLE INDEX OUT OF BOUNDS.");
         Color &triangleColorCurrent = this->atTriangleColor(pos);
         Distance &triangleDistanceCurrent = this->atTriangleDistance(pos);
@@ -63,8 +63,8 @@ struct C_TrianglesOnlySet {
         for (int y = 0; y < set.size_.y; ++y) {
             for (int x = 0; x < set.size_.x; ++x) {
                 ivec2 destIndex = pos + ivec2(x, y);
-                if (glm::all(glm::lessThan(destIndex, size_)) &&
-                    glm::all(glm::greaterThanEqual(destIndex, ivec2(0)))) {
+                if (IRMath::all(IRMath::lessThan(destIndex, size_)) &&
+                    IRMath::all(IRMath::greaterThanEqual(destIndex, ivec2(0)))) {
                     this->atTriangleColor(destIndex) = set.atTriangleColor(ivec2(x, y));
                     this->atTriangleDistance(destIndex) = set.atTriangleDistance(ivec2(x, y));
                 }
@@ -103,8 +103,8 @@ struct C_TrianglesOnlySet {
             for (int x = 0; x < selectionSize.x; ++x) {
                 int selectionIndex = x + y * selectionSize.x;
                 ivec2 destIndex = startIndex + ivec2(x, y) + travelDistance;
-                if (glm::all(glm::lessThan(destIndex, size_)) &&
-                    glm::all(glm::greaterThanEqual(destIndex, ivec2(0)))) {
+                if (IRMath::all(IRMath::lessThan(destIndex, size_)) &&
+                    IRMath::all(IRMath::greaterThanEqual(destIndex, ivec2(0)))) {
                     this->atTriangleColor(destIndex) = selectionColors[selectionIndex];
                     this->atTriangleDistance(destIndex) = selectionDistance[selectionIndex];
                 }

@@ -7,7 +7,7 @@
 namespace IRTime {
 class TimeManager;
 
-using Clock = std::chrono::high_resolution_clock;
+using Clock = std::chrono::steady_clock;
 using TimePoint = std::chrono::time_point<Clock>;
 using NanoDuration = std::chrono::duration<int64_t, std::nano>;
 using MilliDuration = std::chrono::duration<double, std::milli>;

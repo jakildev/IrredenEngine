@@ -4,12 +4,63 @@
 // #include <irreden/ir_window_types.hpp>
 #include <irreden/window/ir_glfw_window.hpp>
 
-#include <iostream>
+#include <cstddef>
+#include <utility>
 
 namespace IRWindow {
 
+namespace {
+void logMonitors(const std::vector<GLFWmonitor *> &monitors) {
+    IRE_LOG_INFO("Discovered {} display monitors", monitors.size());
+    for (std::size_t i = 0; i < monitors.size(); ++i) {
+        GLFWmonitor *monitor = monitors[i];
+        const char *name = glfwGetMonitorName(monitor);
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        int monitorX = 0;
+        int monitorY = 0;
+        glfwGetMonitorPos(monitor, &monitorX, &monitorY);
+
+        IRE_LOG_INFO("Monitor {}: '{}' @ ({}, {}), mode={}x{} {}Hz", i,
+                     name != nullptr ? name : "<unnamed>", monitorX, monitorY,
+                     mode != nullptr ? mode->width : 0, mode != nullptr ? mode->height : 0,
+                     mode != nullptr ? mode->refreshRate : 0);
+    }
+}
+
+GLFWmonitor *getPreferredMonitor(const std::vector<GLFWmonitor *> &monitors, int monitorIndex,
+                                 const std::string &monitorName) {
+    if (monitors.empty()) {
+        return nullptr;
+    }
+
+    if (!monitorName.empty()) {
+        for (GLFWmonitor *monitor : monitors) {
+            const char *name = glfwGetMonitorName(monitor);
+            if (name != nullptr && monitorName == name) {
+                return monitor;
+            }
+        }
+        IRE_LOG_WARN("Monitor name '{}' not found. Falling back to index/default monitor.",
+                     monitorName);
+    }
+
+    if (monitorIndex >= 0 && monitorIndex < static_cast<int>(monitors.size())) {
+        return monitors[monitorIndex];
+    }
+    if (monitorIndex >= 0) {
+        IRE_LOG_WARN("Monitor index {} is out of range [0, {}). Falling back to primary monitor.",
+                     monitorIndex, monitors.size());
+    }
+
+    return monitors[0];
+}
+} // namespace
+
 // TODO: implement multiple sub-windows if necessary
-IRGLFWWindow::IRGLFWWindow(ivec2 windowSize, bool fullscreen) {
+IRGLFWWindow::IRGLFWWindow(ivec2 windowSize, bool fullscreen, int monitorIndex,
+                           std::string monitorName)
+    : m_initWindowSize{windowSize}, m_isFullscreen{fullscreen}, m_monitorIndex{monitorIndex},
+      m_monitorName{std::move(monitorName)} {
     setCallbackError(irglfwCallback_error);
 
     int status = glfwInit();
@@ -24,18 +75,21 @@ IRGLFWWindow::IRGLFWWindow(ivec2 windowSize, bool fullscreen) {
     for (int i = 0; i < numMonitors; i++) {
         m_monitors.push_back(monitors[i]);
     }
+    logMonitors(m_monitors);
 
+    GLFWmonitor *selectedMonitor =
+        m_isFullscreen ? getPreferredMonitor(m_monitors, m_monitorIndex, m_monitorName) : nullptr;
     m_window = glfwCreateWindow(windowSize.x, windowSize.y, "IRREDEN GAME ENGINE",
-                                fullscreen ? m_monitors[0]
+                                m_isFullscreen ? selectedMonitor
                                            : NULL, // Cant do this in debug mode with breakpoints
                                 // NULL,
                                 NULL);
 
-    glfwSetWindowPos(m_window, 50, 50);
-
     IR_ASSERT(m_window != nullptr, "Failed to create window: glfwCreateWindow returned null");
 
     glfwMakeContextCurrent(m_window);
+
+    setWindowMonitor();
 
     glfwSwapInterval(0); // Remove for vsync?
 
@@ -72,7 +126,24 @@ void IRGLFWWindow::setShouldClose() {
 }
 
 void IRGLFWWindow::setWindowMonitor() {
-    // TODO
+    GLFWmonitor *monitor = getPreferredMonitor(m_monitors, m_monitorIndex, m_monitorName);
+    if (monitor == nullptr) {
+        IRE_LOG_WARN("No monitors detected, skipping monitor placement.");
+        return;
+    }
+
+    if (m_isFullscreen) {
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        IR_ASSERT(mode != nullptr, "Failed to get video mode for selected monitor.");
+        glfwSetWindowMonitor(m_window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        return;
+    }
+
+    int monitorX = 0;
+    int monitorY = 0;
+    glfwGetMonitorPos(monitor, &monitorX, &monitorY);
+    glfwSetWindowPos(m_window, monitorX + 50, monitorY + 50);
+    glfwSetWindowSize(m_window, m_initWindowSize.x, m_initWindowSize.y);
 }
 
 void IRGLFWWindow::setWindowUserPointer(void *pointer) {

@@ -76,6 +76,8 @@ VoxelRenderMode getVoxelRenderMode();
 void setVoxelRenderSubdivisions(int subdivisions);
 int getVoxelRenderSubdivisions();
 int getVoxelRenderEffectiveSubdivisions();
+void zoomMainBackgroundPatternIn();
+void zoomMainBackgroundPatternOut();
 
 } // namespace IRRender
 

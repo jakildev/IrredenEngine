@@ -14,3 +14,8 @@ CMakeUserPresets.json
 
 # editor files
 .vscode/
+
+# creations: keep demos, ignore other top-level folders
+creations/*
+!creations/demos/
+!creations/demos/**

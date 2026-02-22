@@ -1,6 +1,7 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_input.hpp>
 
 #include <irreden/world.hpp>
 
@@ -11,16 +12,22 @@ World::World(const char *configFileName)
     : m_worldConfig{configFileName},
       m_IRGLFWWindow{ivec2(m_worldConfig["init_window_width"].get_integer(),
                            m_worldConfig["init_window_height"].get_integer()),
-                     m_worldConfig["fullscreen"].get_boolean()},
+                     m_worldConfig["fullscreen"].get_boolean(),
+                     m_worldConfig["monitor_index"].get_integer(),
+                     m_worldConfig["monitor_name"].get_string()},
       m_entityManager{}, m_commandManager{}, m_systemManager{}, m_inputManager{},
       m_renderingResourceManager{},
       m_renderer{ivec2(m_worldConfig["game_resolution_width"].get_integer(),
                        m_worldConfig["game_resolution_height"].get_integer()),
                  static_cast<IRRender::FitMode>(m_worldConfig["fit_mode"].get_enum())},
-      m_audioManager{}, m_timeManager{}, m_videoManager{}, m_lua{} {
+      m_audioManager{}, m_timeManager{}, m_videoManager{}, m_lua{},
+      m_waitForFirstUpdateInput{m_worldConfig["start_updates_on_first_key_press"].get_boolean()},
+      m_startRecordingOnFirstInput{m_worldConfig["start_recording_on_first_key_press"].get_boolean()},
+      m_hasHandledFirstInput{false} {
     IRRender::setVoxelRenderMode(
         static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum()));
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
+    IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
@@ -50,12 +57,30 @@ void World::runScript(const char *fileName) {
 void World::gameLoop() {
     // init();
     start();
+    if (m_waitForFirstUpdateInput) {
+        // Prime render-facing state so paused mode shows initialized voxels.
+        update();
+    }
     while (!m_IRGLFWWindow.shouldClose()) {
         m_timeManager.beginMainLoop();
 
         while (m_timeManager.shouldUpdate()) {
             m_IRGLFWWindow.pollEvents();
             input();
+            if (!m_hasHandledFirstInput && IRInput::hasAnyButtonPressedThisFrame()) {
+                m_hasHandledFirstInput = true;
+                if (m_startRecordingOnFirstInput && !m_videoManager.isRecording()) {
+                    m_videoManager.toggleRecording();
+                }
+            }
+
+            if (m_waitForFirstUpdateInput && !m_hasHandledFirstInput) {
+                // Consume one fixed update slot while paused so render still advances and we
+                // don't accumulate a large catch-up update burst after unpausing.
+                m_timeManager.skipUpdate();
+                break;
+            }
+
             update();
             // output();
         }
@@ -83,6 +108,9 @@ void World::start() {
 }
 
 void World::end() {
+    // Ensure component onDestroy hooks run while managers are still valid
+    // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
+    m_entityManager.destroyAllEntities();
     m_videoManager.shutdown();
 }
 

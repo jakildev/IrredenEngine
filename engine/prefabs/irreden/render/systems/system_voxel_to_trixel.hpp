@@ -5,6 +5,7 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
@@ -40,7 +41,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             GL_DYNAMIC_STORAGE_BIT, GL_SHADER_STORAGE_BUFFER, kBufferIndex_SingleVoxelColors);
         return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasFirst",
-            [](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
+            [](IREntity::EntityId &entity, const C_VoxelPool &voxelPool,
+               C_TriangleCanvasTextures &triangleCanvasTextures) {
                 frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                 frameData.trixelCanvasOffsetZ1_ =
                     IRMath::trixelOriginOffsetZ1(triangleCanvasTextures.size_);
@@ -59,8 +61,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                         "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
                         "effective_subdivisions={}",
                         static_cast<int>(renderMode), baseSubdivisions,
-                        static_cast<int>(glm::round(glm::max(IRRender::getCameraZoom().x,
-                                                             IRRender::getCameraZoom().y))),
+                        static_cast<int>(IRMath::round(IRMath::max(IRRender::getCameraZoom().x,
+                                                                   IRRender::getCameraZoom().y))),
                         effectiveSubdivisions);
                     previousRenderMode = static_cast<int>(renderMode);
                     previousEffectiveSubdivisions = effectiveSubdivisions;
@@ -68,7 +70,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
                 IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")
                     ->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData);
-                triangleCanvasTextures.clear();
+                auto background =
+                    IREntity::getComponentOptional<C_TriangleCanvasBackground>(entity);
+                if (background.has_value()) {
+                    (*background.value()).clearCanvasWithBackground(triangleCanvasTextures);
+                } else {
+                    triangleCanvasTextures.clear();
+                }
                 // TODO: each voxel allocation should have own
                 // voxel GPU buffers as well.
                 IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")
@@ -85,22 +93,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             },
             []() {
                 IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1")->use();
-                // IRECS::getComponent<C_CameraPosition2DIso>(
-                //     IRRender::getCanvas("background")
-                // ).pos_ =
-                //     IRMath::offsetScreenToIsoTriangles(
-                //         IRRender::getCameraPositionScreen(),
-                //         IRRender::getTriangleStepSizeScreen()
-                //     );
-
-                // // Write background here for now
-                // IRECS::getComponent<C_TriangleCanvasBackground>(
-                //     IRRender::getCanvas("background")
-                // ).clearCanvasWithBackground(
-                //     IRECS::getComponent<C_TriangleCanvasTextures>(
-                //         IRRender::getCanvas("background")
-                //     )
-                // );
+                IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
+                auto background = IREntity::getComponentOptional<C_TriangleCanvasBackground>(
+                    backgroundCanvas);
+                auto backgroundTextures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
+                    backgroundCanvas);
+                if (background.has_value() && backgroundTextures.has_value()) {
+                    (*background.value()).clearCanvasWithBackground(*backgroundTextures.value());
+                }
             },
             []() {
 

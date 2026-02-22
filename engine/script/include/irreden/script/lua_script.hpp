@@ -68,6 +68,27 @@ class LuaScript {
     //     );
     // }
 
+    template <typename... Components> void registerCreateEntityFunction(const char *funcName) {
+        if (!m_lua["IREntity"].valid()) {
+            m_lua["IREntity"] = m_lua.create_table();
+        }
+        m_lua["IREntity"][funcName] = [](Components... components) {
+            IREntity::EntityId entity = IREntity::createEntity(components...);
+            return IRScript::LuaEntity{entity};
+        };
+    }
+
+    template <typename... UserComponents, typename... TagComponents>
+    void registerCreateEntityFunctionWithTags(const char *funcName, TagComponents... tags) {
+        if (!m_lua["IREntity"].valid()) {
+            m_lua["IREntity"] = m_lua.create_table();
+        }
+        m_lua["IREntity"][funcName] = [tags...](UserComponents... components) {
+            IREntity::EntityId entity = IREntity::createEntity(components..., tags...);
+            return IRScript::LuaEntity{entity};
+        };
+    }
+
     // Perhaps should take a templated entity
     template <typename... Components> void registerCreateEntityBatchFunction(const char *funcName) {
 

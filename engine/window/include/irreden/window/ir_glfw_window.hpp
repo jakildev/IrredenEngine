@@ -37,7 +37,7 @@ const int kNumWindowHints = sizeof(kWindowHints) / sizeof(kWindowHints[0]);
 
 class IRGLFWWindow {
   public:
-    IRGLFWWindow(ivec2 initWindowSize, bool fullscreen);
+    IRGLFWWindow(ivec2 initWindowSize, bool fullscreen, int monitorIndex, std::string monitorName);
     ~IRGLFWWindow();
 
     void getWindowSize(int &width, int &height);
@@ -90,6 +90,10 @@ class IRGLFWWindow {
   private:
     GLFWwindow *m_window;
     std::vector<GLFWmonitor *> m_monitors;
+    ivec2 m_initWindowSize;
+    bool m_isFullscreen;
+    int m_monitorIndex;
+    std::string m_monitorName;
     std::queue<int> m_keysPressedToProcess;
     std::queue<int> m_keysReleasedToProcess;
     std::queue<int> m_mouseButtonsPressedToProcess;

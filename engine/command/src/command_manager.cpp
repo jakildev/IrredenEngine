@@ -4,6 +4,7 @@
 
 #include <irreden/input/systems/system_input_gamepad.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_in.hpp>
+#include <unordered_set>
 
 namespace IRCommand {
 
@@ -44,9 +45,28 @@ void CommandManager::executeDeviceMidiNoteCommandsAll() {
 }
 
 void CommandManager::executeUserKeyboardCommandsAll() {
+    std::unordered_set<int> buttonsWithModifierSpecificMatch;
+    for (auto &command : m_userCommands) {
+        if (command.getRequiredModifiers() == kModifierNone) {
+            continue;
+        }
+        if (IRInput::checkKeyMouseButton(static_cast<IRInput::KeyMouseButtons>(command.getButton()),
+                                         command.getTriggerStatus()) &&
+            IRInput::checkKeyMouseModifiers(command.getRequiredModifiers(),
+                                            command.getBlockedModifiers())) {
+            buttonsWithModifierSpecificMatch.insert(command.getButton());
+        }
+    }
+
     for (auto &command : m_userCommands) {
         if (IRInput::checkKeyMouseButton(static_cast<IRInput::KeyMouseButtons>(command.getButton()),
-                                         command.getTriggerStatus())) {
+                                         command.getTriggerStatus()) &&
+            IRInput::checkKeyMouseModifiers(command.getRequiredModifiers(),
+                                            command.getBlockedModifiers())) {
+            if (command.getRequiredModifiers() == kModifierNone &&
+                buttonsWithModifierSpecificMatch.contains(command.getButton())) {
+                continue;
+            }
             command.execute();
         }
     }

@@ -1,7 +1,11 @@
-local grid_size = 32
-local grid_span = grid_size - 1
-local total_voxels = grid_size * grid_size * grid_size
-local base_period_seconds = 200.0
+local grid_size_x = 128
+local grid_size_y = 128
+local grid_span_x = grid_size_x - 1
+local grid_span_y = grid_size_y - 1
+local loop_seconds = 10.0 * 60.0
+local world_spacing = 1.0
+local base_wave_amplitude = 110.0
+local base_period_seconds = 6.0
 local tau = math.pi * 2.0
 
 local function fract(x)
@@ -46,39 +50,26 @@ local function hsv_to_rgb(h, s, v)
 end
 
 IREntity.createEntityBatchVoxelPeriodicIdle(
-    ivec3.new(grid_size, grid_size, grid_size),
+    ivec3.new(grid_size_x, grid_size_y, 1),
     function(params)
         local index = params.index
-        local base = vec3.new(index.x, index.y, index.z) - params.center
+        local cx = (grid_size_x - 1) * 0.5
+        local cy = (grid_size_y - 1) * 0.5
 
-        local nx = base.x / grid_span
-        local ny = base.y / grid_span
-        local nz = base.z / grid_span
-
-        local radius_xy = math.sqrt(nx * nx + ny * ny)
-        local wave_xy = math.sin((nx + ny) * tau * 2.5 + nz * tau * 1.2)
-        local wave_xz = math.sin((nx + nz) * tau * 2.1 - ny * tau * 1.3)
-        local wave_yz = math.sin((ny - nz) * tau * 2.1 + nx * tau * 1.3)
-
-        -- Broad, mostly uniform volume with subtle warping so shape stays readable.
-        local x = nx * 100.0 + wave_yz * 18.0
-        local y = ny * 100.0 + wave_xz * 18.0
-        local z = nz * 100.0 + wave_xy * 30.0 - radius_xy * 20.0
-
-        return C_Position3D.new(vec3.new(x, y, z))
+        -- Centered grid with integer world coordinates and one empty voxel gap.
+        local x = (index.x - cx) * world_spacing
+        local y = (index.y - cy) * world_spacing
+        return C_Position3D.new(vec3.new(x, y, 0.0))
     end,
     function(params)
         local index = params.index
-        local nx = index.x / grid_span
-        local ny = index.y / grid_span
-        local nz = index.z / grid_span
+        local nx = index.x / grid_span_x
+        local ny = index.y / grid_span_y
 
-        local linear_index = index.x + index.y * grid_size + index.z * grid_size * grid_size
-        local ordered_t = linear_index / (total_voxels - 1)
-
-        local hue = ordered_t
-        local sat = clamp01(0.8 + nz * 0.18)
-        local val = clamp01(0.65 + ny * 0.22 + (1.0 - math.abs(nx - 0.5) * 2.0) * 0.13)
+        -- True continuous 2D rainbow field (no row/column quantization).
+        local hue = fract(nx * 0.68 + ny * 0.32)
+        local sat = 0.9
+        local val = 0.88
         local r, g, b = hsv_to_rgb(hue, sat, val)
 
         return C_VoxelSetNew.new(
@@ -93,60 +84,35 @@ IREntity.createEntityBatchVoxelPeriodicIdle(
     end,
     function(params)
         local index = params.index
-        local nx = index.x / grid_span
-        local ny = index.y / grid_span
-        local nz = index.z / grid_span
+        local x_norm_centered = ((index.x / grid_span_x) - 0.5) * 2.0
+        local y_norm_centered = ((index.y / grid_span_y) - 0.5) * 2.0
+        local radial_xy = math.sqrt(x_norm_centered * x_norm_centered + y_norm_centered * y_norm_centered)
 
-        local cx = nx - 0.5
-        local cy = ny - 0.5
-        local cz = nz - 0.5
-        local radial_xyz = math.sqrt(cx * cx + cy * cy + cz * cz)
+        -- Start all voxels from a flat baseline (z = 0) and then animate outward.
+        local phase = 0.0
 
-        -- Structured groups: coherent waves that drift in/out of sync.
-        local axis_selector = (math.floor(index.x / 4) + math.floor(index.y / 4) + math.floor(index.z / 4)) % 3
-        local sync_group = (math.floor(index.x / 8) + math.floor(index.y / 8) + math.floor(index.z / 8)) % 4
-        local group_period_offset = (sync_group - 1.5) * 0.35
+        -- Keep this fully continuous for smoother spatial evolution (no integer-cycle banding).
+        local raw_period =
+            base_period_seconds
+            + math.sin(x_norm_centered * tau * 0.22 + y_norm_centered * tau * 0.27) * 0.22
+        local period = math.max(0.001, raw_period)
 
-        local amplitude = 240.0 + (1.0 - clamp01(radial_xyz * 1.4)) * 45.0
-        local period = base_period_seconds + group_period_offset
-        local phase =
-            (math.floor(index.x / 6) * 0.18 + math.floor(index.y / 6) * 0.23 + math.floor(index.z / 6) * 0.29) * tau
-        local axis_amplitude = amplitude
-        local amplitude_vec = vec3.new(0.0, 0.0, 0.0)
-        if axis_selector == 0 then
-            amplitude_vec = vec3.new(axis_amplitude, 0.0, 0.0)
-        elseif axis_selector == 1 then
-            amplitude_vec = vec3.new(0.0, axis_amplitude, 0.0)
-        else
-            amplitude_vec = vec3.new(0.0, 0.0, axis_amplitude)
-        end
+        local center_boost = (1.0 - clamp01(radial_xy * 0.72)) * 18.0
+        local amplitude = base_wave_amplitude + center_boost
+        local amplitude_vec = vec3.new(0.0, 0.0, amplitude)
 
         local idle_component = C_PeriodicIdle.new(amplitude_vec, period, phase)
         idle_component:addStageDurationSeconds(
             0.0,
-            period * 0.25,
+            period * 0.5,
             -1.0,
-            0.15,
-            IREasingFunction.SINE_EASE_IN_OUT
-        )
-        idle_component:addStageDurationSeconds(
-            period * 0.25,
-            period * 0.25,
-            0.15,
             1.0,
             IREasingFunction.SINE_EASE_IN_OUT
         )
         idle_component:addStageDurationSeconds(
             period * 0.5,
-            period * 0.25,
+            period * 0.5,
             1.0,
-            -0.2,
-            IREasingFunction.SINE_EASE_IN_OUT
-        )
-        idle_component:addStageDurationSeconds(
-            period * 0.75,
-            period * 0.25,
-            -0.2,
             -1.0,
             IREasingFunction.SINE_EASE_IN_OUT
         )

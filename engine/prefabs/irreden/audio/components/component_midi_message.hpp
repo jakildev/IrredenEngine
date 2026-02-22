@@ -38,24 +38,24 @@ struct C_MidiMessageStatus {
     unsigned char status_;
 
     C_MidiMessageStatus(unsigned char status, unsigned char channel)
-        : status_((status & kMidiMessageBits_STATUS) | (channel & kMidiMessageBits_CHANNEL)) {}
+        : status_(buildMidiStatus(status, channel)) {}
 
     C_MidiMessageStatus() : status_(0) {}
 
     const unsigned char getChannelBits() const {
-        return status_ & kMidiMessageBits_CHANNEL;
+        return normalizeMidiChannel(status_);
     }
 
     const unsigned char getStatusBits() const {
-        return status_ & kMidiMessageBits_STATUS;
+        return normalizeMidiStatus(status_);
     }
 
     void setChannel(unsigned char channel) {
-        status_ = getStatusBits() | (channel & kMidiMessageBits_CHANNEL);
+        status_ = buildMidiStatus(getStatusBits(), channel);
     }
 
     void setStatus(unsigned char status) {
-        status_ = getChannelBits() | (status & kMidiMessageBits_STATUS);
+        status_ = buildMidiStatus(status, getChannelBits());
     }
 };
 
@@ -73,19 +73,19 @@ struct C_MidiMessage {
     C_MidiMessage() : status_(0), data1_(0), data2_(0) {}
 
     const unsigned char getChannelBits() const {
-        return status_ & kMidiMessageBits_CHANNEL;
+        return normalizeMidiChannel(status_);
     }
 
     const unsigned char getStatusBits() const {
-        return status_ & kMidiMessageBits_STATUS;
+        return normalizeMidiStatus(status_);
     }
 
     void setChannel(unsigned char channel) {
-        status_ = getStatusBits() | (channel & kMidiMessageBits_CHANNEL);
+        status_ = buildMidiStatus(getStatusBits(), channel);
     }
 
     void setStatus(unsigned char status) {
-        status_ = getChannelBits() | (status & kMidiMessageBits_STATUS);
+        status_ = buildMidiStatus(status, getChannelBits());
     }
 
     const unsigned char getMidiNoteNumber() const {

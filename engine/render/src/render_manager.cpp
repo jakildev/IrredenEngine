@@ -6,6 +6,7 @@
 #include <irreden/render/ir_gl_api.hpp>
 
 #include <irreden/render/entities/entity_voxel_pool_canvas.hpp>
+#include <irreden/render/entities/entity_trixel_canvas.hpp>
 #include <irreden/render/entities/entity_framebuffer.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
@@ -14,6 +15,7 @@
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_2d_iso.hpp>
+#include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
@@ -33,19 +35,6 @@ RenderManager::RenderManager(
             GL_UNIFORM_BUFFER,
             kBufferIndex_GlobalConstantsGLSL
         }
-    // ,   m_backgroundCanvas{
-    //         IRECS::createEntity<kVoxelPoolCanvas>(
-    //             "background",
-    //             ivec2(
-    //                 IRConstants::kScreenTrixelMaxCanvasSize /
-    //                 uvec2(2)
-    //             ),
-    //             ivec3(8, 8, 8),
-    //             IRConstants::kGameResolution,
-    //             IRConstants::kSizeExtraPixelNoBuffer,
-    //             2.0f
-    //         )
-    //     }
     ,   m_mainFramebuffer{
             IREntity::createEntity<kFramebuffer>(
                 "mainFramebuffer",
@@ -60,6 +49,13 @@ RenderManager::RenderManager(
                 IRMath::gameResolutionToSize2DIso(
                     gameResolution + IRConstants::kSizeExtraPixelBuffer
                 ),
+                m_mainFramebuffer
+            )
+        }
+    ,   m_backgroundCanvas{
+            IREntity::createEntity<kTrixelCanvas>(
+                "background",
+                IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_,
                 m_mainFramebuffer
             )
         }
@@ -130,6 +126,13 @@ RenderManager::RenderManager(
     //     }
     // );
     // m_canvasMap["background"] = m_backgroundCanvas;
+    const ivec2 mainCanvasSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
+    IREntity::setComponent(
+        m_backgroundCanvas,
+        C_TriangleCanvasBackground{BackgroundTypes::kSingleColor, {IRColors::kInvisable},
+                                   mainCanvasSize});
+
+    m_canvasMap["background"] = m_backgroundCanvas;
     m_canvasMap["main"] = m_mainCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
 
@@ -186,7 +189,7 @@ VoxelRenderMode RenderManager::getVoxelRenderMode() const {
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
-    m_voxelRenderSubdivisions = glm::max(1, subdivisions);
+    m_voxelRenderSubdivisions = IRMath::max(1, subdivisions);
 }
 
 int RenderManager::getVoxelRenderSubdivisions() const {
@@ -198,8 +201,26 @@ int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
         return 1;
     }
     const int zoomScale =
-        static_cast<int>(glm::round(glm::max(getCameraZoom().x, getCameraZoom().y)));
-    return glm::clamp(m_voxelRenderSubdivisions * glm::max(1, zoomScale), 1, 16);
+        static_cast<int>(IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
+    return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
+}
+
+void RenderManager::zoomMainBackgroundPatternIn() {
+    auto background =
+        IREntity::getComponentOptional<C_TriangleCanvasBackground>(m_backgroundCanvas);
+    if (!background.has_value()) {
+        return;
+    }
+    (*background.value()).zoomPatternIn();
+}
+
+void RenderManager::zoomMainBackgroundPatternOut() {
+    auto background =
+        IREntity::getComponentOptional<C_TriangleCanvasBackground>(m_backgroundCanvas);
+    if (!background.has_value()) {
+        return;
+    }
+    (*background.value()).zoomPatternOut();
 }
 
 void RenderManager::deallocateVoxels(std::span<C_Position3D> positions,
@@ -249,12 +270,12 @@ void RenderManager::printRenderInfo() {
 
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
-        return ivec2(glm::min(glm::floor(m_viewport.x / m_gameResolution.x),
-                              glm::floor(m_viewport.y / m_gameResolution.y)));
+        return ivec2(IRMath::min(IRMath::floor(m_viewport.x / m_gameResolution.x),
+                                 IRMath::floor(m_viewport.y / m_gameResolution.y)));
     }
     if (m_fitMode == FitMode::STRETCH) {
-        return ivec2(glm::floor(m_viewport.x / m_gameResolution.x),
-                     glm::floor(m_viewport.y / m_gameResolution.y));
+        return ivec2(IRMath::floor(m_viewport.x / m_gameResolution.x),
+                     IRMath::floor(m_viewport.y / m_gameResolution.y));
     }
     IR_ASSERT(false, "Unexpected FitMode type");
     return ivec2(1);

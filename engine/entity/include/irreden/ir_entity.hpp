@@ -8,6 +8,7 @@
 #include <irreden/entity/prefabs.hpp>
 
 #include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_position_offset_3d.hpp>
 
 namespace IREntity {
 // Gets created by ir_world and set here.
@@ -53,7 +54,8 @@ bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 
 template <typename... Components> EntityId createEntity(const Components &...components) {
-    return getEntityManager().createEntity(IRComponents::C_PositionGlobal3D{}, components...);
+    return getEntityManager().createEntity(IRComponents::C_PositionGlobal3D{},
+                                           IRComponents::C_PositionOffset3D{}, components...);
 }
 
 template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...args) {
@@ -93,6 +95,7 @@ template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...ar
 
 EntityId setParent(EntityId child, EntityId parent);
 void destroyEntity(EntityId entity);
+void destroyAllEntities();
 
 // Returns the first EntityId of the batch
 // Needs to guarentee that entities are ajacent for

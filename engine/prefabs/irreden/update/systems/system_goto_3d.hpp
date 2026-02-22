@@ -3,6 +3,7 @@
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
+#include <irreden/ir_math.hpp>
 
 using namespace IRComponents;
 
@@ -17,7 +18,7 @@ template <> struct System<GOTO_3D> {
                 if (gotoComp.done_)
                     return;
                 gotoComp.currentFrame_++;
-                position.pos_ = glm::mix(
+                position.pos_ = IRMath::mix(
                     gotoComp.startPos_.pos_, gotoComp.endPos_.pos_,
                     gotoComp.easingFunction_(static_cast<float>(gotoComp.currentFrame_) /
                                              static_cast<float>(gotoComp.durationFrames_)));

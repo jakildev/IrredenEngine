@@ -46,6 +46,9 @@ class World {
     IRTime::TimeManager m_timeManager;
     IRVideo::VideoManager m_videoManager;
     IRScript::LuaScript m_lua;
+    bool m_waitForFirstUpdateInput = false;
+    bool m_startRecordingOnFirstInput = false;
+    bool m_hasHandledFirstInput = false;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;

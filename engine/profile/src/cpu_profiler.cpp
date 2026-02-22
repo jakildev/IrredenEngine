@@ -15,12 +15,32 @@ CPUProfiler::CPUProfiler() {
 
 CPUProfiler::~CPUProfiler() {
     EASY_PROFILER_DISABLE;
+    if (!m_enabled) {
+        return;
+    }
     uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
     IRE_LOG_INFO("Dumped profiling blocks, result={}", res);
 }
-// inline void CPUProfiler::mainThread() {
-//     EASY_MAIN_THREAD;
-// }
+
+void CPUProfiler::setEnabled(bool enabled) {
+    m_enabled = enabled;
+    if (m_enabled) {
+        EASY_PROFILER_ENABLE;
+    } else {
+        EASY_PROFILER_DISABLE;
+    }
+}
+
+bool CPUProfiler::isEnabled() const {
+    return m_enabled;
+}
+
+void CPUProfiler::mainThread() {
+    if (!m_enabled) {
+        return;
+    }
+    EASY_MAIN_THREAD;
+}
 
 // inline void CPUProfiler::profileFunction(unsigned int color) {
 //     EASY_FUNCTION(color);

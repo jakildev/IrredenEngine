@@ -1,5 +1,6 @@
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/default)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/midi_keyboard)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/midi_polyrhythm)
 # add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hana_class_projects)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/editors/font_maker)

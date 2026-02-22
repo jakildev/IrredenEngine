@@ -1,5 +1,5 @@
-#ifndef ENTITY_CANVAS_H
-#define ENTITY_CANVAS_H
+#ifndef ENTITY_VOXEL_POOL_CANVAS_H
+#define ENTITY_VOXEL_POOL_CANVAS_H
 
 #include <irreden/ir_entity.hpp>
 
@@ -30,4 +30,4 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
 };
 } // namespace IREntity
 
-#endif /* ENTITY_CANVAS_H */
+#endif /* ENTITY_VOXEL_POOL_CANVAS_H */

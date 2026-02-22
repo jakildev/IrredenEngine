@@ -109,6 +109,25 @@ void EntityManager::destroyMarkedEntities() {
     m_entitiesMarkedForDeletion.clear();
 }
 
+void EntityManager::destroyAllEntities() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+
+    // Process pending deferred deletes first.
+    destroyMarkedEntities();
+
+    std::vector<EntityId> entitiesToDestroy;
+    entitiesToDestroy.reserve(m_entityIndex.size());
+    for (const auto &[entityId, _record] : m_entityIndex) {
+        entitiesToDestroy.push_back(entityId);
+    }
+
+    for (const EntityId entity : entitiesToDestroy) {
+        if (m_entityIndex.contains(entity & IR_ENTITY_ID_BITS)) {
+            destroyEntity(entity);
+        }
+    }
+}
+
 EntityRecord &EntityManager::getRecord(EntityId entity) {
     return m_entityIndex[entity & IR_ENTITY_ID_BITS];
 }

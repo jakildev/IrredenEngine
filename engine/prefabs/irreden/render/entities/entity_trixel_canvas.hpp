@@ -1,5 +1,5 @@
-#ifndef ENTITY_CANVAS_H
-#define ENTITY_CANVAS_H
+#ifndef ENTITY_TRIXEL_CANVAS_H
+#define ENTITY_TRIXEL_CANVAS_H
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_name.hpp>
@@ -31,4 +31,4 @@ template <> struct Prefab<PrefabTypes::kTrixelCanvas> {
 };
 } // namespace IREntity
 
-#endif /* ENTITY_CANVAS_H */
+#endif /* ENTITY_TRIXEL_CANVAS_H */

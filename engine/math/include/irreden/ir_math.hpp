@@ -40,12 +40,68 @@ template <typename VecType> constexpr VecType normalize(const VecType &vector) {
     return glm::normalize(vector);
 }
 
-template <typename VecType> constexpr VecType length(const VecType &vector) {
+template <typename VecType> constexpr auto length(const VecType &vector) {
     return glm::length(vector);
 }
 
 template <typename T> constexpr T min(const T &value1, const T &value2) {
     return glm::min(value1, value2);
+}
+
+template <typename T> constexpr T abs(const T &value) {
+    return glm::abs(value);
+}
+
+template <typename T> constexpr T clamp(const T &value, const T &minValue, const T &maxValue) {
+    return glm::clamp(value, minValue, maxValue);
+}
+
+template <typename T, typename U> constexpr T mix(const T &value1, const T &value2, const U &t) {
+    return glm::mix(value1, value2, t);
+}
+
+template <typename T> constexpr auto dot(const T &value1, const T &value2) {
+    return glm::dot(value1, value2);
+}
+
+template <typename T> constexpr auto lessThan(const T &value1, const T &value2) {
+    return glm::lessThan(value1, value2);
+}
+
+template <typename T> constexpr auto greaterThanEqual(const T &value1, const T &value2) {
+    return glm::greaterThanEqual(value1, value2);
+}
+
+template <typename T> constexpr bool all(const T &value) {
+    return glm::all(value);
+}
+
+template <typename T> constexpr auto floor(const T &value) {
+    return glm::floor(value);
+}
+
+template <typename T> constexpr auto ceil(const T &value) {
+    return glm::ceil(value);
+}
+
+template <typename T> constexpr auto fract(const T &value) {
+    return glm::fract(value);
+}
+
+constexpr float sin(float value) {
+    return glm::sin(value);
+}
+
+inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {
+    return glm::ortho(left, right, bottom, top, nearZ, farZ);
+}
+
+inline mat4 translate(const mat4 &matrix, const vec3 &position) {
+    return glm::translate(matrix, position);
+}
+
+inline mat4 scale(const mat4 &matrix, const vec3 &value) {
+    return glm::scale(matrix, value);
 }
 
 constexpr int sumVecComponents(const ivec2 value) {
@@ -265,6 +321,12 @@ constexpr uvec2 size2DIsoToGameResolution(const uvec2 size, const uvec2 scaleFac
 
 vec2 pos2DIsoToTriangleIndex(const vec2 position, const ivec2 triangleStepSizeScreen);
 
+float fract(float value);
+
+vec3 hsvToRgb(const vec3 &colorHSV);
+
+u8vec3 hsvToRgbBytes(const vec3 &colorHSV);
+
 constexpr int calcResolutionWidthFromHeightAndAspectRatio(const int height,
                                                           const ivec2 aspectRatio) {
     return static_cast<int>(height * static_cast<float>(aspectRatio.y) / aspectRatio.x);
@@ -282,6 +344,18 @@ constexpr uint8_t roundFloatToByte(const float value) {
 
 constexpr float roundByteToFloat(const uint8_t value) {
     return (float)value / 255.0f;
+}
+
+constexpr uint8_t lerpByte(uint8_t from, uint8_t to, float t) {
+    const float tClamped = clamp(t, 0.0f, 1.0f);
+    const float fromFloat = roundByteToFloat(from);
+    const float toFloat = roundByteToFloat(to);
+    return roundFloatToByte(mix(fromFloat, toFloat, tClamped));
+}
+
+constexpr Color lerpColor(const Color &from, const Color &to, float t) {
+    return Color{lerpByte(from.red_, to.red_, t), lerpByte(from.green_, to.green_, t),
+                 lerpByte(from.blue_, to.blue_, t), lerpByte(from.alpha_, to.alpha_, t)};
 }
 
 constexpr ivec3 roundVec3ToIVec3(vec3 value) {

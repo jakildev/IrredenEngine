@@ -29,6 +29,7 @@ struct C_PeriodicIdle {
     float periodLengthSeconds_;
     std::vector<PeriodStage> stages_;
     int currentStageIndex_;
+    bool cycleCompleted_;
 
     C_PeriodicIdle(float amplitude, float periodLengthSeconds, float offset = 0.0f)
         : C_PeriodicIdle{vec3{0.0f, 0.0f, amplitude}, periodLengthSeconds, offset} {}
@@ -36,6 +37,7 @@ struct C_PeriodicIdle {
     C_PeriodicIdle(vec3 amplitude, float periodLengthSeconds, float offset = 0.0f)
         : tickCount_{0}, angle_{offset}, amplitude_{amplitude},
           periodLengthSeconds_{periodLengthSeconds}, stages_{}, currentStageIndex_{0},
+          cycleCompleted_{false},
           m_angleIncrementPerTick{(2.0f * static_cast<float>(M_PI)) / periodLengthSeconds_ /
                                   static_cast<float>(IRConstants::kFPS)} {}
 
@@ -46,14 +48,15 @@ struct C_PeriodicIdle {
         return m_currentValue;
     }
 
-    // This is slow and should probably be redone
     void tick() {
+        cycleCompleted_ = false;
         tickCount_++;
         angle_ += m_angleIncrementPerTick;
 
         if (angle_ >= 2.0f * static_cast<float>(M_PI)) {
             angle_ -= 2.0f * static_cast<float>(M_PI);
             currentStageIndex_ = 0;
+            cycleCompleted_ = true;
         }
         while (angle_ >= stages_[currentStageIndex_].endAngle_ &&
                currentStageIndex_ < stages_.size() - 1) {
@@ -65,8 +68,8 @@ struct C_PeriodicIdle {
     void updateValue() {
         PeriodStage &stage = stages_[currentStageIndex_];
         float mappedAngle = mapAngleToStageTValue(angle_, stage);
-        float easedValue = glm::mix(stage.startTValue_, stage.endTValue_,
-                                    kEasingFunctions.at(stage.easingFunction_)(mappedAngle));
+        float easedValue = IRMath::mix(stage.startTValue_, stage.endTValue_,
+                                       kEasingFunctions.at(stage.easingFunction_)(mappedAngle));
         m_currentValue = amplitude_ * easedValue;
     }
 

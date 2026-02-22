@@ -13,7 +13,8 @@ template <> class EventProfiler<UPDATE> {
   public:
     EventProfiler()
         : m_start{}, m_timePointBeginEvent{}, m_lag{kFPSNanoDuration}, m_tickCount(0), m_sum{0},
-          m_deltaTimeActual{0}, m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)} {}
+          m_deltaTimeActual{0}, m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)},
+          m_fixedStepCount(0) {}
 
     void start() {
         auto current = Clock::now();
@@ -55,6 +56,7 @@ template <> class EventProfiler<UPDATE> {
         m_sum += newTick;
         m_tickList[m_tickCount % kProfileHistoryBufferSize] = newTick;
         m_lag -= kFPSNanoDuration;
+        ++m_fixedStepCount;
 
         m_tickCount++;
 
@@ -63,13 +65,26 @@ template <> class EventProfiler<UPDATE> {
             IRE_LOG_DEBUG("Update FPS: {} ms", m_sum.count() / 10.0f);
 
             MilliDuration totalElapsedTime = current - m_start;
+            const auto elapsedMs = totalElapsedTime.count();
+            if (elapsedMs <= 0.0) {
+                return;
+            }
+            IRE_LOG_INFO("Average fixed step slots per second: {} updates",
+                         m_fixedStepCount * 1000.0f / elapsedMs);
             IRE_LOG_INFO("Average fixed updates per second: {} updates",
-                         m_tickCount * 1000.0f / totalElapsedTime.count());
+                         m_tickCount * 1000.0f / elapsedMs);
         }
     }
 
     bool shouldUpdate() {
         return m_lag >= kFPSNanoDuration;
+    }
+
+    void skipEvent() {
+        if (m_lag >= kFPSNanoDuration) {
+            m_lag -= kFPSNanoDuration;
+            ++m_fixedStepCount;
+        }
     }
 
     TimePoint getTimePointBeginEvent() const {
@@ -95,6 +110,7 @@ template <> class EventProfiler<UPDATE> {
     const double m_deltaTimeFixed;
     unsigned int m_warningLogCooldownTicks = 0;
     unsigned int m_tickCount;
+    unsigned int m_fixedStepCount;
 };
 
 template <> class EventProfiler<RENDER> {

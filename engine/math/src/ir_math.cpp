@@ -1,7 +1,5 @@
 #include <irreden/ir_math.hpp>
 
-#include <random>
-
 namespace IRMath {
 
 const bool randomBool() {
@@ -64,8 +62,25 @@ vec2 pos2DIsoToTriangleIndex(const vec2 position, const ivec2 originOffset) {
     return res;
 }
 
+float fract(float value) {
+    return glm::fract(value);
+}
+
+vec3 hsvToRgb(const vec3 &colorHSV) {
+    // Engine-facing hue is normalized [0, 1). GLM expects degrees.
+    const vec3 hsvDegrees =
+        vec3(IRMath::fract(colorHSV.x) * 360.0f, colorHSV.y, colorHSV.z);
+    return glm::rgbColor(hsvDegrees);
+}
+
+u8vec3 hsvToRgbBytes(const vec3 &colorHSV) {
+    const vec3 colorRGB = hsvToRgb(colorHSV);
+    return u8vec3(roundFloatToByte(colorRGB.r), roundFloatToByte(colorRGB.g),
+                  roundFloatToByte(colorRGB.b));
+}
+
 Color colorHSVToColor(const ColorHSV &colorHSV) {
-    vec3 rgbColor = glm::rgbColor(vec3(colorHSV.hue_, colorHSV.saturation_, colorHSV.value_));
+    vec3 rgbColor = hsvToRgb(vec3(colorHSV.hue_, colorHSV.saturation_, colorHSV.value_));
 
     return Color{roundFloatToByte(rgbColor.r), roundFloatToByte(rgbColor.g),
                  roundFloatToByte(rgbColor.b), roundFloatToByte(colorHSV.alpha_)};
@@ -74,7 +89,8 @@ Color colorHSVToColor(const ColorHSV &colorHSV) {
 ColorHSV colorToColorHSV(const Color &color) {
     vec3 colorHSV = glm::hsvColor(vec3(roundByteToFloat(color.red_), roundByteToFloat(color.green_),
                                        roundByteToFloat(color.blue_)));
-    return ColorHSV{colorHSV.r, colorHSV.g, colorHSV.b, (float)color.alpha_ / 255.0f};
+    return ColorHSV{IRMath::fract(colorHSV.r / 360.0f), colorHSV.g, colorHSV.b,
+                    (float)color.alpha_ / 255.0f};
 }
 
 } // namespace IRMath

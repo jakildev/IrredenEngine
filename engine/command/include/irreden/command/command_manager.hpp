@@ -22,10 +22,11 @@ class CommandManager {
     CommandManager();
 
     template <typename Function>
-    int createCommand(InputTypes inputType, ButtonStatuses triggerStatus, int button,
-                      Function command) {
-        m_userCommands.emplace_back(
-            CommandStruct<COMMAND_BUTTON>{inputType, triggerStatus, button, command});
+    int createCommand(InputTypes inputType, ButtonStatuses triggerStatus, int button, Function command,
+                      KeyModifierMask requiredModifiers = kModifierNone,
+                      KeyModifierMask blockedModifiers = kModifierNone) {
+        m_userCommands.emplace_back(CommandStruct<COMMAND_BUTTON>{
+            inputType, triggerStatus, button, command, requiredModifiers, blockedModifiers});
         return m_userCommands.size() - 1;
     }
 

@@ -4,24 +4,16 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/update/components/component_periodic_idle.hpp>
-#include <irreden/voxel/components/component_voxel_set.hpp>
 
 using namespace IRComponents;
-using namespace IRMath;
 
 namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE> {
     static SystemId create() {
-        // TODO: refact this, shouldnt update voxel sets directly
-        return createSystem<C_PeriodicIdle, C_VoxelSetNew>(
-            "PeriodicIdle", [](C_PeriodicIdle &periodicIdle, C_VoxelSetNew &voxelSet) {
-                periodicIdle.tick();
-                vec3 offset = periodicIdle.getValue();
-                for (int i = 0; i < voxelSet.positionOffsets_.size(); i++) {
-                    voxelSet.positionOffsets_[i] = offset;
-                }
-            });
+        return createSystem<C_PeriodicIdle>(
+            "PeriodicIdle",
+            [](C_PeriodicIdle &periodicIdle) { periodicIdle.tick(); });
     }
 };
 

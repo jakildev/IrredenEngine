@@ -13,8 +13,8 @@ namespace IRECS {
 template <> struct Prefab<PrefabTypes::kMidiMessageOut> {
     static EntityId create(MidiStatus status, MidiChannel channel, unsigned char data1,
                            unsigned char data2 = 0) {
-        return IRECS::createEntity(C_MidiMessage{status | channel, data1, data2}, C_MidiOut{},
-                                   C_Lifetime{1});
+        return IRECS::createEntity(C_MidiMessage{buildMidiStatus(status, channel), data1, data2},
+                                   C_MidiOut{}, C_Lifetime{1});
     }
 };
 

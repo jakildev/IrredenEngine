@@ -13,15 +13,21 @@ CommandManager &getCommandManager();
 
 template <typename Function>
 int createCommand(IRInput::InputTypes inputType, IRInput::ButtonStatuses triggerStatus, int button,
-                  Function command) {
-    return getCommandManager().createCommand(inputType, triggerStatus, button, command);
+                  Function command,
+                  IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
+                  IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone) {
+    return getCommandManager().createCommand(inputType, triggerStatus, button, command,
+                                             requiredModifiers, blockedModifiers);
 }
 
 template <CommandNames commandName>
 CommandId createCommand(IRInput::InputTypes inputType, IRInput::ButtonStatuses triggerStatus,
-                        int button) {
+                        int button,
+                        IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
+                        IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone) {
     return getCommandManager().createCommand(inputType, triggerStatus, button,
-                                             Command<commandName>::create());
+                                             Command<commandName>::create(), requiredModifiers,
+                                             blockedModifiers);
 }
 
 } // namespace IRCommand

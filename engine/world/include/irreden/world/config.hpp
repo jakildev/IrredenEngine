@@ -36,6 +36,11 @@ class WorldConfig {
                               }));
         m_config.addEntry("fullscreen",
                           std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false));
+        m_config.addEntry("monitor_index",
+                          std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(-1));
+        m_config.addEntry(
+            "monitor_name",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>(""));
         m_config.addEntry(
             "voxel_render_mode",
             std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRRender::VoxelRenderMode>>(
@@ -62,6 +67,15 @@ class WorldConfig {
         m_config.addEntry(
             "screenshot_output_dir",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("save_files/screenshots"));
+        m_config.addEntry(
+            "start_updates_on_first_key_press",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false));
+        m_config.addEntry(
+            "start_recording_on_first_key_press",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false));
+        m_config.addEntry(
+            "profiling_enabled",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true));
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }

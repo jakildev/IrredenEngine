@@ -6,6 +6,7 @@
 #include <GLFW/glfw3.h>
 
 #include <unordered_map>
+#include <cstdint>
 
 namespace IRInput {
 enum InputDevices { kKeyboard, kGamepad, kMouse, kMidi };
@@ -13,6 +14,12 @@ enum InputDevices { kKeyboard, kGamepad, kMouse, kMidi };
 enum ButtonStatuses { NOT_HELD, PRESSED, HELD, RELEASED, PRESSED_AND_RELEASED };
 
 enum InputTypes { KEY_MOUSE, GAMEPAD, MIDI_NOTE, MIDI_CC };
+
+using KeyModifierMask = uint8_t;
+constexpr KeyModifierMask kModifierNone = 0;
+constexpr KeyModifierMask kModifierShift = 1 << 0;
+constexpr KeyModifierMask kModifierControl = 1 << 1;
+constexpr KeyModifierMask kModifierAlt = 1 << 2;
 
 enum OutputTypes { kMidiOutNotePressed, kMidiOutNoteReleased };
 

@@ -58,7 +58,7 @@ vec2 mousePosition2DIsoWorldRender() {
 }
 
 ivec2 mouseTrixelPositionWorld() {
-    return glm::floor(IRMath::pos2DIsoToTriangleIndex(
+    return IRMath::floor(IRMath::pos2DIsoToTriangleIndex(
         IRRender::mousePosition2DIsoWorldRender(),
         ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
         ));
@@ -82,6 +82,14 @@ int getVoxelRenderSubdivisions() {
 
 int getVoxelRenderEffectiveSubdivisions() {
     return getRenderManager().getVoxelRenderEffectiveSubdivisions();
+}
+
+void zoomMainBackgroundPatternIn() {
+    getRenderManager().zoomMainBackgroundPatternIn();
+}
+
+void zoomMainBackgroundPatternOut() {
+    getRenderManager().zoomMainBackgroundPatternOut();
 }
 
 } // namespace IRRender

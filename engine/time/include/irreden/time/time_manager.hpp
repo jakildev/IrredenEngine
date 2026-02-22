@@ -34,6 +34,10 @@ class TimeManager {
         return m_profilerUpdate.shouldUpdate();
     }
 
+    void skipUpdate() {
+        m_profilerUpdate.skipEvent();
+    }
+
     template <Events event> double deltaTime();
 
   private:

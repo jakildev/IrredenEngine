@@ -3,16 +3,14 @@
 
 #include <easy/profiler.h>
 
-#include <string>
-
 namespace IRProfile {
 class CPUProfiler {
   public:
     ~CPUProfiler();
     static CPUProfiler &instance();
-    inline void mainThread() {
-        EASY_MAIN_THREAD;
-    }
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
+    void mainThread();
     // inline void profileFunction(unsigned int color) {
     //     EASY_FUNCTION(color);
     // }
@@ -25,6 +23,7 @@ class CPUProfiler {
     // }
   private:
     CPUProfiler();
+    bool m_enabled = true;
 };
 
 } // namespace IRProfile

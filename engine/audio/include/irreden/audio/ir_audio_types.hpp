@@ -74,6 +74,18 @@ const char *const kMidiOutInterfaceNames[NUM_MIDI_OUT_INTERFACES] = {
 const unsigned char kMidiMessageBits_STATUS = 0xF0;
 const unsigned char kMidiMessageBits_CHANNEL = 0x0F;
 
+constexpr MidiChannel normalizeMidiChannel(MidiChannel channel) {
+    return static_cast<MidiChannel>(channel & kMidiMessageBits_CHANNEL);
+}
+
+constexpr MidiStatus normalizeMidiStatus(MidiStatus status) {
+    return static_cast<MidiStatus>(status & kMidiMessageBits_STATUS);
+}
+
+constexpr MidiStatus buildMidiStatus(MidiStatus status, MidiChannel channel) {
+    return static_cast<MidiStatus>(normalizeMidiStatus(status) | normalizeMidiChannel(channel));
+}
+
 constexpr MidiChannel kNumMidiChannels = 16;
 
 constexpr MidiStatus kMidiStatus_NOTE_OFF = 0x80;
