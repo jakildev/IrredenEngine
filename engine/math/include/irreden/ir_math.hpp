@@ -392,6 +392,16 @@ constexpr Color lerpColor(const Color &from, const Color &to, float t) {
     };
 }
 
+constexpr ColorHSV lerpHSV(const ColorHSV &from, const ColorHSV &to, float t) {
+    const float tClamped = clamp(t, 0.0f, 1.0f);
+    return ColorHSV{
+        from.hue_ + (to.hue_ - from.hue_) * tClamped,
+        from.saturation_ + (to.saturation_ - from.saturation_) * tClamped,
+        from.value_ + (to.value_ - from.value_) * tClamped,
+        from.alpha_ + (to.alpha_ - from.alpha_) * tClamped
+    };
+}
+
 constexpr ivec3 roundVec3ToIVec3(vec3 value) {
     return ivec3(round(value.x), round(value.y), round(value.z));
 }
@@ -438,18 +448,20 @@ Color colorHSVToColor(const ColorHSV &colorHSV);
 
 ColorHSV colorToColorHSV(const Color &color);
 
+Color applyHSVOffset(const Color &base, const ColorHSV &offset);
+
 // Layout helpers for scriptable entity placement.
 // plane values:
-//   0 = XY plane (depth along Z)
-//   1 = XZ plane (depth along Y)
-//   2 = YZ plane (depth along X)
+//   PlaneIso::XY = depth along Z
+//   PlaneIso::XZ = depth along Y
+//   PlaneIso::YZ = depth along X
 vec3 layoutGridCentered(
     int index,
     int count,
     int columns,
     float spacingPrimary,
     float spacingSecondary,
-    int plane = 0,
+    PlaneIso plane = PlaneIso::XY,
     float depth = 0.0f
 );
 
@@ -459,7 +471,7 @@ vec3 layoutZigZagCentered(
     int itemsPerZag,
     float spacingPrimary,
     float spacingSecondary,
-    int plane = 0,
+    PlaneIso plane = PlaneIso::XY,
     float depth = 0.0f
 );
 
@@ -469,14 +481,14 @@ vec3 layoutZigZagPath(
     int itemsPerSegment,
     float spacingPrimary,
     float spacingSecondary,
-    int plane = 0,
+    PlaneIso plane = PlaneIso::XY,
     float depth = 0.0f
 );
 
 vec3 layoutSquareSpiral(
     int index,
     float spacing,
-    int plane = 0,
+    PlaneIso plane = PlaneIso::XY,
     float depth = 0.0f
 );
 

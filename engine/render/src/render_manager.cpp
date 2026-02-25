@@ -136,6 +136,12 @@ RenderManager::RenderManager(
     IRE_LOG_INFO("Created renderer.");
 }
 
+RenderManager::~RenderManager() {
+    if (g_renderManager == this) {
+        g_renderManager = nullptr;
+    }
+}
+
 void RenderManager::tick() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 

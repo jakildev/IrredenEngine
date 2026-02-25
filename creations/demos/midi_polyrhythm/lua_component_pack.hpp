@@ -49,6 +49,7 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_ActionAnimation,
         AnimPhaseColor,
         AnimPhaseColorMod,
+        AnimColorModTimelineSegment,
         C_AnimClipColorTrack,
         C_AnimColorState,
         C_AnimMotionColorShift,

@@ -25,6 +25,9 @@ InputManager::InputManager()
 }
 
 InputManager::~InputManager() {
+    if (g_inputManager == this) {
+        g_inputManager = nullptr;
+    }
     IRE_LOG_INFO("Destroyed InputManager");
 }
 

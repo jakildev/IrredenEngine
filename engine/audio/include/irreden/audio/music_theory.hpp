@@ -1,6 +1,9 @@
 #ifndef IR_MUSIC_THEORY_H
 #define IR_MUSIC_THEORY_H
 
+#include <array>
+#include <cstddef>
+
 namespace IRAudio {
 
 // ── Pitch-class names (semitone offset from C) ──────────────────────────────
@@ -97,9 +100,14 @@ struct ScaleDefinition {
     int size;
 };
 
+constexpr std::size_t scaleModeIndex(IRScaleMode mode) {
+    return static_cast<std::size_t>(mode);
+}
+
+constexpr std::size_t kNumScaleModes = static_cast<std::size_t>(NUM_SCALE_MODES);
+
 // Indexed by IRScaleMode (unique entries only, not aliases).
-// NUM_SCALE_MODES must equal the number of entries below.
-inline constexpr ScaleDefinition kScaleDefinitions[] = {
+inline constexpr std::array<ScaleDefinition, kNumScaleModes> kScaleDefinitions = {{
 
     // --- Diatonic modes ---
     /* IONIAN       */ {{0, 2, 4, 5, 7, 9, 11},              7},
@@ -143,23 +151,18 @@ inline constexpr ScaleDefinition kScaleDefinitions[] = {
 
     // --- Chromatic ---
     /* CHROMATIC  */ {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, 12},
-};
-
-static_assert(
-    sizeof(kScaleDefinitions) / sizeof(kScaleDefinitions[0]) == NUM_SCALE_MODES,
-    "kScaleDefinitions must have exactly NUM_SCALE_MODES entries"
-);
+}};
 
 inline constexpr const ScaleDefinition &getScaleDefinition(IRScaleMode mode) {
-    return kScaleDefinitions[static_cast<int>(mode)];
+    return kScaleDefinitions[scaleModeIndex(mode)];
 }
 
 inline constexpr int getScaleSize(IRScaleMode mode) {
-    return kScaleDefinitions[static_cast<int>(mode)].size;
+    return kScaleDefinitions[scaleModeIndex(mode)].size;
 }
 
 inline constexpr const int *getScaleIntervals(IRScaleMode mode) {
-    return kScaleDefinitions[static_cast<int>(mode)].intervals;
+    return kScaleDefinitions[scaleModeIndex(mode)].intervals;
 }
 
 } // namespace IRAudio

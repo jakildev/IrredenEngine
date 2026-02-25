@@ -12,7 +12,7 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::ActionAnimationPh
 template <> inline void bindLuaType<IRComponents::ActionAnimationPhase>(LuaScript &luaScript) {
     luaScript.registerType<
         IRComponents::ActionAnimationPhase,
-        IRComponents::ActionAnimationPhase(float, float, float, IRMath::IREasingFunctions),
+        IRComponents::ActionAnimationPhase(double, float, float, IRMath::IREasingFunctions),
         IRComponents::ActionAnimationPhase()>(
         "ActionAnimationPhase",
         "durationSeconds",

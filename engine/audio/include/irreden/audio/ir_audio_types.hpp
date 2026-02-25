@@ -1,6 +1,8 @@
 #ifndef IR_AUDIO_TYPES_H
 #define IR_AUDIO_TYPES_H
 
+#include <array>
+
 #include <irreden/audio/music_theory.hpp>
 
 namespace IRAudio {
@@ -13,6 +15,7 @@ using CCData = unsigned char;
 using CCMessage = unsigned char;
 
 constexpr CCData kCCFalse = 0xFF;
+constexpr unsigned int kAudioInputDefaultBufferFrames = 1024;
 
 enum MidiInInterfaces {
     MIDI_IN_UMC,
@@ -29,6 +32,14 @@ enum MidiOutInterfaces {
     MIDI_OUT_OP1,
     NUM_MIDI_OUT_INTERFACES
 };
+
+constexpr std::size_t midiInInterfaceIndex(MidiInInterfaces midiInInterface) {
+    return static_cast<std::size_t>(midiInInterface);
+}
+
+constexpr std::size_t midiOutInterfaceIndex(MidiOutInterfaces midiOutInterface) {
+    return static_cast<std::size_t>(midiOutInterface);
+}
 
 enum MidiDeviceType { MIDI_DEVICE_TYPE_IN, MIDI_DEVICE_TYPE_OUT };
 
@@ -64,7 +75,7 @@ const char *const kMidiOutInterfaceName_MPK = "MPKmini2";
 const char *const kMidiOutInterfaceName_OP1 = "OP-1 Midi Device";
 
 // map midi in interface to name
-const char *const kMidiInInterfaceNames[NUM_MIDI_IN_INTERFACES] = {
+inline const std::array<const char *, NUM_MIDI_IN_INTERFACES> kMidiInInterfaceNames = {
     kMidiInInterfaceName_UMC,
     kMidiInInterfaceName_FOCUSRITE,
     kMidiInInterfaceName_MPK,
@@ -72,7 +83,7 @@ const char *const kMidiInInterfaceNames[NUM_MIDI_IN_INTERFACES] = {
 };
 
 // map midi out interface to name
-const char *const kMidiOutInterfaceNames[NUM_MIDI_OUT_INTERFACES] = {
+inline const std::array<const char *, NUM_MIDI_OUT_INTERFACES> kMidiOutInterfaceNames = {
     kMidiOutInterfaceName_UMC,
     kMidiOutInterfaceName_FOCUSRITE,
     kMidiOutInterfaceName_MPK,
@@ -197,12 +208,6 @@ enum IRMidiNote {
 
 constexpr unsigned char kMidiCC_ALL_SOUND_OFF = 120;
 constexpr unsigned char kMidiCC_ALL_NOTES_OFF = 123;
-
-// Legacy step-based scale arrays (prefer music_theory.hpp ScaleDefinition).
-constexpr int kMajorScaleSemitoneSteps[] = {2, 2, 1, 2, 2, 2, 1};
-constexpr int kPentatonicScaleSteps[] = {2, 2, 3, 2, 3};
-constexpr int kPentatonicDorianScaleSteps[] = {2, 1, 4, 2, 3};
-constexpr int kPentatonicMinorScaleSteps[] = {2, 1, 4, 1, 4};
 
 } // namespace IRAudio
 

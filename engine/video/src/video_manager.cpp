@@ -24,6 +24,9 @@ VideoManager::VideoManager() {
 
 VideoManager::~VideoManager() {
     shutdown();
+    if (g_videoManager == this) {
+        g_videoManager = nullptr;
+    }
 }
 
 void VideoManager::configureCapture(

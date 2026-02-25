@@ -9,6 +9,7 @@ namespace IRTime {
 class TimeManager {
   public:
     TimeManager();
+    ~TimeManager();
 
     void start() {
         auto current = Clock::now();

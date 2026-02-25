@@ -13,6 +13,8 @@ namespace IRComponents {
 enum AnimColorTrackMode {
     ANIM_COLOR_TRACK_ABSOLUTE = 0,
     ANIM_COLOR_TRACK_HSV_OFFSET,
+    ANIM_COLOR_TRACK_HSV_OFFSET_STATE_BLEND,
+    ANIM_COLOR_TRACK_HSV_OFFSET_TIMELINE,
 };
 
 struct AnimPhaseColor {
@@ -58,6 +60,34 @@ struct AnimPhaseColorMod {
         , easingFunction_{IREasingFunctions::kLinearInterpolation} {}
 };
 
+struct AnimColorModTimelineSegment {
+    int fromPhase_;
+    int toPhase_;
+    ColorHSV startMod_;
+    ColorHSV endMod_;
+    IREasingFunctions easingFunction_;
+
+    AnimColorModTimelineSegment(
+        int fromPhase,
+        int toPhase,
+        ColorHSV startMod,
+        ColorHSV endMod,
+        IREasingFunctions easingFunction
+    )
+        : fromPhase_{fromPhase}
+        , toPhase_{toPhase}
+        , startMod_{startMod}
+        , endMod_{endMod}
+        , easingFunction_{easingFunction} {}
+
+    AnimColorModTimelineSegment()
+        : fromPhase_{0}
+        , toPhase_{0}
+        , startMod_{0.0f, 0.0f, 0.0f, 0.0f}
+        , endMod_{0.0f, 0.0f, 0.0f, 0.0f}
+        , easingFunction_{IREasingFunctions::kLinearInterpolation} {}
+};
+
 struct C_AnimClipColorTrack {
     AnimColorTrackMode mode_ = ANIM_COLOR_TRACK_ABSOLUTE;
 
@@ -68,6 +98,10 @@ struct C_AnimClipColorTrack {
     // HSV offset mode data
     std::array<AnimPhaseColorMod, kMaxActionAnimationPhases> phaseMods_;
     ColorHSV idleMod_;
+    ColorHSV startMod_;
+    ColorHSV endMod_;
+    std::array<AnimColorModTimelineSegment, kMaxActionAnimationPhases> timelineMods_;
+    int timelineModCount_ = 0;
 
     int phaseCount_ = 0;
 
@@ -77,6 +111,10 @@ struct C_AnimClipColorTrack {
         , idleColor_{IRColors::kWhite}
         , phaseMods_{}
         , idleMod_{0.0f, 0.0f, 0.0f, 0.0f}
+        , startMod_{0.0f, 0.0f, 0.0f, 0.0f}
+        , endMod_{0.0f, 0.0f, 0.0f, 0.0f}
+        , timelineMods_{}
+        , timelineModCount_{0}
         , phaseCount_{0} {}
 
     void addPhaseColor(const AnimPhaseColor &pc) {
@@ -88,6 +126,12 @@ struct C_AnimClipColorTrack {
     void addPhaseMod(const AnimPhaseColorMod &pm) {
         if (phaseCount_ < kMaxActionAnimationPhases) {
             phaseMods_[phaseCount_++] = pm;
+        }
+    }
+
+    void addTimelineMod(const AnimColorModTimelineSegment &segment) {
+        if (timelineModCount_ < kMaxActionAnimationPhases) {
+            timelineMods_[timelineModCount_++] = segment;
         }
     }
 };

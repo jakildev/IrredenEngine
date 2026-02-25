@@ -112,14 +112,23 @@ ColorHSV colorToColorHSV(const Color &color) {
     };
 }
 
+Color applyHSVOffset(const Color &base, const ColorHSV &offset) {
+    ColorHSV hsv = colorToColorHSV(base);
+    hsv.hue_ = IRMath::fract(hsv.hue_ + offset.hue_);
+    hsv.saturation_ = IRMath::clamp(hsv.saturation_ + offset.saturation_, 0.0f, 1.0f);
+    hsv.value_ = IRMath::clamp(hsv.value_ + offset.value_, 0.0f, 1.0f);
+    hsv.alpha_ = IRMath::clamp(hsv.alpha_ + offset.alpha_, 0.0f, 1.0f);
+    return colorHSVToColor(hsv);
+}
+
 namespace {
-vec3 mapPlaneToVec3(const vec2 &planePoint, float depth, int plane) {
+vec3 mapPlaneToVec3(const vec2 &planePoint, float depth, PlaneIso plane) {
     switch (plane) {
-    case 1: // XZ, depth on Y
+    case PlaneIso::XZ:
         return vec3(planePoint.x, depth, planePoint.y);
-    case 2: // YZ, depth on X
+    case PlaneIso::YZ:
         return vec3(depth, planePoint.x, planePoint.y);
-    case 0: // XY, depth on Z
+    case PlaneIso::XY:
     default:
         return vec3(planePoint.x, planePoint.y, depth);
     }
@@ -132,7 +141,7 @@ vec3 layoutGridCentered(
     int columns,
     float spacingPrimary,
     float spacingSecondary,
-    int plane,
+    PlaneIso plane,
     float depth
 ) {
     if (count <= 0) {
@@ -162,7 +171,7 @@ vec3 layoutZigZagCentered(
     int itemsPerZag,
     float spacingPrimary,
     float spacingSecondary,
-    int plane,
+    PlaneIso plane,
     float depth
 ) {
     if (count <= 0) {
@@ -193,7 +202,7 @@ vec3 layoutZigZagPath(
     int itemsPerSegment,
     float spacingPrimary,
     float spacingSecondary,
-    int plane,
+    PlaneIso plane,
     float depth
 ) {
     if (count <= 0) {
@@ -228,7 +237,7 @@ vec3 layoutZigZagPath(
     return mapPlaneToVec3(p, depth, plane);
 }
 
-vec3 layoutSquareSpiral(int index, float spacing, int plane, float depth) {
+vec3 layoutSquareSpiral(int index, float spacing, PlaneIso plane, float depth) {
     if (index <= 0) {
         return mapPlaneToVec3(vec2(0.0f), depth, plane);
     }

@@ -20,7 +20,9 @@ AudioManager::AudioManager()
 
 AudioManager::~AudioManager() {
     m_midiOut.sendAllNotesOff();
-    g_audioManager = nullptr;
+    if (g_audioManager == this) {
+        g_audioManager = nullptr;
+    }
     IRE_LOG_DEBUG("Destroyed AudioManager");
 }
 

@@ -12,6 +12,7 @@
 #include <irreden/update/components/component_rhythmic_launch.hpp>
 
 #include <unordered_map>
+#include <cmath>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -57,8 +58,17 @@ template <> struct System<ACTION_ANIMATION> {
                                     contact.otherEntity_);
                             if (launchOpt.has_value()) {
                                 const auto &launch = *launchOpt.value();
-                                double timeUntilFire =
-                                    launch.periodSeconds_ - launch.elapsedSeconds_;
+                                if (launch.periodSeconds_ <= 0.0) {
+                                    return false;
+                                }
+                                double elapsedWrapped = std::fmod(
+                                    launch.elapsedSeconds_,
+                                    launch.periodSeconds_
+                                );
+                                if (elapsedWrapped < 0.0) {
+                                    elapsedWrapped += launch.periodSeconds_;
+                                }
+                                double timeUntilFire = launch.periodSeconds_ - elapsedWrapped;
                                 return timeUntilFire <= binding.timerSyncLeadSeconds_ &&
                                        timeUntilFire >= 0.0;
                             }
@@ -113,11 +123,15 @@ template <> struct System<ACTION_ANIMATION> {
                     anim.stopClip();
                     return;
                 }
+                if (anim.currentPhase_ < 0 || anim.currentPhase_ >= clip->phaseCount_) {
+                    anim.stopClip();
+                    return;
+                }
 
                 anim.phaseElapsed_ += dt;
 
                 const auto &phase = clip->phases_[anim.currentPhase_];
-                double phaseDur = static_cast<double>(phase.durationSeconds_);
+                double phaseDur = phase.durationSeconds_;
                 if (phaseDur <= 0.0) phaseDur = 0.001;
 
                 double t = anim.phaseElapsed_ / phaseDur;

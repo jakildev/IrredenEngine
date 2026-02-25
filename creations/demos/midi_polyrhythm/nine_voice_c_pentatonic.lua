@@ -79,7 +79,7 @@ local visual_options = {
     note_hit_glow_fade_sec = 0.55,
     note_hit_glow_easing = IREasingFunction.SINE_EASE_OUT,
 
-    platform_hit_glow_enabled = true,
+    platform_hit_glow_enabled = false,
     platform_hit_glow_mix_to_white = 0.50,
     platform_hit_glow_hold_sec = 0.2,
     platform_hit_glow_fade_sec = 1.00,

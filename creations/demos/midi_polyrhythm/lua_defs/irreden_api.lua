@@ -627,6 +627,8 @@ AnimColorBlendMode = {
 AnimColorTrackMode = {
     ABSOLUTE   = 0,
     HSV_OFFSET = 1,
+    HSV_OFFSET_STATE_BLEND = 2,
+    HSV_OFFSET_TIMELINE = 3,
 }
 
 ---@class AnimPhaseColor
@@ -655,11 +657,29 @@ local AnimPhaseColorMod = {}
 ---@overload fun(): AnimPhaseColorMod
 function AnimPhaseColorMod.new(startMod, endMod, easingFunction) end
 
+---@class AnimColorModTimelineSegment
+---@field fromPhase integer
+---@field toPhase integer
+---@field startMod ColorHSV
+---@field endMod ColorHSV
+---@field easingFunction IREasingFunction
+local AnimColorModTimelineSegment = {}
+---@param fromPhase integer
+---@param toPhase integer
+---@param startMod ColorHSV
+---@param endMod ColorHSV
+---@param easingFunction IREasingFunction
+---@return AnimColorModTimelineSegment
+---@overload fun(): AnimColorModTimelineSegment
+function AnimColorModTimelineSegment.new(fromPhase, toPhase, startMod, endMod, easingFunction) end
+
 ---@class C_AnimClipColorTrack
 ---@field mode AnimColorTrackMode
 ---@field phaseCount integer
 ---@field idleColor Color
 ---@field idleMod ColorHSV
+---@field startMod ColorHSV
+---@field endMod ColorHSV
 local C_AnimClipColorTrack = {}
 ---@return C_AnimClipColorTrack
 function C_AnimClipColorTrack.new() end
@@ -667,6 +687,8 @@ function C_AnimClipColorTrack.new() end
 function C_AnimClipColorTrack:addPhaseColor(phaseColor) end
 ---@param phaseMod AnimPhaseColorMod
 function C_AnimClipColorTrack:addPhaseMod(phaseMod) end
+---@param segment AnimColorModTimelineSegment
+function C_AnimClipColorTrack:addTimelineMod(segment) end
 
 ---@class C_AnimColorState
 ---@field blendMode AnimColorBlendMode
@@ -695,6 +717,13 @@ function C_AnimMotionColorShift.new(motionColor, fadeInSpeed, fadeOutSpeed) end
 
 ---@class IRMathLib
 IRMath = {}
+
+---@enum PlaneIso
+PlaneIso = {
+    XY = 0,
+    XZ = 1,
+    YZ = 2,
+}
 
 ---@param value number
 ---@return number
@@ -772,7 +801,7 @@ function IRMath.loadPalette(filename) end
 ---@param columns integer
 ---@param spacingPrimary number
 ---@param spacingSecondary number
----@param plane integer
+---@param plane PlaneIso
 ---@param depth number
 ---@return vec3
 function IRMath.layoutGridCentered(index, count, columns, spacingPrimary, spacingSecondary, plane, depth) end
@@ -782,7 +811,7 @@ function IRMath.layoutGridCentered(index, count, columns, spacingPrimary, spacin
 ---@param itemsPerZag integer
 ---@param spacingPrimary number
 ---@param spacingSecondary number
----@param plane integer
+---@param plane PlaneIso
 ---@param depth number
 ---@return vec3
 function IRMath.layoutZigZagCentered(index, count, itemsPerZag, spacingPrimary, spacingSecondary, plane, depth) end
@@ -792,14 +821,14 @@ function IRMath.layoutZigZagCentered(index, count, itemsPerZag, spacingPrimary, 
 ---@param itemsPerSegment integer
 ---@param spacingPrimary number
 ---@param spacingSecondary number
----@param plane integer
+---@param plane PlaneIso
 ---@param depth number
 ---@return vec3
 function IRMath.layoutZigZagPath(index, count, itemsPerSegment, spacingPrimary, spacingSecondary, plane, depth) end
 
 ---@param index integer
 ---@param spacing number
----@param plane integer
+---@param plane PlaneIso
 ---@param depth number
 ---@return vec3
 function IRMath.layoutSquareSpiral(index, spacing, plane, depth) end

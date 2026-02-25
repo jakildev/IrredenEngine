@@ -130,7 +130,7 @@ S.visual = {
     note_hit_glow_fade_sec = 0.55,
     note_hit_glow_easing = IREasingFunction.SINE_EASE_OUT,
 
-    platform_hit_glow_enabled = true,
+    platform_hit_glow_enabled = false,
     platform_hit_glow_mix_to_white = 0.50,
     platform_hit_glow_hold_sec = 0.2,
     platform_hit_glow_fade_sec = 1.00,
@@ -155,7 +155,7 @@ S.tuning.platform_anim = {
     },
 
     color_enabled = true,
-    color_mode = "HSV_OFFSET",
+    color_mode = "HSV_OFFSET_TIMELINE",
     -- HSV offset applied when platform is in the "down" (landed) position.
     -- launch idle = no offset (original color), land idle = darkened.
     idle_value_offset = -0.3,

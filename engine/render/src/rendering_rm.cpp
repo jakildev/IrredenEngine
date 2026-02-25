@@ -29,4 +29,10 @@ RenderingResourceManager::RenderingResourceManager() {
     IRE_LOG_INFO("Created RenderingResourceManager");
 }
 
+RenderingResourceManager::~RenderingResourceManager() {
+    if (g_renderingResourceManager == this) {
+        g_renderingResourceManager = nullptr;
+    }
+}
+
 } // namespace IRRender

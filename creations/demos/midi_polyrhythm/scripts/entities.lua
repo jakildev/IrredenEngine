@@ -106,6 +106,8 @@ function E.create_platforms(settings, voices, num_voices)
 
         local use_color = pa.color_enabled
         local use_hsv   = pa.color_mode == "HSV_OFFSET"
+        local use_hsv_state_blend = pa.color_mode == "HSV_OFFSET_STATE_BLEND"
+        local use_hsv_timeline = pa.color_mode == "HSV_OFFSET_TIMELINE"
 
         local launch_clip, land_clip
         if use_color and use_hsv then
@@ -119,6 +121,103 @@ function E.create_platforms(settings, voices, num_voices)
             local land_track = C_AnimClipColorTrack.new()
             land_track.mode = AnimColorTrackMode.HSV_OFFSET
             land_track.idleMod = ColorHSV(0, 0, pa.idle_value_offset or -0.3, 0)
+
+            launch_clip = IREntity.createAnimationClipWithColor(
+                build_clip(pa.launch), launch_track)
+            land_clip = IREntity.createAnimationClipWithColor(
+                build_clip(pa.land), land_track)
+        elseif use_color and use_hsv_state_blend then
+            -- HSV state blend mode:
+            -- Blend linearly across the whole clip duration from startMod -> endMod.
+            -- This supports transitions spanning multiple motion phases.
+            local idle_offset = pa.idle_value_offset or -0.3
+
+            local launch_track = C_AnimClipColorTrack.new()
+            launch_track.mode = AnimColorTrackMode.HSV_OFFSET_STATE_BLEND
+            launch_track.startMod = ColorHSV(0, 0, idle_offset, 0)
+            launch_track.endMod = ColorHSV(0, 0, 0, 0)
+
+            local land_track = C_AnimClipColorTrack.new()
+            land_track.mode = AnimColorTrackMode.HSV_OFFSET_STATE_BLEND
+            land_track.startMod = ColorHSV(0, 0, 0, 0)
+            land_track.endMod = ColorHSV(0, 0, idle_offset, 0)
+
+            launch_clip = IREntity.createAnimationClipWithColor(
+                build_clip(pa.launch), launch_track)
+            land_clip = IREntity.createAnimationClipWithColor(
+                build_clip(pa.land), land_track)
+        elseif use_color and use_hsv_timeline then
+            -- HSV timeline mode:
+            -- Supports one or many arbitrary color transitions across phase ranges.
+            local idle_offset = pa.idle_value_offset or -0.3
+
+            local function hsv_from_table_or_default(tbl, default_hsv)
+                if not tbl then return default_hsv end
+                return ColorHSV(
+                    tbl.h or 0.0,
+                    tbl.s or 0.0,
+                    tbl.v or 0.0,
+                    tbl.a or 0.0
+                )
+            end
+
+            local function phase_count_of(clip_def)
+                local count = 0
+                for _, _ in ipairs(clip_def) do
+                    count = count + 1
+                end
+                return count
+            end
+
+            local function build_timeline_track(clip_def, start_mod, end_mod, timeline_defs)
+                local track = C_AnimClipColorTrack.new()
+                track.mode = AnimColorTrackMode.HSV_OFFSET_TIMELINE
+                track.startMod = start_mod
+                track.endMod = end_mod
+
+                local phase_count = phase_count_of(clip_def)
+                if timeline_defs and #timeline_defs > 0 then
+                    for _, seg in ipairs(timeline_defs) do
+                        local ease = easing_map[seg.ease] or IREasingFunction.LINEAR_INTERPOLATION
+                        local from_phase = seg.from_phase or seg.from or 0
+                        local to_phase = seg.to_phase or seg.to or from_phase
+                        local seg_start_mod =
+                            hsv_from_table_or_default(seg.from_mod, start_mod)
+                        local seg_end_mod =
+                            hsv_from_table_or_default(seg.to_mod, end_mod)
+                        track:addTimelineMod(AnimColorModTimelineSegment.new(
+                            from_phase,
+                            to_phase,
+                            seg_start_mod,
+                            seg_end_mod,
+                            ease
+                        ))
+                    end
+                elseif phase_count > 0 then
+                    track:addTimelineMod(AnimColorModTimelineSegment.new(
+                        0,
+                        phase_count - 1,
+                        start_mod,
+                        end_mod,
+                        IREasingFunction.LINEAR_INTERPOLATION
+                    ))
+                end
+
+                return track
+            end
+
+            local launch_track = build_timeline_track(
+                pa.launch,
+                ColorHSV(0, 0, idle_offset, 0),
+                ColorHSV(0, 0, 0, 0),
+                pa.launch_timeline
+            )
+            local land_track = build_timeline_track(
+                pa.land,
+                ColorHSV(0, 0, 0, 0),
+                ColorHSV(0, 0, idle_offset, 0),
+                pa.land_timeline
+            )
 
             launch_clip = IREntity.createAnimationClipWithColor(
                 build_clip(pa.launch), launch_track)

@@ -25,7 +25,7 @@ namespace IRRender {
 class RenderManager {
   public:
     RenderManager(ivec2 gameResolution, FitMode fitMode = FitMode::FIT);
-    ~RenderManager() {}
+    ~RenderManager();
 
     inline ivec2 getViewport() const {
         return m_viewport;

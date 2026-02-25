@@ -291,7 +291,11 @@ void registerLuaBindings() {
         luaScript.registerEnum<IRComponents::AnimColorTrackMode>(
             "AnimColorTrackMode",
             {{"ABSOLUTE",   IRComponents::ANIM_COLOR_TRACK_ABSOLUTE},
-             {"HSV_OFFSET", IRComponents::ANIM_COLOR_TRACK_HSV_OFFSET}}
+             {"HSV_OFFSET", IRComponents::ANIM_COLOR_TRACK_HSV_OFFSET},
+             {"HSV_OFFSET_STATE_BLEND",
+              IRComponents::ANIM_COLOR_TRACK_HSV_OFFSET_STATE_BLEND},
+             {"HSV_OFFSET_TIMELINE",
+              IRComponents::ANIM_COLOR_TRACK_HSV_OFFSET_TIMELINE}}
         );
 
         luaScript.registerType<C_HasGravity, C_HasGravity()>("C_HasGravity");

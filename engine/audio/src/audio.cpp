@@ -65,7 +65,7 @@ bool Audio::openStreamIn(
     parameters.firstChannel = 0;
 
     const unsigned int requestedSampleRate = static_cast<unsigned int>(std::max(sampleRate, 8'000));
-    unsigned int bufferFrames = 1024;
+    unsigned int bufferFrames = kAudioInputDefaultBufferFrames;
 
     try {
         RtAudioCallback rtAudioCallback = [this](void *,
@@ -114,6 +114,7 @@ bool Audio::startStreamIn() {
         return false;
     }
     if (m_streamInRunning) {
+        IRE_LOG_WARN("Audio input stream start requested, but stream is already running.");
         return true;
     }
     try {
@@ -127,7 +128,12 @@ bool Audio::startStreamIn() {
 }
 
 void Audio::stopStreamIn() {
-    if (!m_streamInOpen || !m_streamInRunning) {
+    if (!m_streamInOpen) {
+        IRE_LOG_WARN("Audio input stream stop requested, but stream is not open.");
+        return;
+    }
+    if (!m_streamInRunning) {
+        IRE_LOG_WARN("Audio input stream stop requested, but stream is not running.");
         return;
     }
     try {

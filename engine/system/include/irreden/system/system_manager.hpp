@@ -25,7 +25,7 @@ namespace IRSystem {
 class SystemManager {
   public:
     SystemManager();
-    ~SystemManager() = default;
+    ~SystemManager();
 
     template <
         typename... Components,

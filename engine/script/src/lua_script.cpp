@@ -40,13 +40,21 @@ LuaScript::LuaScript()
             static_cast<int>(rgbBytes.b)
         );
     };
+    m_lua["PlaneIso"] = m_lua.create_table_with(
+        "XY",
+        IRMath::PlaneIso::XY,
+        "XZ",
+        IRMath::PlaneIso::XZ,
+        "YZ",
+        IRMath::PlaneIso::YZ
+    );
     m_lua["IRMath"]["layoutGridCentered"] = [](
                                                 int index,
                                                 int count,
                                                 int columns,
                                                 float spacingPrimary,
                                                 float spacingSecondary,
-                                                int plane,
+                                                IRMath::PlaneIso plane,
                                                 float depth
                                             ) {
         return IRMath::layoutGridCentered(
@@ -65,7 +73,7 @@ LuaScript::LuaScript()
                                                   int itemsPerZag,
                                                   float spacingPrimary,
                                                   float spacingSecondary,
-                                                  int plane,
+                                                  IRMath::PlaneIso plane,
                                                   float depth
                                               ) {
         return IRMath::layoutZigZagCentered(
@@ -84,7 +92,7 @@ LuaScript::LuaScript()
                                                 int itemsPerSegment,
                                                 float spacingPrimary,
                                                 float spacingSecondary,
-                                                int plane,
+                                                IRMath::PlaneIso plane,
                                                 float depth
                                             ) {
         return IRMath::layoutZigZagPath(
@@ -97,7 +105,9 @@ LuaScript::LuaScript()
             depth
         );
     };
-    m_lua["IRMath"]["layoutSquareSpiral"] = [](int index, float spacing, int plane, float depth) {
+    m_lua["IRMath"]["layoutSquareSpiral"] = [](
+                                                 int index, float spacing, IRMath::PlaneIso plane, float depth
+                                             ) {
         return IRMath::layoutSquareSpiral(index, spacing, plane, depth);
     };
     m_lua["IRMath"]["layoutHelix"] =

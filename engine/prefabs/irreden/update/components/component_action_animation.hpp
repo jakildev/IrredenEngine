@@ -21,13 +21,13 @@ enum ActionAnimationTriggerMode {
 };
 
 struct ActionAnimationPhase {
-    float durationSeconds_;
+    double durationSeconds_;
     float startDisplacement_;
     float endDisplacement_;
     IREasingFunctions easingFunction_;
 
     ActionAnimationPhase(
-        float durationSeconds,
+        double durationSeconds,
         float startDisplacement,
         float endDisplacement,
         IREasingFunctions easingFunction
@@ -38,7 +38,7 @@ struct ActionAnimationPhase {
         , easingFunction_{easingFunction} {}
 
     ActionAnimationPhase()
-        : ActionAnimationPhase(0.1f, 0.0f, 0.0f, IREasingFunctions::kLinearInterpolation) {}
+        : ActionAnimationPhase(0.1, 0.0f, 0.0f, IREasingFunctions::kLinearInterpolation) {}
 };
 
 struct AnimationBinding {

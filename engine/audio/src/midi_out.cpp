@@ -36,7 +36,7 @@ void MidiOut::sendAllNotesOff() {
 }
 
 int MidiOut::openPort(MidiOutInterfaces interface) {
-    return openPort(kMidiOutInterfaceNames[interface]);
+    return openPort(kMidiOutInterfaceNames[midiOutInterfaceIndex(interface)]);
 }
 
 int MidiOut::openPort(std::string portNameSubstring) {

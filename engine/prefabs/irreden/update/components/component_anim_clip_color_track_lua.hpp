@@ -40,6 +40,34 @@ template <> inline void bindLuaType<IRComponents::AnimPhaseColorMod>(LuaScript &
     );
 }
 
+template <>
+inline constexpr bool kHasLuaBinding<IRComponents::AnimColorModTimelineSegment> = true;
+
+template <>
+inline void bindLuaType<IRComponents::AnimColorModTimelineSegment>(LuaScript &luaScript) {
+    luaScript.registerType<
+        IRComponents::AnimColorModTimelineSegment,
+        IRComponents::AnimColorModTimelineSegment(
+            int,
+            int,
+            IRMath::ColorHSV,
+            IRMath::ColorHSV,
+            IRMath::IREasingFunctions),
+        IRComponents::AnimColorModTimelineSegment()>(
+        "AnimColorModTimelineSegment",
+        "fromPhase",
+        &IRComponents::AnimColorModTimelineSegment::fromPhase_,
+        "toPhase",
+        &IRComponents::AnimColorModTimelineSegment::toPhase_,
+        "startMod",
+        &IRComponents::AnimColorModTimelineSegment::startMod_,
+        "endMod",
+        &IRComponents::AnimColorModTimelineSegment::endMod_,
+        "easingFunction",
+        &IRComponents::AnimColorModTimelineSegment::easingFunction_
+    );
+}
+
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_AnimClipColorTrack> = true;
 
 template <> inline void bindLuaType<IRComponents::C_AnimClipColorTrack>(LuaScript &luaScript) {
@@ -54,10 +82,15 @@ template <> inline void bindLuaType<IRComponents::C_AnimClipColorTrack>(LuaScrip
         "idleColor",
         &IRComponents::C_AnimClipColorTrack::idleColor_,
         "idleMod",
-        &IRComponents::C_AnimClipColorTrack::idleMod_
+        &IRComponents::C_AnimClipColorTrack::idleMod_,
+        "startMod",
+        &IRComponents::C_AnimClipColorTrack::startMod_,
+        "endMod",
+        &IRComponents::C_AnimClipColorTrack::endMod_
     );
     type["addPhaseColor"] = &IRComponents::C_AnimClipColorTrack::addPhaseColor;
     type["addPhaseMod"] = &IRComponents::C_AnimClipColorTrack::addPhaseMod;
+    type["addTimelineMod"] = &IRComponents::C_AnimClipColorTrack::addTimelineMod;
 }
 
 } // namespace IRScript

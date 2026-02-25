@@ -15,36 +15,21 @@ template <> struct Command<TOGGLE_PERIODIC_IDLE_PAUSE> {
             static bool wantPaused = false;
             wantPaused = !wantPaused;
 
-            auto nodes = IREntity::queryArchetypeNodesSimple(
-                IREntity::getArchetype<IRComponents::C_PeriodicIdle>()
-            );
-
             if (wantPaused) {
-                for (auto *node : nodes) {
-                    auto &idles =
-                        IREntity::getComponentData<IRComponents::C_PeriodicIdle>(node);
-                    for (auto &idle : idles) {
-                        idle.requestPauseAtCycleStart();
-                    }
-                }
+                IREntity::forEachComponent<IRComponents::C_PeriodicIdle>(
+                    [](IRComponents::C_PeriodicIdle &idle) { idle.requestPauseAtCycleStart(); }
+                );
             } else {
-                int totalCount = 0;
-                for (auto *node : nodes) {
-                    totalCount += static_cast<int>(
-                        IREntity::getComponentData<IRComponents::C_PeriodicIdle>(node).size()
-                    );
-                }
+                int totalCount = IREntity::countComponents<IRComponents::C_PeriodicIdle>();
                 int index = 0;
-                for (auto *node : nodes) {
-                    auto &idles =
-                        IREntity::getComponentData<IRComponents::C_PeriodicIdle>(node);
-                    for (auto &idle : idles) {
+                IREntity::forEachComponent<IRComponents::C_PeriodicIdle>(
+                    [&index, totalCount](IRComponents::C_PeriodicIdle &idle) {
                         float delay =
                             static_cast<float>(totalCount - 1 - index) * kResumeStaggerStepSec;
                         idle.resumeWithDelay(delay);
-                        index++;
+                        ++index;
                     }
-                }
+                );
             }
         };
     }
