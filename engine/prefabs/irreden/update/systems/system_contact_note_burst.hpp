@@ -13,6 +13,7 @@
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_velocity_drag.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
+#include <irreden/update/components/component_spawn_glow.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -31,23 +32,77 @@ template <> struct System<CONTACT_NOTE_BURST> {
                     return;
                 }
 
+
+                const vec3 blockCenter =
+                    globalPos.pos_ + vec3(voxelSet.size_) * 0.5f;
+                const vec3 halfSize = vec3(voxelSet.size_) * 0.5f;
                 Color color = voxelSet.voxels_[0].color_;
                 float spd = burst.speed_;
+                float spdXY = spd * burst.xySpeedRatio_;
+                float spdZUp = spd * burst.zSpeedRatio_;
+                float spdZVariance = spd * burst.zVarianceRatio_;
+
                 for (int i = 0; i < burst.count_; i++) {
-                    vec3 vel = randomVec(
-                        vec3(-spd * 2.0f, -spd * 2.0f, -spd * 1.2f),
-                        vec3(spd * 2.0f, spd * 2.0f, spd * 0.8f)
-                    );
+                    float zVel = -(spdZUp + randomFloat(-spdZVariance, spdZVariance));
+                    vec3 vel = vec3(
+                        randomFloat(-spdXY, spdXY),
+                        randomFloat(-spdXY, spdXY),
+                        zVel);
+
+                    vec3 faceOffset = vec3(
+                        randomFloat(-halfSize.x, halfSize.x),
+                        randomFloat(-halfSize.y, halfSize.y),
+                        -halfSize.z);
+
+                    const vec3 spawnPos = isoDepthShift(
+                        blockCenter + faceOffset
+                            + vec3(0.0f, 0.0f, burst.spawnOffsetZ_),
+                        burst.isoDepthOffset_);
+
+                    auto applyVariance = [](float base, float variance) -> float {
+                        if (variance <= 0.0f) return base;
+                        return base * randomFloat(1.0f - variance, 1.0f + variance);
+                    };
+
+                    float driftDelay = applyVariance(
+                        burst.pDriftDelaySeconds_, burst.hoverStartVariance_);
+                    float hoverDur = applyVariance(
+                        burst.pHoverDurationSec_, burst.hoverDurationVariance_);
+                    float hoverAmp = applyVariance(
+                        burst.pHoverOscAmplitude_, burst.hoverAmplitudeVariance_);
+                    float hoverSpd = applyVariance(
+                        burst.pHoverOscSpeed_, burst.hoverSpeedVariance_);
+
                     IREntity::EntityId entity = IREntity::createEntity(
-                        C_Position3D{globalPos.pos_},
+                        C_Position3D{spawnPos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color},
                         C_Velocity3D{vel},
-                        C_VelocityDrag{},
+                        C_VelocityDrag{
+                            burst.pDragPerSecond_,
+                            driftDelay,
+                            burst.pDriftUpAccelPerSec_,
+                            burst.pDragMinSpeed_,
+                            burst.dragScaleX_,
+                            burst.dragScaleY_,
+                            burst.dragScaleZ_,
+                            hoverDur,
+                            hoverSpd,
+                            hoverAmp,
+                            burst.pHoverBlendSec_,
+                            burst.pHoverBlendEasing_
+                        },
                         C_Lifetime{burst.lifetime_}
                     );
-                    // New particles spawn after GLOBAL_POSITION_3D in this frame.
-                    // Seed global position immediately to avoid a one-frame origin artifact.
-                    IREntity::setComponent(entity, C_PositionGlobal3D{globalPos.pos_});
+                    IREntity::setComponent(entity, C_PositionGlobal3D{spawnPos});
+                    if (burst.glowEnabled_) {
+                        IREntity::setComponent(entity, C_SpawnGlow{
+                            color,
+                            burst.glowColor_,
+                            burst.glowHoldSeconds_,
+                            burst.glowFadeSeconds_,
+                            burst.glowEasing_
+                        });
+                    }
                 }
             }
         );

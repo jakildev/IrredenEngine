@@ -13,6 +13,8 @@
 
 // SYSTEMS -- Update
 #include <irreden/update/systems/system_velocity.hpp>
+#include <irreden/update/systems/system_acceleration.hpp>
+#include <irreden/update/systems/system_gravity.hpp>
 #include <irreden/update/systems/system_velocity_drag.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -24,9 +26,14 @@
 #include <irreden/update/systems/system_collision_event_clear.hpp>
 #include <irreden/update/systems/system_collision_note_platform.hpp>
 #include <irreden/update/systems/system_reactive_return_3d.hpp>
+#include <irreden/update/systems/system_rhythmic_launch.hpp>
 #include <irreden/audio/systems/system_contact_midi_trigger.hpp>
 #include <irreden/update/systems/system_contact_note_burst.hpp>
 #include <irreden/update/systems/system_contact_trigger_glow.hpp>
+#include <irreden/update/systems/system_spawn_glow.hpp>
+#include <irreden/update/systems/system_action_animation.hpp>
+#include <irreden/update/systems/system_animation_color.hpp>
+#include <irreden/update/systems/system_anim_motion_color_shift.hpp>
 #include <irreden/audio/systems/system_midi_delay_process.hpp>
 #include <irreden/audio/systems/system_midi_sequence_out.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
@@ -51,6 +58,7 @@
 #include <irreden/render/commands/command_move_camera.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
+#include <irreden/update/commands/command_toggle_periodic_idle_pause.hpp>
 
 void initSystems();
 void initCommands();
@@ -72,6 +80,8 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::REACTIVE_RETURN_3D>(),
+         IRSystem::createSystem<IRSystem::GRAVITY_3D>(),
+         IRSystem::createSystem<IRSystem::ACCELERATION_3D>(),
          IRSystem::createSystem<IRSystem::VELOCITY_DRAG>(),
          IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
@@ -81,9 +91,14 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::COLLISION_EVENT_CLEAR>(),
          IRSystem::createSystem<IRSystem::COLLISION_NOTE_PLATFORM>(),
+         IRSystem::createSystem<IRSystem::ACTION_ANIMATION>(),
+         IRSystem::createSystem<IRSystem::RHYTHMIC_LAUNCH>(),
          IRSystem::createSystem<IRSystem::CONTACT_MIDI_TRIGGER>(),
          IRSystem::createSystem<IRSystem::CONTACT_NOTE_BURST>(),
          IRSystem::createSystem<IRSystem::CONTACT_TRIGGER_GLOW>(),
+         IRSystem::createSystem<IRSystem::SPAWN_GLOW>(),
+         IRSystem::createSystem<IRSystem::ANIMATION_COLOR>(),
+         IRSystem::createSystem<IRSystem::ANIMATION_MOTION_COLOR_SHIFT>(),
          IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),
          IRSystem::createSystem<IRSystem::MIDI_DELAY_PROCESS>(),
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
@@ -194,5 +209,10 @@ void initCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonF9
+    );
+    IRCommand::createCommand<IRCommand::TOGGLE_PERIODIC_IDLE_PAUSE>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonP
     );
 }

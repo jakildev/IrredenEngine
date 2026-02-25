@@ -57,6 +57,12 @@ enum Shape2D { RECTANGLE, TRIANGLE, CIRCLE, TRAPEZOID, NONE_SHAPE_2D };
 
 enum class Shape3D { RECTANGULAR_PRISM, SPHERE, NONE_SHAPE_3D };
 
+enum class PlaneIso {
+    XY = 0, // depth on Z
+    XZ = 1, // depth on Y
+    YZ = 2  // depth on X
+};
+
 struct ColorHSV {
     float hue_;
     float saturation_;

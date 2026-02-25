@@ -49,6 +49,7 @@ class RenderingResourceManager {
     //     return m_instance;
     // }
     RenderingResourceManager();
+    ~RenderingResourceManager();
 
     template <typename T, typename... Args> std::pair<ResourceId, T *> create(Args &&...args) {
         ResourceId id = m_resourcePool.front();

@@ -19,6 +19,9 @@ class AudioManager {
     inline MidiOut &getMidiOut() {
         return m_midiOut;
     }
+    inline Audio &getAudio() {
+        return m_audio;
+    }
 
   private:
     Audio m_audio;

@@ -77,6 +77,7 @@ vec2 mousePosition2DIsoWorldRender();
 vec2 mousePosition2DIsoUpdate();
 ivec2 mouseTrixelPositionWorld();
 
+void setCameraZoom(float zoom);
 void setVoxelRenderMode(VoxelRenderMode mode);
 VoxelRenderMode getVoxelRenderMode();
 void setVoxelRenderSubdivisions(int subdivisions);

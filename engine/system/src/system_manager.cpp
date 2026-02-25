@@ -11,6 +11,12 @@ SystemManager::SystemManager()
     IRE_LOG_INFO("Created SystemManager");
 }
 
+SystemManager::~SystemManager() {
+    if (g_systemManager == this) {
+        g_systemManager = nullptr;
+    }
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }

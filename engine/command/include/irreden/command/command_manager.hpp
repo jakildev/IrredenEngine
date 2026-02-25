@@ -20,6 +20,7 @@ namespace IRCommand {
 class CommandManager {
   public:
     CommandManager();
+    ~CommandManager();
 
     template <typename Function>
     int createCommand(

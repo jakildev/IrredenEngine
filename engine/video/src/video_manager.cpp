@@ -1,6 +1,8 @@
 #include <irreden/video/video_manager.hpp>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_audio.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
@@ -12,6 +14,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 namespace IRVideo {
 
@@ -19,12 +22,32 @@ VideoManager::VideoManager() {
     g_videoManager = this;
 }
 
+VideoManager::~VideoManager() {
+    shutdown();
+    if (g_videoManager == this) {
+        g_videoManager = nullptr;
+    }
+}
+
 void VideoManager::configureCapture(
-    const std::string &outputFilePath, int targetFps, int videoBitrate
+    const std::string &outputFilePath,
+    int targetFps,
+    int videoBitrate,
+    bool captureAudioInput,
+    const std::string &audioInputDeviceName,
+    int audioSampleRate,
+    int audioChannels
 ) {
     m_outputFilePath = outputFilePath;
     m_targetFps = std::max(targetFps, 1);
     m_videoBitrate = std::max(videoBitrate, 250000);
+    m_captureAudioInput = captureAudioInput;
+    m_audioInputDeviceName = audioInputDeviceName;
+    m_audioSampleRate = std::max(audioSampleRate, 8'000);
+    m_audioChannels = std::clamp(audioChannels, 1, 2);
+    if (m_captureAudioInput) {
+        armAudioInput();
+    }
 }
 
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
@@ -40,6 +63,7 @@ void VideoManager::requestScreenshot() {
 }
 
 void VideoManager::render() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
     joinFinalizeThreadIfDone();
 
     if (m_screenshotRequested) {
@@ -64,12 +88,6 @@ void VideoManager::render() {
     }
     m_captureAccumulatorSeconds = std::fmod(m_captureAccumulatorSeconds, captureIntervalSeconds);
 
-    const ivec2 currentOutputResolution = IRRender::getRenderManager().getOutputResolution();
-    if ((currentOutputResolution.x != m_frameWidth || currentOutputResolution.y != m_frameHeight) &&
-        !m_loggedResizeWarning) {
-        m_loggedResizeWarning = true;
-    }
-
     if (!captureFrame()) {
         stopRecording();
         m_captureEnabled = false;
@@ -77,14 +95,26 @@ void VideoManager::render() {
 }
 
 void VideoManager::shutdown() {
-    joinFinalizeThreadIfDone();
-    if (m_captureEnabled) {
-        beginAsyncFinalize();
-        m_captureEnabled = false;
+    const bool wasRecording = m_captureEnabled.exchange(false);
+    if (wasRecording) {
+        IRE_LOG_INFO("VideoManager::shutdown() -- recording was active, finalizing.");
     }
+
+    if (m_audioInputArmed) {
+        IRAudio::stopAudioInputCapture();
+        m_audioInputArmed = false;
+    }
+
     if (m_finalizeThread.joinable()) {
         m_finalizeThread.join();
     }
+
+    if (wasRecording || m_videoRecorder.isRecording()) {
+        std::lock_guard<std::mutex> lock(m_recorderMutex);
+        m_videoRecorder.stop();
+    }
+
+    releaseReadbackPbos();
 }
 
 bool VideoManager::startRecording(const VideoRecorderConfig &config) {
@@ -115,12 +145,50 @@ const std::string &VideoManager::getLastError() const {
     return m_videoRecorder.getLastError();
 }
 
+void VideoManager::armAudioInput() {
+    if (m_audioInputArmed) {
+        return;
+    }
+    IRAudio::AudioInputCallback audioCallback = [this](
+                                                    const float *samples,
+                                                    int frameCount,
+                                                    double streamTime,
+                                                    bool inputOverflow
+                                                ) {
+        if (!m_captureEnabled) {
+            return;
+        }
+        if (inputOverflow) {
+            IRE_LOG_WARN("Audio input overflow detected while recording.");
+        }
+        if (samples != nullptr && frameCount > 0) {
+            m_videoRecorder.submitAudioInputSamples(samples, frameCount, streamTime);
+        }
+    };
+    const bool started = IRAudio::startAudioInputCapture(
+        m_audioInputDeviceName,
+        m_audioSampleRate,
+        m_audioChannels,
+        std::move(audioCallback)
+    );
+    if (started) {
+        m_audioInputArmed = true;
+        IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
+                     m_audioInputDeviceName.c_str(),
+                     m_audioSampleRate,
+                     m_audioChannels);
+    } else {
+        IRE_LOG_WARN("Audio input capture unavailable; video recording will continue without audio.");
+    }
+}
+
 void VideoManager::toggleCapture() {
     if (m_finalizeInProgress.load()) {
         return;
     }
 
     if (m_captureEnabled) {
+        IRE_LOG_INFO("Stopping capture (audio + video).");
         beginAsyncFinalize();
         m_captureEnabled = false;
         return;
@@ -132,15 +200,25 @@ void VideoManager::toggleCapture() {
     const ivec2 sourceResolution = framebuffer.getResolution();
     ivec2 outputResolution = IRRender::getRenderManager().getOutputResolution();
     if (outputResolution.x <= 0 || outputResolution.y <= 0) {
-        outputResolution = sourceResolution;
+        outputResolution = IRRender::getRenderManager().getViewport();
     }
+
+    IRE_LOG_INFO("Recording: source={}x{} -> output={}x{}",
+                 sourceResolution.x, sourceResolution.y,
+                 outputResolution.x, outputResolution.y);
 
     VideoRecorderConfig config;
     config.output_file_path_ = m_outputFilePath;
     config.width_ = outputResolution.x;
     config.height_ = outputResolution.y;
+    config.source_width_ = sourceResolution.x;
+    config.source_height_ = sourceResolution.y;
     config.target_fps_ = m_targetFps;
     config.video_bitrate_ = m_videoBitrate;
+    config.capture_audio_input_ = m_captureAudioInput;
+    config.audio_input_device_name_ = m_audioInputDeviceName;
+    config.audio_sample_rate_ = m_audioSampleRate;
+    config.audio_channels_ = m_audioChannels;
 
     if (!startRecording(config)) {
         return;
@@ -148,18 +226,15 @@ void VideoManager::toggleCapture() {
 
     m_sourceFrameWidth = sourceResolution.x;
     m_sourceFrameHeight = sourceResolution.y;
-    m_frameWidth = config.width_;
-    m_frameHeight = config.height_;
     m_sourceFrameBytes = static_cast<std::size_t>(m_sourceFrameWidth) *
                          static_cast<std::size_t>(m_sourceFrameHeight) * 4U;
-    const std::size_t targetFrameBytes =
-        static_cast<std::size_t>(m_frameWidth) * static_cast<std::size_t>(m_frameHeight) * 4U;
     m_rawFrameBuffer.assign(m_sourceFrameBytes, 0);
-    m_uploadFrameBuffer.assign(targetFrameBytes, 0);
     initReadbackPbos();
     m_captureAccumulatorSeconds = 0.0;
-    m_loggedResizeWarning = false;
     m_captureEnabled = true;
+    if (m_audioInputArmed) {
+        IRE_LOG_INFO("Audio capture recording started.");
+    }
 }
 
 std::string VideoManager::getNextScreenshotFilePath() {
@@ -222,6 +297,7 @@ bool VideoManager::captureScreenshot() {
 }
 
 bool VideoManager::captureFrame() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
     const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
         IREntity::getEntity("mainFramebuffer")
     );
@@ -313,39 +389,14 @@ void VideoManager::joinFinalizeThreadIfDone() {
 }
 
 bool VideoManager::encodeCurrentRawFrame() {
-    if (m_frameWidth == m_sourceFrameWidth && m_frameHeight == m_sourceFrameHeight) {
-        const std::size_t rowBytes = static_cast<std::size_t>(m_frameWidth) * 4U;
-        for (int y = 0; y < m_frameHeight; ++y) {
-            const int flippedY = m_frameHeight - 1 - y;
-            std::memcpy(
-                m_uploadFrameBuffer.data() + static_cast<std::size_t>(y) * rowBytes,
-                m_rawFrameBuffer.data() + static_cast<std::size_t>(flippedY) * rowBytes,
-                rowBytes
-            );
-        }
-    } else {
-        for (int y = 0; y < m_frameHeight; ++y) {
-            const int srcY = (y * m_sourceFrameHeight) / m_frameHeight;
-            const int flippedSrcY = m_sourceFrameHeight - 1 - srcY;
-            for (int x = 0; x < m_frameWidth; ++x) {
-                const int srcX = (x * m_sourceFrameWidth) / m_frameWidth;
-                const std::size_t srcIndex = (static_cast<std::size_t>(flippedSrcY) *
-                                                  static_cast<std::size_t>(m_sourceFrameWidth) +
-                                              static_cast<std::size_t>(srcX)) *
-                                             4U;
-                const std::size_t dstIndex =
-                    (static_cast<std::size_t>(y) * static_cast<std::size_t>(m_frameWidth) +
-                     static_cast<std::size_t>(x)) *
-                    4U;
-                m_uploadFrameBuffer[dstIndex + 0] = m_rawFrameBuffer[srcIndex + 0];
-                m_uploadFrameBuffer[dstIndex + 1] = m_rawFrameBuffer[srcIndex + 1];
-                m_uploadFrameBuffer[dstIndex + 2] = m_rawFrameBuffer[srcIndex + 2];
-                m_uploadFrameBuffer[dstIndex + 3] = m_rawFrameBuffer[srcIndex + 3];
-            }
-        }
-    }
-
-    return recordFrame(m_uploadFrameBuffer.data(), m_frameWidth * 4);
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
+    // Pass the raw source-resolution PBO data directly to the encoder queue.
+    // The worker thread handles resize + flip + color conversion in one
+    // sws_scale pass, so the main thread does zero image processing here.
+    std::lock_guard<std::mutex> lock(m_recorderMutex);
+    auto nextBuf = m_videoRecorder.acquireFrameBuffer(m_sourceFrameBytes);
+    std::swap(nextBuf, m_rawFrameBuffer);
+    return m_videoRecorder.submitVideoFrame(std::move(nextBuf));
 }
 
 void VideoManager::initReadbackPbos() {

@@ -10,6 +10,8 @@
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>
 
+#include <type_traits>
+
 namespace IREntity {
 // Gets created by ir_world and set here.
 // Might just make managers static classes in the future, but then
@@ -25,6 +27,10 @@ EntityId getParentEntityFromArchetype(Archetype type);
 void setName(EntityId entity, const std::string &name);
 EntityId getEntity(const std::string &name);
 EntityRecord getEntityRecord(EntityId entity);
+
+inline bool entityExists(EntityId entity) {
+    return getEntityManager().entityExists(entity);
+}
 
 template <typename Component>
 using LuaCreateEntityFunction = std::function<Component(IRMath::ivec3)>;
@@ -50,6 +56,45 @@ std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
     const Archetype &includeComponents,
     const Archetype &excludeComponents = Archetype{}
 );
+
+template <typename Component> int countComponents() {
+    int total = 0;
+    auto nodes = queryArchetypeNodesSimple(getArchetype<Component>());
+    for (auto *node : nodes) {
+        total += static_cast<int>(getComponentData<Component>(node).size());
+    }
+    return total;
+}
+
+template <typename Component, typename Function> void forEachComponent(Function &&function) {
+    auto nodes = queryArchetypeNodesSimple(getArchetype<Component>());
+    for (auto *node : nodes) {
+        auto &components = getComponentData<Component>(node);
+        if constexpr (std::is_invocable_v<Function, Component &>) {
+            for (auto &component : components) {
+                function(component);
+            }
+        } else if constexpr (std::is_invocable_v<Function, EntityId &, Component &>) {
+            auto &entities = node->entities_;
+            for (int i = 0; i < node->length_; ++i) {
+                function(entities[i], components[i]);
+            }
+        } else if constexpr (std::is_invocable_v<
+                                 Function,
+                                 const Archetype &,
+                                 std::vector<EntityId> &,
+                                 std::vector<Component> &>) {
+            function(node->type_, node->entities_, components);
+        } else {
+            IR_ASSERT(
+                false,
+                "Unsupported forEachComponent signature. Use (Component&), "
+                "(EntityId&, Component&), or "
+                "(const Archetype&, std::vector<EntityId>&, std::vector<Component>&)."
+            );
+        }
+    }
+}
 
 bool isPureComponent(ComponentId component);
 bool isChildOfRelation(RelationId relation);

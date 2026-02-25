@@ -16,10 +16,27 @@ MidiOut::MidiOut()
     IRE_LOG_INFO("Created MidiOut");
 }
 
-MidiOut::~MidiOut() {}
+MidiOut::~MidiOut() {
+    sendAllNotesOff();
+}
+
+void MidiOut::sendAllNotesOff() {
+    if (m_openPorts.empty()) {
+        return;
+    }
+    for (unsigned char ch = 0; ch < kNumMidiChannels; ++ch) {
+        std::vector<unsigned char> msg = {
+            buildMidiStatus(kMidiStatus_CONTROL_CHANGE, ch),
+            kMidiCC_ALL_NOTES_OFF,
+            0
+        };
+        m_rtMidiOut.sendMessage(&msg);
+    }
+    IRE_LOG_INFO("Sent All Notes Off on all channels");
+}
 
 int MidiOut::openPort(MidiOutInterfaces interface) {
-    return openPort(kMidiOutInterfaceNames[interface]);
+    return openPort(kMidiOutInterfaceNames[midiOutInterfaceIndex(interface)]);
 }
 
 int MidiOut::openPort(std::string portNameSubstring) {

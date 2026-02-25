@@ -22,51 +22,6 @@ Created by and maintained by [jakildev](https://github.com/jakildev).
 -   Build all targets.
 -   Launch a demo creation.
 
-### Development quality checks
-The repository includes quality targets for formatting and linting C/C++ code.
-
-1. Configure with CMake:
-```
-cmake -S . -B build
-```
-2. Check formatting:
-```
-cmake --build build --target format-check
-```
-3. Auto-format files:
-```
-cmake --build build --target format
-```
-4. Run lint checks (includes naming conventions such as `m_` private members and `_` public members):
-```
-cmake --build build --target lint
-```
-
-Requirements:
-- `clang-format`
-- `clang-tidy`
-
-### CMake presets
-Use presets for consistent local and CI commands:
-
-1. Configure:
-```
-cmake --preset default
-```
-2. Build:
-```
-cmake --build --preset build-all
-```
-3. Run formatting and lint checks:
-```
-cmake --build --preset format-check
-cmake --build --preset lint
-```
-4. Build and run tests:
-```
-cmake --build --preset tests
-ctest --preset default-tests
-```
 
 ## Content and Socials
 | Platform | Account | Usage |
@@ -202,6 +157,52 @@ IRECS::createEntity{
 5. Vertex shader files are prefixed with "v_".
 6. Fragment shader files are prefixed with "f_".
 7. Geometry shader files are prefixed with "g_".
+
+### Development quality checks
+The repository includes quality targets for formatting and linting C/C++ code.
+
+1. Configure with CMake:
+```
+cmake -S . -B build
+```
+2. Check formatting:
+```
+cmake --build build --target format-check
+```
+3. Auto-format files:
+```
+cmake --build build --target format
+```
+4. Run lint checks (includes naming conventions such as `m_` private members and `_` public members):
+```
+cmake --build build --target lint
+```
+
+Requirements:
+- `clang-format`
+- `clang-tidy`
+
+### CMake presets
+Use presets for consistent local and CI commands:
+
+1. Configure:
+```
+cmake --preset default
+```
+2. Build:
+```
+cmake --build --preset build-all
+```
+3. Run formatting and lint checks:
+```
+cmake --build --preset format-check
+cmake --build --preset lint
+```
+4. Build and run tests:
+```
+cmake --build --preset tests
+ctest --preset default-tests
+```
 
 <!-- ## Performance (TODO) -->
 <!-- -   Highlight sections that perform well. -->

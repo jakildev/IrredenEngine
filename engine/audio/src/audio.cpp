@@ -1,5 +1,9 @@
 #include <irreden/audio/audio.hpp>
 
+#include <algorithm>
+#include <sstream>
+#include <utility>
+
 namespace IRAudio {
 
 Audio::Audio()
@@ -13,21 +17,153 @@ Audio::Audio()
     logDeviceInfoAll();
 }
 
-void Audio::openStreamIn(std::string deviceName, RtAudioCallback callback) {
-    int deviceIndex = getDeviceIndexByName(deviceName);
-    if (deviceIndex == -1) {
-        IRE_LOG_ERROR("Device not found");
-        return;
+Audio::~Audio() {
+    closeStreamIn();
+}
+
+bool Audio::openStreamIn(
+    const std::string &deviceName,
+    int sampleRate,
+    int channels,
+    AudioInputCallback callback
+) {
+    closeStreamIn();
+    m_inputCallback = std::move(callback);
+    unsigned int deviceId = 0;
+    if (!deviceName.empty()) {
+        const int requestedDeviceId = getDeviceIndexByName(deviceName);
+        if (requestedDeviceId < 0) {
+            IRE_LOG_ERROR("Audio input device not found: {}", deviceName.c_str());
+            return false;
+        }
+        deviceId = static_cast<unsigned int>(requestedDeviceId);
+    } else {
+        deviceId = getDefaultInputDeviceId();
+        if (deviceId == 0) {
+            IRE_LOG_ERROR("No default audio input device available.");
+            return false;
+        }
     }
+
+    RtAudio::DeviceInfo deviceInfo = m_rtAudio.getDeviceInfo(deviceId);
+    const unsigned int requestedChannels =
+        static_cast<unsigned int>(std::clamp(channels, 1, 2));
+    const unsigned int availableInputChannels = static_cast<unsigned int>(deviceInfo.inputChannels);
+    if (availableInputChannels < requestedChannels) {
+        IRE_LOG_ERROR(
+            "Requested {} input channels but device '{}' provides {}.",
+            requestedChannels,
+            deviceInfo.name.c_str(),
+            availableInputChannels
+        );
+        return false;
+    }
+
     RtAudio::StreamParameters parameters;
-    parameters.deviceId = deviceIndex;
-    parameters.nChannels = 2;
+    parameters.deviceId = deviceId;
+    parameters.nChannels = requestedChannels;
     parameters.firstChannel = 0;
 
-    unsigned int sampleRate = 44100;
-    unsigned int bufferFrames = 256; // 256 sample frames
+    const unsigned int requestedSampleRate = static_cast<unsigned int>(std::max(sampleRate, 8'000));
+    unsigned int bufferFrames = kAudioInputDefaultBufferFrames;
 
-    m_rtAudio.openStream(nullptr, &parameters, RTAUDIO_SINT32, sampleRate, &bufferFrames, callback);
+    try {
+        RtAudioCallback rtAudioCallback = [this](void *,
+                                                 void *inputBuffer,
+                                                 unsigned int nFrames,
+                                                 double streamTime,
+                                                 RtAudioStreamStatus status,
+                                                 void *) -> int {
+            if (m_inputCallback && inputBuffer != nullptr && nFrames > 0) {
+                m_inputCallback(
+                    static_cast<const float *>(inputBuffer),
+                    static_cast<int>(nFrames),
+                    streamTime,
+                    (status & RTAUDIO_INPUT_OVERFLOW) != 0
+                );
+            }
+            return 0;
+        };
+        m_rtAudio.openStream(
+            nullptr,
+            &parameters,
+            RTAUDIO_FLOAT32,
+            requestedSampleRate,
+            &bufferFrames,
+            std::move(rtAudioCallback),
+            nullptr
+        );
+    } catch (...) {
+        IRE_LOG_ERROR("Failed to open audio input stream.");
+        return false;
+    }
+    m_streamInOpen = true;
+    IRE_LOG_INFO(
+        "Opened audio input stream: device='{}' sampleRate={} channels={} bufferFrames={}",
+        deviceInfo.name.c_str(),
+        requestedSampleRate,
+        requestedChannels,
+        bufferFrames
+    );
+    return true;
+}
+
+bool Audio::startStreamIn() {
+    if (!m_streamInOpen) {
+        IRE_LOG_ERROR("Cannot start audio input stream: stream is not open.");
+        return false;
+    }
+    if (m_streamInRunning) {
+        IRE_LOG_WARN("Audio input stream start requested, but stream is already running.");
+        return true;
+    }
+    try {
+        m_rtAudio.startStream();
+    } catch (...) {
+        IRE_LOG_ERROR("Failed to start audio input stream.");
+        return false;
+    }
+    m_streamInRunning = true;
+    return true;
+}
+
+void Audio::stopStreamIn() {
+    if (!m_streamInOpen) {
+        IRE_LOG_WARN("Audio input stream stop requested, but stream is not open.");
+        return;
+    }
+    if (!m_streamInRunning) {
+        IRE_LOG_WARN("Audio input stream stop requested, but stream is not running.");
+        return;
+    }
+    try {
+        m_rtAudio.stopStream();
+    } catch (...) {
+        IRE_LOG_ERROR("Failed to stop audio input stream.");
+    }
+    m_streamInRunning = false;
+}
+
+void Audio::closeStreamIn() {
+    if (!m_streamInOpen) {
+        return;
+    }
+    stopStreamIn();
+    try {
+        m_rtAudio.closeStream();
+    } catch (...) {
+        IRE_LOG_ERROR("Failed to close audio input stream.");
+    }
+    m_streamInOpen = false;
+    m_inputCallback = {};
+}
+
+bool Audio::isStreamInOpen() const {
+    return m_streamInOpen;
+}
+
+bool Audio::isStreamInRunning() const {
+    return m_streamInRunning;
 }
 
 void Audio::logDeviceInfoAll() {
@@ -65,12 +201,21 @@ void Audio::logDeviceInfoAll() {
     }
 }
 
-int Audio::getDeviceIndexByName(std::string deviceName) {
+int Audio::getDeviceIndexByName(const std::string &deviceName) const {
     for (auto &[id, info] : m_deviceInfo) {
         if (info.name == deviceName) {
-            return id;
+            return static_cast<int>(id);
         }
     }
     return -1;
+}
+
+unsigned int Audio::getDefaultInputDeviceId() const {
+    for (const auto &[id, info] : m_deviceInfo) {
+        if (info.isDefaultInput && info.inputChannels > 0) {
+            return id;
+        }
+    }
+    return 0;
 }
 } // namespace IRAudio

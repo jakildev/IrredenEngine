@@ -40,6 +40,9 @@ struct C_PeriodicIdle {
     std::vector<PeriodStage> stages_;
     int currentStageIndex_;
     bool cycleCompleted_;
+    bool pauseRequested_;
+    bool paused_;
+    float resumeCountdownSec_;
 
     C_PeriodicIdle(float amplitude, float periodLengthSeconds, float offset = 0.0f)
         : C_PeriodicIdle{vec3{0.0f, 0.0f, amplitude}, periodLengthSeconds, offset} {}
@@ -52,6 +55,9 @@ struct C_PeriodicIdle {
         , stages_{}
         , currentStageIndex_{0}
         , cycleCompleted_{false}
+        , pauseRequested_{false}
+        , paused_{false}
+        , resumeCountdownSec_{0.0f}
         , m_angleIncrementPerTick{
               (2.0f * static_cast<float>(M_PI)) / periodLengthSeconds_ /
               static_cast<float>(IRConstants::kFPS)
@@ -65,7 +71,38 @@ struct C_PeriodicIdle {
         return m_currentValue;
     }
 
+    void requestPauseAtCycleStart() { pauseRequested_ = true; }
+
+    void resume() {
+        paused_ = false;
+        pauseRequested_ = false;
+        resumeCountdownSec_ = 0.0f;
+    }
+
+    void resumeWithDelay(float delaySec) {
+        if (delaySec <= 0.0f) {
+            resume();
+        } else {
+            pauseRequested_ = false;
+            resumeCountdownSec_ = delaySec;
+        }
+    }
+
+    bool isPaused() const { return paused_; }
+    bool isPauseRequested() const { return pauseRequested_; }
+
     void tick() {
+        if (paused_) {
+            if (resumeCountdownSec_ > 0.0f) {
+                resumeCountdownSec_ -= 1.0f / static_cast<float>(IRConstants::kFPS);
+                if (resumeCountdownSec_ <= 0.0f) {
+                    resumeCountdownSec_ = 0.0f;
+                    paused_ = false;
+                }
+            }
+            return;
+        }
+
         cycleCompleted_ = false;
         tickCount_++;
         angle_ += m_angleIncrementPerTick;
@@ -74,6 +111,14 @@ struct C_PeriodicIdle {
             angle_ -= 2.0f * static_cast<float>(M_PI);
             currentStageIndex_ = 0;
             cycleCompleted_ = true;
+
+            if (pauseRequested_) {
+                angle_ = 0.0f;
+                paused_ = true;
+                pauseRequested_ = false;
+                updateValue();
+                return;
+            }
         }
         while (angle_ >= stages_[currentStageIndex_].endAngle_ &&
                currentStageIndex_ < stages_.size() - 1) {

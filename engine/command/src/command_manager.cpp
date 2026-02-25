@@ -13,6 +13,12 @@ CommandManager::CommandManager() {
     IRE_LOG_INFO("Created CommandManager");
 }
 
+CommandManager::~CommandManager() {
+    if (g_commandManager == this) {
+        g_commandManager = nullptr;
+    }
+}
+
 void CommandManager::executeDeviceMidiCCCommandsAll() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_COMMANDS);
     for (auto &[device, commands] : m_midiCCDeviceCommands) {

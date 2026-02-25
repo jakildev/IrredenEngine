@@ -89,7 +89,7 @@ int MidiIn::openPort(const std::string &portNameSubstring) {
 }
 
 int MidiIn::openPort(MidiInInterfaces interface) {
-    return openPort(kMidiInInterfaceNames[interface]);
+    return openPort(kMidiInInterfaceNames[midiInInterfaceIndex(interface)]);
 }
 
 void MidiIn::processMidiMessageQueue() {

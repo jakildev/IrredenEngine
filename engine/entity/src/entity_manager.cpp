@@ -23,7 +23,11 @@ EntityManager::EntityManager()
     IRE_LOG_INFO("Created EntityManager (IR_MAX_ENTITIES={})", static_cast<int>(IR_MAX_ENTITIES));
 }
 
-EntityManager::~EntityManager() {}
+EntityManager::~EntityManager() {
+    if (g_entityManager == this) {
+        g_entityManager = nullptr;
+    }
+}
 
 EntityId EntityManager::allocateEntity() {
     IR_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");

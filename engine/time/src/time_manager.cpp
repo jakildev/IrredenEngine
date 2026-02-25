@@ -15,6 +15,12 @@ TimeManager::TimeManager()
     IRE_LOG_INFO("TimeManager initalized");
 }
 
+TimeManager::~TimeManager() {
+    if (g_timeManager == this) {
+        g_timeManager = nullptr;
+    }
+}
+
 template <> void TimeManager::beginEvent<UPDATE>() {
     IRE_LOG_DEBUG("Begin update world.");
     m_profilerUpdate.beginEvent();

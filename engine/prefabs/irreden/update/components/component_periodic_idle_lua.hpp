@@ -24,7 +24,17 @@ template <> inline void bindLuaType<IRComponents::C_PeriodicIdle>(LuaScript &lua
         IRComponents::C_PeriodicIdle(IRMath::vec3, float, float)>(
         "C_PeriodicIdle",
         "addStageDurationSeconds",
-        &IRComponents::C_PeriodicIdle::addStageDurationSeconds
+        &IRComponents::C_PeriodicIdle::addStageDurationSeconds,
+        "requestPauseAtCycleStart",
+        &IRComponents::C_PeriodicIdle::requestPauseAtCycleStart,
+        "resume",
+        &IRComponents::C_PeriodicIdle::resume,
+        "resumeWithDelay",
+        &IRComponents::C_PeriodicIdle::resumeWithDelay,
+        "isPaused",
+        &IRComponents::C_PeriodicIdle::isPaused,
+        "isPauseRequested",
+        &IRComponents::C_PeriodicIdle::isPauseRequested
     );
 }
 } // namespace IRScript

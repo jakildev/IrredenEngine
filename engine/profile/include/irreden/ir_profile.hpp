@@ -22,6 +22,7 @@ namespace IRProfile {
 #define IR_PROFILER_COLOR_BEGIN_EXECUTE 0xff00ff00
 #define IR_PROFILER_COLOR_END_EXECUTE 0xff00ff00
 #define IR_PROFILER_COLOR_INPUT 0xff4444ff
+#define IR_PROFILER_COLOR_VIDEO 0xffff8800
 
 template <typename... Args>
 inline void engAssert(

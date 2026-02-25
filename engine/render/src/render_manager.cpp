@@ -9,7 +9,6 @@
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
 #include <irreden/render/entities/entity_framebuffer.hpp>
 
-#include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -18,6 +17,8 @@
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
+
+#include <cmath>
 
 namespace IRRender {
 
@@ -105,7 +106,6 @@ RenderManager::RenderManager(
     IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
-    std::vector<Color> colorPalette = {kPinkTanOrange[1], IRColors::kBlack};
     // IRECS::setComponent(
     //     m_backgroundCanvas,
     //     C_TextureScrollPosition{
@@ -126,16 +126,6 @@ RenderManager::RenderManager(
     //     }
     // );
     // m_canvasMap["background"] = m_backgroundCanvas;
-    const ivec2 mainCanvasSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
-    IREntity::setComponent(
-        m_backgroundCanvas,
-        C_TriangleCanvasBackground{
-            BackgroundTypes::kSingleColor,
-            {IRColors::kInvisable},
-            mainCanvasSize
-        }
-    );
-
     m_canvasMap["background"] = m_backgroundCanvas;
     m_canvasMap["main"] = m_mainCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
@@ -144,6 +134,12 @@ RenderManager::RenderManager(
     initRenderingSystems();
     g_renderManager = this;
     IRE_LOG_INFO("Created renderer.");
+}
+
+RenderManager::~RenderManager() {
+    if (g_renderManager == this) {
+        g_renderManager = nullptr;
+    }
 }
 
 void RenderManager::tick() {
@@ -219,22 +215,38 @@ int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
     return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
 }
 
+void RenderManager::setCameraZoom(float zoom) {
+    float clamped = IRMath::clamp(
+        zoom,
+        IRConstants::kTrixelCanvasZoomMin.x,
+        IRConstants::kTrixelCanvasZoomMax.x
+    );
+    float snapped = std::pow(2.0f, std::round(std::log2(clamped)));
+    IREntity::setComponent(m_camera, C_ZoomLevel{snapped});
+}
+
 void RenderManager::zoomMainBackgroundPatternIn() {
-    auto background =
-        IREntity::getComponentOptional<C_TriangleCanvasBackground>(m_backgroundCanvas);
-    if (!background.has_value()) {
-        return;
+    auto zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(m_backgroundCanvas);
+    if (!zoomLevel.has_value()) {
+        IREntity::setComponent(m_backgroundCanvas, C_ZoomLevel{1.0f});
+        zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(m_backgroundCanvas);
+        if (!zoomLevel.has_value()) {
+            return;
+        }
     }
-    (*background.value()).zoomPatternIn();
+    (*zoomLevel.value()).zoomIn();
 }
 
 void RenderManager::zoomMainBackgroundPatternOut() {
-    auto background =
-        IREntity::getComponentOptional<C_TriangleCanvasBackground>(m_backgroundCanvas);
-    if (!background.has_value()) {
-        return;
+    auto zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(m_backgroundCanvas);
+    if (!zoomLevel.has_value()) {
+        IREntity::setComponent(m_backgroundCanvas, C_ZoomLevel{1.0f});
+        zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(m_backgroundCanvas);
+        if (!zoomLevel.has_value()) {
+            return;
+        }
     }
-    (*background.value()).zoomPatternOut();
+    (*zoomLevel.value()).zoomOut();
 }
 
 void RenderManager::deallocateVoxels(
@@ -245,6 +257,11 @@ void RenderManager::deallocateVoxels(
     std::string canvasName
 ) {
     if (canvasName == "main") {
+        // Hack due to exception on shutdown when deleting entities
+        // Need to find a better solution.
+        if (!IREntity::entityExists(m_mainCanvas)) {
+            return;
+        }
         IREntity::getComponent<C_VoxelPool>(m_mainCanvas)
             .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
         return;

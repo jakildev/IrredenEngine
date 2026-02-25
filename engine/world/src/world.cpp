@@ -54,7 +54,11 @@ World::World(const char *configFileName)
     m_videoManager.configureCapture(
         m_worldConfig["video_capture_output_file"].get_string(),
         m_worldConfig["video_capture_fps"].get_integer(),
-        m_worldConfig["video_capture_bitrate"].get_integer()
+        m_worldConfig["video_capture_bitrate"].get_integer(),
+        m_worldConfig["video_capture_audio_input_enabled"].get_boolean(),
+        m_worldConfig["video_capture_audio_input_device_name"].get_string(),
+        m_worldConfig["video_capture_audio_sample_rate"].get_integer(),
+        m_worldConfig["video_capture_audio_channels"].get_integer()
     );
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
@@ -63,7 +67,9 @@ World::World(const char *configFileName)
     IRE_LOG_INFO("Initalized game world");
 }
 
-World::~World() {}
+World::~World() {
+    IRE_LOG_INFO("Clean shutdown complete.");
+}
 
 void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings) {
     for (const auto &bind : bindings) {
@@ -75,41 +81,42 @@ void World::runScript(const char *fileName) {
     m_lua.scriptFile(fileName);
 }
 
-// rename event loop;
 void World::gameLoop() {
-    // init();
-    start();
-    if (m_waitForFirstUpdateInput) {
-        // Prime render-facing state so paused mode shows initialized voxels.
-        update();
-    }
-    while (!m_IRGLFWWindow.shouldClose()) {
-        m_timeManager.beginMainLoop();
-
-        while (m_timeManager.shouldUpdate()) {
-            m_IRGLFWWindow.pollEvents();
-            input();
-            if (!m_hasHandledFirstInput && IRInput::hasAnyButtonPressedThisFrame()) {
-                m_hasHandledFirstInput = true;
-                if (m_startRecordingOnFirstInput && !m_videoManager.isRecording()) {
-                    m_videoManager.toggleRecording();
-                }
-            }
-
-            if (m_waitForFirstUpdateInput && !m_hasHandledFirstInput) {
-                // Consume one fixed update slot while paused so render still advances and we
-                // don't accumulate a large catch-up update burst after unpausing.
-                m_timeManager.skipUpdate();
-                break;
-            }
-
+    try {
+        start();
+        if (m_waitForFirstUpdateInput) {
+            // Prime render-facing state so paused mode shows initialized voxels.
             update();
-            // output();
         }
-        render();
-        // TODO: Set frame caps
+        while (!m_IRGLFWWindow.shouldClose()) {
+            m_timeManager.beginMainLoop();
+
+            while (m_timeManager.shouldUpdate()) {
+                m_IRGLFWWindow.pollEvents();
+                input();
+                if (!m_hasHandledFirstInput && IRInput::hasAnyButtonPressedThisFrame()) {
+                    m_hasHandledFirstInput = true;
+                    if (m_startRecordingOnFirstInput && !m_videoManager.isRecording()) {
+                        m_videoManager.toggleRecording();
+                    }
+                }
+
+                if (m_waitForFirstUpdateInput && !m_hasHandledFirstInput) {
+                    // Consume one fixed update slot while paused so render still advances and we
+                    // don't accumulate a large catch-up update burst after unpausing.
+                    m_timeManager.skipUpdate();
+                    break;
+                }
+
+                update();
+            }
+            render();
+        }
+    } catch (...) {
+        IRE_LOG_ERROR("Unhandled exception in game loop, running cleanup");
+        end();
+        throw;
     }
-    // cleanup();
     end();
 }
 
@@ -130,10 +137,10 @@ void World::start() {
 }
 
 void World::end() {
+    m_videoManager.shutdown();
     // Ensure component onDestroy hooks run while managers are still valid
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
     m_entityManager.destroyAllEntities();
-    m_videoManager.shutdown();
 }
 
 void World::update() {

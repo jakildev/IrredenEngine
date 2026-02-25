@@ -25,7 +25,7 @@ namespace IRRender {
 class RenderManager {
   public:
     RenderManager(ivec2 gameResolution, FitMode fitMode = FitMode::FIT);
-    ~RenderManager() {}
+    ~RenderManager();
 
     inline ivec2 getViewport() const {
         return m_viewport;
@@ -55,6 +55,7 @@ class RenderManager {
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
+    void setCameraZoom(float zoom);
     void zoomMainBackgroundPatternIn();
     void zoomMainBackgroundPatternOut();
 

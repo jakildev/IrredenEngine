@@ -93,18 +93,11 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
 }
 
-// Temp way to fake a light source.
 vec4 adjustColorForFace(vec4 color, int face) {
-    if(face == kXFace) {
-        return color;
-    }
-    if(face == kYFace) {
-        return color - vec4(0.2, 0.2, 0.2, 0.0);
-    }
-    if(face == kZFace) {
-        return color + vec4(0.2, 0.2, 0.2, 0.0);
-    }
-    return color;
+    float b = 1.0;
+    if (face == kYFace) b = 0.75;
+    if (face == kZFace) b = 1.25;
+    return vec4(clamp(color.rgb * b, 0.0, 1.0), color.a);
 }
 
 void writeColorTap(const ivec2 canvasPixel, const int voxelDistance, const vec4 voxelColor) {

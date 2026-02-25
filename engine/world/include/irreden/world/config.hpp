@@ -91,6 +91,22 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(10'000'000)
         );
         m_config.addEntry(
+            "video_capture_audio_input_enabled",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
+        m_config.addEntry(
+            "video_capture_audio_input_device_name",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("")
+        );
+        m_config.addEntry(
+            "video_capture_audio_sample_rate",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(48'000)
+        );
+        m_config.addEntry(
+            "video_capture_audio_channels",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
+        );
+        m_config.addEntry(
             "screenshot_output_dir",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>(
                 "save_files/screenshots"

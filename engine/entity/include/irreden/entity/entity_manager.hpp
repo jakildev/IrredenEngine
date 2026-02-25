@@ -49,6 +49,9 @@ class EntityManager {
         return entity & IR_ENTITY_ID_BITS;
     }
 
+    [[nodiscard]] bool entityExists(EntityId entity) const {
+        return m_entityIndex.contains(entity & IR_ENTITY_ID_BITS);
+    }
     EntityRecord &getRecord(EntityId entity);
     EntityId setFlags(EntityId entity, EntityId flags);
     bool isPureComponent(ComponentId component);

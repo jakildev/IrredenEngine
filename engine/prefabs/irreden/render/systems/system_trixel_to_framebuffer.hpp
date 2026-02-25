@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/common/components/component_name.hpp>
 
 using namespace IRComponents;
@@ -41,31 +42,48 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
         return createSystem<C_TriangleCanvasTextures, C_Name>(
             "CanvasToFramebuffer",
-            [](const C_TriangleCanvasTextures &triangleCanvasTextures, const C_Name &canvasName) {
+            [](IREntity::EntityId &entity,
+               const C_TriangleCanvasTextures &triangleCanvasTextures,
+               const C_Name &) {
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 auto &frameData =
                     IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
                 vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
-                const bool isBackground = canvasName.name_ == "background";
                 const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
                 const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
+                auto renderBehavior =
+                    IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
+                const C_TrixelCanvasRenderBehavior behavior =
+                    renderBehavior.has_value() ? (*renderBehavior.value())
+                                               : C_TrixelCanvasRenderBehavior{};
+                auto zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(entity);
+                const vec2 baseCanvasZoom = behavior.useCameraZoom_
+                                                ? IRRender::getCameraZoom()
+                                                : (zoomLevel.has_value() ? (*zoomLevel.value()).zoom_
+                                                                         : vec2(1.0f));
 
-                frameData.frameData_.canvasZoomLevel_ =
-                    isBackground ? vec2(1.0f) : IRRender::getCameraZoom();
-                if (!isBackground && renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                frameData.frameData_.canvasZoomLevel_ = baseCanvasZoom;
+                if (behavior.applyRenderSubdivisions_ &&
+                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
                     frameData.frameData_.canvasZoomLevel_ /= vec2(effectiveSubdivisions);
                 }
 
                 frameData.frameData_.cameraTrixelOffset_ =
-                    isBackground ? vec2(0.0f) : IRRender::getCameraPosition2DIso();
-                if (!isBackground && renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    behavior.useCameraPositionIso_ ? IRRender::getCameraPosition2DIso()
+                                                   : vec2(0.0f);
+                frameData.frameData_.cameraTrixelOffset_ +=
+                    vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
+                if (behavior.applyRenderSubdivisions_ &&
+                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
                     frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
                 }
                 frameData.frameData_.textureOffset_ = vec2(0);
-                frameData.frameData_.mouseHoveredTriangleIndex_ =
-                    isBackground ? vec2(-1000000.0f) : vec2(IRRender::mouseTrixelPositionWorld());
-                if (!isBackground && renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                frameData.frameData_.mouseHoveredTriangleIndex_ = behavior.mouseHoverEnabled_
+                                                                      ? vec2(IRRender::mouseTrixelPositionWorld())
+                                                                      : vec2(-1000000.0f);
+                if (behavior.applyRenderSubdivisions_ &&
+                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
                     frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
                 }
                 frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
@@ -119,6 +137,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         model = scale(model, vec3(resolution.x * zoomLevel.x, resolution.y * zoomLevel.y, 1.0f));
         return model;
     }
+
 };
 
 } // namespace IRSystem

@@ -133,6 +133,9 @@ IRGLFWWindow::~IRGLFWWindow() {
 
     glfwTerminate();
     IRE_LOG_INFO("Terminated GLFW");
+    if (g_irglfwWindow == this) {
+        g_irglfwWindow = nullptr;
+    }
 }
 
 int IRGLFWWindow::shouldClose() {

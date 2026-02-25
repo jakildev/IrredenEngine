@@ -21,6 +21,7 @@ class MidiOut {
 
     int openPort(std::string portNameSubstring);
     void sendMessage(const std::vector<unsigned char> &message);
+    void sendAllNotesOff();
 
   private:
     RtMidiOut m_rtMidiOut;

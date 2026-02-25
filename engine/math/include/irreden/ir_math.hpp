@@ -4,6 +4,8 @@
 #include <irreden/math/ir_math_types.hpp>
 #include <irreden/math/easing_functions.hpp>
 #include <irreden/math/color_palettes.hpp>
+#include <irreden/math/color.hpp>
+#include <irreden/math/physics.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -144,6 +146,14 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 
 constexpr vec2 pos3DtoPos2DScreen(const vec3 position, const vec2 triangleStepSizeScreen) {
     return pos3DtoPos2DIso(position) * triangleStepSizeScreen * vec2(-1.0f);
+}
+
+// Shift a 3D position along the isometric depth axis (1,1,1).
+// The returned position projects to the same 2D iso location
+// but sits at a different depth.  Positive values move "behind"
+// (further from the camera); negative values move "in front".
+constexpr vec3 isoDepthShift(const vec3 &position, float depth) {
+    return position + vec3(depth);
 }
 
 // constexpr vec2 pos3DtoPos2DScreenOffset(const vec3 position) {
@@ -356,9 +366,10 @@ calcResolutionHeightFromWidthAndAspectRatio(const int width, const ivec2 aspectR
     return static_cast<int>(width * static_cast<float>(aspectRatio.x) / aspectRatio.y);
 }
 
-// Float to byte rounding
+// Float to byte rounding (clamped to prevent uint8 overflow/wrap)
 constexpr uint8_t roundFloatToByte(const float value) {
-    return (uint8_t)round(value * 255.0f);
+    const float clamped = clamp(value, 0.0f, 1.0f);
+    return static_cast<uint8_t>(round(clamped * 255.0f));
 }
 
 constexpr float roundByteToFloat(const uint8_t value) {
@@ -378,6 +389,16 @@ constexpr Color lerpColor(const Color &from, const Color &to, float t) {
         lerpByte(from.green_, to.green_, t),
         lerpByte(from.blue_, to.blue_, t),
         lerpByte(from.alpha_, to.alpha_, t)
+    };
+}
+
+constexpr ColorHSV lerpHSV(const ColorHSV &from, const ColorHSV &to, float t) {
+    const float tClamped = clamp(t, 0.0f, 1.0f);
+    return ColorHSV{
+        from.hue_ + (to.hue_ - from.hue_) * tClamped,
+        from.saturation_ + (to.saturation_ - from.saturation_) * tClamped,
+        from.value_ + (to.value_ - from.value_) * tClamped,
+        from.alpha_ + (to.alpha_ - from.alpha_) * tClamped
     };
 }
 
@@ -426,6 +447,59 @@ constexpr ivec2 trixelOriginOffsetZ4(const ivec2 &trixelCanvasSize) {
 Color colorHSVToColor(const ColorHSV &colorHSV);
 
 ColorHSV colorToColorHSV(const Color &color);
+
+Color applyHSVOffset(const Color &base, const ColorHSV &offset);
+
+// Layout helpers for scriptable entity placement.
+// plane values:
+//   PlaneIso::XY = depth along Z
+//   PlaneIso::XZ = depth along Y
+//   PlaneIso::YZ = depth along X
+vec3 layoutGridCentered(
+    int index,
+    int count,
+    int columns,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane = PlaneIso::XY,
+    float depth = 0.0f
+);
+
+vec3 layoutZigZagCentered(
+    int index,
+    int count,
+    int itemsPerZag,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane = PlaneIso::XY,
+    float depth = 0.0f
+);
+
+vec3 layoutZigZagPath(
+    int index,
+    int count,
+    int itemsPerSegment,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane = PlaneIso::XY,
+    float depth = 0.0f
+);
+
+vec3 layoutSquareSpiral(
+    int index,
+    float spacing,
+    PlaneIso plane = PlaneIso::XY,
+    float depth = 0.0f
+);
+
+vec3 layoutHelix(
+    int index,
+    int count,
+    float radius,
+    float turns,
+    float heightSpan,
+    int axis = 2
+);
 
 // 2D
 

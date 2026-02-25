@@ -1,4 +1,6 @@
 #include <irreden/ir_math.hpp>
+#include <algorithm>
+#include <cmath>
 
 namespace IRMath {
 
@@ -108,6 +110,185 @@ ColorHSV colorToColorHSV(const Color &color) {
         colorHSV.b,
         (float)color.alpha_ / 255.0f
     };
+}
+
+Color applyHSVOffset(const Color &base, const ColorHSV &offset) {
+    ColorHSV hsv = colorToColorHSV(base);
+    hsv.hue_ = IRMath::fract(hsv.hue_ + offset.hue_);
+    hsv.saturation_ = IRMath::clamp(hsv.saturation_ + offset.saturation_, 0.0f, 1.0f);
+    hsv.value_ = IRMath::clamp(hsv.value_ + offset.value_, 0.0f, 1.0f);
+    hsv.alpha_ = IRMath::clamp(hsv.alpha_ + offset.alpha_, 0.0f, 1.0f);
+    return colorHSVToColor(hsv);
+}
+
+namespace {
+vec3 mapPlaneToVec3(const vec2 &planePoint, float depth, PlaneIso plane) {
+    switch (plane) {
+    case PlaneIso::XZ:
+        return vec3(planePoint.x, depth, planePoint.y);
+    case PlaneIso::YZ:
+        return vec3(depth, planePoint.x, planePoint.y);
+    case PlaneIso::XY:
+    default:
+        return vec3(planePoint.x, planePoint.y, depth);
+    }
+}
+} // namespace
+
+vec3 layoutGridCentered(
+    int index,
+    int count,
+    int columns,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane,
+    float depth
+) {
+    if (count <= 0) {
+        return mapPlaneToVec3(vec2(0.0f), depth, plane);
+    }
+
+    const int indexClamped = std::clamp(index, 0, count - 1);
+    const int cols = std::max(1, columns);
+    const int rows = (count + cols - 1) / cols;
+
+    const int col = indexClamped % cols;
+    const int row = indexClamped / cols;
+
+    const float cx = (static_cast<float>(cols) - 1.0f) * 0.5f;
+    const float cy = (static_cast<float>(rows) - 1.0f) * 0.5f;
+
+    const vec2 p(
+        (static_cast<float>(col) - cx) * spacingPrimary,
+        (static_cast<float>(row) - cy) * spacingSecondary
+    );
+    return mapPlaneToVec3(p, depth, plane);
+}
+
+vec3 layoutZigZagCentered(
+    int index,
+    int count,
+    int itemsPerZag,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane,
+    float depth
+) {
+    if (count <= 0) {
+        return mapPlaneToVec3(vec2(0.0f), depth, plane);
+    }
+
+    const int indexClamped = std::clamp(index, 0, count - 1);
+    const int width = std::max(1, itemsPerZag);
+    const int rows = (count + width - 1) / width;
+
+    const int row = indexClamped / width;
+    const int colInRow = indexClamped % width;
+    const int col = (row % 2 == 0) ? colInRow : (width - 1 - colInRow);
+
+    const float cx = (static_cast<float>(width) - 1.0f) * 0.5f;
+    const float cy = (static_cast<float>(rows) - 1.0f) * 0.5f;
+
+    const vec2 p(
+        (static_cast<float>(col) - cx) * spacingPrimary,
+        (static_cast<float>(row) - cy) * spacingSecondary
+    );
+    return mapPlaneToVec3(p, depth, plane);
+}
+
+vec3 layoutZigZagPath(
+    int index,
+    int count,
+    int itemsPerSegment,
+    float spacingPrimary,
+    float spacingSecondary,
+    PlaneIso plane,
+    float depth
+) {
+    if (count <= 0) {
+        return mapPlaneToVec3(vec2(0.0f), depth, plane);
+    }
+
+    const int idx = std::clamp(index, 0, count - 1);
+    const int S = std::max(1, itemsPerSegment);
+
+    auto zigzagPos = [&](int i) -> vec2 {
+        const int arm = i / S;
+        const int pos = i % S;
+        float x, y;
+        if (arm % 2 == 0) {
+            x = -static_cast<float>((arm / 2) * S);
+            y =  static_cast<float>((arm / 2) * S + pos);
+        } else {
+            x = -static_cast<float>(((arm - 1) / 2) * S + 1 + pos);
+            y =  static_cast<float>(((arm + 1) / 2) * S - 1);
+        }
+        return vec2(x, y);
+    };
+
+    const vec2 cur  = zigzagPos(idx);
+    const vec2 last = zigzagPos(count - 1);
+    const vec2 center(last.x * 0.5f, last.y * 0.5f);
+
+    const vec2 p(
+        (cur.x - center.x) * spacingPrimary,
+        (cur.y - center.y) * spacingSecondary
+    );
+    return mapPlaneToVec3(p, depth, plane);
+}
+
+vec3 layoutSquareSpiral(int index, float spacing, PlaneIso plane, float depth) {
+    if (index <= 0) {
+        return mapPlaneToVec3(vec2(0.0f), depth, plane);
+    }
+
+    int x = 0;
+    int y = 0;
+    int dx = 1;
+    int dy = 0;
+    int segmentLength = 1;
+    int segmentProgress = 0;
+    int segmentRepeats = 0;
+
+    for (int step = 0; step < index; ++step) {
+        x += dx;
+        y += dy;
+        ++segmentProgress;
+        if (segmentProgress == segmentLength) {
+            segmentProgress = 0;
+            const int oldDx = dx;
+            dx = -dy;
+            dy = oldDx;
+            ++segmentRepeats;
+            if (segmentRepeats == 2) {
+                segmentRepeats = 0;
+                ++segmentLength;
+            }
+        }
+    }
+
+    return mapPlaneToVec3(vec2(static_cast<float>(x), static_cast<float>(y)) * spacing, depth, plane);
+}
+
+vec3 layoutHelix(int index, int count, float radius, float turns, float heightSpan, int axis) {
+    const int countSafe = std::max(1, count);
+    const float t =
+        (countSafe <= 1) ? 0.0f : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
+                                    static_cast<float>(countSafe - 1));
+    const float angle = t * turns * 2.0f * glm::pi<float>();
+    const float c = std::cos(angle);
+    const float s = std::sin(angle);
+    const float h = (t - 0.5f) * heightSpan;
+
+    switch (axis) {
+    case 0: // around X
+        return vec3(h, c * radius, s * radius);
+    case 1: // around Y
+        return vec3(c * radius, h, s * radius);
+    case 2: // around Z
+    default:
+        return vec3(c * radius, s * radius, h);
+    }
 }
 
 } // namespace IRMath
