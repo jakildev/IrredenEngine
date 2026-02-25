@@ -2,6 +2,8 @@
 
 #include <irreden/audio/audio_manager.hpp>
 
+#include <utility>
+
 namespace IRAudio {
 
 AudioManager *g_audioManager = nullptr;
@@ -50,6 +52,27 @@ void insertNoteOnMessage(MidiChannel channel, const IRComponents::C_MidiMessage 
 }
 void insertCCMessage(MidiChannel channel, const IRComponents::C_MidiMessage &message) {
     getAudioManager().getMidiIn().insertCCMessage(channel, message);
+}
+
+bool startAudioInputCapture(
+    const std::string &deviceName,
+    int sampleRate,
+    int channels,
+    AudioInputCallback callback
+) {
+    Audio &audio = getAudioManager().getAudio();
+    if (!audio.openStreamIn(deviceName, sampleRate, channels, std::move(callback))) {
+        return false;
+    }
+    if (!audio.startStreamIn()) {
+        audio.closeStreamIn();
+        return false;
+    }
+    return true;
+}
+
+void stopAudioInputCapture() {
+    getAudioManager().getAudio().closeStreamIn();
 }
 
 } // namespace IRAudio

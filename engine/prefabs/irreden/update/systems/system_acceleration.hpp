@@ -1,14 +1,14 @@
 #ifndef SYSTEM_ACCELERATION_H
 #define SYSTEM_ACCELERATION_H
 
-#include <irreden/ir_ecs.hpp>
+#include <irreden/ir_system.hpp>
 
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 
 using namespace IRComponents;
 
-namespace IRECS {
+namespace IRSystem {
 
 template <> struct System<ACCELERATION_3D> {
     static SystemId create() {
@@ -22,6 +22,6 @@ template <> struct System<ACCELERATION_3D> {
     }
 };
 
-} // namespace IRECS
+} // namespace IRSystem
 
 #endif /* SYSTEM_ACCELERATION_H */

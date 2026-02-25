@@ -12,7 +12,17 @@
 #include <irreden/update/components/component_collision_layer_lua.hpp>
 #include <irreden/update/components/component_contact_event_lua.hpp>
 #include <irreden/update/components/component_reactive_return_3d_lua.hpp>
+#include <irreden/update/components/component_rhythmic_launch_lua.hpp>
 #include <irreden/update/components/component_trigger_glow_lua.hpp>
+#include <irreden/update/components/component_spawn_glow_lua.hpp>
+#include <irreden/update/components/component_animation_clip_lua.hpp>
+#include <irreden/update/components/component_action_animation_lua.hpp>
+#include <irreden/update/components/component_anim_clip_color_track_lua.hpp>
+#include <irreden/update/components/component_anim_color_state_lua.hpp>
+#include <irreden/update/components/component_anim_motion_color_shift_lua.hpp>
+#include <irreden/render/components/component_triangle_canvas_background_lua.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior_lua.hpp>
+#include <irreden/render/components/component_zoom_level_lua.hpp>
 
 namespace MidiPolyrhythm {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
@@ -30,7 +40,22 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_CollisionLayer,
         C_ContactEvent,
         C_ReactiveReturn3D,
-        C_TriggerGlow>();
+        C_RhythmicLaunch,
+        C_TriggerGlow,
+        C_SpawnGlow,
+        ActionAnimationPhase,
+        C_AnimationClip,
+        AnimationBinding,
+        C_ActionAnimation,
+        AnimPhaseColor,
+        AnimPhaseColorMod,
+        C_AnimClipColorTrack,
+        C_AnimColorState,
+        C_AnimMotionColorShift,
+        BackgroundTypes,
+        C_TriangleCanvasBackground,
+        C_TrixelCanvasRenderBehavior,
+        C_ZoomLevel>();
 }
 } // namespace MidiPolyrhythm
 

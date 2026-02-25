@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace IRVideo {
 
@@ -10,8 +11,14 @@ struct VideoRecorderConfig {
     std::string output_file_path_ = "capture.mp4";
     int width_ = 0;
     int height_ = 0;
+    int source_width_ = 0;
+    int source_height_ = 0;
     int target_fps_ = 60;
     int video_bitrate_ = 8'000'000;
+    bool capture_audio_input_ = false;
+    std::string audio_input_device_name_ = "";
+    int audio_sample_rate_ = 48'000;
+    int audio_channels_ = 2;
 };
 
 class VideoRecorder {
@@ -23,6 +30,9 @@ class VideoRecorder {
     void stop();
 
     bool submitVideoFrame(const std::uint8_t *rgbaData, int strideBytes);
+    bool submitVideoFrame(std::vector<std::uint8_t> &&frameData);
+    bool submitAudioInputSamples(const float *interleavedSamples, int frameCount, double streamTime);
+    std::vector<std::uint8_t> acquireFrameBuffer(std::size_t minCapacity);
 
     [[nodiscard]] bool isRecording() const;
     [[nodiscard]] std::uint64_t getVideoFrameCount() const;

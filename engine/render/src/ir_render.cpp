@@ -66,6 +66,10 @@ ivec2 mouseTrixelPositionWorld() {
     );
 }
 
+void setCameraZoom(float zoom) {
+    getRenderManager().setCameraZoom(zoom);
+}
+
 void setVoxelRenderMode(VoxelRenderMode mode) {
     getRenderManager().setVoxelRenderMode(mode);
 }

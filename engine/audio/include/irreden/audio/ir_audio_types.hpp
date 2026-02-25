@@ -1,6 +1,8 @@
 #ifndef IR_AUDIO_TYPES_H
 #define IR_AUDIO_TYPES_H
 
+#include <irreden/audio/music_theory.hpp>
+
 namespace IRAudio {
 
 class AudioManager;
@@ -193,6 +195,10 @@ enum IRMidiNote {
     NOTE_C8 = 108
 };
 
+constexpr unsigned char kMidiCC_ALL_SOUND_OFF = 120;
+constexpr unsigned char kMidiCC_ALL_NOTES_OFF = 123;
+
+// Legacy step-based scale arrays (prefer music_theory.hpp ScaleDefinition).
 constexpr int kMajorScaleSemitoneSteps[] = {2, 2, 1, 2, 2, 2, 1};
 constexpr int kPentatonicScaleSteps[] = {2, 2, 3, 2, 3};
 constexpr int kPentatonicDorianScaleSteps[] = {2, 1, 4, 2, 3};

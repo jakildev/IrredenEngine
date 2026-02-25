@@ -48,7 +48,7 @@ template <> struct System<CONTACT_TRIGGER_GLOW> {
                                       ? 1.0f
                                       : IRMath::clamp(fadeTime / glow.fadeSeconds_, 0.0f, 1.0f);
                     float eased = IRMath::kEasingFunctions.at(glow.easingFunction_)(fadeT);
-                    blendToTarget = 1.0f - eased;
+                    blendToTarget = IRMath::clamp(1.0f - eased, 0.0f, 1.0f);
                     if (fadeT >= 1.0f) {
                         glow.active_ = false;
                     }

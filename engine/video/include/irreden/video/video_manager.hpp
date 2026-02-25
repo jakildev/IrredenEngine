@@ -14,9 +14,17 @@ namespace IRVideo {
 class VideoManager {
   public:
     VideoManager();
-    ~VideoManager() = default;
+    ~VideoManager();
 
-    void configureCapture(const std::string &outputFilePath, int targetFps, int videoBitrate);
+    void configureCapture(
+        const std::string &outputFilePath,
+        int targetFps,
+        int videoBitrate,
+        bool captureAudioInput,
+        const std::string &audioInputDeviceName,
+        int audioSampleRate,
+        int audioChannels
+    );
     void configureScreenshotOutputDir(const std::string &outputDirPath);
 
     void toggleRecording();
@@ -35,30 +43,31 @@ class VideoManager {
   private:
     static constexpr int kReadbackPboCount = 3;
 
-    bool m_captureEnabled = false;
+    std::atomic<bool> m_captureEnabled = false;
     bool m_toggleRequested = false;
-    bool m_loggedResizeWarning = false;
     int m_targetFps = 60;
     int m_videoBitrate = 10'000'000;
+    bool m_captureAudioInput = false;
+    std::string m_audioInputDeviceName = "";
+    int m_audioSampleRate = 48'000;
+    int m_audioChannels = 2;
     std::string m_outputFilePath = "capture.mp4";
     std::string m_screenshotOutputDirPath = "save_files/screenshots";
     std::uint64_t m_nextScreenshotIndex = 1;
     bool m_screenshotRequested = false;
     int m_sourceFrameWidth = 0;
     int m_sourceFrameHeight = 0;
-    int m_frameWidth = 0;
-    int m_frameHeight = 0;
     double m_captureAccumulatorSeconds = 0.0;
     std::size_t m_sourceFrameBytes = 0;
     int m_pboWriteIndex = 0;
     int m_pboPrimingFrames = 0;
     std::vector<unsigned int> m_readbackPbos;
     std::vector<std::uint8_t> m_rawFrameBuffer;
-    std::vector<std::uint8_t> m_uploadFrameBuffer;
     std::atomic<bool> m_finalizeInProgress = false;
     std::thread m_finalizeThread;
     std::mutex m_recorderMutex;
 
+    void armAudioInput();
     void toggleCapture();
     bool captureScreenshot();
     std::string getNextScreenshotFilePath();
@@ -69,6 +78,7 @@ class VideoManager {
     void beginAsyncFinalize();
     void joinFinalizeThreadIfDone();
 
+    bool m_audioInputArmed = false;
     VideoRecorder m_videoRecorder;
 };
 

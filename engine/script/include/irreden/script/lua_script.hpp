@@ -461,6 +461,58 @@ class LuaScript {
             return luaEntities;
         };
     }
+
+    template <
+        typename ComponentA,
+        typename ComponentB,
+        typename ComponentC,
+        typename ComponentD,
+        typename ComponentE,
+        typename ComponentF,
+        typename ComponentG,
+        typename ComponentH,
+        typename ComponentI,
+        typename ComponentJ,
+        typename ComponentK>
+    auto wrapCreateEntityBatchWithFunctions() {
+        IR_LOG_INFO("Creating entity batch with 11 components");
+        return [this](
+                   IRMath::ivec3 partitions,
+                   sol::protected_function funcA,
+                   sol::protected_function funcB,
+                   sol::protected_function funcC,
+                   sol::protected_function funcD,
+                   sol::protected_function funcE,
+                   sol::protected_function funcF,
+                   sol::protected_function funcG,
+                   sol::protected_function funcH,
+                   sol::protected_function funcI,
+                   sol::protected_function funcJ,
+                   sol::protected_function funcK
+               ) {
+            std::vector<IREntity::EntityId> entities = createEntityBatchWithFunctions_Ext(
+                partitions,
+                {},
+                wrapLuaFunction<ComponentA>(funcA),
+                wrapLuaFunction<ComponentB>(funcB),
+                wrapLuaFunction<ComponentC>(funcC),
+                wrapLuaFunction<ComponentD>(funcD),
+                wrapLuaFunction<ComponentE>(funcE),
+                wrapLuaFunction<ComponentF>(funcF),
+                wrapLuaFunction<ComponentG>(funcG),
+                wrapLuaFunction<ComponentH>(funcH),
+                wrapLuaFunction<ComponentI>(funcI),
+                wrapLuaFunction<ComponentJ>(funcJ),
+                wrapLuaFunction<ComponentK>(funcK)
+            );
+            std::vector<IRScript::LuaEntity> luaEntities;
+            luaEntities.resize(entities.size());
+            for (int i = 0; i < entities.size(); i++) {
+                luaEntities[i].entity = entities[i];
+            }
+            return luaEntities;
+        };
+    }
 };
 } // namespace IRScript
 

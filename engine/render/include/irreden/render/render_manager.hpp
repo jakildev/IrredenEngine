@@ -55,6 +55,7 @@ class RenderManager {
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
+    void setCameraZoom(float zoom);
     void zoomMainBackgroundPatternIn();
     void zoomMainBackgroundPatternOut();
 

@@ -26,6 +26,10 @@ void setName(EntityId entity, const std::string &name);
 EntityId getEntity(const std::string &name);
 EntityRecord getEntityRecord(EntityId entity);
 
+inline bool entityExists(EntityId entity) {
+    return getEntityManager().entityExists(entity);
+}
+
 template <typename Component>
 using LuaCreateEntityFunction = std::function<Component(IRMath::ivec3)>;
 
