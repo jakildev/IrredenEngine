@@ -1,8 +1,8 @@
 config = {
     init_window_width = 1080,
     init_window_height = 1920,
-    game_resolution_width = 1080,
-    game_resolution_height = 1920,
+    game_resolution_width = 1080 / 8,
+    game_resolution_height = 1920 / 8,
     fit_mode = "stretch",
     fullscreen = false,
     monitor_index = 1, -- -1 means "auto/default monitor"

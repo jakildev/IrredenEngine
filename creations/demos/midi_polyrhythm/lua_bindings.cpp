@@ -418,6 +418,12 @@ void registerLuaBindings() {
             [](IRScript::LuaEntity handle, const std::string &text) {
                 IREntity::getComponent<C_TextSegment>(handle.entity).text_ = text;
             };
+        luaScript.lua()["IRText"]["setColor"] =
+            [](IRScript::LuaEntity handle, int r, int g, int b, int a) {
+                auto &style = IREntity::getComponent<C_TextStyle>(handle.entity);
+                style.color_ = Color(r, g, b, a);
+                IREntity::setComponent(handle.entity, style);
+            };
         luaScript.lua()["IRText"]["remove"] = [](IRScript::LuaEntity handle) {
             IREntity::destroyEntity(handle.entity);
         };

@@ -119,7 +119,7 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             local rest_offset_z = v.size - note_block.contact_depth
             local grounded_z = (off.z + p.z) - rest_offset_z
             local peak_z = grounded_z - note_block.travel_distance
-            -- Always use peak (launch) height so start_paused matches end-of-cycle height
+            -- Always start at peak height
             return C_Position3D.new(vec3.new(off.x + p.x + center_x, off.y + p.y + center_y, peak_z))
         end,
 
@@ -138,16 +138,14 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             local impulse_speed = IRPhysics.impulseForHeight(gravity_mag, note_block.travel_distance)
             local rest_offset_z = v.size - note_block.contact_depth
             local fall_time = IRPhysics.flightTimeForHeight(gravity_mag, note_block.travel_distance) / 2.0
-            if settings.start_paused then
-                if settings.stop_after_cycle then
-                    return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, 0.0, true, v.launches_per_cycle)
-                end
-                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, 0.0, true)
-            end
+            -- Always start with fall_time elapsed so blocks are ready to fall
+            local start_elapsed = fall_time
+            local start_frozen = false  -- Never start frozen, let pauseAll handle that
+            
             if settings.stop_after_cycle then
-                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, fall_time, false, v.launches_per_cycle)
+                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen, v.launches_per_cycle)
             end
-            return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, fall_time, false)
+            return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen)
         end,
 
         function(params)

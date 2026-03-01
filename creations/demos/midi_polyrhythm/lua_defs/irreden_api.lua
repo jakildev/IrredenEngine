@@ -1137,4 +1137,11 @@ function IRText.create(text, x, y, opts) end
 function IRText.setText(handle, text) end
 
 ---@param handle LuaEntity
+---@param r integer
+---@param g integer
+---@param b integer
+---@param a integer
+function IRText.setColor(handle, r, g, b, a) end
+
+---@param handle LuaEntity
 function IRText.remove(handle) end

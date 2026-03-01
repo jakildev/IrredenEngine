@@ -4,8 +4,8 @@
 
 local S = {}
 
-S.palette_selection_enabled = false
-S.start_paused = true
+S.palette_selection_enabled = true
+S.start_paused = false
 
 S.midi_device = "OP-1"
 S.active_palette = Palette.SWEETIE

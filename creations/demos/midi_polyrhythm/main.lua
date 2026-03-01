@@ -230,7 +230,13 @@ end
 
 local function post_init()
     if settings.start_paused then
-        IRPhysics.pauseAll()
+        -- Use the proper pause mechanism that works with P key toggle
+        IREntity.forEachComponent(
+            function(idle) 
+                idle.paused_ = true 
+            end,
+            C_PeriodicIdle
+        )
     end
 
     IRText.create(build_overlay_text(), 20, 90, {

@@ -8,7 +8,8 @@ local SWATCH_SIZE        = ivec3.new(3, 3, 1)
 local SWATCH_SPACING     = 1
 local ROW_SPACING        = 6
 local LABEL_OFFSET_X     = 16
-local HOVER_SHIFT        = vec3.new(-2.0, -2.0, 0.0)
+local LABEL_COLOR_NORMAL = {200, 200, 200, 255}
+local LABEL_COLOR_HOVER  = {255, 0, 0, 255}
 local TITLE_Y            = 12
 local PALETTE_START_Y    = 28
 
@@ -16,11 +17,9 @@ function PS.show(palettes, on_select)
     local state = {
         swatch_entities = {},
         label_entities  = {},
-        hover_bar       = nil,
         hovered_key     = nil,
         handler_ids     = {},
         entity_to_key   = {},
-        original_pos    = {},
     }
 
     state.title_entity = IRText.create("Select Palette", 20, TITLE_Y, {
@@ -46,7 +45,7 @@ function PS.show(palettes, on_select)
         end
 
         local label = IRText.create(format_name(key), LABEL_OFFSET_X, base_y, {
-            color = {200, 200, 200, 255},
+            color = LABEL_COLOR_NORMAL,
             wrapWidth = -1,
         })
         state.label_entities[key] = label
@@ -69,10 +68,6 @@ function PS.show(palettes, on_select)
 
         for _, entity in ipairs(swatch_group) do
             state.entity_to_key[entity.entity] = key
-            local pos = IREntity.getPosition(entity)
-            state.original_pos[entity.entity] = pos
-            print(string.format("[PaletteSelector] entity=%s key=%s pos=(%.1f,%.1f,%.1f)",
-                tostring(entity.entity), key, pos.x, pos.y, pos.z))
         end
 
         state.swatch_entities[key] = swatch_group
@@ -127,27 +122,18 @@ function PS.show(palettes, on_select)
 end
 
 function PS._hover_row(state, key)
-    local entities = state.swatch_entities[key]
-    if not entities then return end
-
-    for _, entity in ipairs(entities) do
-        local orig = state.original_pos[entity.entity]
-        if orig then
-            local shifted = orig + HOVER_SHIFT
-            IREntity.setPosition(entity, shifted)
-        end
+    local label = state.label_entities[key]
+    if label then
+        IRText.setColor(label, LABEL_COLOR_HOVER[1], LABEL_COLOR_HOVER[2],
+            LABEL_COLOR_HOVER[3], LABEL_COLOR_HOVER[4])
     end
 end
 
 function PS._unhover_row(state, key)
-    local entities = state.swatch_entities[key]
-    if not entities then return end
-
-    for _, entity in ipairs(entities) do
-        local orig = state.original_pos[entity.entity]
-        if orig then
-            IREntity.setPosition(entity, orig)
-        end
+    local label = state.label_entities[key]
+    if label then
+        IRText.setColor(label, LABEL_COLOR_NORMAL[1], LABEL_COLOR_NORMAL[2],
+            LABEL_COLOR_NORMAL[3], LABEL_COLOR_NORMAL[4])
     end
 end
 
@@ -175,7 +161,6 @@ function PS.cleanup(state)
     end
 
     state.entity_to_key = {}
-    state.original_pos = {}
     state.active = false
 end
 
