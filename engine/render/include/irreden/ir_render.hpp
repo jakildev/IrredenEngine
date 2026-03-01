@@ -79,6 +79,7 @@ ivec2 mouseTrixelPositionWorld();
 IREntity::EntityId getEntityIdAtMouseTrixel();
 
 void setCameraZoom(float zoom);
+void setCameraPosition2DIso(vec2 pos);
 void setVoxelRenderMode(VoxelRenderMode mode);
 VoxelRenderMode getVoxelRenderMode();
 void setVoxelRenderSubdivisions(int subdivisions);
@@ -93,6 +94,9 @@ bool isGuiVisible();
 
 void setGuiScale(int scale);
 int getGuiScale();
+
+void setHoveredTrixelVisible(bool visible);
+bool isHoveredTrixelVisible();
 
 } // namespace IRRender
 

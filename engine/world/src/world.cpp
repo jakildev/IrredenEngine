@@ -48,6 +48,7 @@ World::World(const char *configFileName)
     );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
+    IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};

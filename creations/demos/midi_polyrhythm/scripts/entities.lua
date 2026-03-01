@@ -102,6 +102,7 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
     local scene  = settings.scene
     local platform = settings.platform
     local note_block = settings.note_block
+    local ps = platform.spring
     local vis    = settings.visual
     local part   = settings.particle
     local off    = scene.center_offset
@@ -117,9 +118,17 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             local center_x = (psz.x - v.size) / 2.0
             local center_y = (psz.y - v.size) / 2.0
             local rest_offset_z = v.size - note_block.contact_depth
-            local grounded_z = (off.z + p.z) - rest_offset_z
-            local peak_z = grounded_z - note_block.travel_distance
-            -- Always start at peak height
+            -- Platform position is center; block sits on top face.
+            -- Use full thickness for empirical correction to observed peak.
+            local platform_top_z = (off.z + p.z) + psz.z - rest_offset_z
+            -- Peak height from impulse (v²/2g). Launch happens from compressed
+            -- spring (locked), not rest — add lock_point so we measure from
+            -- the actual launch height.
+            local lock_point = ps.length * ps.lock_ratio
+            local g = IRPhysics.getGravityMagnitude()
+            local impulse_speed = IRPhysics.impulseForHeight(gravity_mag, note_block.travel_distance)
+            local peak_height = IRPhysics.heightForImpulse(g, impulse_speed)
+            local peak_z = platform_top_z + lock_point - peak_height
             return C_Position3D.new(vec3.new(off.x + p.x + center_x, off.y + p.y + center_y, peak_z))
         end,
 
@@ -143,7 +152,8 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             local start_frozen = false  -- Never start frozen, let pauseAll handle that
             
             if settings.stop_after_cycle then
-                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen, v.launches_per_cycle)
+                local max_launches = math.floor(v.launches_per_cycle)
+                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen, max_launches)
             end
             return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen)
         end,

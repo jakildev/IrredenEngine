@@ -21,7 +21,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 canvasOffset;
     vec2 textureOffset;
     vec2 mouseHoveredTriangleIndex;
-    vec2 _padding0;
+    vec2 effectiveSubdivisionsForHover;
+    float showHoverHighlight;
 };
 
 void main() {

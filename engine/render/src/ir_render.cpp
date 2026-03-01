@@ -67,10 +67,13 @@ ivec2 mouseTrixelPositionWorld() {
     const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
     const ivec2 z1 = IRMath::trixelOriginOffsetZ1(canvasSize);
     const int shaderMod = (z1.x + z1.y) & 1;
+
+    const int subdivisions = getVoxelRenderEffectiveSubdivisions();
+    const vec2 scaledMousePos =
+        IRRender::mousePosition2DIsoWorldRender() * static_cast<float>(subdivisions);
+
     const vec2 triIndex =
-        IRMath::pos2DIsoToTriangleIndex(
-            IRRender::mousePosition2DIsoWorldRender(),
-            shaderMod);
+        IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
     // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
     return ivec2(glm::floor(triIndex + vec2(1, 1)));
 }
@@ -88,6 +91,10 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
 
 void setCameraZoom(float zoom) {
     getRenderManager().setCameraZoom(zoom);
+}
+
+void setCameraPosition2DIso(vec2 pos) {
+    getRenderManager().setCameraPosition2DIso(pos);
 }
 
 void setVoxelRenderMode(VoxelRenderMode mode) {
@@ -136,6 +143,14 @@ void setGuiScale(int scale) {
 
 int getGuiScale() {
     return getRenderManager().getGuiScale();
+}
+
+void setHoveredTrixelVisible(bool visible) {
+    getRenderManager().setHoveredTrixelVisible(visible);
+}
+
+bool isHoveredTrixelVisible() {
+    return getRenderManager().isHoveredTrixelVisible();
 }
 
 } // namespace IRRender

@@ -968,11 +968,21 @@ IRRender = {}
 ---@param zoom number
 function IRRender.setCameraZoom(zoom) end
 
+---@param x number X position in iso coordinates
+---@param y number Y position in iso coordinates
+function IRRender.setCameraPosition2DIso(x, y) end
+
 ---@param scale integer GUI zoom scale (1=full res, higher=bigger trixels, range 1-8)
 function IRRender.setGuiScale(scale) end
 
 ---@return integer scale Current GUI zoom scale
 function IRRender.getGuiScale() end
+
+---@param visible boolean Whether to show the red highlight on the hovered trixel
+function IRRender.setHoveredTrixelVisible(visible) end
+
+---@return boolean visible Whether the hovered trixel highlight is visible
+function IRRender.isHoveredTrixelVisible() end
 
 ---@return integer[] size {width, height} of the main canvas in trixels
 function IRRender.getMainCanvasSize() end
@@ -1078,6 +1088,11 @@ function IRPhysics.impulseForHeight(gravity, height) end
 ---@param height number
 ---@return number seconds
 function IRPhysics.flightTimeForHeight(gravity, height) end
+
+---@param gravity number
+---@param impulseSpeed number
+---@return number height Height reached by the impulse under given gravity
+function IRPhysics.heightForImpulse(gravity, impulseSpeed) end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- IREntity – batch entity creation functions

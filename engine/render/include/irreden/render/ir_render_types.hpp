@@ -34,7 +34,10 @@ struct FrameDataTrixelToFramebuffer {
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
-    vec2 _padding0;
+    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions, y=unused.
+    vec2 effectiveSubdivisionsForHover_;
+    /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
+    float showHoverHighlight_;
 };
 
 struct FrameDataVoxelToCanvas {

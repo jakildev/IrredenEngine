@@ -22,6 +22,7 @@ local entities = load_module("entities")
 -- ── Main initialization (called after palette is resolved) ──────────────────
 
 local function init_polyrhythm(selected_palette)
+    print("[Init] init_polyrhythm START, preset=" .. tostring(settings.rhythm_preset))
     if selected_palette then
         settings.active_palette = selected_palette
     end
@@ -30,14 +31,18 @@ local function init_polyrhythm(selected_palette)
     IRAudio.openMidiOut(settings.midi_device)
 
     -- ── Rhythm preset ───────────────────────────────────────────────────────
+    print("[Init] rhythm preset: " .. tostring(settings.rhythm_preset))
     rhythm.print_all(settings.rhythm_preset)
     local preset = rhythm.select(settings.rhythm_preset, settings.rhythm_bpm)
+    print("[Init] preset loaded, num_voices=" .. tostring(preset.num_voices))
 
     -- ── Palette & colors ────────────────────────────────────────────────────
     local palette = colors.build(settings, preset.num_voices)
+    print("[Init] palette built")
 
     -- ── Voice creation ──────────────────────────────────────────────────────
     local voice_list, num_voices = voices.build(settings, preset, palette)
+    print("[Init] voices built: " .. tostring(num_voices))
 
     -- ── Physics ─────────────────────────────────────────────────────────────
     local GRAVITY_MAGNITUDE
@@ -75,12 +80,17 @@ local function init_polyrhythm(selected_palette)
     end
 
     -- ── Entity creation ─────────────────────────────────────────────────────
+    print("[Init] creating platforms...")
     entities.init(voices)
     entities.create_platforms(settings, voice_list, num_voices)
+    print("[Init] creating note blocks...")
     entities.create_note_blocks(settings, voice_list, num_voices, GRAVITY_MAGNITUDE)
+    print("[Init] setup background...")
     entities.setup_background(settings)
+    print("[Init] entity creation done")
 
     -- ── Camera ──────────────────────────────────────────────────────────────
+    IRRender.setCameraPosition2DIso(0, 0)
     IRRender.setCameraZoom(settings.visual.camera_start_zoom)
 
     return preset, voice_list, num_voices

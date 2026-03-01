@@ -144,6 +144,10 @@ class WorldConfig {
             "gui_scale",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
         );
+        m_config.addEntry(
+            "hovered_trixel_visible",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }

@@ -120,7 +120,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     );
 
                 if (voxelPool.isEntityIdsDirty()) {
-                    IRE_LOG_INFO(
+                    IRE_LOG_DEBUG(
                         "[Stage1] Uploading entity IDs to SSBO, poolSize={}, first few IDs: {}, {}, {}",
                         voxelPool.getVoxelPoolSize(),
                         voxelPool.getEntityIds().size() > 0 ? voxelPool.getEntityIds()[0] : 0,

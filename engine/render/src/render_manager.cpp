@@ -248,6 +248,11 @@ void RenderManager::setCameraZoom(float zoom) {
     IREntity::setComponent(m_camera, C_ZoomLevel{snapped});
 }
 
+void RenderManager::setCameraPosition2DIso(vec2 pos) {
+    IREntity::setComponent(m_camera, C_Position2DIso{pos});
+    IREntity::setComponent(m_camera, C_Velocity2DIso{vec2(0.0f, 0.0f)});
+}
+
 void RenderManager::zoomMainBackgroundPatternIn() {
     auto zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(m_backgroundCanvas);
     if (!zoomLevel.has_value()) {
@@ -406,6 +411,14 @@ void RenderManager::setGuiScale(int scale) {
 
 int RenderManager::getGuiScale() const {
     return m_guiScale;
+}
+
+void RenderManager::setHoveredTrixelVisible(bool visible) {
+    m_hoveredTrixelVisible = visible;
+}
+
+bool RenderManager::isHoveredTrixelVisible() const {
+    return m_hoveredTrixelVisible;
 }
 
 } // namespace IRRender

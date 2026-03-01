@@ -1,13 +1,13 @@
 config = {
     init_window_width = 1080,
     init_window_height = 1920,
-    game_resolution_width = 1080 / 8,
-    game_resolution_height = 1920 / 8,
+    game_resolution_width = 1080,
+    game_resolution_height = 1920,
     fit_mode = "stretch",
     fullscreen = false,
     monitor_index = 1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "snapped",
+    voxel_render_mode = "smooth",
     voxel_render_subdivisions = 1,
 
     video_capture_output_file = "polyrhythm_capture.mp4",
@@ -25,5 +25,6 @@ config = {
     start_updates_on_first_key_press = true,
     start_recording_on_first_key_press = true,
     profiling_enabled = false,
-    gui_scale = 2
+    gui_scale = 2,
+    hovered_trixel_visible = false,
 }

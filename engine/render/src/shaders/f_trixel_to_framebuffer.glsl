@@ -26,7 +26,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 canvasOffset;
     vec2 textureOffset;
     vec2 mouseHoveredTriangleIndex;
-    vec2 _padding0;
+    vec2 effectiveSubdivisionsForHover;
+    float showHoverHighlight;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -57,7 +58,6 @@ void main() {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
     int originModifier = (z1.x + z1.y + int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
-    // int originModifier = (z1.x + z1.y) & 1;
 
     // See IRMath::pos2DIsoToTriangleIndex
     if(mod(originFlooredComp.x + originFlooredComp.y + originModifier, 2.0) >= 1) {
@@ -71,18 +71,16 @@ void main() {
         }
     }
 
-    // // Now wrap the edge cases
-    // if(origin.y == textureSize.y) {
-    //     origin.y = 0;
-    // }
-
     vec4 color = textureLod(triangleColors, origin / textureSize, 0);
     float depth = normalizeDistance(
         textureLod(triangleDistances, origin / textureSize, 0).r
     );
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
+    // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
+    // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison
+    int subdivisions = max(int(effectiveSubdivisionsForHover.x), 1);
     vec2 hoveredPosition =
-        mouseHoveredTriangleIndex +
+        mouseHoveredTriangleIndex * float(subdivisions) +
         vec2(trixelOriginOffsetZ1(textureSize)) +
         canvasOffset;
     ivec2 originIndex = ivec2(floor(origin));
@@ -96,8 +94,10 @@ void main() {
                 hoveredDepth = depth;
             }
         }
-        color = vec4(1.0, 0.0, 0.0, 1.0);
-        depth = 0.0;
+        if (showHoverHighlight > 0.0) {
+            color = vec4(1.0, 0.0, 0.0, 1.0);
+            depth = 0.0;
+        }
     }
     if(color.a < 0.1) {
 		discard;

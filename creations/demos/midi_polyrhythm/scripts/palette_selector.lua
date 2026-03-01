@@ -6,8 +6,8 @@ local PS = {}
 
 local SWATCH_SIZE        = ivec3.new(3, 3, 1)
 local SWATCH_SPACING     = 1
-local ROW_SPACING        = 6
-local LABEL_OFFSET_X     = 16
+local ROW_SPACING        = IRRender.glyphStepY  -- vertical spacing = text line height
+local LABEL_OFFSET_X     = IRRender.glyphStepX * 2  -- horizontal offset = 2 chars
 local LABEL_COLOR_NORMAL = {200, 200, 200, 255}
 local LABEL_COLOR_HOVER  = {255, 0, 0, 255}
 local TITLE_Y            = 12

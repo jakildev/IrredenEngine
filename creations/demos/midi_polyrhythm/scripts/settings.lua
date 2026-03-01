@@ -4,18 +4,19 @@
 
 local S = {}
 
-S.palette_selection_enabled = true
+S.palette_selection_enabled = false
 S.start_paused = false
 
 S.midi_device = "OP-1"
-S.active_palette = Palette.SWEETIE
+S.active_palette = Palette.BERRY_NEBULA
 S.note_color_mode = NoteColorMode.PER_VOICE
 S.palette_sort = PaletteSortMode.ORIGINAL
-S.color_pick = ColorPickMode.MIDNIGHT_ABLAZE
+S.color_pick = ColorPickMode.MANUAL
 -- S.manual_note_indices = {5, 6, 3, 4, 6, 1, 2, 7, 3, 2, 1, 8, 4, 7, 8, 5}
+S.manual_note_indices = {1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6, 4, 5, 6, 7}
 S.manual_platform_indices = nil
-S.rhythm_preset = RhythmPreset.wave_1m_fast
-S.rhythm_bpm = nil --Overrides rhythm bpm
+S.rhythm_preset = RhythmPreset.full_360
+S.rhythm_bpm = 65 --Overrides rhythm bpm
 S.stop_after_cycle = true
 
 -- ── Social/export text ───────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ S.description = {
 -- ── Voice defaults ───────────────────────────────────────────────────────────
 S.voice = {
     -- Note-block voxel side length (cube).
-    block_size = 6,
+    block_size = 8,
 
     -- MIDI note output defaults per voice.
     midi_velocity_start = 112,
@@ -43,7 +44,7 @@ S.voice = {
 
 -- ── Scene placement ──────────────────────────────────────────────────────────
 S.scene = {
-    center_offset = vec3.new(0.0, 0.0, 60.0),
+    center_offset = vec3.new(0.0, 0.0, 50.0),
 }
 
 -- ── Platform geometry/layout/spring ─────────────────────────────────────────
@@ -68,7 +69,7 @@ S.platform = {
 -- ── Note-block motion/placement ─────────────────────────────────────────────
 S.note_block = {
     contact_depth = 0,
-    travel_distance = 70.0,
+    travel_distance = 100.0,
 }
 
 -- ── Physics timing inputs ────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ S.physics = {
 
 -- ── Particles ─────────────────────────────────────────────────────────────
 S.particle = {
-    count = 0,
+    count = 15,
     lifetime_multiplier = 10,
     initial_speed = 300.0,
     drag_scale = vec3.new(0.5, 0.5, 0.35),
@@ -102,7 +103,7 @@ S.particle = {
 
     -- Hover phase (sinusoidal oscillation between ascent and exit drift)
     hover_duration_sec = 1.5,
-    hover_osc_speed = 5.0,
+    hover_osc_speed = 2.0,
     hover_osc_amplitude = 10.0,
     hover_blend_sec = 2.0,
     hover_blend_easing = IREasingFunction.CUBIC_EASE_OUT,
@@ -226,9 +227,9 @@ S.platform.spring = {
 --   root      = IRAudio.rootNote(NoteName.D, 3)    -- D3 MIDI note number
 
 S.scale = {
-    mode         = ScaleMode.PENTATONIC_MINOR,
-    root_note    = NoteName.Gs,
-    root_octave  = 2,
+    mode         = ScaleMode.PENTATONIC_MAJOR,
+    root_note    = NoteName.Eb,
+    root_octave  = 3,
     start_offset = 0,
 }
 S.scale.intervals = IRAudio.getScaleIntervals(S.scale.mode)

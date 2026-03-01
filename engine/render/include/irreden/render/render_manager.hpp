@@ -56,6 +56,7 @@ class RenderManager {
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
     void setCameraZoom(float zoom);
+    void setCameraPosition2DIso(vec2 pos);
     void zoomMainBackgroundPatternIn();
     void zoomMainBackgroundPatternOut();
 
@@ -65,6 +66,9 @@ class RenderManager {
 
     void setGuiScale(int scale);
     int getGuiScale() const;
+
+    void setHoveredTrixelVisible(bool visible);
+    bool isHoveredTrixelVisible() const;
 
     void tick();
     void printRenderInfo();
@@ -104,6 +108,7 @@ class RenderManager {
     std::unordered_map<std::string, EntityId> m_canvasMap;
     FitMode m_fitMode;
     VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
+    bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
     std::unique_ptr<RenderImpl> m_renderImpl;

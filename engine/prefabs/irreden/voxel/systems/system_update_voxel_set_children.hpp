@@ -30,7 +30,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
                     size_t startIdx = voxelSet.globalPositions_.data() -
                                       pool.getPositionGlobalsBasePtr();
                     pool.setEntityIdForRange(startIdx, voxelSet.numVoxels_, entityId);
-                    IRE_LOG_INFO(
+                    IRE_LOG_DEBUG(
                         "[VoxelSetChildren] Set entityId={} for {} voxels at poolIdx={}",
                         entityId, voxelSet.numVoxels_, startIdx
                     );

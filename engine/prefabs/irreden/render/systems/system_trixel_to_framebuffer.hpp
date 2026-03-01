@@ -98,11 +98,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
                 if (!behavior.mouseHoverEnabled_) {
                     frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+                    frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(1.0f);
+                    frameData.frameData_.showHoverHighlight_ = 0.0f;
                 }
                 else {
+                    const ivec2 hoverSubdiv = IRRender::mouseTrixelPositionWorld();
+                    const float subdiv = static_cast<float>(effectiveSubdivisions);
                     frameData.frameData_.mouseHoveredTriangleIndex_ =
-                        vec2(IRRender::mouseTrixelPositionWorld());
-
+                        vec2(hoverSubdiv) / vec2(subdiv);
+                    frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(subdiv, 0.0f);
+                    frameData.frameData_.showHoverHighlight_ =
+                        (IRRender::isHoveredTrixelVisible() ? 1.0f : 0.0f);
                 }
 
                 frameData.updateFrameData(

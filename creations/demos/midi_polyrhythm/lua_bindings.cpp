@@ -331,11 +331,20 @@ void registerLuaBindings() {
         luaScript.lua()["IRRender"]["setCameraZoom"] = [](float zoom) {
             IRRender::setCameraZoom(zoom);
         };
+        luaScript.lua()["IRRender"]["setCameraPosition2DIso"] = [](float x, float y) {
+            IRRender::setCameraPosition2DIso(vec2(x, y));
+        };
         luaScript.lua()["IRRender"]["setGuiScale"] = [](int scale) {
             IRRender::setGuiScale(scale);
         };
         luaScript.lua()["IRRender"]["getGuiScale"] = []() {
             return IRRender::getGuiScale();
+        };
+        luaScript.lua()["IRRender"]["setHoveredTrixelVisible"] = [](bool visible) {
+            IRRender::setHoveredTrixelVisible(visible);
+        };
+        luaScript.lua()["IRRender"]["isHoveredTrixelVisible"] = []() {
+            return IRRender::isHoveredTrixelVisible();
         };
         luaScript.lua()["IRRender"]["getMainCanvasSize"] = [](sol::this_state L) {
             vec2 size = IRRender::getMainCanvasSizeTrixels();
@@ -618,6 +627,9 @@ void registerLuaBindings() {
         };
         luaScript.lua()["IRPhysics"]["flightTimeForHeight"] = [](float gravity, float height) {
             return IRMath::flightTimeForHeight(gravity, height);
+        };
+        luaScript.lua()["IRPhysics"]["heightForImpulse"] = [](float gravity, float impulseSpeed) {
+            return IRMath::heightForImpulse(gravity, impulseSpeed);
         };
         luaScript.lua()["IRPhysics"]["pauseAll"] = []() {
             IREntity::forEachComponent<C_PeriodicIdle>(
