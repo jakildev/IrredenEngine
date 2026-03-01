@@ -149,8 +149,13 @@ template <typename EnumType> struct LuaValue<LuaType::ENUM, EnumType> : ILuaValu
         , stringToEnum_(stringToEnum) {}
 
     void parse(const sol::object &obj) override {
-        IR_ASSERT(obj.is<std::string>(), "Expected string for enum");
-        value_ = stringToEnum_(obj.as<std::string>());
+        if (obj.is<int>()) {
+            value_ = static_cast<EnumType>(obj.as<int>());
+        } else if (obj.is<std::string>()) {
+            value_ = stringToEnum_(obj.as<std::string>());
+        } else {
+            IR_ASSERT(false, "Expected string or integer for enum");
+        }
     }
 
     void reset_to_default() override {

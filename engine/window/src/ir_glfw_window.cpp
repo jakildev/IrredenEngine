@@ -185,6 +185,10 @@ void IRGLFWWindow::getWindowSize(int &width, int &height) {
     glfwGetWindowSize(m_window, &width, &height);
 }
 
+void IRGLFWWindow::getFramebufferSize(int &width, int &height) {
+    glfwGetFramebufferSize(m_window, &width, &height);
+}
+
 void IRGLFWWindow::getCursorPosition(double &posX, double &posY) {
     glfwGetCursorPos(m_window, &posX, &posY);
 }

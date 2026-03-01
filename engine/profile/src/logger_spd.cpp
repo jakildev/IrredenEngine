@@ -21,7 +21,7 @@ LoggerSpd::LoggerSpd() {
     /* Logger for opengl api wrapper */
     // TODO: Have GLAPI logs go to file or somewhere else to not pollute terminal
     m_GLAPILogger = std::make_shared<spdlog::logger>("GLAPILog", sinks.begin(), sinks.end());
-    m_GLAPILogger->set_level(spdlog::level::info); // Change to info to see all gl calls
+    m_GLAPILogger->set_level(spdlog::level::info);
     m_GLAPILogger->flush_on(spdlog::level::trace);
     spdlog::register_logger(m_GLAPILogger);
     /* Logger for game clients */

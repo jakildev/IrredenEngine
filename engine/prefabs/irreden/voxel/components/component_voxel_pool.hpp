@@ -25,7 +25,8 @@ struct C_VoxelPool {
         , m_voxelPositions{}
         , m_voxelPositionsOffset{}
         , m_voxelPositionsGlobal{}
-        , m_voxelColors{} {
+        , m_voxelColors{}
+        , m_entityIdsDirty{true} {
 
         m_voxelPositions.resize(m_voxelPoolSize);
         std::fill(m_voxelPositions.begin(), m_voxelPositions.end(), C_Position3D{vec3(0, 0, 0)});
@@ -46,6 +47,9 @@ struct C_VoxelPool {
 
         m_voxelColors.resize(m_voxelPoolSize);
         std::fill(m_voxelColors.begin(), m_voxelColors.end(), C_Voxel{Color{0, 0, 0, 0}});
+
+        m_voxelEntities.resize(m_voxelPoolSize);
+        std::fill(m_voxelEntities.begin(), m_voxelEntities.end(), IREntity::kNullEntity);
     }
 
     C_VoxelPool() {}
@@ -109,6 +113,13 @@ struct C_VoxelPool {
         size_t startIndex = positions.data() - m_voxelPositions.data();
         size_t size = positions.size();
 
+        std::fill(
+            m_voxelEntities.begin() + startIndex,
+            m_voxelEntities.begin() + startIndex + size,
+            IREntity::kNullEntity
+        );
+        m_entityIdsDirty = true;
+
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
     }
@@ -149,12 +160,36 @@ struct C_VoxelPool {
         return m_voxelPoolSize3D;
     }
 
+    void setEntityIdForRange(size_t startIdx, size_t count, EntityId entityId) {
+        std::fill(
+            m_voxelEntities.begin() + startIdx,
+            m_voxelEntities.begin() + startIdx + count,
+            entityId
+        );
+        m_entityIdsDirty = true;
+    }
+
+    const std::vector<EntityId> &getEntityIds() const {
+        return m_voxelEntities;
+    }
+
+    bool isEntityIdsDirty() const {
+        return m_entityIdsDirty;
+    }
+
+    void clearEntityIdsDirty() {
+        m_entityIdsDirty = false;
+    }
+
+    const C_PositionGlobal3D *getPositionGlobalsBasePtr() const {
+        return m_voxelPositionsGlobal.data();
+    }
+
   private:
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;
+    bool m_entityIdsDirty = true;
 
-    // Guarentee that IDs increment with index;
-    // This is the key to updating the scene.
     std::vector<EntityId> m_voxelEntities;
     std::vector<C_Position3D> m_voxelPositions;
     std::vector<C_PositionOffset3D> m_voxelPositionsOffset;

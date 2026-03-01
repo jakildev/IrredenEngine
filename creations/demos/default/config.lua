@@ -21,10 +21,15 @@ local config_2kfullscreen = {
     video_capture_audio_input_device_name = "",
     video_capture_audio_sample_rate = 48000,
     video_capture_audio_channels = 2,
+    video_capture_audio_bitrate = 320000,
+    video_capture_audio_mux_enabled = true,
+    video_capture_audio_wav_enabled = true,
+    video_capture_audio_sync_offset_ms = 0.0,
     screenshot_output_dir = "save_files/screenshots",
     start_updates_on_first_key_press = false,
     start_recording_on_first_key_press = false,
-    profiling_enabled = true
+    profiling_enabled = true,
+    gui_scale = 2 -- 1 = full res, higher = bigger GUI trixels
     -- END
 
 }
@@ -49,10 +54,15 @@ local config_1080_windowed = {
     video_capture_audio_input_device_name = "",
     video_capture_audio_sample_rate = 48000,
     video_capture_audio_channels = 2,
+    video_capture_audio_bitrate = 320000,
+    video_capture_audio_mux_enabled = true,
+    video_capture_audio_wav_enabled = true,
+    video_capture_audio_sync_offset_ms = 0.0,
     screenshot_output_dir = "save_files/screenshots",
     start_updates_on_first_key_press = true,
     start_recording_on_first_key_press = true,
-    profiling_enabled = true
+    profiling_enabled = true,
+    gui_scale = 2
     -- END
 
 }
@@ -78,10 +88,15 @@ local config_1080_windowed_vertical = {
     video_capture_audio_input_device_name = "",
     video_capture_audio_sample_rate = 48000,
     video_capture_audio_channels = 2,
+    video_capture_audio_bitrate = 320000,
+    video_capture_audio_mux_enabled = true,
+    video_capture_audio_wav_enabled = true,
+    video_capture_audio_sync_offset_ms = 0.0,
     screenshot_output_dir = "save_files/screenshots",
     start_updates_on_first_key_press = true,
     start_recording_on_first_key_press = true,
-    profiling_enabled = false
+    profiling_enabled = false,
+    gui_scale = 2
     -- END
 
 }

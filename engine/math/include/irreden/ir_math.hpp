@@ -90,6 +90,11 @@ template <typename T> constexpr auto fract(const T &value) {
     return glm::fract(value);
 }
 
+// Fractional part of absolute value; always in [0, 1). Ignores sign.
+template <typename T> constexpr auto fractAbs(const T &value) {
+    return glm::fract(glm::abs(value));
+}
+
 constexpr float sin(float value) {
     return glm::sin(value);
 }
@@ -348,7 +353,7 @@ constexpr uvec2 size2DIsoToGameResolution(const uvec2 size, const uvec2 scaleFac
     return size / uvec2(1, 2) * scaleFactor;
 }
 
-vec2 pos2DIsoToTriangleIndex(const vec2 position, const ivec2 triangleStepSizeScreen);
+vec2 pos2DIsoToTriangleIndex(const vec2 position, const int originModifier);
 
 float fract(float value);
 

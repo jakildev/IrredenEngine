@@ -13,6 +13,7 @@ class Buffer {
 
     GLuint getHandle();
     void subData(GLintptr offset, GLsizeiptr size, const void *data) const;
+    void getSubData(GLintptr offset, GLsizeiptr size, void *data) const;
     void bindRange(GLenum target, GLuint index, GLintptr offset, GLsizeiptr size);
     void bindBase(GLenum target, GLuint index);
 

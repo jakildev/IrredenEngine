@@ -4,33 +4,54 @@
 
 local S = {}
 
-S.midi_device = "OP-1"
-S.active_palette_name = "chasm"
+S.palette_selection_enabled = false
+S.start_paused = true
 
--- ── Tuning ──────────────────────────────────────────────────────────────────
-S.tuning = {
-    lane_spacing = 0.0,
-    center_offset = vec3.new(0.0, 0.0, 60.0),
-    platform_size = ivec3.new(8, 8, 2),
-    start_phase = 0.0,
-    note_contact_depth = 0.25,
-    note_travel_distance = 80.0,
-    -- Fraction of the fastest voice's period spent in the air (0.0–1.0).
-    -- Gravity is auto-derived so flight_time = airtime_ratio * min_period.
-    -- Set to nil to use gravity_override instead.
-    airtime_ratio = 0.80,
-    gravity_override = nil,
-    motion_up_duration_sec = 0.5,
-    motion_down_duration_sec = 0.5,
-    motion_bottom_rest_level = 1.0,
-    burst_spawn_offset_z = 0,
-    burst_iso_depth_behind = 0,
-    rhythm = {
-        preset = RhythmPreset.dense_twelve,
-        bpm = nil,  -- set a number to override the preset's default BPM
+S.midi_device = "OP-1"
+S.active_palette = Palette.SWEETIE
+S.note_color_mode = NoteColorMode.PER_VOICE
+S.palette_sort = PaletteSortMode.ORIGINAL
+S.color_pick = ColorPickMode.MIDNIGHT_ABLAZE
+-- S.manual_note_indices = {5, 6, 3, 4, 6, 1, 2, 7, 3, 2, 1, 8, 4, 7, 8, 5}
+S.manual_platform_indices = nil
+S.rhythm_preset = RhythmPreset.wave_1m_fast
+S.rhythm_bpm = nil --Overrides rhythm bpm
+S.stop_after_cycle = true
+
+-- ── Social/export text ───────────────────────────────────────────────────────
+S.description = {
+    hashtags = {
+        "#gamedev",
+        "#polyrhythm",
+        "#satisfying",
+        "#asmr",
     },
+}
+
+-- ── Voice defaults ───────────────────────────────────────────────────────────
+S.voice = {
+    -- Note-block voxel side length (cube).
+    block_size = 6,
+
+    -- MIDI note output defaults per voice.
+    midi_velocity_start = 112,
+    midi_velocity_step = 3,
+    midi_velocity_min = 64,
+    midi_hold_sec = 0.12,
+    midi_channel = 0,
+}
+
+-- ── Scene placement ──────────────────────────────────────────────────────────
+S.scene = {
+    center_offset = vec3.new(0.0, 0.0, 60.0),
+}
+
+-- ── Platform geometry/layout/spring ─────────────────────────────────────────
+S.platform = {
+    lane_spacing = 4.0,
+    size = ivec3.new(8, 8, 2),
     layout = {
-        mode = "zigzag_path",
+        mode = LayoutMode.GRID,
         plane = 0,
         depth = 0.0,
         grid_columns = 4,
@@ -44,21 +65,38 @@ S.tuning = {
     },
 }
 
+-- ── Note-block motion/placement ─────────────────────────────────────────────
+S.note_block = {
+    contact_depth = 0,
+    travel_distance = 70.0,
+}
+
+-- ── Physics timing inputs ────────────────────────────────────────────────────
+S.physics = {
+    -- Fraction of the fastest voice's period spent in the air (0.0–1.0).
+    -- Gravity is auto-derived so flight_time = airtime_ratio * min_period.
+    -- Set to nil to use gravity_override instead.
+    airtime_ratio = 0.70,
+    gravity_override = nil,
+}
+
 -- ── Particles ─────────────────────────────────────────────────────────────
 S.particle = {
-    count = 20,
+    count = 0,
     lifetime_multiplier = 10,
-    initial_speed = 400.0,
-    drag_scale = vec3.new(1.0, 1.0, 0.85),
+    initial_speed = 300.0,
+    drag_scale = vec3.new(0.5, 0.5, 0.35),
+    burst_spawn_offset_z = 0,
+    burst_iso_depth_behind = 0,
 
     -- Velocity direction ratios (fraction of initial_speed)
     xy_speed_ratio = 0.15,
     z_speed_ratio = 1.0,
-    z_variance_ratio = 0.06,
+    z_variance_ratio = 0.02,
 
     -- Per-particle drag / drift behavior
     drag_per_second = 4.5,
-    drift_delay_sec = 0.5,
+    drift_delay_sec = 0.8, --Extends pur-launch phase before hover kicks in
     drift_up_accel = 100.0,
     min_speed = 0.01,
 
@@ -66,11 +104,11 @@ S.particle = {
     hover_duration_sec = 1.5,
     hover_osc_speed = 5.0,
     hover_osc_amplitude = 10.0,
-    hover_blend_sec = 1.2,
-    hover_blend_easing = IREasingFunction.QUADRATIC_EASE_OUT,
+    hover_blend_sec = 2.0,
+    hover_blend_easing = IREasingFunction.CUBIC_EASE_OUT,
 
     -- Per-particle randomness (0.0 = none, 0.3 = +/-30% of base value)
-    hover_start_variance = 0.3,
+    hover_start_variance = 0.2,
     hover_duration_variance = 0.3,
     hover_amplitude_variance = 0.3,
     hover_speed_variance = 0.3,
@@ -78,17 +116,16 @@ S.particle = {
     -- Spawn glow (auto-fires on particle creation)
     glow_enabled = true,
     glow_mix_to_white = 1.0,
-    glow_hold_sec = 0.03,
-    glow_fade_sec = 0.22,
+    glow_hold_sec = 0.10,
+    glow_fade_sec = 0.20,
     glow_easing = IREasingFunction.CUBIC_EASE_OUT,
 }
 
 -- ── Visual options ──────────────────────────────────────────────────────────
 S.visual = {
-    -- "palette" = least-saturated palette half; "desaturate" = derive from block color
-    platform_color_mode = "desaturate",
-    platform_desat_factor = 0.45,
-    platform_darken_factor = 0.30,
+    platform_color_mode = PlatformColorMode.MATCH_BLOCK,
+    -- platform_desat_factor = 0.45,
+    -- platform_darken_factor = 0.30,
 
     platform_mute_color = Color.new(20, 20, 25, 255),
     platform_mute_amount = 0.60,
@@ -137,31 +174,32 @@ S.visual = {
     platform_hit_glow_easing = IREasingFunction.SINE_EASE_OUT,
 }
 
--- ── Platform animation ─────────────────────────────────────────────────────
-S.tuning.platform_anim = {
-    enabled = true,
+-- ── Platform spring physics ────────────────────────────────────────────────
+-- Replaces the old animation-driven platform_anim with velocity-based spring
+-- physics.  Stiffness is auto-derived in main.lua from gravity + travel
+-- distance so the spring launch speed matches the block's impulse speed.
+S.platform.spring = {
+    length = 8.0,
+    lock_ratio = 0.7,
+    overshoot_ratio = 0.3,
+    absorption_ratio = 1.0,
+    damping = 10.0,
+    max_launch_oscillations = 2,
+    max_catch_oscillations = 2,
+    settle_speed = 0.5,
+    load_lead_sec = 0.15,
     direction = vec3.new(0.0, 0.0, 1.0),
-    start_displacement = 0.0,
-
-    launch = {
-        { dur = 0.15, from = 3.0,  to = 5.0,  ease = "QUADRATIC_EASE_IN" },
-        { dur = 0.08, from = 5.0,  to = -1.5, ease = "QUADRATIC_EASE_OUT" },
-        { dur = 0.12, from = -1.5, to = 0.0,  ease = "SINE_EASE_OUT" },
-        action_phase = 1,
-    },
-    land = {
-        { dur = 0.06, from = 0.0,  to = 4.0,  ease = "QUADRATIC_EASE_OUT" },
-        { dur = 0.15, from = 4.0,  to = 3.0,  ease = "SINE_EASE_OUT" },
-    },
-
-    color_enabled = true,
-    color_mode = "HSV_OFFSET_TIMELINE",
-    -- HSV offset applied when platform is in the "down" (landed) position.
-    -- launch idle = no offset (original color), land idle = darkened.
-    idle_value_offset = -0.3,
-    motion_shift = {
-        enabled = false,
-    },
+    -- Lock path color shift (+/- hue, saturation, value, alpha).
+    -- Used for rest -> locked as spring.colorProgress goes 0 -> 1.
+    color_shift_hsv = ColorHSV(0.0, 0.00, 0.00, 0.0),
+    -- Release path color shift (+/- hue, saturation, value, alpha).
+    -- Used for locked/launch -> rest as spring.colorProgress goes 1 -> 0.
+    -- Set this equal to color_shift_hsv to mirror the lock path exactly.
+    release_color_shift_hsv = ColorHSV(0.0, -0.35, -0.50, 0.0),
+    -- Minimum HSV value/saturation after shift (0.0–1.0). Prevents dark
+    -- base colors from becoming indistinguishable from black when shifted.
+    color_min_value = 0.08,
+    color_min_saturation = 0.0,
 }
 
 -- ── Scale ───────────────────────────────────────────────────────────────────
@@ -188,9 +226,12 @@ S.tuning.platform_anim = {
 --   root      = IRAudio.rootNote(NoteName.D, 3)    -- D3 MIDI note number
 
 S.scale = {
-    intervals    = IRAudio.getScaleIntervals(ScaleMode.PENTATONIC_MINOR),
-    root         = IRAudio.rootNote(NoteName.Gs, 3),
+    mode         = ScaleMode.PENTATONIC_MINOR,
+    root_note    = NoteName.Gs,
+    root_octave  = 2,
     start_offset = 0,
 }
+S.scale.intervals = IRAudio.getScaleIntervals(S.scale.mode)
+S.scale.root      = IRAudio.rootNote(S.scale.root_note, S.scale.root_octave)
 
 return S

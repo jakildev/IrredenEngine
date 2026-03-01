@@ -4,6 +4,7 @@
 #include <irreden/ir_profile.hpp>
 
 #include <irreden/audio/ir_audio_types.hpp>
+#include <irreden/audio/audio_capture_source.hpp>
 
 #include <RtAudio.h>
 
@@ -13,12 +14,12 @@
 
 namespace IRAudio {
 
-class Audio {
+class Audio : public IAudioCaptureSource {
   public:
     using AudioInputCallback = std::function<void(const float *, int, double, bool)>;
 
     Audio();
-    ~Audio();
+    ~Audio() override;
 
     bool openStreamIn(
         const std::string &deviceName,
@@ -32,12 +33,18 @@ class Audio {
     [[nodiscard]] bool isStreamInOpen() const;
     [[nodiscard]] bool isStreamInRunning() const;
 
+    bool startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) override;
+    void stopCapture() override;
+    [[nodiscard]] bool isCapturing() const override;
+    [[nodiscard]] double getInputLatencyMs() const override;
+
   private:
-    RtAudio m_rtAudio;
+    mutable RtAudio m_rtAudio;
     std::unordered_map<unsigned int, RtAudio::DeviceInfo> m_deviceInfo;
     int m_numDevices = 0;
     bool m_streamInOpen = false;
     bool m_streamInRunning = false;
+    int m_streamSampleRate = 48'000;
     AudioInputCallback m_inputCallback;
 
     void logDeviceInfoAll();

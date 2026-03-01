@@ -16,6 +16,7 @@ bool recordFrame(const std::uint8_t *rgbaData, int strideBytes);
 void configureScreenshotOutputDir(const std::string &outputDirPath);
 void requestScreenshot();
 void toggleRecording();
+void notifyFixedUpdate();
 bool isRecording();
 std::uint64_t getFrameCount();
 const std::string &getLastError();

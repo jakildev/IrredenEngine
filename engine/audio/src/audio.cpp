@@ -98,6 +98,7 @@ bool Audio::openStreamIn(
         return false;
     }
     m_streamInOpen = true;
+    m_streamSampleRate = static_cast<int>(requestedSampleRate);
     IRE_LOG_INFO(
         "Opened audio input stream: device='{}' sampleRate={} channels={} bufferFrames={}",
         deviceInfo.name.c_str(),
@@ -164,6 +165,33 @@ bool Audio::isStreamInOpen() const {
 
 bool Audio::isStreamInRunning() const {
     return m_streamInRunning;
+}
+
+bool Audio::startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) {
+    if (!openStreamIn(config.device_name_, config.sample_rate_, config.channels_, std::move(cb))) {
+        return false;
+    }
+    if (!startStreamIn()) {
+        closeStreamIn();
+        return false;
+    }
+    return true;
+}
+
+void Audio::stopCapture() {
+    closeStreamIn();
+}
+
+bool Audio::isCapturing() const {
+    return isStreamInRunning();
+}
+
+double Audio::getInputLatencyMs() const {
+    if (!m_streamInOpen || m_streamSampleRate <= 0) {
+        return 0.0;
+    }
+    const long latencyFrames = m_rtAudio.getStreamLatency();
+    return 1000.0 * static_cast<double>(latencyFrames) / static_cast<double>(m_streamSampleRate);
 }
 
 void Audio::logDeviceInfoAll() {

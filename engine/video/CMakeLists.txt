@@ -18,12 +18,12 @@ target_link_libraries(
     IrredenEngineProfile
     IrredenEngineTime
     IrredenEngineRendering
+    IrredenEngineAudio
 )
 
 target_include_directories(
     IrredenEngineVideo PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/
-    ${PROJECT_SOURCE_DIR}/engine/audio/include/
 )
 
 option(

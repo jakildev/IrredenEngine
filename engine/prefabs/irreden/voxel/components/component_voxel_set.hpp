@@ -20,6 +20,8 @@ namespace IRComponents {
 struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
+    // TODO: Evaulate if we should store here or somewhere else.
+    IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
 
     // local voxel position
     std::span<C_Position3D> positions_;

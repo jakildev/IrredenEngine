@@ -56,10 +56,18 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             GL_SHADER_STORAGE_BUFFER,
             kBufferIndex_SingleVoxelColors
         );
+        IRRender::createNamedResource<Buffer>(
+            "VoxelEntityIdBuffer",
+            nullptr,
+            IRConstants::kMaxSingleVoxels * sizeof(IREntity::EntityId),
+            GL_DYNAMIC_STORAGE_BIT,
+            GL_SHADER_STORAGE_BUFFER,
+            kBufferIndex_VoxelEntityIds
+        );
         return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasFirst",
             [](IREntity::EntityId &entity,
-               const C_VoxelPool &voxelPool,
+               C_VoxelPool &voxelPool,
                C_TriangleCanvasTextures &triangleCanvasTextures) {
                 frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
                 frameData.trixelCanvasOffsetZ1_ =
@@ -111,8 +119,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                         voxelPool.getColors().data()
                     );
 
+                if (voxelPool.isEntityIdsDirty()) {
+                    IRE_LOG_INFO(
+                        "[Stage1] Uploading entity IDs to SSBO, poolSize={}, first few IDs: {}, {}, {}",
+                        voxelPool.getVoxelPoolSize(),
+                        voxelPool.getEntityIds().size() > 0 ? voxelPool.getEntityIds()[0] : 0,
+                        voxelPool.getEntityIds().size() > 1 ? voxelPool.getEntityIds()[1] : 0,
+                        voxelPool.getEntityIds().size() > 2 ? voxelPool.getEntityIds()[2] : 0
+                    );
+                    IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer")
+                        ->subData(
+                            0,
+                            voxelPool.getVoxelPoolSize() * sizeof(IREntity::EntityId),
+                            voxelPool.getEntityIds().data()
+                        );
+                    voxelPool.clearEntityIdsDirty();
+                }
+
                 triangleCanvasTextures.getTextureDistances()->bindImage(1, GL_READ_WRITE, GL_R32I);
-                // IRE_LOG_INFO("Voxel pool size: {}", voxelPool.getVoxelPoolSize());
                 glDispatchCompute(voxelPool.getVoxelPoolSize(), 1, 1);
                 glMemoryBarrier(GL_ALL_BARRIER_BITS);
             },
@@ -159,12 +183,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                     );
                 triangleCanvasTextures.getTextureColors()->bindImage(0, GL_WRITE_ONLY, GL_RGBA8);
                 triangleCanvasTextures.getTextureDistances()->bindImage(1, GL_READ_ONLY, GL_R32I);
+                triangleCanvasTextures.getTextureEntityIds()->bindImage(2, GL_WRITE_ONLY, GL_RG32UI);
 
                 glDispatchCompute(voxelPool.getVoxelPoolSize(), 1, 1);
                 glMemoryBarrier(GL_ALL_BARRIER_BITS);
-                // triangleCanvasTextures.textureTriangleColors_.second->saveAsPNG(
-                //     "../save_files/triangleCanvasColors.png"
-                // );
             },
             []() { IRRender::getNamedResource<ShaderProgram>("SingleVoxel2")->use(); }
         );

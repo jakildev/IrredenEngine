@@ -16,6 +16,7 @@ struct C_TriangleCanvasTextures {
     ivec2 size_;
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
     std::pair<ResourceId, Texture2D *> textureTriangleDistances_;
+    std::pair<ResourceId, Texture2D *> textureTriangleEntityIds_;
 
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
@@ -24,6 +25,9 @@ struct C_TriangleCanvasTextures {
           )}
         , textureTriangleDistances_{IRRender::createResource<IRRender::Texture2D>(
               GL_TEXTURE_2D, size.x, size.y, GL_R32I, GL_REPEAT, GL_NEAREST
+          )}
+        , textureTriangleEntityIds_{IRRender::createResource<IRRender::Texture2D>(
+              GL_TEXTURE_2D, size.x, size.y, GL_RG32UI, GL_CLAMP_TO_EDGE, GL_NEAREST
           )} {}
 
     C_TriangleCanvasTextures() {}
@@ -31,6 +35,7 @@ struct C_TriangleCanvasTextures {
     void onDestroy() {
         IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
+        IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
     }
 
     const Texture2D *getTextureColors() const {
@@ -41,15 +46,28 @@ struct C_TriangleCanvasTextures {
         return textureTriangleDistances_.second;
     }
 
+    const Texture2D *getTextureEntityIds() const {
+        return textureTriangleEntityIds_.second;
+    }
+
     void bind(int textureUnitColors, int textureUnitDistances) const {
         textureTriangleColors_.second->bind(textureUnitColors);
         textureTriangleDistances_.second->bind(textureUnitDistances);
+    }
+
+    void bind(int textureUnitColors, int textureUnitDistances, int textureUnitEntityIds) const {
+        textureTriangleColors_.second->bind(textureUnitColors);
+        textureTriangleDistances_.second->bind(textureUnitDistances);
+        textureTriangleEntityIds_.second->bind(textureUnitEntityIds);
     }
 
     void clear() const {
         textureTriangleColors_.second->clear(GL_RGBA, GL_UNSIGNED_BYTE, &u8vec4(0, 0, 0, 0)[0]);
         textureTriangleDistances_.second
             ->clear(GL_RED_INTEGER, GL_INT, &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]);
+        uvec2 zero{0u, 0u};
+        textureTriangleEntityIds_.second
+            ->clear(GL_RG_INTEGER, GL_UNSIGNED_INT, &zero);
     }
 
     void clearWithColor(const Color &color) const {
@@ -94,6 +112,20 @@ struct C_TriangleCanvasTextures {
             ->subImage2D(0, 0, size_.x, size_.y, GL_RGBA, GL_UNSIGNED_BYTE, colorData.data());
         textureTriangleDistances_.second
             ->subImage2D(0, 0, size_.x, size_.y, GL_RED_INTEGER, GL_INT, distanceData.data());
+    }
+
+    IREntity::EntityId readEntityIdAt(ivec2 trixelPos) const {
+        if (trixelPos.x < 0 || trixelPos.x >= size_.x ||
+            trixelPos.y < 0 || trixelPos.y >= size_.y) {
+            return IREntity::kNullEntity;
+        }
+        uvec2 packed{0u, 0u};
+        textureTriangleEntityIds_.second->getSubImage2D(
+            trixelPos.x, trixelPos.y, 1, 1,
+            GL_RG_INTEGER, GL_UNSIGNED_INT, &packed
+        );
+        return static_cast<IREntity::EntityId>(packed.x) |
+               (static_cast<IREntity::EntityId>(packed.y) << 32);
     }
 
     void saveAsPNG() {}

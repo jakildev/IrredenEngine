@@ -47,6 +47,10 @@ constexpr GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;
 constexpr GLuint kBufferIndex_VoxelSetUnlockedPositions = 8;
 constexpr GLuint kBufferIndex_VoxelSetUnlockedColors = 9;
 constexpr GLuint kBufferIndex_FrameDataTrixelToTrixel = 10;
+constexpr GLuint kBufferIndex_FontData = 11;
+constexpr GLuint kBufferIndex_GlyphDrawCommands = 12;
+constexpr GLuint kBufferIndex_VoxelEntityIds = 13;
+constexpr GLuint kBufferIndex_HoveredEntityId = 14;
 
 } // namespace IRRender
 

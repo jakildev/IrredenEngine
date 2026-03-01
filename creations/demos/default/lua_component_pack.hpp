@@ -7,6 +7,9 @@
 #include <irreden/update/components/component_periodic_idle_lua.hpp>
 #include <irreden/audio/components/component_midi_note_lua.hpp>
 #include <irreden/audio/components/component_midi_sequence_lua.hpp>
+#include <irreden/render/components/component_text_segment_lua.hpp>
+#include <irreden/render/components/component_gui_position_lua.hpp>
+#include <irreden/render/components/component_text_style_lua.hpp>
 
 namespace IRDefaultCreation {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
@@ -18,7 +21,10 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         PeriodStage,
         C_PeriodicIdle,
         C_MidiNote,
-        C_MidiSequence>();
+        C_MidiSequence,
+        C_TextSegment,
+        C_GuiPosition,
+        C_TextStyle>();
 }
 } // namespace IRDefaultCreation
 

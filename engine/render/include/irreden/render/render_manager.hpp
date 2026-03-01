@@ -59,6 +59,13 @@ class RenderManager {
     void zoomMainBackgroundPatternIn();
     void zoomMainBackgroundPatternOut();
 
+    void setGuiVisible(bool visible);
+    void toggleGuiVisible();
+    bool isGuiVisible() const;
+
+    void setGuiScale(int scale);
+    int getGuiScale() const;
+
     void tick();
     void printRenderInfo();
 
@@ -86,6 +93,8 @@ class RenderManager {
     EntityId m_mainFramebuffer;
     EntityId m_mainCanvas;
     EntityId m_backgroundCanvas;
+    int m_guiScale = 2;
+    EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;
     ivec2 m_viewport;
@@ -96,6 +105,7 @@ class RenderManager {
     FitMode m_fitMode;
     VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
     int m_voxelRenderSubdivisions = 1;
+    bool m_guiVisible = false;
     std::unique_ptr<RenderImpl> m_renderImpl;
 
     void initRenderingSystems();

@@ -43,6 +43,7 @@ class IRGLFWWindow {
     ~IRGLFWWindow();
 
     void getWindowSize(int &width, int &height);
+    void getFramebufferSize(int &width, int &height);
     void getCursorPosition(double &posX, double &posY);
     int getKeyStatus(int key);
     int getMouseButtonStatus(int button);

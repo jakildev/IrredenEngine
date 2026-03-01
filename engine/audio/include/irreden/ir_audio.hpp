@@ -2,6 +2,7 @@
 #define IR_AUDIO_H
 
 #include <irreden/audio/ir_audio_types.hpp>
+#include <irreden/audio/audio_capture_source.hpp>
 
 #include <irreden/audio/components/component_midi_message.hpp>
 
@@ -15,6 +16,8 @@ class AudioManager;
 extern AudioManager *g_audioManager;
 AudioManager &getAudioManager();
 using AudioInputCallback = std::function<void(const float *, int, double, bool)>;
+
+IAudioCaptureSource &getAudioCaptureSource();
 
 int openPortMidiIn(MidiInInterfaces midiInInterface);
 int openPortMidiIn(const std::string &deviceName);

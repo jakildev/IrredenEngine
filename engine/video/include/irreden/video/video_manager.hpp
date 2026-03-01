@@ -9,6 +9,10 @@
 #include <thread>
 #include <vector>
 
+namespace IRAudio {
+class IAudioCaptureSource;
+} // namespace IRAudio
+
 namespace IRVideo {
 
 class VideoManager {
@@ -23,12 +27,18 @@ class VideoManager {
         bool captureAudioInput,
         const std::string &audioInputDeviceName,
         int audioSampleRate,
-        int audioChannels
+        int audioChannels,
+        int audioBitrate = 320'000,
+        bool audioMuxEnabled = true,
+        bool audioWavEnabled = true,
+        double audioSyncOffsetMs = 0.0,
+        IRAudio::IAudioCaptureSource *audioCaptureSource = nullptr
     );
     void configureScreenshotOutputDir(const std::string &outputDirPath);
 
     void toggleRecording();
     void requestScreenshot();
+    void notifyFixedUpdate();
     void render();
     void shutdown();
 
@@ -48,16 +58,21 @@ class VideoManager {
     int m_targetFps = 60;
     int m_videoBitrate = 10'000'000;
     bool m_captureAudioInput = false;
-    std::string m_audioInputDeviceName = "";
+    std::string m_audioInputDeviceName;
     int m_audioSampleRate = 48'000;
     int m_audioChannels = 2;
+    int m_audioBitrate = 320'000;
+    bool m_audioMuxEnabled = true;
+    bool m_audioWavEnabled = true;
+    double m_audioSyncOffsetMs = 0.0;
     std::string m_outputFilePath = "capture.mp4";
     std::string m_screenshotOutputDirPath = "save_files/screenshots";
     std::uint64_t m_nextScreenshotIndex = 1;
     bool m_screenshotRequested = false;
     int m_sourceFrameWidth = 0;
     int m_sourceFrameHeight = 0;
-    double m_captureAccumulatorSeconds = 0.0;
+    int64_t m_totalFixedUpdates = 0;
+    int64_t m_totalCapturedFrames = 0;
     std::size_t m_sourceFrameBytes = 0;
     int m_pboWriteIndex = 0;
     int m_pboPrimingFrames = 0;
@@ -78,6 +93,7 @@ class VideoManager {
     void beginAsyncFinalize();
     void joinFinalizeThreadIfDone();
 
+    IRAudio::IAudioCaptureSource *m_audioCaptureSource = nullptr;
     bool m_audioInputArmed = false;
     VideoRecorder m_videoRecorder;
 };

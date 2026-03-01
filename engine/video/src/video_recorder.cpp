@@ -143,8 +143,17 @@ struct VideoRecorder::FFmpegState {
     double firstAudioStreamTimeSeconds = -1.0;
     bool audioCaptureRequested = false;
     bool audioMuxEnabled = false;
+    bool wavWriteEnabled = false;
+    int64_t audioSyncOffsetSamples = 0;
     std::string fallbackAudioPath;
     std::vector<float> fallbackAudioPcm;
+
+    float levelPeakSample = 0.0f;
+    double levelRmsAccumulator = 0.0;
+    int64_t levelRmsSampleCount = 0;
+    int levelClippedSamples = 0;
+    double levelLastLogStreamTime = -1.0;
+    static constexpr double kLevelLogIntervalSeconds = 5.0;
 
     std::mutex queueMutex;
     std::condition_variable queueCv;
@@ -157,6 +166,7 @@ struct VideoRecorder::FFmpegState {
     std::string workerError;
     std::size_t maxQueuedFrames = 8;
     std::size_t maxQueuedAudioChunks = 128;
+    int64_t droppedVideoFrames = 0;
 #endif
 };
 
@@ -190,12 +200,15 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     state->audioCaptureRequested = config.capture_audio_input_;
     state->audioSampleRate = std::max(config.audio_sample_rate_, 8'000);
     state->audioChannels = std::clamp(config.audio_channels_, 1, 2);
+    state->wavWriteEnabled = config.audio_wav_enabled_;
     if (state->audioCaptureRequested) {
         state->fallbackAudioPath = makeFallbackAudioPath(config.output_file_path_);
-        const std::size_t preAllocSamples =
-            static_cast<std::size_t>(state->audioSampleRate) *
-            static_cast<std::size_t>(state->audioChannels) * 120U;
-        state->fallbackAudioPcm.reserve(preAllocSamples);
+        if (state->wavWriteEnabled) {
+            const std::size_t preAllocSamples =
+                static_cast<std::size_t>(state->audioSampleRate) *
+                static_cast<std::size_t>(state->audioChannels) * 120U;
+            state->fallbackAudioPcm.reserve(preAllocSamples);
+        }
     }
 
     const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
@@ -242,7 +255,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     state->videoCodecContext->framerate = AVRational{config.target_fps_, 1};
     state->videoCodecContext->bit_rate = std::max(config.video_bitrate_, 250000);
     state->videoCodecContext->gop_size = config.target_fps_ * 2;
-    state->videoCodecContext->max_b_frames = 2;
+    state->videoCodecContext->max_b_frames = 0;
     state->videoCodecContext->thread_count = 0;
 
     if ((state->formatContext->oformat->flags & AVFMT_GLOBALHEADER) != 0) {
@@ -271,8 +284,97 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     }
     state->videoStream->time_base = state->videoCodecContext->time_base;
 
-    // Audio mux into the video container is disabled for now (phase 1:
-    // lossless WAV verification).  The fallback WAV path handles capture.
+    if (state->audioCaptureRequested && config.audio_mux_enabled_) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
+        const AVCodecID audioCodecId = config.audio_lossless_
+            ? AV_CODEC_ID_FLAC
+            : AV_CODEC_ID_AAC;
+        const AVCodec *audioCodec = avcodec_find_encoder(audioCodecId);
+        if (audioCodec == nullptr) {
+            IRE_LOG_WARN("Could not find audio encoder (id={}). Audio muxing disabled.",
+                         static_cast<int>(audioCodecId));
+        } else {
+            state->audioStream = avformat_new_stream(state->formatContext, audioCodec);
+            if (state->audioStream == nullptr) {
+                IRE_LOG_WARN("Could not create audio stream. Audio muxing disabled.");
+            } else {
+                state->audioCodecContext = avcodec_alloc_context3(audioCodec);
+                if (state->audioCodecContext == nullptr) {
+                    IRE_LOG_WARN("Could not allocate audio codec context. Audio muxing disabled.");
+                    state->audioStream = nullptr;
+                } else {
+                    state->audioCodecContext->sample_fmt = chooseAudioSampleFormat(audioCodec);
+                    state->audioCodecContext->sample_rate = state->audioSampleRate;
+                    if (state->audioChannels == 1) {
+                        state->audioCodecContext->ch_layout = AV_CHANNEL_LAYOUT_MONO;
+                    } else {
+                        state->audioCodecContext->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
+                    }
+                    state->audioCodecContext->time_base = AVRational{1, state->audioSampleRate};
+                    if (!config.audio_lossless_) {
+                        state->audioCodecContext->bit_rate =
+                            std::max(config.audio_bitrate_, 64'000);
+                        state->audioCodecContext->profile = AV_PROFILE_AAC_LOW;
+                    }
+                    if ((state->formatContext->oformat->flags & AVFMT_GLOBALHEADER) != 0) {
+                        state->audioCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+                    }
+
+                    result = avcodec_open2(state->audioCodecContext, audioCodec, nullptr);
+                    if (result < 0) {
+                        IRE_LOG_WARN("Could not open audio codec: {}. Audio muxing disabled.",
+                                     makeErrorString(result).c_str());
+                        avcodec_free_context(&state->audioCodecContext);
+                        state->audioStream = nullptr;
+                    } else {
+                        result = avcodec_parameters_from_context(
+                            state->audioStream->codecpar, state->audioCodecContext);
+                        if (result < 0) {
+                            IRE_LOG_WARN("Could not copy audio stream params. Audio muxing disabled.");
+                            avcodec_free_context(&state->audioCodecContext);
+                            state->audioStream = nullptr;
+                        } else {
+                            state->audioStream->time_base = state->audioCodecContext->time_base;
+                            state->audioFrame = av_frame_alloc();
+                            if (state->audioFrame != nullptr) {
+                                const int frameSize = (state->audioCodecContext->frame_size > 0)
+                                    ? state->audioCodecContext->frame_size
+                                    : 1024;
+                                state->audioFrame->format = state->audioCodecContext->sample_fmt;
+                                state->audioFrame->ch_layout = state->audioCodecContext->ch_layout;
+                                state->audioFrame->sample_rate = state->audioSampleRate;
+                                state->audioFrame->nb_samples = frameSize;
+                                result = av_frame_get_buffer(state->audioFrame, 0);
+                                if (result < 0) {
+                                    IRE_LOG_WARN("Could not allocate audio frame buffer. "
+                                                 "Audio muxing disabled.");
+                                    av_frame_free(&state->audioFrame);
+                                    avcodec_free_context(&state->audioCodecContext);
+                                    state->audioStream = nullptr;
+                                } else {
+                                    state->audioMuxEnabled = true;
+                                    const double syncOffsetMs = config.audio_sync_offset_ms_;
+                                    state->audioSyncOffsetSamples = static_cast<int64_t>(
+                                        std::llround(syncOffsetMs * 0.001 *
+                                                     static_cast<double>(state->audioSampleRate)));
+                                    IRE_LOG_INFO(
+                                        "Audio mux enabled: codec={} rate={} ch={} bitrate={} "
+                                        "syncOffset={}ms ({}samples)",
+                                        audioCodec->name,
+                                        state->audioSampleRate,
+                                        state->audioChannels,
+                                        config.audio_lossless_ ? 0 : config.audio_bitrate_,
+                                        syncOffsetMs,
+                                        state->audioSyncOffsetSamples
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     if ((state->formatContext->oformat->flags & AVFMT_NOFILE) == 0) {
         result =
@@ -285,7 +387,10 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
         }
     }
 
-    result = avformat_write_header(state->formatContext, nullptr);
+    AVDictionary *formatOptions = nullptr;
+    av_dict_set(&formatOptions, "movflags", "+faststart", 0);
+    result = avformat_write_header(state->formatContext, &formatOptions);
+    av_dict_free(&formatOptions);
     if (result < 0) {
         m_lastError = "Could not write stream header: " + makeErrorString(result);
         IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
@@ -412,6 +517,10 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                 if (!processAudioChunk && !state->frameQueue.empty()) {
                     frameBuffer = std::move(state->frameQueue.front());
                     state->frameQueue.pop_front();
+                    if (state->droppedVideoFrames > 0) {
+                        state->nextVideoPts += state->droppedVideoFrames;
+                        state->droppedVideoFrames = 0;
+                    }
                 }
             }
 
@@ -609,9 +718,11 @@ void VideoRecorder::stop() {
             av_write_trailer(state->formatContext);
         }
         if (state->audioCaptureRequested) {
-            if (state->fallbackAudioPcm.empty()) {
+            if (state->wavWriteEnabled && state->fallbackAudioPcm.empty()) {
                 IRE_LOG_WARN("Audio capture was requested but no samples were recorded.");
-            } else if (!state->audioMuxEnabled || state->encodeFailed) {
+            }
+            if (state->wavWriteEnabled && !state->fallbackAudioPcm.empty()) {
+                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
                 const std::size_t totalSamples = state->fallbackAudioPcm.size();
                 const double durationSeconds =
                     static_cast<double>(totalSamples) /
@@ -710,6 +821,7 @@ bool VideoRecorder::submitVideoFrame(const std::uint8_t *rgbaData, int strideByt
 
         if (state->frameQueue.size() >= state->maxQueuedFrames) {
             state->frameQueue.pop_front();
+            ++state->droppedVideoFrames;
         }
         state->frameQueue.push_back(std::move(frame));
     }
@@ -758,6 +870,7 @@ bool VideoRecorder::submitVideoFrame(std::vector<std::uint8_t> &&frameData) {
 
         if (state->frameQueue.size() >= state->maxQueuedFrames) {
             state->frameQueue.pop_front();
+            ++state->droppedVideoFrames;
         }
         state->frameQueue.push_back(std::move(frameData));
     }
@@ -807,14 +920,57 @@ bool VideoRecorder::submitAudioInputSamples(
     const std::size_t totalSamples =
         static_cast<std::size_t>(frameCount) * static_cast<std::size_t>(state->audioChannels);
 
-    // Append to the WAV buffer outside the mutex. This is safe because only
-    // the audio callback thread writes here and stop() reads only after the
-    // audio device is closed (guaranteed by shutdown() ordering).
-    state->fallbackAudioPcm.insert(
-        state->fallbackAudioPcm.end(),
-        interleavedSamples,
-        interleavedSamples + totalSamples
-    );
+    if (state->wavWriteEnabled) {
+        state->fallbackAudioPcm.insert(
+            state->fallbackAudioPcm.end(),
+            interleavedSamples,
+            interleavedSamples + totalSamples
+        );
+    }
+
+    for (std::size_t i = 0; i < totalSamples; ++i) {
+        const float absSample = std::fabs(interleavedSamples[i]);
+        if (absSample > state->levelPeakSample) {
+            state->levelPeakSample = absSample;
+        }
+        state->levelRmsAccumulator += static_cast<double>(interleavedSamples[i]) *
+                                      static_cast<double>(interleavedSamples[i]);
+        ++state->levelRmsSampleCount;
+        if (absSample >= 1.0f) {
+            ++state->levelClippedSamples;
+        }
+    }
+
+    if (state->levelLastLogStreamTime < 0.0) {
+        state->levelLastLogStreamTime = streamTime;
+    }
+    if (streamTime - state->levelLastLogStreamTime >= FFmpegState::kLevelLogIntervalSeconds) {
+        const float peak = state->levelPeakSample;
+        const double peakDbfs = (peak > 0.0f)
+            ? 20.0 * std::log10(static_cast<double>(peak))
+            : -120.0;
+        const double rmsDbfs = (state->levelRmsSampleCount > 0 && state->levelRmsAccumulator > 0.0)
+            ? 10.0 * std::log10(state->levelRmsAccumulator /
+                                static_cast<double>(state->levelRmsSampleCount))
+            : -120.0;
+        IRE_LOG_INFO("Audio levels: peak={:.1f} dBFS, RMS={:.1f} dBFS, clipped={} samples",
+                     peakDbfs, rmsDbfs, state->levelClippedSamples);
+        if (state->levelClippedSamples > 0) {
+            IRE_LOG_WARN("Audio CLIPPING detected! {} samples clipped. Reduce input gain.",
+                         state->levelClippedSamples);
+        } else if (peakDbfs > -1.0) {
+            IRE_LOG_WARN("Audio near clipping! Peak at {:.1f} dBFS. Consider reducing input gain.",
+                         peakDbfs);
+        }
+        if (rmsDbfs < -40.0) {
+            IRE_LOG_WARN("Audio very quiet (RMS {:.1f} dBFS). Check input connection.", rmsDbfs);
+        }
+        state->levelPeakSample = 0.0f;
+        state->levelRmsAccumulator = 0.0;
+        state->levelRmsSampleCount = 0;
+        state->levelClippedSamples = 0;
+        state->levelLastLogStreamTime = streamTime;
+    }
 
     if (!state->audioMuxEnabled) {
         return true;
@@ -831,6 +987,7 @@ bool VideoRecorder::submitAudioInputSamples(
     const double relativeTime = std::max(0.0, streamTime - state->firstAudioStreamTimeSeconds);
     int64_t chunkPts =
         static_cast<int64_t>(std::llround(relativeTime * static_cast<double>(state->audioSampleRate)));
+    chunkPts += state->audioSyncOffsetSamples;
     chunkPts = std::max(chunkPts, state->nextAudioPts);
     state->nextAudioPts = chunkPts + frameCount;
 

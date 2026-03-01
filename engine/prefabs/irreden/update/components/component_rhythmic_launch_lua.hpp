@@ -10,6 +10,7 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_RhythmicLaunch>
 template <> inline void bindLuaType<IRComponents::C_RhythmicLaunch>(LuaScript &luaScript) {
     luaScript.registerType<
         IRComponents::C_RhythmicLaunch,
+        IRComponents::C_RhythmicLaunch(float, IRMath::vec3, float, float, bool, int32_t),
         IRComponents::C_RhythmicLaunch(float, IRMath::vec3, float, float, bool),
         IRComponents::C_RhythmicLaunch(float, IRMath::vec3, float, float),
         IRComponents::C_RhythmicLaunch(float, IRMath::vec3, float),
@@ -24,7 +25,11 @@ template <> inline void bindLuaType<IRComponents::C_RhythmicLaunch>(LuaScript &l
         "elapsedSeconds",
         &IRComponents::C_RhythmicLaunch::elapsedSeconds_,
         "grounded",
-        &IRComponents::C_RhythmicLaunch::grounded_
+        &IRComponents::C_RhythmicLaunch::grounded_,
+        "maxLaunches",
+        &IRComponents::C_RhythmicLaunch::maxLaunches_,
+        "launchCount",
+        &IRComponents::C_RhythmicLaunch::launchCount_
     );
 }
 } // namespace IRScript

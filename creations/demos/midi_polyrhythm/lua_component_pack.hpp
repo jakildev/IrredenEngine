@@ -20,9 +20,13 @@
 #include <irreden/update/components/component_anim_clip_color_track_lua.hpp>
 #include <irreden/update/components/component_anim_color_state_lua.hpp>
 #include <irreden/update/components/component_anim_motion_color_shift_lua.hpp>
+#include <irreden/update/components/component_spring_platform_lua.hpp>
 #include <irreden/render/components/component_triangle_canvas_background_lua.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior_lua.hpp>
 #include <irreden/render/components/component_zoom_level_lua.hpp>
+#include <irreden/render/components/component_text_segment_lua.hpp>
+#include <irreden/render/components/component_gui_position_lua.hpp>
+#include <irreden/render/components/component_text_style_lua.hpp>
 
 namespace MidiPolyrhythm {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
@@ -53,10 +57,14 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_AnimClipColorTrack,
         C_AnimColorState,
         C_AnimMotionColorShift,
+        C_SpringPlatform,
         BackgroundTypes,
         C_TriangleCanvasBackground,
         C_TrixelCanvasRenderBehavior,
-        C_ZoomLevel>();
+        C_ZoomLevel,
+        C_TextSegment,
+        C_GuiPosition,
+        C_TextStyle>();
 }
 } // namespace MidiPolyrhythm
 

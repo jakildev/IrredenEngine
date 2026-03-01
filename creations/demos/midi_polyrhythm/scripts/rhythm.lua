@@ -27,6 +27,38 @@ function R.lcm_list(t)
     return result
 end
 
+-- ── Generators ────────────────────────────────────────────────────────────
+
+--- N voices with cycle lengths 2, 3, 4, …, N+1  (time sig (1+i)/X).
+function R.make_sequential(n, bpm)
+    local cycles = {}
+    for i = 1, n do
+        cycles[i] = i + 1
+    end
+    return {
+        name = string.format("Sequential %d", n),
+        bpm  = bpm or 120,
+        cycles = cycles,
+    }
+end
+
+--- Cycles drawn from multiples of 3, 4, and 5 interleaved over `rounds`:
+---   round 1: 3, 4, 5    round 2: 6, 8, 10    round 3: 9, 12, 15  …
+function R.make_varying_345(rounds, bpm)
+    local bases = {3, 4, 5}
+    local cycles = {}
+    for r = 1, rounds do
+        for _, b in ipairs(bases) do
+            cycles[#cycles + 1] = b * r
+        end
+    end
+    return {
+        name = string.format("Varying 345 x%d", rounds),
+        bpm  = bpm or 120,
+        cycles = cycles,
+    }
+end
+
 -- ── Presets ─────────────────────────────────────────────────────────────────
 -- FORMAT A  – beat-based (single BPM, integer cycle lengths):
 --   bpm, cycles = {c1, c2, ...}
@@ -100,6 +132,17 @@ R.presets = {
         bpm  = 100,
         cycles = {5, 7, 11},
     },
+    -- Generated: sequential polyrhythm (N voices, cycles 2..N+1)
+    seq_8  = R.make_sequential(8),
+    seq_12 = R.make_sequential(12),
+    seq_16 = R.make_sequential(16),
+
+    -- Generated: varying 3/4/5 polyrhythm (interleaved multiples of 3, 4, 5)
+    vary_345_x2 = R.make_varying_345(2),   -- 6 voices:  3,4,5,6,8,10
+    vary_345_x3 = R.make_varying_345(3),   -- 9 voices:  + 9,12,15
+    vary_345_x4 = R.make_varying_345(4),   -- 12 voices: + 12,16,20
+    vary_345_x5 = R.make_varying_345(5),   -- 15 voices: + 15,20,25
+
     -- Format B presets: wave_<alignment>_<pace>
     -- align_sec = total cycle time
     -- notes_start/notes_step/num_voices define triggers per voice per cycle

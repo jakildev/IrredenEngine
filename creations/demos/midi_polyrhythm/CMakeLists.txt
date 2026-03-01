@@ -28,8 +28,10 @@ foreach(script ${IR_POLY_TOP_SCRIPTS})
 endforeach()
 
 # Module scripts live in scripts/ and are copied as a directory
-set(IR_POLY_SCRIPTS_STAMP ${CMAKE_BINARY_DIR}/stamp_poly_scripts)
-file(GLOB IR_POLY_MODULE_SCRIPTS ${IR_POLY_SRC_DIR}/scripts/*.lua)
+set(IR_POLY_SCRIPTS_STAMP ${IR_POLY_SCRIPTS_DIR}/.stamp_poly_scripts)
+file(GLOB IR_POLY_MODULE_SCRIPTS CONFIGURE_DEPENDS
+    ${IR_POLY_SRC_DIR}/scripts/*.lua
+)
 add_custom_command(
     OUTPUT ${IR_POLY_SCRIPTS_STAMP}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_POLY_SCRIPTS_DIR}/scripts
@@ -46,8 +48,10 @@ add_custom_target(IRMidiPolyrhythmAssets
         ${PROJECT_SOURCE_DIR}/engine/render/data ${CMAKE_BINARY_DIR}/data
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/data ${CMAKE_BINARY_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
     DEPENDS ${IR_POLY_LUA_OUTPUTS}
-    COMMENT "Syncing engine data and palette files"
+    COMMENT "Syncing engine data, palette files, and shaders"
 )
 
 add_dependencies(IRMidiPolyrhythm IRMidiPolyrhythmAssets)
@@ -58,6 +62,8 @@ add_custom_target(IRMidiPolyrhythmRun
         ${PROJECT_SOURCE_DIR}/engine/render/data ${CMAKE_BINARY_DIR}/data
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/data ${CMAKE_BINARY_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_POLY_SCRIPTS_DIR}/scripts
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${IR_POLY_SRC_DIR}/main.lua ${IR_POLY_SCRIPTS_DIR}/main.lua

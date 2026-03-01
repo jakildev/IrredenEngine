@@ -107,6 +107,22 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
         );
         m_config.addEntry(
+            "video_capture_audio_bitrate",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(320'000)
+        );
+        m_config.addEntry(
+            "video_capture_audio_mux_enabled",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
+        m_config.addEntry(
+            "video_capture_audio_wav_enabled",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
+        m_config.addEntry(
+            "video_capture_audio_sync_offset_ms",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::NUMBER>>(0.0)
+        );
+        m_config.addEntry(
             "screenshot_output_dir",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>(
                 "save_files/screenshots"
@@ -123,6 +139,10 @@ class WorldConfig {
         m_config.addEntry(
             "profiling_enabled",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
+        m_config.addEntry(
+            "gui_scale",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
         );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);

@@ -5,6 +5,7 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_window.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
@@ -38,6 +39,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             GL_DYNAMIC_STORAGE_BIT,
             GL_UNIFORM_BUFFER,
             kBufferIndex_FrameDataUniformIsoTriangles
+        );
+        struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } initData;
+        IRRender::createNamedResource<Buffer>(
+            "HoveredEntityIdBuffer",
+            &initData,
+            sizeof(initData),
+            GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT,
+            GL_SHADER_STORAGE_BUFFER,
+            kBufferIndex_HoveredEntityId
         );
 
         return createSystem<C_TriangleCanvasTextures, C_Name>(
@@ -79,24 +89,27 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
                 }
                 frameData.frameData_.textureOffset_ = vec2(0);
-                frameData.frameData_.mouseHoveredTriangleIndex_ = behavior.mouseHoverEnabled_
-                                                                      ? vec2(IRRender::mouseTrixelPositionWorld())
-                                                                      : vec2(-1000000.0f);
-                if (behavior.applyRenderSubdivisions_ &&
-                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
-                    frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
-                }
                 frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                                  calcModelMatrix(
                                                      framebufferResolution,
                                                      frameData.frameData_.cameraTrixelOffset_,
                                                      frameData.frameData_.canvasZoomLevel_
                                                  );
+
+                if (!behavior.mouseHoverEnabled_) {
+                    frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+                }
+                else {
+                    frameData.frameData_.mouseHoveredTriangleIndex_ =
+                        vec2(IRRender::mouseTrixelPositionWorld());
+
+                }
+
                 frameData.updateFrameData(
                     IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData")
                 );
 
-                triangleCanvasTextures.bind(0, 1);
+                triangleCanvasTextures.bind(0, 1, 2);
                 ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                 ENG_API->glDrawElements(
                     GL_TRIANGLES,
@@ -104,8 +117,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     GL_UNSIGNED_SHORT,
                     nullptr
                 );
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
             },
             []() {
+                struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;
+                IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer")
+                    ->subData(0, sizeof(resetData), &resetData);
                 IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
                 IRRender::getNamedResource<VAO>("QuadVAO")->bind();
                 auto &framebuffer =

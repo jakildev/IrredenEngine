@@ -1,7 +1,9 @@
 #include <irreden/video/video_manager.hpp>
 
+#include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_audio.hpp>
+#include <irreden/audio/audio_capture_source.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_time.hpp>
@@ -9,7 +11,6 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
@@ -36,7 +37,12 @@ void VideoManager::configureCapture(
     bool captureAudioInput,
     const std::string &audioInputDeviceName,
     int audioSampleRate,
-    int audioChannels
+    int audioChannels,
+    int audioBitrate,
+    bool audioMuxEnabled,
+    bool audioWavEnabled,
+    double audioSyncOffsetMs,
+    IRAudio::IAudioCaptureSource *audioCaptureSource
 ) {
     m_outputFilePath = outputFilePath;
     m_targetFps = std::max(targetFps, 1);
@@ -45,6 +51,11 @@ void VideoManager::configureCapture(
     m_audioInputDeviceName = audioInputDeviceName;
     m_audioSampleRate = std::max(audioSampleRate, 8'000);
     m_audioChannels = std::clamp(audioChannels, 1, 2);
+    m_audioBitrate = std::max(audioBitrate, 64'000);
+    m_audioMuxEnabled = audioMuxEnabled;
+    m_audioWavEnabled = audioWavEnabled;
+    m_audioSyncOffsetMs = audioSyncOffsetMs;
+    m_audioCaptureSource = audioCaptureSource;
     if (m_captureAudioInput) {
         armAudioInput();
     }
@@ -60,6 +71,12 @@ void VideoManager::toggleRecording() {
 
 void VideoManager::requestScreenshot() {
     m_screenshotRequested = true;
+}
+
+void VideoManager::notifyFixedUpdate() {
+    if (m_captureEnabled) {
+        ++m_totalFixedUpdates;
+    }
 }
 
 void VideoManager::render() {
@@ -80,17 +97,41 @@ void VideoManager::render() {
         return;
     }
 
-    const double captureIntervalSeconds = 1.0 / static_cast<double>(m_targetFps);
-    m_captureAccumulatorSeconds += IRTime::deltaTime(IRTime::Events::RENDER);
+    const int64_t expectedFrames =
+        m_totalFixedUpdates * static_cast<int64_t>(m_targetFps) /
+        static_cast<int64_t>(IRConstants::kFPS);
+    const int framesToCapture =
+        static_cast<int>(expectedFrames - m_totalCapturedFrames);
 
-    if (m_captureAccumulatorSeconds < captureIntervalSeconds) {
+    if (framesToCapture <= 0) {
         return;
     }
-    m_captureAccumulatorSeconds = std::fmod(m_captureAccumulatorSeconds, captureIntervalSeconds);
 
     if (!captureFrame()) {
         stopRecording();
         m_captureEnabled = false;
+        return;
+    }
+    ++m_totalCapturedFrames;
+
+    static constexpr int kMaxCatchupFrames = 4;
+    const int duplicates = std::min(framesToCapture - 1, kMaxCatchupFrames);
+    if (duplicates > 0) {
+        IRE_LOG_WARN(
+            "Video capture: {} frames due, submitting {} duplicate(s) for catchup",
+            framesToCapture, duplicates
+        );
+    }
+    for (int i = 0; i < duplicates; ++i) {
+        if (!encodeCurrentRawFrame()) {
+            stopRecording();
+            m_captureEnabled = false;
+            return;
+        }
+        ++m_totalCapturedFrames;
+    }
+    if (framesToCapture > duplicates + 1) {
+        m_totalCapturedFrames += (framesToCapture - duplicates - 1);
     }
 }
 
@@ -101,7 +142,11 @@ void VideoManager::shutdown() {
     }
 
     if (m_audioInputArmed) {
-        IRAudio::stopAudioInputCapture();
+        if (m_audioCaptureSource != nullptr) {
+            m_audioCaptureSource->stopCapture();
+        } else {
+            IRAudio::stopAudioInputCapture();
+        }
         m_audioInputArmed = false;
     }
 
@@ -146,15 +191,16 @@ const std::string &VideoManager::getLastError() const {
 }
 
 void VideoManager::armAudioInput() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
     if (m_audioInputArmed) {
         return;
     }
-    IRAudio::AudioInputCallback audioCallback = [this](
-                                                    const float *samples,
-                                                    int frameCount,
-                                                    double streamTime,
-                                                    bool inputOverflow
-                                                ) {
+    IRAudio::AudioCaptureCallback audioCallback = [this](
+                                                      const float *samples,
+                                                      int frameCount,
+                                                      double streamTime,
+                                                      bool inputOverflow
+                                                  ) {
         if (!m_captureEnabled) {
             return;
         }
@@ -165,12 +211,23 @@ void VideoManager::armAudioInput() {
             m_videoRecorder.submitAudioInputSamples(samples, frameCount, streamTime);
         }
     };
-    const bool started = IRAudio::startAudioInputCapture(
-        m_audioInputDeviceName,
-        m_audioSampleRate,
-        m_audioChannels,
-        std::move(audioCallback)
-    );
+
+    bool started = false;
+    if (m_audioCaptureSource != nullptr) {
+        IRAudio::AudioCaptureConfig captureConfig;
+        captureConfig.device_name_ = m_audioInputDeviceName;
+        captureConfig.sample_rate_ = m_audioSampleRate;
+        captureConfig.channels_ = m_audioChannels;
+        started = m_audioCaptureSource->startCapture(captureConfig, std::move(audioCallback));
+    } else {
+        started = IRAudio::startAudioInputCapture(
+            m_audioInputDeviceName,
+            m_audioSampleRate,
+            m_audioChannels,
+            std::move(audioCallback)
+        );
+    }
+
     if (started) {
         m_audioInputArmed = true;
         IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
@@ -219,6 +276,24 @@ void VideoManager::toggleCapture() {
     config.audio_input_device_name_ = m_audioInputDeviceName;
     config.audio_sample_rate_ = m_audioSampleRate;
     config.audio_channels_ = m_audioChannels;
+    config.audio_bitrate_ = m_audioBitrate;
+    config.audio_mux_enabled_ = m_audioMuxEnabled;
+    config.audio_wav_enabled_ = m_audioWavEnabled;
+
+    {
+        double audioDeviceLatencyMs = 0.0;
+        if (m_audioCaptureSource != nullptr && m_audioInputArmed) {
+            audioDeviceLatencyMs = m_audioCaptureSource->getInputLatencyMs();
+        }
+        const double autoOffsetMs = -audioDeviceLatencyMs;
+        const double totalOffsetMs = autoOffsetMs + m_audioSyncOffsetMs;
+        config.audio_sync_offset_ms_ = totalOffsetMs;
+        IRE_LOG_INFO(
+            "A/V sync: audio device latency={:.1f}ms, "
+            "auto offset={:.1f}ms, manual trim={:.1f}ms, total={:.1f}ms",
+            audioDeviceLatencyMs, autoOffsetMs, m_audioSyncOffsetMs, totalOffsetMs
+        );
+    }
 
     if (!startRecording(config)) {
         return;
@@ -230,7 +305,8 @@ void VideoManager::toggleCapture() {
                          static_cast<std::size_t>(m_sourceFrameHeight) * 4U;
     m_rawFrameBuffer.assign(m_sourceFrameBytes, 0);
     initReadbackPbos();
-    m_captureAccumulatorSeconds = 0.0;
+    m_totalFixedUpdates = 0;
+    m_totalCapturedFrames = 0;
     m_captureEnabled = true;
     if (m_audioInputArmed) {
         IRE_LOG_INFO("Audio capture recording started.");
@@ -390,13 +466,10 @@ void VideoManager::joinFinalizeThreadIfDone() {
 
 bool VideoManager::encodeCurrentRawFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
-    // Pass the raw source-resolution PBO data directly to the encoder queue.
-    // The worker thread handles resize + flip + color conversion in one
-    // sws_scale pass, so the main thread does zero image processing here.
     std::lock_guard<std::mutex> lock(m_recorderMutex);
-    auto nextBuf = m_videoRecorder.acquireFrameBuffer(m_sourceFrameBytes);
-    std::swap(nextBuf, m_rawFrameBuffer);
-    return m_videoRecorder.submitVideoFrame(std::move(nextBuf));
+    auto buf = m_videoRecorder.acquireFrameBuffer(m_sourceFrameBytes);
+    std::memcpy(buf.data(), m_rawFrameBuffer.data(), m_sourceFrameBytes);
+    return m_videoRecorder.submitVideoFrame(std::move(buf));
 }
 
 void VideoManager::initReadbackPbos() {

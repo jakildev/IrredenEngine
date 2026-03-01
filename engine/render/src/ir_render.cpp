@@ -2,8 +2,11 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_constants.hpp>
 
 #include <irreden/render/rendering_rm.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 namespace IRRender {
 
@@ -35,7 +38,12 @@ ivec2 getOutputScaleFactor() {
     return getRenderManager().getOutputScaleFactor();
 }
 vec2 getMousePositionOutputView() {
-    return IRInput::getMousePositionRender() - getRenderManager().screenToOutputWindowOffset();
+    const vec2 raw = IRInput::getMousePositionRender();
+    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
+    const ivec2 scale = getRenderManager().getOutputScaleFactor();
+    // screenToOutputOffset assumes outputResolution (game res); actual quad uses resolution+extraPixelBuffer
+    const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
+    return raw - offset + bufferCorrection;
 }
 vec2 getGameResolution() {
     return getRenderManager().getGameResolution();
@@ -48,9 +56,7 @@ vec2 getMainCanvasSizeTrixels() {
 vec2 mousePosition2DIsoScreenRender() {
     return IRMath::pos2DScreenToPos2DIso(IRRender::getMousePositionOutputView(),
                                          IRRender::getTriangleStepSizeScreen()) -
-           (getMainCanvasSizeTrixels() - vec2(2, 2) // TODO: why this needed here???
-            ) / getCameraZoom() /
-               vec2(2.0f);
+           (getMainCanvasSizeTrixels()) / getCameraZoom() / vec2(2.0f);
 }
 
 vec2 mousePosition2DIsoWorldRender() {
@@ -58,12 +64,26 @@ vec2 mousePosition2DIsoWorldRender() {
 }
 
 ivec2 mouseTrixelPositionWorld() {
-    return IRMath::floor(
+    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
+    const ivec2 z1 = IRMath::trixelOriginOffsetZ1(canvasSize);
+    const int shaderMod = (z1.x + z1.y) & 1;
+    const vec2 triIndex =
         IRMath::pos2DIsoToTriangleIndex(
             IRRender::mousePosition2DIsoWorldRender(),
-            ivec2(1, 0) // TODO: just a fix to get triangle index to line up for now
-        )
-    );
+            shaderMod);
+    // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
+    return ivec2(glm::floor(triIndex + vec2(1, 1)));
+}
+
+IREntity::EntityId getEntityIdAtMouseTrixel() {
+    auto *buf = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
+    if (!buf) return IREntity::kNullEntity;
+
+    uvec2 packed{0u, 0u};
+    buf->getSubData(0, sizeof(uvec2), &packed);
+
+    return static_cast<IREntity::EntityId>(packed.x) |
+           (static_cast<IREntity::EntityId>(packed.y) << 32);
 }
 
 void setCameraZoom(float zoom) {
@@ -96,6 +116,26 @@ void zoomMainBackgroundPatternIn() {
 
 void zoomMainBackgroundPatternOut() {
     getRenderManager().zoomMainBackgroundPatternOut();
+}
+
+void setGuiVisible(bool visible) {
+    getRenderManager().setGuiVisible(visible);
+}
+
+void toggleGuiVisible() {
+    getRenderManager().toggleGuiVisible();
+}
+
+bool isGuiVisible() {
+    return getRenderManager().isGuiVisible();
+}
+
+void setGuiScale(int scale) {
+    getRenderManager().setGuiScale(scale);
+}
+
+int getGuiScale() {
+    return getRenderManager().getGuiScale();
 }
 
 } // namespace IRRender

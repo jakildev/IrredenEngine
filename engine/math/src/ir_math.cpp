@@ -51,12 +51,11 @@ const vec3 randomVec(const vec3 min, const vec3 max) {
     return vec3(randomFloat(min.x, max.x), randomFloat(min.y, max.y), randomFloat(min.z, max.z));
 }
 
-vec2 pos2DIsoToTriangleIndex(const vec2 position, const ivec2 originOffset) {
+vec2 pos2DIsoToTriangleIndex(const vec2 position, const int originModifier) {
     vec2 res = position;
     vec2 flooredComp = glm::floor(position);
     vec2 fractComp = glm::fract(position);
-    int originModifier = (originOffset.x + originOffset.y) & 1;
-    if (glm::mod(flooredComp.x + flooredComp.y + originModifier, 2.0f) < 1) {
+    if (abs(glm::mod(flooredComp.x + flooredComp.y + originModifier, 2.0f)) >= 1) {
         if (fractComp.y < fractComp.x) {
             res += vec2(0, -1);
         }

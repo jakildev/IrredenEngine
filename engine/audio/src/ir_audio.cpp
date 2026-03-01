@@ -12,6 +12,10 @@ AudioManager &getAudioManager() {
     return *g_audioManager;
 }
 
+IAudioCaptureSource &getAudioCaptureSource() {
+    return getAudioManager().getAudio();
+}
+
 int openPortMidiIn(MidiInInterfaces port) {
     return getAudioManager().getMidiIn().openPort(port);
 }

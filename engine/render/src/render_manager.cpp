@@ -10,6 +10,8 @@
 #include <irreden/render/entities/entity_framebuffer.hpp>
 
 #include <irreden/render/components/component_texture_scroll.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
@@ -18,6 +20,7 @@
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace IRRender {
@@ -57,6 +60,13 @@ RenderManager::RenderManager(
             IREntity::createEntity<kTrixelCanvas>(
                 "background",
                 IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_,
+                m_mainFramebuffer
+            )
+        }
+    ,   m_guiCanvas{
+            IREntity::createEntity<kTrixelCanvas>(
+                "gui",
+                IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_ / ivec2(m_guiScale),
                 m_mainFramebuffer
             )
         }
@@ -128,7 +138,20 @@ RenderManager::RenderManager(
     // m_canvasMap["background"] = m_backgroundCanvas;
     m_canvasMap["background"] = m_backgroundCanvas;
     m_canvasMap["main"] = m_mainCanvas;
+    m_canvasMap["gui"] = m_guiCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
+
+    IREntity::setComponent(m_guiCanvas, C_TrixelCanvasRenderBehavior{
+        false,  // useCameraPositionIso
+        false,  // useCameraZoom
+        false,  // applyRenderSubdivisions
+        false,  // mouseHoverEnabled
+        false,  // usePixelPerfectCameraOffset
+        0.0f,   // parityOffsetIsoX
+        0.0f,   // parityOffsetIsoY
+        0.0f,   // staticPixelOffsetX
+        0.0f    // staticPixelOffsetY
+    });
 
     initRenderingResources();
     initRenderingSystems();
@@ -349,6 +372,40 @@ void RenderManager::updateOutputResolution() {
 
 vec2 RenderManager::screenToOutputWindowOffset() const {
     return vec2(m_viewport.x - m_outputResolution.x, m_viewport.y - m_outputResolution.y) / vec2(2);
+}
+
+void RenderManager::setGuiVisible(bool visible) {
+    m_guiVisible = visible;
+}
+
+void RenderManager::toggleGuiVisible() {
+    m_guiVisible = !m_guiVisible;
+    IRE_LOG_INFO("GUI overlay {}", m_guiVisible ? "enabled" : "disabled");
+}
+
+bool RenderManager::isGuiVisible() const {
+    return m_guiVisible;
+}
+
+void RenderManager::setGuiScale(int scale) {
+    scale = std::clamp(scale, 1, 8);
+    if (scale == m_guiScale) return;
+    m_guiScale = scale;
+
+    ivec2 mainSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
+    ivec2 newSize = mainSize / ivec2(scale);
+
+    auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas);
+    textures.onDestroy();
+    textures = C_TriangleCanvasTextures{newSize};
+
+    IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
+
+    IRE_LOG_INFO("GUI scale set to {}x (canvas {}x{})", scale, newSize.x, newSize.y);
+}
+
+int RenderManager::getGuiScale() const {
+    return m_guiScale;
 }
 
 } // namespace IRRender

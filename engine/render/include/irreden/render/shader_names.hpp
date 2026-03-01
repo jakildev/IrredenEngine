@@ -12,6 +12,7 @@ const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffe
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";
+const char *const kFileCompTextToTrixel = "shaders/c_text_to_trixel.glsl";
 
 } // namespace IRRender
 

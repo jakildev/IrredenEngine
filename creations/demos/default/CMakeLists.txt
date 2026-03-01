@@ -32,6 +32,8 @@ add_custom_command(
 )
 
 add_custom_target(IRCreationDefaultAssets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
     DEPENDS
         ${IR_DEFAULT_MAIN_LUA_DST}
         ${IR_DEFAULT_CONFIG_LUA_DST}
@@ -44,6 +46,8 @@ add_dependencies(IRCreationDefault IRCreationDefaultAssets)
 # - Launches the creation executable from the build directory
 # This lets script edits be picked up without rebuilding C++.
 add_custom_target(IRCreationDefaultRun
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/main.lua ${IR_DEFAULT_SCRIPTS_DIR}/main.lua
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

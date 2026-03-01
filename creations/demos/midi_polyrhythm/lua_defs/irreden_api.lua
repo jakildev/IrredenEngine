@@ -214,6 +214,97 @@ ScaleMode = {
     CHROMATIC          = 30,
 }
 
+---@enum NoteColorMode
+NoteColorMode = {
+    PER_NOTE  = "per_note",
+    PER_VOICE = "per_voice",
+}
+
+---@enum PlatformColorMode
+PlatformColorMode = {
+    PALETTE     = "palette",
+    DESATURATE  = "desaturate",
+    MATCH_BLOCK = "match_block",
+}
+
+---@enum Palette
+Palette = {
+    SWEETIE           = "sweetie",
+    ISLAND_JOY        = "island_joy",
+    CHASM             = "chasm",
+    PEAR36            = "pear36",
+    MULFOK32          = "mulfok32",
+    MIDNIGHT_ABLAZE   = "midnight_ablaze",
+    OIL_6             = "oil_6",
+    TWILIGHT_5        = "twilight_5",
+    TWO_BIT_DEMICHROME = "two_bit_demichrome",
+    AMMO_8            = "ammo_8",
+    BERRY_NEBULA      = "berry_nebula",
+    BLESSING          = "blessing",
+    BORKFEST          = "borkfest",
+    CL8UDS            = "cl8uds",
+    CRYPTIC_OCEAN     = "cryptic_ocean",
+    CURIOSITIES       = "curiosities",
+    DREAMSCAPE8       = "dreamscape8",
+    EPHEMERA          = "ephemera",
+    EULBINK           = "eulbink",
+    FAIRYDUST_8       = "fairydust_8",
+    HOLLOW            = "hollow",
+    HOPE_DIAMOND      = "hope_diamond",
+    ICE_CREAM_GB      = "ice_cream_gb",
+    INK               = "ink",
+    INKPINK           = "inkpink",
+    LATE_NIGHT_BATH   = "late_night_bath",
+    LAVA_GB           = "lava_gb",
+    NYX8              = "nyx8",
+    PAPER_8           = "paper_8",
+    PASTEL_QT         = "pastel_qt",
+    PICO_8            = "pico_8",
+    POLLEN8           = "pollen8",
+    RUST_GOLD_8       = "rust_gold_8",
+    SLSO8             = "slso8",
+}
+
+---@enum PaletteSortMode
+PaletteSortMode = {
+    HUE        = "hue",
+    SATURATION = "saturation",
+    VALUE      = "value",
+    LUMINANCE  = "luminance",
+    ORIGINAL   = "original",
+}
+
+---@enum ColorPickMode
+ColorPickMode = {
+    SPLIT_HALF     = "split_half",
+    EVENLY_SPACED  = "evenly_spaced",
+    EVERY_OTHER    = "every_other",
+    FIRST_N        = "first_n",
+    RANDOM         = "random",
+    MANUAL         = "manual",
+}
+
+---@enum IRFitMode Exposed from C++ IRRender::FitMode
+IRFitMode = {
+    FIT     = 0,
+    STRETCH = 1,
+}
+
+---@enum IRVoxelRenderMode Exposed from C++ IRRender::VoxelRenderMode
+IRVoxelRenderMode = {
+    SNAPPED = 0,
+    SMOOTH  = 1,
+}
+
+---@enum LayoutMode
+LayoutMode = {
+    GRID          = "grid",
+    ZIGZAG        = "zigzag",
+    ZIGZAG_PATH   = "zigzag_path",
+    SQUARE_SPIRAL = "square_spiral",
+    HELIX         = "helix",
+}
+
 ---@enum BackgroundTypes
 BackgroundTypes = {
     SINGLE_COLOR    = 0,
@@ -447,15 +538,18 @@ function C_ReactiveReturn3D.new(triggerImpulseVelocity, springStrength, dampingP
 ---@field restOffsetZ number
 ---@field elapsedSeconds number
 ---@field grounded boolean
+---@field maxLaunches integer
+---@field launchCount integer
 local C_RhythmicLaunch = {}
 ---@param periodSeconds number
 ---@param impulseVelocity vec3
 ---@param restOffsetZ? number
 ---@param elapsedSeconds? number
 ---@param grounded? boolean
+---@param maxLaunches? integer
 ---@return C_RhythmicLaunch
 ---@overload fun(): C_RhythmicLaunch
-function C_RhythmicLaunch.new(periodSeconds, impulseVelocity, restOffsetZ, elapsedSeconds, grounded) end
+function C_RhythmicLaunch.new(periodSeconds, impulseVelocity, restOffsetZ, elapsedSeconds, grounded, maxLaunches) end
 
 ---@class C_TriggerGlow
 ---@field targetColor Color
@@ -843,14 +937,53 @@ function IRMath.layoutSquareSpiral(index, spacing, plane, depth) end
 function IRMath.layoutHelix(index, count, radius, turns, heightSpan, axis) end
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- Text alignment enums
+-- ═══════════════════════════════════════════════════════════════════════════
+
+---@enum TextAlignH
+TextAlignH = {
+    LEFT   = 0,
+    CENTER = 1,
+    RIGHT  = 2,
+}
+
+---@enum TextAlignV
+TextAlignV = {
+    TOP    = 0,
+    CENTER = 1,
+    BOTTOM = 2,
+}
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- IRRender
 -- ═══════════════════════════════════════════════════════════════════════════
 
 ---@class IRRenderLib
+---@field glyphWidth integer  Trixel width of a single glyph (7)
+---@field glyphHeight integer Trixel height of a single glyph (11)
+---@field glyphStepX integer  Horizontal advance per character including spacing (8)
+---@field glyphStepY integer  Vertical advance per line including spacing (12)
 IRRender = {}
 
 ---@param zoom number
 function IRRender.setCameraZoom(zoom) end
+
+---@param scale integer GUI zoom scale (1=full res, higher=bigger trixels, range 1-8)
+function IRRender.setGuiScale(scale) end
+
+---@return integer scale Current GUI zoom scale
+function IRRender.getGuiScale() end
+
+---@return integer[] size {width, height} of the main canvas in trixels
+function IRRender.getMainCanvasSize() end
+
+---@return integer[] size {width, height} of the GUI canvas in trixels (main canvas / gui scale)
+function IRRender.getGuiCanvasSize() end
+
+---@param text string The text to measure
+---@param wrapWidth? integer Max trixel width before wrapping (0 or omit = no wrap)
+---@return integer[] size {width, height} bounding box in trixels
+function IRRender.measureText(text, wrapWidth) end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- IREntity
@@ -985,3 +1118,23 @@ function IREntity.createEntityBatchNotePlatformsAnimatedColor(count, ...) end
 ---@param ... any
 ---@return LuaEntity
 function IREntity.createMidiSequence(...) end
+
+---@param handle LuaEntity
+function IREntity.destroyEntity(handle) end
+
+---@class IRText
+IRText = {}
+
+---@param text string
+---@param x integer Position x (origin for alignment box)
+---@param y integer Position y (origin for alignment box)
+---@param opts? { color?: integer[], wrapWidth?: integer, lifetime?: integer, alignH?: TextAlignH, alignV?: TextAlignV, boxWidth?: integer, boxHeight?: integer }
+---@return LuaEntity
+function IRText.create(text, x, y, opts) end
+
+---@param handle LuaEntity
+---@param text string
+function IRText.setText(handle, text) end
+
+---@param handle LuaEntity
+function IRText.remove(handle) end

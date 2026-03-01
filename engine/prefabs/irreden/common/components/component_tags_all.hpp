@@ -9,6 +9,7 @@ struct C_WallBounce {};
 struct C_WallDeath {};
 struct C_ActiveHitbox {};
 struct C_GuiElement {};
+struct C_HelpText {};
 struct C_MidiIn {};
 struct C_MidiOut {};
 struct C_HasGravity {};

@@ -7,7 +7,7 @@ config = {
     fullscreen = false,
     monitor_index = 1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "smooth",
+    voxel_render_mode = "snapped",
     voxel_render_subdivisions = 1,
 
     video_capture_output_file = "polyrhythm_capture.mp4",
@@ -17,8 +17,13 @@ config = {
     video_capture_audio_input_device_name = "IN 01-02 (BEHRINGER UMC 1820)",
     video_capture_audio_sample_rate = 48000,
     video_capture_audio_channels = 2,
+    video_capture_audio_bitrate = 320000,
+    video_capture_audio_mux_enabled = true,
+    video_capture_audio_wav_enabled = true,
+    video_capture_audio_sync_offset_ms = 0.0,
     screenshot_output_dir = "save_files/screenshots",
-    start_updates_on_first_key_press = false,
-    start_recording_on_first_key_press = false,
-    profiling_enabled = false
+    start_updates_on_first_key_press = true,
+    start_recording_on_first_key_press = true,
+    profiling_enabled = false,
+    gui_scale = 2
 }

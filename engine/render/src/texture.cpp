@@ -101,6 +101,49 @@ void Texture2D::clear(GLenum format, GLenum type, const void *data) {
     glClearTexImage(m_handle, 0, format, type, data);
 }
 
+namespace {
+    GLsizei glTypeSize(GLenum type) {
+        switch (type) {
+            case GL_UNSIGNED_BYTE:
+            case GL_BYTE:
+                return 1;
+            case GL_UNSIGNED_SHORT:
+            case GL_SHORT:
+            case GL_HALF_FLOAT:
+                return 2;
+            case GL_UNSIGNED_INT:
+            case GL_INT:
+            case GL_FLOAT:
+                return 4;
+            default:
+                return 4;
+        }
+    }
+
+    GLsizei glFormatComponents(GLenum format) {
+        switch (format) {
+            case GL_RED:
+            case GL_RED_INTEGER:
+                return 1;
+            case GL_RG:
+            case GL_RG_INTEGER:
+                return 2;
+            case GL_RGB:
+            case GL_RGB_INTEGER:
+            case GL_BGR:
+            case GL_BGR_INTEGER:
+                return 3;
+            case GL_RGBA:
+            case GL_RGBA_INTEGER:
+            case GL_BGRA:
+            case GL_BGRA_INTEGER:
+                return 4;
+            default:
+                return 4;
+        }
+    }
+}
+
 void Texture2D::getSubImage2D(
     GLint xoffset,
     GLint yoffset,
@@ -111,6 +154,7 @@ void Texture2D::getSubImage2D(
     void *data
 ) const {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+    GLsizei bufSize = width * height * glFormatComponents(format) * glTypeSize(type);
     glGetTextureSubImage(
         m_handle,
         0,
@@ -122,7 +166,7 @@ void Texture2D::getSubImage2D(
         1,
         format,
         type,
-        width * height * 4,
+        bufSize,
         data
     );
 }

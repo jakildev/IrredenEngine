@@ -1,12 +1,3 @@
-/*
- * Project: Irreden Engine
- * File: c_voxel_to_trixel_stage_2.glsl
- * Author: Evin Killian jakildev@gmail.com
- * Created Date: October 2023
- * -----
- * Modified By: <your_name> <Month> <YYYY>
- */
-
 #version 460 core
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
@@ -25,8 +16,13 @@ layout(std430, binding = 6) buffer ColorBuffer {
     uint colors[];
 };
 
+layout(std430, binding = 13) buffer EntityIdBuffer {
+    uvec2 entityIds[];
+};
+
 layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
+layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
 ivec2 pos3DtoPos2DIso(const ivec3 position) {
     return ivec2(
@@ -110,6 +106,8 @@ void writeColorTap(const ivec2 canvasPixel, const int voxelDistance, const vec4 
     int canvasDistance = imageLoad(triangleCanvasDistances, canvasPixel).x;
     if (voxelDistance == canvasDistance) {
         imageStore(triangleCanvasColors, canvasPixel, voxelColor);
+        imageStore(triangleCanvasEntityIds, canvasPixel,
+                   uvec4(entityIds[gl_WorkGroupID.x], 0u, 0u));
     }
 }
 

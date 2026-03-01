@@ -117,7 +117,7 @@ target_include_directories(
 #     TARGET IrredenEngineRendering
 #     POST_BUILD
 #     COMMAND ${CMAKE_COMMAND} -E copy
-#     ${assimp_BINARY_DIR}/bin/libassimp-5d.dll
+#     ${assimp_BINARY_DIR}/bin/libassimp-5d.dlBl
 #     ${PROJECT_BINARY_DIR}/libassimp-5d.dll
 # )
 

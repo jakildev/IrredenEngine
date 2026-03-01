@@ -35,6 +35,10 @@ void toggleRecording() {
     getVideoManager().toggleRecording();
 }
 
+void notifyFixedUpdate() {
+    getVideoManager().notifyFixedUpdate();
+}
+
 bool isRecording() {
     return getVideoManager().isRecording();
 }

@@ -11,11 +11,20 @@
 #include <memory>
 #include <list>
 #include <functional>
+#include <string>
+#include <vector>
 
 using namespace IRInput;
 using namespace IRAudio;
 
 namespace IRCommand {
+
+struct CommandRegistration {
+    std::string name;
+    int button;
+    ButtonStatuses triggerStatus;
+    KeyModifierMask requiredModifiers;
+};
 
 class CommandManager {
   public:
@@ -29,7 +38,8 @@ class CommandManager {
         int button,
         Function command,
         KeyModifierMask requiredModifiers = kModifierNone,
-        KeyModifierMask blockedModifiers = kModifierNone
+        KeyModifierMask blockedModifiers = kModifierNone,
+        std::string name = ""
     ) {
         m_userCommands.emplace_back(
             CommandStruct<COMMAND_BUTTON>{
@@ -41,7 +51,14 @@ class CommandManager {
                 blockedModifiers
             }
         );
+        if (!name.empty() && triggerStatus == PRESSED) {
+            m_commandRegistrations.push_back({name, button, triggerStatus, requiredModifiers});
+        }
         return m_userCommands.size() - 1;
+    }
+
+    const std::vector<CommandRegistration> &getCommandRegistrations() const {
+        return m_commandRegistrations;
     }
 
     template <typename Function, typename... Args>
@@ -88,6 +105,7 @@ class CommandManager {
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_NOTE>>> m_midiNoteDeviceCommands;
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_CC>>> m_midiCCDeviceCommands;
     std::vector<CommandStruct<COMMAND_BUTTON>> m_userCommands;
+    std::vector<CommandRegistration> m_commandRegistrations;
 };
 
 } // namespace IRCommand

@@ -19,6 +19,11 @@ struct VideoRecorderConfig {
     std::string audio_input_device_name_ = "";
     int audio_sample_rate_ = 48'000;
     int audio_channels_ = 2;
+    int audio_bitrate_ = 320'000;
+    bool audio_lossless_ = false;
+    bool audio_mux_enabled_ = true;
+    bool audio_wav_enabled_ = true;
+    double audio_sync_offset_ms_ = 0.0;
 };
 
 class VideoRecorder {

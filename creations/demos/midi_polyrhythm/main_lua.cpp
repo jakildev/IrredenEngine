@@ -34,6 +34,8 @@
 #include <irreden/update/systems/system_action_animation.hpp>
 #include <irreden/update/systems/system_animation_color.hpp>
 #include <irreden/update/systems/system_anim_motion_color_shift.hpp>
+#include <irreden/update/systems/system_spring_platform.hpp>
+#include <irreden/update/systems/system_spring_color.hpp>
 #include <irreden/audio/systems/system_midi_delay_process.hpp>
 #include <irreden/audio/systems/system_midi_sequence_out.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
@@ -41,12 +43,14 @@
 // SYSTEMS -- Input
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_input_gamepad.hpp>
+#include <irreden/input/systems/system_entity_hover_detect.hpp>
 
 // SYSTEMS -- Render
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 // COMMANDS
@@ -56,6 +60,8 @@
 #include <irreden/render/commands/command_background_zoom_in.hpp>
 #include <irreden/render/commands/command_background_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
+#include <irreden/render/commands/command_toggle_gui.hpp>
+#include <irreden/render/commands/command_gui_zoom.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
 #include <irreden/update/commands/command_toggle_periodic_idle_pause.hpp>
@@ -91,6 +97,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::COLLISION_EVENT_CLEAR>(),
          IRSystem::createSystem<IRSystem::COLLISION_NOTE_PLATFORM>(),
+         IRSystem::createSystem<IRSystem::SPRING_PLATFORM>(),
          IRSystem::createSystem<IRSystem::ACTION_ANIMATION>(),
          IRSystem::createSystem<IRSystem::RHYTHMIC_LAUNCH>(),
          IRSystem::createSystem<IRSystem::CONTACT_MIDI_TRIGGER>(),
@@ -99,6 +106,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::SPAWN_GLOW>(),
          IRSystem::createSystem<IRSystem::ANIMATION_COLOR>(),
          IRSystem::createSystem<IRSystem::ANIMATION_MOTION_COLOR_SHIFT>(),
+         IRSystem::createSystem<IRSystem::SPRING_COLOR>(),
          IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),
          IRSystem::createSystem<IRSystem::MIDI_DELAY_PROCESS>(),
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
@@ -109,7 +117,8 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
-         IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
+         IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>(),
+         IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>()}
     );
 
     IRSystem::registerPipeline(
@@ -117,6 +126,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
+         IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
@@ -214,5 +224,22 @@ void initCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonP
+    );
+    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonGraveAccent
+    );
+    IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonEqual,
+        kModifierControl
+    );
+    IRCommand::createCommand<IRCommand::GUI_ZOOM_OUT>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonMinus,
+        kModifierControl
     );
 }

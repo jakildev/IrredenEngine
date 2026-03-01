@@ -21,6 +21,7 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_gui_elements.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 // COMMANDS
@@ -28,6 +29,7 @@
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
+#include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
 
@@ -68,6 +70,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
+         IRSystem::createSystem<IRSystem::GUI_TEXT_RENDER>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
@@ -138,6 +141,11 @@ void initCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonF9
+    );
+    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonGraveAccent
     );
 }
 

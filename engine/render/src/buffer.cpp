@@ -29,6 +29,10 @@ void Buffer::subData(GLintptr offset, GLsizeiptr size, const void *data) const {
     ENG_API->glNamedBufferSubData(m_handle, offset, size, data);
 }
 
+void Buffer::getSubData(GLintptr offset, GLsizeiptr size, void *data) const {
+    ENG_API->glGetNamedBufferSubData(m_handle, offset, size, data);
+}
+
 void Buffer::bindRange(GLenum target, GLuint index, GLintptr offset, GLsizeiptr size) {
     ENG_API->glBindBufferRange(target, index, m_handle, offset, size);
 }

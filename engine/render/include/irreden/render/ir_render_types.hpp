@@ -34,6 +34,7 @@ struct FrameDataTrixelToFramebuffer {
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
+    vec2 _padding0;
 };
 
 struct FrameDataVoxelToCanvas {
@@ -47,6 +48,13 @@ struct FrameDataTrixelToTrixel {
     ivec2 trixelCanvasOffsetZ1_;
     ivec2 trixelTextureOffsetZ1_;
     vec2 texturePos2DIso_;
+};
+
+struct GlyphDrawCommand {
+    uint32_t positionPacked;  // x | (y << 16)
+    uint32_t glyphIndex;
+    uint32_t colorPacked;     // RGBA as packed uint
+    uint32_t distance;
 };
 
 enum class FitMode { FIT, STRETCH, UNKNOWN };

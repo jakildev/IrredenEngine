@@ -2,6 +2,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_audio.hpp>
 
 #include <irreden/world.hpp>
 
@@ -46,6 +47,7 @@ World::World(const char *configFileName)
         static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum())
     );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
+    IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
@@ -58,7 +60,12 @@ World::World(const char *configFileName)
         m_worldConfig["video_capture_audio_input_enabled"].get_boolean(),
         m_worldConfig["video_capture_audio_input_device_name"].get_string(),
         m_worldConfig["video_capture_audio_sample_rate"].get_integer(),
-        m_worldConfig["video_capture_audio_channels"].get_integer()
+        m_worldConfig["video_capture_audio_channels"].get_integer(),
+        m_worldConfig["video_capture_audio_bitrate"].get_integer(),
+        m_worldConfig["video_capture_audio_mux_enabled"].get_boolean(),
+        m_worldConfig["video_capture_audio_wav_enabled"].get_boolean(),
+        m_worldConfig["video_capture_audio_sync_offset_ms"].get_number(),
+        &IRAudio::getAudioCaptureSource()
     );
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
@@ -151,9 +158,8 @@ void World::update() {
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
     m_systemManager.executePipeline(IRTime::Events::UPDATE);
-    // Destroy all marked entities in one step
     m_entityManager.destroyMarkedEntities();
-    // TODO: maybe component adds and removes should be done here too
+    m_videoManager.notifyFixedUpdate();
     m_timeManager.endEvent<IRTime::UPDATE>();
 }
 
