@@ -14,6 +14,7 @@
 #include <irreden/update/components/component_velocity_drag.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/update/components/component_spawn_glow.hpp>
+#include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -42,17 +43,22 @@ template <> struct System<CONTACT_NOTE_BURST> {
                 float spdZUp = spd * burst.zSpeedRatio_;
                 float spdZVariance = spd * burst.zVarianceRatio_;
 
+                const bool downward = burst.downward_;
+                const float zSign = downward ? 1.0f : -1.0f;
+
                 for (int i = 0; i < burst.count_; i++) {
-                    float zVel = -(spdZUp + randomFloat(-spdZVariance, spdZVariance));
+                    float zVel =
+                        zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
                     vec3 vel = vec3(
                         randomFloat(-spdXY, spdXY),
                         randomFloat(-spdXY, spdXY),
                         zVel);
 
+                    // Upward: spawn from bottom face (-halfSize.z); downward: from top (+halfSize.z)
                     vec3 faceOffset = vec3(
                         randomFloat(-halfSize.x, halfSize.x),
                         randomFloat(-halfSize.y, halfSize.y),
-                        -halfSize.z);
+                        downward ? halfSize.z : -halfSize.z);
 
                     const vec3 spawnPos = isoDepthShift(
                         blockCenter + faceOffset
@@ -94,6 +100,9 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         C_Lifetime{burst.lifetime_}
                     );
                     IREntity::setComponent(entity, C_PositionGlobal3D{spawnPos});
+                    if (burst.gravityEnabled_) {
+                        IREntity::setComponent(entity, C_HasGravity{});
+                    }
                     if (burst.glowEnabled_) {
                         IREntity::setComponent(entity, C_SpawnGlow{
                             color,

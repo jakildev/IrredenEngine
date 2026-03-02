@@ -48,6 +48,11 @@ LuaScript::LuaScript()
         "YZ",
         IRMath::PlaneIso::YZ
     );
+    m_lua["CoordinateAxis"] = m_lua.create_table_with(
+        "XAxis", static_cast<int>(IRMath::CoordinateAxis::XAxis),
+        "YAxis", static_cast<int>(IRMath::CoordinateAxis::YAxis),
+        "ZAxis", static_cast<int>(IRMath::CoordinateAxis::ZAxis)
+    );
     m_lua["IRMath"]["layoutGridCentered"] = [](
                                                 int index,
                                                 int count,
@@ -112,7 +117,20 @@ LuaScript::LuaScript()
     };
     m_lua["IRMath"]["layoutHelix"] =
         [](int index, int count, float radius, float turns, float heightSpan, int axis) {
-            return IRMath::layoutHelix(index, count, radius, turns, heightSpan, axis);
+            return IRMath::layoutHelix(
+                index, count, radius, turns, heightSpan,
+                static_cast<IRMath::CoordinateAxis>(axis)
+            );
+        };
+    m_lua["IRMath"]["layoutPathTangentArcs"] =
+        [](int index, int count, float radius, int blocksPerArc, float zStep, int axis,
+           sol::optional<float> startAngleRad, sol::optional<bool> invert) {
+            const float angle = startAngleRad.value_or(0.785398163f);
+            const bool inv = invert.value_or(false);
+            return IRMath::layoutPathTangentArcs(
+                index, count, radius, blocksPerArc, zStep,
+                static_cast<IRMath::CoordinateAxis>(axis), angle, inv
+            );
         };
 }
 

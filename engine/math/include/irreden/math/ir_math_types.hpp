@@ -47,7 +47,7 @@ enum FaceType { NONE_FACE, X_FACE, Y_FACE, Z_FACE };
 
 enum Faces { X1, X2, Y1, Y2, Z1, Z2 };
 
-enum class CoordinateAxis { XAxis, YAxis, ZAzis };
+enum class CoordinateAxis { XAxis = 0, YAxis = 1, ZAxis = 2 };
 
 // Can be used for 2DIso, when given a heading/direction, and some
 // points

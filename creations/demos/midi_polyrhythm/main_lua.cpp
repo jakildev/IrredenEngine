@@ -18,6 +18,7 @@
 #include <irreden/update/systems/system_velocity_drag.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/voxel/systems/system_voxel_squash_stretch.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
@@ -110,6 +111,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),
          IRSystem::createSystem<IRSystem::MIDI_DELAY_PROCESS>(),
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
+         IRSystem::createSystem<IRSystem::VOXEL_SQUASH_STRETCH>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );

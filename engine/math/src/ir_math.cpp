@@ -269,7 +269,9 @@ vec3 layoutSquareSpiral(int index, float spacing, PlaneIso plane, float depth) {
     return mapPlaneToVec3(vec2(static_cast<float>(x), static_cast<float>(y)) * spacing, depth, plane);
 }
 
-vec3 layoutHelix(int index, int count, float radius, float turns, float heightSpan, int axis) {
+vec3 layoutHelix(
+    int index, int count, float radius, float turns, float heightSpan, CoordinateAxis axis
+) {
     const int countSafe = std::max(1, count);
     const float t =
         (countSafe <= 1) ? 0.0f : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
@@ -280,13 +282,84 @@ vec3 layoutHelix(int index, int count, float radius, float turns, float heightSp
     const float h = (t - 0.5f) * heightSpan;
 
     switch (axis) {
-    case 0: // around X
+    case CoordinateAxis::XAxis:
         return vec3(h, c * radius, s * radius);
-    case 1: // around Y
+    case CoordinateAxis::YAxis:
         return vec3(c * radius, h, s * radius);
-    case 2: // around Z
+    case CoordinateAxis::ZAxis:
     default:
         return vec3(c * radius, s * radius, h);
+    }
+}
+
+vec3 layoutPathTangentArcs(
+    int index,
+    int count,
+    float radius,
+    int blocksPerArc,
+    float zStep,
+    CoordinateAxis axis,
+    float startAngleRad,
+    bool invert
+) {
+    // Chain of half-circles, each tangent to the next (centers 2*radius apart).
+    // After each 180°, rotation switches CW/CCW so the path stays continuous.
+    const int countSafe = std::max(1, count);
+    float t =
+        (countSafe <= 1) ? 0.0f : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
+                                    static_cast<float>(countSafe - 1));
+    if (invert) {
+        t = 1.0f - t;
+    }
+    const float pi = glm::pi<float>();
+    const int numHalfCircles =
+        std::max(1, (countSafe + std::max(1, blocksPerArc) - 1) / std::max(1, blocksPerArc));
+    const float totalArc = static_cast<float>(numHalfCircles) * pi * radius;
+    const float s = t * totalArc; // arc length position
+
+    int k = 0;
+    float u = 0.0f;
+    {
+        const float segLen = pi * radius;
+        const float kf = s / segLen;
+        k = std::min(static_cast<int>(std::floor(kf)), numHalfCircles - 1);
+        u = (s - static_cast<float>(k) * segLen) / segLen;
+    }
+
+    const float cx = static_cast<float>(2 * k) * radius;
+    float angle;
+    if (k % 2 == 0) {
+        // Even: trace right half CW, angle π → 0
+        angle = pi - u * pi;
+    } else {
+        // Odd: trace left half CCW, angle π → 2π
+        angle = pi + u * pi;
+    }
+
+    float pathX = cx + radius * std::cos(angle);
+    float pathY = radius * std::sin(angle);
+    const float heightSpan = zStep * static_cast<float>(std::max(0, countSafe - 1));
+    const float h = (t - 0.5f) * heightSpan;
+
+    // Center: path extends from -r to (2*K-1)*r; center at (K-1)*r
+    pathX -= static_cast<float>(numHalfCircles - 1) * radius;
+
+    // Rotate in plane by startAngle (e.g. pi/4 for head-on iso along diagonal)
+    const float c0 = std::cos(startAngleRad);
+    const float s0 = std::sin(startAngleRad);
+    const float px = pathX * c0 - pathY * s0;
+    const float py = pathX * s0 + pathY * c0;
+    pathX = px;
+    pathY = py;
+
+    switch (axis) {
+    case CoordinateAxis::XAxis:
+        return vec3(h, pathX, pathY);
+    case CoordinateAxis::YAxis:
+        return vec3(pathX, h, pathY);
+    case CoordinateAxis::ZAxis:
+    default:
+        return vec3(pathX, pathY, h);
     }
 }
 

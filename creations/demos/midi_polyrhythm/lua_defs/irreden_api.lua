@@ -21,6 +21,13 @@ RhythmPreset = {
     dense_twelve  = "dense_twelve",
     full_360      = "full_360",
     slow_evolve   = "slow_evolve",
+    seq_8         = "seq_8",
+    seq_12        = "seq_12",
+    seq_16        = "seq_16",
+    vary_345_x2   = "vary_345_x2",
+    vary_345_x3   = "vary_345_x3",
+    vary_345_x4   = "vary_345_x4",
+    vary_345_x5   = "vary_345_x5",
     wave_1m_fast  = "wave_1m_fast",
     wave_1m_slow  = "wave_1m_slow",
     wave_2m_fast  = "wave_2m_fast",
@@ -298,11 +305,12 @@ IRVoxelRenderMode = {
 
 ---@enum LayoutMode
 LayoutMode = {
-    GRID          = "grid",
-    ZIGZAG        = "zigzag",
-    ZIGZAG_PATH   = "zigzag_path",
-    SQUARE_SPIRAL = "square_spiral",
-    HELIX         = "helix",
+    GRID            = "grid",
+    ZIGZAG          = "zigzag",
+    ZIGZAG_PATH     = "zigzag_path",
+    SQUARE_SPIRAL   = "square_spiral",
+    HELIX          = "helix",
+    PATH_DOUBLE_C  = "path_double_c",
 }
 
 ---@enum BackgroundTypes
@@ -373,6 +381,31 @@ local C_VoxelSetNew = {}
 ---@param color Color
 ---@return C_VoxelSetNew
 function C_VoxelSetNew.new(size, color) end
+
+---@class C_VoxelSquashStretch
+---@field stretchStrength number
+---@field squashStrength number
+---@field stretchSpeedRef number
+---@field squashAccelRef number
+---@field volumePreserve boolean
+---@field roundness number
+---@field impactBoost number
+---@field impactSquashZ number
+---@field impactExpandXY number
+---@field impactDurationSec number
+---@field springBias number
+---@field useSpringBias boolean
+---@field smoothing number
+local C_VoxelSquashStretch = {}
+---@param stretchStrength number
+---@param squashStrength number
+---@param maxSpeedRef number
+---@param roundness number
+---@param impactSquashZ number
+---@param impactDurationSec number
+---@return C_VoxelSquashStretch
+---@overload fun(): C_VoxelSquashStretch
+function C_VoxelSquashStretch.new(stretchStrength, squashStrength, maxSpeedRef, roundness, impactSquashZ, impactDurationSec) end
 
 ---@class PeriodStage
 local PeriodStage = {}
@@ -470,6 +503,8 @@ function C_MidiSequence:getSequenceLengthSeconds() end
 ---@field glowHoldSeconds number
 ---@field glowFadeSeconds number
 ---@field glowEasing IREasingFunction
+---@field gravityEnabled boolean
+---@field downward boolean
 local C_ParticleBurst = {}
 ---@param count integer
 ---@param lifetime integer
@@ -819,6 +854,13 @@ PlaneIso = {
     YZ = 2,
 }
 
+---@enum CoordinateAxis Exposed from C++ IRMath::CoordinateAxis
+CoordinateAxis = {
+    XAxis = 0,
+    YAxis = 1,
+    ZAxis = 2,
+}
+
 ---@param value number
 ---@return number
 function IRMath.fract(value) end
@@ -932,9 +974,20 @@ function IRMath.layoutSquareSpiral(index, spacing, plane, depth) end
 ---@param radius number
 ---@param turns number
 ---@param heightSpan number
----@param axis integer
+---@param axis CoordinateAxis
 ---@return vec3
 function IRMath.layoutHelix(index, count, radius, turns, heightSpan, axis) end
+
+---@param index integer
+---@param count integer
+---@param radius number
+---@param blocksPerArc integer
+---@param zStep number
+---@param axis CoordinateAxis
+---@param startAngleRad? number
+---@param invert? boolean
+---@return vec3
+function IRMath.layoutPathTangentArcs(index, count, radius, blocksPerArc, zStep, axis, startAngleRad, invert) end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Text alignment enums

@@ -42,6 +42,10 @@ struct C_ParticleBurst {
     float glowFadeSeconds_       = 0.22f;
     IREasingFunctions glowEasing_ = IREasingFunctions::kCubicEaseOut;
 
+    // Downward mode: particles launch down, affected by gravity, with hover oscillation
+    bool gravityEnabled_        = false;
+    bool downward_              = false;
+
     C_ParticleBurst(
         int count,
         int lifetime,

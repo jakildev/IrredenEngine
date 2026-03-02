@@ -503,7 +503,18 @@ vec3 layoutHelix(
     float radius,
     float turns,
     float heightSpan,
-    int axis = 2
+    CoordinateAxis axis = CoordinateAxis::ZAxis
+);
+
+vec3 layoutPathTangentArcs(
+    int index,
+    int count,
+    float radius,
+    int blocksPerArc,
+    float zStep,
+    CoordinateAxis axis = CoordinateAxis::ZAxis,
+    float startAngleRad = 0.785398163f,
+    bool invert = false
 );
 
 // 2D

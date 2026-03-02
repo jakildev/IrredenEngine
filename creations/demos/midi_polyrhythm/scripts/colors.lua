@@ -216,7 +216,7 @@ end
 
 -- ── Build palette config ────────────────────────────────────────────────────
 
-function C.build_palette_config(sorted, color_count, pick_mode, manual_note_idx, manual_plat_idx)
+function C.build_palette_config(sorted, color_count, pick_mode, manual_note_idx, manual_plat_idx, random_seed_note, random_seed_platform)
     local n = #sorted
 
     if pick_mode == ColorPickMode.SPLIT_HALF then
@@ -248,8 +248,8 @@ function C.build_palette_config(sorted, color_count, pick_mode, manual_note_idx,
 
     elseif pick_mode == ColorPickMode.RANDOM then
         return {
-            note     = pick_random(sorted, color_count, 42),
-            platform = pick_random(sorted, color_count, 137),
+            note     = pick_random(sorted, color_count, random_seed_note or 42),
+            platform = pick_random(sorted, color_count, random_seed_platform or 137),
         }
 
     elseif pick_mode == ColorPickMode.MANUAL then
@@ -269,27 +269,42 @@ end
 -- ── High-level build ────────────────────────────────────────────────────────
 
 function C.build(settings, num_voices)
-    local pitch_classes = #settings.scale.intervals
-    local raw = C.palettes[settings.active_palette] or C.palettes.mulfok32
+    local pal = settings.palette or {}
+    local raw = C.palettes[pal.active] or C.palettes.mulfok32
     local vis = settings.visual
-    local note_mode = settings.note_color_mode or NoteColorMode.PER_NOTE
-    local sort_mode = settings.palette_sort or PaletteSortMode.SATURATION
-    local pick_mode = settings.color_pick or ColorPickMode.SPLIT_HALF
+    local note_mode = pal.note_color_mode or NoteColorMode.PER_NOTE
+    local sort_mode = pal.sort_mode or PaletteSortMode.SATURATION
+    local pick_cfg = pal.pick or {}
+    local pick_mode = pick_cfg.mode or ColorPickMode.SPLIT_HALF
+    local manual = pick_cfg[ColorPickMode.MANUAL] or {}
+    local random_cfg = pick_cfg[ColorPickMode.RANDOM] or {}
+    local manual_note = manual.note_indices
+    local manual_platform = manual.platform_indices
+    local seed_note = random_cfg.seed_note
+    local seed_platform = random_cfg.seed_platform
 
     local color_count = (note_mode == NoteColorMode.PER_VOICE) and num_voices or pitch_classes
     local sorted = sort_palette(raw, sort_mode)
     local cfg = C.build_palette_config(
         sorted, color_count, pick_mode,
-        settings.manual_note_indices,
-        settings.manual_platform_indices
+        manual_note,
+        manual_platform,
+        seed_note,
+        seed_platform
     )
 
+    local pc = vis.platform_color or {}
+    local pc_mode = pc.mode or PlatformColorMode.MATCH_BLOCK
+    local desat_cfg = pc[PlatformColorMode.DESATURATE] or {}
+    local desat_factor = desat_cfg.desat_factor or 0.45
+    local darken_factor = desat_cfg.darken_factor or 0.30
+
     local function platform_color_for(note_color, idx)
-        if vis.platform_color_mode == PlatformColorMode.MATCH_BLOCK then
+        if pc_mode == PlatformColorMode.MATCH_BLOCK then
             return note_color
         end
-        if vis.platform_color_mode == PlatformColorMode.DESATURATE then
-            return C.desaturate(note_color, vis.platform_desat_factor, vis.platform_darken_factor)
+        if pc_mode == PlatformColorMode.DESATURATE then
+            return C.desaturate(note_color, desat_factor, darken_factor)
         end
         if cfg.platform and cfg.platform[idx] then
             return cfg.platform[idx]

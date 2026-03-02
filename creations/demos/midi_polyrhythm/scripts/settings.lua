@@ -4,19 +4,26 @@
 
 local S = {}
 
-S.palette_selection_enabled = false
+S.palette_selection_enabled = true
 S.start_paused = false
 
 S.midi_device = "OP-1"
-S.active_palette = Palette.BERRY_NEBULA
-S.note_color_mode = NoteColorMode.PER_VOICE
-S.palette_sort = PaletteSortMode.ORIGINAL
-S.color_pick = ColorPickMode.MANUAL
--- S.manual_note_indices = {5, 6, 3, 4, 6, 1, 2, 7, 3, 2, 1, 8, 4, 7, 8, 5}
-S.manual_note_indices = {1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6, 4, 5, 6, 7}
-S.manual_platform_indices = nil
-S.rhythm_preset = RhythmPreset.full_360
-S.rhythm_bpm = 65 --Overrides rhythm bpm
+-- Palette/color selection (mode + configs per mode)
+S.palette = {
+    active = Palette.BERRY_NEBULA,
+    note_color_mode = NoteColorMode.PER_VOICE,
+    sort_mode = PaletteSortMode.ORIGINAL,
+    pick = {
+        mode = ColorPickMode.FIRST_N,
+        [ColorPickMode.MANUAL] = {
+            note_indices = {1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6, 4, 5, 6, 7},
+            platform_indices = nil,
+        },
+        [ColorPickMode.RANDOM] = { seed_note = 42, seed_platform = 137 },
+    },
+}
+S.rhythm_preset = RhythmPreset.wave_3m_slow
+S.rhythm_bpm = 60 --Overrides rhythm bpm
 S.stop_after_cycle = true
 
 -- ── Social/export text ───────────────────────────────────────────────────────
@@ -44,32 +51,69 @@ S.voice = {
 
 -- ── Scene placement ──────────────────────────────────────────────────────────
 S.scene = {
-    center_offset = vec3.new(0.0, 0.0, 50.0),
+    center_offset = vec3.new(0.0, 0.0, 10.0),
 }
 
 -- ── Platform geometry/layout/spring ─────────────────────────────────────────
 S.platform = {
-    lane_spacing = 4.0,
+    lane_spacing = 8.0,
     size = ivec3.new(8, 8, 2),
     layout = {
-        mode = LayoutMode.GRID,
+        mode = LayoutMode.PATH_DOUBLE_C,
         plane = 0,
         depth = 0.0,
-        grid_columns = 4,
-        zigzag_items_per_row = 4,
-        zigzag_path_segment = 1,
-        spiral_spacing = 8.0,
-        helix_radius = 14.0,
-        helix_turns = 1.5,
-        helix_height_span = 18.0,
-        helix_axis = 2,
+
+        [LayoutMode.GRID] = {
+            columns = 4,
+        },
+        [LayoutMode.ZIGZAG] = {
+            items_per_row = 4,
+        },
+        [LayoutMode.ZIGZAG_PATH] = {
+            segment = 3,
+        },
+        [LayoutMode.SQUARE_SPIRAL] = {
+            spacing = 8.0,
+        },
+        [LayoutMode.HELIX] = {
+            radius = 18.0,
+            turns = 1.25,
+            height_span = 110.0,
+            axis = CoordinateAxis.ZAxis,
+        },
+        [LayoutMode.PATH_DOUBLE_C] = {
+            radius = 28.0,
+            blocks_per_arc = 8,
+            z_step = -2.0,
+            axis = CoordinateAxis.ZAxis,
+            start_angle = math.pi / 4,  -- 45°: head-on for iso (XY split plane)
+            invert = false,
+        },
     },
 }
 
 -- ── Note-block motion/placement ─────────────────────────────────────────────
 S.note_block = {
     contact_depth = 0,
-    travel_distance = 100.0,
+    travel_distance = 40.0,
+
+    -- Squash-and-stretch: velocity→stretch (momentum), acceleration→squash (force)
+    squash = {
+        enabled = false,
+        stretch_strength = 0.8,     -- elongation along velocity at max; 0 = none
+        squash_strength = 0.8,    -- compression along accel at max; 0 = none
+        stretch_speed_ref = 10.0,  -- (blocks/sec) speed at which stretch is full
+        squash_accel_ref = 20.0,  -- (blocks/sec²) accel at which squash is full
+        volume_preserve = true,    -- scale perpendicular by 1/sqrt(primary)
+        roundness = 0.7,           -- [0, 1] 0 = sharp, 1 = soft silhouette
+        impact_boost = 1.5,        -- extra squash on contact; 0 = none
+        impact_squash_z = 0.7,     -- Z scale on landing; 1 = none
+        impact_expand_xy = 1.2,    -- XY expansion on landing; 1 = none
+        impact_duration_sec = 0.25,
+        spring_bias = 0.2,        -- extra squash when platform CATCHING/ANTICIPATING; 0 = off
+        use_spring_bias = true,    -- query platform spring state for bias
+        smoothing = 0.06,          -- [0, ~0.2] reduces jitter; 0 = off
+    },
 }
 
 -- ── Physics timing inputs ────────────────────────────────────────────────────
@@ -83,10 +127,14 @@ S.physics = {
 
 -- ── Particles ─────────────────────────────────────────────────────────────
 S.particle = {
-    count = 15,
+    -- Direction: false = upward (default), true = downward with gravity
+    downward = true,
+    gravity_enabled = true,  -- required for downward; use same gravity as scene
+
+    count = 40,
     lifetime_multiplier = 10,
-    initial_speed = 300.0,
-    drag_scale = vec3.new(0.5, 0.5, 0.35),
+    initial_speed = 100.0,
+    drag_scale = vec3.new(0.5, 0.5, 0.90),
     burst_spawn_offset_z = 0,
     burst_iso_depth_behind = 0,
 
@@ -102,7 +150,7 @@ S.particle = {
     min_speed = 0.01,
 
     -- Hover phase (sinusoidal oscillation between ascent and exit drift)
-    hover_duration_sec = 1.5,
+    hover_duration_sec = 0.5,
     hover_osc_speed = 2.0,
     hover_osc_amplitude = 10.0,
     hover_blend_sec = 2.0,
@@ -110,62 +158,70 @@ S.particle = {
 
     -- Per-particle randomness (0.0 = none, 0.3 = +/-30% of base value)
     hover_start_variance = 0.2,
-    hover_duration_variance = 0.3,
+    hover_duration_variance = 0.5,
     hover_amplitude_variance = 0.3,
     hover_speed_variance = 0.3,
 
     -- Spawn glow (auto-fires on particle creation)
     glow_enabled = true,
     glow_mix_to_white = 1.0,
-    glow_hold_sec = 0.10,
-    glow_fade_sec = 0.20,
-    glow_easing = IREasingFunction.CUBIC_EASE_OUT,
+    glow_hold_sec = 0.5,
+    glow_fade_sec = 1.0,
+    glow_easing = IREasingFunction.LINEAR_INTERPOLATION,
 }
 
 -- ── Visual options ──────────────────────────────────────────────────────────
 S.visual = {
-    platform_color_mode = PlatformColorMode.MATCH_BLOCK,
-    -- platform_desat_factor = 0.45,
-    -- platform_darken_factor = 0.30,
+    platform_color = {
+        mode = PlatformColorMode.MATCH_BLOCK,
+        [PlatformColorMode.DESATURATE] = {
+            desat_factor = 0.45,
+            darken_factor = 0.30,
+        },
+    },
 
     platform_mute_color = Color.new(20, 20, 25, 255),
     platform_mute_amount = 0.60,
 
     background_enabled = false,
-    background_mode = "trixel_canvas_pulse",
-    background_color_a = Color.new(15, 15, 15, 255),
-    background_color_b = Color.new(2, 2, 2, 255),
-    background_pulse_speed = 0.5,
-    background_pattern_scale = 4,
-    background_start_zoom_multiplier = 4.0,
-    background_wave_dir = vec2.new(1.0, 1.0),
-    background_wave_phase_scale = 10.0,
-    background_wave_speed_multiplier = 1.0,
-    background_wave_start_offset = 0.0,
-    background_wave_direction_motion_enabled = false,
-    background_wave_direction_motion_start = vec2.new(1.0, 1.0),
-    background_wave_direction_motion_end = vec2.new(-1.0, 1.0),
-    background_wave_direction_motion_period_sec = 100.0,
-    background_wave_direction_motion_ease_forward = IREasingFunction.SINE_EASE_IN_OUT,
-    background_wave_direction_motion_ease_backward = IREasingFunction.SINE_EASE_IN_OUT,
-    background_wave2_dir = vec2.new(-1.0, 1.0),
-    background_wave2_phase_scale = 7.0,
-    background_wave2_speed_multiplier = 1.25,
-    background_wave2_start_offset = 1.2,
-    background_wave2_direction_motion_enabled = true,
-    background_wave2_direction_motion_start = vec2.new(-1.2, 1.0),
-    background_wave2_direction_motion_end = vec2.new(-0.8, 1.0),
-    background_wave2_direction_motion_period_sec = 41.0,
-    background_wave2_direction_motion_ease_forward = IREasingFunction.SINE_EASE_IN_OUT,
-    background_wave2_direction_motion_ease_backward = IREasingFunction.SINE_EASE_IN_OUT,
-    background_wave_interference_mix = 0.2,
+    background = {
+        mode = "trixel_canvas_pulse",
+        trixel_canvas_pulse = {
+            color_a = Color.new(15, 15, 15, 255),
+            color_b = Color.new(2, 2, 2, 255),
+            pulse_speed = 0.5,
+            pattern_scale = 4,
+            start_zoom_multiplier = 4.0,
+            wave_dir = vec2.new(1.0, 1.0),
+            wave_phase_scale = 10.0,
+            wave_speed_multiplier = 1.0,
+            wave_start_offset = 0.0,
+            wave_direction_motion_enabled = false,
+            wave_direction_motion_start = vec2.new(1.0, 1.0),
+            wave_direction_motion_end = vec2.new(-1.0, 1.0),
+            wave_direction_motion_period_sec = 100.0,
+            wave_direction_motion_ease_forward = IREasingFunction.SINE_EASE_IN_OUT,
+            wave_direction_motion_ease_backward = IREasingFunction.SINE_EASE_IN_OUT,
+            wave2_dir = vec2.new(-1.0, 1.0),
+            wave2_phase_scale = 7.0,
+            wave2_speed_multiplier = 1.25,
+            wave2_start_offset = 1.2,
+            wave2_direction_motion_enabled = true,
+            wave2_direction_motion_start = vec2.new(-1.2, 1.0),
+            wave2_direction_motion_end = vec2.new(-0.8, 1.0),
+            wave2_direction_motion_period_sec = 41.0,
+            wave2_direction_motion_ease_forward = IREasingFunction.SINE_EASE_IN_OUT,
+            wave2_direction_motion_ease_backward = IREasingFunction.SINE_EASE_IN_OUT,
+            wave_interference_mix = 0.2,
+        },
+    },
 
     camera_start_zoom = 4.0,
 
     note_hit_glow_enabled = true,
     note_hit_glow_mix_to_white = 1.0,
-    note_hit_glow_hold_sec = 0.10,
-    note_hit_glow_fade_sec = 0.55,
+    note_hit_glow_hold_sec = 0.30,
+    note_hit_glow_fade_sec = 1.0,
     note_hit_glow_easing = IREasingFunction.SINE_EASE_OUT,
 
     platform_hit_glow_enabled = false,
@@ -227,7 +283,7 @@ S.platform.spring = {
 --   root      = IRAudio.rootNote(NoteName.D, 3)    -- D3 MIDI note number
 
 S.scale = {
-    mode         = ScaleMode.PENTATONIC_MAJOR,
+    mode         = ScaleMode.DORIAN,
     root_note    = NoteName.Eb,
     root_octave  = 3,
     start_offset = 0,

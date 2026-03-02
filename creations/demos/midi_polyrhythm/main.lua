@@ -24,7 +24,7 @@ local entities = load_module("entities")
 local function init_polyrhythm(selected_palette)
     print("[Init] init_polyrhythm START, preset=" .. tostring(settings.rhythm_preset))
     if selected_palette then
-        settings.active_palette = selected_palette
+        settings.palette.active = selected_palette
     end
 
     -- ── MIDI output ─────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ local function build_overlay_text()
         preset.name .. "  |  " .. num_voices .. " voices",
         table.concat(timing_parts, "  |  "),
         pattern_line,
-        format_key(settings.active_palette),
+        format_key((settings.palette and settings.palette.active) or "?"),
     }
     return table.concat(lines, "\n")
 end
@@ -225,7 +225,7 @@ local function build_description_text()
         bpm_text,
         cycle_text,
         pattern_text,
-        format_key(settings.active_palette)
+        format_key((settings.palette and settings.palette.active) or "?")
     )
 
     local hashtags = ""

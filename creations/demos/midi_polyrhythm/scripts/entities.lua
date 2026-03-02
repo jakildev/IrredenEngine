@@ -185,12 +185,15 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
                 v.bDragX, v.bDragY, v.bDragZ,
                 part.burst_spawn_offset_z, part.burst_iso_depth_behind
             )
-            b.xySpeedRatio      = part.xy_speed_ratio
-            b.zSpeedRatio       = part.z_speed_ratio
-            b.zVarianceRatio    = part.z_variance_ratio
-            b.pDragPerSecond    = part.drag_per_second
+            b.xySpeedRatio       = part.xy_speed_ratio
+            b.zSpeedRatio        = part.z_speed_ratio
+            b.zVarianceRatio     = part.z_variance_ratio
+            b.pDragPerSecond     = part.drag_per_second
             b.pDriftDelaySeconds = part.drift_delay_sec
-            b.pDriftUpAccelPerSec = part.drift_up_accel
+            -- Downward + gravity: let gravity pull; drift_up would fight it
+            b.pDriftUpAccelPerSec = (part.downward and part.gravity_enabled) and 0 or part.drift_up_accel
+            b.gravityEnabled      = part.gravity_enabled
+            b.downward            = part.downward
             b.pDragMinSpeed     = part.min_speed
             b.pHoverDurationSec = part.hover_duration_sec
             b.pHoverOscSpeed    = part.hover_osc_speed
@@ -226,6 +229,30 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
                 vis.note_hit_glow_easing,
                 vis.note_hit_glow_enabled
             )
+        end,
+
+        function(params)
+            local sq = note_block.squash or {}
+            if not sq.enabled then
+                return C_VoxelSquashStretch.new(0.0, 0.0, 1.0, 0.0, 1.0, 0.0)
+            end
+            local c = C_VoxelSquashStretch.new(
+                sq.stretch_strength or 0.2,
+                sq.squash_strength or 0.15,
+                sq.stretch_speed_ref or sq.max_speed_ref or 50.0,
+                sq.roundness or 0.6,
+                sq.impact_squash_z or 0.75,
+                sq.impact_duration_sec or 0.12
+            )
+            c.stretchSpeedRef = sq.stretch_speed_ref or sq.max_speed_ref or 50.0
+            c.squashAccelRef = sq.squash_accel_ref or 120.0
+            c.volumePreserve = sq.volume_preserve ~= false
+            c.impactBoost = sq.impact_boost or 1.5
+            c.impactExpandXY = sq.impact_expand_xy or 1.2
+            c.springBias = sq.spring_bias or 0.2
+            c.useSpringBias = sq.use_spring_bias ~= false
+            c.smoothing = sq.smoothing or 0.06
+            return c
         end
     )
 end
@@ -236,7 +263,12 @@ function E.setup_background(settings)
     local vis = settings.visual
     local background_canvas = IREntity.getCanvasEntity("background")
 
-    if not (vis.background_enabled and vis.background_mode == "trixel_canvas_pulse") then
+    local bg_cfg = vis.background or {}
+    local bg_mode = bg_cfg.mode or "trixel_canvas_pulse"
+    local trixel = bg_cfg.trixel_canvas_pulse or {}
+    local tc = trixel
+
+    if not (vis.background_enabled and bg_mode == "trixel_canvas_pulse") then
         IREntity.clearTriangleCanvasBackground(background_canvas)
         return
     end
@@ -244,37 +276,44 @@ function E.setup_background(settings)
     local canvas_size = IREntity.getCanvasSizeTriangles(background_canvas)
     local bg = C_TriangleCanvasBackground.new(
         BackgroundTypes.PULSE_PATTERN,
-        vis.background_color_a, vis.background_color_b,
-        canvas_size, vis.background_pulse_speed, vis.background_pattern_scale
+        tc.color_a or Color.new(15, 15, 15, 255),
+        tc.color_b or Color.new(2, 2, 2, 255),
+        canvas_size,
+        tc.pulse_speed or 0.5,
+        tc.pattern_scale or 4
     )
-    bg:setPulseWaveDirection(vis.background_wave_dir.x, vis.background_wave_dir.y, vis.background_wave_phase_scale)
-    bg:setPulseWavePrimaryTiming(vis.background_wave_speed_multiplier, vis.background_wave_start_offset)
+    bg:setPulseWaveDirection(tc.wave_dir and tc.wave_dir.x or 1.0, tc.wave_dir and tc.wave_dir.y or 1.0, tc.wave_phase_scale or 10.0)
+    bg:setPulseWavePrimaryTiming(tc.wave_speed_multiplier or 1.0, tc.wave_start_offset or 0.0)
 
-    if vis.background_wave_direction_motion_enabled then
+    if tc.wave_direction_motion_enabled then
         bg:setPulseWaveDirectionLinearMotion(
-            vis.background_wave_direction_motion_start.x, vis.background_wave_direction_motion_start.y,
-            vis.background_wave_direction_motion_end.x, vis.background_wave_direction_motion_end.y,
-            vis.background_wave_direction_motion_period_sec,
-            vis.background_wave_direction_motion_ease_forward,
-            vis.background_wave_direction_motion_ease_backward
+            (tc.wave_direction_motion_start or vec2.new(1,1)).x,
+            (tc.wave_direction_motion_start or vec2.new(1,1)).y,
+            (tc.wave_direction_motion_end or vec2.new(-1,1)).x,
+            (tc.wave_direction_motion_end or vec2.new(-1,1)).y,
+            tc.wave_direction_motion_period_sec or 100.0,
+            tc.wave_direction_motion_ease_forward or IREasingFunction.SINE_EASE_IN_OUT,
+            tc.wave_direction_motion_ease_backward or IREasingFunction.SINE_EASE_IN_OUT
         )
     else
         bg:clearPulseWaveDirectionLinearMotion()
     end
 
     bg:setPulseWaveInterference(
-        vis.background_wave2_dir.x, vis.background_wave2_dir.y,
-        vis.background_wave2_phase_scale, vis.background_wave_interference_mix
+        (tc.wave2_dir or vec2.new(-1,1)).x, (tc.wave2_dir or vec2.new(-1,1)).y,
+        tc.wave2_phase_scale or 7.0, tc.wave_interference_mix or 0.2
     )
-    bg:setPulseWaveSecondaryTiming(vis.background_wave2_speed_multiplier, vis.background_wave2_start_offset)
+    bg:setPulseWaveSecondaryTiming(tc.wave2_speed_multiplier or 1.25, tc.wave2_start_offset or 1.2)
 
-    if vis.background_wave2_direction_motion_enabled then
+    if tc.wave2_direction_motion_enabled then
         bg:setPulseWaveSecondaryDirectionLinearMotion(
-            vis.background_wave2_direction_motion_start.x, vis.background_wave2_direction_motion_start.y,
-            vis.background_wave2_direction_motion_end.x, vis.background_wave2_direction_motion_end.y,
-            vis.background_wave2_direction_motion_period_sec,
-            vis.background_wave2_direction_motion_ease_forward,
-            vis.background_wave2_direction_motion_ease_backward
+            (tc.wave2_direction_motion_start or vec2.new(-1.2,1)).x,
+            (tc.wave2_direction_motion_start or vec2.new(-1.2,1)).y,
+            (tc.wave2_direction_motion_end or vec2.new(-0.8,1)).x,
+            (tc.wave2_direction_motion_end or vec2.new(-0.8,1)).y,
+            tc.wave2_direction_motion_period_sec or 41.0,
+            tc.wave2_direction_motion_ease_forward or IREasingFunction.SINE_EASE_IN_OUT,
+            tc.wave2_direction_motion_ease_backward or IREasingFunction.SINE_EASE_IN_OUT
         )
     else
         bg:clearPulseWaveSecondaryDirectionLinearMotion()
@@ -285,7 +324,7 @@ function E.setup_background(settings)
         background_canvas,
         C_TrixelCanvasRenderBehavior.new(false, false, false, false, false, 1.0, 0.0, 1.0, -1.0)
     )
-    IREntity.setZoomLevel(background_canvas, C_ZoomLevel.new(vis.background_start_zoom_multiplier))
+    IREntity.setZoomLevel(background_canvas, C_ZoomLevel.new(tc.start_zoom_multiplier or 4.0))
 end
 
 return E

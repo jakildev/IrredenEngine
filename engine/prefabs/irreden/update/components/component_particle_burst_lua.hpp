@@ -76,7 +76,11 @@ template <> inline void bindLuaType<IRComponents::C_ParticleBurst>(LuaScript &lu
         "glowFadeSeconds",
         &IRComponents::C_ParticleBurst::glowFadeSeconds_,
         "glowEasing",
-        &IRComponents::C_ParticleBurst::glowEasing_
+        &IRComponents::C_ParticleBurst::glowEasing_,
+        "gravityEnabled",
+        &IRComponents::C_ParticleBurst::gravityEnabled_,
+        "downward",
+        &IRComponents::C_ParticleBurst::downward_
     );
 }
 } // namespace IRScript

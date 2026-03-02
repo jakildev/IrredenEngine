@@ -23,6 +23,7 @@
 #include <irreden/update/components/component_spring_platform.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/update/components/component_rhythmic_launch.hpp>
+#include <irreden/voxel/components/component_voxel_squash_stretch.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
@@ -520,7 +521,8 @@ void registerLuaBindings() {
             C_ContactEvent,
             C_MidiNote,
             C_ParticleBurst,
-            C_TriggerGlow>("createEntityBatchNoteBlocksPhysics");
+            C_TriggerGlow,
+            C_VoxelSquashStretch>("createEntityBatchNoteBlocksPhysics");
 
         // Batch creation: static note platforms with spring visual behavior.
         luaScript.registerCreateEntityBatchFunction<

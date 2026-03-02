@@ -4,6 +4,7 @@
 #include <irreden/common/components/component_position_3d_lua.hpp>
 #include <irreden/update/components/component_velocity_3d_lua.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/voxel/components/component_voxel_squash_stretch_lua.hpp>
 #include <irreden/update/components/component_periodic_idle_lua.hpp>
 #include <irreden/audio/components/component_midi_note_lua.hpp>
 #include <irreden/audio/components/component_midi_sequence_lua.hpp>
@@ -35,6 +36,7 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_Position3D,
         C_Velocity3D,
         C_VoxelSetNew,
+        C_VoxelSquashStretch,
         PeriodStage,
         C_PeriodicIdle,
         C_MidiNote,

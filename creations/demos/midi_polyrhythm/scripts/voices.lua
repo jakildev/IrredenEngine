@@ -11,6 +11,7 @@ LayoutMode = {
     ZIGZAG_PATH    = "zigzag_path",
     SQUARE_SPIRAL  = "square_spiral",
     HELIX          = "helix",
+    PATH_DOUBLE_C  = "path_double_c",
 }
 
 local seconds_per_minute = 60.0
@@ -41,33 +42,39 @@ end
 
 function V.layout_position(i, num_voices, platform_cfg)
     local layout = platform_cfg.layout
+    local mode = layout.mode
+    local cfg = layout[mode]
     local psz = platform_cfg.size
     local sp_x = psz.x + platform_cfg.lane_spacing
     local sp_y = psz.y + platform_cfg.lane_spacing
-    if layout.mode == LayoutMode.ZIGZAG then
+
+    if mode == LayoutMode.ZIGZAG then
         return IRMath.layoutZigZagCentered(
-            i, num_voices, layout.zigzag_items_per_row,
+            i, num_voices, cfg.items_per_row,
             sp_x, sp_y,
             layout.plane, layout.depth
         )
-    elseif layout.mode == LayoutMode.ZIGZAG_PATH then
+    elseif mode == LayoutMode.ZIGZAG_PATH then
         return IRMath.layoutZigZagPath(
-            i, num_voices, layout.zigzag_path_segment,
+            i, num_voices, cfg.segment,
             sp_x, sp_y,
             layout.plane, layout.depth
         )
-    elseif layout.mode == LayoutMode.SQUARE_SPIRAL then
-        return IRMath.layoutSquareSpiral(i, layout.spiral_spacing, layout.plane, layout.depth)
-    elseif layout.mode == LayoutMode.HELIX then
+    elseif mode == LayoutMode.SQUARE_SPIRAL then
+        return IRMath.layoutSquareSpiral(i, cfg.spacing, layout.plane, layout.depth)
+    elseif mode == LayoutMode.HELIX then
         return IRMath.layoutHelix(
-            i, num_voices, layout.helix_radius, layout.helix_turns,
-            layout.helix_height_span, layout.helix_axis
+            i, num_voices, cfg.radius, cfg.turns,
+            cfg.height_span, cfg.axis
+        )
+    elseif mode == LayoutMode.PATH_DOUBLE_C then
+        return IRMath.layoutPathTangentArcs(
+            i, num_voices, cfg.radius, cfg.blocks_per_arc,
+            cfg.z_step, cfg.axis or CoordinateAxis.ZAxis,
+            cfg.start_angle, cfg.invert
         )
     end
-    local columns = layout.grid_columns
-    if columns <= 0 then
-        columns = math.ceil(math.sqrt(num_voices))
-    end
+    local columns = (cfg and cfg.columns) or math.ceil(math.sqrt(num_voices))
     return IRMath.layoutGridCentered(
         i, num_voices, columns,
         sp_x, sp_y,
