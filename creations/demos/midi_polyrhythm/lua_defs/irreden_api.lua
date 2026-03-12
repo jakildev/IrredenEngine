@@ -33,6 +33,33 @@ RhythmPreset = {
     wave_2m_fast  = "wave_2m_fast",
     wave_2m_slow  = "wave_2m_slow",
     wave_3m_slow  = "wave_3m_slow",
+    -- Phase-shift, co-prime, Fibonacci, power fracture, tuplet
+    phase_16x4       = "phase_16x4",
+    coprime_4        = "coprime_4",
+    coprime_5        = "coprime_5",
+    coprime_7_13     = "coprime_7_13",
+    fib_4            = "fib_4",
+    fib_5            = "fib_5",
+    fib_6            = "fib_6",
+    pow_fracture     = "pow_fracture",
+    pow_fracture_7   = "pow_fracture_7",
+    tuplet_5_7_9     = "tuplet_5_7_9",
+    tuplet_3_5_7     = "tuplet_3_5_7",
+    -- Rotational, prime gaps, mirror, euclidean, harmonic
+    rot_60           = "rot_60",
+    rot_60_compact   = "rot_60_compact",
+    rot_24           = "rot_24",
+    prime_gaps       = "prime_gaps",
+    mirror_prime_pair = "mirror_prime_pair",
+    euclidean_basic  = "euclidean_basic",
+    euclidean_5_13   = "euclidean_5_13",
+    harmonic_ratios  = "harmonic_ratios",
+    -- Spiral, irrational (Format C)
+    spiral_smooth    = "spiral_smooth",
+    spiral_tight     = "spiral_tight",
+    spiral_aligned     = "spiral_aligned",
+    spiral_aligned_24  = "spiral_aligned_24",
+    irrational_breathing = "irrational_breathing",
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -256,20 +283,25 @@ Palette = {
     EPHEMERA          = "ephemera",
     EULBINK           = "eulbink",
     FAIRYDUST_8       = "fairydust_8",
+    FOREST_16         = "forest_16",
+    GRAVEYARD_MIST    = "graveyard_mist",
     HOLLOW            = "hollow",
     HOPE_DIAMOND      = "hope_diamond",
     ICE_CREAM_GB      = "ice_cream_gb",
     INK               = "ink",
     INKPINK           = "inkpink",
+    JONK_16           = "jonk_16",
     LATE_NIGHT_BATH   = "late_night_bath",
     LAVA_GB           = "lava_gb",
     NYX8              = "nyx8",
     PAPER_8           = "paper_8",
     PASTEL_QT         = "pastel_qt",
+    PEREGRINE16       = "peregrine16",
     PICO_8            = "pico_8",
     POLLEN8           = "pollen8",
     RUST_GOLD_8       = "rust_gold_8",
     SLSO8             = "slso8",
+    TRITON_16         = "triton_16"
 }
 
 ---@enum PaletteSortMode
@@ -309,8 +341,9 @@ LayoutMode = {
     ZIGZAG          = "zigzag",
     ZIGZAG_PATH     = "zigzag_path",
     SQUARE_SPIRAL   = "square_spiral",
-    HELIX          = "helix",
-    PATH_DOUBLE_C  = "path_double_c",
+    CIRCLE          = "circle",
+    HELIX           = "helix",
+    PATH_DOUBLE_C   = "path_double_c",
 }
 
 ---@enum BackgroundTypes
@@ -498,6 +531,9 @@ function C_MidiSequence:getSequenceLengthSeconds() end
 ---@field hoverDurationVariance number
 ---@field hoverAmplitudeVariance number
 ---@field hoverSpeedVariance number
+---@field pUsePostHoverVelocityReset boolean
+---@field pPostHoverVelocityZ number
+---@field pPostHoverVelocityZVariance number
 ---@field glowEnabled boolean
 ---@field glowColor Color
 ---@field glowHoldSeconds number
@@ -968,6 +1004,15 @@ function IRMath.layoutZigZagPath(index, count, itemsPerSegment, spacingPrimary, 
 ---@param depth number
 ---@return vec3
 function IRMath.layoutSquareSpiral(index, spacing, plane, depth) end
+
+---@param index integer
+---@param count integer
+---@param radius number
+---@param plane PlaneIso
+---@param depth number
+---@param startAngleRad? number  Start angle in radians; default -pi/2 (top)
+---@return vec3
+function IRMath.layoutCircle(index, count, radius, plane, depth, startAngleRad) end
 
 ---@param index integer
 ---@param count integer

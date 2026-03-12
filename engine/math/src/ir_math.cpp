@@ -269,6 +269,25 @@ vec3 layoutSquareSpiral(int index, float spacing, PlaneIso plane, float depth) {
     return mapPlaneToVec3(vec2(static_cast<float>(x), static_cast<float>(y)) * spacing, depth, plane);
 }
 
+vec3 layoutCircle(
+    int index,
+    int count,
+    float radius,
+    float startAngleRad,
+    PlaneIso plane,
+    float depth
+) {
+    if (count <= 0) {
+        return mapPlaneToVec3(vec2(0.0f), depth, plane);
+    }
+    const int idx = std::clamp(index, 0, count - 1);
+    const float pi = glm::pi<float>();
+    const float angle = startAngleRad + (static_cast<float>(idx) / static_cast<float>(count)) * 2.0f * pi;
+    const float x = radius * std::cos(angle);
+    const float y = radius * std::sin(angle);
+    return mapPlaneToVec3(vec2(x, y), depth, plane);
+}
+
 vec3 layoutHelix(
     int index, int count, float radius, float turns, float heightSpan, CoordinateAxis axis
 ) {

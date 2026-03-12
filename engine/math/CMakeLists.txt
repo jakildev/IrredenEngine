@@ -1,5 +1,7 @@
 add_library(IrredenEngineMath STATIC
     src/ir_math.cpp
+    src/nav_grid.cpp
+    src/pathfinding.cpp
 )
 
 target_compile_options(

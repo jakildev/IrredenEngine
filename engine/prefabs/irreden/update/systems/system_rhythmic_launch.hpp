@@ -74,13 +74,16 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                 }
 
                 if (launch.atMaxLaunches()) {
-                    if (launch.grounded_) return;
-                    if (velocity.velocity_.z >= 0.0f) {
+                    if (launch.freezeAtApexWhenDone_ &&
+                        !launch.grounded_ &&
+                        velocity.velocity_.z >= 0.0f) {
                         launch.frozen_ = true;
                         launch.frozenPos_ = position.pos_;
                         velocity.velocity_ = vec3(0.0f);
+                        return;
                     }
-                    return;
+                    // Fall through: always run landing/grounded snap so block stays on platform
+                    // (skipping return when grounded was preventing grounded snap from running)
                 }
 
                 launch.elapsedSeconds_ += dt;

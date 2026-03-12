@@ -47,18 +47,49 @@ template <> struct System<CONTACT_NOTE_BURST> {
                 const float zSign = downward ? 1.0f : -1.0f;
 
                 for (int i = 0; i < burst.count_; i++) {
-                    float zVel =
-                        zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
-                    vec3 vel = vec3(
-                        randomFloat(-spdXY, spdXY),
-                        randomFloat(-spdXY, spdXY),
-                        zVel);
+                    vec3 vel;
+                    if (burst.useDirectionOverride_ && burst.directionStrength_ > 0.0f) {
+                        const vec3 dir =
+                            IRMath::length(burst.directionOverride_) > 0.0001f
+                                ? IRMath::normalize(burst.directionOverride_)
+                                : vec3(0.0f, 0.0f, -1.0f);
+                        const float str = burst.directionStrength_;
+                        const float scatter = spd * burst.directionScatter_;
+                        vec3 primary = spd * dir * str;
+                        // Only override Z when direction is nearly horizontal (so we add downward)
+                        // When dir.z is upward (negative), keep it for "up then fall" behavior
+                        if (burst.downward_ && std::abs(dir.z) < 0.01f) {
+                            primary.z = zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
+                        }
+                        vec3 randPerp = vec3(
+                            randomFloat(-scatter, scatter),
+                            randomFloat(-scatter, scatter),
+                            randomFloat(-scatter * 0.5f, scatter * 0.5f));
+                        vel = primary + randPerp * (1.0f - str);
+                    } else {
+                        float zVel =
+                            zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
+                        vel = vec3(
+                            randomFloat(-spdXY, spdXY),
+                            randomFloat(-spdXY, spdXY),
+                            zVel);
+                    }
 
-                    // Upward: spawn from bottom face (-halfSize.z); downward: from top (+halfSize.z)
-                    vec3 faceOffset = vec3(
-                        randomFloat(-halfSize.x, halfSize.x),
-                        randomFloat(-halfSize.y, halfSize.y),
-                        downward ? halfSize.z : -halfSize.z);
+                    vec3 faceOffset;
+                    if (burst.useFaceSpawnBias_) {
+                        const vec3 &bias = burst.faceSpawnBias_;
+                        float ax = halfSize.x * (bias.x + randomFloat(-0.5f, 0.5f));
+                        float ay = halfSize.y * (bias.y + randomFloat(-0.5f, 0.5f));
+                        faceOffset = vec3(
+                            IRMath::clamp(ax, -halfSize.x, halfSize.x),
+                            IRMath::clamp(ay, -halfSize.y, halfSize.y),
+                            downward ? halfSize.z : -halfSize.z);
+                    } else {
+                        faceOffset = vec3(
+                            randomFloat(-halfSize.x, halfSize.x),
+                            randomFloat(-halfSize.y, halfSize.y),
+                            downward ? halfSize.z : -halfSize.z);
+                    }
 
                     const vec3 spawnPos = isoDepthShift(
                         blockCenter + faceOffset
@@ -95,7 +126,10 @@ template <> struct System<CONTACT_NOTE_BURST> {
                             hoverSpd,
                             hoverAmp,
                             burst.pHoverBlendSec_,
-                            burst.pHoverBlendEasing_
+                            burst.pHoverBlendEasing_,
+                            burst.pUsePostHoverVelocityReset_,
+                            burst.pPostHoverVelocityZ_,
+                            burst.pPostHoverVelocityZVariance_
                         },
                         C_Lifetime{burst.lifetime_}
                     );

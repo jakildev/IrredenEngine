@@ -38,6 +38,7 @@ class VideoManager {
 
     void toggleRecording();
     void requestScreenshot();
+    void requestCanvasScreenshot();
     void notifyFixedUpdate();
     void render();
     void shutdown();
@@ -69,6 +70,7 @@ class VideoManager {
     std::string m_screenshotOutputDirPath = "save_files/screenshots";
     std::uint64_t m_nextScreenshotIndex = 1;
     bool m_screenshotRequested = false;
+    bool m_canvasScreenshotRequested = false;
     int m_sourceFrameWidth = 0;
     int m_sourceFrameHeight = 0;
     int64_t m_totalFixedUpdates = 0;
@@ -85,6 +87,7 @@ class VideoManager {
     void armAudioInput();
     void toggleCapture();
     bool captureScreenshot();
+    bool captureCanvasScreenshot();
     std::string getNextScreenshotFilePath();
     bool captureFrame();
     void initReadbackPbos();

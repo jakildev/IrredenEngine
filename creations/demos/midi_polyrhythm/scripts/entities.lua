@@ -4,11 +4,13 @@
 
 local E = {}
 
--- Requires voices module for layout_position
-local voices_mod  -- set by init()
+-- Requires voices module for layout_position, particle_launch for layout-correlated burst config
+local voices_mod
+local particle_launch_mod
 
-function E.init(voices_module)
+function E.init(voices_module, particle_launch_module)
     voices_mod = voices_module
+    particle_launch_mod = particle_launch_module or { get_config = function() return {} end, apply = function() end }
 end
 
 -- ── Platforms ───────────────────────────────────────────────────────────────
@@ -151,9 +153,27 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             local start_elapsed = fall_time
             local start_frozen = false  -- Never start frozen, let pauseAll handle that
             
-            if settings.stop_after_cycle then
-                local max_launches = math.floor(v.launches_per_cycle)
-                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen, max_launches)
+            local max_launches = nil
+            if settings.stop_when_slowest_repeats then
+                -- When slowest completes N cycles (~N min), all stop. Faster blocks do many launches until then.
+                local slowest_period = 0
+                for _, w in ipairs(voices) do
+                    if w.period_sec > slowest_period then slowest_period = w.period_sec end
+                end
+                local n = settings.stop_when_slowest_repeats
+                -- Cutoff time = n * slowest_period. Slowest gets n launches; others get floor(n*slowest/period)
+                if v.period_sec >= slowest_period - 0.001 then
+                    max_launches = n
+                else
+                    max_launches = math.max(1, math.floor(n * slowest_period / v.period_sec))
+                end
+            elseif settings.stop_after_cycle then
+                max_launches = math.floor(v.launches_per_cycle)
+            end
+            if max_launches then
+                max_launches = math.min(max_launches, 2147483647)  -- int32-safe
+                local freeze_at_apex = settings.stop_after_cycle and not settings.stop_when_slowest_repeats
+                return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen, max_launches, freeze_at_apex)
             end
             return C_RhythmicLaunch.new(v.period_sec, vec3.new(0.0, 0.0, -impulse_speed), rest_offset_z, start_elapsed, start_frozen)
         end,
@@ -186,6 +206,13 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
                 part.burst_spawn_offset_z, part.burst_iso_depth_behind
             )
             b.xySpeedRatio       = part.xy_speed_ratio
+            if particle_launch_mod and particle_launch_mod.get_config then
+                local overrides = particle_launch_mod.get_config(i, num_voices, platform, scene, voices_mod, voices)
+                particle_launch_mod.apply(b, overrides)
+            end
+            if part.direction_scatter ~= nil then
+                b.directionScatter = part.direction_scatter
+            end
             b.zSpeedRatio        = part.z_speed_ratio
             b.zVarianceRatio     = part.z_variance_ratio
             b.pDragPerSecond     = part.drag_per_second
@@ -204,6 +231,9 @@ function E.create_note_blocks(settings, voices, num_voices, gravity_mag)
             b.hoverDurationVariance = part.hover_duration_variance
             b.hoverAmplitudeVariance = part.hover_amplitude_variance
             b.hoverSpeedVariance    = part.hover_speed_variance
+            b.pUsePostHoverVelocityReset = part.use_post_hover_velocity_reset
+            b.pPostHoverVelocityZ   = part.post_hover_velocity_z or 0.0
+            b.pPostHoverVelocityZVariance = part.post_hover_velocity_z_variance or 0.0
             b.glowEnabled       = part.glow_enabled
             if part.glow_enabled then
                 local glow_color = IRMath.lerpColor(v.color, Color.new(255, 255, 255, 255),

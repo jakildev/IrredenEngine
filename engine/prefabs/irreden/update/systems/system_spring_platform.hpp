@@ -133,7 +133,8 @@ template <> struct System<SPRING_PLATFORM> {
                                 contact.otherEntity_);
                         if (launchOpt.has_value()) {
                             const auto &launch = *launchOpt.value();
-                            if (launch.periodSeconds_ > 0.0) {
+                            if (!launch.atMaxLaunches() &&
+                                launch.periodSeconds_ > 0.0) {
                                 double elapsed = std::fmod(
                                     launch.elapsedSeconds_,
                                     launch.periodSeconds_);

@@ -64,6 +64,7 @@
 #include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
+#include <irreden/video/commands/command_take_screenshot_canvas.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
 #include <irreden/update/commands/command_toggle_periodic_idle_pause.hpp>
 
@@ -216,6 +217,11 @@ void initCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonF8
+    );
+    IRCommand::createCommand<IRCommand::SCREENSHOT_CANVAS>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonF7
     );
     IRCommand::createCommand<IRCommand::RECORD_TOGGLE>(
         InputTypes::KEY_MOUSE,

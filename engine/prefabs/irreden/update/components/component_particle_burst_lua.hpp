@@ -67,6 +67,12 @@ template <> inline void bindLuaType<IRComponents::C_ParticleBurst>(LuaScript &lu
         &IRComponents::C_ParticleBurst::hoverAmplitudeVariance_,
         "hoverSpeedVariance",
         &IRComponents::C_ParticleBurst::hoverSpeedVariance_,
+        "pUsePostHoverVelocityReset",
+        &IRComponents::C_ParticleBurst::pUsePostHoverVelocityReset_,
+        "pPostHoverVelocityZ",
+        &IRComponents::C_ParticleBurst::pPostHoverVelocityZ_,
+        "pPostHoverVelocityZVariance",
+        &IRComponents::C_ParticleBurst::pPostHoverVelocityZVariance_,
         "glowEnabled",
         &IRComponents::C_ParticleBurst::glowEnabled_,
         "glowColor",
@@ -80,7 +86,19 @@ template <> inline void bindLuaType<IRComponents::C_ParticleBurst>(LuaScript &lu
         "gravityEnabled",
         &IRComponents::C_ParticleBurst::gravityEnabled_,
         "downward",
-        &IRComponents::C_ParticleBurst::downward_
+        &IRComponents::C_ParticleBurst::downward_,
+        "useDirectionOverride",
+        &IRComponents::C_ParticleBurst::useDirectionOverride_,
+        "directionOverride",
+        &IRComponents::C_ParticleBurst::directionOverride_,
+        "directionStrength",
+        &IRComponents::C_ParticleBurst::directionStrength_,
+        "directionScatter",
+        &IRComponents::C_ParticleBurst::directionScatter_,
+        "useFaceSpawnBias",
+        &IRComponents::C_ParticleBurst::useFaceSpawnBias_,
+        "faceSpawnBias",
+        &IRComponents::C_ParticleBurst::faceSpawnBias_
     );
 }
 } // namespace IRScript

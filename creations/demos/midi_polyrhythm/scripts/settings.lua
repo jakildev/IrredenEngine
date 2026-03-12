@@ -4,6 +4,19 @@
 
 local S = {}
 
+-- ── Rhythm ───────────────────────────────────────────────────────────────────
+-- Preset key (RhythmPreset.X) or direct generator call (R is global from rhythm.lua).
+-- S.rhythm = R.make_fibonacci(4, 17)
+-- S.rhythm = R.make_spiral(2, 0.02, 24, 600)
+-- S.rhythm = R.make_spiral(2, 0.02, 24, 60)
+-- S.rhythm = RhythmPreset.spiral_aligned_24
+-- S.rhythm = R.make_spiral(0.5, 0.08, 8, 90.0)
+S.rhythm = RhythmPreset.seq_16
+-- S.rhythm_bpm = 120  -- Overrides preset bpm (for Format A)
+-- Stop behavior: true = stop after full alignment (LCM cycle); N = stop when slowest completes N cycles
+S.stop_after_cycle = true
+-- S.stop_when_slowest_repeats = 1  -- nil = off; N = no new launches after slowest's Nth launch
+
 S.palette_selection_enabled = true
 S.start_paused = false
 
@@ -22,9 +35,6 @@ S.palette = {
         [ColorPickMode.RANDOM] = { seed_note = 42, seed_platform = 137 },
     },
 }
-S.rhythm_preset = RhythmPreset.wave_3m_slow
-S.rhythm_bpm = 60 --Overrides rhythm bpm
-S.stop_after_cycle = true
 
 -- ── Social/export text ───────────────────────────────────────────────────────
 S.description = {
@@ -39,7 +49,7 @@ S.description = {
 -- ── Voice defaults ───────────────────────────────────────────────────────────
 S.voice = {
     -- Note-block voxel side length (cube).
-    block_size = 8,
+    block_size = 3,
 
     -- MIDI note output defaults per voice.
     midi_velocity_start = 112,
@@ -51,15 +61,15 @@ S.voice = {
 
 -- ── Scene placement ──────────────────────────────────────────────────────────
 S.scene = {
-    center_offset = vec3.new(0.0, 0.0, 10.0),
+    center_offset = vec3.new(0.0, 0.0, 00.0),
 }
 
 -- ── Platform geometry/layout/spring ─────────────────────────────────────────
 S.platform = {
-    lane_spacing = 8.0,
-    size = ivec3.new(8, 8, 2),
+    lane_spacing = 2.0,
+    size = ivec3.new(3, 3, 1),
     layout = {
-        mode = LayoutMode.PATH_DOUBLE_C,
+        mode = LayoutMode.CIRCLE,  -- or ZIGZAG_PATH, SQUARE_SPIRAL, HELIX, etc.
         plane = 0,
         depth = 0.0,
 
@@ -70,10 +80,19 @@ S.platform = {
             items_per_row = 4,
         },
         [LayoutMode.ZIGZAG_PATH] = {
-            segment = 3,
+            segment = 2,
         },
         [LayoutMode.SQUARE_SPIRAL] = {
             spacing = 8.0,
+        },
+        [LayoutMode.CIRCLE] = {
+            radius = 24.0,
+            -- start_angle = -math.pi / 4,  -- top; omit for default
+            -- Particle launch direction (see particle_launch.lua)
+            -- positive=up+in, 0=horizontal, negative=down+in: -0.5 = down and toward center
+            particle_launch_upward = -0.8,
+            particle_direction_strength = 0.85,
+            particle_spawn_from_outer = true,
         },
         [LayoutMode.HELIX] = {
             radius = 18.0,
@@ -93,9 +112,11 @@ S.platform = {
 }
 
 -- ── Note-block motion/placement ─────────────────────────────────────────────
+-- travel_distance = how high the block goes (arc height). Higher = bigger bounce.
+-- Physics auto-tune gravity so flight takes airtime_ratio of the fastest voice's period.
 S.note_block = {
     contact_depth = 0,
-    travel_distance = 40.0,
+    travel_distance = 40.0,  -- was 15; higher = bigger arc, more satisfying bounce
 
     -- Squash-and-stretch: velocity→stretch (momentum), acceleration→squash (force)
     squash = {
@@ -119,22 +140,23 @@ S.note_block = {
 -- ── Physics timing inputs ────────────────────────────────────────────────────
 S.physics = {
     -- Fraction of the fastest voice's period spent in the air (0.0–1.0).
-    -- Gravity is auto-derived so flight_time = airtime_ratio * min_period.
-    -- Set to nil to use gravity_override instead.
-    airtime_ratio = 0.70,
-    gravity_override = nil,
+    -- Higher = block floats longer; lower = snappier fall, more time resting.
+    airtime_ratio = 0.80,
+    gravity_override = nil,  -- Set e.g. 80 for snappier falls (overrides auto)
 }
 
 -- ── Particles ─────────────────────────────────────────────────────────────
 S.particle = {
     -- Direction: false = upward (default), true = downward with gravity
+    -- Use true for "launch up then fall" so drift_up=0 (no float); direction override still launches up+center
     downward = true,
     gravity_enabled = true,  -- required for downward; use same gravity as scene
 
-    count = 40,
+    count = 10,
     lifetime_multiplier = 10,
-    initial_speed = 100.0,
-    drag_scale = vec3.new(0.5, 0.5, 0.90),
+    initial_speed = 80.0,   -- higher launch
+    direction_scatter = 0.4, -- spread when using direction override (circle, etc.)
+    drag_scale = vec3.new(0.4, 0.4, 1.0),
     burst_spawn_offset_z = 0,
     burst_iso_depth_behind = 0,
 
@@ -143,30 +165,33 @@ S.particle = {
     z_speed_ratio = 1.0,
     z_variance_ratio = 0.02,
 
-    -- Per-particle drag / drift behavior
+    -- Drag + gravity only (no hover, no drift_up)
     drag_per_second = 4.5,
-    drift_delay_sec = 0.8, --Extends pur-launch phase before hover kicks in
-    drift_up_accel = 100.0,
+    drift_delay_sec = 0.0,   -- no delay; drag applies immediately
+    drift_up_accel = 0.0,    -- no upward drift
     min_speed = 0.01,
 
-    -- Hover phase (sinusoidal oscillation between ascent and exit drift)
-    hover_duration_sec = 0.5,
-    hover_osc_speed = 2.0,
-    hover_osc_amplitude = 10.0,
-    hover_blend_sec = 2.0,
-    hover_blend_easing = IREasingFunction.CUBIC_EASE_OUT,
+    -- Hover disabled (0 = drag + gravity only from launch)
+    hover_duration_sec = 0,
+    hover_osc_speed = 0,
+    hover_osc_amplitude = 0,
+    hover_blend_sec = 0,
+    hover_blend_easing = IREasingFunction.LINEAR_INTERPOLATION,
 
-    -- Per-particle randomness (0.0 = none, 0.3 = +/-30% of base value)
-    hover_start_variance = 0.2,
-    hover_duration_variance = 0.5,
-    hover_amplitude_variance = 0.3,
-    hover_speed_variance = 0.3,
+    hover_start_variance = 0,
+    hover_duration_variance = 0,
+    hover_amplitude_variance = 0,
+    hover_speed_variance = 0,
+
+    use_post_hover_velocity_reset = false,
+    post_hover_velocity_z = 0.0,
+    post_hover_velocity_z_variance = 0.0,
 
     -- Spawn glow (auto-fires on particle creation)
     glow_enabled = true,
-    glow_mix_to_white = 1.0,
-    glow_hold_sec = 0.5,
-    glow_fade_sec = 1.0,
+    glow_mix_to_white = 0.7,
+    glow_hold_sec = 0.1,
+    glow_fade_sec = 0.5,
     glow_easing = IREasingFunction.LINEAR_INTERPOLATION,
 }
 
@@ -176,7 +201,7 @@ S.visual = {
         mode = PlatformColorMode.MATCH_BLOCK,
         [PlatformColorMode.DESATURATE] = {
             desat_factor = 0.45,
-            darken_factor = 0.30,
+            darken_factor = -0.30,
         },
     },
 
@@ -227,7 +252,7 @@ S.visual = {
     platform_hit_glow_enabled = false,
     platform_hit_glow_mix_to_white = 0.50,
     platform_hit_glow_hold_sec = 0.2,
-    platform_hit_glow_fade_sec = 1.00,
+    platform_hit_glow_fade_sec = 0.50,
     platform_hit_glow_easing = IREasingFunction.SINE_EASE_OUT,
 }
 
@@ -252,7 +277,7 @@ S.platform.spring = {
     -- Release path color shift (+/- hue, saturation, value, alpha).
     -- Used for locked/launch -> rest as spring.colorProgress goes 1 -> 0.
     -- Set this equal to color_shift_hsv to mirror the lock path exactly.
-    release_color_shift_hsv = ColorHSV(0.0, -0.35, -0.50, 0.0),
+    release_color_shift_hsv = ColorHSV(0.0, -0.0, 0.0, 0.0),
     -- Minimum HSV value/saturation after shift (0.0–1.0). Prevents dark
     -- base colors from becoming indistinguishable from black when shifted.
     color_min_value = 0.08,
@@ -283,9 +308,9 @@ S.platform.spring = {
 --   root      = IRAudio.rootNote(NoteName.D, 3)    -- D3 MIDI note number
 
 S.scale = {
-    mode         = ScaleMode.DORIAN,
-    root_note    = NoteName.Eb,
-    root_octave  = 3,
+    mode         = ScaleMode.MAJOR,
+    root_note    = NoteName.A,
+    root_octave  = 2,
     start_offset = 0,
 }
 S.scale.intervals = IRAudio.getScaleIntervals(S.scale.mode)

@@ -31,6 +31,7 @@
 #include <irreden/render/commands/command_move_camera.hpp>
 #include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
+#include <irreden/video/commands/command_take_screenshot_canvas.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
 
 void initSystems();
@@ -136,6 +137,11 @@ void initCommands() {
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonF8
+    );
+    IRCommand::createCommand<IRCommand::SCREENSHOT_CANVAS>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonF7
     );
     IRCommand::createCommand<IRCommand::RECORD_TOGGLE>(
         InputTypes::KEY_MOUSE,

@@ -10,6 +10,7 @@ LayoutMode = {
     ZIGZAG         = "zigzag",
     ZIGZAG_PATH    = "zigzag_path",
     SQUARE_SPIRAL  = "square_spiral",
+    CIRCLE         = "circle",
     HELIX          = "helix",
     PATH_DOUBLE_C  = "path_double_c",
 }
@@ -62,6 +63,12 @@ function V.layout_position(i, num_voices, platform_cfg)
         )
     elseif mode == LayoutMode.SQUARE_SPIRAL then
         return IRMath.layoutSquareSpiral(i, cfg.spacing, layout.plane, layout.depth)
+    elseif mode == LayoutMode.CIRCLE then
+        return IRMath.layoutCircle(
+            i, num_voices, cfg.radius,
+            layout.plane, layout.depth,
+            cfg.start_angle
+        )
     elseif mode == LayoutMode.HELIX then
         return IRMath.layoutHelix(
             i, num_voices, cfg.radius, cfg.turns,
@@ -137,6 +144,9 @@ function V.build(settings, preset, palette)
             v.cycle_beats = preset.cycles[i]
             v.period_sec  = v.cycle_beats * seconds_per_minute / preset.bpm
             v.launches_per_cycle = preset.align_beats / v.cycle_beats
+        elseif preset.periods_sec then
+            v.period_sec = preset.periods_sec[i]
+            v.launches_per_cycle = preset.align_sec / v.period_sec
         else
             v.notes_per_align = preset.notes_per_align[i]
             v.period_sec = preset.align_sec / v.notes_per_align
@@ -146,18 +156,21 @@ function V.build(settings, preset, palette)
 
     -- Debug print
     print(string.format(
-        "Preset '%s': %d voices, align every %.1fs",
-        settings.rhythm_preset, num_voices, preset.align_sec
+        "Rhythm '%s': %d voices, align every %.1fs",
+        preset.name or "custom", num_voices, preset.align_sec
     ))
     for i = 1, num_voices do
         local v = voices[i]
         if v.cycle_beats then
             print(string.format(
                 "  voice %2d: cycle %3d beats  period %6.3fs", i, v.cycle_beats, v.period_sec))
-        else
+        elseif v.notes_per_align then
             print(string.format(
                 "  voice %2d: %3d notes/%gs  period %6.3fs",
                 i, v.notes_per_align, preset.align_sec, v.period_sec))
+        else
+            print(string.format(
+                "  voice %2d: period %6.3fs (direct)", i, v.period_sec))
         end
     end
 

@@ -36,6 +36,10 @@ struct C_ParticleBurst {
     float hoverAmplitudeVariance_ = 0.0f;
     float hoverSpeedVariance_    = 0.0f;
 
+    bool pUsePostHoverVelocityReset_ = false;
+    float pPostHoverVelocityZ_        = 0.0f;
+    float pPostHoverVelocityZVariance_ = 0.0f;
+
     bool glowEnabled_            = false;
     Color glowColor_             = IRColors::kWhite;
     float glowHoldSeconds_       = 0.03f;
@@ -45,6 +49,15 @@ struct C_ParticleBurst {
     // Downward mode: particles launch down, affected by gravity, with hover oscillation
     bool gravityEnabled_        = false;
     bool downward_              = false;
+
+    // Direction override: when true, bias velocity toward directionOverride_ instead of random
+    bool useDirectionOverride_  = false;
+    vec3 directionOverride_    = vec3(0.0f, 0.0f, -1.0f);  // normalized
+    float directionStrength_   = 1.0f;   // 0=ignore, 1=fully directional
+    float directionScatter_    = 0.15f;  // random scatter (fraction of speed) when using override
+    // Face spawn bias: when set, bias spawn position on block face (e.g. outer edge for inward launch)
+    bool useFaceSpawnBias_     = false;
+    vec3 faceSpawnBias_       = vec3(0.0f, 0.0f, 0.0f);  // -1..1 per axis on face
 
     C_ParticleBurst(
         int count,

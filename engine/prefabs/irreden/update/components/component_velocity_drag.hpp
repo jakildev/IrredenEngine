@@ -18,9 +18,13 @@ struct C_VelocityDrag {
     float hoverOscAmplitude_;
     float hoverBlendSeconds_;
     IRMath::IREasingFunctions hoverBlendEasing_;
+    bool usePostHoverVelocityReset_ = false;
+    float postHoverVelocityZ_      = 0.0f;
+    float postHoverVelocityZVariance_ = 0.0f;
     float elapsedSeconds_;
     float hoverElapsedSec_ = 0.0f;
     bool  zSettled_         = false;
+    bool  postHoverVelocityApplied_ = false;
 
     C_VelocityDrag(
         float dragPerSecond,
@@ -34,7 +38,10 @@ struct C_VelocityDrag {
         float hoverOscSpeed = 0.0f,
         float hoverOscAmplitude = 0.0f,
         float hoverBlendSeconds = 0.5f,
-        IRMath::IREasingFunctions hoverBlendEasing = IRMath::IREasingFunctions::kLinearInterpolation
+        IRMath::IREasingFunctions hoverBlendEasing = IRMath::IREasingFunctions::kLinearInterpolation,
+        bool usePostHoverVelocityReset = false,
+        float postHoverVelocityZ = 0.0f,
+        float postHoverVelocityZVariance = 0.0f
     )
         : dragPerSecond_{dragPerSecond}
         , driftDelaySeconds_{driftDelaySeconds}
@@ -48,6 +55,9 @@ struct C_VelocityDrag {
         , hoverOscAmplitude_{hoverOscAmplitude}
         , hoverBlendSeconds_{hoverBlendSeconds}
         , hoverBlendEasing_{hoverBlendEasing}
+        , usePostHoverVelocityReset_{usePostHoverVelocityReset}
+        , postHoverVelocityZ_{postHoverVelocityZ}
+        , postHoverVelocityZVariance_{postHoverVelocityZVariance}
         , elapsedSeconds_{0.0f} {}
 
     C_VelocityDrag()

@@ -9,6 +9,7 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
+#include <irreden/render/ir_gl_api.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -73,6 +74,10 @@ void VideoManager::requestScreenshot() {
     m_screenshotRequested = true;
 }
 
+void VideoManager::requestCanvasScreenshot() {
+    m_canvasScreenshotRequested = true;
+}
+
 void VideoManager::notifyFixedUpdate() {
     if (m_captureEnabled) {
         ++m_totalFixedUpdates;
@@ -86,6 +91,11 @@ void VideoManager::render() {
     if (m_screenshotRequested) {
         m_screenshotRequested = false;
         captureScreenshot();
+    }
+
+    if (m_canvasScreenshotRequested) {
+        m_canvasScreenshotRequested = false;
+        captureCanvasScreenshot();
     }
 
     if (m_toggleRequested) {
@@ -331,6 +341,54 @@ std::string VideoManager::getNextScreenshotFilePath() {
 }
 
 bool VideoManager::captureScreenshot() {
+    // Read from the default framebuffer (final screen output) so we capture
+    // the framebuffer-to-screen pass, debug overlay, HUD, and all other layers.
+    const ivec2 sourceResolution = IRRender::getViewport();
+    if (sourceResolution.x <= 0 || sourceResolution.y <= 0) {
+        IRE_LOG_WARN("Screenshot skipped: viewport has zero or negative dimensions");
+        return false;
+    }
+    const std::size_t pixelCount =
+        static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
+    std::vector<std::uint8_t> imageData(pixelCount * 4U);
+
+    ENG_API->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    ENG_API->glReadPixels(
+        0,
+        0,
+        sourceResolution.x,
+        sourceResolution.y,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        imageData.data()
+    );
+
+    // OpenGL framebuffer origin is lower-left, flip for PNG output.
+    const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
+    std::vector<std::uint8_t> flippedImageData(pixelCount * 4U);
+    for (int y = 0; y < sourceResolution.y; ++y) {
+        const int flippedY = sourceResolution.y - 1 - y;
+        std::memcpy(
+            flippedImageData.data() + static_cast<std::size_t>(y) * rowBytes,
+            imageData.data() + static_cast<std::size_t>(flippedY) * rowBytes,
+            rowBytes
+        );
+    }
+
+    const std::string outputPath = getNextScreenshotFilePath();
+    IRRender::writePNG(
+        outputPath.c_str(),
+        sourceResolution.x,
+        sourceResolution.y,
+        4,
+        flippedImageData.data()
+    );
+    IRE_LOG_INFO("Saved screenshot: {}", outputPath);
+    return true;
+}
+
+bool VideoManager::captureCanvasScreenshot() {
+    // Read directly from the main canvas framebuffer texture (no debug overlay, no HUD).
     const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
         IREntity::getEntity("mainFramebuffer")
     );
@@ -368,7 +426,7 @@ bool VideoManager::captureScreenshot() {
         4,
         flippedImageData.data()
     );
-    IRE_LOG_INFO("Saved screenshot: {}", outputPath);
+    IRE_LOG_INFO("Saved canvas screenshot: {}", outputPath);
     return true;
 }
 

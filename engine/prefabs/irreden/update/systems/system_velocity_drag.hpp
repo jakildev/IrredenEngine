@@ -76,7 +76,17 @@ template <> struct System<VELOCITY_DRAG> {
                             std::sin(hoverT * drag.hoverOscSpeed_)
                             * drag.hoverOscAmplitude_;
                     } else {
-                        velocity.velocity_.z -= drag.driftUpAccelPerSecond_ * dt;
+                        if (drag.usePostHoverVelocityReset_
+                            && !drag.postHoverVelocityApplied_) {
+                            float var = drag.postHoverVelocityZVariance_;
+                            velocity.velocity_.z =
+                                drag.postHoverVelocityZ_
+                                + IRMath::randomFloat(-var, var);
+                            drag.postHoverVelocityApplied_ = true;
+                        } else {
+                            velocity.velocity_.z -=
+                                drag.driftUpAccelPerSecond_ * dt;
+                        }
                     }
                 } else {
                     // Pre-blend: pure drag on all axes.

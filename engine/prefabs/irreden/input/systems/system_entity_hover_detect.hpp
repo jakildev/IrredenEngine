@@ -21,6 +21,7 @@ struct EntityEventHandlers {
     std::vector<HandlerEntry> onHovered;
     std::vector<HandlerEntry> onUnhovered;
     std::vector<HandlerEntry> onClicked;
+    std::vector<HandlerEntry> onRightClick;
     int nextId = 1;
 
     int addOnHovered(sol::protected_function fn) {
@@ -41,6 +42,12 @@ struct EntityEventHandlers {
         return id;
     }
 
+    int addOnRightClick(sol::protected_function fn) {
+        int id = nextId++;
+        onRightClick.push_back({id, std::move(fn)});
+        return id;
+    }
+
     void removeHandler(int handlerId) {
         auto eraseById = [handlerId](std::vector<HandlerEntry> &vec) {
             vec.erase(
@@ -54,6 +61,7 @@ struct EntityEventHandlers {
         eraseById(onHovered);
         eraseById(onUnhovered);
         eraseById(onClicked);
+        eraseById(onRightClick);
     }
 
     void fireHovered(IREntity::EntityId entityId) {
@@ -85,6 +93,16 @@ struct EntityEventHandlers {
             }
         }
     }
+
+    void fireRightClick() {
+        for (auto &entry : onRightClick) {
+            auto result = entry.fn();
+            if (!result.valid()) {
+                sol::error err = result;
+                IRE_LOG_ERROR("onRightClick handler error: {}", err.what());
+            }
+        }
+    }
 };
 
 inline EntityEventHandlers &getEntityEventHandlers() {
@@ -107,11 +125,11 @@ template <> struct System<ENTITY_HOVER_DETECT> {
 
                 static int logCounter = 0;
                 if (++logCounter % 600 == 0 && currentHovered != IREntity::kNullEntity) {
-                    IRE_LOG_INFO("[HoverDetect] eid={}", currentHovered);
+                    IRE_LOG_DEBUG("[HoverDetect] eid={}", currentHovered);
                 }
 
                 if (currentHovered != previousHoveredEntity) {
-                    IRE_LOG_INFO(
+                    IRE_LOG_DEBUG(
                         "[HoverDetect] state change: {} -> {}",
                         previousHoveredEntity, currentHovered
                     );
@@ -124,24 +142,27 @@ template <> struct System<ENTITY_HOVER_DETECT> {
                     previousHoveredEntity = currentHovered;
                 }
 
-                if (currentHovered != IREntity::kNullEntity) {
-                    if (IRInput::checkKeyMouseButton(
-                            KeyMouseButtons::kMouseButtonLeft,
-                            ButtonStatuses::PRESSED)) {
-                        IRE_LOG_INFO(
-                            "[Click] Entity {} clicked (left button)",
-                            currentHovered
-                        );
-                        handlers.fireClicked(currentHovered, 0);
-                    }
-                    if (IRInput::checkKeyMouseButton(
-                            KeyMouseButtons::kMouseButtonRight,
-                            ButtonStatuses::PRESSED)) {
-                        IRE_LOG_INFO(
+                if (IRInput::checkKeyMouseButton(
+                        KeyMouseButtons::kMouseButtonRight,
+                        ButtonStatuses::PRESSED)) {
+                    handlers.fireRightClick();
+                    if (currentHovered != IREntity::kNullEntity) {
+                        IRE_LOG_DEBUG(
                             "[Click] Entity {} clicked (right button)",
                             currentHovered
                         );
                         handlers.fireClicked(currentHovered, 1);
+                    }
+                }
+                if (currentHovered != IREntity::kNullEntity) {
+                    if (IRInput::checkKeyMouseButton(
+                            KeyMouseButtons::kMouseButtonLeft,
+                            ButtonStatuses::PRESSED)) {
+                        IRE_LOG_DEBUG(
+                            "[Click] Entity {} clicked (left button)",
+                            currentHovered
+                        );
+                        handlers.fireClicked(currentHovered, 0);
                     }
                 }
             }

@@ -19,6 +19,7 @@ struct C_RhythmicLaunch {
     IREntity::EntityId lastPlatformEntity_;
     bool frozen_;
     vec3 frozenPos_;
+    bool freezeAtApexWhenDone_;  // when true, freeze at apex when maxLaunches reached; when false, land naturally
 
     C_RhythmicLaunch(
         float periodSeconds,
@@ -26,7 +27,8 @@ struct C_RhythmicLaunch {
         float restOffsetZ,
         float initialElapsed = 0.0f,
         bool startGrounded = true,
-        int32_t maxLaunches = -1
+        int32_t maxLaunches = -1,
+        bool freezeAtApexWhenDone = true
     )
         : periodSeconds_{static_cast<double>(periodSeconds)}
         , impulseVelocity_{impulseVelocity}
@@ -37,7 +39,8 @@ struct C_RhythmicLaunch {
         , launchCount_{0}
         , lastPlatformEntity_{IREntity::kNullEntity}
         , frozen_{false}
-        , frozenPos_{vec3(0.0f)} {}
+        , frozenPos_{vec3(0.0f)}
+        , freezeAtApexWhenDone_{freezeAtApexWhenDone} {}
 
     C_RhythmicLaunch()
         : C_RhythmicLaunch(1.0f, vec3(0.0f, 0.0f, -50.0f), 6.0f) {}

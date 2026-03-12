@@ -115,6 +115,13 @@ LuaScript::LuaScript()
                                              ) {
         return IRMath::layoutSquareSpiral(index, spacing, plane, depth);
     };
+    m_lua["IRMath"]["layoutCircle"] =
+        [](int index, int count, float radius, IRMath::PlaneIso plane, float depth,
+           sol::optional<float> startAngleRad) {
+            const float angle =
+                startAngleRad.value_or(-1.57079633f);  // -pi/2 = top
+            return IRMath::layoutCircle(index, count, radius, angle, plane, depth);
+        };
     m_lua["IRMath"]["layoutHelix"] =
         [](int index, int count, float radius, float turns, float heightSpan, int axis) {
             return IRMath::layoutHelix(

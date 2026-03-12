@@ -497,6 +497,15 @@ vec3 layoutSquareSpiral(
     float depth = 0.0f
 );
 
+vec3 layoutCircle(
+    int index,
+    int count,
+    float radius,
+    float startAngleRad = -1.57079633f,
+    PlaneIso plane = PlaneIso::XY,
+    float depth = 0.0f
+);
+
 vec3 layoutHelix(
     int index,
     int count,

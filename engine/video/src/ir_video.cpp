@@ -31,6 +31,10 @@ void requestScreenshot() {
     getVideoManager().requestScreenshot();
 }
 
+void requestCanvasScreenshot() {
+    getVideoManager().requestCanvasScreenshot();
+}
+
 void toggleRecording() {
     getVideoManager().toggleRecording();
 }

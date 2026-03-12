@@ -35,7 +35,7 @@ struct C_VoxelSetNew {
     std::span<C_Voxel> voxels_;
 
     C_VoxelSetNew(
-        ivec3 size, Color color = IRColors::kGreen
+        ivec3 size, Color color = IRColors::kGreen, bool centerAroundOrigin = false
         // int voxelPoolId = 0
     )
         : numVoxels_{size.x * size.y * size.z}
@@ -66,11 +66,14 @@ struct C_VoxelSetNew {
             return;
         }
 
+        vec3 offset = centerAroundOrigin
+            ? vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f)
+            : vec3(0.0f);
         for (int x = 0; x < size.x; x++) {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
-                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] =
-                        C_Position3D{vec3(x, y, z)};
+                    vec3 pos = vec3(x, y, z) + offset;
+                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] = C_Position3D{pos};
                     voxels_[index3DtoIndex1D(ivec3(x, y, z), size)].color_ = color;
                 }
             }

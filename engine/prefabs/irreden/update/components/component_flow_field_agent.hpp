@@ -1,0 +1,55 @@
+#ifndef COMPONENT_FLOW_FIELD_AGENT_H
+#define COMPONENT_FLOW_FIELD_AGENT_H
+
+#include <irreden/ir_math.hpp>
+
+namespace IRComponents {
+
+struct C_FlowFieldAgent {
+    int fieldId_{0};
+    IRMath::ivec3 goalCell_{0, 0, 0};
+    IRMath::ivec3 groupCenterCell_{0, 0, 0};
+    IRMath::vec3 immediateDirection_{0.0f};
+    bool waitingForField_{true};
+    bool active_{false};
+
+    C_FlowFieldAgent() = default;
+
+    C_FlowFieldAgent(int fieldId, IRMath::ivec3 goalCell, IRMath::vec3 immediateDirection)
+        : fieldId_{fieldId}
+        , goalCell_{goalCell}
+        , groupCenterCell_{goalCell}
+        , immediateDirection_{immediateDirection}
+        , waitingForField_{true}
+        , active_{true} {}
+
+    C_FlowFieldAgent(
+        int fieldId,
+        IRMath::ivec3 goalCell,
+        IRMath::ivec3 groupCenterCell,
+        IRMath::vec3 immediateDirection
+    )
+        : fieldId_{fieldId}
+        , goalCell_{goalCell}
+        , groupCenterCell_{groupCenterCell}
+        , immediateDirection_{immediateDirection}
+        , waitingForField_{true}
+        , active_{true} {}
+
+    bool hasField() const {
+        return active_ && fieldId_ != 0;
+    }
+
+    void clear() {
+        fieldId_ = 0;
+        goalCell_ = IRMath::ivec3(0, 0, 0);
+        groupCenterCell_ = IRMath::ivec3(0, 0, 0);
+        immediateDirection_ = IRMath::vec3(0.0f);
+        waitingForField_ = true;
+        active_ = false;
+    }
+};
+
+} // namespace IRComponents
+
+#endif /* COMPONENT_FLOW_FIELD_AGENT_H */

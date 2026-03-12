@@ -51,6 +51,7 @@ constexpr GLuint kBufferIndex_FontData = 11;
 constexpr GLuint kBufferIndex_GlyphDrawCommands = 12;
 constexpr GLuint kBufferIndex_VoxelEntityIds = 13;
 constexpr GLuint kBufferIndex_HoveredEntityId = 14;
+constexpr GLuint kBufferIndex_DebugOverlayData = 15;
 
 } // namespace IRRender
 

@@ -23,7 +23,8 @@ enum CommandNames {
     MOVE_CAMERA_RIGHT_END,
     MOVE_CAMERA_UP_END,
     MOVE_CAMERA_DOWN_END,
-    SCREENSHOT,   // todo
+    SCREENSHOT,        // captures the full screen output (debug overlay, HUD, etc.)
+    SCREENSHOT_CANVAS, // captures the main canvas framebuffer only (no overlay)
     RECORD_START, // todo
     RECORD_STOP,  // todo
     RECORD_TOGGLE,

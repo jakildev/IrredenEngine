@@ -1,0 +1,16 @@
+config = {
+    init_window_width = 1920,
+    screenshot_output_dir = "save_files/screenshots",
+    init_window_height = 1080,
+    game_resolution_width = 1920,
+    game_resolution_height = 1080,
+    fit_mode = "fit",
+    fullscreen = false,
+    monitor_index = -1,
+    monitor_name = "",
+    voxel_render_mode = "smooth",
+    voxel_render_subdivisions = 1,
+    gui_scale = 2,
+    hovered_trixel_visible = false,
+    start_updates_on_first_key_press = false,
+}

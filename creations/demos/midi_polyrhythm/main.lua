@@ -14,15 +14,17 @@ end
 
 -- ── Load modules ────────────────────────────────────────────────────────────
 local rhythm   = load_module("rhythm")   -- exports RhythmPreset global
+R = rhythm  -- global for settings.rhythm = R.make_fibonacci(6)
 local colors   = load_module("colors")   -- exports NoteColorMode, PlatformColorMode globals
 local voices   = load_module("voices")   -- exports LayoutMode global
+local particle_launch = load_module("particle_launch")
 local settings = load_module("settings")
 local entities = load_module("entities")
 
 -- ── Main initialization (called after palette is resolved) ──────────────────
 
 local function init_polyrhythm(selected_palette)
-    print("[Init] init_polyrhythm START, preset=" .. tostring(settings.rhythm_preset))
+    print("[Init] init_polyrhythm START, rhythm=" .. (type(settings.rhythm) == "function" and "function" or tostring(settings.rhythm)))
     if selected_palette then
         settings.palette.active = selected_palette
     end
@@ -30,10 +32,13 @@ local function init_polyrhythm(selected_palette)
     -- ── MIDI output ─────────────────────────────────────────────────────────
     IRAudio.openMidiOut(settings.midi_device)
 
-    -- ── Rhythm preset ───────────────────────────────────────────────────────
-    print("[Init] rhythm preset: " .. tostring(settings.rhythm_preset))
-    rhythm.print_all(settings.rhythm_preset)
-    local preset = rhythm.select(settings.rhythm_preset, settings.rhythm_bpm)
+    -- ── Rhythm ──────────────────────────────────────────────────────────────
+    local rhythm_spec = settings.rhythm
+    print("[Init] rhythm: " .. (type(rhythm_spec) == "function" and "function" or tostring(rhythm_spec)))
+    if type(rhythm_spec) == "string" then
+        rhythm.print_all(rhythm_spec)
+    end
+    local preset = rhythm.get(rhythm_spec, settings.rhythm_bpm)
     print("[Init] preset loaded, num_voices=" .. tostring(preset.num_voices))
 
     -- ── Palette & colors ────────────────────────────────────────────────────
@@ -81,7 +86,7 @@ local function init_polyrhythm(selected_palette)
 
     -- ── Entity creation ─────────────────────────────────────────────────────
     print("[Init] creating platforms...")
-    entities.init(voices)
+    entities.init(voices, particle_launch)
     entities.create_platforms(settings, voice_list, num_voices)
     print("[Init] creating note blocks...")
     entities.create_note_blocks(settings, voice_list, num_voices, GRAVITY_MAGNITUDE)
@@ -144,44 +149,81 @@ local function format_key(s)
         function(f, r) return f:upper() .. r end)
 end
 
+local function format_duration_sec(sec)
+    if sec == nil or sec <= 0 then return "Continuous" end
+    if sec >= 86400 * 365 then return "> 1 yr" end
+    if sec >= 3600 then
+        local h = math.floor(sec / 3600)
+        local m = math.floor((sec % 3600) / 60)
+        if m > 0 then return string.format("%dh %dm", h, m) end
+        return string.format("%dh", h)
+    end
+    if sec >= 60 then
+        local m = math.floor(sec / 60)
+        local s = sec % 60
+        if s >= 1 then return string.format("%dm %ds", m, math.floor(s)) end
+        return string.format("%dm", m)
+    end
+    return string.format("%.1fs", sec)
+end
+
 local function build_overlay_text()
     local root = NOTE_NAMES[settings.scale.root_note] or "?"
     local oct  = settings.scale.root_octave
     local mode = SCALE_NAMES[settings.scale.mode] or "?"
     local scale_line = root .. oct .. " " .. mode
 
-    local timing_parts = {}
-    if preset.bpm then
-        timing_parts[#timing_parts + 1] = preset.bpm .. " BPM"
-    end
-    if preset.align_sec >= 60 then
-        local mins = preset.align_sec / 60
-        if mins == math.floor(mins) then
-            timing_parts[#timing_parts + 1] = string.format("%dm cycle", mins)
+    -- Compute displayed duration based on stop mode
+    local duration_sec, stop_label
+    if settings.stop_when_slowest_repeats and voice_list then
+        local slowest_period = 0
+        for _, v in ipairs(voice_list) do
+            if v.period_sec > slowest_period then slowest_period = v.period_sec end
+        end
+        local n = settings.stop_when_slowest_repeats
+        duration_sec = n * slowest_period
+        stop_label = string.format("Stops after %d× slowest", n)
+    elseif settings.stop_after_cycle then
+        duration_sec = preset.align_sec
+        if duration_sec and duration_sec > 86400 * 365 then
+            duration_sec = nil
+            stop_label = "Full cycle (very long)"
         else
-            timing_parts[#timing_parts + 1] = string.format("%.1fm cycle", mins)
+            stop_label = "Full cycle"
         end
     else
-        timing_parts[#timing_parts + 1] = string.format("%.0fs cycle", preset.align_sec)
+        duration_sec = nil
+        stop_label = "Continuous"
+    end
+
+    local timing_line = preset.bpm and (preset.bpm .. " BPM") or "—"
+    if stop_label ~= "Continuous" then
+        timing_line = timing_line .. "  |  " .. stop_label .. ": " .. format_duration_sec(duration_sec)
     end
 
     local pattern_line
     if preset.cycles then
         local parts = {}
         for _, c in ipairs(preset.cycles) do parts[#parts + 1] = tostring(c) end
-        pattern_line = table.concat(parts, ":")
+        pattern_line = "Cycles: " .. table.concat(parts, ":")
+    elseif preset.periods_sec then
+        local parts = {}
+        for _, p in ipairs(preset.periods_sec) do parts[#parts + 1] = string.format("%.2fs", p) end
+        pattern_line = "Periods: " .. table.concat(parts, " ")
     else
         local lo = preset.notes_per_align[1]
         local hi = preset.notes_per_align[#preset.notes_per_align]
-        pattern_line = lo .. "-" .. hi .. " notes/cycle"
+        pattern_line = "Notes: " .. lo .. "-" .. hi .. " per cycle"
     end
 
+    local palette_name = format_key((settings.palette and settings.palette.active) or "?")
     local lines = {
-        scale_line,
-        preset.name .. "  |  " .. num_voices .. " voices",
-        table.concat(timing_parts, "  |  "),
+        "Scale: " .. scale_line,
+        "Rhythm: " .. (preset.name or "Custom"),
+        "Voices: " .. num_voices,
+        timing_line,
         pattern_line,
-        format_key((settings.palette and settings.palette.active) or "?"),
+        "Palette: " .. palette_name,
     }
     return table.concat(lines, "\n")
 end
@@ -192,13 +234,24 @@ local function build_description_text()
     local mode = SCALE_NAMES[settings.scale.mode] or "?"
     local scale_line = root .. oct .. " " .. mode
 
-    local cycle_text
-    if preset.align_sec >= 60 then
-        cycle_text = string.format("%.1fm cycle", preset.align_sec / 60.0)
+    local duration_sec, stop_label
+    if settings.stop_when_slowest_repeats and voice_list then
+        local slowest_period = 0
+        for _, v in ipairs(voice_list) do
+            if v.period_sec > slowest_period then slowest_period = v.period_sec end
+        end
+        local n = settings.stop_when_slowest_repeats
+        duration_sec = n * slowest_period
+        stop_label = string.format("%d× slowest", n)
+    elseif settings.stop_after_cycle then
+        duration_sec = preset.align_sec
+        stop_label = "full cycle"
     else
-        cycle_text = string.format("%.0fs cycle", preset.align_sec)
+        duration_sec = nil
+        stop_label = "continuous"
     end
 
+    local duration_text = stop_label .. ": " .. format_duration_sec(duration_sec)
     local bpm_text = preset.bpm and (tostring(preset.bpm) .. " BPM") or "Variable BPM"
 
     local pattern_text
@@ -206,6 +259,10 @@ local function build_description_text()
         local parts = {}
         for _, c in ipairs(preset.cycles) do parts[#parts + 1] = tostring(c) end
         pattern_text = table.concat(parts, ":")
+    elseif preset.periods_sec then
+        local parts = {}
+        for _, p in ipairs(preset.periods_sec) do parts[#parts + 1] = string.format("%.2fs", p) end
+        pattern_text = table.concat(parts, " ")
     else
         local lo = preset.notes_per_align[1]
         local hi = preset.notes_per_align[#preset.notes_per_align]
@@ -220,10 +277,10 @@ local function build_description_text()
         "PATTERN: %s\n" ..
         "PALETTE: %s",
         scale_line,
-        preset.name,
+        preset.name or "Custom",
         num_voices,
         bpm_text,
-        cycle_text,
+        duration_text,
         pattern_text,
         format_key((settings.palette and settings.palette.active) or "?")
     )
