@@ -9,8 +9,8 @@
 #include <irreden/entity/archetype.hpp>
 
 #include <queue>
-#include <sstream>
 #include <algorithm>
+#include <functional>
 #include <initializer_list>
 #include <set>
 
@@ -26,6 +26,11 @@ namespace IREntity {
 struct EntityRecord {
     ArchetypeNode *archetypeNode;
     int row;
+};
+
+struct PendingComponentRemoval {
+    EntityId entity_;
+    ComponentId componentType_;
 };
 
 class EntityManager {
@@ -57,6 +62,7 @@ class EntityManager {
     bool isPureComponent(ComponentId component);
     bool isChildOfRelation(RelationId relation);
     smart_ComponentData createComponentDataVector(ComponentId component);
+    void removeComponentById(EntityId entity, ComponentId componentType);
     void destroyEntity(EntityId entity);
     void destroyAllEntities();
     void markEntityForDeletion(EntityId &entity);
@@ -193,29 +199,27 @@ class EntityManager {
 
     template <typename Component> void removeComponent(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        EntityRecord &record = getRecord(entity);
-        unsigned int row = record.row;
-        ArchetypeNode *fromNode = record.archetypeNode;
-        Archetype type = fromNode->type_;
-        ComponentId componentType = getComponentType<Component>();
-        if (std::find(type.begin(), type.end(), componentType) == type.end()) {
-            return;
-        }
-
-        type.erase(componentType);
-        ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
-
-        moveEntityByArchetype(record, toNode->type_, fromNode, toNode);
-
-        fromNode->components_[componentType]->removeDataAndPack(row);
-
-        IRE_LOG_DEBUG(
-            "Removed component type={} from entity={} (new row={})",
-            componentType,
-            entity,
-            record.row
-        );
+        removeComponentById(entity, getComponentType<Component>());
     }
+
+    template <typename Component> void removeComponentDeferred(EntityId entity) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        m_pendingComponentRemovals.push_back({
+            entity,
+            getComponentType<Component>(),
+        });
+    }
+
+    template <typename Component> void setComponentDeferred(EntityId entity, const Component &component) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        m_pendingStructuralChanges.push_back([this, entity, component]() {
+            if (entityExists(entity)) {
+                setComponent<Component>(entity, component);
+            }
+        });
+    }
+
+    void flushStructuralChanges();
 
     template <typename Component> Component &getComponent(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -312,6 +316,8 @@ class EntityManager {
     std::unordered_map<std::string, EntityId> m_namedEntities;
     EntityId m_liveEntityCount;
     std::vector<EntityId> m_entitiesMarkedForDeletion;
+    std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
+    std::vector<std::function<void()>> m_pendingStructuralChanges;
 
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);
@@ -332,6 +338,13 @@ class EntityManager {
     void
     handleComponentRemove(const ComponentId component, ArchetypeNode *node, const unsigned int row);
     void updateBackEntityPosition(ArchetypeNode *node, unsigned int newPos);
+    void removeComponentById(
+        EntityRecord &record,
+        EntityId entity,
+        ComponentId componentType,
+        ArchetypeNode *fromNode,
+        ArchetypeNode *toNode
+    );
     void destroyComponents(EntityId entity);
     void destroyComponent(ComponentId component, ArchetypeNode *node, unsigned int row);
     void updateRecord(EntityId entity, ArchetypeNode *node, unsigned int row);

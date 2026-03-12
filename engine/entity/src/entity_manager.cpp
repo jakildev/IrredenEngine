@@ -4,7 +4,6 @@
 #include <irreden/entity/entity_manager.hpp>
 
 #include <memory>
-#include <sstream>
 
 namespace IREntity {
 
@@ -15,7 +14,8 @@ EntityManager::EntityManager()
     , m_pureComponentTypes{}
     , m_pureComponentVectors{}
     , m_liveEntityCount{0}
-    , m_entitiesMarkedForDeletion{} {
+    , m_entitiesMarkedForDeletion{}
+    , m_pendingComponentRemovals{} {
     for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
         m_entityPool.push(entity);
     }
@@ -119,8 +119,96 @@ void EntityManager::destroyMarkedEntities() {
     m_entitiesMarkedForDeletion.clear();
 }
 
+void EntityManager::removeComponentById(EntityId entity, ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    EntityRecord &record = getRecord(entity);
+    ArchetypeNode *fromNode = record.archetypeNode;
+    Archetype type = fromNode->type_;
+    if (std::find(type.begin(), type.end(), componentType) == type.end()) {
+        return;
+    }
+
+    type.erase(componentType);
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+    removeComponentById(record, entity, componentType, fromNode, toNode);
+}
+
+void EntityManager::flushStructuralChanges() {
+    while (!m_pendingComponentRemovals.empty() || !m_pendingStructuralChanges.empty()) {
+        auto pendingComponentRemovals = std::move(m_pendingComponentRemovals);
+        m_pendingComponentRemovals.clear();
+
+        using RemovalGroupsByNode =
+            std::unordered_map<ArchetypeNode *, std::vector<EntityId>>;
+        std::unordered_map<ComponentId, RemovalGroupsByNode> removalsByComponentAndNode;
+
+        for (const auto &pendingRemoval : pendingComponentRemovals) {
+            if (!entityExists(pendingRemoval.entity_)) {
+                continue;
+            }
+
+            EntityRecord &record = getRecord(pendingRemoval.entity_);
+            ArchetypeNode *fromNode = record.archetypeNode;
+            if (std::find(
+                    fromNode->type_.begin(),
+                    fromNode->type_.end(),
+                    pendingRemoval.componentType_
+                ) == fromNode->type_.end()) {
+                continue;
+            }
+
+            removalsByComponentAndNode[pendingRemoval.componentType_][fromNode].push_back(
+                pendingRemoval.entity_
+            );
+        }
+
+        for (auto &[componentType, removalsByNode] : removalsByComponentAndNode) {
+            for (auto &[fromNode, entities] : removalsByNode) {
+                Archetype type = fromNode->type_;
+                if (std::find(type.begin(), type.end(), componentType) == type.end()) {
+                    continue;
+                }
+
+                type.erase(componentType);
+                ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+
+                std::sort(
+                    entities.begin(),
+                    entities.end(),
+                    [this](EntityId a, EntityId b) {
+                        return getRecord(a).row > getRecord(b).row;
+                    }
+                );
+
+                for (EntityId entity : entities) {
+                    if (!entityExists(entity)) {
+                        continue;
+                    }
+
+                    EntityRecord &record = getRecord(entity);
+                    if (record.archetypeNode == fromNode) {
+                        removeComponentById(record, entity, componentType, fromNode, toNode);
+                        continue;
+                    }
+
+                    removeComponentById(entity, componentType);
+                }
+            }
+        }
+
+        auto pendingStructuralChanges = std::move(m_pendingStructuralChanges);
+        m_pendingStructuralChanges.clear();
+
+        for (auto &operation : pendingStructuralChanges) {
+            operation();
+        }
+    }
+}
+
 void EntityManager::destroyAllEntities() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+
+    flushStructuralChanges();
 
     // Process pending deferred deletes first.
     destroyMarkedEntities();
@@ -264,6 +352,27 @@ int EntityManager::moveEntityByArchetype(
     toNode->length_++;
     fromNode->length_--;
     return record.row;
+}
+
+void EntityManager::removeComponentById(
+    EntityRecord &record,
+    EntityId entity,
+    ComponentId componentType,
+    ArchetypeNode *fromNode,
+    ArchetypeNode *toNode
+) {
+    unsigned int row = record.row;
+
+    moveEntityByArchetype(record, toNode->type_, fromNode, toNode);
+
+    fromNode->components_[componentType]->removeDataAndPack(row);
+
+    IRE_LOG_DEBUG(
+        "Removed component type={} from entity={} (new row={})",
+        componentType,
+        entity,
+        record.row
+    );
 }
 
 // TODO: Be able to move things in batches (when performance requires it)

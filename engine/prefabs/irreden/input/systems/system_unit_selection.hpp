@@ -140,14 +140,9 @@ inline float indicatorRadius(const IREntity::EntityId entityId) {
 }
 
 inline void deselectAllUnits() {
-    auto nodes = IREntity::queryArchetypeNodesSimple(
+    IREntity::removeComponentsSimple<IRComponents::C_Selected>(
         IREntity::getArchetype<IRComponents::C_Selected, IRComponents::C_ControllableUnit>()
     );
-    for (auto *node : nodes) {
-        for (int i = 0; i < node->length_; ++i) {
-            IREntity::removeComponent<IRComponents::C_Selected>(node->entities_[i]);
-        }
-    }
 }
 
 inline void selectUnits(const std::vector<IREntity::EntityId> &entityIds) {

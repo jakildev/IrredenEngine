@@ -11,21 +11,21 @@ int64_t NavGrid::posToKey(ivec3 pos) {
 
 int NavGrid::addCell(ivec3 pos, bool passable) {
     int64_t key = posToKey(pos);
-    auto it = posToIndex_.find(key);
-    if (it != posToIndex_.end()) {
+    auto it = m_posToIndex.find(key);
+    if (it != m_posToIndex.end()) {
         return it->second;
     }
     vec3 worldPos = cellToWorld(pos);
-    cells_.emplace_back(pos, passable, worldPos);
-    int index = static_cast<int>(cells_.size() - 1);
-    posToIndex_[key] = index;
+    m_cells.emplace_back(pos, passable, worldPos);
+    int index = static_cast<int>(m_cells.size() - 1);
+    m_posToIndex[key] = index;
     return index;
 }
 
 void NavGrid::addConnection(int fromCellIndex, int toCellIndex, float cost) {
-    if (fromCellIndex >= 0 && fromCellIndex < static_cast<int>(cells_.size()) &&
-        toCellIndex >= 0 && toCellIndex < static_cast<int>(cells_.size())) {
-        connections_.emplace_back(fromCellIndex, toCellIndex, cost);
+    if (fromCellIndex >= 0 && fromCellIndex < static_cast<int>(m_cells.size()) &&
+        toCellIndex >= 0 && toCellIndex < static_cast<int>(m_cells.size())) {
+        m_connections.emplace_back(fromCellIndex, toCellIndex, cost);
     }
 }
 
@@ -38,8 +38,8 @@ void NavGrid::addConnectionByPos(ivec3 fromPos, ivec3 toPos, float cost) {
 }
 
 int NavGrid::getCellIndex(ivec3 pos) const {
-    auto it = posToIndex_.find(posToKey(pos));
-    return (it != posToIndex_.end()) ? it->second : -1;
+    auto it = m_posToIndex.find(posToKey(pos));
+    return (it != m_posToIndex.end()) ? it->second : -1;
 }
 
 std::optional<int> NavGrid::getCellIndexOptional(ivec3 pos) const {
@@ -48,8 +48,8 @@ std::optional<int> NavGrid::getCellIndexOptional(ivec3 pos) const {
 }
 
 const NavCell *NavGrid::getCell(int index) const {
-    if (index >= 0 && index < static_cast<int>(cells_.size())) {
-        return &cells_[static_cast<size_t>(index)];
+    if (index >= 0 && index < static_cast<int>(m_cells.size())) {
+        return &m_cells[static_cast<size_t>(index)];
     }
     return nullptr;
 }
@@ -61,7 +61,7 @@ const NavCell *NavGrid::getCell(ivec3 pos) const {
 
 std::vector<int> NavGrid::getNeighbors(int cellIndex) const {
     std::vector<int> neighbors;
-    for (const auto &conn : connections_) {
+    for (const auto &conn : m_connections) {
         if (conn.fromCellIndex_ == cellIndex) {
             const NavCell *toCell = getCell(conn.toCellIndex_);
             if (toCell && toCell->passable_) {
@@ -73,7 +73,7 @@ std::vector<int> NavGrid::getNeighbors(int cellIndex) const {
 }
 
 float NavGrid::getConnectionCost(int fromCellIndex, int toCellIndex) const {
-    for (const auto &conn : connections_) {
+    for (const auto &conn : m_connections) {
         if (conn.fromCellIndex_ == fromCellIndex && conn.toCellIndex_ == toCellIndex) {
             return conn.cost_;
         }
@@ -83,10 +83,10 @@ float NavGrid::getConnectionCost(int fromCellIndex, int toCellIndex) const {
 
 vec3 NavGrid::cellToWorld(ivec3 pos) const {
     return vec3(
-        static_cast<float>(pos.x) * cellSizeWorld_,
-        static_cast<float>(pos.y) * cellSizeWorld_,
-        static_cast<float>(pos.z) * cellSizeWorld_
-    ) + origin_;
+        static_cast<float>(pos.x) * m_cellSizeWorld,
+        static_cast<float>(pos.y) * m_cellSizeWorld,
+        static_cast<float>(pos.z) * m_cellSizeWorld
+    ) + m_origin;
 }
 
 vec3 NavGrid::cellIndexToWorld(int cellIndex) const {
@@ -95,14 +95,14 @@ vec3 NavGrid::cellIndexToWorld(int cellIndex) const {
 }
 
 ivec3 NavGrid::worldToCell(vec3 world) const {
-    vec3 scaled = (world - origin_) / cellSizeWorld_;
+    vec3 scaled = (world - m_origin) / m_cellSizeWorld;
     return ivec3(IRMath::floor(scaled.x), IRMath::floor(scaled.y), IRMath::floor(scaled.z));
 }
 
 void NavGrid::clear() {
-    cells_.clear();
-    connections_.clear();
-    posToIndex_.clear();
+    m_cells.clear();
+    m_connections.clear();
+    m_posToIndex.clear();
 }
 
 } // namespace IRMath

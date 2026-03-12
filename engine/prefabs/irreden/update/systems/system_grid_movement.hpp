@@ -61,7 +61,7 @@ template <> struct System<GRID_MOVEMENT> {
                         agent.pathIndex_++;
                         if (agent.pathIndex_ >= static_cast<int>(agent.path_.size())) {
                             if (agent.partialPath_) {
-                                IREntity::setComponent(
+                                IREntity::setComponentDeferred(
                                     entities[i],
                                     C_MoveOrder(agent.finalTarget_)
                                 );

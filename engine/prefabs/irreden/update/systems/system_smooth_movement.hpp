@@ -131,7 +131,7 @@ template <> struct System<SMOOTH_MOVEMENT> {
                     agent.stuckFrames_ = 0;
                     if (agent.pathIndex_ >= static_cast<int>(agent.path_.size())) {
                         if (agent.partialPath_) {
-                            IREntity::setComponent(entity, C_MoveOrder(agent.finalTarget_));
+                            IREntity::setComponentDeferred(entity, C_MoveOrder(agent.finalTarget_));
                         }
                         agent.clearPath();
                     }

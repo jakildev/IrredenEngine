@@ -46,13 +46,13 @@ class NavGrid {
   public:
     NavGrid() = default;
     NavGrid(float cellSizeWorld, float maxTraversableSlope = 1.0f)
-        : cellSizeWorld_{cellSizeWorld}
-        , maxTraversableSlope_{maxTraversableSlope} {}
+        : m_cellSizeWorld{cellSizeWorld}
+        , m_maxTraversableSlope{maxTraversableSlope} {}
 
-    void setCellSize(float cellSizeWorld) { cellSizeWorld_ = cellSizeWorld; }
-    float getCellSize() const { return cellSizeWorld_; }
-    void setOrigin(vec3 origin) { origin_ = origin; }
-    vec3 getOrigin() const { return origin_; }
+    void setCellSize(float cellSizeWorld) { m_cellSizeWorld = cellSizeWorld; }
+    float getCellSize() const { return m_cellSizeWorld; }
+    void setOrigin(vec3 origin) { m_origin = origin; }
+    vec3 getOrigin() const { return m_origin; }
 
     int addCell(ivec3 pos, bool passable = true);
     void addConnection(int fromCellIndex, int toCellIndex, float cost = 1.0f);
@@ -70,18 +70,18 @@ class NavGrid {
     vec3 cellIndexToWorld(int cellIndex) const;
     ivec3 worldToCell(vec3 world) const;
 
-    size_t getCellCount() const { return cells_.size(); }
-    const std::vector<NavCell> &getCells() const { return cells_; }
+    size_t getCellCount() const { return m_cells.size(); }
+    const std::vector<NavCell> &getCells() const { return m_cells; }
 
     void clear();
 
   private:
-    std::vector<NavCell> cells_;
-    std::vector<NavConnection> connections_;
-    std::unordered_map<int64_t, int> posToIndex_;
-    float cellSizeWorld_ = 1.0f;
-    float maxTraversableSlope_ = 1.0f;
-    vec3 origin_ = vec3(0.0f);
+    std::vector<NavCell> m_cells;
+    std::vector<NavConnection> m_connections;
+    std::unordered_map<int64_t, int> m_posToIndex;
+    float m_cellSizeWorld = 1.0f;
+    float m_maxTraversableSlope = 1.0f;
+    vec3 m_origin = vec3(0.0f);
 
     static int64_t posToKey(ivec3 pos);
 };

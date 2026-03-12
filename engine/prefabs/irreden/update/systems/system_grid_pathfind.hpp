@@ -44,7 +44,7 @@ template <> struct System<GRID_PATHFIND> {
                     agent.setPath(path, end);
                 }
 
-                IREntity::removeComponent<C_MoveOrder>(entity);
+                IREntity::removeComponentDeferred<C_MoveOrder>(entity);
             },
             []() {
                 auto nodes = IREntity::queryArchetypeNodesSimple(

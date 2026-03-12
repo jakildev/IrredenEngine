@@ -57,6 +57,39 @@ std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
     const Archetype &excludeComponents = Archetype{}
 );
 
+inline std::vector<EntityId>
+collectEntitiesSimple(const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}) {
+    std::vector<EntityId> entities;
+    auto nodes = queryArchetypeNodesSimple(includeComponents, excludeComponents);
+    for (auto *node : nodes) {
+        entities.insert(
+            entities.end(),
+            node->entities_.begin(),
+            node->entities_.begin() + node->length_
+        );
+    }
+    return entities;
+}
+
+template <typename Component>
+inline void
+removeComponentsSimple(const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}) {
+    auto entities = collectEntitiesSimple(includeComponents, excludeComponents);
+    for (auto entity : entities) {
+        getEntityManager().removeComponent<Component>(entity);
+    }
+}
+
+template <typename Component>
+inline void removeComponentsDeferred(
+    const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}
+) {
+    auto entities = collectEntitiesSimple(includeComponents, excludeComponents);
+    for (auto entity : entities) {
+        getEntityManager().removeComponentDeferred<Component>(entity);
+    }
+}
+
 template <typename Component> int countComponents() {
     int total = 0;
     auto nodes = queryArchetypeNodesSimple(getArchetype<Component>());
@@ -217,6 +250,18 @@ template <typename Component> Component &setComponent(EntityId entity, Component
 
 template <typename Component> void removeComponent(EntityId entity) {
     getEntityManager().removeComponent<Component>(entity);
+}
+
+template <typename Component> void removeComponentDeferred(EntityId entity) {
+    getEntityManager().removeComponentDeferred<Component>(entity);
+}
+
+template <typename Component> void setComponentDeferred(EntityId entity, const Component &component) {
+    getEntityManager().setComponentDeferred<Component>(entity, component);
+}
+
+inline void flushStructuralChanges() {
+    getEntityManager().flushStructuralChanges();
 }
 
 } // namespace IREntity

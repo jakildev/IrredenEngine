@@ -22,10 +22,12 @@ void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> p
 }
 
 void SystemManager::executePipeline(IRTime::Events event) {
+    IREntity::flushStructuralChanges();
     auto &systemOrder = m_systemPipelinesNew[event];
     for (SystemId system : systemOrder) {
         executeSystem(system);
     }
+    IREntity::flushStructuralChanges();
 }
 
 void SystemManager::executeSystem(SystemId system) {
@@ -47,6 +49,7 @@ void SystemManager::executeSystem(SystemId system) {
         m_ticks[system].functionTick_(node);
     }
     m_endTicks[system].functionEndTick_();
+    IREntity::flushStructuralChanges();
 }
 
 EntityId SystemManager::handleRelationTick(
