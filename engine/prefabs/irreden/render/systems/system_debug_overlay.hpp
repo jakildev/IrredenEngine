@@ -12,6 +12,7 @@
 #include <irreden/render/vao.hpp>
 #include <irreden/render/vertex_attributes.hpp>
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -195,6 +196,47 @@ inline vec3 screenToWorld(vec2 screenPos, float zLevel = 0.0f) {
     return vec3(x, y, zLevel);
 }
 
+constexpr int kCircleLutMaxSegments = 32;
+
+struct CircleLut {
+    std::array<float, kCircleLutMaxSegments + 1> cosTable;
+    std::array<float, kCircleLutMaxSegments + 1> sinTable;
+};
+
+inline const CircleLut &getCircleLut() {
+    static const CircleLut lut = []() {
+        CircleLut t{};
+        for (int i = 0; i <= kCircleLutMaxSegments; ++i) {
+            float angle = static_cast<float>(i) * (2.0f * 3.14159265f / kCircleLutMaxSegments);
+            t.cosTable[i] = std::cos(angle);
+            t.sinTable[i] = std::sin(angle);
+        }
+        return t;
+    }();
+    return lut;
+}
+
+struct WorldToScreenCache {
+    vec2 stepSize;
+    vec2 screenCenter;
+    vec2 camIso;
+    vec2 stepSizeFlipped;
+
+    void refresh() {
+        stepSize = vec2(IRRender::getTriangleStepSizeScreen());
+        vec2 viewport = vec2(IRRender::getViewport());
+        screenCenter = viewport * 0.5f;
+        camIso = IRRender::getCameraPosition2DIso();
+        stepSizeFlipped = stepSize * vec2(1.0f, -1.0f);
+    }
+
+    vec2 project(vec3 worldPos) const {
+        vec2 posIso = pos3DtoPos2DIso(worldPos);
+        vec2 relIso = posIso + camIso;
+        return screenCenter + relIso * stepSizeFlipped;
+    }
+};
+
 } // namespace IRDebug
 
 namespace IRSystem {
@@ -237,8 +279,6 @@ template <> struct System<DEBUG_OVERLAY> {
             IRRender::kAttrListDebugVertex
         );
 
-        // Use C_Name as the tick archetype (matches a few canvas entities).
-        // The tick body is a no-op; all real work is in endTick.
         return createSystem<C_Name>(
             "DebugOverlay",
             [](const C_Name &) {},
@@ -254,15 +294,20 @@ template <> struct System<DEBUG_OVERLAY> {
                     return;
                 }
 
-                std::vector<IRDebug::DebugVertex> triangleVertices;
-                std::vector<IRDebug::DebugVertex> lineVertices;
+                IRDebug::WorldToScreenCache w2s;
+                w2s.refresh();
+
+                static std::vector<IRDebug::DebugVertex> triangleVertices;
+                static std::vector<IRDebug::DebugVertex> lineVertices;
+                triangleVertices.clear();
+                lineVertices.clear();
                 triangleVertices.reserve((triangles.size() + screenTriangles.size()) * 3);
-                lineVertices.reserve((lines.size() + screenLines.size()) * 2 + circles.size() * 64);
+                lineVertices.reserve((lines.size() + screenLines.size()) * 2 + circles.size() * 32);
 
                 for (const auto &triangle : triangles) {
-                    vec2 a = IRDebug::worldToScreen(triangle.a);
-                    vec2 b = IRDebug::worldToScreen(triangle.b);
-                    vec2 c = IRDebug::worldToScreen(triangle.c);
+                    vec2 a = w2s.project(triangle.a);
+                    vec2 b = w2s.project(triangle.b);
+                    vec2 c = w2s.project(triangle.c);
                     triangleVertices.push_back(
                         {a.x, a.y, triangle.r, triangle.g, triangle.bColor, triangle.aColor}
                     );
@@ -275,8 +320,8 @@ template <> struct System<DEBUG_OVERLAY> {
                 }
 
                 for (const auto &line : lines) {
-                    vec2 a = IRDebug::worldToScreen(line.from);
-                    vec2 b = IRDebug::worldToScreen(line.to);
+                    vec2 a = w2s.project(line.from);
+                    vec2 b = w2s.project(line.to);
                     lineVertices.push_back({a.x, a.y, line.r, line.g, line.b, line.a});
                     lineVertices.push_back({b.x, b.y, line.r, line.g, line.b, line.a});
                 }
@@ -298,21 +343,23 @@ template <> struct System<DEBUG_OVERLAY> {
                     lineVertices.push_back({line.to.x, line.to.y, line.r, line.g, line.b, line.a});
                 }
 
+                const auto &lut = IRDebug::getCircleLut();
                 for (const auto &circle : circles) {
-                    int segs = circle.segments;
+                    const int segs = std::min(circle.segments, IRDebug::kCircleLutMaxSegments);
+                    const int step = IRDebug::kCircleLutMaxSegments / segs;
                     for (int i = 0; i < segs; i++) {
-                        float angle0 = static_cast<float>(i) * (2.0f * 3.14159265f / segs);
-                        float angle1 = static_cast<float>(i + 1) * (2.0f * 3.14159265f / segs);
+                        const int idx0 = (i * step) % IRDebug::kCircleLutMaxSegments;
+                        const int idx1 = ((i + 1) * step) % IRDebug::kCircleLutMaxSegments;
                         vec3 p0 = circle.center + vec3(
-                            std::cos(angle0) * circle.radius,
-                            std::sin(angle0) * circle.radius,
+                            lut.cosTable[idx0] * circle.radius,
+                            lut.sinTable[idx0] * circle.radius,
                             0.0f);
                         vec3 p1 = circle.center + vec3(
-                            std::cos(angle1) * circle.radius,
-                            std::sin(angle1) * circle.radius,
+                            lut.cosTable[idx1] * circle.radius,
+                            lut.sinTable[idx1] * circle.radius,
                             0.0f);
-                        vec2 s0 = IRDebug::worldToScreen(p0);
-                        vec2 s1 = IRDebug::worldToScreen(p1);
+                        vec2 s0 = w2s.project(p0);
+                        vec2 s1 = w2s.project(p1);
                         lineVertices.push_back({s0.x, s0.y, circle.r, circle.g, circle.b, circle.a});
                         lineVertices.push_back({s1.x, s1.y, circle.r, circle.g, circle.b, circle.a});
                     }

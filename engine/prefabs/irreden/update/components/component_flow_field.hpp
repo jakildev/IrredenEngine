@@ -80,7 +80,7 @@ struct FlowFieldState {
 
 struct C_FlowField {
     std::vector<FlowFieldState> fields_;
-    int maxExpansionsPerFrame_{4096};
+    int maxExpansionsPerFrame_{8192};
 
     FlowFieldState *findField(int fieldId) {
         for (auto &field : fields_) {

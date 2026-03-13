@@ -21,7 +21,7 @@ grid_builder.create_level(settings)
 grid_builder.create_flat_grid(settings.grid.size_x, settings.grid.size_y, settings.grid.cell_size)
 
 -- Create player and test units
-units.create_units(settings)
+units.create_units(settings, grid_builder)
 
 -- Start all units selected
 IREntity.selectAllUnits()

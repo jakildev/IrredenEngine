@@ -7,9 +7,11 @@ S.nav = {
     voxel_size_world = 1.0,
     voxels_per_nav_cell = 3,
     player_radius_voxels = 7,
+    visual_radius_voxels = 5,
     chunk_size = 32,
     moving_collision_radius_factor = 0.3,
     preferred_moving_radius_factor = 0.65,
+    planning_clearance_multiplier = 1.3,
 }
 
 local cell_size = S.nav.voxel_size_world * S.nav.voxels_per_nav_cell
@@ -22,7 +24,7 @@ S.grid = {
 }
 
 S.units = {
-    count = 12,
+    count = 100,
     unit_color = Color.new(100, 180, 255, 255),
     player_color = Color.new(255, 200, 100, 255),
     selected_color = Color.new(255, 255, 150, 255),

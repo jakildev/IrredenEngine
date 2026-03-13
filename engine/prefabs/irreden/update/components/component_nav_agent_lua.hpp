@@ -10,13 +10,16 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_NavAgent> = tru
 template <> inline void bindLuaType<IRComponents::C_NavAgent>(LuaScript &luaScript) {
     luaScript.registerType<
         IRComponents::C_NavAgent,
+        IRComponents::C_NavAgent(float, float),
         IRComponents::C_NavAgent(float),
         IRComponents::C_NavAgent()>(
         "C_NavAgent",
         "moveSpeed",
         &IRComponents::C_NavAgent::moveSpeed_,
         "agentClearance",
-        &IRComponents::C_NavAgent::agentClearance_
+        &IRComponents::C_NavAgent::agentClearance_,
+        "planningClearanceMultiplier",
+        &IRComponents::C_NavAgent::planningClearanceMultiplier_
     );
 }
 } // namespace IRScript

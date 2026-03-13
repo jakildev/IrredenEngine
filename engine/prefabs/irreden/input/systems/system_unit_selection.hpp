@@ -132,12 +132,9 @@ inline void recordMoveOrderDebug(
     );
 }
 
-inline float indicatorRadius(const IREntity::EntityId entityId) {
-    if (auto collider = IREntity::getComponentOptional<IRComponents::C_ColliderCircle>(entityId)) {
-        return std::max(0.35f, (*collider)->radius_ * 0.3f);
-    }
-    return 0.75f;
-}
+constexpr float kDefaultIndicatorRadius = 0.75f;
+constexpr float kMinIndicatorRadius = 0.35f;
+constexpr float kIndicatorRadiusScale = 0.3f;
 
 inline void deselectAllUnits() {
     IREntity::removeComponentsSimple<IRComponents::C_Selected>(
@@ -267,12 +264,25 @@ inline void drawSelectedUnitIndicators() {
             IRComponents::C_ControllableUnit,
             IRComponents::C_PositionGlobal3D>()
     );
+
+    const auto colliderId = IREntity::getComponentType<IRComponents::C_ColliderCircle>();
+
     for (auto *node : nodes) {
         auto &positions = IREntity::getComponentData<IRComponents::C_PositionGlobal3D>(node);
-        for (int i = 0; i < node->length_; ++i) {
-            const float radius = indicatorRadius(node->entities_[i]);
-            const vec3 center = positions[i].pos_ + vec3(0.0f, 0.0f, 0.25f);
-            IRDebug::drawDiamond3D(center, radius, 1.0f, 1.0f, 0.35f, 0.28f);
+        const bool hasCollider = node->type_.count(colliderId) > 0;
+
+        if (hasCollider) {
+            auto &colliders = IREntity::getComponentData<IRComponents::C_ColliderCircle>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                const float radius = std::max(kMinIndicatorRadius, colliders[i].radius_ * kIndicatorRadiusScale);
+                const vec3 center = positions[i].pos_ + vec3(0.0f, 0.0f, 0.25f);
+                IRDebug::drawDiamond3D(center, radius, 1.0f, 1.0f, 0.35f, 0.28f);
+            }
+        } else {
+            for (int i = 0; i < node->length_; ++i) {
+                const vec3 center = positions[i].pos_ + vec3(0.0f, 0.0f, 0.25f);
+                IRDebug::drawDiamond3D(center, kDefaultIndicatorRadius, 1.0f, 1.0f, 0.35f, 0.28f);
+            }
         }
     }
 }

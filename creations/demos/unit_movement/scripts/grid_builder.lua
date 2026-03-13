@@ -139,6 +139,86 @@ local function build_obstacle_map(sx, sy)
     return blocked
 end
 
+local function has_blocked_within(blocked, size_x, size_y, cx, cy, clearance_cells)
+    for dx = -clearance_cells, clearance_cells do
+        for dy = -clearance_cells, clearance_cells do
+            local nx = cx + dx
+            local ny = cy + dy
+            if nx < 0 or nx >= size_x or ny < 0 or ny >= size_y then
+                return true
+            end
+            if blocked[nx][ny] then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Returns list of {x, y, z} world positions for spawning units.
+-- Ensures passable cells only, enough wall clearance, center-biased ordering,
+-- and min_spacing between units.
+function G.get_valid_spawn_positions(
+    size_x, size_y, cell_size, count, min_spacing, clearance_world
+)
+    local blocked = build_obstacle_map(size_x, size_y)
+    local half_x = math.floor(size_x / 2)
+    local half_y = math.floor(size_y / 2)
+    local positions = {}
+    local min_spacing_sq = min_spacing * min_spacing
+    local clearance_cells = math.max(1, math.ceil(clearance_world / cell_size))
+    local candidates = {}
+
+    for cx = clearance_cells, size_x - 1 - clearance_cells do
+        for cy = clearance_cells, size_y - 1 - clearance_cells do
+            if not blocked[cx][cy] and
+               not has_blocked_within(blocked, size_x, size_y, cx, cy, clearance_cells) then
+                local dx = cx - half_x
+                local dy = cy - half_y
+                local center_score = math.max(math.abs(dx), math.abs(dy))
+                table.insert(candidates, {
+                    cx = cx,
+                    cy = cy,
+                    score = center_score
+                })
+            end
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.score ~= b.score then
+            return a.score < b.score
+        end
+        if a.cy ~= b.cy then
+            return a.cy < b.cy
+        end
+        return a.cx < b.cx
+    end)
+
+    for _, candidate in ipairs(candidates) do
+        if #positions >= count then
+            break
+        end
+
+        local wx = (candidate.cx - half_x) * cell_size
+        local wy = (candidate.cy - half_y) * cell_size
+        local ok = true
+        for _, p in ipairs(positions) do
+            local dx = wx - p.x
+            local dy = wy - p.y
+            if (dx * dx + dy * dy) < min_spacing_sq then
+                ok = false
+                break
+            end
+        end
+        if ok then
+            table.insert(positions, { x = wx, y = wy, z = 0 })
+        end
+    end
+
+    return positions
+end
+
 function G.create_flat_grid(size_x, size_y, cell_size)
     local ground_color = Color.new(60, 95, 60, 255)
     local wall_color = Color.new(80, 65, 50, 255)

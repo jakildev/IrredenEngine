@@ -10,6 +10,7 @@
 #include <irreden/update/components/component_nav_agent.hpp>
 #include <irreden/update/components/component_move_order.hpp>
 #include <irreden/update/components/component_collider_circle.hpp>
+#include <irreden/update/components/component_flow_field_agent.hpp>
 #include <irreden/update/components/component_nav_world.hpp>
 #include <irreden/update/components/component_chunk_registry.hpp>
 
@@ -31,7 +32,9 @@ namespace detail_smooth {
     struct UnitEntry {
         IREntity::EntityId entity;
         float x, y;
-        float radius;
+        float hardRadius;
+        float preferredRadius;
+        bool moving;
     };
 
     static std::unordered_map<int64_t, std::vector<UnitEntry>> s_unitHash;
@@ -41,9 +44,16 @@ namespace detail_smooth {
         return (static_cast<int64_t>(cx) << 32) | (static_cast<int64_t>(cy) & 0xFFFFFFFF);
     }
 
-    inline bool wouldOverlapUnit(
-        IREntity::EntityId self, float x, float y, float radius
+    struct UnitSpacingSample {
+        bool hardBlocked{false};
+        bool blockedByMoving{false};
+        float softPenalty{0.0f};
+    };
+
+    inline UnitSpacingSample sampleUnitSpacing(
+        IREntity::EntityId self, float x, float y, float hardRadius, float preferredRadius
     ) {
+        UnitSpacingSample sample;
         int cellX = static_cast<int>(std::floor(x / s_unitCellSize));
         int cellY = static_cast<int>(std::floor(y / s_unitCellSize));
         for (int dx = -1; dx <= 1; dx++) {
@@ -56,12 +66,27 @@ namespace detail_smooth {
                     float diffX = x - other.x;
                     float diffY = y - other.y;
                     float distSq = diffX * diffX + diffY * diffY;
-                    float minDist = radius + other.radius;
-                    if (distSq < minDist * minDist) return true;
+                    float hardMinDist = hardRadius + other.hardRadius;
+                    if (distSq < hardMinDist * hardMinDist) {
+                        sample.hardBlocked = true;
+                        sample.blockedByMoving = sample.blockedByMoving || other.moving;
+                        return sample;
+                    }
+
+                    float preferredMinDist = preferredRadius + other.preferredRadius;
+                    float preferredMinDistSq = preferredMinDist * preferredMinDist;
+                    if (distSq < preferredMinDistSq && distSq > 0.0001f) {
+                        float dist = std::sqrt(distSq);
+                        float penalty = (preferredMinDist - dist) / preferredMinDist;
+                        if (other.moving) {
+                            penalty *= 1.25f;
+                        }
+                        sample.softPenalty += penalty;
+                    }
                 }
             }
         }
-        return false;
+        return sample;
     }
 }
 
@@ -114,7 +139,8 @@ template <> struct System<SMOOTH_MOVEMENT> {
 
                 if (!agent.hasPath()) return;
 
-                constexpr int kMaxStuckFrames = 45;
+                constexpr int kMaxWallBlockedFrames = 45;
+                constexpr int kMaxUnitBlockedFrames = 120;
 
                 ivec3 targetCellPos = agent.path_[static_cast<size_t>(agent.pathIndex_)];
                 vec3 targetWorld = navCellToWorld(nw, reg, targetCellPos);
@@ -146,6 +172,12 @@ template <> struct System<SMOOTH_MOVEMENT> {
                 float bestScore = std::numeric_limits<float>::infinity();
                 bool foundCandidate = false;
                 float preferredWallClearance = collider.radius_ + cellSize * 0.5f;
+                float preferredRadius = std::max(
+                    collider.movementCollisionRadius_,
+                    collider.preferredMovementRadius_
+                );
+                bool sawMovingBlock = false;
+                bool bestCandidateCrowded = false;
 
                 auto tryCandidate = [&](vec3 tryPos) {
                     float fromX = current.x + collider.centerOffset_.x;
@@ -164,6 +196,18 @@ template <> struct System<SMOOTH_MOVEMENT> {
                         return;
                     }
 
+                    auto spacing = detail_smooth::sampleUnitSpacing(
+                        entity,
+                        tryX,
+                        tryY,
+                        collider.movementCollisionRadius_,
+                        preferredRadius
+                    );
+                    if (spacing.hardBlocked) {
+                        return;
+                    }
+                    sawMovingBlock = sawMovingBlock || spacing.blockedByMoving;
+
                     float wallClearance = navGetClearanceAtWorld(nw, reg, tryX, tryY, 0.0f);
                     float wallPenalty = 0.0f;
                     if (wallClearance < preferredWallClearance) {
@@ -172,11 +216,12 @@ template <> struct System<SMOOTH_MOVEMENT> {
                     }
 
                     float d = IRMath::length(tryPos - targetWorld);
-                    float score = d + wallPenalty;
+                    float score = d + wallPenalty + spacing.softPenalty * cellSize * 2.5f;
                     if (!foundCandidate || score < bestScore) {
                         bestPos = tryPos;
                         bestScore = score;
                         foundCandidate = true;
+                        bestCandidateCrowded = spacing.blockedByMoving;
                     }
                 };
 
@@ -197,21 +242,17 @@ template <> struct System<SMOOTH_MOVEMENT> {
                     candidatePos = bestPos;
                 }
 
-                // Unit-unit avoidance
-                float candCX = candidatePos.x + collider.centerOffset_.x;
-                float candCY = candidatePos.y + collider.centerOffset_.y;
-                if (detail_smooth::wouldOverlapUnit(
-                        entity,
-                        candCX,
-                        candCY,
-                        collider.movementCollisionRadius_)) {
+                if (!foundCandidate) {
                     bool isFinal = (agent.pathIndex_ == static_cast<int>(agent.path_.size()) - 1);
                     if (isFinal && dist < collider.movementCollisionRadius_ * 4.0f) {
                         agent.clearPath();
                         return;
                     }
                     agent.stuckFrames_++;
-                    if (agent.stuckFrames_ > kMaxStuckFrames) {
+                    int maxStuckFrames =
+                        sawMovingBlock ? kMaxUnitBlockedFrames : kMaxWallBlockedFrames;
+                    if (agent.stuckFrames_ > maxStuckFrames) {
+                        IREntity::setComponentDeferred(entity, C_MoveOrder(agent.finalTarget_));
                         agent.clearPath();
                     }
                     return;
@@ -221,7 +262,10 @@ template <> struct System<SMOOTH_MOVEMENT> {
                 float moveMag = IRMath::length(candidatePos - current);
                 if (moveMag < moveDist * 0.1f) {
                     agent.stuckFrames_++;
-                    if (agent.stuckFrames_ > kMaxStuckFrames) {
+                    int maxStuckFrames =
+                        bestCandidateCrowded ? kMaxUnitBlockedFrames : kMaxWallBlockedFrames;
+                    if (agent.stuckFrames_ > maxStuckFrames) {
+                        IREntity::setComponentDeferred(entity, C_MoveOrder(agent.finalTarget_));
                         agent.clearPath();
                         return;
                     }
@@ -250,7 +294,7 @@ template <> struct System<SMOOTH_MOVEMENT> {
                 // Build spatial hash of all units for unit-unit avoidance
                 detail_smooth::s_unitHash.clear();
                 auto unitNodes = IREntity::queryArchetypeNodesSimple(
-                    IREntity::getArchetype<C_Position3D, C_ColliderCircle>()
+                    IREntity::getArchetype<C_Position3D, C_ColliderCircle, C_NavAgent>()
                 );
                 float maxR = 0.0f;
                 for (auto *node : unitNodes) {
@@ -266,14 +310,25 @@ template <> struct System<SMOOTH_MOVEMENT> {
                 for (auto *node : unitNodes) {
                     auto &positions = IREntity::getComponentData<C_Position3D>(node);
                     auto &colliders = IREntity::getComponentData<C_ColliderCircle>(node);
+                    auto &agents = IREntity::getComponentData<C_NavAgent>(node);
                     for (size_t i = 0; i < positions.size(); i++) {
                         float px = positions[i].pos_.x + colliders[i].centerOffset_.x;
                         float py = positions[i].pos_.y + colliders[i].centerOffset_.y;
                         int cx = static_cast<int>(std::floor(px / detail_smooth::s_unitCellSize));
                         int cy = static_cast<int>(std::floor(py / detail_smooth::s_unitCellSize));
+                        bool moving = agents[i].hasPath();
+                        if (auto flowAgent = IREntity::getComponentOptional<C_FlowFieldAgent>(
+                                node->entities_[i])) {
+                            moving = moving || (*flowAgent)->hasField();
+                        }
                         int64_t key = detail_smooth::unitKey(cx, cy);
                         detail_smooth::s_unitHash[key].push_back({
-                            node->entities_[i], px, py, colliders[i].movementCollisionRadius_
+                            node->entities_[i],
+                            px,
+                            py,
+                            colliders[i].movementCollisionRadius_,
+                            colliders[i].preferredMovementRadius_,
+                            moving
                         });
                     }
                 }

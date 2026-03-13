@@ -12,6 +12,7 @@ struct C_NavAgent {
     int pathIndex_;
     float moveSpeed_;
     float agentClearance_;
+    float planningClearanceMultiplier_;
     bool partialPath_;
     IRMath::ivec3 finalTarget_;
     int stuckFrames_{0};
@@ -20,6 +21,7 @@ struct C_NavAgent {
         : pathIndex_{0}
         , moveSpeed_{40.0f}
         , agentClearance_{0.5f}
+        , planningClearanceMultiplier_{1.0f}
         , partialPath_{false}
         , finalTarget_{0, 0, 0} {}
 
@@ -27,8 +29,21 @@ struct C_NavAgent {
         : pathIndex_{0}
         , moveSpeed_{40.0f}
         , agentClearance_{agentClearance}
+        , planningClearanceMultiplier_{1.0f}
         , partialPath_{false}
         , finalTarget_{0, 0, 0} {}
+
+    C_NavAgent(float agentClearance, float planningClearanceMultiplier)
+        : pathIndex_{0}
+        , moveSpeed_{40.0f}
+        , agentClearance_{agentClearance}
+        , planningClearanceMultiplier_{planningClearanceMultiplier}
+        , partialPath_{false}
+        , finalTarget_{0, 0, 0} {}
+
+    float planningClearance() const {
+        return agentClearance_ * planningClearanceMultiplier_;
+    }
 
     bool hasPath() const {
         return pathIndex_ >= 0 && pathIndex_ < static_cast<int>(path_.size());

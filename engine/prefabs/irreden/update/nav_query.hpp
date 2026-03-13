@@ -169,6 +169,24 @@ inline void navForEachPassableNeighbor(
     bool hasLastChunk = false;
 
     for (const auto &delta : neighborDeltas) {
+        int axes = (delta.x != 0) + (delta.y != 0) + (delta.z != 0);
+        if (axes > 1) {
+            bool intermediateBlocked = false;
+            if (delta.x != 0 && !navIsPassable(navWorld, registry,
+                    worldCell + ivec3(delta.x, 0, 0), agentClearance)) {
+                intermediateBlocked = true;
+            }
+            if (!intermediateBlocked && delta.y != 0 && !navIsPassable(navWorld, registry,
+                    worldCell + ivec3(0, delta.y, 0), agentClearance)) {
+                intermediateBlocked = true;
+            }
+            if (!intermediateBlocked && delta.z != 0 && !navIsPassable(navWorld, registry,
+                    worldCell + ivec3(0, 0, delta.z), agentClearance)) {
+                intermediateBlocked = true;
+            }
+            if (intermediateBlocked) continue;
+        }
+
         ivec3 neighborWorldCell = worldCell + delta;
         ChunkCoord neighborChunkCoord = worldCellToChunkCoord(neighborWorldCell, navWorld.chunkSize_);
         const IRComponents::C_NavChunkData *neighborChunkData = nullptr;

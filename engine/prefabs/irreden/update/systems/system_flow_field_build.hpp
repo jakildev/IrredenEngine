@@ -18,7 +18,6 @@
 #include <cmath>
 #include <limits>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 using namespace IRComponents;
@@ -31,10 +30,13 @@ namespace detail_flow_build {
 struct PendingAssignment {
     IREntity::EntityId entity_{IREntity::kNullEntity};
     vec3 position_{0.0f};
+    ivec3 requestedGoalCell_{0, 0, 0};
     ivec3 goalCell_{0, 0, 0};
     ivec3 groupCenterCell_{0, 0, 0};
     float agentClearance_{0.5f};
+    float planningClearance_{0.5f};
     float movementCollisionRadius_{0.5f};
+    bool exactGoal_{false};
 };
 
 struct GoalGroupKey {
@@ -150,57 +152,78 @@ inline bool fieldHasDataForCell(
     return std::isfinite(getFieldCostAt(flowField, field, navWorld, worldCell));
 }
 
-inline std::vector<ivec3> buildFormationOffsets(int count, int spacingCells) {
-    std::vector<ivec3> offsets;
-    offsets.reserve(static_cast<size_t>(count));
-    offsets.push_back(ivec3(0, 0, 0));
-
-    for (int ring = 1; static_cast<int>(offsets.size()) < count; ++ring) {
-        for (int dy = -ring; dy <= ring && static_cast<int>(offsets.size()) < count; ++dy) {
-            for (int dx = -ring; dx <= ring && static_cast<int>(offsets.size()) < count; ++dx) {
-                if (std::max(std::abs(dx), std::abs(dy)) != ring) continue;
-                offsets.push_back(ivec3(dx * spacingCells, dy * spacingCells, 0));
-            }
-        }
-    }
-
-    return offsets;
-}
-
-inline ivec3 resolveUniqueGoalCell(
+inline std::vector<ivec3> buildReachableGoals(
     const C_NavWorld &navWorld,
     const C_ChunkRegistry &registry,
-    ivec3 requestedGoal,
-    float agentClearance,
-    const std::unordered_set<int64_t> &usedGoalKeys
+    ivec3 goalCell,
+    float clearance,
+    int count,
+    int spacingCells
 ) {
-    if (navIsPassable(navWorld, registry, requestedGoal, agentClearance) &&
-        usedGoalKeys.find(posToKey(requestedGoal)) == usedGoalKeys.end()) {
-        return requestedGoal;
+    std::vector<ivec3> goals;
+    if (count <= 0) return goals;
+    goals.reserve(static_cast<size_t>(count));
+
+    struct Node {
+        ivec3 cell;
+        float cost;
+        bool operator>(const Node &o) const { return cost > o.cost; }
+    };
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> frontier;
+    std::unordered_map<int64_t, float> visited;
+
+    ivec3 resolvedGoal = goalCell;
+    if (!navIsPassable(navWorld, registry, goalCell, clearance)) {
+        resolvedGoal = resolveGoalCell(navWorld, registry, goalCell, clearance);
     }
 
-    ivec3 bestGoal = requestedGoal;
-    float bestDist = std::numeric_limits<float>::infinity();
-    bool found = false;
-    int searchRadius = static_cast<int>(
-        std::ceil(agentClearance / navWorld.cellSizeWorld_)) + 6;
+    frontier.push({resolvedGoal, 0.0f});
+    visited[posToKey(resolvedGoal)] = 0.0f;
 
-    for (int dy = -searchRadius; dy <= searchRadius; ++dy) {
-        for (int dx = -searchRadius; dx <= searchRadius; ++dx) {
-            ivec3 candidate = requestedGoal + ivec3(dx, dy, 0);
-            if (!navIsPassable(navWorld, registry, candidate, agentClearance)) continue;
-            if (usedGoalKeys.find(posToKey(candidate)) != usedGoalKeys.end()) continue;
+    int maxExpansions = std::min(4096, count * spacingCells * spacingCells * 12);
+    int expansions = 0;
 
-            float dist = static_cast<float>(dx * dx + dy * dy);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestGoal = candidate;
-                found = true;
+    while (!frontier.empty() &&
+           static_cast<int>(goals.size()) < count &&
+           expansions < maxExpansions) {
+        auto current = frontier.top();
+        frontier.pop();
+
+        auto it = visited.find(posToKey(current.cell));
+        if (it != visited.end() && current.cost > it->second) continue;
+
+        bool farEnough = true;
+        for (const auto &g : goals) {
+            if (std::max(
+                    std::abs(current.cell.x - g.x),
+                    std::abs(current.cell.y - g.y)) < spacingCells) {
+                farEnough = false;
+                break;
             }
         }
+        if (farEnough) {
+            goals.push_back(current.cell);
+            if (static_cast<int>(goals.size()) >= count) break;
+        }
+
+        navForEachPassableNeighbor(
+            navWorld, registry, current.cell, clearance,
+            [&](ivec3 neighborCell) {
+                float mc = moveCostForDelta(neighborCell - current.cell);
+                float nextCost = current.cost + mc;
+                auto nit = visited.find(posToKey(neighborCell));
+                if (nit != visited.end() && nextCost >= nit->second) return;
+                visited[posToKey(neighborCell)] = nextCost;
+                frontier.push({neighborCell, nextCost});
+            }
+        );
+        ++expansions;
     }
 
-    return found ? bestGoal : resolveGoalCell(navWorld, registry, requestedGoal, agentClearance);
+    while (static_cast<int>(goals.size()) < count) {
+        goals.push_back(resolvedGoal);
+    }
+    return goals;
 }
 
 } // namespace detail_flow_build
@@ -225,20 +248,25 @@ template <> struct System<FLOW_FIELD_BUILD> {
                     auto &orders = IREntity::getComponentData<C_MoveOrder>(node);
                     auto &colliders = IREntity::getComponentData<C_ColliderCircle>(node);
                     for (int i = 0; i < node->length_; ++i) {
+                        ivec3 requestedGoal = orders[i].targetCell_;
+                        float planClearance = agents[i].planningClearance();
                         ivec3 targetCell = detail_flow_build::resolveGoalCell(
                             navWorld,
                             registry,
-                            orders[i].targetCell_,
-                            agents[i].agentClearance_
+                            requestedGoal,
+                            planClearance
                         );
-                        assignments.push_back({
-                            node->entities_[i],
-                            positions[i].pos_,
-                            targetCell,
-                            targetCell,
-                            agents[i].agentClearance_,
-                            colliders[i].movementCollisionRadius_
-                        });
+                        detail_flow_build::PendingAssignment a;
+                        a.entity_ = node->entities_[i];
+                        a.position_ = positions[i].pos_;
+                        a.requestedGoalCell_ = requestedGoal;
+                        a.goalCell_ = targetCell;
+                        a.groupCenterCell_ = targetCell;
+                        a.agentClearance_ = agents[i].agentClearance_;
+                        a.planningClearance_ = planClearance;
+                        a.movementCollisionRadius_ = colliders[i].movementCollisionRadius_;
+                        a.exactGoal_ = false;
+                        assignments.push_back(a);
                         agents[i].clearPath();
                     }
                 }
@@ -251,7 +279,7 @@ template <> struct System<FLOW_FIELD_BUILD> {
                     const auto &assignment = assignments[i];
                     groupedAssignments[{
                         assignment.goalCell_,
-                        static_cast<int>(std::lround(assignment.agentClearance_ * 1000.0f))
+                        static_cast<int>(std::lround(assignment.planningClearance_ * 1000.0f))
                     }].push_back(i);
                 }
 
@@ -283,30 +311,47 @@ template <> struct System<FLOW_FIELD_BUILD> {
                             (maxMovementRadius * 2.0f) / std::max(0.001f, navWorld.cellSizeWorld_)
                         ))
                     );
-                    std::vector<ivec3> offsets = detail_flow_build::buildFormationOffsets(
-                        static_cast<int>(indices.size()),
-                        spacingCells
-                    );
-
-                    std::unordered_set<int64_t> usedGoalKeys;
-                    for (size_t slotIndex = 0; slotIndex < indices.size(); ++slotIndex) {
-                        auto &assignment = assignments[indices[slotIndex]];
-                        ivec3 desiredGoal = groupKey.goalCell_ + offsets[slotIndex];
-                        assignment.goalCell_ = detail_flow_build::resolveUniqueGoalCell(
+                    float groupPlanClearance = assignments[indices[0]].planningClearance_;
+                    std::vector<ivec3> reachableGoals =
+                        detail_flow_build::buildReachableGoals(
                             navWorld,
                             registry,
-                            desiredGoal,
-                            assignment.agentClearance_,
-                            usedGoalKeys
+                            groupKey.goalCell_,
+                            groupPlanClearance,
+                            static_cast<int>(indices.size()),
+                            spacingCells
                         );
-                        usedGoalKeys.insert(posToKey(assignment.goalCell_));
+
+                    int goalSlot = 0;
+                    for (size_t slotIndex = 0; slotIndex < indices.size(); ++slotIndex) {
+                        auto &assignment = assignments[indices[slotIndex]];
+                        assignment.exactGoal_ = false;
+
+                        bool canClaimExactTarget =
+                            slotIndex == 0 &&
+                            navIsPassable(
+                                navWorld,
+                                registry,
+                                assignment.requestedGoalCell_,
+                                groupPlanClearance);
+
+                        if (canClaimExactTarget) {
+                            assignment.goalCell_ = assignment.requestedGoalCell_;
+                            assignment.exactGoal_ = true;
+                        } else {
+                            assignment.goalCell_ =
+                                (goalSlot < static_cast<int>(reachableGoals.size()))
+                                    ? reachableGoals[static_cast<size_t>(goalSlot)]
+                                    : reachableGoals.back();
+                            ++goalSlot;
+                        }
                     }
                 }
 
                 for (const auto &assignment : assignments) {
                     int fieldId = requests.getOrCreateField(
                         assignment.goalCell_,
-                        assignment.agentClearance_
+                        assignment.planningClearance_
                     );
                     detail_flow_build::addActiveFieldId(activeFieldIds, fieldId);
 
@@ -321,7 +366,8 @@ template <> struct System<FLOW_FIELD_BUILD> {
                             detail_flow_build::buildImmediateDirection(
                                 assignment.position_,
                                 targetWorld
-                            )
+                            ),
+                            assignment.exactGoal_
                         )
                     );
                     IREntity::removeComponent<C_MoveOrder>(assignment.entity_);
@@ -341,7 +387,7 @@ template <> struct System<FLOW_FIELD_BUILD> {
                 requests.pruneInactive(activeFieldIds);
                 flowField.pruneInactive(activeFieldIds);
 
-                std::vector<FlowFieldState *> activeFields;
+                std::vector<int> activeFields;
                 activeFields.reserve(requests.requests_.size());
                 for (auto &request : requests.requests_) {
                     auto &field = flowField.ensureField(
@@ -385,7 +431,7 @@ template <> struct System<FLOW_FIELD_BUILD> {
                     }
 
                     if (!field.complete_ && !field.frontier_.empty()) {
-                        activeFields.push_back(&field);
+                        activeFields.push_back(field.fieldId_);
                     }
                 }
 
@@ -394,7 +440,11 @@ template <> struct System<FLOW_FIELD_BUILD> {
                     bool progressed = false;
 
                     for (auto it = activeFields.begin(); it != activeFields.end() && remainingBudget > 0;) {
-                        FlowFieldState *field = *it;
+                        FlowFieldState *field = flowField.findField(*it);
+                        if (!field) {
+                            it = activeFields.erase(it);
+                            continue;
+                        }
                         if (field->frontier_.empty()) {
                             field->complete_ = true;
                             it = activeFields.erase(it);
@@ -422,8 +472,22 @@ template <> struct System<FLOW_FIELD_BUILD> {
                             current.cell_,
                             field->agentClearance_,
                             [&](ivec3 neighborCell) {
-                                float nextCost =
-                                    current.cost_ + moveCostForDelta(neighborCell - current.cell_);
+                                float baseCost = moveCostForDelta(neighborCell - current.cell_);
+
+                                float neighborClearance = navGetCellClearance(
+                                    navWorld, registry, neighborCell
+                                );
+                                float comfortClearance =
+                                    field->agentClearance_ * 2.0f;
+                                float wallProximity = 0.0f;
+                                if (neighborClearance < comfortClearance &&
+                                    comfortClearance > 0.0f) {
+                                    float ratio =
+                                        1.0f - neighborClearance / comfortClearance;
+                                    wallProximity = ratio * ratio * 4.0f;
+                                }
+
+                                float nextCost = current.cost_ + baseCost + wallProximity;
                                 float oldCost = detail_flow_build::getFieldCostAt(
                                     flowField,
                                     *field,
