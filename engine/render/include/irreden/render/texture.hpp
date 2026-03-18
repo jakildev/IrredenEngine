@@ -1,97 +1,153 @@
 #ifndef TEXTURE_H
 #define TEXTURE_H
 
-#include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/render/ir_render_enums.hpp>
 
-#include <irreden/render/opengl/opengl_types.hpp>
+#include <cstdint>
+#include <memory>
 
 using namespace IRMath;
 
 namespace IRRender {
 
+class Texture2DImpl {
+  public:
+    virtual ~Texture2DImpl() = default;
+    virtual uvec2 getSize() const = 0;
+    virtual std::uint32_t getHandle() const = 0;
+    virtual void *getNativeTexture() const = 0;
+    virtual std::uint32_t getNativePixelFormat() const = 0;
+    virtual void bind(std::uint32_t unit) const = 0;
+    virtual void bindImage(
+        std::uint32_t unit,
+        TextureAccess access,
+        TextureFormat format,
+        int level,
+        bool layered,
+        int layer
+    ) const = 0;
+    virtual void uploadSubImage2D(
+        int xoffset,
+        int yoffset,
+        int width,
+        int height,
+        PixelDataFormat format,
+        PixelDataType type,
+        const void *data
+    ) = 0;
+    virtual void readSubImage2D(
+        int xoffset,
+        int yoffset,
+        int width,
+        int height,
+        PixelDataFormat format,
+        PixelDataType type,
+        void *data
+    ) const = 0;
+    virtual void clear(PixelDataFormat format, PixelDataType type, const void *data) = 0;
+};
+
+class Texture3DImpl {
+  public:
+    virtual ~Texture3DImpl() = default;
+    virtual std::uint32_t getHandle() const = 0;
+    virtual void bind(std::uint32_t unit) = 0;
+    virtual void uploadSubImage3D(
+        int width,
+        int height,
+        int depth,
+        PixelDataFormat format,
+        PixelDataType type,
+        const void *data
+    ) = 0;
+};
+
 class Texture2D {
   public:
     Texture2D(
-        GLenum type,
+        TextureKind type,
         unsigned int width,
         unsigned int height,
-        GLenum internalFormat,
-        GLint wrap = GL_REPEAT,
-        GLint filter = GL_NEAREST,
+        TextureFormat internalFormat,
+        TextureWrap wrap = TextureWrap::REPEAT,
+        TextureFilter filter = TextureFilter::NEAREST,
         int alignment = 1
     );
     ~Texture2D();
-    Texture2D(const Texture2D &other);
-    Texture2D(Texture2D &&other);
+    Texture2D(Texture2D &&other) noexcept;
+    Texture2D &operator=(Texture2D &&other) noexcept;
+    Texture2D(const Texture2D &) = delete;
+    Texture2D &operator=(const Texture2D &) = delete;
 
-    Texture2D &operator=(Texture2D &&other);
-    Texture2D &operator=(const Texture2D &other);
-
-    inline uvec2 getSize() const {
-        return ivec2(m_width, m_height);
-    }
-    GLuint getHandle() const;
-    void bind(GLuint unit = 0) const;
-    void bindImage(
-        GLuint unit = 0,
-        GLenum access = GL_READ_WRITE,
-        GLenum format = GL_RGBA32F,
-        GLint level = 0,
-        GLboolean layered = GL_FALSE,
-        GLint layer = 0
+    uvec2 getSize() const;
+    std::uint32_t getHandle() const;
+    void *getNativeTexture() const;
+    std::uint32_t getNativePixelFormat() const;
+    void bind(std::uint32_t unit = 0) const;
+    void bindAsImage(
+        std::uint32_t unit = 0,
+        TextureAccess access = TextureAccess::READ_WRITE,
+        TextureFormat format = TextureFormat::RGBA32F,
+        int level = 0,
+        bool layered = false,
+        int layer = 0
     ) const;
-    void setParameteri(GLenum pname, GLint param);
     void subImage2D(
-        GLint xoffset,
-        GLint yoffset,
-        GLsizei width,
-        GLsizei height,
-        GLenum format,
-        GLenum type,
+        int xoffset,
+        int yoffset,
+        int width,
+        int height,
+        PixelDataFormat format,
+        PixelDataType type,
         const void *data
     );
     void getSubImage2D(
-        GLint xoffset,
-        GLint yoffset,
-        GLsizei width,
-        GLsizei height,
-        GLenum format,
-        GLenum type,
+        int xoffset,
+        int yoffset,
+        int width,
+        int height,
+        PixelDataFormat format,
+        PixelDataType type,
         void *data
     ) const;
-    void clear(GLenum format, GLenum type, const void *data);
-    void *getData() const;
+    void clear(PixelDataFormat format, PixelDataType type, const void *data);
     void saveAsPNG(const char *file) const;
 
   private:
-    GLuint m_handle;
-    unsigned int m_width, m_height;
+    std::unique_ptr<Texture2DImpl> m_impl;
 };
 
 class Texture3D {
   public:
     Texture3D(
-        GLenum type,
+        TextureKind type,
         unsigned int width,
         unsigned int height,
         unsigned int depth,
-        GLenum internalFormat,
-        GLint wrap = GL_REPEAT,
-        GLint filter = GL_NEAREST
+        TextureFormat internalFormat,
+        TextureWrap wrap = TextureWrap::REPEAT,
+        TextureFilter filter = TextureFilter::NEAREST
     );
     ~Texture3D();
+    Texture3D(Texture3D &&other) noexcept;
+    Texture3D &operator=(Texture3D &&other) noexcept;
+    Texture3D(const Texture3D &) = delete;
+    Texture3D &operator=(const Texture3D &) = delete;
 
-    GLuint getHandle() const;
-    void bind(GLuint unit = 0);
-    void setParameteri(GLenum pname, GLint param);
+    std::uint32_t getHandle() const;
+    void bind(std::uint32_t unit = 0);
     void subImage3D(
-        GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *data
+        int width,
+        int height,
+        int depth,
+        PixelDataFormat format,
+        PixelDataType type,
+        const void *data
     );
 
   private:
-    GLuint m_handle;
-    unsigned int m_width, m_height, m_depth;
+    std::unique_ptr<Texture3DImpl> m_impl;
 };
 
 } // namespace IRRender

@@ -19,6 +19,7 @@ bool checkKeyMouseModifiers(
 // Everything should just use render mouse position prob...
 IRMath::vec2 getMousePositionUpdate();
 IRMath::vec2 getMousePositionRender();
+IRMath::vec2 getMousePositionScreen();
 
 // Internal use for key mouse input system
 int getNumButtonPressesThisFrame(KeyMouseButtons button);

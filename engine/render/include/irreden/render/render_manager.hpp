@@ -70,7 +70,9 @@ class RenderManager {
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
 
-    void tick();
+    void beginFrame();
+    void renderFrame();
+    void presentFrame();
     void printRenderInfo();
 
     std::tuple<
@@ -89,6 +91,7 @@ class RenderManager {
     );
 
   private:
+    std::unique_ptr<RenderImpl> m_renderImpl;
     // tmp
     GlobalConstantsGLSL m_globalConstantsGLSL;
     Buffer m_bufferUniformConstantsGLSL;
@@ -111,7 +114,6 @@ class RenderManager {
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
-    std::unique_ptr<RenderImpl> m_renderImpl;
 
     void initRenderingSystems();
     void initRenderingResources();

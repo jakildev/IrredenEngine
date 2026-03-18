@@ -1,5 +1,6 @@
 #include <irreden/ir_window.hpp>
 
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_profile.hpp>
 // #include <irreden/ir_window_types.hpp>
 #include <irreden/window/ir_glfw_window.hpp>
@@ -82,7 +83,8 @@ IRGLFWWindow::IRGLFWWindow(
     IR_ASSERT(status, "Failed to initalize glfw.");
 
     for (int i = 0; i < kNumWindowHints; ++i) {
-        glfwWindowHint(kWindowHints[i].first, kWindowHints[i].second);
+        const auto &[hint, value] = getWindowHint(i);
+        glfwWindowHint(hint, value);
     }
 
     int numMonitors;
@@ -105,11 +107,15 @@ IRGLFWWindow::IRGLFWWindow(
 
     IR_ASSERT(m_window != nullptr, "Failed to create window: glfwCreateWindow returned null");
 
-    glfwMakeContextCurrent(m_window);
+    if constexpr (IRPlatform::kIsOpenGL) {
+        glfwMakeContextCurrent(m_window);
+    }
 
     setWindowMonitor();
 
-    glfwSwapInterval(0); // Remove for vsync?
+    if constexpr (IRPlatform::kIsOpenGL) {
+        glfwSwapInterval(0); // Remove for vsync?
+    }
 
     // This needs to get put back somewhere for openGL impl
     // status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -171,9 +177,15 @@ void IRGLFWWindow::setWindowUserPointer(void *pointer) {
     glfwSetWindowUserPointer(m_window, pointer);
 }
 
+GLFWwindow *IRGLFWWindow::getRawWindow() const {
+    return m_window;
+}
+
 void IRGLFWWindow::swapBuffers() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    glfwSwapBuffers(m_window);
+    if constexpr (IRPlatform::kIsOpenGL) {
+        glfwSwapBuffers(m_window);
+    }
 }
 
 void IRGLFWWindow::pollEvents() {

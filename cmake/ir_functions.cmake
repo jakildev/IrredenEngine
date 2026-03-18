@@ -83,6 +83,21 @@ function(
 endfunction()
 
 function(
+    IrredenEngine_setGraphicsBackendCompileDefinitions
+    targetName
+)
+    if(IRREDEN_GRAPHICS_BACKEND STREQUAL "OPENGL")
+        target_compile_definitions(${targetName} PUBLIC "IR_GRAPHICS_OPENGL")
+    elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "METAL")
+        target_compile_definitions(${targetName} PUBLIC "IR_GRAPHICS_METAL")
+    elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "VULKAN")
+        target_compile_definitions(${targetName} PUBLIC "IR_GRAPHICS_VULKAN")
+    else()
+        message(FATAL_ERROR "Unsupported IRREDEN_GRAPHICS_BACKEND='${IRREDEN_GRAPHICS_BACKEND}'")
+    endif()
+endfunction()
+
+function(
     IrredenEngine_copyLuaFiles
 )
     # Set the output directory for copied files

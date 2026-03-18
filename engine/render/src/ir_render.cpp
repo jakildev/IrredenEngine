@@ -22,6 +22,16 @@ RenderManager &getRenderManager() {
     return *g_renderManager;
 }
 
+RenderDevice *g_renderDevice = nullptr;
+RenderDevice *device() {
+    IR_ASSERT(g_renderDevice != nullptr, "RenderDevice not initialized");
+    return g_renderDevice;
+}
+
+void setDevice(RenderDevice *renderDevice) {
+    g_renderDevice = renderDevice;
+}
+
 vec2 getCameraPosition2DIso() {
     return getRenderManager().getCameraPosition2DIso();
 }
@@ -36,6 +46,9 @@ ivec2 getViewport() {
 }
 ivec2 getOutputScaleFactor() {
     return getRenderManager().getOutputScaleFactor();
+}
+bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData) {
+    return device()->readDefaultFramebuffer(x, y, width, height, rgbaData);
 }
 vec2 getMousePositionOutputView() {
     const vec2 raw = IRInput::getMousePositionRender();

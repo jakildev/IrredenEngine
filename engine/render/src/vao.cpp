@@ -1,66 +1,30 @@
-#include <irreden/ir_profile.hpp>
-#include <irreden/ir_render.hpp>
-
 #include <irreden/render/vao.hpp>
 
 namespace IRRender {
 
-VAO::VAO(
-    GLuint vertexBufferHandle,
-    GLuint indexBufferHandle,
+std::unique_ptr<VertexLayoutImpl> createVertexLayoutImpl(
+    std::uint32_t vertexBufferHandle,
+    std::uint32_t indexBufferHandle,
+    unsigned int numAttributes,
+    const VertexArrayAttribute *attributes
+);
+
+VertexLayout::VertexLayout(
+    std::uint32_t vertexBufferHandle,
+    std::uint32_t indexBufferHandle,
     unsigned int numAttributes,
     const VertexArrayAttribute *attributes
 )
-    : m_handle(0)
-    , m_stride(0) {
-    ENG_API->glCreateVertexArrays(1, &m_handle);
-    GLuint bindingIndex = 0; // TODO: change to param if need more than one
-    IR_ASSERT(numAttributes <= kMaxVertexAttributes, "Too many vertex attributes for VAO");
+    : m_impl(createVertexLayoutImpl(
+          vertexBufferHandle, indexBufferHandle, numAttributes, attributes
+      )) {}
 
-    // calc stride
-    size_t attributeSizes[numAttributes];
-    for (int i = 0; i < numAttributes; i++) {
-        attributeSizes[i] = attributes[i].size_ * kMapSizeofGLType.at(attributes[i].type_);
-        m_stride += attributeSizes[i];
-    }
+VertexLayout::~VertexLayout() = default;
+VertexLayout::VertexLayout(VertexLayout &&other) noexcept = default;
+VertexLayout &VertexLayout::operator=(VertexLayout &&other) noexcept = default;
 
-    if (indexBufferHandle) {
-        ENG_API->glVertexArrayElementBuffer(m_handle, indexBufferHandle);
-    }
-    ENG_API->glVertexArrayVertexBuffer(m_handle, bindingIndex, vertexBufferHandle, 0, m_stride);
-    initVertexBufferAttributes(numAttributes, attributes, attributeSizes, bindingIndex);
-    IRE_LOG_INFO("Created VAO: {}", m_handle);
-}
-
-VAO::~VAO() {
-    ENG_API->glDeleteVertexArrays(1, &m_handle);
-    IRE_LOG_INFO("Deleted VAO: {}", m_handle);
-}
-
-void VAO::bind() const {
-    ENG_API->glBindVertexArray(m_handle);
-}
-
-void VAO::initVertexBufferAttributes(
-    unsigned int numAttributes,
-    const VertexArrayAttribute *attributes,
-    const size_t *attributeSizes,
-    GLuint bindingIndex
-) {
-    GLuint offset = 0;
-    for (int i = 0; i < numAttributes; i++) {
-        ENG_API->glEnableVertexArrayAttrib(m_handle, i);
-        ENG_API->glVertexArrayAttribFormat(
-            m_handle,
-            i,
-            attributes[i].size_,
-            attributes[i].type_,
-            attributes[i].normalized_,
-            offset
-        );
-        ENG_API->glVertexArrayAttribBinding(m_handle, i, bindingIndex);
-        offset += attributeSizes[i];
-    }
+void VertexLayout::bind() const {
+    m_impl->bind();
 }
 
 } // namespace IRRender

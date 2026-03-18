@@ -1,5 +1,13 @@
 option(IRREDEN_ENABLE_QUALITY_TOOLS "Enable formatter and linter targets." ON)
 
+set(IRREDEN_CLANG_TOOL_HINTS "")
+if(APPLE)
+    list(APPEND IRREDEN_CLANG_TOOL_HINTS
+        /opt/homebrew/opt/llvm/bin
+        /usr/local/opt/llvm/bin
+    )
+endif()
+
 function(irreden_collect_quality_files out_var)
     set(search_roots
         "${PROJECT_SOURCE_DIR}/engine"
@@ -75,7 +83,7 @@ function(irreden_add_quality_targets)
     endforeach()
     file(APPEND "${irreden_quality_file_list}" ")\n")
 
-    find_program(IRREDEN_CLANG_FORMAT_BIN NAMES clang-format)
+    find_program(IRREDEN_CLANG_FORMAT_BIN NAMES clang-format HINTS ${IRREDEN_CLANG_TOOL_HINTS})
     if(IRREDEN_CLANG_FORMAT_BIN)
         add_custom_target(format
             COMMAND ${CMAKE_COMMAND}
@@ -113,7 +121,7 @@ function(irreden_add_quality_targets)
         )
     endif()
 
-    find_program(IRREDEN_CLANG_TIDY_BIN NAMES clang-tidy)
+    find_program(IRREDEN_CLANG_TIDY_BIN NAMES clang-tidy HINTS ${IRREDEN_CLANG_TOOL_HINTS})
     if(IRREDEN_CLANG_TIDY_BIN)
         add_custom_target(lint
             COMMAND ${CMAKE_COMMAND}

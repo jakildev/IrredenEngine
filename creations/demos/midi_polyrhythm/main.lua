@@ -7,7 +7,7 @@
 --
 -- ============================================================================
 
-local SCRIPT_DIR = "IRMidiPolyrhythm/scripts/"
+local SCRIPT_DIR = "scripts/"
 local function load_module(name)
     return dofile(SCRIPT_DIR .. name .. ".lua")
 end

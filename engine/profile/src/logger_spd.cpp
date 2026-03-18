@@ -32,7 +32,9 @@ LoggerSpd::LoggerSpd() {
 }
 
 LoggerSpd *LoggerSpd::instance() {
-    /* cant use make_unique here because of private constructor */
-    static std::unique_ptr<LoggerSpd> instance = std::unique_ptr<LoggerSpd>(new LoggerSpd{});
-    return instance.get();
+    // Intentionally leaked so the logger outlives all other statics.
+    // Prevents use-after-destroy when globals (e.g. g_world) log in
+    // their destructors during program shutdown.
+    static LoggerSpd *instance = new LoggerSpd{};
+    return instance;
 }

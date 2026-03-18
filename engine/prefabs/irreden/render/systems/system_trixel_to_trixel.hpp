@@ -20,15 +20,15 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
         IRRender::createNamedResource<ShaderProgram>(
             "TrixelToTrixelProgram",
             std::vector{
-                ShaderStage{IRRender::kFileCompTrixelToTrixel, GL_COMPUTE_SHADER}.getHandle()
+                ShaderStage{IRRender::kFileCompTrixelToTrixel, ShaderType::COMPUTE}
             }
         );
         IRRender::createNamedResource<Buffer>(
             "TrixelToTrixelFrameData",
             nullptr,
             sizeof(FrameDataTrixelToTrixel),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_UNIFORM_BUFFER,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
             kBufferIndex_FrameDataTrixelToTrixel
         );
 
@@ -42,8 +42,9 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
                 frameData.texturePos2DIso_ = position2DIso.pos_;
                 IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData")
                     ->subData(0, sizeof(FrameDataTrixelToTrixel), &frameData);
-                glDispatchCompute(trixelTextures.size_.x, trixelTextures.size_.y, 1);
-                glMemoryBarrier(GL_ALL_BARRIER_BITS);
+                IRRender::device()->dispatchCompute(trixelTextures.size_.x, trixelTextures.size_.y, 1);
+                // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
+                IRRender::device()->memoryBarrier(BarrierType::ALL);
             },
             []() {
                 IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram")->use();

@@ -6,6 +6,7 @@
 #include <irreden/math/color_palettes.hpp>
 #include <irreden/math/color.hpp>
 #include <irreden/math/physics.hpp>
+#include <irreden/ir_platform.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -100,7 +101,11 @@ constexpr float sin(float value) {
 }
 
 inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {
-    return glm::ortho(left, right, bottom, top, nearZ, farZ);
+    if constexpr (IRPlatform::kIsMetal) {
+        return glm::orthoZO(left, right, bottom, top, nearZ, farZ);
+    } else {
+        return glm::orthoNO(left, right, bottom, top, nearZ, farZ);
+    }
 }
 
 inline mat4 translate(const mat4 &matrix, const vec3 &position) {

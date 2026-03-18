@@ -13,11 +13,23 @@ add_library(IrredenEngine STATIC
 
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 IrredenEngine_setSystemCompileDefinitions(IrredenEngine)
+if(NOT DEFINED IRREDEN_GRAPHICS_BACKEND)
+    if(IR_isDarwin)
+        set(IRREDEN_GRAPHICS_BACKEND "METAL" CACHE STRING "Rendering backend" FORCE)
+    elseif(IR_isWindows)
+        set(IRREDEN_GRAPHICS_BACKEND "OPENGL" CACHE STRING "Rendering backend" FORCE)
+    else()
+        set(IRREDEN_GRAPHICS_BACKEND "OPENGL" CACHE STRING "Rendering backend" FORCE)
+    endif()
+endif()
+set_property(CACHE IRREDEN_GRAPHICS_BACKEND PROPERTY STRINGS OPENGL METAL VULKAN)
+IrredenEngine_setGraphicsBackendCompileDefinitions(IrredenEngine)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/audio)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/profile)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/utility)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/render)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
@@ -61,6 +73,7 @@ target_compile_options(
 target_link_libraries(
     IrredenEngine PUBLIC
     IrredenEngineProfile
+    IrredenEngineUtility
     IrredenEngineAsset
     IrredenEngineAudio
     IrredenEngineInput

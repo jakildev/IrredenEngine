@@ -14,12 +14,16 @@ CPUProfiler::CPUProfiler() {
 }
 
 CPUProfiler::~CPUProfiler() {
-    EASY_PROFILER_DISABLE;
-    if (!m_enabled) {
+    if (m_shutdown) {
         return;
     }
-    uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
-    IRE_LOG_INFO("Dumped profiling blocks, result={}", res);
+    EASY_PROFILER_DISABLE;
+    if (!m_enabled) {
+        m_shutdown = true;
+        return;
+    }
+    profiler::dumpBlocksToFile("profiler_dump.prof");
+    m_shutdown = true;
 }
 
 void CPUProfiler::setEnabled(bool enabled) {
@@ -33,6 +37,20 @@ void CPUProfiler::setEnabled(bool enabled) {
 
 bool CPUProfiler::isEnabled() const {
     return m_enabled;
+}
+
+void CPUProfiler::shutdown() {
+    if (m_shutdown) {
+        return;
+    }
+    EASY_PROFILER_DISABLE;
+    if (!m_enabled) {
+        m_shutdown = true;
+        return;
+    }
+    const uint32_t res = profiler::dumpBlocksToFile("profiler_dump.prof");
+    m_shutdown = true;
+    IRE_LOG_INFO("Dumped profiling blocks, result={}", res);
 }
 
 void CPUProfiler::mainThread() {

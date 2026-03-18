@@ -54,12 +54,6 @@ inline SelectionState &getState() {
     return state;
 }
 
-inline vec2 mousePositionScreenOverlay() {
-    vec2 mouse = IRInput::getMousePositionRender();
-    mouse.y = static_cast<float>(IRRender::getViewport().y) - mouse.y;
-    return mouse;
-}
-
 inline vec3 isoToWorld(const vec2 iso, float zLevel = 0.0f) {
     const float zShift = 2.0f * zLevel;
     const float x = -0.5f * (iso.x + iso.y - zShift);
@@ -300,7 +294,7 @@ template <> struct System<UNIT_SELECTION> {
             []() {
                 auto &state = UnitSelection::getState();
 
-                state.currentScreen_ = UnitSelection::mousePositionScreenOverlay();
+                state.currentScreen_ = IRInput::getMousePositionScreen();
                 state.currentIso_ = IRRender::mousePosition2DIsoWorldRender();
 
                 if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonTab, IRInput::PRESSED)) {

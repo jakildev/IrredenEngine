@@ -35,6 +35,9 @@ inline void engAssert(
     Args &&...args
 );
 
+bool isLoggingEnabled();
+void shutdownLogging();
+
 // Game logging commands
 template <typename... Args> inline void logTrace(const char *format, Args &&...args);
 template <typename... Args> inline void logDebug(const char *format, Args &&...args);

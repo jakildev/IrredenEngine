@@ -4,6 +4,12 @@ add_library(IrredenEngineProfile STATIC
     src/ir_profile.cpp
 )
 
+option(
+    IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI
+    "Build easy_profiler profiler_gui when Qt5Widgets is available."
+    ON
+)
+
 target_compile_options(
     IrredenEngineProfile
     PUBLIC
@@ -56,6 +62,14 @@ IR_copyDLL(
 )
 # easy_profiler
 
+if(IR_isDarwin)
+    foreach(_irreden_qt5_root IN ITEMS /opt/homebrew/opt/qt@5 /usr/local/opt/qt@5)
+        if(EXISTS "${_irreden_qt5_root}")
+            list(APPEND CMAKE_PREFIX_PATH "${_irreden_qt5_root}")
+        endif()
+    endforeach()
+endif()
+
 # Remove to disable profiling
 target_compile_definitions(
     IrredenEngineProfile
@@ -68,6 +82,10 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/yse/easy_profiler
     GIT_TAG v2.1.0
 )
+set(EASY_PROFILER_NO_GUI ON CACHE BOOL "" FORCE)
+if(IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI)
+    set(EASY_PROFILER_NO_GUI OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(easy_profiler)
 target_link_libraries(IrredenEngineProfile PUBLIC easy_profiler)
 target_include_directories(
@@ -81,6 +99,20 @@ IR_copyDLL(
     libeasy_profilerd
     ${easy_profiler_BINARY_DIR}/bin
 )
+
+if(IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI)
+    if(TARGET profiler_gui)
+        message(STATUS "IrredenEngineProfile: easy_profiler GUI enabled.")
+    else()
+        message(
+            WARNING
+            "IrredenEngineProfile: profiler_gui requested but Qt5Widgets was not found. "
+            "Install qt@5 and ensure CMAKE_PREFIX_PATH includes its prefix."
+        )
+    endif()
+else()
+    message(STATUS "IrredenEngineProfile: easy_profiler GUI disabled.")
+endif()
 
 target_include_directories(
     IrredenEngineProfile

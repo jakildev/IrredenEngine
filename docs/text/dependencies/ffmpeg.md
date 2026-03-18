@@ -23,13 +23,18 @@
         -   `lib/avcodec(.lib|.a)` and companion libs (`avformat`, `avutil`, `swscale`)
         -   `bin/*.dll` (copied to build output on Windows)
 -   If `IRREDEN_FFMPEG_ROOT` is not set, the build tries `pkg-config` (`libavcodec libavformat libavutil libswscale`).
+-   On macOS, the recommended path is Homebrew:
+    -   `./scripts/bootstrap_macos.sh`
+    -   or manually install `ffmpeg` and `pkg-config`
+-   The macOS build also checks common Homebrew prefixes such as `/opt/homebrew` and `/usr/local` before falling back to stub mode.
 
 ### Runtime Notes
 
 -   Current recorder path is video-first and optimized for high frame rate capture (`ultrafast` + `zerolatency` encoder options).
 -   Current implementation includes asynchronous encoding queue/worker to reduce main thread stalls while recording.
 -   Current implementation includes GPU asynchronous readback via a PBO ring buffer in `VideoManager` to further reduce render-thread stalls.
--   Audio muxing is not implemented yet in this pass and should be added as a next step for synchronized AV output.
+-   Audio muxing is implemented, with optional fallback WAV output when muxing or input capture is unavailable.
+-   On macOS, microphone capture may require granting microphone permission to the host app (for example, Terminal or the IDE).
 
 ### Future Use:
 -   Add AAC audio capture/mux path with shared clock.

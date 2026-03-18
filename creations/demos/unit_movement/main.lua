@@ -2,7 +2,7 @@
 -- Features: A* pathfinding, circle colliders, unit-unit push,
 -- turn rate, wall sliding, unit selection, large world
 
-local SCRIPT_DIR = "IRUnitMovement/scripts/"
+local SCRIPT_DIR = "scripts/"
 local function load_module(name)
     return dofile(SCRIPT_DIR .. name .. ".lua")
 end

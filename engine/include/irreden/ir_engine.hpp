@@ -37,15 +37,14 @@ inline std::string resolveScriptPath(const char *filename) {
     return filename;
 }
 
-// Sets cwd to the executable's directory and derives a per-creation
-// scripts directory from the executable's name (e.g. IRMidiPolyrhythm.exe
-// looks for scripts in IRMidiPolyrhythm/).  All relative engine paths
+// Sets cwd to the executable's directory and resolves creation scripts
+// from a sibling scripts/ directory. All relative engine paths
 // (shaders/, data/) resolve from the exe directory.
 inline void init(const char *argv0, const char *configFileName = "config.lua") {
     auto exePath = std::filesystem::weakly_canonical(std::filesystem::path(argv0));
     auto exeDir = exePath.parent_path();
     std::filesystem::current_path(exeDir);
-    g_scriptsDir = exeDir / exePath.stem();
+    g_scriptsDir = exeDir / "scripts";
     g_world = std::make_unique<World>(resolveScriptPath(configFileName).c_str());
     g_world->setupLuaBindings(g_luaBindingRegistrations);
 }

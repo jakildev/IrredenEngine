@@ -7,6 +7,9 @@
 
 namespace IRProfile {
 
+    bool isLoggingEnabled();
+    void shutdownLogging();
+
     // TODO: Disable logging and asserts in release mode
     namespace {
         template <typename... Args>
@@ -44,6 +47,9 @@ namespace IRProfile {
 
     template <typename... Args>
     inline void logTrace(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->trace(
             "{}", message
@@ -51,6 +57,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void logDebug(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->debug(
             "{}", message
@@ -58,6 +67,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void logInfo(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->info(
             "{}", message
@@ -65,6 +77,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void logWarn(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->warn(
             "{}", message
@@ -72,6 +87,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void logError(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->error(
             "{}", message
@@ -79,6 +97,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void logFatal(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGameLogger()->critical(
             "{}", message
@@ -89,6 +110,9 @@ namespace IRProfile {
 
     template <typename... Args>
     inline void engLogTrace(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->trace(
             "{}", message
@@ -96,6 +120,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void engLogDebug(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->debug(
             "{}", message
@@ -103,6 +130,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void engLogInfo(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->info(
             "{}", message
@@ -110,6 +140,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void engLogWarn(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->warn(
             "{}", message
@@ -117,6 +150,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void engLogError(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->error(
             "{}", message
@@ -124,6 +160,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void engLogFatal(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getEngineLogger()->critical(
             "{}", message
@@ -133,6 +172,9 @@ namespace IRProfile {
     // GL logging API
     template <typename... Args>
     inline void glLogDebug(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGLAPILogger()->debug(
             "{}", message
@@ -140,6 +182,9 @@ namespace IRProfile {
     }
     template <typename... Args>
     inline void glLogFatal(const char* format, Args&&... args) {
+        if (!IRProfile::isLoggingEnabled()) {
+            return;
+        }
         const std::string message = formatRuntimeString(format, std::forward<Args>(args)...);
         LoggerSpd::instance()->getGLAPILogger()->critical(
             "{}", message

@@ -1,6 +1,6 @@
 #include <irreden/ir_asset.hpp>
-#include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_utility.hpp>
 
 #include <string>
 
@@ -13,7 +13,7 @@ void saveTrixelTextureData(
     const std::vector<Color> &colors,
     const std::vector<Distance> &distances
 ) {
-    std::string filename = path + name + ".txl";
+    const std::string filename = IRUtility::joinPath(path, name, ".txl");
     FILE *f = fopen(filename.c_str(), "wb");
     fwrite(&size, sizeof(size), 1, f);
     fwrite(colors.data(), sizeof(colors.at(0)), size.x * size.y, f);
@@ -29,7 +29,7 @@ void loadTrixelTextureData(
     std::vector<Color> &colors,
     std::vector<Distance> &distances
 ) {
-    std::string filename = path + name + ".irtxl";
+    const std::string filename = IRUtility::joinPath(path, name, ".irtxl");
     FILE *f = fopen(filename.c_str(), "rb");
     fread(&size, sizeof(size), 1, f);
     colors.resize(size.x * size.y);

@@ -7,51 +7,103 @@
   },
   "configurePresets": [
     {
-      "name": "default",
-      "displayName": "Default Debug",
-      "description": "Default local configuration for development.",
+      "name": "windows-debug",
+      "displayName": "Windows Debug",
+      "description": "Windows local configuration for development.",
       "generator": "MinGW Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "OPENGL"
+      }
+    },
+    {
+      "name": "macos-debug",
+      "displayName": "macOS Debug",
+      "description": "macOS local configuration for development.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "METAL"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "build-all",
+      "name": "windows-build-all",
       "displayName": "Build All Targets",
-      "configurePreset": "default"
+      "configurePreset": "windows-debug"
     },
     {
-      "name": "format-check",
+      "name": "macos-build-all",
+      "displayName": "Build All Targets (macOS)",
+      "configurePreset": "macos-debug"
+    },
+    {
+      "name": "windows-format-check",
       "displayName": "Format Check",
-      "configurePreset": "default",
+      "configurePreset": "windows-debug",
       "targets": [
         "format-check"
       ]
     },
     {
-      "name": "format",
+      "name": "macos-format-check",
+      "displayName": "Format Check (macOS)",
+      "configurePreset": "macos-debug",
+      "targets": [
+        "format-check"
+      ]
+    },
+    {
+      "name": "windows-format",
       "displayName": "Format",
-      "configurePreset": "default",
+      "configurePreset": "windows-debug",
       "targets": [
         "format"
       ]
     },
     {
-      "name": "lint",
+      "name": "macos-format",
+      "displayName": "Format (macOS)",
+      "configurePreset": "macos-debug",
+      "targets": [
+        "format"
+      ]
+    },
+    {
+      "name": "windows-lint",
       "displayName": "Lint",
-      "configurePreset": "default",
+      "configurePreset": "windows-debug",
       "targets": [
         "lint"
       ]
     },
     {
-      "name": "tests",
+      "name": "macos-lint",
+      "displayName": "Lint (macOS)",
+      "configurePreset": "macos-debug",
+      "targets": [
+        "lint"
+      ]
+    },
+    {
+      "name": "windows-tests",
       "displayName": "Build Tests",
-      "configurePreset": "default",
+      "configurePreset": "windows-debug",
+      "targets": [
+        "IrredenEngineTest"
+      ]
+    },
+    {
+      "name": "macos-tests",
+      "displayName": "Build Tests (macOS)",
+      "configurePreset": "macos-debug",
       "targets": [
         "IrredenEngineTest"
       ]
@@ -59,9 +111,17 @@
   ],
   "testPresets": [
     {
-      "name": "default-tests",
-      "displayName": "Run CTest",
-      "configurePreset": "default",
+      "name": "windows-default-tests",
+      "displayName": "Run CTest (Windows)",
+      "configurePreset": "windows-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-default-tests",
+      "displayName": "Run CTest (macOS)",
+      "configurePreset": "macos-debug",
       "output": {
         "outputOnFailure": true
       }

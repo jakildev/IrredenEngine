@@ -11,6 +11,7 @@ class CPUProfiler {
     void setEnabled(bool enabled);
     bool isEnabled() const;
     void mainThread();
+    void shutdown();
     // inline void profileFunction(unsigned int color) {
     //     EASY_FUNCTION(color);
     // }
@@ -24,6 +25,7 @@ class CPUProfiler {
   private:
     CPUProfiler();
     bool m_enabled = true;
+    bool m_shutdown = false;
 };
 
 } // namespace IRProfile

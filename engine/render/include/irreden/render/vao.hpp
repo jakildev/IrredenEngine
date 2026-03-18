@@ -1,35 +1,42 @@
 #ifndef VAO_H
 #define VAO_H
 
-#include <irreden/render/opengl/opengl_types.hpp>
-#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/vertex_attributes.hpp>
+
+#include <cstdint>
+#include <memory>
 
 namespace IRRender {
 
 const unsigned int kMaxVertexAttributes = 16;
 
-class VAO {
+class VertexLayoutImpl {
   public:
-    VAO(GLuint vertexBufferHandle,
-        GLuint indexBufferHandle,
+    virtual ~VertexLayoutImpl() = default;
+    virtual void bind() const = 0;
+};
+
+class VertexLayout {
+  public:
+    VertexLayout(
+        std::uint32_t vertexBufferHandle,
+        std::uint32_t indexBufferHandle,
         unsigned int numAttributes,
-        const VertexArrayAttribute *attributes);
-    ~VAO();
+        const VertexArrayAttribute *attributes
+    );
+    ~VertexLayout();
+    VertexLayout(VertexLayout &&other) noexcept;
+    VertexLayout &operator=(VertexLayout &&other) noexcept;
+    VertexLayout(const VertexLayout &) = delete;
+    VertexLayout &operator=(const VertexLayout &) = delete;
 
     void bind() const;
 
   private:
-    GLuint m_handle;
-    GLsizei m_stride;
-
-    void initVertexBufferAttributes(
-        unsigned int numAttributes,
-        const VertexArrayAttribute *attributes,
-        const size_t *attributeSizes,
-        GLuint bindingIndex
-    );
+    std::unique_ptr<VertexLayoutImpl> m_impl;
 };
+
+using VAO = VertexLayout;
 
 } // namespace IRRender
 

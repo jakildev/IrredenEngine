@@ -18,6 +18,7 @@ add_library(IrredenEngineWindow STATIC
     # unused atm
     # ${PLATFORM_SRC}
 )
+IrredenEngine_setGraphicsBackendCompileDefinitions(IrredenEngineWindow)
 
 target_compile_options(
     IrredenEngineWindow

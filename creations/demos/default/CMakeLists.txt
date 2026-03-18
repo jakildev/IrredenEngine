@@ -1,4 +1,5 @@
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(IR_DEFAULT_RUNTIME_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${IR_DEFAULT_RUNTIME_DIR})
 add_executable(IRCreationDefault
     main_lua.cpp
     lua_bindings.cpp
@@ -6,9 +7,8 @@ add_executable(IRCreationDefault
 # add_executable(IRCreationDefault main.cpp)
 target_link_libraries(IRCreationDefault PUBLIC IrredenEngine)
 
-# Lua scripts live in a subdirectory named after the target.
-# The executable locates them at runtime via its own name (argv[0] stem).
-set(IR_DEFAULT_SCRIPTS_DIR ${CMAKE_BINARY_DIR}/IRCreationDefault)
+# Lua scripts live beside the executable in scripts/.
+set(IR_DEFAULT_SCRIPTS_DIR ${IR_DEFAULT_RUNTIME_DIR}/scripts)
 set(IR_DEFAULT_MAIN_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)
 set(IR_DEFAULT_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
 set(IR_DEFAULT_MAIN_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/main.lua)
@@ -33,7 +33,11 @@ add_custom_command(
 
 add_custom_target(IRCreationDefaultAssets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
+        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_DEFAULT_RUNTIME_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/data ${IR_DEFAULT_RUNTIME_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_DEFAULT_RUNTIME_DIR}/shaders
     DEPENDS
         ${IR_DEFAULT_MAIN_LUA_DST}
         ${IR_DEFAULT_CONFIG_LUA_DST}
@@ -47,13 +51,17 @@ add_dependencies(IRCreationDefault IRCreationDefaultAssets)
 # This lets script edits be picked up without rebuilding C++.
 add_custom_target(IRCreationDefaultRun
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${CMAKE_BINARY_DIR}/shaders
+        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_DEFAULT_RUNTIME_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/data ${IR_DEFAULT_RUNTIME_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_DEFAULT_RUNTIME_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/main.lua ${IR_DEFAULT_SCRIPTS_DIR}/main.lua
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_DEFAULT_SCRIPTS_DIR}/config.lua
     COMMAND $<TARGET_FILE:IRCreationDefault>
     DEPENDS IRCreationDefault
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${IR_DEFAULT_RUNTIME_DIR}
     USES_TERMINAL
 )

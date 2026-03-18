@@ -50,6 +50,16 @@ target_include_directories(lua PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # Set platform-specific flags
 if(WIN32)
     target_compile_definitions(lua PRIVATE LUA_BUILD_AS_DLL)
+elseif(APPLE)
+    target_compile_definitions(lua PRIVATE LUA_USE_MACOSX)
+    if(CMAKE_DL_LIBS)
+        target_link_libraries(lua PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+elseif(UNIX)
+    target_compile_definitions(lua PRIVATE LUA_USE_LINUX)
+    if(CMAKE_DL_LIBS)
+        target_link_libraries(lua PRIVATE ${CMAKE_DL_LIBS} m)
+    endif()
 endif()
 
 # Ensure the library compiles as C code

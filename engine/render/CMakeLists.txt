@@ -1,46 +1,64 @@
-# TODO: Remove openGL from common source
-set(COMMON_SRC 
+set(RENDER_CORE_SRC
     src/ir_render.cpp
-
-    # src/assimp_demo.cpp
     src/buffer.cpp
     src/framebuffer.cpp
-    src/ir_gl_api.cpp
     src/render_manager.cpp
     src/rendering_rm.cpp
     src/shader.cpp
     src/texture.cpp
     src/vao.cpp
     src/image_data.cpp
-
-    src/gl_wrap/GLAPITrace.cpp
 )
 
+set(OPENGL_SRC
+    src/ir_gl_api.cpp
+    src/gl_wrap/GLAPITrace.cpp
+    src/opengl/glad.c
+    src/opengl/opengl_render_impl.cpp
+    src/opengl/opengl_buffer.cpp
+    src/opengl/opengl_texture.cpp
+    src/opengl/opengl_shader.cpp
+    src/opengl/opengl_framebuffer.cpp
+    src/opengl/opengl_vertex_layout.cpp
+)
+
+set(METAL_SRC
+    src/metal/metal_cpp_impl.cpp
+    src/metal/metal_render_impl.cpp
+    src/metal/metal_runtime.cpp
+    src/metal/metal_buffer.cpp
+    src/metal/metal_texture.cpp
+    src/metal/metal_pipeline.cpp
+    src/metal/metal_framebuffer.cpp
+    src/metal/metal_cocoa_bridge.mm
+)
 
 if(IR_isDarwin)
     # Find Metal and Foundation frameworks
     find_library(METAL_LIB Metal REQUIRED)
     find_library(FOUNDATION_LIB Foundation REQUIRED)
     find_library(QUARTZ_LIB QuartzCore REQUIRED)
+    find_library(APPKIT_LIB AppKit REQUIRED)
 
-    # Link libraries
-    set(PLATFORM_LIBS ${METAL_LIB} ${FOUNDATION_LIB} ${QUARTZ_LIB})
-    set(PLATFORM_SRC
-        src/metal/metal_render_impl.cpp
-    )
+    set(PLATFORM_LIBS ${METAL_LIB} ${FOUNDATION_LIB} ${QUARTZ_LIB} ${APPKIT_LIB})
+    set(PLATFORM_SRC ${METAL_SRC})
 endif()
 
 if(IR_isWindows)
-    set(PLATFORM_SRC
-        src/opengl/glad.c
-        src/opengl/opengl_render_impl.cpp
-    )
+    set(PLATFORM_SRC ${OPENGL_SRC})
+endif()
+
+if(IRREDEN_GRAPHICS_BACKEND STREQUAL "OPENGL")
+    set(PLATFORM_SRC ${OPENGL_SRC})
+elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "METAL")
+    set(PLATFORM_SRC ${METAL_SRC})
 endif()
 
 add_library(IrredenEngineRendering STATIC
-    ${COMMON_SRC}
+    ${RENDER_CORE_SRC}
     ${PLATFORM_SRC}
 )
+IrredenEngine_setGraphicsBackendCompileDefinitions(IrredenEngineRendering)
 
 target_compile_options(
     IrredenEngineRendering
@@ -96,6 +114,7 @@ target_include_directories(
 target_link_libraries(
     IrredenEngineRendering PUBLIC
     IrredenEngineProfile
+    IrredenEngineUtility
     IrredenEngineMath
     IrredenEngineInput
     IrredenEngineEntity
@@ -109,7 +128,6 @@ target_link_libraries(
 )
 target_include_directories(
     IrredenEngineRendering PUBLIC
-    ${assimp_SOURCE_DIR}/include
     third_party/metal-cpp
 )
 
@@ -128,6 +146,71 @@ target_include_directories(
     ${PROJECT_SOURCE_DIR}/engine/assets
 
 )
+
+if(IR_isDarwin)
+    set(METAL_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/metal)
+    file(GLOB METAL_SHADER_SOURCES ${METAL_SHADER_DIR}/*.metal)
+    find_program(IRREDEN_XCRUN_BIN xcrun HINTS /usr/bin /Library/Developer/CommandLineTools/usr/bin)
+
+    unset(IRREDEN_METAL_COMPILER)
+    unset(IRREDEN_METALLIB_TOOL)
+    set(IRREDEN_METAL_COMPILER_RESULT 1)
+    set(IRREDEN_METALLIB_TOOL_RESULT 1)
+    if(IRREDEN_XCRUN_BIN)
+        execute_process(
+            COMMAND ${IRREDEN_XCRUN_BIN} --find metal
+            RESULT_VARIABLE IRREDEN_METAL_COMPILER_RESULT
+            OUTPUT_VARIABLE IRREDEN_METAL_COMPILER
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        execute_process(
+            COMMAND ${IRREDEN_XCRUN_BIN} --find metallib
+            RESULT_VARIABLE IRREDEN_METALLIB_TOOL_RESULT
+            OUTPUT_VARIABLE IRREDEN_METALLIB_TOOL
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
+
+    if(
+        IRREDEN_XCRUN_BIN
+        AND IRREDEN_METAL_COMPILER_RESULT EQUAL 0
+        AND IRREDEN_METALLIB_TOOL_RESULT EQUAL 0
+        AND IRREDEN_METAL_COMPILER
+        AND IRREDEN_METALLIB_TOOL
+    )
+        file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/shaders)
+        unset(METAL_AIR_FILES)
+        foreach(SHADER ${METAL_SHADER_SOURCES})
+            get_filename_component(SHADER_NAME ${SHADER} NAME_WE)
+            set(AIR_FILE ${PROJECT_BINARY_DIR}/shaders/${SHADER_NAME}.air)
+            add_custom_command(
+                OUTPUT ${AIR_FILE}
+                COMMAND ${IRREDEN_XCRUN_BIN} -sdk macosx metal -c ${SHADER} -o ${AIR_FILE}
+                DEPENDS ${SHADER}
+                COMMENT "Compiling Metal shader ${SHADER_NAME}"
+            )
+            list(APPEND METAL_AIR_FILES ${AIR_FILE})
+        endforeach()
+
+        add_custom_command(
+            OUTPUT ${PROJECT_BINARY_DIR}/shaders/default.metallib
+            COMMAND ${IRREDEN_XCRUN_BIN} -sdk macosx metallib ${METAL_AIR_FILES} -o ${PROJECT_BINARY_DIR}/shaders/default.metallib
+            DEPENDS ${METAL_AIR_FILES}
+            COMMENT "Linking Metal shader library"
+        )
+
+        add_custom_target(MetalShaders ALL DEPENDS ${PROJECT_BINARY_DIR}/shaders/default.metallib)
+        add_dependencies(IrredenEngineRendering MetalShaders)
+    else()
+        message(
+            WARNING
+            "Metal shader compiler not found via xcrun; skipping .metallib precompilation on this machine. "
+            "Install full Xcode and select it with xcode-select if you need precompiled Metal shaders."
+        )
+    endif()
+endif()
 
 add_custom_command(TARGET IrredenEngineRendering POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

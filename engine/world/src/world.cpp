@@ -149,6 +149,8 @@ void World::end() {
     // Ensure component onDestroy hooks run while managers are still valid
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
     m_entityManager.destroyAllEntities();
+    IRProfile::CPUProfiler::instance().shutdown();
+    IRProfile::shutdownLogging();
 }
 
 void World::update() {
@@ -170,8 +172,10 @@ void World::render() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     m_inputManager.tickRender();
-    m_renderer.tick();
+    m_renderer.beginFrame();
+    m_renderer.renderFrame();
     m_videoManager.render();
+    m_renderer.presentFrame();
 
     m_timeManager.endEvent<IRTime::RENDER>();
 }

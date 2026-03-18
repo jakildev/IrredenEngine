@@ -7,20 +7,49 @@ The Irreden Engine is an isometric "pixelatable" voxel content and game engine.
 Created by and maintained by [jakildev](https://github.com/jakildev).
 
 ## Build
-- Windows: CMake, IRCreationDefault launch target.
-- MacOS: bazel (WIP)
+- Windows: CMake, OpenGL backend by default.
+- macOS: CMake, Metal backend by default.
 
 ### Prerequisites
--   Windows OS
--   OpenGL 4.6 supported hardware
--   MinGW (or other c/c++ compiler)
--   CMake
+-   CMake 3.28+
+-   A C++23 compiler toolchain
+-   Git
+-   Platform runtime prerequisites:
+    -   Windows: OpenGL-capable hardware/toolchain
+    -   macOS: Xcode Command Line Tools, plus full Xcode if you want Metal shader precompilation via `xcrun metal`
 
 ### Instructions
 -   Clone the repository.
--   Configure cmake.
+-   Configure CMake.
 -   Build all targets.
 -   Launch a demo creation.
+
+### macOS quick start
+
+1. Bootstrap dependencies:
+```
+./scripts/bootstrap_macos.sh
+```
+2. Configure:
+```
+cmake --preset macos-debug
+```
+3. Build:
+```
+cmake --build --preset macos-build-all
+```
+4. Optional quality/test targets:
+```
+cmake --build --preset macos-format-check
+cmake --build --preset macos-lint
+cmake --build --preset macos-tests
+ctest --preset macos-default-tests
+```
+
+Notes:
+-   The bootstrap script installs `ffmpeg`, `pkg-config`, `llvm`, and `qt@5` so video recording and the EasyProfiler GUI can work locally.
+-   `qt@5` and `llvm` are Homebrew keg-only packages. The bootstrap script prints the `PATH`, `PKG_CONFIG_PATH`, and `CMAKE_PREFIX_PATH` exports needed for shell profiles and IDE environments.
+-   Audio capture on macOS may require microphone permission for the host app (for example, Terminal or the IDE).
 
 
 ## Content and Socials
@@ -163,19 +192,19 @@ The repository includes quality targets for formatting and linting C/C++ code.
 
 1. Configure with CMake:
 ```
-cmake -S . -B build
+cmake --preset macos-debug
 ```
 2. Check formatting:
 ```
-cmake --build build --target format-check
+cmake --build --preset macos-format-check
 ```
 3. Auto-format files:
 ```
-cmake --build build --target format
+cmake --build --preset macos-format
 ```
 4. Run lint checks (includes naming conventions such as `m_` private members and `_` public members):
 ```
-cmake --build build --target lint
+cmake --build --preset macos-lint
 ```
 
 Requirements:
@@ -187,21 +216,21 @@ Use presets for consistent local and CI commands:
 
 1. Configure:
 ```
-cmake --preset default
+cmake --preset macos-debug
 ```
 2. Build:
 ```
-cmake --build --preset build-all
+cmake --build --preset macos-build-all
 ```
 3. Run formatting and lint checks:
 ```
-cmake --build --preset format-check
-cmake --build --preset lint
+cmake --build --preset macos-format-check
+cmake --build --preset macos-lint
 ```
 4. Build and run tests:
 ```
-cmake --build --preset tests
-ctest --preset default-tests
+cmake --build --preset macos-tests
+ctest --preset macos-default-tests
 ```
 
 <!-- ## Performance (TODO) -->

@@ -6,6 +6,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 voxelRenderOptions;
+    uniform ivec2 voxelDispatchGrid;
+    uniform int voxelCount;
 };
 
 layout(std430, binding = 5) buffer PositionBuffer {
@@ -96,7 +98,12 @@ vec4 adjustColorForFace(vec4 color, int face) {
     return vec4(clamp(color.rgb * b, 0.0, 1.0), color.a);
 }
 
-void writeColorTap(const ivec2 canvasPixel, const int voxelDistance, const vec4 voxelColor) {
+void writeColorTap(
+    const ivec2 canvasPixel,
+    const int voxelDistance,
+    const vec4 voxelColor,
+    const uint voxelIndex
+) {
     if (canvasPixel.x < 0 || canvasPixel.x >= imageSize(triangleCanvasDistances).x) {
         return;
     }
@@ -107,13 +114,17 @@ void writeColorTap(const ivec2 canvasPixel, const int voxelDistance, const vec4 
     if (voxelDistance == canvasDistance) {
         imageStore(triangleCanvasColors, canvasPixel, voxelColor);
         imageStore(triangleCanvasEntityIds, canvasPixel,
-                   uvec4(entityIds[gl_WorkGroupID.x], 0u, 0u));
+                   uvec4(entityIds[voxelIndex], 0u, 0u));
     }
 }
 
 void main() {
-    const vec4 voxelPosition = positions[gl_WorkGroupID.x];
-    vec4 voxelColor = unpackColor(colors[gl_WorkGroupID.x]);
+    const uint voxelIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * uint(voxelDispatchGrid.x);
+    if (voxelIndex >= uint(voxelCount)) {
+        return;
+    }
+    const vec4 voxelPosition = positions[voxelIndex];
+    vec4 voxelColor = unpackColor(colors[voxelIndex]);
     if(voxelColor.a == 0) return;
     voxelColor = adjustColorForFace(voxelColor, localIDToFace());
 
@@ -129,7 +140,7 @@ void main() {
             ivec2(floor(frameCanvasOffset.x), floor(frameCanvasOffset.y)) +
             ivec2(gl_LocalInvocationID.x, gl_LocalInvocationID.y) +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeColorTap(canvasPixel, voxelDistance, voxelColor);
+        writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
         return;
     }
 
@@ -152,7 +163,7 @@ void main() {
                 const int voxelDistance = depthBase * 4 + face;
                 const ivec2 canvasPixel =
                     frameOffsetFixed + localFaceOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-                writeColorTap(canvasPixel, voxelDistance, voxelColor);
+                writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
         }
     }
 }

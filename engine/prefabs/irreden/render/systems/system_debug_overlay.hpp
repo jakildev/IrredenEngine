@@ -7,7 +7,6 @@
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/buffer.hpp>
-#include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/vao.hpp>
 #include <irreden/render/vertex_attributes.hpp>
@@ -169,6 +168,7 @@ inline void clear() {
 }
 
 inline vec2 worldToScreen(vec3 worldPos) {
+    constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
     vec2 stepSize = vec2(IRRender::getTriangleStepSizeScreen());
     vec2 viewport = vec2(IRRender::getViewport());
     vec2 screenCenter = viewport * 0.5f;
@@ -176,18 +176,19 @@ inline vec2 worldToScreen(vec3 worldPos) {
 
     vec2 posIso = pos3DtoPos2DIso(worldPos);
     vec2 relIso = posIso + camIso;
-    vec2 screenOffset = relIso * stepSize * vec2(1.0f, -1.0f);
+    vec2 screenOffset = relIso * stepSize * kScreenAxis;
     return screenCenter + screenOffset;
 }
 
 inline vec3 screenToWorld(vec2 screenPos, float zLevel = 0.0f) {
+    constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
     vec2 stepSize = vec2(IRRender::getTriangleStepSizeScreen());
     vec2 viewport = vec2(IRRender::getViewport());
     vec2 screenCenter = viewport * 0.5f;
     vec2 camIso = IRRender::getCameraPosition2DIso();
 
     vec2 screenOffset = screenPos - screenCenter;
-    vec2 relIso = screenOffset / stepSize * vec2(1.0f, -1.0f);
+    vec2 relIso = screenOffset / stepSize * kScreenAxis;
     vec2 posIso = relIso - camIso;
 
     const float zShift = 2.0f * zLevel;
@@ -195,6 +196,12 @@ inline vec3 screenToWorld(vec2 screenPos, float zLevel = 0.0f) {
     const float y = 0.5f * (posIso.x - posIso.y + zShift);
     return vec3(x, y, zLevel);
 }
+
+constexpr std::size_t kDebugOverlayMaxVertices = 512 * 1024;
+constexpr std::size_t kDebugOverlayTriangleVertexCount = 3;
+constexpr std::size_t kDebugOverlayLineVertexCount = 2;
+// When we overflow the fixed upload buffer, keep half the budget available for lines.
+constexpr std::size_t kDebugOverlayTriangleVertexBudget = kDebugOverlayMaxVertices / 2;
 
 constexpr int kCircleLutMaxSegments = 32;
 
@@ -223,11 +230,12 @@ struct WorldToScreenCache {
     vec2 stepSizeFlipped;
 
     void refresh() {
+        constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
         stepSize = vec2(IRRender::getTriangleStepSizeScreen());
         vec2 viewport = vec2(IRRender::getViewport());
         screenCenter = viewport * 0.5f;
         camIso = IRRender::getCameraPosition2DIso();
-        stepSizeFlipped = stepSize * vec2(1.0f, -1.0f);
+        stepSizeFlipped = stepSize * kScreenAxis;
     }
 
     vec2 project(vec3 worldPos) const {
@@ -250,25 +258,24 @@ template <> struct System<DEBUG_OVERLAY> {
         IRRender::createNamedResource<IRRender::ShaderProgram>(
             "DebugOverlayProgram",
             std::vector{
-                IRRender::ShaderStage{IRRender::kFileVertDebugOverlay, GL_VERTEX_SHADER}.getHandle(),
-                IRRender::ShaderStage{IRRender::kFileFragDebugOverlay, GL_FRAGMENT_SHADER}.getHandle()
+                IRRender::ShaderStage{IRRender::kFileVertDebugOverlay, IRRender::ShaderType::VERTEX},
+                IRRender::ShaderStage{IRRender::kFileFragDebugOverlay, IRRender::ShaderType::FRAGMENT}
             }
         );
         IRRender::createNamedResource<IRRender::Buffer>(
             "DebugOverlayUBO",
             nullptr,
             sizeof(DebugOverlayUBO),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_UNIFORM_BUFFER,
+            IRRender::BUFFER_STORAGE_DYNAMIC,
+            IRRender::BufferTarget::UNIFORM,
             IRRender::kBufferIndex_DebugOverlayData
         );
 
-        constexpr size_t kMaxVertices = 512 * 1024;
         auto [vbId, vb] = IRRender::createNamedResource<IRRender::Buffer>(
             "DebugOverlayVB",
             nullptr,
-            kMaxVertices * sizeof(IRDebug::DebugVertex),
-            GL_DYNAMIC_STORAGE_BIT
+            IRDebug::kDebugOverlayMaxVertices * sizeof(IRDebug::DebugVertex),
+            IRRender::BUFFER_STORAGE_DYNAMIC
         );
 
         IRRender::createNamedResource<IRRender::VAO>(
@@ -367,15 +374,37 @@ template <> struct System<DEBUG_OVERLAY> {
 
                 if (triangleVertices.empty() && lineVertices.empty()) return;
 
-                constexpr size_t kMaxVerts = 512 * 1024;
-                if (triangleVertices.size() > kMaxVerts) {
-                    triangleVertices.resize((kMaxVerts / 3) * 3);
-                }
-                if (lineVertices.size() > kMaxVerts) {
-                    lineVertices.resize((kMaxVerts / 2) * 2);
+                if (triangleVertices.size() + lineVertices.size() > IRDebug::kDebugOverlayMaxVertices) {
+                    const size_t triMax =
+                        (IRDebug::kDebugOverlayTriangleVertexBudget /
+                         IRDebug::kDebugOverlayTriangleVertexCount) *
+                        IRDebug::kDebugOverlayTriangleVertexCount;
+                    if (triangleVertices.size() > triMax) {
+                        triangleVertices.resize(triMax);
+                    }
+                    const size_t lineMax =
+                        ((IRDebug::kDebugOverlayMaxVertices - triangleVertices.size()) /
+                         IRDebug::kDebugOverlayLineVertexCount) *
+                        IRDebug::kDebugOverlayLineVertexCount;
+                    if (lineVertices.size() > lineMax) {
+                        lineVertices.resize(lineMax);
+                    }
                 }
 
                 auto *vbuf = IRRender::getNamedResource<IRRender::Buffer>("DebugOverlayVB");
+
+                const auto triBytes =
+                    static_cast<std::ptrdiff_t>(triangleVertices.size() * sizeof(IRDebug::DebugVertex));
+                const auto lineBytes =
+                    static_cast<std::ptrdiff_t>(lineVertices.size() * sizeof(IRDebug::DebugVertex));
+
+                if (!triangleVertices.empty()) {
+                    vbuf->subData(0, static_cast<std::size_t>(triBytes), triangleVertices.data());
+                }
+                if (!lineVertices.empty()) {
+                    vbuf->subData(triBytes, static_cast<std::size_t>(lineBytes), lineVertices.data());
+                }
+
                 ivec2 vp = IRRender::getViewport();
                 mat4 projection = IRMath::ortho(
                     0.0f, static_cast<float>(vp.x),
@@ -388,34 +417,27 @@ template <> struct System<DEBUG_OVERLAY> {
                 IRRender::getNamedResource<IRRender::ShaderProgram>("DebugOverlayProgram")->use();
                 IRRender::getNamedResource<IRRender::VAO>("DebugOverlayVAO")->bind();
 
-                ENG_API->glDisable(GL_DEPTH_TEST);
-                ENG_API->glDepthMask(GL_FALSE);
-                ENG_API->glEnable(GL_BLEND);
-                ENG_API->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                IRRender::device()->setDepthTest(false);
+                IRRender::device()->setDepthWrite(false);
+                IRRender::device()->enableBlending();
 
                 if (!triangleVertices.empty()) {
-                    vbuf->subData(
-                        0,
-                        static_cast<GLsizeiptr>(
-                            triangleVertices.size() * sizeof(IRDebug::DebugVertex)
-                        ),
-                        triangleVertices.data()
+                    IRRender::device()->drawArrays(
+                        IRRender::DrawMode::TRIANGLES, 0, static_cast<int>(triangleVertices.size())
                     );
-                    ENG_API->glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(triangleVertices.size()));
                 }
 
                 if (!lineVertices.empty()) {
-                    vbuf->subData(
-                        0,
-                        static_cast<GLsizeiptr>(lineVertices.size() * sizeof(IRDebug::DebugVertex)),
-                        lineVertices.data()
+                    IRRender::device()->drawArrays(
+                        IRRender::DrawMode::LINES,
+                        static_cast<int>(triangleVertices.size()),
+                        static_cast<int>(lineVertices.size())
                     );
-                    ENG_API->glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineVertices.size()));
                 }
 
-                ENG_API->glDisable(GL_BLEND);
-                ENG_API->glDepthMask(GL_TRUE);
-                ENG_API->glEnable(GL_DEPTH_TEST);
+                IRRender::device()->disableBlending();
+                IRRender::device()->setDepthWrite(true);
+                IRRender::device()->setDepthTest(true);
                 IRDebug::clear();
             }
         );

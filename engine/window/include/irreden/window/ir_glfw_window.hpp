@@ -2,15 +2,15 @@
 #define IR_GLFW_WINDOW_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_platform.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-#include <vector>
-#include <functional>
-#include <unordered_map>
-#include <string>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace IRMath;
 
@@ -27,15 +27,28 @@ struct IRGLFWJoystickInfo {
         , isGamepad_{isGamepad} {}
 };
 
-const std::pair<int, int> kWindowHints[] = {
+inline constexpr std::pair<int, int> kNoApiWindowHints[] = {
+    {GLFW_CLIENT_API, GLFW_NO_API},
+};
+
+inline constexpr std::pair<int, int> kOpenGLWindowHints[] = {
     {GLFW_CONTEXT_VERSION_MAJOR, 4},
     {GLFW_CONTEXT_VERSION_MINOR, 6},
     {GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE},
     {GLFW_DOUBLEBUFFER, GLFW_TRUE},
-
 };
 
-const int kNumWindowHints = sizeof(kWindowHints) / sizeof(kWindowHints[0]);
+inline constexpr int kNumWindowHints = IRPlatform::kIsOpenGL
+    ? static_cast<int>(sizeof(kOpenGLWindowHints) / sizeof(kOpenGLWindowHints[0]))
+    : static_cast<int>(sizeof(kNoApiWindowHints) / sizeof(kNoApiWindowHints[0]));
+
+inline const std::pair<int, int> &getWindowHint(int index) {
+    if constexpr (IRPlatform::kIsOpenGL) {
+        return kOpenGLWindowHints[index];
+    } else {
+        return kNoApiWindowHints[index];
+    }
+}
 
 class IRGLFWWindow {
   public:
@@ -57,6 +70,7 @@ class IRGLFWWindow {
     void setShouldClose();
     void setWindowMonitor(); // TODO
     void setWindowUserPointer(void *pointer);
+    GLFWwindow *getRawWindow() const;
 
     void swapBuffers();
     void pollEvents();

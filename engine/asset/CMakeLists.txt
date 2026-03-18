@@ -13,6 +13,7 @@ target_link_libraries(
     PUBLIC
     IrredenEngineMath
     IrredenEngineProfile
+    IrredenEngineUtility
 )
 
 target_include_directories(

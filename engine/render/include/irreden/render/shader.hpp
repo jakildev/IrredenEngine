@@ -1,8 +1,9 @@
 #ifndef SHADER_H
 #define SHADER_H
 
-#include <irreden/render/opengl/opengl_types.hpp>
+#include <irreden/render/ir_render_enums.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -10,33 +11,40 @@ namespace IRRender {
 
 class ShaderStage {
   public:
-    explicit ShaderStage(const char *filepath, GLenum type);
-    ~ShaderStage();
+    explicit ShaderStage(const char *filepath, ShaderType type);
 
-    GLuint getHandle() const;
+    const std::string &getFilepath() const;
+    ShaderType getType() const;
 
   private:
-    GLuint m_handle;
-    GLuint m_type;
-
-    std::string readFileAsString(const char *filepath);
-    void compileShader(std::string source);
-    void checkSuccess();
+    std::string m_filepath;
+    ShaderType m_type;
 };
 
-class ShaderProgram {
+class ShaderPipelineImpl {
   public:
-    ShaderProgram(const std::vector<GLuint> &stages);
-    ~ShaderProgram();
+    virtual ~ShaderPipelineImpl() = default;
+    virtual void use() = 0;
+    virtual std::uint32_t getHandle() const = 0;
+};
+
+class ShaderPipeline {
+  public:
+    explicit ShaderPipeline(const std::vector<ShaderStage> &stages);
+    ~ShaderPipeline();
+    ShaderPipeline(ShaderPipeline &&other) noexcept;
+    ShaderPipeline &operator=(ShaderPipeline &&other) noexcept;
+    ShaderPipeline(const ShaderPipeline &) = delete;
+    ShaderPipeline &operator=(const ShaderPipeline &) = delete;
 
     void use();
-    GLuint getHandle() const;
+    std::uint32_t getHandle() const;
 
   private:
-    GLuint m_handle;
-
-    void checkSuccess();
+    std::unique_ptr<ShaderPipelineImpl> m_impl;
 };
+
+using ShaderProgram = ShaderPipeline;
 
 } // namespace IRRender
 

@@ -1,8 +1,36 @@
-add_library(IrredenEngineVideo STATIC
+set(VIDEO_CORE_SRC
     src/ir_video.cpp
     src/video_manager.cpp
     src/video_recorder.cpp
 )
+
+set(VIDEO_OPENGL_SRC
+    src/opengl/video_backend.cpp
+)
+
+set(VIDEO_METAL_SRC
+    src/metal/video_backend.cpp
+)
+
+if(IR_isDarwin)
+    set(VIDEO_PLATFORM_SRC ${VIDEO_METAL_SRC})
+endif()
+
+if(IR_isWindows)
+    set(VIDEO_PLATFORM_SRC ${VIDEO_OPENGL_SRC})
+endif()
+
+if(IRREDEN_GRAPHICS_BACKEND STREQUAL "OPENGL")
+    set(VIDEO_PLATFORM_SRC ${VIDEO_OPENGL_SRC})
+elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "METAL")
+    set(VIDEO_PLATFORM_SRC ${VIDEO_METAL_SRC})
+endif()
+
+add_library(IrredenEngineVideo STATIC
+    ${VIDEO_CORE_SRC}
+    ${VIDEO_PLATFORM_SRC}
+)
+IrredenEngine_setGraphicsBackendCompileDefinitions(IrredenEngineVideo)
 
 target_compile_options(
     IrredenEngineVideo
@@ -16,6 +44,7 @@ target_compile_options(
 target_link_libraries(
     IrredenEngineVideo PUBLIC
     IrredenEngineProfile
+    IrredenEngineUtility
     IrredenEngineTime
     IrredenEngineRendering
     IrredenEngineAudio
@@ -38,17 +67,38 @@ set(
     "Optional FFmpeg root that contains include/, lib/, and bin/"
 )
 
+set(IRREDEN_FFMPEG_ROOT_HINTS "")
+if(IR_isDarwin)
+    list(APPEND IRREDEN_FFMPEG_ROOT_HINTS
+        /opt/homebrew
+        /opt/homebrew/opt/ffmpeg
+        /usr/local
+        /usr/local/opt/ffmpeg
+    )
+endif()
+
 set(IRREDEN_VIDEO_HAS_FFMPEG FALSE)
 set(IRREDEN_VIDEO_FFMPEG_LIBS "")
 
 if(IRREDEN_VIDEO_ENABLE_FFMPEG)
     set(_ffmpeg_components avcodec avformat avutil swscale)
 
+    if(NOT IRREDEN_FFMPEG_ROOT)
+        foreach(_ffmpeg_root_hint IN LISTS IRREDEN_FFMPEG_ROOT_HINTS)
+            if(EXISTS "${_ffmpeg_root_hint}/include/libavcodec/avcodec.h")
+                set(IRREDEN_FFMPEG_ROOT "${_ffmpeg_root_hint}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
     if(IRREDEN_FFMPEG_ROOT)
         find_path(
             IRREDEN_FFMPEG_INCLUDE_DIR
             NAMES libavcodec/avcodec.h
-            HINTS ${IRREDEN_FFMPEG_ROOT}/include
+            HINTS
+            ${IRREDEN_FFMPEG_ROOT}/include
+            ${IRREDEN_FFMPEG_ROOT}
         )
 
         foreach(_ffmpeg_lib IN LISTS _ffmpeg_components)
@@ -56,7 +106,9 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
             find_library(
                 IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY
                 NAMES ${_ffmpeg_lib}
-                HINTS ${IRREDEN_FFMPEG_ROOT}/lib
+                HINTS
+                ${IRREDEN_FFMPEG_ROOT}/lib
+                ${IRREDEN_FFMPEG_ROOT}
             )
             if(IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY)
                 list(APPEND IRREDEN_VIDEO_FFMPEG_LIBS ${IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY})
@@ -83,6 +135,7 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
     if(NOT IRREDEN_VIDEO_HAS_FFMPEG)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
+            set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
             pkg_check_modules(
                 IRREDEN_FFMPEG QUIET IMPORTED_TARGET
                 libavcodec libavformat libavutil libswscale
@@ -97,7 +150,11 @@ endif()
 
 if(IRREDEN_VIDEO_HAS_FFMPEG)
     target_compile_definitions(IrredenEngineVideo PUBLIC IR_VIDEO_HAS_FFMPEG=1)
-    message(STATUS "IrredenEngineVideo: FFmpeg enabled.")
+    if(IRREDEN_FFMPEG_ROOT)
+        message(STATUS "IrredenEngineVideo: FFmpeg enabled from ${IRREDEN_FFMPEG_ROOT}.")
+    else()
+        message(STATUS "IrredenEngineVideo: FFmpeg enabled.")
+    endif()
 
     if(IR_isWindows AND IRREDEN_FFMPEG_ROOT)
         add_custom_command(
@@ -110,5 +167,10 @@ if(IRREDEN_VIDEO_HAS_FFMPEG)
     endif()
 else()
     target_compile_definitions(IrredenEngineVideo PUBLIC IR_VIDEO_HAS_FFMPEG=0)
-    message(STATUS "IrredenEngineVideo: FFmpeg not found, recorder will run in stub mode.")
+    message(
+        STATUS
+        "IrredenEngineVideo: FFmpeg not found, recorder will run in stub mode. "
+        "Install ffmpeg + pkg-config (for example via scripts/bootstrap_macos.sh on macOS) "
+        "or set IRREDEN_FFMPEG_ROOT."
+    )
 endif()

@@ -121,18 +121,18 @@ struct C_TriangleCanvasBackground {
 
             const float delta = IRTime::deltaTime(IRTime::RENDER);
             m_pulsePhase += delta * m_pulseSpeed;
-            if (m_pulseWaveDirectionMotionPrimary_.enabled_) {
-                m_pulseWaveDirection_ = sampleLinearDirectionMotion(
-                    m_pulseWaveDirectionMotionPrimary_,
+            if (m_pulseWaveDirectionMotionPrimary.enabled_) {
+                m_pulseWaveDirection = sampleLinearDirectionMotion(
+                    m_pulseWaveDirectionMotionPrimary,
                     delta,
-                    m_pulseWaveDirection_
+                    m_pulseWaveDirection
                 );
             }
-            if (m_pulseWaveDirectionMotionSecondary_.enabled_) {
-                m_pulseWaveDirectionSecondary_ = sampleLinearDirectionMotion(
-                    m_pulseWaveDirectionMotionSecondary_,
+            if (m_pulseWaveDirectionMotionSecondary.enabled_) {
+                m_pulseWaveDirectionSecondary = sampleLinearDirectionMotion(
+                    m_pulseWaveDirectionMotionSecondary,
                     delta,
-                    m_pulseWaveDirectionSecondary_
+                    m_pulseWaveDirectionSecondary
                 );
             }
             m_timeSincePulseUpdate += delta;
@@ -151,8 +151,8 @@ struct C_TriangleCanvasBackground {
             const float effectiveScale =
                 IRMath::max(1.0f, static_cast<float>(m_patternScale) * zoomMultiplier);
             const float invScale = 1.0f / effectiveScale;
-            if (zoomMultiplier != m_quantizedZoomApplied_) {
-                m_quantizedZoomApplied_ = zoomMultiplier;
+            if (zoomMultiplier != m_quantizedZoomApplied) {
+                m_quantizedZoomApplied = zoomMultiplier;
                 m_patternMaskInitialized = false;
             }
 
@@ -201,19 +201,19 @@ struct C_TriangleCanvasBackground {
                         -(shiftedX - shiftedY) * invScale
                     );
                     const float phaseOffset =
-                        IRMath::dot(isoPos, m_pulseWaveDirection_) * m_pulseWavePhaseScale_;
+                        IRMath::dot(isoPos, m_pulseWaveDirection) * m_pulseWavePhaseScale;
                     const float phaseOffsetSecondary =
-                        IRMath::dot(isoPos, m_pulseWaveDirectionSecondary_) *
-                        m_pulseWavePhaseScaleSecondary_;
+                        IRMath::dot(isoPos, m_pulseWaveDirectionSecondary) *
+                        m_pulseWavePhaseScaleSecondary;
                     const float primary = IRMath::sin(
-                        m_pulsePhase * m_pulseWavePrimarySpeedMultiplier_ +
-                        m_pulseWavePrimaryStartOffset_ + phaseOffset
+                        m_pulsePhase * m_pulseWavePrimarySpeedMultiplier +
+                        m_pulseWavePrimaryStartOffset + phaseOffset
                     );
                     const float secondary = IRMath::sin(
-                        m_pulsePhase * m_pulseWaveSecondarySpeedMultiplier_ +
-                        m_pulseWaveSecondaryStartOffset_ + phaseOffsetSecondary
+                        m_pulsePhase * m_pulseWaveSecondarySpeedMultiplier +
+                        m_pulseWaveSecondaryStartOffset + phaseOffsetSecondary
                     );
-                    const float combined = IRMath::mix(primary, secondary, m_pulseWaveInterferenceMix_);
+                    const float combined = IRMath::mix(primary, secondary, m_pulseWaveInterferenceMix);
                     const float wave = 0.5f + 0.5f * combined;
                     const Color colorPulseA = IRMath::lerpColor(colorA, colorB, wave);
                     const Color colorPulseB = IRMath::lerpColor(colorB, colorA, wave);
@@ -260,14 +260,14 @@ struct C_TriangleCanvasBackground {
     void setPulseWaveDirection(float x, float y, float phaseScale = 1.0f) {
         const vec2 direction(x, y);
         const float length = IRMath::length(direction);
-        m_pulseWaveDirection_ = (length > 0.0001f) ? (direction / length) : vec2(1.0f, 1.0f);
-        m_pulseWavePhaseScale_ = IRMath::max(0.0f, phaseScale);
-        m_pulseWaveDirectionMotionPrimary_.enabled_ = false;
+        m_pulseWaveDirection = (length > 0.0001f) ? (direction / length) : vec2(1.0f, 1.0f);
+        m_pulseWavePhaseScale = IRMath::max(0.0f, phaseScale);
+        m_pulseWaveDirectionMotionPrimary.enabled_ = false;
     }
 
     void setPulseWavePrimaryTiming(float speedMultiplier = 1.0f, float startOffset = 0.0f) {
-        m_pulseWavePrimarySpeedMultiplier_ = IRMath::max(0.0f, speedMultiplier);
-        m_pulseWavePrimaryStartOffset_ = startOffset;
+        m_pulseWavePrimarySpeedMultiplier = IRMath::max(0.0f, speedMultiplier);
+        m_pulseWavePrimaryStartOffset = startOffset;
     }
 
     void setPulseWaveInterference(
@@ -275,16 +275,16 @@ struct C_TriangleCanvasBackground {
     ) {
         const vec2 direction(x, y);
         const float length = IRMath::length(direction);
-        m_pulseWaveDirectionSecondary_ =
+        m_pulseWaveDirectionSecondary =
             (length > 0.0001f) ? (direction / length) : vec2(-1.0f, 1.0f);
-        m_pulseWavePhaseScaleSecondary_ = IRMath::max(0.0f, phaseScale);
-        m_pulseWaveInterferenceMix_ = IRMath::clamp(interferenceMix, 0.0f, 1.0f);
-        m_pulseWaveDirectionMotionSecondary_.enabled_ = false;
+        m_pulseWavePhaseScaleSecondary = IRMath::max(0.0f, phaseScale);
+        m_pulseWaveInterferenceMix = IRMath::clamp(interferenceMix, 0.0f, 1.0f);
+        m_pulseWaveDirectionMotionSecondary.enabled_ = false;
     }
 
     void setPulseWaveSecondaryTiming(float speedMultiplier = 1.0f, float startOffset = 0.0f) {
-        m_pulseWaveSecondarySpeedMultiplier_ = IRMath::max(0.0f, speedMultiplier);
-        m_pulseWaveSecondaryStartOffset_ = startOffset;
+        m_pulseWaveSecondarySpeedMultiplier = IRMath::max(0.0f, speedMultiplier);
+        m_pulseWaveSecondaryStartOffset = startOffset;
     }
 
     void setPulseWaveDirectionLinearMotion(
@@ -296,23 +296,23 @@ struct C_TriangleCanvasBackground {
         IREasingFunctions forwardEasing = IREasingFunctions::kLinearInterpolation,
         IREasingFunctions backwardEasing = IREasingFunctions::kLinearInterpolation
     ) {
-        m_pulseWaveDirectionMotionPrimary_.enabled_ = true;
-        m_pulseWaveDirectionMotionPrimary_.timeSeconds_ = 0.0f;
-        m_pulseWaveDirectionMotionPrimary_.periodSeconds_ = IRMath::max(0.0001f, periodSeconds);
-        m_pulseWaveDirectionMotionPrimary_.forwardEasing_ = forwardEasing;
-        m_pulseWaveDirectionMotionPrimary_.backwardEasing_ = backwardEasing;
-        m_pulseWaveDirectionMotionPrimary_.startDirection_ =
+        m_pulseWaveDirectionMotionPrimary.enabled_ = true;
+        m_pulseWaveDirectionMotionPrimary.timeSeconds_ = 0.0f;
+        m_pulseWaveDirectionMotionPrimary.periodSeconds_ = IRMath::max(0.0001f, periodSeconds);
+        m_pulseWaveDirectionMotionPrimary.forwardEasing_ = forwardEasing;
+        m_pulseWaveDirectionMotionPrimary.backwardEasing_ = backwardEasing;
+        m_pulseWaveDirectionMotionPrimary.startDirection_ =
             normalizeDirectionOrFallback(startX, startY, vec2(1.0f, 1.0f));
-        m_pulseWaveDirectionMotionPrimary_.endDirection_ = normalizeDirectionOrFallback(
+        m_pulseWaveDirectionMotionPrimary.endDirection_ = normalizeDirectionOrFallback(
             endX,
             endY,
-            m_pulseWaveDirectionMotionPrimary_.startDirection_
+            m_pulseWaveDirectionMotionPrimary.startDirection_
         );
     }
 
     void clearPulseWaveDirectionLinearMotion() {
-        m_pulseWaveDirectionMotionPrimary_.enabled_ = false;
-        m_pulseWaveDirectionMotionPrimary_.timeSeconds_ = 0.0f;
+        m_pulseWaveDirectionMotionPrimary.enabled_ = false;
+        m_pulseWaveDirectionMotionPrimary.timeSeconds_ = 0.0f;
     }
 
     void setPulseWaveSecondaryDirectionLinearMotion(
@@ -324,23 +324,23 @@ struct C_TriangleCanvasBackground {
         IREasingFunctions forwardEasing = IREasingFunctions::kLinearInterpolation,
         IREasingFunctions backwardEasing = IREasingFunctions::kLinearInterpolation
     ) {
-        m_pulseWaveDirectionMotionSecondary_.enabled_ = true;
-        m_pulseWaveDirectionMotionSecondary_.timeSeconds_ = 0.0f;
-        m_pulseWaveDirectionMotionSecondary_.periodSeconds_ = IRMath::max(0.0001f, periodSeconds);
-        m_pulseWaveDirectionMotionSecondary_.forwardEasing_ = forwardEasing;
-        m_pulseWaveDirectionMotionSecondary_.backwardEasing_ = backwardEasing;
-        m_pulseWaveDirectionMotionSecondary_.startDirection_ =
+        m_pulseWaveDirectionMotionSecondary.enabled_ = true;
+        m_pulseWaveDirectionMotionSecondary.timeSeconds_ = 0.0f;
+        m_pulseWaveDirectionMotionSecondary.periodSeconds_ = IRMath::max(0.0001f, periodSeconds);
+        m_pulseWaveDirectionMotionSecondary.forwardEasing_ = forwardEasing;
+        m_pulseWaveDirectionMotionSecondary.backwardEasing_ = backwardEasing;
+        m_pulseWaveDirectionMotionSecondary.startDirection_ =
             normalizeDirectionOrFallback(startX, startY, vec2(-1.0f, 1.0f));
-        m_pulseWaveDirectionMotionSecondary_.endDirection_ = normalizeDirectionOrFallback(
+        m_pulseWaveDirectionMotionSecondary.endDirection_ = normalizeDirectionOrFallback(
             endX,
             endY,
-            m_pulseWaveDirectionMotionSecondary_.startDirection_
+            m_pulseWaveDirectionMotionSecondary.startDirection_
         );
     }
 
     void clearPulseWaveSecondaryDirectionLinearMotion() {
-        m_pulseWaveDirectionMotionSecondary_.enabled_ = false;
-        m_pulseWaveDirectionMotionSecondary_.timeSeconds_ = 0.0f;
+        m_pulseWaveDirectionMotionSecondary.enabled_ = false;
+        m_pulseWaveDirectionMotionSecondary.timeSeconds_ = 0.0f;
     }
 
   private:
@@ -355,18 +355,18 @@ struct C_TriangleCanvasBackground {
     float m_timeSincePulseUpdate;
     bool m_hasPulseFrame;
     float m_patternZoomMultiplier = 1.0f;
-    float m_quantizedZoomApplied_ = -1.0f;
-    vec2 m_pulseWaveDirection_ = IRMath::normalize(vec2(1.0f, 1.0f));
-    float m_pulseWavePhaseScale_ = 4.0f;
-    vec2 m_pulseWaveDirectionSecondary_ = IRMath::normalize(vec2(-1.0f, 1.0f));
-    float m_pulseWavePhaseScaleSecondary_ = 6.0f;
-    float m_pulseWaveInterferenceMix_ = 0.5f;
-    float m_pulseWavePrimarySpeedMultiplier_ = 1.0f;
-    float m_pulseWavePrimaryStartOffset_ = 0.0f;
-    float m_pulseWaveSecondarySpeedMultiplier_ = 1.0f;
-    float m_pulseWaveSecondaryStartOffset_ = 0.0f;
-    LinearDirectionMotion m_pulseWaveDirectionMotionPrimary_;
-    LinearDirectionMotion m_pulseWaveDirectionMotionSecondary_;
+    float m_quantizedZoomApplied = -1.0f;
+    vec2 m_pulseWaveDirection = IRMath::normalize(vec2(1.0f, 1.0f));
+    float m_pulseWavePhaseScale = 4.0f;
+    vec2 m_pulseWaveDirectionSecondary = IRMath::normalize(vec2(-1.0f, 1.0f));
+    float m_pulseWavePhaseScaleSecondary = 6.0f;
+    float m_pulseWaveInterferenceMix = 0.5f;
+    float m_pulseWavePrimarySpeedMultiplier = 1.0f;
+    float m_pulseWavePrimaryStartOffset = 0.0f;
+    float m_pulseWaveSecondarySpeedMultiplier = 1.0f;
+    float m_pulseWaveSecondaryStartOffset = 0.0f;
+    LinearDirectionMotion m_pulseWaveDirectionMotionPrimary;
+    LinearDirectionMotion m_pulseWaveDirectionMotionSecondary;
     bool m_patternMaskInitialized = false;
     float m_minPulseUpdateSeconds = 1.0f / 60.0f;
 

@@ -7,15 +7,16 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_time.hpp>
+#include <irreden/ir_utility.hpp>
 #include <irreden/ir_video.hpp>
+#include <irreden/ir_window.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
-#include <irreden/render/ir_gl_api.hpp>
+
+#include "video_backend.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
-#include <iomanip>
-#include <sstream>
 #include <utility>
 
 namespace IRVideo {
@@ -245,7 +246,10 @@ void VideoManager::armAudioInput() {
                      m_audioSampleRate,
                      m_audioChannels);
     } else {
-        IRE_LOG_WARN("Audio input capture unavailable; video recording will continue without audio.");
+        IRE_LOG_WARN(
+            "Audio input capture unavailable; video recording will continue without audio. "
+            "On macOS, also verify microphone permission for the host app."
+        );
     }
 }
 
@@ -328,10 +332,9 @@ std::string VideoManager::getNextScreenshotFilePath() {
     std::filesystem::create_directories(outputDir);
 
     for (;;) {
-        std::ostringstream fileName;
-        fileName << "screenshot_" << std::setfill('0') << std::setw(6) << m_nextScreenshotIndex
-                 << ".png";
-        std::filesystem::path candidatePath = outputDir / fileName.str();
+        std::filesystem::path candidatePath =
+            outputDir /
+            IRUtility::formatNumberedFilename("screenshot_", m_nextScreenshotIndex, 6, ".png");
         if (!std::filesystem::exists(candidatePath)) {
             ++m_nextScreenshotIndex;
             return candidatePath.string();
@@ -343,36 +346,26 @@ std::string VideoManager::getNextScreenshotFilePath() {
 bool VideoManager::captureScreenshot() {
     // Read from the default framebuffer (final screen output) so we capture
     // the framebuffer-to-screen pass, debug overlay, HUD, and all other layers.
-    const ivec2 sourceResolution = IRRender::getViewport();
+    ivec2 sourceResolution{0, 0};
+    IRWindow::getFramebufferSize(sourceResolution);
     if (sourceResolution.x <= 0 || sourceResolution.y <= 0) {
-        IRE_LOG_WARN("Screenshot skipped: viewport has zero or negative dimensions");
+        IRE_LOG_WARN("Screenshot skipped: framebuffer has zero or negative dimensions");
         return false;
     }
+
     const std::size_t pixelCount =
         static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
     std::vector<std::uint8_t> imageData(pixelCount * 4U);
-
-    ENG_API->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    ENG_API->glReadPixels(
+    const bool didCapture = IRRender::readDefaultFramebuffer(
         0,
         0,
         sourceResolution.x,
         sourceResolution.y,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
         imageData.data()
     );
-
-    // OpenGL framebuffer origin is lower-left, flip for PNG output.
-    const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
-    std::vector<std::uint8_t> flippedImageData(pixelCount * 4U);
-    for (int y = 0; y < sourceResolution.y; ++y) {
-        const int flippedY = sourceResolution.y - 1 - y;
-        std::memcpy(
-            flippedImageData.data() + static_cast<std::size_t>(y) * rowBytes,
-            imageData.data() + static_cast<std::size_t>(flippedY) * rowBytes,
-            rowBytes
-        );
+    if (!didCapture) {
+        IRE_LOG_WARN("Default framebuffer screenshot readback is not available for the active backend.");
+        return false;
     }
 
     const std::string outputPath = getNextScreenshotFilePath();
@@ -381,7 +374,7 @@ bool VideoManager::captureScreenshot() {
         sourceResolution.x,
         sourceResolution.y,
         4,
-        flippedImageData.data()
+        imageData.data()
     );
     IRE_LOG_INFO("Saved screenshot: {}", outputPath);
     return true;
@@ -401,8 +394,8 @@ bool VideoManager::captureCanvasScreenshot() {
         0,
         sourceResolution.x,
         sourceResolution.y,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
         imageData.data()
     );
 
@@ -436,64 +429,22 @@ bool VideoManager::captureFrame() {
         IREntity::getEntity("mainFramebuffer")
     );
 
-    if (!m_readbackPbos.empty()) {
-        const int pboWrite = m_pboWriteIndex;
-        const int pboRead = (m_pboWriteIndex + 1) % kReadbackPboCount;
-
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPbos[pboWrite]);
-        glGetTextureSubImage(
-            framebuffer.framebuffer_.second->getTextureColor().getHandle(),
-            0,
-            0,
-            0,
-            0,
-            m_sourceFrameWidth,
-            m_sourceFrameHeight,
-            1,
-            GL_RGBA,
-            GL_UNSIGNED_BYTE,
-            static_cast<GLsizei>(m_sourceFrameBytes),
-            nullptr
-        );
-
-        bool hasCpuFrame = false;
-        if (m_pboPrimingFrames >= (kReadbackPboCount - 1)) {
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPbos[pboRead]);
-            void *mappedPtr = glMapBufferRange(
-                GL_PIXEL_PACK_BUFFER,
-                0,
-                static_cast<GLsizeiptr>(m_sourceFrameBytes),
-                GL_MAP_READ_BIT
-            );
-            if (mappedPtr != nullptr) {
-                std::memcpy(m_rawFrameBuffer.data(), mappedPtr, m_sourceFrameBytes);
-                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-                hasCpuFrame = true;
-            }
-        }
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
-        m_pboWriteIndex = (m_pboWriteIndex + 1) % kReadbackPboCount;
-        if (m_pboPrimingFrames < kReadbackPboCount) {
-            ++m_pboPrimingFrames;
-        }
-
-        if (!hasCpuFrame) {
-            return true;
-        }
-        return encodeCurrentRawFrame();
-    }
-
-    framebuffer.framebuffer_.second->getTextureColor().getSubImage2D(
-        0,
-        0,
+    const CaptureFrameStatus captureStatus = IRVideo::captureFrame(
+        framebuffer.framebuffer_.second->getTextureColor(),
         m_sourceFrameWidth,
         m_sourceFrameHeight,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        m_rawFrameBuffer.data()
+        m_sourceFrameBytes,
+        m_rawFrameBuffer,
+        m_readbackPbos,
+        m_pboWriteIndex,
+        m_pboPrimingFrames
     );
-
+    if (captureStatus == CaptureFrameStatus::FAILED) {
+        return false;
+    }
+    if (captureStatus == CaptureFrameStatus::PRIMING) {
+        return true;
+    }
     return encodeCurrentRawFrame();
 }
 
@@ -531,34 +482,11 @@ bool VideoManager::encodeCurrentRawFrame() {
 }
 
 void VideoManager::initReadbackPbos() {
-    releaseReadbackPbos();
-    if (m_sourceFrameBytes == 0) {
-        return;
-    }
-
-    m_readbackPbos.assign(kReadbackPboCount, 0);
-    glGenBuffers(kReadbackPboCount, m_readbackPbos.data());
-    for (unsigned int pbo : m_readbackPbos) {
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
-        glBufferData(
-            GL_PIXEL_PACK_BUFFER,
-            static_cast<GLsizeiptr>(m_sourceFrameBytes),
-            nullptr,
-            GL_STREAM_READ
-        );
-    }
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    m_pboWriteIndex = 0;
-    m_pboPrimingFrames = 0;
+    IRVideo::initReadback(m_sourceFrameBytes, m_readbackPbos, m_pboWriteIndex, m_pboPrimingFrames);
 }
 
 void VideoManager::releaseReadbackPbos() {
-    if (!m_readbackPbos.empty()) {
-        glDeleteBuffers(static_cast<GLsizei>(m_readbackPbos.size()), m_readbackPbos.data());
-        m_readbackPbos.clear();
-    }
-    m_pboWriteIndex = 0;
-    m_pboPrimingFrames = 0;
+    IRVideo::releaseReadback(m_readbackPbos, m_pboWriteIndex, m_pboPrimingFrames);
 }
 
 } // namespace IRVideo

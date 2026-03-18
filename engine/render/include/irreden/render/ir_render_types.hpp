@@ -44,6 +44,9 @@ struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;
     ivec2 voxelRenderOptions_;
+    ivec2 voxelDispatchGrid_;
+    int voxelCount_;
+    int _voxelDispatchPadding_ = 0;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -62,6 +65,24 @@ struct GlyphDrawCommand {
 
 enum class FitMode { FIT, STRETCH, UNKNOWN };
 enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
+
+constexpr std::uint32_t kBufferIndex_FrameDataUniform = 0;
+constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
+constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
+constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
+constexpr std::uint32_t kBufferIndex_FrameDataUniformIsoTriangles = 3;
+constexpr std::uint32_t kBufferIndex_SingleVoxelPositions = 5;
+constexpr std::uint32_t kBufferIndex_SingleVoxelColors = 6;
+constexpr std::uint32_t kBufferIndex_FrameDataVoxelToCanvas = 7;
+constexpr std::uint32_t kBufferIndex_VoxelSetUnlockedPositions = 8;
+constexpr std::uint32_t kBufferIndex_VoxelSetUnlockedColors = 9;
+constexpr std::uint32_t kBufferIndex_FrameDataTrixelToTrixel = 10;
+constexpr std::uint32_t kBufferIndex_FontData = 11;
+constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
+constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
+constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
+constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
+constexpr std::uint32_t kBufferIndex_TrixelDistanceScratch = 16;
 
 } // namespace IRRender
 

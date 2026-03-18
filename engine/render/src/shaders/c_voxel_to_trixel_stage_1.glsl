@@ -15,6 +15,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 voxelRenderOptions;
+    uniform ivec2 voxelDispatchGrid;
+    uniform int voxelCount;
 };
 
 layout(std430, binding = 5) buffer PositionBuffer {
@@ -103,11 +105,15 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
 }
 
 void main() {
-    const vec4 color = unpackColor(colors[gl_WorkGroupID.x]);
+    const uint voxelIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * uint(voxelDispatchGrid.x);
+    if (voxelIndex >= uint(voxelCount)) {
+        return;
+    }
+    const vec4 color = unpackColor(colors[voxelIndex]);
     if(color.a == 0) {
         return;
     }
-    const vec4 voxelPosition = positions[gl_WorkGroupID.x];
+    const vec4 voxelPosition = positions[voxelIndex];
     if (voxelRenderOptions.x == 0) {
         const ivec3 voxelPositionInt = ivec3(
             round(voxelPosition.x),

@@ -13,10 +13,21 @@ target_compile_options(
 )
 
 # RtAudio
+set(RTAUDIO_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(RTAUDIO_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+if(IR_isDarwin)
+    set(RTAUDIO_API_CORE ON CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_JACK OFF CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_PULSE OFF CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_ALSA OFF CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_OSS OFF CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_Declare(
     rtaudio
     GIT_REPOSITORY https://github.com/thestk/rtaudio.git
     GIT_TAG master
+    UPDATE_DISCONNECTED TRUE
 )
 IrredenEngine_applyPatchOnce(
     rtaudio
@@ -36,10 +47,19 @@ IR_copyDLL(
 )
 
 # RtMidi
+set(RTMIDI_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(RTMIDI_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+if(IR_isDarwin)
+    set(RTMIDI_API_CORE ON CACHE BOOL "" FORCE)
+    set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
+    set(RTMIDI_API_ALSA OFF CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_Declare(
     rtmidi
     GIT_REPOSITORY https://github.com/thestk/rtmidi.git
     GIT_TAG master
+    UPDATE_DISCONNECTED TRUE
 )
 IrredenEngine_applyPatchOnce(
     rtmidi

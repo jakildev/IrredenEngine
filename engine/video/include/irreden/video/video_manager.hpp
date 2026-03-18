@@ -52,8 +52,6 @@ class VideoManager {
     [[nodiscard]] const std::string &getLastError() const;
 
   private:
-    static constexpr int kReadbackPboCount = 3;
-
     std::atomic<bool> m_captureEnabled = false;
     bool m_toggleRequested = false;
     int m_targetFps = 60;

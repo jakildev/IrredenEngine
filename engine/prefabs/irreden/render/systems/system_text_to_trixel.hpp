@@ -23,8 +23,6 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-namespace detail {
-
 constexpr int kMaxGlyphCommands = 8192;
 constexpr int kFontTableEntries = 128;
 constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
@@ -157,8 +155,6 @@ inline void expandTextToCommands(
     }
 }
 
-} // namespace detail
-
 template <> struct System<TEXT_TO_TRIXEL> {
     static SystemId create() {
         static std::vector<GlyphDrawCommand> drawCommands;
@@ -167,23 +163,23 @@ template <> struct System<TEXT_TO_TRIXEL> {
         IRRender::createNamedResource<ShaderProgram>(
             "TextToTrixelProgram",
             std::vector{
-                ShaderStage{IRRender::kFileCompTextToTrixel, GL_COMPUTE_SHADER}.getHandle()
+                ShaderStage{IRRender::kFileCompTextToTrixel, ShaderType::COMPUTE}
             }
         );
         IRRender::createNamedResource<Buffer>(
             "FontDataBuffer",
             nullptr,
-            detail::kFontBufferSize * sizeof(uint32_t),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_SHADER_STORAGE_BUFFER,
+kFontBufferSize * sizeof(uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
             kBufferIndex_FontData
         );
         IRRender::createNamedResource<Buffer>(
             "GlyphDrawCommandBuffer",
             nullptr,
-            detail::kMaxGlyphCommands * sizeof(GlyphDrawCommand),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_SHADER_STORAGE_BUFFER,
+kMaxGlyphCommands * sizeof(GlyphDrawCommand),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
             kBufferIndex_GlyphDrawCommands
         );
 
@@ -197,7 +193,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 auto &canvasTextures =
                     IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
 
-                detail::expandTextToCommands(
+expandTextToCommands(
                     drawCommands,
                     text.text_,
                     guiPos.pos_,
@@ -214,7 +210,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram")->use();
 
                 if (!fontUploaded) {
-                    auto fontData = detail::buildFontBuffer();
+                    auto fontData = buildFontBuffer();
                     IRRender::getNamedResource<Buffer>("FontDataBuffer")
                         ->subData(0, fontData.size() * sizeof(uint32_t), fontData.data());
                     fontUploaded = true;
@@ -229,7 +225,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
 
                 if (IRRender::isGuiVisible()) {
                     static std::string commandList = IRCommand::buildCommandListText();
-                    detail::expandTextToCommands(
+expandTextToCommands(
                         drawCommands,
                         commandList,
                         ivec2(2, 2),
@@ -243,8 +239,8 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 if (drawCommands.empty()) return;
 
                 int count = static_cast<int>(drawCommands.size());
-                if (count > detail::kMaxGlyphCommands) {
-                    count = detail::kMaxGlyphCommands;
+                if (count > kMaxGlyphCommands) {
+                    count = kMaxGlyphCommands;
                 }
 
                 IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer")
@@ -253,11 +249,16 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 EntityId guiCanvas = IRRender::getCanvas("gui");
                 auto &canvasTextures =
                     IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-                canvasTextures.getTextureColors()->bindImage(0, GL_WRITE_ONLY, GL_RGBA8);
-                canvasTextures.getTextureDistances()->bindImage(1, GL_WRITE_ONLY, GL_R32I);
+                canvasTextures.getTextureColors()->bindAsImage(
+                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
+                );
+                canvasTextures.getTextureDistances()->bindAsImage(
+                    1, TextureAccess::WRITE_ONLY, TextureFormat::R32I
+                );
 
-                glDispatchCompute(count, 1, 1);
-                glMemoryBarrier(GL_ALL_BARRIER_BITS);
+                IRRender::device()->dispatchCompute(count, 1, 1);
+                // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
+                IRRender::device()->memoryBarrier(BarrierType::ALL);
             }
         );
     }

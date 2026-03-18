@@ -3,7 +3,8 @@
 #include <irreden/ir_window.hpp>
 
 #include <irreden/render/render_manager.hpp>
-#include <irreden/render/ir_gl_api.hpp>
+#include <irreden/render/vao.hpp>
+#include <irreden/render/vertex_attributes.hpp>
 
 #include <irreden/render/entities/entity_voxel_pool_canvas.hpp>
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
@@ -29,14 +30,15 @@ RenderManager::RenderManager(
         ivec2 gameResolution,
         FitMode fitMode
     )
-    :   m_globalConstantsGLSL{
+    :   m_renderImpl{createRenderer()}
+    ,   m_globalConstantsGLSL{
 
         }
     ,   m_bufferUniformConstantsGLSL{
             &m_globalConstantsGLSL,
             sizeof(GlobalConstantsGLSL),
-            GL_NONE,
-            GL_UNIFORM_BUFFER,
+            BUFFER_STORAGE_NONE,
+            BufferTarget::UNIFORM,
             kBufferIndex_GlobalConstantsGLSL
         }
     ,   m_mainFramebuffer{
@@ -111,7 +113,6 @@ RenderManager::RenderManager(
     //         GL_SHADER_STORAGE_BUFFER,
     //         kBufferIndex_SingleVoxelColors
     //     }
-    ,   m_renderImpl{createRenderer()}
     {
     IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
     m_renderImpl->init();
@@ -165,13 +166,24 @@ RenderManager::~RenderManager() {
     }
 }
 
-void RenderManager::tick() {
+void RenderManager::beginFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     IRWindow::getWindowSize(m_viewport);
     updateOutputResolution();
+    IRRender::device()->beginFrame();
+}
+
+void RenderManager::renderFrame() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
     IRSystem::executePipeline(IRTime::Events::RENDER);
-    IRWindow::getWindow().swapBuffers();
+}
+
+void RenderManager::presentFrame() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
+    IRRender::device()->present();
 }
 
 std::tuple<
@@ -350,18 +362,18 @@ void RenderManager::printRenderInfo() {
 
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
-        return ivec2(
+        return IRMath::max(ivec2(
             IRMath::min(
                 IRMath::floor(m_viewport.x / m_gameResolution.x),
                 IRMath::floor(m_viewport.y / m_gameResolution.y)
             )
-        );
+        ), ivec2(1));
     }
     if (m_fitMode == FitMode::STRETCH) {
-        return ivec2(
+        return IRMath::max(ivec2(
             IRMath::floor(m_viewport.x / m_gameResolution.x),
             IRMath::floor(m_viewport.y / m_gameResolution.y)
-        );
+        ), ivec2(1));
     }
     IR_ASSERT(false, "Unexpected FitMode type");
     return ivec2(1);

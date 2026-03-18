@@ -26,8 +26,8 @@ template <> struct System<SPRITE_TO_SCREEN> {
             "FramebufferToScreenFrameData",
             nullptr,
             sizeof(FrameDataFramebuffer),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_UNIFORM_BUFFER,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
             kBufferIndex_FramebufferFrameDataUniform
         );
 
@@ -47,8 +47,8 @@ template <> struct System<SPRITE_TO_SCREEN> {
                                              );
                 IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData")
                     ->subData(0, sizeof(FrameDataFramebuffer), &frameData);
-                ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                ENG_API->glDrawArrays(GL_TRIANGLES, 0, 6);
+                IRRender::device()->setPolygonMode(PolygonMode::FILL);
+                IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
             },
             []() {
                 bindDefaultFramebuffer();
@@ -120,15 +120,11 @@ template <> struct System<SPRITE_TO_SCREEN> {
     }
 
     static void bindDefaultFramebuffer() {
-        ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        ENG_API->glViewport(0, 0, IRRender::getViewport().x, IRRender::getViewport().y);
-        ENG_API->glEnable(GL_DEPTH_TEST);
-        ENG_API->glDepthFunc(GL_LESS);
+        IRRender::device()->bindDefaultFramebuffer();
     }
 
     static void clearDefaultFramebuffer() {
-        ENG_API->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        ENG_API->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        IRRender::device()->clearDefaultFramebuffer();
     }
 };
 

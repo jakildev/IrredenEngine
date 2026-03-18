@@ -365,13 +365,14 @@ The `creations/template/` folder contains a minimal reference structure for new 
 
 | Context           | Convention                    |
 |-------------------|-------------------------------|
-| Private members   | `m_` prefix                  |
+| Private members   | `m_` prefix only; no trailing `_` |
 | Public members    | trailing `_`                  |
-| Components        | `C_` prefix                  |
-| Compute shaders   | `c_` prefix                  |
-| Vertex shaders    | `v_` prefix                  |
-| Fragment shaders  | `f_` prefix                  |
-| Geometry shaders  | `g_` prefix                  |
+| Components        | `C_` prefix                   |
+| Enum values       | `SCREAMING_SNAKE_CASE`        |
+| Compute shaders   | `c_` prefix                   |
+| Vertex shaders    | `v_` prefix                   |
+| Fragment shaders  | `f_` prefix                   |
+| Geometry shaders  | `g_` prefix                   |
 
 **Logical style:**
 - Prefer early return over nested logic.

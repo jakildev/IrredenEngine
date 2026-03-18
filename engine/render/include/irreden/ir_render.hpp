@@ -2,11 +2,15 @@
 #define IR_RENDER_H
 
 #include <irreden/render/render_manager.hpp>
+#include <irreden/render/render_device.hpp>
+#include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/image_data.hpp>
 #include <irreden/render/shader.hpp>
+#include <irreden/render/shader_names.hpp>
+#include <irreden/render/vao.hpp>
 
 namespace IRRender {
 
@@ -66,6 +70,7 @@ vec2 getCameraZoom();
 vec2 getTriangleStepSizeScreen();
 ivec2 getViewport();
 ivec2 getOutputScaleFactor();
+bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData);
 vec2 getMousePositionOutputView();
 vec2 getGameResolution();
 vec2 getMainCanvasSizeTrixels();

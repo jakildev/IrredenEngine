@@ -1,44 +1,56 @@
-#include <irreden/ir_profile.hpp>
-
 #include <irreden/render/buffer.hpp>
-#include <irreden/render/ir_gl_api.hpp>
+
+#include <utility>
 
 namespace IRRender {
 
-Buffer::Buffer(const void *data, GLsizeiptr size, GLbitfield flags) {
-    ENG_API->glCreateBuffers(1, &m_handle);
-    ENG_API->glNamedBufferStorage(m_handle, size, data, flags);
-    IRE_LOG_INFO("Created GL buffer: {}", m_handle);
+std::unique_ptr<BufferImpl> createBufferImpl(const void *data, std::size_t size, std::uint32_t flags);
+std::unique_ptr<BufferImpl> createBufferImpl(
+    const void *data,
+    std::size_t size,
+    std::uint32_t flags,
+    BufferTarget target,
+    std::uint32_t index
+);
+
+Buffer::Buffer(const void *data, std::size_t size, std::uint32_t flags)
+    : m_impl(createBufferImpl(data, size, flags)) {}
+
+Buffer::Buffer(
+    const void *data,
+    std::size_t size,
+    std::uint32_t flags,
+    BufferTarget target,
+    std::uint32_t index
+)
+    : m_impl(createBufferImpl(data, size, flags, target, index)) {}
+
+Buffer::~Buffer() = default;
+
+Buffer::Buffer(Buffer &&other) noexcept = default;
+
+Buffer &Buffer::operator=(Buffer &&other) noexcept = default;
+
+std::uint32_t Buffer::getHandle() const {
+    return m_impl->getHandle();
 }
 
-Buffer::Buffer(const void *data, GLsizeiptr size, GLbitfield flags, GLenum target, GLuint index)
-    : Buffer(data, size, flags) {
-    bindBase(target, index);
+void Buffer::subData(std::ptrdiff_t offset, std::size_t size, const void *data) const {
+    m_impl->subData(offset, size, data);
 }
 
-Buffer::~Buffer() {
-    IRE_LOG_DEBUG("Deleting GL buffer handle={}", m_handle);
-    ENG_API->glDeleteBuffers(1, &m_handle);
+void Buffer::getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const {
+    m_impl->getSubData(offset, size, data);
 }
 
-GLuint Buffer::getHandle() {
-    return m_handle;
+void Buffer::bindRange(
+    BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size
+) {
+    m_impl->bindRange(target, index, offset, size);
 }
 
-void Buffer::subData(GLintptr offset, GLsizeiptr size, const void *data) const {
-    ENG_API->glNamedBufferSubData(m_handle, offset, size, data);
-}
-
-void Buffer::getSubData(GLintptr offset, GLsizeiptr size, void *data) const {
-    ENG_API->glGetNamedBufferSubData(m_handle, offset, size, data);
-}
-
-void Buffer::bindRange(GLenum target, GLuint index, GLintptr offset, GLsizeiptr size) {
-    ENG_API->glBindBufferRange(target, index, m_handle, offset, size);
-}
-
-void Buffer::bindBase(GLenum target, GLuint index) {
-    ENG_API->glBindBufferBase(target, index, m_handle);
+void Buffer::bindBase(BufferTarget target, std::uint32_t index) {
+    m_impl->bindBase(target, index);
 }
 
 } // namespace IRRender

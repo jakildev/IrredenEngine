@@ -28,16 +28,16 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasToFramebufferProgram",
             std::vector{
-                ShaderStage{IRRender::kFileVertTrixelToFramebuffer, GL_VERTEX_SHADER}.getHandle(),
-                ShaderStage{IRRender::kFileFragTrixelToFramebuffer, GL_FRAGMENT_SHADER}.getHandle()
+                ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragTrixelToFramebuffer, ShaderType::FRAGMENT}
             }
         );
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
             nullptr,
             sizeof(FrameDataTrixelToFramebuffer),
-            GL_DYNAMIC_STORAGE_BIT,
-            GL_UNIFORM_BUFFER,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
             kBufferIndex_FrameDataUniformIsoTriangles
         );
         struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } initData;
@@ -45,8 +45,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             "HoveredEntityIdBuffer",
             &initData,
             sizeof(initData),
-            GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT,
-            GL_SHADER_STORAGE_BUFFER,
+            BUFFER_STORAGE_DYNAMIC | BUFFER_STORAGE_MAP_READ,
+            BufferTarget::SHADER_STORAGE,
             kBufferIndex_HoveredEntityId
         );
 
@@ -116,14 +116,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 );
 
                 triangleCanvasTextures.bind(0, 1, 2);
-                ENG_API->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                ENG_API->glDrawElements(
-                    GL_TRIANGLES,
+                IRRender::device()->setPolygonMode(PolygonMode::FILL);
+                IRRender::device()->drawElements(
+                    DrawMode::TRIANGLES,
                     IRShapes2D::kQuadIndicesLength,
-                    GL_UNSIGNED_SHORT,
-                    nullptr
+                    IndexType::UNSIGNED_SHORT
                 );
-                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             },
             []() {
                 struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;

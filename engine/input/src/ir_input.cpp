@@ -2,6 +2,8 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_platform.hpp>
+#include <irreden/ir_window.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
@@ -52,6 +54,16 @@ vec2 getMousePositionUpdate() {
 }
 vec2 getMousePositionRender() {
     return getInputManager().getMousePositionRender();
+}
+
+vec2 getMousePositionScreen() {
+    vec2 mouse = getMousePositionRender();
+    if constexpr (IRPlatform::kFlipMouseY) {
+        ivec2 windowSize{};
+        IRWindow::getWindowSize(windowSize);
+        mouse.y = static_cast<float>(windowSize.y) - mouse.y;
+    }
+    return mouse;
 }
 
 int getNumButtonPressesThisFrame(KeyMouseButtons button) {

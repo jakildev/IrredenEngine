@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 
+#include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/shader_names.hpp>
 
@@ -36,22 +37,180 @@ const std::unordered_map<GLenum, GLint> kMapUnpackAlignmentofGLType = {
     {GL_R8, 1}, {GL_RGB8, 4}, {GL_RGBA8, 4}, {GL_DEPTH24_STENCIL8, 4}
 };
 
-constexpr GLuint kBufferIndex_FrameDataUniform = 0; // unused
-constexpr GLuint kBufferIndex_GlobalConstantsGLSL = 1;
-constexpr GLuint kBufferIndex_FramebufferFrameDataUniform = 2;
-constexpr GLsizeiptr kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
-constexpr GLuint kBufferIndex_FrameDataUniformIsoTriangles = 3;
-constexpr GLuint kBufferIndex_SingleVoxelPositions = 5;
-constexpr GLuint kBufferIndex_SingleVoxelColors = 6;
-constexpr GLuint kBufferIndex_FrameDataVoxelToCanvas = 7;
-constexpr GLuint kBufferIndex_VoxelSetUnlockedPositions = 8;
-constexpr GLuint kBufferIndex_VoxelSetUnlockedColors = 9;
-constexpr GLuint kBufferIndex_FrameDataTrixelToTrixel = 10;
-constexpr GLuint kBufferIndex_FontData = 11;
-constexpr GLuint kBufferIndex_GlyphDrawCommands = 12;
-constexpr GLuint kBufferIndex_VoxelEntityIds = 13;
-constexpr GLuint kBufferIndex_HoveredEntityId = 14;
-constexpr GLuint kBufferIndex_DebugOverlayData = 15;
+inline GLenum toGLTextureKind(TextureKind textureKind) {
+    switch (textureKind) {
+        case TextureKind::TEXTURE_2D:
+            return GL_TEXTURE_2D;
+        case TextureKind::TEXTURE_3D:
+            return GL_TEXTURE_3D;
+    }
+    return GL_TEXTURE_2D;
+}
+
+inline GLenum toGLTextureAccess(TextureAccess access) {
+    switch (access) {
+        case TextureAccess::READ_ONLY:
+            return GL_READ_ONLY;
+        case TextureAccess::WRITE_ONLY:
+            return GL_WRITE_ONLY;
+        case TextureAccess::READ_WRITE:
+            return GL_READ_WRITE;
+    }
+    return GL_READ_WRITE;
+}
+
+inline GLenum toGLTextureFormat(TextureFormat format) {
+    switch (format) {
+        case TextureFormat::RGBA8:
+            return GL_RGBA8;
+        case TextureFormat::RGBA32F:
+            return GL_RGBA32F;
+        case TextureFormat::R32I:
+            return GL_R32I;
+        case TextureFormat::RG32UI:
+            return GL_RG32UI;
+        case TextureFormat::DEPTH24_STENCIL8:
+            return GL_DEPTH24_STENCIL8;
+    }
+    return GL_RGBA8;
+}
+
+inline GLenum toGLPixelDataFormat(PixelDataFormat format) {
+    switch (format) {
+        case PixelDataFormat::RGBA:
+            return GL_RGBA;
+        case PixelDataFormat::RED_INTEGER:
+            return GL_RED_INTEGER;
+        case PixelDataFormat::RG_INTEGER:
+            return GL_RG_INTEGER;
+    }
+    return GL_RGBA;
+}
+
+inline GLenum toGLPixelDataType(PixelDataType type) {
+    switch (type) {
+        case PixelDataType::UNSIGNED_BYTE:
+            return GL_UNSIGNED_BYTE;
+        case PixelDataType::INT32:
+            return GL_INT;
+        case PixelDataType::UINT32:
+            return GL_UNSIGNED_INT;
+        case PixelDataType::FLOAT32:
+            return GL_FLOAT;
+    }
+    return GL_UNSIGNED_BYTE;
+}
+
+inline GLenum toGLTextureWrap(TextureWrap wrap) {
+    switch (wrap) {
+        case TextureWrap::REPEAT:
+            return GL_REPEAT;
+        case TextureWrap::CLAMP_TO_EDGE:
+            return GL_CLAMP_TO_EDGE;
+        case TextureWrap::MIRRORED_REPEAT:
+            return GL_MIRRORED_REPEAT;
+    }
+    return GL_REPEAT;
+}
+
+inline GLenum toGLTextureFilter(TextureFilter filter) {
+    switch (filter) {
+        case TextureFilter::NEAREST:
+            return GL_NEAREST;
+        case TextureFilter::LINEAR:
+            return GL_LINEAR;
+    }
+    return GL_NEAREST;
+}
+
+inline GLenum toGLBufferTarget(BufferTarget target) {
+    switch (target) {
+        case BufferTarget::VERTEX:
+            return GL_ARRAY_BUFFER;
+        case BufferTarget::INDEX:
+            return GL_ELEMENT_ARRAY_BUFFER;
+        case BufferTarget::UNIFORM:
+            return GL_UNIFORM_BUFFER;
+        case BufferTarget::SHADER_STORAGE:
+            return GL_SHADER_STORAGE_BUFFER;
+        case BufferTarget::PIXEL_PACK:
+            return GL_PIXEL_PACK_BUFFER;
+    }
+    return GL_ARRAY_BUFFER;
+}
+
+inline GLbitfield toGLBufferStorageFlags(std::uint32_t flags) {
+    GLbitfield glFlags = 0;
+    if ((flags & BUFFER_STORAGE_DYNAMIC) != 0) {
+        glFlags |= GL_DYNAMIC_STORAGE_BIT;
+    }
+    if ((flags & BUFFER_STORAGE_MAP_READ) != 0) {
+        glFlags |= GL_MAP_READ_BIT;
+    }
+    return glFlags;
+}
+
+inline GLenum toGLShaderType(ShaderType type) {
+    switch (type) {
+        case ShaderType::VERTEX:
+            return GL_VERTEX_SHADER;
+        case ShaderType::FRAGMENT:
+            return GL_FRAGMENT_SHADER;
+        case ShaderType::COMPUTE:
+            return GL_COMPUTE_SHADER;
+        case ShaderType::GEOMETRY:
+            return GL_GEOMETRY_SHADER;
+    }
+    return GL_VERTEX_SHADER;
+}
+
+inline GLbitfield toGLBarrierType(BarrierType barrierType) {
+    switch (barrierType) {
+        case BarrierType::ALL:
+            return GL_ALL_BARRIER_BITS;
+        case BarrierType::SHADER_STORAGE:
+            return GL_SHADER_STORAGE_BARRIER_BIT;
+    }
+    return GL_ALL_BARRIER_BITS;
+}
+
+inline GLenum toGLPolygonMode(PolygonMode polygonMode) {
+    switch (polygonMode) {
+        case PolygonMode::FILL:
+            return GL_FILL;
+        case PolygonMode::LINE:
+            return GL_LINE;
+        case PolygonMode::POINT:
+            return GL_POINT;
+    }
+    return GL_FILL;
+}
+
+inline GLenum toGLDrawMode(DrawMode drawMode) {
+    switch (drawMode) {
+        case DrawMode::TRIANGLES:
+            return GL_TRIANGLES;
+        case DrawMode::LINES:
+            return GL_LINES;
+    }
+    return GL_TRIANGLES;
+}
+
+inline GLenum toGLIndexType(IndexType indexType) {
+    switch (indexType) {
+        case IndexType::UNSIGNED_SHORT:
+            return GL_UNSIGNED_SHORT;
+    }
+    return GL_UNSIGNED_SHORT;
+}
+
+inline GLenum toGLVertexAttributeDataType(VertexAttributeDataType type) {
+    switch (type) {
+        case VertexAttributeDataType::FLOAT32:
+            return GL_FLOAT;
+    }
+    return GL_FLOAT;
+}
 
 } // namespace IRRender
 

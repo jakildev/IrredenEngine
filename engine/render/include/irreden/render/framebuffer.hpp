@@ -3,21 +3,36 @@
 
 #include <irreden/ir_math.hpp>
 
-#include <irreden/render/opengl/opengl_types.hpp>
+#include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/texture.hpp>
-#include <irreden/render/buffer.hpp>
-#include <irreden/render/vao.hpp>
+
+#include <memory>
 
 using namespace IRMath;
 
 namespace IRRender {
 
+class FramebufferImpl {
+  public:
+    virtual ~FramebufferImpl() = default;
+    virtual void bind() const = 0;
+    virtual void unbind() = 0;
+    virtual void clear() const = 0;
+};
+
 class Framebuffer {
   public:
     Framebuffer(
-        ivec2 resolution, ivec2 extraPixelBuffer, GLenum formatColor, GLenum formatDepthStencil
+        ivec2 resolution,
+        ivec2 extraPixelBuffer,
+        TextureFormat formatColor,
+        TextureFormat formatDepthStencil
     );
     ~Framebuffer();
+    Framebuffer(Framebuffer &&other) noexcept = delete;
+    Framebuffer &operator=(Framebuffer &&other) noexcept = delete;
+    Framebuffer(const Framebuffer &) = delete;
+    Framebuffer &operator=(const Framebuffer &) = delete;
 
     void bind() const;
     void unbind();
@@ -40,11 +55,9 @@ class Framebuffer {
     const ivec2 m_resolution;
     const ivec2 m_extraPixelBuffer;
     const ivec2 m_resolutionPlusBuffer;
-    GLuint m_id;
     Texture2D m_textureColor;
     Texture2D m_textureDepth;
-
-    void checkSuccess();
+    std::unique_ptr<FramebufferImpl> m_impl;
 };
 
 } // namespace IRRender

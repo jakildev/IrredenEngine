@@ -1,6 +1,7 @@
 #include <irreden/video/video_recorder.hpp>
 
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_utility.hpp>
 
 #if IR_VIDEO_HAS_FFMPEG
 #include <algorithm>
@@ -49,10 +50,9 @@ std::string makeErrorString(int ffmpegErrorCode) {
 
 std::string makeFallbackAudioPath(const std::string &videoPath) {
     const std::filesystem::path videoFilePath(videoPath);
-    const std::filesystem::path stemPath = videoFilePath.stem();
-    const std::filesystem::path parentPath = videoFilePath.parent_path();
-    const std::string fallbackName = stemPath.string() + "_audio.wav";
-    return (parentPath / fallbackName).string();
+    const std::string fallbackBasePath =
+        (videoFilePath.parent_path() / (videoFilePath.stem().string() + "_audio")).string();
+    return IRUtility::pathWithExtension(fallbackBasePath, ".wav");
 }
 
 void writeFloat32WavFile(
@@ -97,6 +97,7 @@ void writeFloat32WavFile(
     }
 }
 
+#if IR_VIDEO_HAS_FFMPEG
 [[maybe_unused]] AVSampleFormat chooseAudioSampleFormat(const AVCodec *codec) {
     if (codec == nullptr || codec->sample_fmts == nullptr) {
         return AV_SAMPLE_FMT_NONE;
@@ -114,6 +115,7 @@ void writeFloat32WavFile(
     }
     return fallback;
 }
+#endif
 
 } // namespace
 
@@ -191,8 +193,9 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     }
 
 #if !IR_VIDEO_HAS_FFMPEG
-    m_lastError = "FFmpeg support is not enabled. Configure with -DIRREDEN_VIDEO_ENABLE_FFMPEG=ON "
-                  "and point -DIRREDEN_FFMPEG_ROOT to your FFmpeg build if needed.";
+    m_lastError = "FFmpeg support is not enabled. Configure with -DIRREDEN_VIDEO_ENABLE_FFMPEG=ON. "
+                  "On macOS, install ffmpeg + pkg-config (for example via scripts/bootstrap_macos.sh) "
+                  "or point -DIRREDEN_FFMPEG_ROOT to your FFmpeg build if needed.";
     IRE_LOG_ERROR("VideoRecorder start failed: {}", m_lastError.c_str());
     return false;
 #else
