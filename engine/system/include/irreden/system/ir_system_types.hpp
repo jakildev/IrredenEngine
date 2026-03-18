@@ -3,9 +3,6 @@
 
 #include <irreden/entity/ir_entity_types.hpp>
 
-#include <cstdint>
-#include <functional>
-
 using namespace IREntity;
 
 namespace IRSystem {
@@ -33,7 +30,6 @@ enum SystemName {
     OUTPUT_MIDI_MESSAGE_OUT,
     INPUT_GAMEPAD,
     ENTITY_HOVER_DETECT,
-    UNIT_SELECTION,
 
     // Update systems
     SCREEN_VIEW,
@@ -53,16 +49,6 @@ enum SystemName {
     CONTACT_TRIGGER_GLOW,
     VELOCITY_DRAG,
     MIDI_DELAY_PROCESS,
-    GAME_GRID,
-    GRID_BAKE,
-    FLOW_FIELD_BUILD,
-    GRID_PATHFIND,
-    FLOW_FIELD_MOVEMENT,
-    GRID_MOVEMENT,
-    SMOOTH_MOVEMENT,
-    TURN_TO_MOVE,
-    UNIT_COLLISION_RESOLVE,
-    DEBUG_DRAW_NAV,
     PLANT_GROW,
     GLOBAL_POSITION_3D,
     APPLY_POSITION_OFFSET,
@@ -94,7 +80,6 @@ enum SystemName {
     GUI_TEXT_RENDER,
     TEXT_TO_TRIXEL,
     FRAMEBUFFER_TO_SCREEN,
-    UNIT_SELECTION_RENDER,
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL
