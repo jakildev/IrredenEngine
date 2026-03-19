@@ -7,13 +7,23 @@ bazel-testlogs/
 
 # local build and tooling output
 build/
+build-*/
 cmake-build-*/
 compile_commands.json
 .cache/
 CMakeUserPresets.json
 
-# editor files
-.vscode/
+# editor files: keep shareable config, ignore local state
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# OS / IDE noise
+.DS_Store
+Thumbs.db
+.vs/
+*.vcxproj.user
 
 # creations: keep demos, ignore other top-level folders
 creations/*

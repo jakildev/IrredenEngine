@@ -1,0 +1,86 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Configure IRIrreden (from root)",
+      "type": "shell",
+      "command": "cmake",
+      "options": {
+        "cwd": "${workspaceFolder}/creations/irreden"
+      },
+      "osx": {
+        "args": [
+          "--preset",
+          "irreden-macos-debug"
+        ]
+      },
+      "windows": {
+        "args": [
+          "--preset",
+          "irreden-windows-debug"
+        ]
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build IRIrreden (from root)",
+      "type": "shell",
+      "command": "cmake",
+      "options": {
+        "cwd": "${workspaceFolder}/creations/irreden"
+      },
+      "osx": {
+        "args": [
+          "--build",
+          "--preset",
+          "irreden-macos-build"
+        ]
+      },
+      "windows": {
+        "args": [
+          "--build",
+          "--preset",
+          "irreden-windows-build"
+        ]
+      },
+      "dependsOn": [
+        "Configure IRIrreden (from root)"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "Run IRIrreden (from root)",
+      "type": "shell",
+      "command": "cmake",
+      "options": {
+        "cwd": "${workspaceFolder}/creations/irreden"
+      },
+      "osx": {
+        "args": [
+          "--build",
+          "--preset",
+          "irreden-macos-run"
+        ]
+      },
+      "windows": {
+        "args": [
+          "--build",
+          "--preset",
+          "irreden-windows-run"
+        ]
+      },
+      "dependsOn": [
+        "Configure IRIrreden (from root)"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ]
+    }
+  ]
+}

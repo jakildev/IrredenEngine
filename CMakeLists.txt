@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.28.0)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 project(BuildCreation VERSION 0.1.0)
+
+option(IRREDEN_BUILD_CREATIONS "Build engine-owned creations" ${PROJECT_IS_TOP_LEVEL})
+option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
+option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -28,7 +33,15 @@ include(cmake/ir_quality_tools.cmake)
 include_directories(${PROJECT_SOURCE_DIR}/engine/prefabs)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
-add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
-add_subdirectory(${PROJECT_SOURCE_DIR}/test)
 
-irreden_add_quality_targets()
+if(IRREDEN_BUILD_CREATIONS)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
+endif()
+
+if(IRREDEN_BUILD_TESTS)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+endif()
+
+if(IRREDEN_BUILD_QUALITY_TARGETS)
+    irreden_add_quality_targets()
+endif()
