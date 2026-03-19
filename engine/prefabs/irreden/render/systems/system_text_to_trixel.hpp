@@ -27,6 +27,7 @@ constexpr int kMaxGlyphCommands = 8192;
 constexpr int kFontTableEntries = 128;
 constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
 constexpr int kFontBufferSize = kFontTableEntries * kFontRowsPerGlyph;
+constexpr ivec2 kGuiOverlayPadding = ivec2(24, 24);
 
 inline std::vector<uint32_t> buildFontBuffer() {
     std::vector<uint32_t> buf(kFontBufferSize, 0);
@@ -228,7 +229,7 @@ expandTextToCommands(
 expandTextToCommands(
                         drawCommands,
                         commandList,
-                        ivec2(2, 2),
+                        kGuiOverlayPadding,
                         canvasTextures.size_,
                         IRMath::IRColors::kWhite,
                         0

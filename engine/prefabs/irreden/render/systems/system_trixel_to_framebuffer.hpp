@@ -138,7 +138,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         );
     }
 
-  private:
     static mat4 calcProjectionMatrix(const vec2 &resolution) {
         mat4 projection = ortho(0.0f, resolution.x, 0.0f, resolution.y, -1.0f, 100.0f);
         return projection;

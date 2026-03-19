@@ -16,7 +16,11 @@ struct MetalRuntimeState {
     MTL::CommandQueue *commandQueue_ = nullptr;
     MTL::CommandBuffer *commandBuffer_ = nullptr;
     CA::MetalDrawable *drawable_ = nullptr;
-    MTL::DepthStencilState *depthStencilState_ = nullptr;
+    MTL::DepthStencilState *depthDisabledState_ = nullptr;
+    MTL::DepthStencilState *depthTestNoWriteState_ = nullptr;
+    MTL::DepthStencilState *depthTestWriteState_ = nullptr;
+    bool depthTestEnabled_ = true;
+    bool depthWriteEnabled_ = true;
 
     MetalPipelineStateProvider *activePipeline_ = nullptr;
     MetalVertexLayoutBinding activeVertexLayout_{};
@@ -71,17 +75,31 @@ const std::array<MetalBufferBinding, kMaxMetalBufferBindings> &bufferBindingsFor
 
 } // namespace
 
+MTL::DepthStencilState *createDepthStencilState(
+    MTL::Device *device,
+    MTL::CompareFunction compareFunction,
+    bool writeEnabled
+) {
+    auto *depthDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
+    depthDescriptor->setDepthCompareFunction(compareFunction);
+    depthDescriptor->setDepthWriteEnabled(writeEnabled);
+    auto *state = device->newDepthStencilState(depthDescriptor);
+    depthDescriptor->release();
+    IR_ASSERT(state != nullptr, "Failed to create Metal depth stencil state");
+    return state;
+}
+
 void initializeMetalRuntime(MTL::Device *device, CA::MetalLayer *layer) {
     g_runtime().device_ = device;
     g_runtime().layer_ = layer;
     g_runtime().commandQueue_ = device->newCommandQueue();
     IR_ASSERT(g_runtime().commandQueue_ != nullptr, "Failed to create Metal command queue");
-
-    auto *depthDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
-    depthDescriptor->setDepthCompareFunction(MTL::CompareFunctionLess);
-    depthDescriptor->setDepthWriteEnabled(true);
-    g_runtime().depthStencilState_ = device->newDepthStencilState(depthDescriptor);
-    depthDescriptor->release();
+    g_runtime().depthDisabledState_ =
+        createDepthStencilState(device, MTL::CompareFunctionAlways, false);
+    g_runtime().depthTestNoWriteState_ =
+        createDepthStencilState(device, MTL::CompareFunctionLess, false);
+    g_runtime().depthTestWriteState_ =
+        createDepthStencilState(device, MTL::CompareFunctionLess, true);
 }
 
 void setMetalBootstrapDevice(MTL::Device *device) {
@@ -93,9 +111,17 @@ void shutdownMetalRuntime() {
         g_runtime().commandQueue_->release();
         g_runtime().commandQueue_ = nullptr;
     }
-    if (g_runtime().depthStencilState_ != nullptr) {
-        g_runtime().depthStencilState_->release();
-        g_runtime().depthStencilState_ = nullptr;
+    if (g_runtime().depthDisabledState_ != nullptr) {
+        g_runtime().depthDisabledState_->release();
+        g_runtime().depthDisabledState_ = nullptr;
+    }
+    if (g_runtime().depthTestNoWriteState_ != nullptr) {
+        g_runtime().depthTestNoWriteState_->release();
+        g_runtime().depthTestNoWriteState_ = nullptr;
+    }
+    if (g_runtime().depthTestWriteState_ != nullptr) {
+        g_runtime().depthTestWriteState_->release();
+        g_runtime().depthTestWriteState_ = nullptr;
     }
     g_runtime() = MetalRuntimeState{};
 }
@@ -126,8 +152,14 @@ CA::MetalDrawable *metalDrawable() {
     return g_runtime().drawable_;
 }
 
-MTL::DepthStencilState *metalDepthStencilState() {
-    return g_runtime().depthStencilState_;
+MTL::DepthStencilState *currentMetalDepthStencilState() {
+    if (!g_runtime().depthTestEnabled_) {
+        return g_runtime().depthDisabledState_;
+    }
+    if (g_runtime().depthWriteEnabled_) {
+        return g_runtime().depthTestWriteState_;
+    }
+    return g_runtime().depthTestNoWriteState_;
 }
 
 void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer) {
@@ -136,6 +168,14 @@ void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer) {
 
 void setMetalDrawable(CA::MetalDrawable *drawable) {
     g_runtime().drawable_ = drawable;
+}
+
+void setMetalDepthTestEnabled(bool enabled) {
+    g_runtime().depthTestEnabled_ = enabled;
+}
+
+void setMetalDepthWriteEnabled(bool enabled) {
+    g_runtime().depthWriteEnabled_ = enabled;
 }
 
 void setActiveMetalPipeline(MetalPipelineStateProvider *pipeline) {

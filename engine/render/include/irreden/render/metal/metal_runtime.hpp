@@ -42,10 +42,12 @@ CA::MetalLayer *metalLayer();
 MTL::CommandQueue *metalCommandQueue();
 MTL::CommandBuffer *metalCommandBuffer();
 CA::MetalDrawable *metalDrawable();
-MTL::DepthStencilState *metalDepthStencilState();
+MTL::DepthStencilState *currentMetalDepthStencilState();
 
 void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer);
 void setMetalDrawable(CA::MetalDrawable *drawable);
+void setMetalDepthTestEnabled(bool enabled);
+void setMetalDepthWriteEnabled(bool enabled);
 
 void setActiveMetalPipeline(MetalPipelineStateProvider *pipeline);
 MetalPipelineStateProvider *activeMetalPipeline();

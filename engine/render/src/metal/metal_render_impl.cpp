@@ -267,7 +267,7 @@ metalCurrentDepthPixelFormat(),
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
         if (metalCurrentDepthTexture() != nullptr) {
-            encoder->setDepthStencilState(metalDepthStencilState());
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
@@ -301,7 +301,7 @@ metalCurrentDepthPixelFormat(),
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
         if (metalCurrentDepthTexture() != nullptr) {
-            encoder->setDepthStencilState(metalDepthStencilState());
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
@@ -317,8 +317,12 @@ metalCurrentDepthPixelFormat(),
 
     void enableBlending() override {}
     void disableBlending() override {}
-    void setDepthTest(bool) override {}
-    void setDepthWrite(bool) override {}
+    void setDepthTest(bool enabled) override {
+setMetalDepthTestEnabled(enabled);
+    }
+    void setDepthWrite(bool enabled) override {
+setMetalDepthWriteEnabled(enabled);
+    }
 };
 
 MetalRenderDevice g_metalRenderDevice;

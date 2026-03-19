@@ -5,6 +5,11 @@ struct VertexIn {
     float2 position [[attribute(0)]];
 };
 
+struct GlobalConstants {
+    int kMinTriangleDistance;
+    int kMaxTriangleDistance;
+};
+
 struct FrameDataIsoTriangles {
     float4x4 mpMatrix;
     float2 zoomLevel;
@@ -20,6 +25,16 @@ struct VertexOut {
     float2 texCoords;
 };
 
+struct FragmentOut {
+    float4 color [[color(0)]];
+    float depth [[depth(any)]];
+};
+
+float normalizeDistance(int dist, constant GlobalConstants& globals) {
+    return float(dist - globals.kMinTriangleDistance) /
+           float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
+}
+
 vertex VertexOut v_trixel_to_framebuffer(
     VertexIn in [[stage_in]],
     texture2d<float> triangleColors [[texture(0)]],
@@ -34,14 +49,28 @@ vertex VertexOut v_trixel_to_framebuffer(
     return out;
 }
 
-fragment float4 f_trixel_to_framebuffer(
+fragment FragmentOut f_trixel_to_framebuffer(
     VertexOut in [[stage_in]],
-    texture2d<float> triangleColors [[texture(0)]]
+    texture2d<float> triangleColors [[texture(0)]],
+    texture2d<int> triangleDistances [[texture(1)]],
+    constant GlobalConstants& globals [[buffer(1)]]
 ) {
+    FragmentOut out;
     constexpr sampler triangleSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
     const float4 color = triangleColors.sample(triangleSampler, in.texCoords);
     if (color.a < 0.001) {
         discard_fragment();
     }
-    return color;
+
+    const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
+    const float2 clampedTexCoords = clamp(
+        in.texCoords,
+        float2(0.0f),
+        float2(0.999999f)
+    );
+    const uint2 distanceCoord = uint2(clampedTexCoords * textureSize);
+
+    out.color = color;
+    out.depth = normalizeDistance(triangleDistances.read(distanceCoord).r, globals);
+    return out;
 }
