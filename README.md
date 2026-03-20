@@ -79,67 +79,48 @@ Notes:
 
 ## Usage
 
-### Getting Started
+### Adding Your Own Project
 
-1. Make a new folder under "creations" named after your new project.
+Prefer keeping your game/project as a separate CMake project and attaching it to the engine locally, instead of editing the engine's checked-in `creations/` tree.
+
+1. Create your project with its own `CMakeLists.txt` and link it against `IrredenEngine`:
+```cmake
+add_executable(MyGame main.cpp)
+target_link_libraries(MyGame PUBLIC IrredenEngine)
 ```
-
-├───creations
-│   ├───default
-|   ├───...
-|   ├───your_new_creation
-
-```
-2. Create a new CMakeLists.txt in that directory.
-```
-set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-
-add_executable(YourNewCreation main.cpp)
-
-target_link_libraries(YourNewCreation PUBLIC IrredenEngine)
-```
-3. Add your new project to the creation's top-level CMakeLists.txt file.
-```
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/default)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/...)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/your_new_creation) # Add your new project
-```
-4. Create a basic main.cpp file for use with the engine.
-```
-#include <irreden/ir_engine.hpp>
-
-int main(int argc, char **argv) {
-    IR_LOG_INFO("Starting creation: your-creation-here");
-
-    IREngine::init(argc, argv);
-
-    // Initialize entities, command, and systems here
-    // ...
-
-    IREngine::gameLoop();
-
-    return 0;
+2. If the project is standalone, add the engine with `add_subdirectory(...)` when `IrredenEngine` is not already present.
+3. To work from the engine root, create a local `CMakeUserPresets.json` in the engine repository and set `IRREDEN_USER_PROJECTS` to your project path:
+```json
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "my-macos-debug",
+      "inherits": "macos-debug",
+      "cacheVariables": {
+        "IRREDEN_USER_PROJECTS": "creations/irreden"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "my-macos-build",
+      "configurePreset": "my-macos-debug"
+    }
+  ]
 }
 ```
-5. Include your first components.
+4. Configure and build from the engine root:
+```bash
+cmake --preset my-macos-debug
+cmake --build --preset my-macos-build --target MyGame
 ```
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/voxel/components/component_voxel_set.hpp>
+5. If your project defines a run target such as `MyGameRun`, launch it from the engine root the same way:
+```bash
+cmake --build --preset my-macos-build --target MyGameRun
 ```
-6. Create your first entity.
-```
-IRECS::createEntity{
-    C_Position3D{0, 0, 0},
-    C_VoxelSetNew{
-        ivec3{1, 1, 1},
-        Color{0, 255, 0, 255}
-    }
-};
-```
-7. Run your project.
-    -   You should see a single green voxel in the center of the screen.
 
-8. TODO: Check out the wiki for documentation on available features.
+This gives you one root build graph in the IDE while still letting your project remain standalone when needed.
 
 ## Dependencies
 

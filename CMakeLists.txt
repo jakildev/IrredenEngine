@@ -5,6 +5,12 @@ project(BuildCreation VERSION 0.1.0)
 option(IRREDEN_BUILD_CREATIONS "Build engine-owned creations" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
+set(
+    IRREDEN_USER_PROJECTS
+    ""
+    CACHE STRING
+    "Semicolon-separated list of additional CMake projects to add after the engine"
+)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -36,6 +42,30 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 
 if(IRREDEN_BUILD_CREATIONS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
+endif()
+
+if(IRREDEN_USER_PROJECTS)
+    foreach(proj IN LISTS IRREDEN_USER_PROJECTS)
+        if(IS_ABSOLUTE "${proj}")
+            set(proj_dir "${proj}")
+        else()
+            set(proj_dir "${PROJECT_SOURCE_DIR}/${proj}")
+        endif()
+
+        if(EXISTS "${proj_dir}/CMakeLists.txt")
+            get_filename_component(proj_name "${proj}" NAME)
+            add_subdirectory(
+                "${proj_dir}"
+                "${CMAKE_CURRENT_BINARY_DIR}/user_projects/${proj_name}"
+            )
+        else()
+            message(
+                WARNING
+                "IRREDEN_USER_PROJECTS: skipping '${proj}' because no "
+                "CMakeLists.txt was found at '${proj_dir}'"
+            )
+        endif()
+    endforeach()
 endif()
 
 if(IRREDEN_BUILD_TESTS)

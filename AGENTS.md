@@ -359,6 +359,18 @@ creations/demos/your_demo/
 
 The `creations/template/` folder contains a minimal reference structure for new creations.
 
+### Private Project Workflow
+
+- Keep engine-owned creations in `creations/demos/`, `creations/editors/`, etc.
+- For private or user-specific projects, prefer a separate CMake project that can build in two modes:
+  - **Standalone:** the project pulls in `IrredenEngine` via its own `CMakeLists.txt`.
+  - **Integrated:** the engine root adds the project through `IRREDEN_USER_PROJECTS`, so engine and game targets appear in one root build.
+- Define private integrations in a local `CMakeUserPresets.json` at the engine root. This file is gitignored and can set `IRREDEN_USER_PROJECTS` to a semicolon-separated list of relative or absolute project paths.
+- Use root configure for day-to-day engine iteration when you want one target graph in the IDE:
+  - `cmake --preset my-macos-debug`
+  - `cmake --build --preset my-macos-build --target IRIrreden`
+- A private project can still be configured directly from its own source tree when you want it to remain fully standalone.
+
 ---
 
 ## Style and Naming
