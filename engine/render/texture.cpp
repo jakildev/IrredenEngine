@@ -70,9 +70,7 @@ void Texture2D::bind(GLuint unit) const {
 void Texture2D::bindImage(
     GLuint unit, GLenum access, GLenum format, GLint level, GLboolean layered, GLint layer
 ) const {
-    // TODO: Figure out why its not eng ENG_API
-    // UPDATE: Need to update gl_wrap/funcs_list.txt I think
-    glBindImageTexture(unit, m_handle, level, layered, layer, access, format);
+    ENG_API->glBindImageTexture(unit, m_handle, level, layered, layer, access, format);
 }
 
 GLuint Texture2D::getHandle() const {
@@ -96,9 +94,7 @@ void Texture2D::subImage2D(
 }
 void Texture2D::clear(GLenum format, GLenum type, const void *data) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    // TODO: Figure out why its not eng ENG_API
-    // UPDATE: Need to update gl_wrap/funcs_list.txt I think
-    glClearTexImage(m_handle, 0, format, type, data);
+    ENG_API->glClearTexImage(m_handle, 0, format, type, data);
 }
 
 void Texture2D::getSubImage2D(
@@ -111,7 +107,7 @@ void Texture2D::getSubImage2D(
     void *data
 ) const {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    glGetTextureSubImage(
+    ENG_API->glGetTextureSubImage(
         m_handle,
         0,
         xoffset,

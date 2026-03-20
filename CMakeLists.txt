@@ -44,6 +44,10 @@ if(IRREDEN_BUILD_CREATIONS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 endif()
 
+if(EXISTS "${PROJECT_SOURCE_DIR}/creations/game/CMakeLists.txt")
+    add_subdirectory(${PROJECT_SOURCE_DIR}/creations/game)
+endif()
+
 if(IRREDEN_USER_PROJECTS)
     foreach(proj IN LISTS IRREDEN_USER_PROJECTS)
         if(IS_ABSOLUTE "${proj}")

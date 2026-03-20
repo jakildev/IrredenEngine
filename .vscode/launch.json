@@ -2,25 +2,25 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug IRIrreden (from root)",
+      "name": "Debug IRGame (from root)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/creations/irreden/build/demos/unit_movement/IRIrreden",
+      "program": "${workspaceFolder}/build/creations/game/demos/unit_movement/IRGame",
       "args": [],
       "stopAtEntry": false,
-      "cwd": "${workspaceFolder}/creations/irreden/build/demos/unit_movement",
+      "cwd": "${workspaceFolder}/build/creations/game/demos/unit_movement",
       "environment": [],
       "externalConsole": false,
       "MIMode": "lldb",
-      "preLaunchTask": "Build IRIrreden (from root)",
+      "preLaunchTask": "Build IRGame (from root)",
       "osx": {
         "MIMode": "lldb",
-        "program": "${workspaceFolder}/creations/irreden/build/demos/unit_movement/IRIrreden"
+        "program": "${workspaceFolder}/build/creations/game/demos/unit_movement/IRGame"
       },
       "windows": {
         "MIMode": "gdb",
         "miDebuggerPath": "gdb",
-        "program": "${workspaceFolder}/creations/irreden/build/demos/unit_movement/IRIrreden.exe"
+        "program": "${workspaceFolder}/build/creations/game/demos/unit_movement/IRGame.exe"
       }
     }
   ]

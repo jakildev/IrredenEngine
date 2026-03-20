@@ -91,6 +91,15 @@ void GLTracer_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alp
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glClearTexImage(GLuint texture, GLint level, GLenum format, GLenum type,
+                              const void *data) {
+    IRE_GL_LOG_DEBUG("glClearTexImage({}, {}, {}, {}, {})", texture, level, E2S(format), E2S(type),
+                     data);
+    apiHook.glClearTexImage(texture, level, format, type, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glClearStencil(GLint s) {
     IRE_GL_LOG_DEBUG("glClearStencil({})", s);
     apiHook.glClearStencil(s);
@@ -364,6 +373,13 @@ void GLTracer_glDeleteBuffers(GLsizei n, const GLuint *buffers) {
     GLenum glError = apiHook.glGetError();
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError), "glDeleteBuffers({}, {})", n,
               (const void *)(buffers));
+}
+
+void GLTracer_glDetachShader(GLuint program, GLuint shader) {
+    IRE_GL_LOG_DEBUG("glDetachShader({}, {})", program, shader);
+    apiHook.glDetachShader(program, shader);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
 void GLTracer_glGenBuffers(GLsizei n, GLuint *buffers) {
@@ -1541,6 +1557,15 @@ void GLTracer_glGenerateTextureMipmap(GLuint texture) {
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glBindImageTexture(GLuint unit, GLuint texture, GLint level, GLboolean layered,
+                                 GLint layer, GLenum access, GLenum format) {
+    IRE_GL_LOG_DEBUG("glBindImageTexture({}, {}, {}, {}, {}, {}, {})", unit, texture, level,
+                     (unsigned int)(layered), layer, E2S(access), E2S(format));
+    apiHook.glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glBindTextureUnit(GLuint unit, GLuint texture) {
     IRE_GL_LOG_DEBUG("glBindTextureUnit({}, {})", unit, texture);
     apiHook.glBindTextureUnit(unit, texture);
@@ -1609,6 +1634,18 @@ void GLTracer_glGetTextureParameterIuiv(GLuint texture, GLenum pname, GLuint *pa
 void GLTracer_glGetTextureParameteriv(GLuint texture, GLenum pname, GLint *params) {
     IRE_GL_LOG_DEBUG("glGetTextureParameteriv({}, {}, {})", texture, E2S(pname), (void *)(params));
     apiHook.glGetTextureParameteriv(texture, pname, params);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glGetTextureSubImage(GLuint texture, GLint level, GLint xoffset, GLint yoffset,
+                                   GLint zoffset, GLsizei width, GLsizei height, GLsizei depth,
+                                   GLenum format, GLenum type, GLsizei bufSize, void *pixels) {
+    IRE_GL_LOG_DEBUG("glGetTextureSubImage({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})", texture,
+                     level, xoffset, yoffset, zoffset, width, height, depth, E2S(format), E2S(type),
+                     bufSize, pixels);
+    apiHook.glGetTextureSubImage(texture, level, xoffset, yoffset, zoffset, width, height, depth,
+                                 format, type, bufSize, pixels);
     GLenum glError = apiHook.glGetError();
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
@@ -1759,6 +1796,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glBindBufferRange);
     INJECT(glBindFragDataLocation);
     INJECT(glBindFramebuffer);
+    INJECT(glBindImageTexture);
     INJECT(glBindTextureUnit);
     INJECT(glBindTextures);
     INJECT(glBindVertexArray);
@@ -1778,6 +1816,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glClearNamedFramebufferiv);
     INJECT(glClearNamedFramebufferuiv);
     INJECT(glClearStencil);
+    INJECT(glClearTexImage);
     INJECT(glColorMask);
     INJECT(glCompileShader);
     INJECT(glCompressedTexImage2D);
@@ -1802,6 +1841,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glCreateVertexArrays);
     INJECT(glCullFace);
     INJECT(glDeleteBuffers);
+    INJECT(glDetachShader);
     INJECT(glDeleteFramebuffers);
     INJECT(glDeleteProgram);
     INJECT(glDeleteQueries);
@@ -1871,6 +1911,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glGetTextureParameterIuiv);
     INJECT(glGetTextureParameterfv);
     INJECT(glGetTextureParameteriv);
+    INJECT(glGetTextureSubImage);
     INJECT(glGetTransformFeedbacki64_v);
     INJECT(glGetTransformFeedbacki_v);
     INJECT(glGetTransformFeedbackiv);
@@ -1976,6 +2017,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glBindBufferRange);
     LOAD_GL_FUNC(glBindFragDataLocation);
     LOAD_GL_FUNC(glBindFramebuffer);
+    LOAD_GL_FUNC(glBindImageTexture);
     LOAD_GL_FUNC(glBindTextureUnit);
     LOAD_GL_FUNC(glBindTextures);
     LOAD_GL_FUNC(glBindVertexArray);
@@ -1995,6 +2037,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glClearNamedFramebufferiv);
     LOAD_GL_FUNC(glClearNamedFramebufferuiv);
     LOAD_GL_FUNC(glClearStencil);
+    LOAD_GL_FUNC(glClearTexImage);
     LOAD_GL_FUNC(glColorMask);
     LOAD_GL_FUNC(glCompileShader);
     LOAD_GL_FUNC(glCompressedTexImage2D);
@@ -2019,6 +2062,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glCreateVertexArrays);
     LOAD_GL_FUNC(glCullFace);
     LOAD_GL_FUNC(glDeleteBuffers);
+    LOAD_GL_FUNC(glDetachShader);
     LOAD_GL_FUNC(glDeleteFramebuffers);
     LOAD_GL_FUNC(glDeleteProgram);
     LOAD_GL_FUNC(glDeleteQueries);
@@ -2089,6 +2133,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glGetTextureParameterIuiv);
     LOAD_GL_FUNC(glGetTextureParameterfv);
     LOAD_GL_FUNC(glGetTextureParameteriv);
+    LOAD_GL_FUNC(glGetTextureSubImage);
     LOAD_GL_FUNC(glGetTransformFeedbacki64_v);
     LOAD_GL_FUNC(glGetTransformFeedbacki_v);
     LOAD_GL_FUNC(glGetTransformFeedbackiv);

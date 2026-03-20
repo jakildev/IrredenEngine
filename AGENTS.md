@@ -13,7 +13,7 @@ IrredenEngine/
 │   ├── demos/              # default, midi_polyrhythm, unit_movement, midi_keyboard
 │   ├── editors/            # font_maker, voxel_set_maker
 │   ├── hana_class_projects/# Personal/educational projects
-│   ├── irreden/            # In-progress game (stub)
+│   ├── game/               # Conventional private game path (gitignored)
 │   └── template/           # Reference template for new creations
 ├── docs/                   # Style, dependencies, contributing
 ├── engine/                 # Core engine (static libs)
@@ -362,14 +362,15 @@ The `creations/template/` folder contains a minimal reference structure for new 
 ### Private Project Workflow
 
 - Keep engine-owned creations in `creations/demos/`, `creations/editors/`, etc.
-- For private or user-specific projects, prefer a separate CMake project that can build in two modes:
-  - **Standalone:** the project pulls in `IrredenEngine` via its own `CMakeLists.txt`.
-  - **Integrated:** the engine root adds the project through `IRREDEN_USER_PROJECTS`, so engine and game targets appear in one root build.
-- Define private integrations in a local `CMakeUserPresets.json` at the engine root. This file is gitignored and can set `IRREDEN_USER_PROJECTS` to a semicolon-separated list of relative or absolute project paths.
-- Use root configure for day-to-day engine iteration when you want one target graph in the IDE:
-  - `cmake --preset my-macos-debug`
-  - `cmake --build --preset my-macos-build --target IRIrreden`
-- A private project can still be configured directly from its own source tree when you want it to remain fully standalone.
+- For a private or user-specific game, prefer the conventional `creations/game/` path. The root `CMakeLists.txt` auto-adds it when `creations/game/CMakeLists.txt` exists, so the game shows up in the same root build graph as the engine demos.
+- Treat `creations/game/` like a demo-style integration:
+  - Put shared game code in a library target such as `IRGameLib`
+  - Put the runnable creation in a target such as `IRGame`
+  - Add helper targets such as `IRGameAssets` and `IRGameRun` when the game needs synced scripts or data
+- Use root configure for day-to-day engine iteration:
+  - `cmake --preset macos-debug`
+  - `cmake --build --preset macos-build-all --target IRGame`
+- `IRREDEN_USER_PROJECTS` still exists for advanced setups where you want to attach additional external CMake projects without using `creations/game/`.
 
 ---
 

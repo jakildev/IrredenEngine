@@ -52,6 +52,8 @@ class Texture3DImpl {
   public:
     virtual ~Texture3DImpl() = default;
     virtual std::uint32_t getHandle() const = 0;
+    virtual void *getNativeTexture() const = 0;
+    virtual std::uint32_t getNativePixelFormat() const = 0;
     virtual void bind(std::uint32_t unit) = 0;
     virtual void uploadSubImage3D(
         int width,

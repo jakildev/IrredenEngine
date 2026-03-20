@@ -110,7 +110,7 @@ class OpenGLTexture2DImpl final : public Texture2DImpl {
         bool layered,
         int layer
     ) const override {
-        glBindImageTexture(
+        ENG_API->glBindImageTexture(
             unit,
             m_handle,
             level,
@@ -156,11 +156,11 @@ class OpenGLTexture2DImpl final : public Texture2DImpl {
         const GLenum glType = toGLPixelDataType(type);
         const GLsizei bufSize =
             static_cast<GLsizei>(width * height * glFormatComponents(glFormat) * glTypeSize(glType));
-        glGetTextureSubImage(m_handle, 0, xoffset, yoffset, 0, width, height, 1, glFormat, glType, bufSize, data);
+        ENG_API->glGetTextureSubImage(m_handle, 0, xoffset, yoffset, 0, width, height, 1, glFormat, glType, bufSize, data);
     }
 
     void clear(PixelDataFormat format, PixelDataType type, const void *data) override {
-        glClearTexImage(m_handle, 0, toGLPixelDataFormat(format), toGLPixelDataType(type), data);
+        ENG_API->glClearTexImage(m_handle, 0, toGLPixelDataFormat(format), toGLPixelDataType(type), data);
     }
 
   private:

@@ -138,13 +138,12 @@ function(
 )
     if(IR_isWindows)
         cmake_path(APPEND tempFullSourcePath ${sourceDir} ${dllName}.dll)
-        cmake_path(APPEND tempFullDestPath ${PROJECT_BINARY_DIR} ${dllName}.dll)
         add_custom_command(
             TARGET ${target}
             POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy
                 ${tempFullSourcePath}
-                ${tempFullDestPath}
+                "$<TARGET_FILE_DIR:${target}>/${dllName}.dll"
         )
     endif()
 endfunction()

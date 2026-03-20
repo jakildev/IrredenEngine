@@ -2,49 +2,51 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Configure IRIrreden (from root)",
+      "label": "Configure IRGame (from root)",
       "type": "shell",
       "command": "cmake",
       "options": {
-        "cwd": "${workspaceFolder}/creations/irreden"
+        "cwd": "${workspaceFolder}"
       },
       "osx": {
         "args": [
           "--preset",
-          "irreden-macos-debug"
+          "macos-debug"
         ]
       },
       "windows": {
         "args": [
           "--preset",
-          "irreden-windows-debug"
+          "windows-debug"
         ]
       },
       "problemMatcher": []
     },
     {
-      "label": "Build IRIrreden (from root)",
+      "label": "Build IRGame (from root)",
       "type": "shell",
       "command": "cmake",
       "options": {
-        "cwd": "${workspaceFolder}/creations/irreden"
+        "cwd": "${workspaceFolder}"
       },
       "osx": {
         "args": [
           "--build",
-          "--preset",
-          "irreden-macos-build"
+          "build",
+          "--target",
+          "IRGame"
         ]
       },
       "windows": {
         "args": [
           "--build",
-          "--preset",
-          "irreden-windows-build"
+          "build",
+          "--target",
+          "IRGame"
         ]
       },
       "dependsOn": [
-        "Configure IRIrreden (from root)"
+        "Configure IRGame (from root)"
       ],
       "group": {
         "kind": "build",
@@ -55,28 +57,30 @@
       ]
     },
     {
-      "label": "Run IRIrreden (from root)",
+      "label": "Run IRGame (from root)",
       "type": "shell",
       "command": "cmake",
       "options": {
-        "cwd": "${workspaceFolder}/creations/irreden"
+        "cwd": "${workspaceFolder}"
       },
       "osx": {
         "args": [
           "--build",
-          "--preset",
-          "irreden-macos-run"
+          "build",
+          "--target",
+          "IRGameRun"
         ]
       },
       "windows": {
         "args": [
           "--build",
-          "--preset",
-          "irreden-windows-run"
+          "build",
+          "--target",
+          "IRGameRun"
         ]
       },
       "dependsOn": [
-        "Configure IRIrreden (from root)"
+        "Configure IRGame (from root)"
       ],
       "problemMatcher": [
         "$gcc"
