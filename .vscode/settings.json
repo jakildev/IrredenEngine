@@ -70,5 +70,8 @@
     },
     "C_Cpp.files.exclude": {
         "**/build/**": true
-    }
+    },
+    "search.useIgnoreFiles": false,
+    "search.useGlobalIgnoreFiles": false,
+    "search.useParentIgnoreFiles": false
 }
