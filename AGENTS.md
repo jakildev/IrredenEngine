@@ -137,6 +137,18 @@ createSystem<C_NavAgent>(
 );
 ```
 
+### Avoid Per-Entity Component Queries Inside System Ticks
+
+**Never call `getComponent` or `getComponentOptional` on individual entities inside a system's per-entity tick function.** Each call performs a hash-map lookup, a linear scan of the entity's archetype set, and another hash-map lookup into the component storage -- all with profiler overhead. At scale this dominates the frame.
+
+**Alternatives (preferred → acceptable):**
+
+1. **Include the component in the system's template parameters** so it's iterated directly from the archetype's dense column storage. This is the primary fix -- the data is accessed via contiguous array index, not random lookup.
+2. **Store the data in an existing component at creation time** if it's known upfront (e.g. store a canvas entity ID in `C_VoxelSetNew` during allocation rather than looking it up every frame).
+3. **Use `beginTick` / `endTick`** for lookups that only need to happen once per frame, not per entity.
+4. **Use `relationTick`** for per-parent-group lookups -- fires once per unique parent entity when using `CHILD_OF` or other relation queries.
+5. **Future:** Use relation-based archetype grouping (e.g. a `RENDERS_ON` relation) to partition entities by group at the archetype level, eliminating per-entity branching entirely.
+
 ### Entity Creation
 
 - **Single:** `IREntity::createEntity(C_VoxelSetNew{...}, ...)`.

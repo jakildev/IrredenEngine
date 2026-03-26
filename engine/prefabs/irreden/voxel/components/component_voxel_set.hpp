@@ -17,11 +17,19 @@ using IRRender::Texture2D;
 
 namespace IRComponents {
 
+// Allocates a contiguous span of voxels in the canvas VoxelPool.
+// Prefer C_ShapeDescriptor for entities whose visual is a geometric shape
+// (box, sphere, etc.) -- it avoids per-voxel allocation entirely by
+// evaluating SDFs on the GPU. Reserve C_VoxelSetNew for cases that need
+// individual voxel colors (imported voxel art, terrain editing, particles).
 struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
+    IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
+    vec3 lastParentPosition_ = vec3(0.0f);
+    bool hasLastParentPosition_ = false;
 
     // local voxel position
     std::span<C_Position3D> positions_;
@@ -41,6 +49,7 @@ struct C_VoxelSetNew {
         : numVoxels_{size.x * size.y * size.z}
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
+        canvasEntity_ = IRRender::getActiveCanvasEntity();
         auto voxels = IRRender::allocateVoxels(requestedVoxels);
         positions_ = std::get<0>(voxels);
         positionOffsets_ = std::get<1>(voxels);
@@ -168,7 +177,12 @@ struct C_VoxelSetNew {
 
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
-    void updateAsChild(C_Position3D parentPosition) {
+    bool updateAsChild(C_Position3D parentPosition) {
+        if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
+            return false;
+        }
+        lastParentPosition_ = parentPosition.pos_;
+        hasLastParentPosition_ = true;
         int safeCount = IRMath::min(
             numVoxels_,
             static_cast<int>(IRMath::min(
@@ -179,6 +193,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < safeCount; i++) {
             globalPositions_[i].pos_ = getLocalPosition(i) + parentPosition.pos_;
         }
+        return safeCount > 0;
     }
 
     // TODO: get rid of all unneeded voxels

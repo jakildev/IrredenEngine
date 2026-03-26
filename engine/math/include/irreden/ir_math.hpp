@@ -166,6 +166,49 @@ constexpr vec3 isoDepthShift(const vec3 &position, float depth) {
     return position + vec3(depth);
 }
 
+struct IsoBounds2D {
+    vec2 min_;
+    vec2 max_;
+};
+
+inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
+    vec2 corners[8];
+    int idx = 0;
+    for (int dx = 0; dx <= 1; ++dx) {
+        for (int dy = 0; dy <= 1; ++dy) {
+            for (int dz = 0; dz <= 1; ++dz) {
+                vec3 corner = worldPos + vec3(
+                    dx * voxelSize.x,
+                    dy * voxelSize.y,
+                    dz * voxelSize.z
+                );
+                corners[idx++] = pos3DtoPos2DIso(corner);
+            }
+        }
+    }
+    vec2 bmin = corners[0];
+    vec2 bmax = corners[0];
+    for (int i = 1; i < 8; ++i) {
+        bmin = glm::min(bmin, corners[i]);
+        bmax = glm::max(bmax, corners[i]);
+    }
+    return IsoBounds2D{bmin, bmax};
+}
+
+inline bool isEntityOnScreen(
+    vec3 worldPos,
+    ivec3 voxelSize,
+    vec2 cameraIso,
+    ivec2 canvasOffsetZ1,
+    ivec2 canvasSize
+) {
+    IsoBounds2D bounds = entityIsoBounds(worldPos, voxelSize);
+    vec2 screenMin = bounds.min_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    vec2 screenMax = bounds.max_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    return screenMax.x >= 0 && screenMin.x < canvasSize.x &&
+           screenMax.y >= 0 && screenMin.y < canvasSize.y;
+}
+
 // constexpr vec2 pos3DtoPos2DScreenOffset(const vec3 position) {
 //     return pos3DtoPos2DIso(position) ...
 // }

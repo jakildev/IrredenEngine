@@ -78,6 +78,12 @@ class MetalBufferImpl final : public BufferImpl {
         bindMetalBuffer(target, index, m_buffer, 0);
     }
 
+    void *mapRange(std::ptrdiff_t offset, std::size_t, std::uint32_t) override {
+        return static_cast<std::uint8_t *>(m_buffer->contents()) + offset;
+    }
+
+    void unmap() override {}
+
   private:
     MTL::Buffer *m_buffer = nullptr;
     std::size_t m_size = 0;

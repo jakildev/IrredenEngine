@@ -65,6 +65,27 @@ inline IREntity::EntityId getCanvas(std::string canvasName) {
     return getRenderManager().getCanvas(canvasName);
 }
 
+inline IREntity::EntityId createCanvas(
+    std::string name,
+    ivec3 voxelPoolSize,
+    ivec2 trixelSize,
+    IREntity::EntityId framebuffer = IREntity::EntityId{}
+) {
+    return getRenderManager().createCanvas(name, voxelPoolSize, trixelSize, framebuffer);
+}
+
+inline bool hasCanvas(const std::string &name) {
+    return getRenderManager().hasCanvas(name);
+}
+
+inline void setActiveCanvas(const std::string &name) {
+    getRenderManager().setActiveCanvas(name);
+}
+
+inline IREntity::EntityId getActiveCanvasEntity() {
+    return getRenderManager().getActiveCanvasEntity();
+}
+
 vec2 getCameraPosition2DIso();
 vec2 getCameraZoom();
 vec2 getTriangleStepSizeScreen();

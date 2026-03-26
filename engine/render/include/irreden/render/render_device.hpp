@@ -15,6 +15,7 @@ class RenderDevice {
     virtual void present() = 0;
 
     virtual void dispatchCompute(std::uint32_t x, std::uint32_t y, std::uint32_t z) = 0;
+    virtual void dispatchComputeIndirect(std::uint32_t bufferHandle, std::ptrdiff_t offset) = 0;
     virtual void memoryBarrier(BarrierType barrierType) = 0;
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
@@ -26,6 +27,7 @@ class RenderDevice {
     virtual void disableBlending() = 0;
     virtual void setDepthTest(bool enabled) = 0;
     virtual void setDepthWrite(bool enabled) = 0;
+    virtual void clearTexImage(std::uint32_t textureHandle, int level, const void *data) = 0;
 };
 
 RenderDevice *device();

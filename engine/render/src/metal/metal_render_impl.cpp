@@ -247,6 +247,7 @@ bindMetalDefaultRenderTarget();
     }
 
     void memoryBarrier(BarrierType) override {}
+    void dispatchComputeIndirect(std::uint32_t, std::ptrdiff_t) override {}
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();
@@ -323,6 +324,7 @@ setMetalDepthTestEnabled(enabled);
     void setDepthWrite(bool enabled) override {
 setMetalDepthWriteEnabled(enabled);
     }
+    void clearTexImage(std::uint32_t, int, const void *) override {}
 };
 
 MetalRenderDevice g_metalRenderDevice;

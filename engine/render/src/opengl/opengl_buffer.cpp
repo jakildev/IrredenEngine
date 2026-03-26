@@ -62,6 +62,21 @@ class OpenGLBufferImpl final : public BufferImpl {
         ENG_API->glBindBufferBase(toGLBufferTarget(target), index, m_handle);
     }
 
+    void *mapRange(
+        std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags
+    ) override {
+        return ENG_API->glMapNamedBufferRange(
+            m_handle,
+            static_cast<GLintptr>(offset),
+            static_cast<GLsizeiptr>(length),
+            toGLBufferStorageFlags(accessFlags)
+        );
+    }
+
+    void unmap() override {
+        ENG_API->glUnmapNamedBuffer(m_handle);
+    }
+
   private:
     GLuint m_handle = 0;
 };

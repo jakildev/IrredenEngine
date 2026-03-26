@@ -147,6 +147,15 @@ inline GLbitfield toGLBufferStorageFlags(std::uint32_t flags) {
     if ((flags & BUFFER_STORAGE_MAP_READ) != 0) {
         glFlags |= GL_MAP_READ_BIT;
     }
+    if ((flags & BUFFER_STORAGE_MAP_WRITE) != 0) {
+        glFlags |= GL_MAP_WRITE_BIT;
+    }
+    if ((flags & BUFFER_STORAGE_MAP_PERSISTENT) != 0) {
+        glFlags |= GL_MAP_PERSISTENT_BIT;
+    }
+    if ((flags & BUFFER_STORAGE_MAP_COHERENT) != 0) {
+        glFlags |= GL_MAP_COHERENT_BIT;
+    }
     return glFlags;
 }
 
@@ -170,6 +179,10 @@ inline GLbitfield toGLBarrierType(BarrierType barrierType) {
             return GL_ALL_BARRIER_BITS;
         case BarrierType::SHADER_STORAGE:
             return GL_SHADER_STORAGE_BARRIER_BIT;
+        case BarrierType::SHADER_IMAGE_ACCESS:
+            return GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
+        case BarrierType::COMMAND:
+            return GL_COMMAND_BARRIER_BIT;
     }
     return GL_ALL_BARRIER_BITS;
 }

@@ -154,6 +154,8 @@ RenderManager::RenderManager(
         0.0f    // staticPixelOffsetY
     });
 
+    m_activeCanvas = m_mainCanvas;
+
     initRenderingResources();
     initRenderingSystems();
     g_renderManager = this;
@@ -192,17 +194,11 @@ std::tuple<
     std::span<C_PositionGlobal3D>,
     std::span<C_Voxel>>
 RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
-    if (canvasName == "main") {
-        return IREntity::getComponent<C_VoxelPool>(m_mainCanvas).allocateVoxels(numVoxels);
-    }
-
-    IR_ASSERT(false, "only allocating main voxels for now.");
-    return std::make_tuple(
-        std::span<C_Position3D>{},
-        std::span<C_PositionOffset3D>{},
-        std::span<C_PositionGlobal3D>{},
-        std::span<C_Voxel>{}
-    );
+    auto it = m_canvasMap.find(canvasName);
+    IR_ASSERT(it != m_canvasMap.end(), "Canvas not found: {}", canvasName);
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
+    IR_ASSERT(poolOpt.has_value(), "Canvas has no VoxelPool: {}", canvasName);
+    return (*poolOpt.value()).allocateVoxels(numVoxels);
 }
 
 vec2 RenderManager::getCameraPosition2DIso() const {
@@ -296,22 +292,53 @@ void RenderManager::deallocateVoxels(
     std::span<C_Voxel> voxels,
     std::string canvasName
 ) {
-    if (canvasName == "main") {
-        // Hack due to exception on shutdown when deleting entities
-        // Need to find a better solution.
-        if (!IREntity::entityExists(m_mainCanvas)) {
-            return;
-        }
-        IREntity::getComponent<C_VoxelPool>(m_mainCanvas)
-            .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
+    auto it = m_canvasMap.find(canvasName);
+    if (it == m_canvasMap.end()) {
         return;
     }
-
-    IR_ASSERT(false, "only deallocating main voxels for now.");
+    if (!IREntity::entityExists(it->second)) {
+        return;
+    }
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
+    if (!poolOpt.has_value()) {
+        return;
+    }
+    (*poolOpt.value()).deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
 }
 
 EntityId RenderManager::getCanvas(std::string canvasName) {
     return m_canvasMap[canvasName];
+}
+
+EntityId RenderManager::createCanvas(
+    std::string name,
+    ivec3 voxelPoolSize,
+    ivec2 trixelSize,
+    EntityId framebuffer
+) {
+    EntityId fb = framebuffer;
+    if (fb == EntityId{}) {
+        fb = m_mainFramebuffer;
+    }
+    EntityId canvas = IREntity::createEntity<kVoxelPoolCanvas>(
+        name, voxelPoolSize, trixelSize, fb
+    );
+    m_canvasMap[name] = canvas;
+    return canvas;
+}
+
+bool RenderManager::hasCanvas(const std::string &name) const {
+    return m_canvasMap.find(name) != m_canvasMap.end();
+}
+
+void RenderManager::setActiveCanvas(const std::string &name) {
+    auto it = m_canvasMap.find(name);
+    IR_ASSERT(it != m_canvasMap.end(), "Canvas not found: {}", name);
+    m_activeCanvas = it->second;
+}
+
+EntityId RenderManager::getActiveCanvasEntity() const {
+    return m_activeCanvas;
 }
 
 ivec2 RenderManager::getMainCanvasSizeTriangles() const {

@@ -17,7 +17,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 
-#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -34,10 +33,76 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
     return ivec2(groupsX, groupsY);
 }
 
+inline void buildVoxelFrameData(
+    FrameDataVoxelToCanvas &frameData,
+    const C_TriangleCanvasTextures &canvas,
+    int liveVoxelCount
+) {
+    const auto renderMode = IRRender::getVoxelRenderMode();
+    const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
+    const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
+    const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
+
+    frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+    frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
+    frameData.voxelRenderOptions_ =
+        ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
+    frameData.voxelDispatchGrid_ = dispatchGrid;
+    frameData.voxelCount_ = liveVoxelCount;
+    frameData.canvasSizePixels_ = canvas.size_;
+
+    static int previousRenderMode = -1;
+    static int previousEffectiveSubdivisions = -1;
+    if (static_cast<int>(renderMode) != previousRenderMode ||
+        effectiveSubdivisions != previousEffectiveSubdivisions) {
+        IRE_LOG_INFO(
+            "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
+            "effective_subdivisions={}",
+            static_cast<int>(renderMode),
+            baseSubdivisions,
+            static_cast<int>(IRMath::round(
+                IRMath::max(IRRender::getCameraZoom().x, IRRender::getCameraZoom().y)
+            )),
+            effectiveSubdivisions
+        );
+        previousRenderMode = static_cast<int>(renderMode);
+        previousEffectiveSubdivisions = effectiveSubdivisions;
+    }
+
+    IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")
+        ->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData);
+}
+
+inline void clearCanvasAndDistances(
+    IREntity::EntityId canvasEntity,
+    C_TriangleCanvasTextures &canvas
+) {
+    auto background =
+        IREntity::getComponentOptional<C_TriangleCanvasBackground>(canvasEntity);
+    if (background.has_value()) {
+        (*background.value()).clearCanvasWithBackground(canvas);
+    } else {
+        canvas.clear();
+    }
+    static const std::int32_t clearValue =
+        static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+    IRRender::device()->clearTexImage(
+        canvas.getTextureDistances()->getHandle(), 0, &clearValue
+    );
+}
+
+inline void syncEntityIds(C_VoxelPool &pool, int liveCount) {
+    if (!pool.isEntityIdsDirty()) {
+        return;
+    }
+    IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer")
+        ->subData(0, liveCount * sizeof(IREntity::EntityId), pool.getEntityIds().data());
+    pool.clearEntityIdsDirty();
+}
+
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     static SystemId create() {
         static FrameDataVoxelToCanvas frameData{};
-        const ivec2 scratchCanvasSize = ivec2(IRRender::getMainCanvasSizeTrixels());
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
             std::vector{
@@ -76,112 +141,36 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_VoxelEntityIds
         );
-        IRRender::createNamedResource<Buffer>(
-            "TrixelDistanceScratchBuffer",
-            nullptr,
-            static_cast<std::size_t>(scratchCanvasSize.x) *
-                static_cast<std::size_t>(scratchCanvasSize.y) *
-                sizeof(std::int32_t),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_TrixelDistanceScratch
-        );
         return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasFirst",
             [](IREntity::EntityId &entity,
                C_VoxelPool &voxelPool,
                C_TriangleCanvasTextures &triangleCanvasTextures) {
-                static std::vector<std::int32_t> scratchDistances;
-                frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
-                frameData.trixelCanvasOffsetZ1_ =
-                    IRMath::trixelOriginOffsetZ1(triangleCanvasTextures.size_);
-                const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
-                const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
-                const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-                const ivec2 dispatchGrid =
-                    voxelDispatchGridForCount(voxelPool.getVoxelPoolSize());
-                frameData.voxelRenderOptions_ =
-                    ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
-                frameData.voxelDispatchGrid_ = dispatchGrid;
-                frameData.voxelCount_ = voxelPool.getVoxelPoolSize();
-                static int previousRenderMode = -1;
-                static int previousEffectiveSubdivisions = -1;
-                if (static_cast<int>(renderMode) != previousRenderMode ||
-                    effectiveSubdivisions != previousEffectiveSubdivisions) {
-                    IRE_LOG_INFO(
-                        "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
-                        "effective_subdivisions={}",
-                        static_cast<int>(renderMode),
-                        baseSubdivisions,
-                        static_cast<int>(IRMath::round(
-                            IRMath::max(IRRender::getCameraZoom().x, IRRender::getCameraZoom().y)
-                        )),
-                        effectiveSubdivisions
-                    );
-                    previousRenderMode = static_cast<int>(renderMode);
-                    previousEffectiveSubdivisions = effectiveSubdivisions;
-                }
+                const int liveVoxelCount = voxelPool.getLiveVoxelCount();
 
-                IRRender::getNamedResource<Buffer>("SingleVoxelFrameData")
-                    ->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData);
-                const std::size_t scratchSize =
-                    static_cast<std::size_t>(triangleCanvasTextures.size_.x) *
-                    static_cast<std::size_t>(triangleCanvasTextures.size_.y);
-                auto background =
-                    IREntity::getComponentOptional<C_TriangleCanvasBackground>(entity);
-                if (background.has_value()) {
-                    (*background.value()).clearCanvasWithBackground(triangleCanvasTextures);
-                } else {
-                    triangleCanvasTextures.clear();
-                }
-                scratchDistances.assign(
-                    scratchSize,
-                    static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance)
-                );
-                IRRender::getNamedResource<Buffer>("TrixelDistanceScratchBuffer")
-                    ->subData(
-                        0,
-                        scratchSize * sizeof(std::int32_t),
-                        scratchDistances.data()
-                    );
-                // TODO: each voxel allocation should have own
-                // voxel GPU buffers as well.
+                buildVoxelFrameData(frameData, triangleCanvasTextures, liveVoxelCount);
+                clearCanvasAndDistances(entity, triangleCanvasTextures);
+
                 IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")
                     ->subData(
                         0,
-                        voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
+                        liveVoxelCount * sizeof(C_PositionGlobal3D),
                         voxelPool.getPositionGlobals().data()
                     );
                 IRRender::getNamedResource<Buffer>("VoxelColorBuffer")
                     ->subData(
                         0,
-                        voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
+                        liveVoxelCount * sizeof(C_Voxel),
                         voxelPool.getColors().data()
                     );
+                syncEntityIds(voxelPool, liveVoxelCount);
 
-                if (voxelPool.isEntityIdsDirty()) {
-                    IRE_LOG_DEBUG(
-                        "[Stage1] Uploading entity IDs to SSBO, poolSize={}, first few IDs: {}, {}, {}",
-                        voxelPool.getVoxelPoolSize(),
-                        voxelPool.getEntityIds().size() > 0 ? voxelPool.getEntityIds()[0] : 0,
-                        voxelPool.getEntityIds().size() > 1 ? voxelPool.getEntityIds()[1] : 0,
-                        voxelPool.getEntityIds().size() > 2 ? voxelPool.getEntityIds()[2] : 0
-                    );
-                    IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer")
-                        ->subData(
-                            0,
-                            voxelPool.getVoxelPoolSize() * sizeof(IREntity::EntityId),
-                            voxelPool.getEntityIds().data()
-                        );
-                    voxelPool.clearEntityIdsDirty();
-                }
-
+                const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
                 triangleCanvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::READ_ONLY, TextureFormat::R32I
                 );
                 IRRender::device()->dispatchCompute(dispatchGrid.x, dispatchGrid.y, 1);
-                // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
-                IRRender::device()->memoryBarrier(BarrierType::ALL);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
             []() {
                 IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1")->use();
@@ -194,9 +183,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     (*background.value()).clearCanvasWithBackground(*backgroundTextures.value());
                 }
             },
-            []() {
-
-            }
+            []() {}
         );
     }
 };
@@ -213,19 +200,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
             "SingleVoxelToCanvasSecond",
             [](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
                 const ivec2 dispatchGrid =
-                    voxelDispatchGridForCount(voxelPool.getVoxelPoolSize());
-                IRRender::getNamedResource<Buffer>("VoxelPositionBuffer")
-                    ->subData(
-                        0,
-                        voxelPool.getVoxelPoolSize() * sizeof(C_PositionGlobal3D),
-                        voxelPool.getPositionGlobals().data()
-                    );
-                IRRender::getNamedResource<Buffer>("VoxelColorBuffer")
-                    ->subData(
-                        0,
-                        voxelPool.getVoxelPoolSize() * sizeof(C_Voxel),
-                        voxelPool.getColors().data()
-                    );
+                    voxelDispatchGridForCount(voxelPool.getLiveVoxelCount());
                 triangleCanvasTextures.getTextureColors()->bindAsImage(
                     0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
                 );
@@ -237,7 +212,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                 );
 
                 IRRender::device()->dispatchCompute(dispatchGrid.x, dispatchGrid.y, 1);
-                IRRender::device()->memoryBarrier(BarrierType::ALL);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
             []() { IRRender::getNamedResource<ShaderProgram>("SingleVoxel2")->use(); }
         );

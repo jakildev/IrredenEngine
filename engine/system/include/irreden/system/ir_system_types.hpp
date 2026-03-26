@@ -82,7 +82,9 @@ enum SystemName {
     FRAMEBUFFER_TO_SCREEN,
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
-    TEXTURE_SCROLL
+    TEXTURE_SCROLL,
+    UPDATE_VOXEL_POSITIONS_GPU,
+    SHAPES_TO_TRIXEL
 };
 
 template <typename... RelationComponents> struct RelationParams {

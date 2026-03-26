@@ -13,6 +13,8 @@ const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stag
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";
 const char *const kFileCompTextToTrixel = "shaders/c_text_to_trixel.glsl";
+const char *const kFileCompUpdateVoxelPositions = "shaders/c_update_voxel_positions.glsl";
+const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 
 const char *const kFileVertDebugOverlay = "shaders/v_debug_overlay.glsl";
 const char *const kFileFragDebugOverlay = "shaders/f_debug_overlay.glsl";

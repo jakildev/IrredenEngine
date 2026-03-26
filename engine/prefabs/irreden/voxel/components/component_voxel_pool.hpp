@@ -106,7 +106,7 @@ struct C_VoxelPool {
         std::span<C_PositionGlobal3D> positionGlobals,
         std::span<C_Voxel> colors
     ) {
-        for (int i = 0; i < colors.size(); i++) {
+        for (size_t i = 0; i < colors.size(); i++) {
             C_Voxel &voxel = colors[i];
             voxel.color_ = Color{0, 0, 0, 0};
         }
@@ -155,6 +155,9 @@ struct C_VoxelPool {
 
     int getVoxelPoolSize() const {
         return m_voxelPoolSize;
+    }
+    int getLiveVoxelCount() const {
+        return m_voxelPoolIndex;
     }
     ivec3 getVoxelPoolSize3D() const {
         return m_voxelPoolSize3D;

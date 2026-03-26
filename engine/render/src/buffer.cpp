@@ -53,4 +53,12 @@ void Buffer::bindBase(BufferTarget target, std::uint32_t index) {
     m_impl->bindBase(target, index);
 }
 
+void *Buffer::mapRange(std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags) {
+    return m_impl->mapRange(offset, length, accessFlags);
+}
+
+void Buffer::unmap() {
+    m_impl->unmap();
+}
+
 } // namespace IRRender

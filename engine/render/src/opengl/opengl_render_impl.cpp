@@ -23,6 +23,12 @@ class OpenGLRenderDevice final : public RenderDevice {
         glDispatchCompute(x, y, z);
     }
 
+    void dispatchComputeIndirect(std::uint32_t bufferHandle, std::ptrdiff_t offset) override {
+        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, bufferHandle);
+        glDispatchComputeIndirect(static_cast<GLintptr>(offset));
+        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+    }
+
     void memoryBarrier(BarrierType barrierType) override {
         glMemoryBarrier(toGLBarrierType(barrierType));
     }
@@ -92,6 +98,10 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void setDepthWrite(bool enabled) override {
         ENG_API->glDepthMask(enabled ? GL_TRUE : GL_FALSE);
+    }
+
+    void clearTexImage(std::uint32_t textureHandle, int level, const void *data) override {
+        glClearTexImage(textureHandle, level, GL_RED_INTEGER, GL_INT, data);
     }
 };
 

@@ -90,6 +90,18 @@ class RenderManager {
         std::string canvasName = "main"
     );
 
+    EntityId createCanvas(
+        std::string name,
+        ivec3 voxelPoolSize,
+        ivec2 trixelSize,
+        EntityId framebuffer = EntityId{}
+    );
+
+    bool hasCanvas(const std::string &name) const;
+
+    void setActiveCanvas(const std::string &name);
+    EntityId getActiveCanvasEntity() const;
+
   private:
     std::unique_ptr<RenderImpl> m_renderImpl;
     // tmp
@@ -109,6 +121,7 @@ class RenderManager {
     ivec2 m_outputResolution;
     ivec2 m_outputScaleFactor;
     std::unordered_map<std::string, EntityId> m_canvasMap;
+    EntityId m_activeCanvas = kNullEntity;
     FitMode m_fitMode;
     VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
     bool m_hoveredTrixelVisible = true;

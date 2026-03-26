@@ -17,6 +17,8 @@ class BufferImpl {
     virtual void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const = 0;
     virtual void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size) = 0;
     virtual void bindBase(BufferTarget target, std::uint32_t index) = 0;
+    virtual void *mapRange(std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags) = 0;
+    virtual void unmap() = 0;
 };
 
 class Buffer {
@@ -40,6 +42,8 @@ class Buffer {
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const;
     void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size);
     void bindBase(BufferTarget target, std::uint32_t index);
+    void *mapRange(std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags);
+    void unmap();
 
   private:
     std::unique_ptr<BufferImpl> m_impl;

@@ -17,6 +17,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
+    uniform int _voxelDispatchPadding;
+    uniform ivec2 canvasSizePixels;
+    uniform ivec2 _canvasPadding;
 };
 
 layout(std430, binding = 5) buffer PositionBuffer {
@@ -104,6 +107,15 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
 }
 
+bool isVoxelOffScreen(ivec3 voxelPos) {
+    const int margin = 4;
+    ivec2 isoPos = trixelCanvasOffsetZ1 +
+        ivec2(floor(frameCanvasOffset)) +
+        pos3DtoPos2DIso(voxelPos);
+    return isoPos.x < -margin || isoPos.x >= canvasSizePixels.x + margin ||
+           isoPos.y < -margin || isoPos.y >= canvasSizePixels.y + margin;
+}
+
 void main() {
     const uint voxelIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * uint(voxelDispatchGrid.x);
     if (voxelIndex >= uint(voxelCount)) {
@@ -114,6 +126,9 @@ void main() {
         return;
     }
     const vec4 voxelPosition = positions[voxelIndex];
+    if (isVoxelOffScreen(ivec3(round(voxelPosition.xyz)))) {
+        return;
+    }
     if (voxelRenderOptions.x == 0) {
         const ivec3 voxelPositionInt = ivec3(
             round(voxelPosition.x),

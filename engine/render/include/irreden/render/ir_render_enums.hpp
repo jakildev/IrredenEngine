@@ -59,7 +59,10 @@ enum class BufferTarget : std::uint8_t {
 enum BufferStorageFlag : std::uint32_t {
     BUFFER_STORAGE_NONE = 0,
     BUFFER_STORAGE_DYNAMIC = 1u << 0,
-    BUFFER_STORAGE_MAP_READ = 1u << 1
+    BUFFER_STORAGE_MAP_READ = 1u << 1,
+    BUFFER_STORAGE_MAP_WRITE = 1u << 2,
+    BUFFER_STORAGE_MAP_PERSISTENT = 1u << 3,
+    BUFFER_STORAGE_MAP_COHERENT = 1u << 4
 };
 
 inline constexpr std::uint32_t operator|(BufferStorageFlag lhs, BufferStorageFlag rhs) {
@@ -75,7 +78,9 @@ enum class ShaderType : std::uint8_t {
 
 enum class BarrierType : std::uint8_t {
     ALL,
-    SHADER_STORAGE
+    SHADER_STORAGE,
+    SHADER_IMAGE_ACCESS,
+    COMMAND
 };
 
 enum class PolygonMode : std::uint8_t {

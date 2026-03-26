@@ -8,6 +8,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
+    uniform int _voxelDispatchPadding;
+    uniform ivec2 canvasSizePixels;
+    uniform ivec2 _canvasPadding;
 };
 
 layout(std430, binding = 5) buffer PositionBuffer {
@@ -91,6 +94,15 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
 }
 
+bool isVoxelOffScreen(ivec3 voxelPos) {
+    const int margin = 4;
+    ivec2 isoPos = trixelCanvasOffsetZ1 +
+        ivec2(floor(frameCanvasOffset)) +
+        pos3DtoPos2DIso(voxelPos);
+    return isoPos.x < -margin || isoPos.x >= canvasSizePixels.x + margin ||
+           isoPos.y < -margin || isoPos.y >= canvasSizePixels.y + margin;
+}
+
 vec4 adjustColorForFace(vec4 color, int face) {
     float b = 1.0;
     if (face == kYFace) b = 0.75;
@@ -126,6 +138,9 @@ void main() {
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(colors[voxelIndex]);
     if(voxelColor.a == 0) return;
+    if (isVoxelOffScreen(ivec3(round(voxelPosition.xyz)))) {
+        return;
+    }
     voxelColor = adjustColorForFace(voxelColor, localIDToFace());
 
     if (voxelRenderOptions.x == 0) {

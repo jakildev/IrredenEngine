@@ -42,13 +42,18 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
                 frameData.texturePos2DIso_ = position2DIso.pos_;
                 IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData")
                     ->subData(0, sizeof(FrameDataTrixelToTrixel), &frameData);
-                IRRender::device()->dispatchCompute(trixelTextures.size_.x, trixelTextures.size_.y, 1);
-                // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
-                IRRender::device()->memoryBarrier(BarrierType::ALL);
+                const int groupsX = (trixelTextures.size_.x + 15) / 16;
+                const int groupsY = (trixelTextures.size_.y + 15) / 16;
+                IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
             []() {
                 IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram")->use();
-                frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+                vec2 camIso = IRRender::getCameraPosition2DIso();
+                frameData.cameraTrixelOffset_ = ivec2(
+                    static_cast<int>(IRMath::floor(camIso.x)),
+                    static_cast<int>(IRMath::floor(camIso.y))
+                );
             },
             nullptr,
             // TODO: Add position here and bind camera position to
