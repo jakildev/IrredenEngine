@@ -24,4 +24,24 @@ bool shouldUpdate() {
     return getTimeManager().shouldUpdate();
 }
 
+double renderFps() {
+    return getTimeManager().fps<RENDER>();
+}
+
+double renderFrameTimeMs() {
+    return getTimeManager().frameTimeMs<RENDER>();
+}
+
+double updateFps() {
+    return getTimeManager().fps<UPDATE>();
+}
+
+unsigned int droppedFrames() {
+    return getTimeManager().droppedFrames();
+}
+
+void resetDroppedFrames() {
+    getTimeManager().resetDroppedFrames();
+}
+
 } // namespace IRTime

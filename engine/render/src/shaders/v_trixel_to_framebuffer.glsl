@@ -23,10 +23,14 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 mouseHoveredTriangleIndex;
     vec2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
+    int distanceOffset;
 };
 
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
+    // -aPos.y flips the texture V so that canvas pixel Y=0 (GL bottom)
+    // appears at the top of the screen.  This means higher iso/canvas Y
+    // renders lower on the final output.
     TexCoords = vec2(aPos.x, -aPos.y) + 0.50 + (textureOffset / vec2(textureSize));
     gl_Position = mpMatrix * vec4(aPos, 1.0f, 1.0f);
 }

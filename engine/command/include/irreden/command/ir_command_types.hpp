@@ -42,7 +42,8 @@ enum CommandNames {
     TOGGLE_PERIODIC_IDLE_PAUSE,
     TOGGLE_GUI,
     GUI_ZOOM_IN,
-    GUI_ZOOM_OUT
+    GUI_ZOOM_OUT,
+    TOGGLE_CULLING_FREEZE
 
 };
 

@@ -29,8 +29,13 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_debug_overlay.hpp>
+#include <irreden/render/systems/system_debug_culling_minimap.hpp>
+#include <irreden/render/systems/system_perf_stats_overlay.hpp>
 
 // COMMANDS
 #include <irreden/input/commands/command_close_window.hpp>
@@ -42,6 +47,7 @@
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_take_screenshot_canvas.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
+#include <irreden/render/commands/command_toggle_culling_freeze.hpp>
 
 void initSystems();
 void initEntities();
@@ -84,11 +90,16 @@ void initSystems() {
 
     IRSystem::registerPipeline(
         IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+        {IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
+         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+         IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
          IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+         IRSystem::createSystem<IRSystem::DEBUG_CULLING_MINIMAP>(),
+         IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
 }
@@ -180,5 +191,10 @@ void initCommands() {
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonMinus,
         IRInput::kModifierControl
+    );
+    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_FREEZE>(
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
+        KeyMouseButtons::kKeyButtonF10
     );
 }

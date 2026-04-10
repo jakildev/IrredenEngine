@@ -15,21 +15,38 @@ struct C_TextStyle {
     TextAlignV alignV_ = TextAlignV::TOP;
     int boxWidth_ = 0;     // 0=canvas width, >0=explicit trixel width
     int boxHeight_ = 0;    // 0=canvas height, >0=explicit trixel height
+    int fontSize_ = 2;     // output pixels per glyph-bitmap trixel (1=smallest, 2=normal)
+
+    C_TextStyle(IRMath::Color color, int wrapWidth = 0)
+        : color_{color}
+        , wrapWidth_{wrapWidth} {}
 
     C_TextStyle(
         IRMath::Color color,
-        int wrapWidth = 0,
-        TextAlignH alignH = TextAlignH::LEFT,
-        TextAlignV alignV = TextAlignV::TOP,
-        int boxWidth = 0,
-        int boxHeight = 0
+        int wrapWidth,
+        TextAlignH alignH,
+        TextAlignV alignV,
+        int boxWidth,
+        int boxHeight
+    )
+        : C_TextStyle{color, wrapWidth, alignH, alignV, boxWidth, boxHeight, 2} {}
+
+    C_TextStyle(
+        IRMath::Color color,
+        int wrapWidth,
+        TextAlignH alignH,
+        TextAlignV alignV,
+        int boxWidth,
+        int boxHeight,
+        int fontSize
     )
         : color_{color}
         , wrapWidth_{wrapWidth}
         , alignH_{alignH}
         , alignV_{alignV}
         , boxWidth_{boxWidth}
-        , boxHeight_{boxHeight} {}
+        , boxHeight_{boxHeight}
+        , fontSize_{fontSize} {}
 
     C_TextStyle()
         : C_TextStyle{IRMath::IRColors::kWhite, 0} {}

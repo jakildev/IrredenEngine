@@ -16,6 +16,8 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.NamespaceCase
     value: CamelCase
+  - key: readability-identifier-naming.NamespaceIgnoredRegexp
+    value: ^detail$
   - key: readability-identifier-naming.GlobalConstantCase
     value: CamelCase
   - key: readability-identifier-naming.GlobalConstantPrefix

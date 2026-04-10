@@ -31,6 +31,10 @@ constexpr int round(float value) {
     return glm::round(value);
 }
 
+constexpr int divCeil(int numerator, int denominator) {
+    return (numerator + denominator - 1) / denominator;
+}
+
 constexpr ivec2 roundVec(vec2 value) {
     return ivec2(round(value.x), round(value.y));
 }
@@ -101,7 +105,7 @@ constexpr float sin(float value) {
 }
 
 inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {
-    if constexpr (IRPlatform::kIsMetal) {
+    if constexpr (IRPlatform::kGfx.ndcDepthZeroToOne_) {
         return glm::orthoZO(left, right, bottom, top, nearZ, farZ);
     } else {
         return glm::orthoNO(left, right, bottom, top, nearZ, farZ);
@@ -146,6 +150,11 @@ constexpr ivec2 size3DtoOriginOffset2DZ1(const uvec3 size) {
     return size3DtoOriginOffset2DX1(size) - ivec2(1, 1);
 }
 
+// World 3D -> Iso 2D projection.
+// Iso 2D is the coordinate space used for canvas pixel addressing:
+//   canvasPixel = canvasOriginOffset + floor(cameraIso) + pos3DtoPos2DIso(world)
+// Iso Y increases upward. Renderer-specific canvas-to-screen mapping
+// is handled outside these projection helpers.
 constexpr ivec2 pos3DtoPos2DIso(const ivec3 position) {
     return ivec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
@@ -155,7 +164,8 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 }
 
 constexpr vec2 pos3DtoPos2DScreen(const vec3 position, const vec2 triangleStepSizeScreen) {
-    return pos3DtoPos2DIso(position) * triangleStepSizeScreen * vec2(-1.0f);
+    return pos3DtoPos2DIso(position) * triangleStepSizeScreen *
+           vec2(-1.0f, IRPlatform::kGfx.screenYDirection_);
 }
 
 // Shift a 3D position along the isometric depth axis (1,1,1).
@@ -169,7 +179,57 @@ constexpr vec3 isoDepthShift(const vec3 &position, float depth) {
 struct IsoBounds2D {
     vec2 min_;
     vec2 max_;
+
+    static IsoBounds2D fromCorners(vec2 cornerA, vec2 cornerB) {
+        return {
+            vec2(glm::min(cornerA.x, cornerB.x), glm::min(cornerA.y, cornerB.y)),
+            vec2(glm::max(cornerA.x, cornerB.x), glm::max(cornerA.y, cornerB.y))
+        };
+    }
+
+    bool contains(vec2 point) const {
+        return point.x >= min_.x && point.x <= max_.x &&
+               point.y >= min_.y && point.y <= max_.y;
+    }
+
+    vec2 center() const { return (min_ + max_) * 0.5f; }
+    vec2 extent() const { return max_ - min_; }
 };
+
+// Compute the visible iso-space viewport given camera, canvas, and zoom.
+// This inverts the canvas-pixel formula:
+//   canvasPixel = canvasOriginOffset + floor(cameraIso) + isoPos
+// At zoom Z, only the center canvasSize/Z of the canvas is on screen
+// (the trixel-to-framebuffer model matrix scales by resolution*zoom,
+// so pixels outside the center 1/Z fraction are off-screen).
+// Returns the iso-space min/max with an optional margin.
+inline IsoBounds2D visibleIsoViewport(
+    vec2 cameraIso,
+    ivec2 canvasOriginOffset,
+    ivec2 canvasSize,
+    vec2 zoom = vec2(1.0f),
+    int margin = 0
+) {
+    vec2 viewCenter = -vec2(canvasOriginOffset)
+                      - vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y))
+                      + vec2(canvasSize) * 0.5f;
+    vec2 halfExtent = vec2(canvasSize) / (zoom * 2.0f);
+    return {
+        viewCenter - halfExtent - vec2(margin),
+        viewCenter + halfExtent + vec2(margin)
+    };
+}
+
+// Conservative iso-space half-extent for a rectangular prism of the given
+// voxel dimensions. Cheaper than the 8-corner entityIsoBounds enumeration
+// but slightly overestimates due to ceil + 1 padding per axis.
+inline vec2 shapeIsoHalfExtent(vec3 voxelSize) {
+    vec3 halfSize = voxelSize * 0.5f;
+    float extentX = glm::ceil(halfSize.x) + 1.0f;
+    float extentY = glm::ceil(halfSize.y) + 1.0f;
+    float extentZ = glm::ceil(halfSize.z) + 1.0f;
+    return vec2(extentX + extentY, extentX + extentY + 2.0f * extentZ);
+}
 
 inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
     vec2 corners[8];
@@ -195,6 +255,9 @@ inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
     return IsoBounds2D{bmin, bmax};
 }
 
+// Test whether an entity's bounding box overlaps the trixel canvas.
+// Converts the world AABB to iso, then to canvas pixels, and tests
+// against [0, canvasSize). This operates entirely in canvas space.
 inline bool isEntityOnScreen(
     vec3 worldPos,
     ivec3 voxelSize,
@@ -203,19 +266,34 @@ inline bool isEntityOnScreen(
     ivec2 canvasSize
 ) {
     IsoBounds2D bounds = entityIsoBounds(worldPos, voxelSize);
-    vec2 screenMin = bounds.min_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
-    vec2 screenMax = bounds.max_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
-    return screenMax.x >= 0 && screenMin.x < canvasSize.x &&
-           screenMax.y >= 0 && screenMin.y < canvasSize.y;
+    vec2 canvasMin = bounds.min_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    vec2 canvasMax = bounds.max_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    return canvasMax.x >= 0 && canvasMin.x < canvasSize.x &&
+           canvasMax.y >= 0 && canvasMin.y < canvasSize.y;
 }
 
 // constexpr vec2 pos3DtoPos2DScreenOffset(const vec3 position) {
 //     return pos3DtoPos2DIso(position) ...
 // }
 
-// all positions are from screen center (0, 0, 0)
+// Screen-center-relative position to iso space.
 constexpr vec2 pos2DScreenToPos2DIso(const vec2 screenPos, const vec2 triangleStepSizeScreen) {
     return screenPos / triangleStepSizeScreen;
+}
+
+// Screen delta to iso delta. The renderer-specific screen/canvas Y
+// relationship is provided by IRPlatform::kGfx.
+constexpr vec2 screenDeltaToIsoDelta(
+    const vec2 screenDelta, const vec2 triangleStepSizeScreen
+) {
+    return screenDelta / triangleStepSizeScreen * vec2(1.0f, IRPlatform::kGfx.screenYDirection_);
+}
+
+// Iso delta to screen delta (inverse of screenDeltaToIsoDelta).
+constexpr vec2 isoDeltaToScreenDelta(
+    const vec2 isoDelta, const vec2 triangleStepSizeScreen
+) {
+    return isoDelta * triangleStepSizeScreen * vec2(1.0f, IRPlatform::kGfx.screenYDirection_);
 }
 
 constexpr vec2
@@ -292,6 +370,10 @@ template <uvec3 size> constexpr ivec3 pos2DIsoToPos3DRectSurface(const ivec2 pos
     return ivec3(-1, -1, -1);
 }
 
+// Iso 2D offset to game-resolution pixel offset.
+// Iso X maps to 2 screen pixels horizontally,
+// iso Y maps to 1 screen pixel vertically.
+// Used by trixel-to-framebuffer for sub-pixel camera smoothing.
 constexpr vec2 pos2DIsoToPos2DGameResolution(const vec2 position, const vec2 zoomLevel) {
     return position * zoomLevel * vec2(2, 1);
 }
@@ -371,14 +453,14 @@ constexpr ivec2 size3DtoSize2DIso(const ivec3 size) {
     );
 }
 
+// Game resolution (screen pixels) to canvas size (iso pixel dimensions).
+// Each iso pixel spans 2 screen pixels horizontally and 1 vertically.
 constexpr uvec2 gameResolutionToSize2DIso(const uvec2 gameResolution, const uvec2 scaleFactor) {
-    // Floor division
     return gameResolution / uvec2(2, 1) / scaleFactor;
 }
 
 constexpr vec2
 gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = vec2(1.0f)) {
-    // Floor division
     return gameResolution / vec2(2, 1) / scaleFactor;
 }
 
@@ -459,6 +541,12 @@ constexpr ivec3 roundVec3ToIVec3(vec3 value) {
     return ivec3(round(value.x), round(value.y), round(value.z));
 }
 
+// Canvas origin offsets per voxel face.
+// These map the world origin (0,0,0) to a canvas pixel near the center
+// of the trixel canvas texture. Each face type has a different sub-pixel
+// alignment because of how the isometric trixel grid is laid out.
+// The offset is added to floor(cameraIso) and iso position to get
+// the final canvas pixel coordinate.
 constexpr ivec2 trixelOriginOffsetX1(const ivec2 &trixelCanvasSize) {
     return trixelCanvasSize / ivec2(2);
 }

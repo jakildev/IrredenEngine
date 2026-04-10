@@ -14,6 +14,8 @@ using namespace IRMath;
 
 namespace IRSystem {
 
+constexpr int kTrixelToTrixelGroupSize = 16; // must match local_size in c_trixel_to_trixel.glsl
+
 template <> struct System<TRIXEL_TO_TRIXEL> {
     static SystemId create() {
         static FrameDataTrixelToTrixel frameData{};
@@ -32,6 +34,11 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
             kBufferIndex_FrameDataTrixelToTrixel
         );
 
+        static ShaderProgram *s_program =
+            IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram");
+        static Buffer *s_frameDataBuf =
+            IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData");
+
         return createSystem<C_TriangleCanvasTextures, C_Position2DIso>(
             "CanvasToFramebuffer",
             [](const C_TriangleCanvasTextures &trixelTextures,
@@ -40,15 +47,14 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
                 frameData.trixelTextureOffsetZ1_ =
                     IRMath::trixelOriginOffsetZ1(trixelTextures.size_);
                 frameData.texturePos2DIso_ = position2DIso.pos_;
-                IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData")
-                    ->subData(0, sizeof(FrameDataTrixelToTrixel), &frameData);
-                const int groupsX = (trixelTextures.size_.x + 15) / 16;
-                const int groupsY = (trixelTextures.size_.y + 15) / 16;
+                s_frameDataBuf->subData(0, sizeof(FrameDataTrixelToTrixel), &frameData);
+                const int groupsX = IRMath::divCeil(trixelTextures.size_.x, kTrixelToTrixelGroupSize);
+                const int groupsY = IRMath::divCeil(trixelTextures.size_.y, kTrixelToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
             []() {
-                IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram")->use();
+                s_program->use();
                 vec2 camIso = IRRender::getCameraPosition2DIso();
                 frameData.cameraTrixelOffset_ = ivec2(
                     static_cast<int>(IRMath::floor(camIso.x)),

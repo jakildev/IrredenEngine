@@ -8,6 +8,8 @@
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
+#include <cstring>
+
 namespace IRRender {
 
 RenderingResourceManager *g_renderingResourceManager = nullptr;
@@ -51,7 +53,7 @@ bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData)
     return device()->readDefaultFramebuffer(x, y, width, height, rgbaData);
 }
 vec2 getMousePositionOutputView() {
-    const vec2 raw = IRInput::getMousePositionRender();
+    const vec2 raw = IRInput::getMousePosition();
     const vec2 offset = getRenderManager().screenToOutputWindowOffset();
     const ivec2 scale = getRenderManager().getOutputScaleFactor();
     // screenToOutputOffset assumes outputResolution (game res); actual quad uses resolution+extraPixelBuffer
@@ -92,11 +94,24 @@ ivec2 mouseTrixelPositionWorld() {
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
+    static void *s_mappedPtr = nullptr;
+
     auto *buf = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
     if (!buf) return IREntity::kNullEntity;
 
-    uvec2 packed{0u, 0u};
-    buf->getSubData(0, sizeof(uvec2), &packed);
+    if (!s_mappedPtr) {
+        struct HoveredLayout { uvec2 entityId; float depth; float _pad; };
+        s_mappedPtr = buf->mapRange(
+            0, sizeof(HoveredLayout),
+            BUFFER_STORAGE_MAP_READ |
+                BUFFER_STORAGE_MAP_PERSISTENT |
+                BUFFER_STORAGE_MAP_COHERENT
+        );
+    }
+    if (!s_mappedPtr) return IREntity::kNullEntity;
+
+    uvec2 packed;
+    std::memcpy(&packed, s_mappedPtr, sizeof(uvec2));
 
     return static_cast<IREntity::EntityId>(packed.x) |
            (static_cast<IREntity::EntityId>(packed.y) << 32);

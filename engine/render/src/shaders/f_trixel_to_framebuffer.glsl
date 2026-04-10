@@ -28,6 +28,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 mouseHoveredTriangleIndex;
     vec2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
+    int distanceOffset;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -72,9 +73,8 @@ void main() {
     }
 
     vec4 color = textureLod(triangleColors, origin / textureSize, 0);
-    float depth = normalizeDistance(
-        textureLod(triangleDistances, origin / textureSize, 0).r
-    );
+    int rawDist = textureLod(triangleDistances, origin / textureSize, 0).r;
+    float depth = normalizeDistance(rawDist + distanceOffset);
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison

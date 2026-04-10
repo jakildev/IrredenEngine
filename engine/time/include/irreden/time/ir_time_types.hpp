@@ -20,6 +20,7 @@ constexpr FramePeriod<IRConstants::kFPS> kFPSFramePeriod{1};
 constexpr NanoDuration kFPSNanoDuration = std::chrono::duration_cast<NanoDuration>(kFPSFramePeriod);
 
 const unsigned int kProfileHistoryBufferSize = 100;
+constexpr size_t kFpsWindowCapacity = 1024;
 
 enum Events { UPDATE, RENDER, INPUT, START, END };
 

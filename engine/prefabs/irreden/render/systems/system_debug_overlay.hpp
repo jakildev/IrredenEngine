@@ -141,6 +141,17 @@ inline void drawRectScreen(const vec2 min, const vec2 max, const vec4 fillColor,
     drawLineScreen(topLeft, bottomLeft, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
 }
 
+inline void drawDotScreen(vec2 center, float radius, vec4 color) {
+    drawTriangleScreen(
+        center + vec2(-radius, 0), center + vec2(radius, 0), center + vec2(0, radius),
+        color.r, color.g, color.b, color.a
+    );
+    drawTriangleScreen(
+        center + vec2(-radius, 0), center + vec2(0, -radius), center + vec2(radius, 0),
+        color.r, color.g, color.b, color.a
+    );
+}
+
 inline void drawDiamond3D(vec3 center, float radius, float r, float g, float b, float a = 1.0f) {
     const vec3 xPos = center + vec3(radius, 0.0f, 0.0f);
     const vec3 yPos = center + vec3(0.0f, radius, 0.0f);
@@ -168,7 +179,6 @@ inline void clear() {
 }
 
 inline vec2 worldToScreen(vec3 worldPos) {
-    constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
     vec2 stepSize = vec2(IRRender::getTriangleStepSizeScreen());
     vec2 viewport = vec2(IRRender::getViewport());
     vec2 screenCenter = viewport * 0.5f;
@@ -176,19 +186,18 @@ inline vec2 worldToScreen(vec3 worldPos) {
 
     vec2 posIso = pos3DtoPos2DIso(worldPos);
     vec2 relIso = posIso + camIso;
-    vec2 screenOffset = relIso * stepSize * kScreenAxis;
+    vec2 screenOffset = isoDeltaToScreenDelta(relIso, stepSize);
     return screenCenter + screenOffset;
 }
 
 inline vec3 screenToWorld(vec2 screenPos, float zLevel = 0.0f) {
-    constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
     vec2 stepSize = vec2(IRRender::getTriangleStepSizeScreen());
     vec2 viewport = vec2(IRRender::getViewport());
     vec2 screenCenter = viewport * 0.5f;
     vec2 camIso = IRRender::getCameraPosition2DIso();
 
     vec2 screenOffset = screenPos - screenCenter;
-    vec2 relIso = screenOffset / stepSize * kScreenAxis;
+    vec2 relIso = screenDeltaToIsoDelta(screenOffset, stepSize);
     vec2 posIso = relIso - camIso;
 
     const float zShift = 2.0f * zLevel;
@@ -230,12 +239,11 @@ struct WorldToScreenCache {
     vec2 stepSizeFlipped;
 
     void refresh() {
-        constexpr vec2 kScreenAxis = vec2(1.0f, IRPlatform::kScreenYDirection);
         stepSize = vec2(IRRender::getTriangleStepSizeScreen());
         vec2 viewport = vec2(IRRender::getViewport());
         screenCenter = viewport * 0.5f;
         camIso = IRRender::getCameraPosition2DIso();
-        stepSizeFlipped = stepSize * kScreenAxis;
+        stepSizeFlipped = isoDeltaToScreenDelta(vec2(1.0f), stepSize);
     }
 
     vec2 project(vec3 worldPos) const {

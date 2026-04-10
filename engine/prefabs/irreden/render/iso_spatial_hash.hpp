@@ -1,6 +1,19 @@
 #ifndef ISO_SPATIAL_HASH_H
 #define ISO_SPATIAL_HASH_H
 
+// PURPOSE: CPU-side 2D spatial hash for entity-level isometric viewport
+//   queries. Entities are inserted by their iso-space bounding rect, then
+//   queried against the camera's visible region to get the visible set.
+// STATUS: WIP stub -- not yet included or referenced by any system.
+// TODO:
+//   - Wire into a render-side system (e.g. DEBUG_CULLING_MINIMAP or
+//     chunk-level frustum culling) that inserts entities each frame and
+//     queries for visible set.
+//   - Consider using for CPU-side chunk visibility before indirect
+//     dispatch (see system_voxel_to_trixel.hpp).
+//   - Evaluate cell size tuning vs typical entity density.
+// DEPENDENCIES: IRMath (vec2), IREntity (EntityId).
+
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 

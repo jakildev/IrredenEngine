@@ -19,7 +19,9 @@ template <> class EventProfiler<UPDATE> {
         , m_sum{0}
         , m_deltaTimeActual{0}
         , m_deltaTimeFixed{1.0 / static_cast<double>(IRConstants::kFPS)}
-        , m_fixedStepCount(0) {}
+        , m_fixedStepCount(0)
+        , m_fpsHead(0)
+        , m_fpsCount(0) {}
 
     void start() {
         auto current = Clock::now();
@@ -63,26 +65,8 @@ template <> class EventProfiler<UPDATE> {
         m_lag -= kFPSNanoDuration;
         ++m_fixedStepCount;
 
+        recordFrame(current);
         m_tickCount++;
-
-        // TODO: This is weird obvy
-        if (m_tickCount % 6000 == 0) {
-            IRE_LOG_DEBUG("Update FPS: {} ms", m_sum.count() / 10.0f);
-
-            MilliDuration totalElapsedTime = current - m_start;
-            const auto elapsedMs = totalElapsedTime.count();
-            if (elapsedMs <= 0.0) {
-                return;
-            }
-            IRE_LOG_INFO(
-                "Average fixed step slots per second: {} updates",
-                m_fixedStepCount * 1000.0f / elapsedMs
-            );
-            IRE_LOG_INFO(
-                "Average fixed updates per second: {} updates",
-                m_tickCount * 1000.0f / elapsedMs
-            );
-        }
     }
 
     bool shouldUpdate() {
@@ -100,7 +84,6 @@ template <> class EventProfiler<UPDATE> {
         return m_timePointBeginEvent;
     }
 
-    // time in seconds
     double deltaTime() const {
         return m_deltaTimeActual.count();
     }
@@ -109,7 +92,26 @@ template <> class EventProfiler<UPDATE> {
         return m_deltaTimeFixed;
     }
 
+    double fps() const {
+        if (m_fpsCount == 0) return 0.0;
+        auto now = Clock::now();
+        auto cutoff = now - std::chrono::seconds(1);
+        size_t count = 0;
+        for (size_t i = 0; i < m_fpsCount; ++i) {
+            size_t idx = (m_fpsHead + kFpsWindowCapacity - 1 - i) % kFpsWindowCapacity;
+            if (m_fpsTimestamps[idx] >= cutoff) ++count;
+            else break;
+        }
+        return static_cast<double>(count);
+    }
+
   private:
+    void recordFrame(TimePoint tp) {
+        m_fpsTimestamps[m_fpsHead] = tp;
+        m_fpsHead = (m_fpsHead + 1) % kFpsWindowCapacity;
+        if (m_fpsCount < kFpsWindowCapacity) m_fpsCount++;
+    }
+
     TimePoint m_start;
     TimePoint m_timePointBeginEvent;
     NanoDuration m_lag;
@@ -120,6 +122,10 @@ template <> class EventProfiler<UPDATE> {
     unsigned int m_warningLogCooldownTicks = 0;
     unsigned int m_tickCount;
     unsigned int m_fixedStepCount;
+
+    TimePoint m_fpsTimestamps[kFpsWindowCapacity];
+    size_t m_fpsHead;
+    size_t m_fpsCount;
 };
 
 template <> class EventProfiler<RENDER> {
@@ -129,7 +135,10 @@ template <> class EventProfiler<RENDER> {
         , m_timePointBeginEvent{}
         , m_tickCount(0)
         , m_sum{0}
-        , m_deltaTimeActual{0} {}
+        , m_deltaTimeActual{0}
+        , m_fpsHead(0)
+        , m_fpsCount(0)
+        , m_droppedFrameCount(0) {}
 
     void start() {
         auto current = Clock::now();
@@ -147,6 +156,10 @@ template <> class EventProfiler<RENDER> {
         return m_deltaTimeActual.count();
     }
 
+    double frameTimeMs() const {
+        return std::chrono::duration<double, std::milli>(m_deltaTimeActual).count();
+    }
+
     double deltaTimeSinceFixedUpdateStart(const EventProfiler<UPDATE> &updateProfiler) const {
         return (m_timePointBeginEvent - updateProfiler.getTimePointBeginEvent()).count();
     }
@@ -158,30 +171,58 @@ template <> class EventProfiler<RENDER> {
         m_sum += newTick;
         m_tickList[m_tickCount % kProfileHistoryBufferSize] = newTick;
 
-        m_tickCount++;
-
-        if (m_tickCount % 1000 == 0) {
-            IRE_LOG_DEBUG("Render FPS: {} ms", m_sum.count() / (float)kProfileHistoryBufferSize);
-
-            MilliDuration totalElapsedTime = current - m_start;
-            IRE_LOG_INFO(
-                "Average render calls per second: {} updates",
-                m_tickCount * 1000.0f / totalElapsedTime.count()
-            );
+        constexpr double kDropThresholdSeconds = 2.0 / static_cast<double>(IRConstants::kFPS);
+        if (m_deltaTimeActual.count() > kDropThresholdSeconds) {
+            ++m_droppedFrameCount;
         }
+
+        recordFrame(current);
+        m_tickCount++;
     }
 
     TimePoint getTimePointBeginEvent() const {
         return m_timePointBeginEvent;
     }
 
+    double fps() const {
+        if (m_fpsCount == 0) return 0.0;
+        auto now = Clock::now();
+        auto cutoff = now - std::chrono::seconds(1);
+        size_t count = 0;
+        for (size_t i = 0; i < m_fpsCount; ++i) {
+            size_t idx = (m_fpsHead + kFpsWindowCapacity - 1 - i) % kFpsWindowCapacity;
+            if (m_fpsTimestamps[idx] >= cutoff) ++count;
+            else break;
+        }
+        return static_cast<double>(count);
+    }
+
+    unsigned int droppedFrames() const {
+        return m_droppedFrameCount;
+    }
+
+    void resetDroppedFrames() {
+        m_droppedFrameCount = 0;
+    }
+
   private:
+    void recordFrame(TimePoint tp) {
+        m_fpsTimestamps[m_fpsHead] = tp;
+        m_fpsHead = (m_fpsHead + 1) % kFpsWindowCapacity;
+        if (m_fpsCount < kFpsWindowCapacity) m_fpsCount++;
+    }
+
     TimePoint m_start;
     TimePoint m_timePointBeginEvent;
     MilliDuration m_tickList[kProfileHistoryBufferSize];
     MilliDuration m_sum;
     SecondsDuration m_deltaTimeActual;
     unsigned int m_tickCount;
+
+    TimePoint m_fpsTimestamps[kFpsWindowCapacity];
+    size_t m_fpsHead;
+    size_t m_fpsCount;
+    unsigned int m_droppedFrameCount;
 };
 
 } // namespace IRTime

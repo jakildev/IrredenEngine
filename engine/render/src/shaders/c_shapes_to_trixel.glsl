@@ -1,6 +1,16 @@
 #version 460 core
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
+// Iso-projected SDF surface finding: iterate 2D iso-space footprint, solve
+// for the front surface analytically along the (1,1,1) depth axis.
+// Each thread handles one trixel pixel and evaluates all three faces.
+//
+// Future work: this analytical surface math could be reused in a direct
+// fragment shader path, eliminating the intermediate canvas entirely.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "ir_iso_common.glsl"
+#include "ir_constants.glsl"
 
 layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec2 frameCanvasOffset;
@@ -9,6 +19,8 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform int shapeCount;
     uniform int passIndex;
     uniform ivec2 voxelRenderOptions;
+    uniform ivec2 cullIsoMin;
+    uniform ivec2 cullIsoMax;
 };
 
 struct ShapeDescriptor {
@@ -24,33 +36,16 @@ struct ShapeDescriptor {
     uint _pad1;
 };
 
-struct JointTransform {
-    vec4 rotation;
-    vec4 translation;
-    uint parentJointIndex;
-    uint _pad0;
-    uint _pad1;
-    uint _pad2;
-};
-
-struct AnimParams {
-    float time;
-    float speed;
-    float phase;
-    float _pad0;
-    vec4 blend;
-};
-
 layout(std430, binding = 20) readonly buffer ShapeBuffer {
     ShapeDescriptor shapes[];
 };
 
 layout(std430, binding = 21) readonly buffer JointBuffer {
-    JointTransform joints[];
+    vec4 jointData[];
 };
 
 layout(std430, binding = 22) readonly buffer AnimBuffer {
-    AnimParams animations[];
+    vec4 animData[];
 };
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
@@ -61,47 +56,46 @@ const uint SHAPE_BOX = 0u;
 const uint SHAPE_SPHERE = 1u;
 const uint SHAPE_CYLINDER = 2u;
 const uint SHAPE_ELLIPSOID = 3u;
-const uint SHAPE_WING = 4u;
-const uint SHAPE_PRISM = 5u;
+const uint SHAPE_CURVED_PANEL = 4u;
+const uint SHAPE_WEDGE = 5u;
 const uint SHAPE_TAPERED_BOX = 6u;
+const uint SHAPE_CONE = 8u;
+const uint SHAPE_TORUS = 9u;
 
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
+const uint FLAG_CHECKERBOARD = 32u;
 
-const int kXFace = 0;
-const int kYFace = 1;
-const int kZFace = 2;
+// Per-tile descriptor stream. CPU batches every tile of every visible
+// shape into this SSBO, then issues one dispatchCompute(totalTiles, 1, 1).
+// Each workgroup handles one 8×8 iso-pixel tile; shapeIndex selects which
+// shape in the ShapeBuffer it belongs to, and tileIsoOrigin is that tile's
+// iso-space origin (already pre-aligned on CPU).
+struct ShapeTileDescriptor {
+    int shapeIndex;
+    int _pad0;
+    ivec2 tileIsoOrigin;
+};
 
-int localIDToFace() {
-    if (gl_LocalInvocationID.y == 0) return kZFace;
-    if (gl_LocalInvocationID.x == 1) return kXFace;
-    return kYFace;
-}
+layout(std430, binding = 30) readonly buffer ShapeTileBuffer {
+    ShapeTileDescriptor tiles[];
+};
 
-ivec2 pos3DtoPos2DIso(ivec3 p) {
-    return ivec2(-p.x + p.y, -p.x - p.y + 2 * p.z);
-}
+// ---------------------------------------------------------------
+// O(1) analytical depth-axis intersection.
+//
+// p(d) = isoToLocal3D(isoRel, d) is linear in d (slope 1/3 per axis):
+//   x(d) = (2d - 3*isoX - isoY) / 6
+//   y(d) = (2d + 3*isoX - isoY) / 6
+//   z(d) = (d + isoY) / 3
+//
+// Box: slab intersection of 3 linear intervals in d.
+// Sphere/circle/ellipse: quadratic in d.
+// Each returns the nearest integer depth where sdf <= 0.5
+// (and sdf >= -0.5 for hollow shapes).
+// ---------------------------------------------------------------
 
-int pos3DtoDistance(ivec3 p) {
-    return p.x + p.y + p.z;
-}
-
-vec4 unpackColor(uint c) {
-    return vec4(
-        float(c & 0xFFu) / 255.0,
-        float((c >> 8) & 0xFFu) / 255.0,
-        float((c >> 16) & 0xFFu) / 255.0,
-        float((c >> 24) & 0xFFu) / 255.0
-    );
-}
-
-vec4 adjustColorForFace(vec4 col, int face) {
-    float b = 1.0;
-    if (face == kYFace) b = 0.75;
-    if (face == kZFace) b = 1.25;
-    return vec4(clamp(col.rgb * b, 0.0, 1.0), col.a);
-}
-
+// SDF evaluation (same functions as before, used for general fallback)
 float sdfBox(vec3 p, vec3 halfExtents) {
     vec3 d = abs(p) - halfExtents;
     return max(d.x, max(d.y, d.z));
@@ -128,121 +122,475 @@ float sdfTaperedBox(vec3 p, vec3 halfExtents, float taper) {
     return sdfBox(scaled, halfExtents);
 }
 
-float evaluateSDF(vec3 localPos, ShapeDescriptor shape) {
-    vec3 halfSize = shape.params.xyz * 0.5;
+float sdfCone(vec3 p, float baseRadius, float halfHeight) {
+    float t = clamp((p.z + halfHeight) / (2.0 * halfHeight), 0.0, 1.0);
+    float radiusAtZ = baseRadius * (1.0 - t);
+    float dRadial = length(p.xy) - radiusAtZ;
+    float dZ = abs(p.z) - halfHeight;
+    float dOutside = length(max(vec2(dRadial, dZ), 0.0));
+    float dInside = min(max(dRadial, dZ), 0.0);
+    return dOutside + dInside;
+}
 
-    switch (shape.shapeType) {
-        case SHAPE_BOX:
-            return sdfBox(localPos, halfSize);
-        case SHAPE_SPHERE:
-            return sdfSphere(localPos, shape.params.x);
-        case SHAPE_CYLINDER:
-            return sdfCylinder(localPos, shape.params.x, halfSize.z);
-        case SHAPE_ELLIPSOID:
-            return sdfEllipsoid(localPos, halfSize);
-        case SHAPE_TAPERED_BOX:
-            return sdfTaperedBox(localPos, halfSize, shape.params.w);
-        default:
-            return sdfBox(localPos, halfSize);
+float sdfTorus(vec3 p, float majorR, float minorR) {
+    float q = length(p.xy) - majorR;
+    return length(vec2(q, p.z)) - minorR;
+}
+
+float sdfWedge(vec3 p, vec3 halfExtents) {
+    float boxD = sdfBox(p, halfExtents);
+    float planeD = p.z - halfExtents.z * (1.0 - p.x / max(halfExtents.x, 0.001));
+    return max(boxD, planeD);
+}
+
+float sdfCurvedPanel(vec3 p, vec3 halfExtents, float curvature) {
+    float nx = p.x / max(halfExtents.x, 0.001);
+    float ny = p.y / max(halfExtents.y, 0.001);
+    float zMid = curvature * halfExtents.x * nx * nx;
+    float dThickness = abs(p.z - zMid) - halfExtents.z;
+    float dX = abs(p.x) - halfExtents.x;
+    float dY = abs(p.y) - halfExtents.y;
+    float dOutside = length(max(vec3(dX, dY, dThickness), 0.0));
+    float dInside = min(max(dX, max(dY, dThickness)), 0.0);
+    return dOutside + dInside;
+}
+
+float evaluateSDF(vec3 localPos, uint shapeType, vec4 params) {
+    vec3 halfSize = params.xyz * 0.5;
+    switch (shapeType) {
+        case SHAPE_BOX:          return sdfBox(localPos, halfSize);
+        case SHAPE_SPHERE:       return sdfSphere(localPos, params.x);
+        case SHAPE_CYLINDER:     return sdfCylinder(localPos, params.x, halfSize.z);
+        case SHAPE_ELLIPSOID:    return sdfEllipsoid(localPos, halfSize);
+        case SHAPE_TAPERED_BOX:  return sdfTaperedBox(localPos, halfSize, params.w);
+        case SHAPE_CONE:         return sdfCone(localPos, params.x, halfSize.z);
+        case SHAPE_TORUS:        return sdfTorus(localPos, params.x, params.y);
+        case SHAPE_WEDGE:        return sdfWedge(localPos, halfSize);
+        case SHAPE_CURVED_PANEL: return sdfCurvedPanel(localPos, halfSize, params.w);
+        default:                 return sdfBox(localPos, halfSize);
     }
 }
 
-ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
-    if (face == kXFace) {
-        return ivec3(
-            voxelPositionFixed.x,
-            voxelPositionFixed.y + u,
-            voxelPositionFixed.z + v
-        );
-    }
-    if (face == kYFace) {
-        return ivec3(
-            voxelPositionFixed.x + u,
-            voxelPositionFixed.y,
-            voxelPositionFixed.z + v
-        );
-    }
-    return ivec3(
-        voxelPositionFixed.x + u,
-        voxelPositionFixed.y + v,
-        voxelPositionFixed.z
-    );
+// Axis-aligned slab intersection: depth interval [dEntry, dExit] where
+// |x(d)| <= hExt.x AND |y(d)| <= hExt.y AND |z(d)| <= hExt.z.
+bool boxSlabIntersect(float isoX, float isoY, vec3 hExt,
+                      out float dEntry, out float dExit) {
+    float dxLo = (-6.0 * hExt.x + 3.0 * isoX + isoY) * 0.5;
+    float dxHi = ( 6.0 * hExt.x + 3.0 * isoX + isoY) * 0.5;
+    float dyLo = (-6.0 * hExt.y - 3.0 * isoX + isoY) * 0.5;
+    float dyHi = ( 6.0 * hExt.y - 3.0 * isoX + isoY) * 0.5;
+    float dzLo = -3.0 * hExt.z - isoY;
+    float dzHi =  3.0 * hExt.z - isoY;
+
+    dEntry = max(dxLo, max(dyLo, dzLo));
+    dExit  = min(dxHi, min(dyHi, dzHi));
+    return dEntry <= dExit;
 }
 
-void writeTap(ivec2 pixel, int dist, vec4 col, uint entityId, int face) {
-    if (pixel.x < 0 || pixel.x >= canvasSize.x ||
-        pixel.y < 0 || pixel.y >= canvasSize.y) return;
+// Z-height slab: depth interval where |z(d)| <= hZ.
+void zSlabInterval(float isoY, float hZ, out float dLo, out float dHi) {
+    dLo = -3.0 * hZ - isoY;
+    dHi =  3.0 * hZ - isoY;
+}
 
-    if (passIndex == 0) {
-        imageAtomicMin(triangleCanvasDistances, pixel, dist);
-    } else {
-        int stored = imageLoad(triangleCanvasDistances, pixel).x;
-        if (dist == stored) {
-            imageStore(triangleCanvasColors, pixel, col);
-            imageStore(triangleCanvasEntityIds, pixel,
-                       uvec4(entityId, 0u, 0u, 0u));
+// XY circular cross-section: depth interval where x(d)^2 + y(d)^2 <= R^2.
+// Since (x - y) = -isoX is constant along the depth axis, the constraint
+// reduces to: (2d - isoY)^2 / 18 + isoX^2 / 2 <= R^2.
+bool circleDepthInterval(float isoX, float isoY, float R,
+                         out float dLo, out float dHi) {
+    float disc = 18.0 * R * R - 9.0 * isoX * isoX;
+    if (disc < 0.0) return false;
+    float halfRange = sqrt(disc);
+    dLo = (isoY - halfRange) * 0.5;
+    dHi = (isoY + halfRange) * 0.5;
+    return true;
+}
+
+// O(1) box depth intersection via slab intersection of 3 axis constraints.
+int boxDepthIntersect(ivec2 isoRel, vec3 halfExtents, bool hollow) {
+    float isoX = float(isoRel.x);
+    float isoY = float(isoRel.y);
+
+    float dEntry, dExit;
+    if (!boxSlabIntersect(isoX, isoY, halfExtents + vec3(0.5), dEntry, dExit)) {
+        return kInvalidDepth;
+    }
+
+    if (!hollow) {
+        int candidate = int(ceil(dEntry));
+        if (float(candidate) > dExit) return kInvalidDepth;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        if (sdfBox(p, halfExtents) <= 0.5) return candidate;
+        if (float(candidate + 1) <= dExit) return candidate + 1;
+        return kInvalidDepth;
+    }
+
+    // Exclude interior where ALL |p.c| < halfExtents.c - 0.5 (sdf < -0.5).
+    vec3 hInt = halfExtents - vec3(0.5);
+    float dIntEntry = 1.0, dIntExit = 0.0;
+    if (hInt.x > 0.0 && hInt.y > 0.0 && hInt.z > 0.0) {
+        boxSlabIntersect(isoX, isoY, hInt, dIntEntry, dIntExit);
+    }
+
+    int candidate = int(ceil(dEntry));
+    if (float(candidate) > dExit) return kInvalidDepth;
+    if (dIntEntry > dIntExit || float(candidate) <= dIntEntry) return candidate;
+    candidate = int(ceil(dIntExit));
+    if (float(candidate) <= dExit) return candidate;
+    return kInvalidDepth;
+}
+
+// O(1) sphere depth intersection via quadratic closest-approach solve.
+int sphereDepthIntersect(ivec2 isoRel, float radius, bool hollow) {
+    float R = radius + 0.5;
+    vec3 p0 = isoToLocal3D(isoRel, 0.0);
+    // dp/dd = (1/3, 1/3, 1/3), |dp/dd|^2 = 1/3.
+    // Closest approach: t0 = -dot(p0, dp/dd) / |dp/dd|^2 = -(p0.x+p0.y+p0.z).
+    float tClosest = -(p0.x + p0.y + p0.z);
+    vec3 pClosest = isoToLocal3D(isoRel, tClosest);
+    float perpDistSq = dot(pClosest, pClosest);
+
+    if (perpDistSq > R * R) return kInvalidDepth;
+
+    // |p(d)|^2 = perpDistSq + (d - tClosest)^2 / 3.
+    // Solve for |p(d)| = R: halfChord = sqrt(3 * (R^2 - perpDistSq)).
+    float halfChord = sqrt(3.0 * (R * R - perpDistSq));
+    float tEntry = tClosest - halfChord;
+    float tExit  = tClosest + halfChord;
+
+    if (!hollow) {
+        int candidate = int(ceil(tEntry));
+        if (float(candidate) > tExit) return kInvalidDepth;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        if (sdfSphere(p, radius) <= 0.5) return candidate;
+        if (float(candidate + 1) <= tExit) return candidate + 1;
+        return kInvalidDepth;
+    }
+
+    // Inner sphere exclusion: |p| < radius - 0.5.
+    float Rint = radius - 0.5;
+    float tIntEntry = tExit + 1.0, tIntExit = tEntry - 1.0;
+    if (Rint > 0.0 && perpDistSq <= Rint * Rint) {
+        float intHalfChord = sqrt(3.0 * (Rint * Rint - perpDistSq));
+        tIntEntry = tClosest - intHalfChord;
+        tIntExit  = tClosest + intHalfChord;
+    }
+
+    for (int i = 0; i < 2; i++) {
+        int candidate = int(ceil(tEntry)) + i;
+        if (float(candidate) > min(tIntEntry, tExit)) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfSphere(p, radius);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    for (int i = 0; i < 2; i++) {
+        int candidate = int(ceil(tIntExit)) + i;
+        if (float(candidate) > tExit) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfSphere(p, radius);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    return kInvalidDepth;
+}
+
+// O(1) cylinder depth intersection: z-height slab + xy-circle quadratic.
+int cylinderDepthIntersect(ivec2 isoRel, float radius, float halfHeight,
+                           bool hollow) {
+    float isoX = float(isoRel.x);
+    float isoY = float(isoRel.y);
+
+    float dCircLo, dCircHi;
+    if (!circleDepthInterval(isoX, isoY, radius + 0.5, dCircLo, dCircHi)) {
+        return kInvalidDepth;
+    }
+    float dZLo, dZHi;
+    zSlabInterval(isoY, halfHeight + 0.5, dZLo, dZHi);
+
+    float dEntry = max(dCircLo, dZLo);
+    float dExit  = min(dCircHi, dZHi);
+    if (dEntry > dExit) return kInvalidDepth;
+
+    if (!hollow) {
+        int candidate = int(ceil(dEntry));
+        if (float(candidate) > dExit) return kInvalidDepth;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        if (sdfCylinder(p, radius, halfHeight) <= 0.5) return candidate;
+        if (float(candidate + 1) <= dExit) return candidate + 1;
+        return kInvalidDepth;
+    }
+
+    float Rint = radius - 0.5;
+    float Hint = halfHeight - 0.5;
+    float dIntEntry = dExit + 1.0, dIntExit = dEntry - 1.0;
+    if (Rint > 0.0 && Hint > 0.0) {
+        float diCircLo, diCircHi;
+        if (circleDepthInterval(isoX, isoY, Rint, diCircLo, diCircHi)) {
+            float diZLo, diZHi;
+            zSlabInterval(isoY, Hint, diZLo, diZHi);
+            dIntEntry = max(diCircLo, diZLo);
+            dIntExit  = min(diCircHi, diZHi);
         }
     }
+
+    for (int i = 0; i < 2; i++) {
+        int candidate = int(ceil(dEntry)) + i;
+        if (float(candidate) > min(dIntEntry, dExit)) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfCylinder(p, radius, halfHeight);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    for (int i = 0; i < 2; i++) {
+        int candidate = int(ceil(dIntExit)) + i;
+        if (float(candidate) > dExit) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfCylinder(p, radius, halfHeight);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    return kInvalidDepth;
+}
+
+// O(1) ellipsoid depth intersection via quadratic on the scaled-ellipsoid bound.
+// Uses a conservative envelope (radii + 0.5) to compute an analytical entry/exit
+// interval, then verifies with the actual IQ-style ellipsoid SDF.
+int ellipsoidDepthIntersect(ivec2 isoRel, vec3 radii, bool hollow) {
+    float isoX = float(isoRel.x);
+    float isoY = float(isoRel.y);
+
+    // Solve (x/Rx)^2 + (y/Ry)^2 + (z/Rz)^2 <= 1 for R = radii + 0.5.
+    // Each scaled component is linear in d: si(d) = ai*d + bi.
+    vec3 R = radii + vec3(0.5);
+    float ax = 1.0 / (3.0 * R.x);
+    float bx = (-3.0 * isoX - isoY) / (6.0 * R.x);
+    float ay = 1.0 / (3.0 * R.y);
+    float by = (3.0 * isoX - isoY) / (6.0 * R.y);
+    float az = 1.0 / (3.0 * R.z);
+    float bz = isoY / (3.0 * R.z);
+
+    float A = ax*ax + ay*ay + az*az;
+    float B = 2.0 * (ax*bx + ay*by + az*bz);
+    float C = bx*bx + by*by + bz*bz - 1.0;
+
+    float disc = B*B - 4.0*A*C;
+    if (disc < 0.0) return kInvalidDepth;
+
+    float sqrtDisc = sqrt(disc);
+    float inv2A = 0.5 / A;
+    float dEntry = (-B - sqrtDisc) * inv2A;
+    float dExit  = (-B + sqrtDisc) * inv2A;
+
+    if (!hollow) {
+        for (int i = 0; i < 3; i++) {
+            int candidate = int(ceil(dEntry)) + i;
+            if (float(candidate) > dExit) return kInvalidDepth;
+            vec3 p = isoToLocal3D(isoRel, float(candidate));
+            if (sdfEllipsoid(p, radii) <= 0.5) return candidate;
+        }
+        return kInvalidDepth;
+    }
+
+    // Inner ellipsoid exclusion with radii - 0.5.
+    vec3 Rint = radii - vec3(0.5);
+    float dIntEntry = dExit + 1.0, dIntExit = dEntry - 1.0;
+    if (Rint.x > 0.0 && Rint.y > 0.0 && Rint.z > 0.0) {
+        float iax = 1.0 / (3.0 * Rint.x);
+        float ibx = (-3.0 * isoX - isoY) / (6.0 * Rint.x);
+        float iay = 1.0 / (3.0 * Rint.y);
+        float iby = (3.0 * isoX - isoY) / (6.0 * Rint.y);
+        float iaz = 1.0 / (3.0 * Rint.z);
+        float ibz = isoY / (3.0 * Rint.z);
+
+        float iA = iax*iax + iay*iay + iaz*iaz;
+        float iB = 2.0 * (iax*ibx + iay*iby + iaz*ibz);
+        float iC = ibx*ibx + iby*iby + ibz*ibz - 1.0;
+
+        float iDisc = iB*iB - 4.0*iA*iC;
+        if (iDisc >= 0.0) {
+            float iSqrt = sqrt(iDisc);
+            float iInv2A = 0.5 / iA;
+            dIntEntry = (-iB - iSqrt) * iInv2A;
+            dIntExit  = (-iB + iSqrt) * iInv2A;
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        int candidate = int(ceil(dEntry)) + i;
+        if (float(candidate) > min(dIntEntry, dExit)) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfEllipsoid(p, radii);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    for (int i = 0; i < 3; i++) {
+        int candidate = int(ceil(dIntExit)) + i;
+        if (float(candidate) > dExit) break;
+        vec3 p = isoToLocal3D(isoRel, float(candidate));
+        float sdf = sdfEllipsoid(p, radii);
+        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+    }
+    return kInvalidDepth;
+}
+
+// General SDF depth search (fallback for shapes without O(1) intersection).
+// Depth is LOCAL (relative to shape origin), consistent with O(1) functions.
+int generalDepthSearch(ivec2 isoRel, uint shapeType, vec4 params, bool hollow,
+                       float dExtent) {
+    float dMin = floor(-dExtent);
+    float dMax = ceil(dExtent);
+    for (float d = dMin; d <= dMax; d += 1.0) {
+        vec3 p = isoToLocal3D(isoRel, d);
+        float sdf = evaluateSDF(p, shapeType, params);
+        if (sdf <= 0.5 && (!hollow || sdf >= -0.5)) {
+            return int(round(d));
+        }
+    }
+    return kInvalidDepth;
+}
+
+// O(1) surface depth dispatcher.  Accepts pre-scaled parameters so the
+// same analytical intersections work at any subdivision resolution.
+// All returned depths are LOCAL (relative to shape origin).
+int findSurfaceDepth(ivec2 isoRel, uint shapeType, vec4 params, uint flags,
+                     float dExtent) {
+    bool hollow = (flags & FLAG_HOLLOW) != 0u;
+    vec3 halfSize = params.xyz * 0.5;
+
+    if (shapeType == SHAPE_BOX) {
+        return boxDepthIntersect(isoRel, halfSize, hollow);
+    }
+    if (shapeType == SHAPE_SPHERE) {
+        return sphereDepthIntersect(isoRel, params.x, hollow);
+    }
+    if (shapeType == SHAPE_CYLINDER) {
+        return cylinderDepthIntersect(isoRel, params.x, halfSize.z, hollow);
+    }
+    if (shapeType == SHAPE_ELLIPSOID) {
+        return ellipsoidDepthIntersect(isoRel, halfSize, hollow);
+    }
+    return generalDepthSearch(isoRel, shapeType, params, hollow, dExtent);
 }
 
 void main() {
-    uint shapeIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * 1024u;
-    if (shapeIdx >= uint(shapeCount)) return;
-
-    ShapeDescriptor shape = shapes[shapeIdx];
-    if ((shape.flags & FLAG_VISIBLE) == 0u) return;
-
-    vec4 col = unpackColor(shape.color);
-    if (col.a == 0.0) return;
-
-    int face = localIDToFace();
-    col = adjustColorForFace(col, face);
+    ShapeTileDescriptor tile = tiles[gl_WorkGroupID.x];
+    int shapeIndex = tile.shapeIndex;
+    ivec2 isoOrigin = tile.tileIsoOrigin;
+    ShapeDescriptor shape = shapes[shapeIndex];
 
     vec3 worldPos = shape.worldPosition.xyz;
-    vec3 halfSize = shape.params.xyz * 0.5;
-    ivec3 bboxMin = ivec3(floor(worldPos - halfSize - vec3(1.0)));
-    ivec3 bboxMax = ivec3(ceil(worldPos + halfSize + vec3(1.0)));
+    ivec3 origin = ivec3(round(worldPos));
 
-    ivec2 faceLocalOffset = ivec2(gl_LocalInvocationID.xy);
-
-    bool isSmooth = voxelRenderOptions.x != 0;
+    int renderMode = voxelRenderOptions.x;
     int subdivisions = max(voxelRenderOptions.y, 1);
+    bool smoothMode = (renderMode != 0);
+    int sub = smoothMode ? subdivisions : 1;
 
-    for (int z = bboxMin.z; z <= bboxMax.z; ++z) {
-        for (int y = bboxMin.y; y <= bboxMax.y; ++y) {
-            for (int x = bboxMin.x; x <= bboxMax.x; ++x) {
-                vec3 localPos = vec3(x, y, z) - worldPos;
-                float d = evaluateSDF(localPos, shape);
-                if (d > 0.5) continue;
+    // For BOX shapes, params.xyz is the voxel count per axis.  Convert to
+    // continuous extent (voxelCount - 1) so the SDF surface lands exactly on
+    // the outermost integer voxel positions, matching C_VoxelSetNew semantics.
+    ivec3 originScaled = origin * sub;
+    vec3 effectiveSize = (shape.shapeType == SHAPE_BOX)
+        ? shape.params.xyz - 1.0
+        : shape.params.xyz;
+    vec4 paramsScaled = vec4(effectiveSize * float(sub), shape.params.w);
 
-                bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
-                if (hollow && d < -0.5) continue;
+    // Compute shape-specific bounding half-extent so that both the iso
+    // early-exit and the generalDepthSearch range cover the full shape.
+    vec3 boundingHalf;
+    uint st = shape.shapeType;
+    if (st == SHAPE_SPHERE) {
+        boundingHalf = vec3(paramsScaled.x);
+    } else if (st == SHAPE_CYLINDER || st == SHAPE_CONE) {
+        boundingHalf = vec3(paramsScaled.x, paramsScaled.x,
+                            paramsScaled.z * 0.5);
+    } else if (st == SHAPE_TORUS) {
+        float xyR = paramsScaled.x + paramsScaled.y;
+        boundingHalf = vec3(xyR, xyR, paramsScaled.y);
+    } else if (st == SHAPE_CURVED_PANEL) {
+        vec3 hs = paramsScaled.xyz * 0.5;
+        hs.z += abs(paramsScaled.w) * hs.x;
+        boundingHalf = hs;
+    } else {
+        boundingHalf = paramsScaled.xyz * 0.5;
+    }
+    ivec3 extentScaled = ivec3(ceil(boundingHalf)) + ivec3(1);
 
-                ivec3 vp = ivec3(x, y, z);
+    ivec2 originIsoScaled = pos3DtoPos2DIso(originScaled);
+    ivec2 isoExtentScaled = ivec2(
+        extentScaled.x + extentScaled.y,
+        extentScaled.x + extentScaled.y + 2 * extentScaled.z);
 
-                if (isSmooth) {
-                    ivec3 vpFixed = vp * subdivisions;
-                    ivec2 frameOffsetFixed =
-                        trixelCanvasOffsetZ1 +
-                        ivec2(floor(frameCanvasOffset * float(subdivisions)));
+    float dExtent = float(extentScaled.x + extentScaled.y + extentScaled.z);
 
-                    for (int u = 0; u < subdivisions; ++u) {
-                        for (int v = 0; v < subdivisions; ++v) {
-                            ivec3 micro = faceMicroPositionFixed(
-                                face, vpFixed, u, v, subdivisions);
-                            int depthBase = micro.x + micro.y + micro.z;
-                            int dist = depthBase * 4 + face;
-                            ivec2 pixel = frameOffsetFixed +
-                                faceLocalOffset + pos3DtoPos2DIso(micro);
-                            writeTap(pixel, dist, col, shape.entityId, face);
-                        }
-                    }
-                } else {
-                    int dist = pos3DtoDistance(vp);
-                    ivec2 pixel = trixelCanvasOffsetZ1 +
-                        ivec2(floor(frameCanvasOffset)) +
-                        faceLocalOffset + pos3DtoPos2DIso(vp);
-                    writeTap(pixel, dist, col, shape.entityId, face);
+    ivec2 pixelCoord = isoOrigin + ivec2(gl_LocalInvocationID.xy);
+
+    ivec2 frameOffset = trixelCanvasOffsetZ1 +
+        ivec2(floor(frameCanvasOffset * float(sub)));
+
+    ivec2 baseCanvasPixel = frameOffset + pixelCoord;
+    if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= canvasSize.x + 3 ||
+        baseCanvasPixel.y < -3 || baseCanvasPixel.y >= canvasSize.y + 3) {
+        return;
+    }
+
+    ivec2 isoPixelRel = pixelCoord - originIsoScaled;
+
+    if (abs(isoPixelRel.x) > isoExtentScaled.x + 2 ||
+        abs(isoPixelRel.y) > isoExtentScaled.y + 2) {
+        return;
+    }
+
+    int surfaceD = findSurfaceDepth(
+        isoPixelRel, shape.shapeType, paramsScaled, shape.flags,
+        dExtent);
+    if (surfaceD == kInvalidDepth) return;
+
+    // In snapped mode (sub=1) the shape must behave like discrete voxels.
+    // The continuous SDF surface extends up to 0.5 beyond integer boundaries,
+    // producing extra pixels at half-integer positions that the voxel-pool
+    // system would never write.  Snap to the nearest integer voxel position,
+    // re-validate the SDF there, and confirm this iso pixel owns that voxel.
+    if (!smoothMode) {
+        vec3 surfacePos = isoToLocal3D(isoPixelRel, float(surfaceD));
+        ivec3 voxelPos = ivec3(round(surfacePos));
+
+        if (evaluateSDF(vec3(voxelPos), shape.shapeType, paramsScaled) > 0.5)
+            return;
+
+        if (pos3DtoPos2DIso(voxelPos) != isoPixelRel)
+            return;
+
+        surfaceD = voxelPos.x + voxelPos.y + voxelPos.z;
+    }
+
+    int originDistance = originScaled.x + originScaled.y + originScaled.z;
+    int baseDepth = surfaceD + originDistance;
+    vec4 baseColor = unpackColor(shape.color);
+
+    if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
+        ivec3 voxelCell = ivec3(round(isoToLocal3D(isoPixelRel, float(surfaceD))));
+        if (((voxelCell.x + voxelCell.y + voxelCell.z) & 1) != 0) {
+            baseColor.rgb *= 0.55;
+        }
+    }
+
+    for (int face = 0; face < 3; face++) {
+        int depthEncoded = encodeDepthWithFace(baseDepth, face);
+        vec4 col = adjustColorForFace(baseColor, face);
+
+        for (int subPixel = 0; subPixel < 2; subPixel++) {
+            ivec2 offset = faceOffset_2x3(face, subPixel);
+            ivec2 canvasPixel = baseCanvasPixel + offset;
+
+            if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
+
+            if (passIndex == 0) {
+                imageAtomicMin(triangleCanvasDistances, canvasPixel,
+                               depthEncoded);
+            } else {
+                int stored = imageLoad(triangleCanvasDistances,
+                                       canvasPixel).x;
+                if (depthEncoded == stored) {
+                    imageStore(triangleCanvasColors, canvasPixel, col);
+                    imageStore(triangleCanvasEntityIds, canvasPixel,
+                               uvec4(shape.entityId, 0u, 0u, 0u));
                 }
             }
         }

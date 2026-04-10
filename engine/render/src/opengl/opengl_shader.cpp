@@ -5,7 +5,41 @@
 #include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/shader.hpp>
 
+#include <filesystem>
+#include <sstream>
+
 namespace IRRender {
+
+namespace detail {
+
+std::string resolveShaderIncludes(
+    const std::string &source,
+    const std::filesystem::path &baseDir
+) {
+    std::istringstream stream(source);
+    std::ostringstream result;
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::string trimmed = line;
+        auto start = trimmed.find_first_not_of(" \t");
+        if (start != std::string::npos) {
+            trimmed = trimmed.substr(start);
+        }
+        if (trimmed.rfind("#include \"", 0) == 0) {
+            auto closeQuote = trimmed.find('"', 10);
+            if (closeQuote != std::string::npos) {
+                std::string filename = trimmed.substr(10, closeQuote - 10);
+                std::filesystem::path includePath = baseDir / filename;
+                result << IRUtility::readFileAsString(includePath.string()) << "\n";
+                continue;
+            }
+        }
+        result << line << "\n";
+    }
+    return result.str();
+}
+
+} // namespace detail
 
 class OpenGLShaderPipelineImpl final : public ShaderPipelineImpl {
   public:
@@ -16,7 +50,10 @@ class OpenGLShaderPipelineImpl final : public ShaderPipelineImpl {
 
         for (const ShaderStage &stage : stages) {
             const GLuint shader = ENG_API->glCreateShader(toGLShaderType(stage.getType()));
-            std::string source = IRUtility::readFileAsString(stage.getFilepath());
+            std::string rawSource = IRUtility::readFileAsString(stage.getFilepath());
+            std::filesystem::path shaderDir =
+                std::filesystem::path(stage.getFilepath()).parent_path();
+            std::string source = detail::resolveShaderIncludes(rawSource, shaderDir);
             const char *sourcePtr = source.c_str();
             ENG_API->glShaderSource(shader, 1, &sourcePtr, nullptr);
             ENG_API->glCompileShader(shader);

@@ -385,7 +385,6 @@ void registerLuaBindings() {
             "CENTER", static_cast<int>(TextAlignV::CENTER),
             "BOTTOM", static_cast<int>(TextAlignV::BOTTOM)
         );
-
         luaScript.lua()["IRText"] = luaScript.lua().create_table();
         luaScript.lua()["IRText"]["create"] =
             [](const std::string &text, int x, int y, sol::table opts, sol::this_state L) {
@@ -394,6 +393,7 @@ void registerLuaBindings() {
                 int lifetime = 0;
                 auto alignH = TextAlignH::LEFT;
                 auto alignV = TextAlignV::TOP;
+                int fontSize = 2;
                 int boxWidth = 0;
                 int boxHeight = 0;
                 if (opts.valid()) {
@@ -408,10 +408,11 @@ void registerLuaBindings() {
                     lifetime = opts.get_or("lifetime", 0);
                     alignH = static_cast<TextAlignH>(opts.get_or("alignH", 0));
                     alignV = static_cast<TextAlignV>(opts.get_or("alignV", 0));
+                    fontSize = opts.get_or("fontSize", 2);
                     boxWidth = opts.get_or("boxWidth", 0);
                     boxHeight = opts.get_or("boxHeight", 0);
                 }
-                C_TextStyle style{color, wrapWidth, alignH, alignV, boxWidth, boxHeight};
+                C_TextStyle style{color, wrapWidth, alignH, alignV, boxWidth, boxHeight, fontSize};
                 IREntity::EntityId entity;
                 if (lifetime > 0) {
                     entity = IREntity::createEntity(

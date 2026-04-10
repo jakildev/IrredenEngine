@@ -7,7 +7,8 @@ namespace IRRender {
 
 enum class TextureKind : std::uint8_t {
     TEXTURE_2D,
-    TEXTURE_3D
+    TEXTURE_3D,
+    TEXTURE_2D_ARRAY
 };
 
 enum class TextureAccess : std::uint8_t {

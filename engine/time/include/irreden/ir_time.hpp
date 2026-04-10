@@ -10,6 +10,12 @@ TimeManager &getTimeManager();
 
 double deltaTime(Events eventType);
 bool shouldUpdate();
+
+double renderFps();
+double renderFrameTimeMs();
+double updateFps();
+unsigned int droppedFrames();
+void resetDroppedFrames();
 } // namespace IRTime
 
 #endif /* IR_TIME_H */

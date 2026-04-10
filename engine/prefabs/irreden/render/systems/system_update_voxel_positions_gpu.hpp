@@ -1,6 +1,32 @@
 #ifndef SYSTEM_UPDATE_VOXEL_POSITIONS_GPU_H
 #define SYSTEM_UPDATE_VOXEL_POSITIONS_GPU_H
 
+// PURPOSE: GPU compute system for transforming voxel local positions to
+//   world-space global positions. The compute shader
+//   (c_update_voxel_positions.glsl) runs one thread per voxel: it finds
+//   which entity the voxel belongs to via GPUEntityTransform, then writes
+//   globalPos = localPos + entityWorldPos to the global position buffer
+//   (binding 5) that voxel-to-trixel shaders read.
+// STATUS: WIP stub -- not registered in any creation's pipeline. The
+//   system creates buffers and maps local positions, but:
+//   - endTick only calls program->use(); no dispatchCompute is issued.
+//   - EntityTransformBuffer is never uploaded with per-entity world
+//     positions and pool offsets.
+//   - UpdateParamsBuffer (entityCount) is never uploaded.
+// TODO:
+//   1. In the per-entity tick, collect GPUEntityTransform structs
+//      (worldPosition, poolOffset, voxelCount) for each entity that
+//      uses the voxel pool.
+//   2. Upload the collected transforms to EntityTransformBuffer.
+//   3. Upload entityCount to UpdateParamsBuffer.
+//   4. Issue dispatchCompute with ceil(totalVoxels / 64) groups.
+//   5. Register in the RENDER pipeline before VOXEL_TO_TRIXEL_STAGE_1.
+//   6. PERF: The shader's linear entity search (for loop over entityCount)
+//      will be O(entities) per voxel thread. Replace with a prefix-sum
+//      offset table or binary search for scale.
+// DEPENDENCIES: C_VoxelPool, C_Position3D, GPUEntityTransform,
+//   GPUUpdateParams (ir_render_types.hpp).
+
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_constants.hpp>

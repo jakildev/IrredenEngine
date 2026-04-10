@@ -1052,6 +1052,8 @@ TextAlignV = {
     BOTTOM = 2,
 }
 
+-- fontSize is an integer: pixels per glyph trixel (1=smallest, 2=normal default)
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- IRRender
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1241,7 +1243,7 @@ IRText = {}
 ---@param text string
 ---@param x integer Position x (origin for alignment box)
 ---@param y integer Position y (origin for alignment box)
----@param opts? { color?: integer[], wrapWidth?: integer, lifetime?: integer, alignH?: TextAlignH, alignV?: TextAlignV, boxWidth?: integer, boxHeight?: integer }
+---@param opts? { color?: integer[], wrapWidth?: integer, lifetime?: integer, alignH?: TextAlignH, alignV?: TextAlignV, boxWidth?: integer, boxHeight?: integer, fontSize?: integer }
 ---@return LuaEntity
 function IRText.create(text, x, y, opts) end
 
@@ -1258,3 +1260,18 @@ function IRText.setColor(handle, r, g, b, a) end
 
 ---@param handle LuaEntity
 function IRText.remove(handle) end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- C_EntityCanvas – per-entity private trixel canvas for smooth movement
+-- ═══════════════════════════════════════════════════════════════════════════
+
+---@class C_EntityCanvas
+---@field canvasSize ivec2
+---@field visible boolean
+local C_EntityCanvas = {}
+---@param canvasSize ivec2
+---@return C_EntityCanvas
+---@overload fun(): C_EntityCanvas
+function C_EntityCanvas.new(canvasSize) end
+---@param poolSize ivec3  Voxel pool dimensions (x, y, z)
+function C_EntityCanvas:addVoxelPool(poolSize) end

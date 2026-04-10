@@ -11,7 +11,6 @@
 #include <irreden/system/components/component_system_event.hpp>
 #include <irreden/system/components/component_system_relation.hpp>
 
-#include <cstdint> // uint32_t
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -22,8 +21,22 @@ using namespace IRComponents;
 
 namespace IRSystem {
 
+class ISystemParams {
+  public:
+    virtual ~ISystemParams() = default;
+};
+
+template <typename Params> class ISystemParamsImpl : public ISystemParams {
+  public:
+    explicit ISystemParamsImpl(std::unique_ptr<Params> params) : params_(std::move(params)) {}
+
+    std::unique_ptr<Params> params_;
+};
+
 class SystemManager {
   public:
+    using ErasedParamsPtr = std::unique_ptr<ISystemParams>;
+
     SystemManager();
     ~SystemManager();
 
@@ -52,11 +65,21 @@ class SystemManager {
         insertRelationTickFunction<RelationComponents...>(functionRelationTick);
 
         m_relations.emplace_back(C_SystemRelation{extraParams.relation_});
+        m_systemParams.emplace_back(nullptr);
         return newSystemId;
     }
 
     template <typename Tag> void addSystemTag(SystemId system) {
         m_ticks[system].archetype_.insert(IREntity::getComponentType<Tag>());
+    }
+
+    template <typename Params> void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+        m_systemParams[system] = std::make_unique<ISystemParamsImpl<Params>>(std::move(params));
+    }
+
+    template <typename Params> Params *getSystemParams(SystemId system) {
+        auto *paramsImpl = static_cast<ISystemParamsImpl<Params> *>(m_systemParams[system].get());
+        return paramsImpl == nullptr ? nullptr : paramsImpl->params_.get();
     }
 
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
@@ -71,6 +94,7 @@ class SystemManager {
     std::vector<C_SystemEvent<END_TICK>> m_endTicks;
     std::vector<C_SystemEvent<RELATION_TICK>> m_relationTicks;
     std::vector<C_SystemRelation> m_relations;
+    std::vector<ErasedParamsPtr> m_systemParams;
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
     std::unordered_map<IRTime::Events, std::list<SystemId>> m_systemPipelinesNew;

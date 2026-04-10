@@ -49,4 +49,20 @@ template <> double TimeManager::deltaTime<RENDER>() {
     return m_profilerRender.deltaTime();
 }
 
+template <> double TimeManager::fps<UPDATE>() {
+    return m_profilerUpdate.fps();
+}
+
+template <> double TimeManager::fps<RENDER>() {
+    return m_profilerRender.fps();
+}
+
+template <> double TimeManager::frameTimeMs<UPDATE>() {
+    return 0.0;
+}
+
+template <> double TimeManager::frameTimeMs<RENDER>() {
+    return m_profilerRender.frameTimeMs();
+}
+
 } // namespace IRTime

@@ -43,6 +43,8 @@ inline GLenum toGLTextureKind(TextureKind textureKind) {
             return GL_TEXTURE_2D;
         case TextureKind::TEXTURE_3D:
             return GL_TEXTURE_3D;
+        case TextureKind::TEXTURE_2D_ARRAY:
+            return GL_TEXTURE_2D_ARRAY;
     }
     return GL_TEXTURE_2D;
 }

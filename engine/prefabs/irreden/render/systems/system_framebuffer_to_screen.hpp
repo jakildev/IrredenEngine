@@ -40,6 +40,12 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             kBufferIndex_FramebufferFrameDataUniform
         );
 
+        static Buffer *s_frameDataBuf =
+            IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
+        static ShaderProgram *s_program =
+            IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");
+        static VAO *s_quadVao = IRRender::getNamedResource<VAO>("QuadVAOArrays");
+
         return createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
             "FramebufferToScreen",
             [](const C_TrixelCanvasFramebuffer &framebuffer,
@@ -54,16 +60,15 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                                                  IRRender::getCameraPosition2DIso(),
                                                  name.name_
                                              );
-                IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData")
-                    ->subData(0, sizeof(FrameDataFramebuffer), &frameData);
+                s_frameDataBuf->subData(0, sizeof(FrameDataFramebuffer), &frameData);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
                 IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
             },
             []() {
                 bindDefaultFramebuffer();
                 clearDefaultFramebuffer();
-                IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram")->use();
-                IRRender::getNamedResource<VAO>("QuadVAOArrays")->bind();
+                s_program->use();
+                s_quadVao->bind();
             }
         );
     }
@@ -82,8 +87,10 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         float xOffset = IRRender::getViewport().x / 2.0f;
         float yOffset = IRRender::getViewport().y / 2.0f;
         vec2 offset = vec2(xOffset, yOffset) +
-                      (pos3DtoPos2DScreen(cameraPosition, IRRender::getTriangleStepSizeScreen()) *
-                       vec2(-1, 1));
+                      isoDeltaToScreenDelta(
+                          pos3DtoPos2DIso(cameraPosition),
+                          IRRender::getTriangleStepSizeScreen()
+                      );
 
         mat4 model = mat4(1.0f);
 
@@ -96,17 +103,12 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                         IRRender::getCameraZoom()
                     )
                 ) *
-                vec2(1, -1) * vec2(scaleFactor)
+                IRPlatform::kIsoToScreenSign * vec2(scaleFactor)
             );
             offset += framebufferPositionOffset;
         } else if (name == "background") {
             // Need to offset by one pixel here but not exactly sure why atm
-            offset += vec2(1.0f, -1.0f) * vec2(scaleFactor);
-        } else {
-            // offset += (
-            //     IRRender::getCameraPositionScreen() *
-            //     vec2(1, -1)
-            // );
+            offset += IRPlatform::kIsoToScreenSign * vec2(scaleFactor);
         }
         model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
         model = IRMath::scale(

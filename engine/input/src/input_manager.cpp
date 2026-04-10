@@ -8,14 +8,24 @@
 #include <irreden/input/entities/entity_joystick.hpp>
 
 namespace IRInput {
+
+void EventInputState::resize(int numButtons) {
+    buttonStates_.resize(numButtons, ButtonStatuses::NOT_HELD);
+    pressAccumulator_.resize(numButtons, false);
+    releaseAccumulator_.resize(numButtons, false);
+    mousePosition_ = {0.0, 0.0};
+}
+
 InputManager::InputManager()
     : m_scrollEntitiesThisFrame{}
     , m_buttonPressesThisFrame{}
-    , m_buttonReleasesThisFrame{}
-    , m_mousePositionUpdate{}
-    , m_mousePositionRender{} {
+    , m_buttonReleasesThisFrame{} {
     m_buttonPressesThisFrame.resize(static_cast<int>(kNumKeyMouseButtons));
     m_buttonReleasesThisFrame.resize(static_cast<int>(kNumKeyMouseButtons));
+
+    for (IRTime::Events event : kTrackedEvents) {
+        m_eventStates[event].resize(static_cast<int>(kNumKeyMouseButtons));
+    }
 
     initKeyMouseButtonEntities();
     initJoystickEntities();
@@ -32,7 +42,6 @@ InputManager::~InputManager() {
 }
 
 void InputManager::tick() {
-
     m_scrollEntitiesThisFrame.clear();
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
@@ -54,30 +63,62 @@ void InputManager::tick() {
         ButtonStatuses::RELEASED
     );
     processScrolls(IRWindow::getWindow().getScrollsToProcess());
-    IRWindow::getCursorPosition(m_mousePositionUpdate);
 }
 
-void InputManager::tickRender() {
-    IRWindow::getCursorPosition(m_mousePositionRender);
+// TODO: Do we need pressed and resleased as its own state, or can we get away
+// with handling that just by looking at pressed and relesaed individually.
+void InputManager::advanceInputState(IRTime::Events event) {
+    m_currentEvent = event;
+    EventInputState &state = m_eventStates[event];
+    const int numButtons = static_cast<int>(state.buttonStates_.size());
+
+    for (int i = 0; i < numButtons; ++i) {
+        ButtonStatuses current = state.buttonStates_[i];
+        if (current == ButtonStatuses::PRESSED) {
+            current = ButtonStatuses::HELD;
+        } else if (current == ButtonStatuses::RELEASED ||
+                   current == ButtonStatuses::PRESSED_AND_RELEASED) {
+            current = ButtonStatuses::NOT_HELD;
+        }
+
+        const bool pressed = state.pressAccumulator_[i];
+        const bool released = state.releaseAccumulator_[i];
+        if (pressed && released) {
+            current = ButtonStatuses::PRESSED_AND_RELEASED;
+        } else if (pressed) {
+            current = ButtonStatuses::PRESSED;
+        } else if (released) {
+            current = ButtonStatuses::RELEASED;
+        }
+
+        state.buttonStates_[i] = current;
+    }
+
+    std::fill(state.pressAccumulator_.begin(), state.pressAccumulator_.end(), false);
+    std::fill(state.releaseAccumulator_.begin(), state.releaseAccumulator_.end(), false);
+    IRWindow::getCursorPosition(state.mousePosition_);
 }
 
 ButtonStatuses InputManager::getButtonStatus(KeyMouseButtons button) const {
-    return IREntity::getComponent<C_KeyStatus>(m_keyMouseButtonEntities.at(button)).status_;
+    return currentEventState().buttonStates_.at(static_cast<int>(button));
 }
 
 bool InputManager::checkButtonPressed(KeyMouseButtons button) const {
-    return getButtonStatus(button) == ButtonStatuses::PRESSED ||
-           getButtonStatus(button) == ButtonStatuses::PRESSED_AND_RELEASED;
+    ButtonStatuses status = getButtonStatus(button);
+    return status == ButtonStatuses::PRESSED ||
+           status == ButtonStatuses::PRESSED_AND_RELEASED;
 }
 
 bool InputManager::checkButtonDown(KeyMouseButtons button) const {
-    return getButtonStatus(button) == ButtonStatuses::PRESSED ||
-           getButtonStatus(button) == ButtonStatuses::HELD;
+    ButtonStatuses status = getButtonStatus(button);
+    return status == ButtonStatuses::PRESSED ||
+           status == ButtonStatuses::HELD;
 }
 
 bool InputManager::checkButtonReleased(KeyMouseButtons button) const {
-    return getButtonStatus(button) == ButtonStatuses::RELEASED ||
-           getButtonStatus(button) == ButtonStatuses::PRESSED_AND_RELEASED;
+    ButtonStatuses status = getButtonStatus(button);
+    return status == ButtonStatuses::RELEASED ||
+           status == ButtonStatuses::PRESSED_AND_RELEASED;
 }
 
 bool InputManager::checkButton(KeyMouseButtons button, ButtonStatuses status) const {
@@ -94,11 +135,8 @@ bool InputManager::checkButton(KeyMouseButtons button, ButtonStatuses status) co
     return false;
 }
 
-vec2 InputManager::getMousePositionUpdate() const {
-    return vec2(m_mousePositionUpdate);
-}
-vec2 InputManager::getMousePositionRender() const {
-    return vec2(m_mousePositionRender);
+vec2 InputManager::getMousePosition() const {
+    return vec2(currentEventState().mousePosition_);
 }
 
 int InputManager::getButtonPressesThisFrame(KeyMouseButtons button) const {
@@ -129,9 +167,15 @@ void InputManager::processKeyMouseButtons(std::queue<int> &queueOfButtons, Butto
         KeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
         if (status == ButtonStatuses::PRESSED) {
             ++m_buttonPressesThisFrame[irButton];
+            for (auto &[event, eventState] : m_eventStates) {
+                eventState.pressAccumulator_[static_cast<int>(irButton)] = true;
+            }
         }
         if (status == ButtonStatuses::RELEASED) {
             ++m_buttonReleasesThisFrame[irButton];
+            for (auto &[event, eventState] : m_eventStates) {
+                eventState.releaseAccumulator_[static_cast<int>(irButton)] = true;
+            }
         }
         queueOfButtons.pop();
 
@@ -171,6 +215,14 @@ void InputManager::initJoystickEntities() {
             );
         }
     }
+}
+
+EventInputState &InputManager::currentEventState() {
+    return m_eventStates[m_currentEvent];
+}
+
+const EventInputState &InputManager::currentEventState() const {
+    return m_eventStates.at(m_currentEvent);
 }
 
 } // namespace IRInput

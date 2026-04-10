@@ -40,6 +40,16 @@ class TimeManager {
     }
 
     template <Events event> double deltaTime();
+    template <Events event> double fps();
+    template <Events event> double frameTimeMs();
+
+    unsigned int droppedFrames() const {
+        return m_profilerRender.droppedFrames();
+    }
+
+    void resetDroppedFrames() {
+        m_profilerRender.resetDroppedFrames();
+    }
 
   private:
     EventProfiler<UPDATE> m_profilerUpdate;

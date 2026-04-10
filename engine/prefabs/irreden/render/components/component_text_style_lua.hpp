@@ -14,6 +14,7 @@ template <> inline void bindLuaType<IRComponents::C_TextStyle>(LuaScript &luaScr
     using IRMath::Color;
     luaScript.registerType<
         C_TextStyle,
+        C_TextStyle(Color, int, TextAlignH, TextAlignV, int, int, int),
         C_TextStyle(Color, int, TextAlignH, TextAlignV, int, int),
         C_TextStyle(Color, int),
         C_TextStyle()>(
@@ -29,7 +30,9 @@ template <> inline void bindLuaType<IRComponents::C_TextStyle>(LuaScript &luaScr
         "boxWidth",
         &C_TextStyle::boxWidth_,
         "boxHeight",
-        &C_TextStyle::boxHeight_
+        &C_TextStyle::boxHeight_,
+        "fontSize",
+        &C_TextStyle::fontSize_
     );
 }
 } // namespace IRScript

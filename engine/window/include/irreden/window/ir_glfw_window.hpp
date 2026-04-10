@@ -38,6 +38,7 @@ inline constexpr std::pair<int, int> kOpenGLWindowHints[] = {
     {GLFW_DOUBLEBUFFER, GLFW_TRUE},
 };
 
+// These checks gate GLFW/OpenGL setup, not shared renderer conventions.
 inline constexpr int kNumWindowHints = IRPlatform::kIsOpenGL
     ? static_cast<int>(sizeof(kOpenGLWindowHints) / sizeof(kOpenGLWindowHints[0]))
     : static_cast<int>(sizeof(kNoApiWindowHints) / sizeof(kNoApiWindowHints[0]));

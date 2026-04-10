@@ -49,16 +49,13 @@ bool checkKeyMouseModifiers(KeyModifierMask requiredModifiers, KeyModifierMask b
     return true;
 }
 
-vec2 getMousePositionUpdate() {
-    return getInputManager().getMousePositionUpdate();
-}
-vec2 getMousePositionRender() {
-    return getInputManager().getMousePositionRender();
+vec2 getMousePosition() {
+    return getInputManager().getMousePosition();
 }
 
 vec2 getMousePositionScreen() {
-    vec2 mouse = getMousePositionRender();
-    if constexpr (IRPlatform::kFlipMouseY) {
+    vec2 mouse = getMousePosition();
+    if constexpr (IRPlatform::kGfx.flipMouseY_) {
         ivec2 windowSize{};
         IRWindow::getWindowSize(windowSize);
         mouse.y = static_cast<float>(windowSize.y) - mouse.y;

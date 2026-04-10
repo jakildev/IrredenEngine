@@ -11,163 +11,88 @@
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
+#include "ir_iso_common.glsl"
+
+// Coordinate chain: World 3D -> Iso 2D -> Canvas pixel
+//   canvasPixel = trixelCanvasOffsetZ1 + floor(cameraIso) + pos3DtoPos2DIso(world)
+// frameCanvasOffset holds floor(cameraIso) from the CPU side.
+// Canvas Y increases upward; the trixel-to-framebuffer pass flips V.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
-    uniform vec2 frameCanvasOffset;
-    uniform ivec2 trixelCanvasOffsetZ1;
+    uniform vec2 frameCanvasOffset;         // floor(cameraIso)
+    uniform ivec2 trixelCanvasOffsetZ1;     // canvas origin for Z-face voxels
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
     uniform int _voxelDispatchPadding;
-    uniform ivec2 canvasSizePixels;
-    uniform ivec2 _canvasPadding;
+    uniform ivec2 canvasSizePixels;         // trixel canvas dimensions
+    uniform ivec2 cullIsoMin;               // iso-space cull viewport (matches CPU chunk mask)
+    uniform ivec2 cullIsoMax;
 };
 
-layout(std430, binding = 5) buffer PositionBuffer {
+layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
-layout(std430, binding = 6) buffer ColorBuffer {
+layout(std430, binding = 6) readonly buffer ColorBuffer {
     uint colors[];
+};
+
+layout(std430, binding = 25) readonly buffer CompactedIndices {
+    uint compactedVoxelIndices[];
+};
+
+layout(std430, binding = 26) readonly buffer IndirectDispatchParams {
+    uint numGroupsX;
+    uint numGroupsY;
+    uint numGroupsZ;
+    uint visibleCount;
 };
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 
-int pos3DtoDistance(ivec3 position) {
-    return position.x + position.y + position.z;
-}
-
-const int kXFace = 0;
-const int kYFace = 1;
-const int kZFace = 2;
-
-int localIDToFace() {
-    if(gl_LocalInvocationID.y == 0) {
-        return kZFace;
-    }
-    if(gl_LocalInvocationID.x == 1) {
-        return kXFace;
-    }
-    if(gl_LocalInvocationID.x == 0) {
-        return kYFace;
-    }
-    return kZFace;
-}
-
-ivec2 pos3DtoPos2DIso(const ivec3 position) {
-    return ivec2(
-        - position.x + position.y,
-        - position.x - position.y + (2 * position.z)
-    );
-}
-
-vec4 unpackColor(uint packedColor) {
-    return vec4(
-        float(packedColor & 0xFFu) / 255.0,
-        float((packedColor >> 8) & 0xFFu) / 255.0,
-        float((packedColor >> 16) & 0xFFu) / 255.0,
-        float((packedColor >> 24) & 0xFFu) / 255.0
-    );
-}
-
 void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
-    if (canvasPixel.x < 0 || canvasPixel.x >= imageSize(triangleCanvasDistances).x) {
-        return;
-    }
-    if (canvasPixel.y < 0 || canvasPixel.y >= imageSize(triangleCanvasDistances).y) {
-        return;
-    }
+    if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) return;
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
 }
 
-ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
-    if (face == kXFace) {
-        return ivec3(
-            voxelPositionFixed.x,
-            voxelPositionFixed.y + u,
-            voxelPositionFixed.z + v
-        );
-    }
-    if (face == kYFace) {
-        return ivec3(
-            voxelPositionFixed.x + u,
-            voxelPositionFixed.y,
-            voxelPositionFixed.z + v
-        );
-    }
-    return ivec3(
-        voxelPositionFixed.x + u,
-        voxelPositionFixed.y + v,
-        voxelPositionFixed.z
-    );
-}
-
-vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
-    const vec3 voxelRounded = round(voxelPosition);
-    const bvec3 nearGrid = lessThanEqual(abs(voxelPosition - voxelRounded), vec3(0.0001));
-    return mix(voxelPosition, voxelRounded, vec3(nearGrid));
-}
-
-bool isVoxelOffScreen(ivec3 voxelPos) {
-    const int margin = 4;
-    ivec2 isoPos = trixelCanvasOffsetZ1 +
-        ivec2(floor(frameCanvasOffset)) +
-        pos3DtoPos2DIso(voxelPos);
-    return isoPos.x < -margin || isoPos.x >= canvasSizePixels.x + margin ||
-           isoPos.y < -margin || isoPos.y >= canvasSizePixels.y + margin;
-}
-
 void main() {
-    const uint voxelIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * uint(voxelDispatchGrid.x);
-    if (voxelIndex >= uint(voxelCount)) {
-        return;
-    }
-    const vec4 color = unpackColor(colors[voxelIndex]);
-    if(color.a == 0) {
-        return;
-    }
+    uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
+    if (compactedIdx >= visibleCount) return;
+
+    uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
-    if (isVoxelOffScreen(ivec3(round(voxelPosition.xyz)))) {
-        return;
-    }
+
+    const int face = localIDToFace_2x3();
+
     if (voxelRenderOptions.x == 0) {
-        const ivec3 voxelPositionInt = ivec3(
-            round(voxelPosition.x),
-            round(voxelPosition.y),
-            round(voxelPosition.z)
-        );
-        const int voxelDistance = pos3DtoDistance(voxelPositionInt);
+        const ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        const int voxelDistance = encodeDepthWithFace(
+            pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
             trixelCanvasOffsetZ1 +
-            ivec2(floor(frameCanvasOffset.x), floor(frameCanvasOffset.y)) +
-            ivec2(gl_LocalInvocationID.x, gl_LocalInvocationID.y) +
+            ivec2(floor(frameCanvasOffset)) +
+            ivec2(gl_LocalInvocationID.xy) +
             pos3DtoPos2DIso(voxelPositionInt);
         writeDistanceTap(canvasPixel, voxelDistance);
         return;
     }
 
     const int subdivisions = max(voxelRenderOptions.y, 1);
+    int u = int(gl_WorkGroupID.z) / subdivisions;
+    int v = int(gl_WorkGroupID.z) % subdivisions;
+
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = ivec3(round(voxelPositionAligned * float(subdivisions)));
     const ivec2 frameOffsetFixed =
         trixelCanvasOffsetZ1 +
         ivec2(floor(frameCanvasOffset * float(subdivisions)));
-    const ivec2 localFaceOffsetFixed =
-        ivec2(gl_LocalInvocationID.x, gl_LocalInvocationID.y);
-    const int face = localIDToFace();
 
-    // In smooth mode, each face invocation expands across an N x N surface grid.
-    for (int u = 0; u < subdivisions; ++u) {
-        for (int v = 0; v < subdivisions; ++v) {
-                const ivec3 microPositionFixed =
-                    faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
-                const int depthBase =
-                    microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-                const int voxelDistance = depthBase * 4 + face;
-                const ivec2 canvasPixel =
-                    frameOffsetFixed + localFaceOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-                writeDistanceTap(canvasPixel, voxelDistance);
-        }
-    }
-
-    // if(mouseHoveredTriangleIndex)
+    const ivec3 microPositionFixed =
+        faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
+    const int depthBase =
+        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const ivec2 canvasPixel =
+        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionFixed);
+    writeDistanceTap(canvasPixel, voxelDistance);
 }

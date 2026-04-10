@@ -7,7 +7,8 @@ using IRMath::ivec2;
 
 namespace IRComponents {
 
-// 2D position in trixel coordinates on the GUI canvas (screen-space, not world-space)
+// 2D position in GUI-canvas trixel coordinates (screen-space, not world-space).
+// Origin is the top-left corner of the GUI canvas, +X moves right, +Y moves down.
 struct C_GuiPosition {
     ivec2 pos_;
 

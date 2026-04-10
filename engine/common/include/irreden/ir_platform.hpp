@@ -1,6 +1,8 @@
 #ifndef IR_PLATFORM_H
 #define IR_PLATFORM_H
 
+#include <irreden/math/ir_math_types.hpp>
+
 namespace IRPlatform {
 
 enum class GraphicsBackend {
@@ -31,16 +33,36 @@ inline constexpr OperatingSystem kOperatingSystem = OperatingSystem::WINDOWS;
 inline constexpr OperatingSystem kOperatingSystem = OperatingSystem::LINUX;
 #endif
 
-inline constexpr bool kIsMetal = kGraphicsBackend == GraphicsBackend::METAL;
 inline constexpr bool kIsOpenGL = kGraphicsBackend == GraphicsBackend::OPENGL;
-inline constexpr bool kIsVulkan = kGraphicsBackend == GraphicsBackend::VULKAN;
 
 inline constexpr bool kIsLinux = kOperatingSystem == OperatingSystem::LINUX;
 inline constexpr bool kIsMacOS = kOperatingSystem == OperatingSystem::MACOS;
 inline constexpr bool kIsWindows = kOperatingSystem == OperatingSystem::WINDOWS;
 
-inline constexpr float kScreenYDirection = kIsMetal ? 1.0f : -1.0f;
-inline constexpr bool kFlipMouseY = !kIsMetal;
+struct GraphicsConventions {
+    // Net screen-vs-iso Y direction after backend-specific clip/texture transforms.
+    float screenYDirection_;
+    // GLFW reports mouse Y top-down; flip when the backend expects bottom-up screen space.
+    bool flipMouseY_;
+    // GLM orthographic helper choice: true uses [0, 1], false uses [-1, 1].
+    bool ndcDepthZeroToOne_;
+};
+
+constexpr GraphicsConventions conventionsFor(GraphicsBackend backend) {
+    switch (backend) {
+        case GraphicsBackend::OPENGL:
+            return GraphicsConventions{-1.0f, true, false};
+        case GraphicsBackend::METAL:
+            return GraphicsConventions{1.0f, false, true};
+        case GraphicsBackend::VULKAN:
+            return GraphicsConventions{1.0f, false, true};
+    }
+
+    return GraphicsConventions{-1.0f, true, false};
+}
+
+inline constexpr GraphicsConventions kGfx = conventionsFor(kGraphicsBackend);
+inline constexpr IRMath::vec2 kIsoToScreenSign{1.0f, kGfx.screenYDirection_};
 
 } // namespace IRPlatform
 

@@ -3,6 +3,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 #include <irreden/world.hpp>
 
@@ -50,6 +51,7 @@ World::World(const char *configFileName)
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
+    IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
@@ -131,9 +133,8 @@ void World::gameLoop() {
 void World::input() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
-    // TODO: Make this an event from timeManager after
-    // making that more generic.
     m_inputManager.tick();
+    m_inputManager.advanceInputState(IRTime::Events::INPUT);
     m_audioManager.getMidiIn().tick();
 
     m_systemManager.executePipeline(IRTime::Events::INPUT);
@@ -157,6 +158,7 @@ void World::update() {
     m_timeManager.beginEvent<IRTime::UPDATE>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
+    m_inputManager.advanceInputState(IRTime::Events::UPDATE);
     m_commandManager.executeUserKeyboardCommandsAll();
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
@@ -167,11 +169,10 @@ void World::update() {
 }
 
 void World::render() {
-    // Possible oppertunity for promise style await here...
     m_timeManager.beginEvent<IRTime::RENDER>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-    m_inputManager.tickRender();
+    m_inputManager.advanceInputState(IRTime::Events::RENDER);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
     m_videoManager.render();

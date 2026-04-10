@@ -11,6 +11,13 @@ namespace IRComponents {
 // Preferred rendering component for game entities. The GPU evaluates the
 // shape's SDF directly -- no per-voxel allocation, no dirty tracking.
 // Rendered by SHAPES_TO_TRIXEL (two-pass distance + color/entityID).
+//
+// flags_ values (see ShapeFlags in ir_render_types.hpp):
+//   SHAPE_FLAG_VISIBLE           - shape is rendered (default on)
+//   SHAPE_FLAG_HOLLOW            - only render the shell of the SDF
+//   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
+//   SHAPE_FLAG_DISCRETE_ROTATION - (future) snap joint rotation to 90-deg
+//                                  increments in iso-adjusted coordinates
 struct C_ShapeDescriptor {
     IRRender::ShapeType shapeType_ = IRRender::ShapeType::BOX;
     vec4 params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);

@@ -41,15 +41,23 @@ inline std::vector<uint32_t> buildFontBuffer() {
     return buf;
 }
 
-inline uint32_t packColor(const Color &c) {
-    return static_cast<uint32_t>(c.red_) |
-           (static_cast<uint32_t>(c.green_) << 8) |
-           (static_cast<uint32_t>(c.blue_) << 16) |
-           (static_cast<uint32_t>(c.alpha_) << 24);
+inline int glyphWidth(int fontSize) { return IRRender::kGlyphWidth * fontSize; }
+inline int glyphHeight(int fontSize) { return IRRender::kGlyphHeight * fontSize; }
+inline int glyphStepX(int fontSize) { return IRRender::kGlyphStepX * fontSize; }
+inline int glyphStepY(int fontSize) { return IRRender::kGlyphStepY * fontSize; }
+inline int glyphSpacingX(int fontSize) { return IRRender::kGlyphSpacingX * fontSize; }
+inline int glyphSpacingY(int fontSize) { return IRRender::kGlyphSpacingY * fontSize; }
+
+inline int nextWordWidth(const std::string &text, size_t i, int fontSize) {
+    int width = 0;
+    const int stepX = glyphStepX(fontSize);
+    while (i < text.size() && text[i] != ' ' && text[i] != '\n') {
+        width += stepX;
+        i++;
+    }
+    return width;
 }
 
-
-// TODO: Move to another module?
 inline void expandTextToCommands(
     std::vector<GlyphDrawCommand> &commands,
     const std::string &text,
@@ -60,14 +68,20 @@ inline void expandTextToCommands(
     TextAlignH alignH = TextAlignH::LEFT,
     TextAlignV alignV = TextAlignV::TOP,
     int boxWidth = 0,
-    int boxHeight = 0
+    int boxHeight = 0,
+    int fontSize = 2
 ) {
     ivec2 aligned = IRRender::parityAlignedPosition(position, canvasSize);
     ivec2 cursor = aligned;
+    const int gw = glyphWidth(fontSize);
+    const int stepX = glyphStepX(fontSize);
+    const int stepY = glyphStepY(fontSize);
+    const int spacX = glyphSpacingX(fontSize);
+    const int spacY = glyphSpacingY(fontSize);
     const int effectiveWrap = (wrapWidth > 0)
         ? aligned.x + wrapWidth
         : (wrapWidth < 0 ? canvasSize.x : 0);
-    uint32_t packed = packColor(color);
+    uint32_t packed = color.toPackedRGBA();
 
     const size_t firstCmd = commands.size();
 
@@ -80,32 +94,32 @@ inline void expandTextToCommands(
         if (c == '\n') {
             lines.back().width_ = cursor.x - aligned.x;
             if (lines.back().width_ > 0)
-                lines.back().width_ -= IRRender::kGlyphSpacingX;
+                lines.back().width_ -= spacX;
             cursor.x = aligned.x;
-            cursor.y += IRRender::kGlyphStepY;
+            cursor.y += stepY;
             lines.push_back({commands.size(), 0, 0});
             continue;
         }
 
         if (effectiveWrap > 0 && c == ' ') {
-            int upcoming = IRRender::nextWordWidth(text, i + 1);
-            if (cursor.x + IRRender::kGlyphStepX + upcoming > effectiveWrap) {
+            int upcoming = nextWordWidth(text, i + 1, fontSize);
+            if (cursor.x + stepX + upcoming > effectiveWrap) {
                 lines.back().width_ = cursor.x - aligned.x;
                 if (lines.back().width_ > 0)
-                    lines.back().width_ -= IRRender::kGlyphSpacingX;
+                    lines.back().width_ -= spacX;
                 cursor.x = aligned.x;
-                cursor.y += IRRender::kGlyphStepY;
+                cursor.y += stepY;
                 lines.push_back({commands.size(), 0, 0});
                 continue;
             }
         }
 
-        if (effectiveWrap > 0 && cursor.x + IRRender::kGlyphWidth > effectiveWrap && c != ' ') {
+        if (effectiveWrap > 0 && cursor.x + gw > effectiveWrap && c != ' ') {
             lines.back().width_ = cursor.x - aligned.x;
             if (lines.back().width_ > 0)
-                lines.back().width_ -= IRRender::kGlyphSpacingX;
+                lines.back().width_ -= spacX;
             cursor.x = aligned.x;
-            cursor.y += IRRender::kGlyphStepY;
+            cursor.y += stepY;
             lines.push_back({commands.size(), 0, 0});
         }
 
@@ -117,22 +131,22 @@ inline void expandTextToCommands(
             cmd.glyphIndex = static_cast<uint32_t>(static_cast<unsigned char>(c));
             cmd.colorPacked = packed;
             cmd.distance = static_cast<uint32_t>(IRRender::kGuiTextDistance);
+            cmd.styleFlags = static_cast<uint32_t>(fontSize);
             commands.push_back(cmd);
             lines.back().count_++;
         }
-        cursor.x += IRRender::kGlyphStepX;
+        cursor.x += stepX;
     }
 
     lines.back().width_ = cursor.x - aligned.x;
     if (lines.back().width_ > 0)
-        lines.back().width_ -= IRRender::kGlyphSpacingX;
+        lines.back().width_ -= spacX;
 
     if (alignH == TextAlignH::LEFT && alignV == TextAlignV::TOP) return;
 
     const int refW = (boxWidth > 0) ? boxWidth : canvasSize.x;
     const int refH = (boxHeight > 0) ? boxHeight : canvasSize.y;
-    const int totalTextH = static_cast<int>(lines.size()) * IRRender::kGlyphStepY
-                           - IRRender::kGlyphSpacingY;
+    const int totalTextH = static_cast<int>(lines.size()) * stepY - spacY;
 
     int offsetY = 0;
     if (alignV == TextAlignV::CENTER) offsetY = (refH - totalTextH) / 2;
@@ -184,6 +198,13 @@ kMaxGlyphCommands * sizeof(GlyphDrawCommand),
             kBufferIndex_GlyphDrawCommands
         );
 
+        static ShaderProgram *s_textProgram =
+            IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram");
+        static Buffer *s_fontDataBuf =
+            IRRender::getNamedResource<Buffer>("FontDataBuffer");
+        static Buffer *s_glyphCmdBuf =
+            IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer");
+
         return createSystem<C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
             "TextToTrixel",
             [](const C_TextSegment &text,
@@ -204,16 +225,17 @@ expandTextToCommands(
                     style.alignH_,
                     style.alignV_,
                     style.boxWidth_,
-                    style.boxHeight_
+                    style.boxHeight_,
+                    style.fontSize_
                 );
             },
             []() {
-                IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram")->use();
+                s_textProgram->use();
 
                 if (!fontUploaded) {
                     auto fontData = buildFontBuffer();
-                    IRRender::getNamedResource<Buffer>("FontDataBuffer")
-                        ->subData(0, fontData.size() * sizeof(uint32_t), fontData.data());
+                    s_fontDataBuf->subData(
+                        0, fontData.size() * sizeof(uint32_t), fontData.data());
                     fontUploaded = true;
                 }
 

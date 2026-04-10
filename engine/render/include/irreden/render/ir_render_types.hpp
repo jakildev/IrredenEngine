@@ -38,6 +38,9 @@ struct FrameDataTrixelToFramebuffer {
     vec2 effectiveSubdivisionsForHover_;
     /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
     float showHoverHighlight_;
+    /// Added to raw canvas distance before depth normalization.
+    /// 0 for world/overlay canvases; pos3DtoDistance(entityPos) for per-entity canvases.
+    int distanceOffset_ = 0;
 };
 
 struct FrameDataVoxelToCanvas {
@@ -48,7 +51,12 @@ struct FrameDataVoxelToCanvas {
     int voxelCount_;
     int _voxelDispatchPadding_ = 0;
     ivec2 canvasSizePixels_;
-    ivec2 _canvasPadding_ = ivec2(0);
+    // Iso-space cull viewport: voxels whose iso position falls outside
+    // [cullIsoMin, cullIsoMax] are skipped.  Matches the CPU chunk mask
+    // viewport so the per-voxel test refines chunk boundaries cleanly.
+    // Derived from the cull camera (frozen or live) and zoom.
+    ivec2 cullIsoMin_ = ivec2(0);
+    ivec2 cullIsoMax_ = ivec2(0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -63,10 +71,18 @@ struct GlyphDrawCommand {
     uint32_t glyphIndex;
     uint32_t colorPacked;     // RGBA as packed uint
     uint32_t distance;
+    uint32_t styleFlags = 0;
 };
 
 enum class FitMode { FIT, STRETCH, UNKNOWN };
 enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
+enum class LodLevel : std::uint32_t {
+    LOD_0 = 0,
+    LOD_1 = 1,
+    LOD_2 = 2,
+    LOD_3 = 3,
+    LOD_4 = 4
+};
 
 struct GPUEntityTransform {
     vec4 worldPosition;
@@ -86,10 +102,12 @@ enum class ShapeType : std::uint32_t {
     SPHERE = 1,
     CYLINDER = 2,
     ELLIPSOID = 3,
-    WING = 4,
-    PRISM = 5,
+    CURVED_PANEL = 4,
+    WEDGE = 5,
     TAPERED_BOX = 6,
-    CUSTOM_SDF = 7
+    CUSTOM_SDF = 7,
+    CONE = 8,
+    TORUS = 9
 };
 
 enum ShapeFlags : std::uint32_t {
@@ -98,6 +116,10 @@ enum ShapeFlags : std::uint32_t {
     SHAPE_FLAG_MIRROR_X = 1u << 1,
     SHAPE_FLAG_MIRROR_Y = 1u << 2,
     SHAPE_FLAG_VISIBLE = 1u << 3,
+    // Forward-looking: when joints are wired, snap rotation to nearest
+    // 90-degree increments in iso-adjusted coordinates. Not yet implemented.
+    SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
+    SHAPE_FLAG_CHECKERBOARD = 1u << 5,
 };
 
 struct GPUShapeDescriptor {
@@ -134,6 +156,8 @@ struct GPUShapesFrameData {
     int shapeCount;
     int passIndex;
     ivec2 voxelRenderOptions;
+    ivec2 cullIsoMin;
+    ivec2 cullIsoMax;
 };
 
 constexpr std::uint32_t kBufferIndex_FrameDataUniform = 0;
@@ -158,6 +182,34 @@ constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
 constexpr std::uint32_t kBufferIndex_JointTransforms = 21;
 constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
+constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
+constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
+constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
+constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
+
+// One entry per dispatched tile in the batched shapes→trixel pass.
+// shapeIndex picks the ShapeDescriptor; tileIsoOrigin is the iso-space
+// origin of this tile's 8×8 pixel footprint (already pre-aligned on CPU).
+struct ShapeTileDescriptor {
+    int shapeIndex = 0;
+    int _pad0 = 0;
+    ivec2 tileIsoOrigin = ivec2(0);
+};
+
+struct VoxelIndirectDispatchParams {
+    std::uint32_t numGroupsX = 0;
+    std::uint32_t numGroupsY = 0;
+    std::uint32_t numGroupsZ = 0;
+    std::uint32_t visibleCount = 0;
+    std::uint32_t completedGroups = 0;
+    std::uint32_t _padding[3] = {};
+};
+
+// TODO: Future culling optimization constants
+// Chunk-level frustum culling: voxel pool is partitioned into chunks of
+// this size. A CPU-side visibility pass writes a per-chunk mask that the
+// voxel-to-trixel shaders check for early-out.
+constexpr int kVoxelChunkSize = 256;
 
 } // namespace IRRender
 

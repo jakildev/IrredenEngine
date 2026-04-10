@@ -32,6 +32,10 @@ inline bool entityExists(EntityId entity) {
     return getEntityManager().entityExists(entity);
 }
 
+inline EntityId getLiveEntityCount() {
+    return getEntityManager().getLiveEntityCount();
+}
+
 template <typename Component>
 using LuaCreateEntityFunction = std::function<Component(IRMath::ivec3)>;
 

@@ -18,7 +18,13 @@ class RenderDevice {
     virtual void dispatchComputeIndirect(std::uint32_t bufferHandle, std::ptrdiff_t offset) = 0;
     virtual void memoryBarrier(BarrierType barrierType) = 0;
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
+    virtual void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
+    virtual void copyImageSubData(
+        std::uint32_t srcHandle, int srcLevel, int srcX, int srcY, int srcZ,
+        std::uint32_t dstHandle, int dstLevel, int dstX, int dstY, int dstZ,
+        int width, int height, int depth
+    ) = 0;
     virtual void setPolygonMode(PolygonMode polygonMode) = 0;
     virtual void bindDefaultFramebuffer() = 0;
     virtual void clearDefaultFramebuffer() = 0;
@@ -28,6 +34,7 @@ class RenderDevice {
     virtual void setDepthTest(bool enabled) = 0;
     virtual void setDepthWrite(bool enabled) = 0;
     virtual void clearTexImage(std::uint32_t textureHandle, int level, const void *data) = 0;
+    virtual void finish() = 0;
 };
 
 RenderDevice *device();

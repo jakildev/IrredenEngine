@@ -304,6 +304,8 @@ class EntityManager {
         return res;
     }
 
+    EntityId getLiveEntityCount() const { return m_liveEntityCount; }
+
   private:
     std::queue<EntityId> m_entityPool;
     std::unordered_map<EntityId, EntityRecord> m_entityIndex;

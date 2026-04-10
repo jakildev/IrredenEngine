@@ -8,7 +8,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/common/components/component_name.hpp>
 
 using namespace IRMath;
 
@@ -21,15 +20,29 @@ struct C_EntityCanvas {
 
     C_EntityCanvas() : canvasSize_{0} {}
 
-    C_EntityCanvas(ivec2 canvasSize, ivec3 voxelPoolSize, IREntity::EntityId parentCanvas)
+    C_EntityCanvas(ivec2 canvasSize)
         : canvasSize_{canvasSize} {
         canvasEntity_ = IREntity::createEntity(
-            C_VoxelPool{voxelPoolSize},
             C_SizeTriangles{canvasSize},
             C_TriangleCanvasTextures{canvasSize}
         );
-        if (parentCanvas != IREntity::kNullEntity) {
-            IREntity::setParent(canvasEntity_, parentCanvas);
+        IREntity::EntityId mainFb = IREntity::getEntity("mainFramebuffer");
+        if (mainFb != IREntity::kNullEntity) {
+            IREntity::setParent(canvasEntity_, mainFb);
+        }
+    }
+
+    void addVoxelPool(ivec3 poolSize) {
+        if (canvasEntity_ != IREntity::kNullEntity) {
+            IREntity::setComponent(canvasEntity_, C_VoxelPool{poolSize});
+        }
+    }
+
+    void resize(ivec2 newSize) {
+        canvasSize_ = newSize;
+        if (canvasEntity_ != IREntity::kNullEntity) {
+            IREntity::setComponent(canvasEntity_, C_SizeTriangles{newSize});
+            IREntity::setComponent(canvasEntity_, C_TriangleCanvasTextures{newSize});
         }
     }
 
@@ -37,8 +50,8 @@ struct C_EntityCanvas {
         return IREntity::getComponent<C_TriangleCanvasTextures>(canvasEntity_);
     }
 
-    C_VoxelPool &getPool() {
-        return IREntity::getComponent<C_VoxelPool>(canvasEntity_);
+    const C_TriangleCanvasTextures &getTextures() const {
+        return IREntity::getComponent<C_TriangleCanvasTextures>(canvasEntity_);
     }
 };
 

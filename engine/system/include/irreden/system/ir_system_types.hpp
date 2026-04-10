@@ -30,6 +30,7 @@ enum SystemName {
     OUTPUT_MIDI_MESSAGE_OUT,
     INPUT_GAMEPAD,
     ENTITY_HOVER_DETECT,
+    HITBOX_MOUSE_TEST,
 
     // Update systems
     SCREEN_VIEW,
@@ -84,7 +85,11 @@ enum SystemName {
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
     UPDATE_VOXEL_POSITIONS_GPU,
-    SHAPES_TO_TRIXEL
+    SHAPES_TO_TRIXEL,
+    CAMERA_MOUSE_PAN,
+    DEBUG_CULLING_MINIMAP,
+    PERF_STATS_OVERLAY,
+    ENTITY_CANVAS_TO_FRAMEBUFFER
 };
 
 template <typename... RelationComponents> struct RelationParams {

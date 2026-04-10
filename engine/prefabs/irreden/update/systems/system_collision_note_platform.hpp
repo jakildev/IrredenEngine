@@ -16,7 +16,7 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-namespace {
+namespace detail {
 inline bool overlaps1D(float minA, float maxA, float minB, float maxB) {
     return minA <= maxB && maxA >= minB;
 }
@@ -87,7 +87,7 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
         event.entered_ = true;
     }
 }
-} // namespace
+} // namespace detail
 
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
@@ -150,7 +150,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             auto &otherPos = otherPositions[j];
                             auto &otherCollider = otherColliders[j];
 
-                            if (!broadPhaseIsoDepth(
+                            if (!detail::broadPhaseIsoDepth(
                                     selfPos,
                                     selfCollider,
                                     otherPos,
@@ -159,7 +159,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                                 continue;
                             }
 
-                            if (!narrowPhaseAabb(
+                            if (!detail::narrowPhaseAabb(
                                     selfPos,
                                     selfCollider,
                                     otherPos,
@@ -173,8 +173,12 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             }
 
                             foundAnyContact = true;
-                            markContact(selfEvent, otherEntities[j], vec3(0.0f, 0.0f, 1.0f));
-                            markContact(otherEvents[j], selfEntity, vec3(0.0f, 0.0f, -1.0f));
+                            detail::markContact(
+                                selfEvent, otherEntities[j], vec3(0.0f, 0.0f, 1.0f)
+                            );
+                            detail::markContact(
+                                otherEvents[j], selfEntity, vec3(0.0f, 0.0f, -1.0f)
+                            );
                             break;
                         }
                         if (foundAnyContact) {

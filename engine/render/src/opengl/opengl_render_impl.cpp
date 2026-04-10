@@ -37,8 +37,27 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glDrawElements(toGLDrawMode(drawMode), count, toGLIndexType(indexType), nullptr);
     }
 
+    void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
+        glDrawElementsInstanced(
+            toGLDrawMode(drawMode), count, toGLIndexType(indexType),
+            nullptr, instanceCount
+        );
+    }
+
     void drawArrays(DrawMode drawMode, int first, int count) override {
         ENG_API->glDrawArrays(toGLDrawMode(drawMode), first, count);
+    }
+
+    void copyImageSubData(
+        std::uint32_t srcHandle, int srcLevel, int srcX, int srcY, int srcZ,
+        std::uint32_t dstHandle, int dstLevel, int dstX, int dstY, int dstZ,
+        int width, int height, int depth
+    ) override {
+        glCopyImageSubData(
+            srcHandle, GL_TEXTURE_2D, srcLevel, srcX, srcY, srcZ,
+            dstHandle, GL_TEXTURE_2D_ARRAY, dstLevel, dstX, dstY, dstZ,
+            width, height, depth
+        );
     }
 
     void setPolygonMode(PolygonMode polygonMode) override {
@@ -102,6 +121,10 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void clearTexImage(std::uint32_t textureHandle, int level, const void *data) override {
         glClearTexImage(textureHandle, level, GL_RED_INTEGER, GL_INT, data);
+    }
+
+    void finish() override {
+        glFinish();
     }
 };
 

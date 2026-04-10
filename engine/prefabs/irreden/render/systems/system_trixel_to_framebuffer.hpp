@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -45,16 +46,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             "HoveredEntityIdBuffer",
             &initData,
             sizeof(initData),
-            BUFFER_STORAGE_DYNAMIC | BUFFER_STORAGE_MAP_READ,
+            BUFFER_STORAGE_DYNAMIC | BUFFER_STORAGE_MAP_READ |
+                BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_HoveredEntityId
         );
+
+        static Buffer *s_frameDataBuf =
+            IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+        static Buffer *s_hoveredIdBuf =
+            IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
+        static ShaderProgram *s_program =
+            IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        static VAO *s_quadVao = IRRender::getNamedResource<VAO>("QuadVAO");
 
         return createSystem<C_TriangleCanvasTextures, C_Name>(
             "CanvasToFramebuffer",
             [](IREntity::EntityId &entity,
                const C_TriangleCanvasTextures &triangleCanvasTextures,
                const C_Name &) {
+                auto &timing = IRRender::gpuStageTiming();
+                IRRender::TimePoint drawStart;
+                if (timing.enabled_) { IRRender::device()->finish(); drawStart = IRRender::SteadyClock::now(); }
+
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 auto &frameData =
@@ -89,6 +103,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
                 }
                 frameData.frameData_.textureOffset_ = vec2(0);
+                frameData.frameData_.distanceOffset_ = 0;
                 frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                                  calcModelMatrix(
                                                      framebufferResolution,
@@ -111,9 +126,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                         (IRRender::isHoveredTrixelVisible() ? 1.0f : 0.0f);
                 }
 
-                frameData.updateFrameData(
-                    IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData")
-                );
+                frameData.updateFrameData(s_frameDataBuf);
 
                 triangleCanvasTextures.bind(0, 1, 2);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
@@ -123,13 +136,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     IndexType::UNSIGNED_SHORT
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+                if (timing.enabled_) { IRRender::device()->finish(); timing.trixelToFbMs_ += IRRender::elapsedMs(drawStart, IRRender::SteadyClock::now()); }
             },
             []() {
+                IRRender::gpuStageTiming().trixelToFbMs_ = 0.0f;
                 struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;
-                IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer")
-                    ->subData(0, sizeof(resetData), &resetData);
-                IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
-                IRRender::getNamedResource<VAO>("QuadVAO")->bind();
+                s_hoveredIdBuf->subData(0, sizeof(resetData), &resetData);
+                s_program->use();
+                s_quadVao->bind();
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 framebuffer.bindFramebuffer();
@@ -145,11 +160,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
     static mat4
     calcModelMatrix(const vec2 &resolution, const vec2 &cameraPositionIso, const vec2 &zoomLevel) {
+        // Match the renderer's net screen-vs-iso Y convention for sub-pixel camera offsets.
         vec2 isoPixelOffset =
             IRMath::floor(
                 IRMath::pos2DIsoToPos2DGameResolution(IRMath::fract(cameraPositionIso), zoomLevel)
             ) *
-            vec2(1, -1);
+            IRPlatform::kIsoToScreenSign;
         mat4 model = mat4(1.0f);
         model = translate(
             model,

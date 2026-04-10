@@ -46,6 +46,14 @@ template <typename ComponentTag> void addSystemTag(SystemId system) {
     getSystemManager().addSystemTag<ComponentTag>(system);
 }
 
+template <typename Params> void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+    getSystemManager().setSystemParams(system, std::move(params));
+}
+
+template <typename Params> Params *getSystemParams(SystemId system) {
+    return getSystemManager().getSystemParams<Params>(system);
+}
+
 void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 void executePipeline(IRTime::Events event);
 

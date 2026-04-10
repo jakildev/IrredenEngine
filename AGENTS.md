@@ -399,9 +399,18 @@ The `creations/template/` folder contains a minimal reference structure for new 
 | Fragment shaders  | `f_` prefix                   |
 | Geometry shaders  | `g_` prefix                   |
 
+**Naming style:**
+- Prefer descriptive variable names over abbreviations. A longer name that reads clearly is better than a short one that requires context to decode. For example, prefer `viewCenterIso` over `vcIso`, `minimapCenter` over `mmC`, `isCullingFrozen` over `frozen`.
+- For non-public helper code that must live in headers, prefer a nested lowercase `detail` namespace under the owning API namespace (`IRSystem::detail`, `IRRender::detail`, `IRCommand::detail`).
+- Treat `detail` as a convention marker for implementation helpers, not as part of the intended public API surface.
+- Avoid feature-specific helper namespaces such as `MinimapDetail` unless the helper group is intentionally shared across multiple files as a small named submodule.
+- Do not use anonymous namespaces in headers except for generated or explicitly documented special cases. Use `detail` for header-only helpers, and keep anonymous namespaces in `.cpp` files when possible.
+- If a helper is part of the intentional surface of a header, keep it in the owning namespace instead of moving it into `detail`.
+
 **Logical style:**
 - Prefer early return over nested logic.
-- Prefer `unique_ptr` over `shared_ptr`.
+- Prefer C++ standard library types such as `std::string` over raw C-style buffers when they express the intent clearly. Use fixed C buffers only when a low-level API or measured performance need justifies them.
+- Prefer `unique_ptr` over `shared_ptr`. Use `unique_ptr` for the single owner and pass raw pointers to non-owning consumers (e.g. lambda captures, observers). Avoid `shared_ptr` unless true shared ownership is required.
 - Raw pointers indicate non-ownership.
 
 ---

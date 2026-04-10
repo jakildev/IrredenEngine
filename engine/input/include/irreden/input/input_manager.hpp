@@ -8,7 +8,9 @@
 #include <irreden/input/components/component_key_mouse_button.hpp>
 #include <irreden/input/components/component_mouse_position.hpp>
 #include <irreden/input/entities/entity_key_mouse_button.hpp>
+#include <irreden/time/ir_time_types.hpp>
 
+#include <array>
 #include <unordered_map>
 #include <queue>
 
@@ -17,21 +19,36 @@ using namespace IREntity;
 
 namespace IRInput {
 
+constexpr int kNumTrackedEvents = 3;
+constexpr std::array<IRTime::Events, kNumTrackedEvents> kTrackedEvents = {
+    IRTime::Events::INPUT,
+    IRTime::Events::UPDATE,
+    IRTime::Events::RENDER
+};
+
+struct EventInputState {
+    std::vector<ButtonStatuses> buttonStates_;
+    std::vector<bool> pressAccumulator_;
+    std::vector<bool> releaseAccumulator_;
+    IRMath::dvec2 mousePosition_;
+
+    void resize(int numButtons);
+};
+
 class InputManager {
   public:
     InputManager();
     ~InputManager();
 
     void tick();
-    void tickRender();
+    void advanceInputState(IRTime::Events event);
 
     ButtonStatuses getButtonStatus(KeyMouseButtons button) const;
     bool checkButtonPressed(KeyMouseButtons button) const;
     bool checkButtonDown(KeyMouseButtons button) const;
     bool checkButtonReleased(KeyMouseButtons button) const;
     bool checkButton(KeyMouseButtons button, ButtonStatuses status) const;
-    IRMath::vec2 getMousePositionUpdate() const; // Should be stored in ECS
-    IRMath::vec2 getMousePositionRender() const; // Should be stored in ECS
+    IRMath::vec2 getMousePosition() const;
     int getButtonPressesThisFrame(KeyMouseButtons button) const;
     int getButtonReleasesThisFrame(KeyMouseButtons button) const;
     bool hasAnyButtonPressedThisFrame() const;
@@ -44,8 +61,9 @@ class InputManager {
     std::vector<EntityId> m_scrollEntitiesThisFrame;
     std::vector<int> m_buttonPressesThisFrame;
     std::vector<int> m_buttonReleasesThisFrame;
-    dvec2 m_mousePositionUpdate;
-    dvec2 m_mousePositionRender;
+
+    std::unordered_map<IRTime::Events, EventInputState> m_eventStates;
+    IRTime::Events m_currentEvent = IRTime::Events::INPUT;
 
     void processKeyMouseButtons(std::queue<int> &queueOfButtons, ButtonStatuses status);
 
@@ -53,6 +71,9 @@ class InputManager {
 
     void initKeyMouseButtonEntities();
     void initJoystickEntities();
+
+    EventInputState &currentEventState();
+    const EventInputState &currentEventState() const;
 };
 
 } // namespace IRInput

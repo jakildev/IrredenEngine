@@ -130,7 +130,10 @@ function(irreden_add_quality_targets)
                 -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
                 -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_clang_tidy.cmake"
-            COMMENT "Running clang-tidy lint checks"
+            COMMAND ${CMAKE_COMMAND}
+                -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
+            COMMENT "Running lint and header convention checks"
             VERBATIM
         )
     else()

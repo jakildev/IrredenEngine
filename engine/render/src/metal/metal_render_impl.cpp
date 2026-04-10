@@ -282,6 +282,21 @@ metalCurrentDepthPixelFormat(),
         encoder->endEncoding();
     }
 
+    void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
+        // Metal instanced draw - stub for now, not yet wired for entity canvas instancing.
+        for (int i = 0; i < instanceCount; ++i) {
+            drawElements(drawMode, count, indexType);
+        }
+    }
+
+    void copyImageSubData(
+        std::uint32_t, int, int, int, int,
+        std::uint32_t, int, int, int, int,
+        int, int, int
+    ) override {
+        // Metal texture copy - stub.
+    }
+
     void drawArrays(DrawMode drawMode, int first, int count) override {
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();
@@ -325,6 +340,7 @@ setMetalDepthTestEnabled(enabled);
 setMetalDepthWriteEnabled(enabled);
     }
     void clearTexImage(std::uint32_t, int, const void *) override {}
+    void finish() override {}
 };
 
 MetalRenderDevice g_metalRenderDevice;

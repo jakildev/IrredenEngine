@@ -148,6 +148,10 @@ class WorldConfig {
             "hovered_trixel_visible",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
         );
+        m_config.addEntry(
+            "gpu_stage_timing",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }

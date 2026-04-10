@@ -3,6 +3,8 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 
+#include <cstdint>
+
 #include <glm/common.hpp>
 #include <glm/vec2.hpp>
 #include <glm/mat2x2.hpp>
@@ -75,6 +77,13 @@ struct Color {
     uint8_t green_;
     uint8_t blue_;
     uint8_t alpha_;
+
+    constexpr std::uint32_t toPackedRGBA() const {
+        return static_cast<std::uint32_t>(red_) |
+               (static_cast<std::uint32_t>(green_) << 8) |
+               (static_cast<std::uint32_t>(blue_) << 16) |
+               (static_cast<std::uint32_t>(alpha_) << 24);
+    }
 };
 using Distance = int32_t;
 
