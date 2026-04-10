@@ -29,3 +29,8 @@ Thumbs.db
 creations/*
 !creations/demos/
 !creations/demos/**
+
+# claude code: share skills, ignore worktrees and local session state
+.claude/*
+!.claude/skills/
+!.claude/skills/**
