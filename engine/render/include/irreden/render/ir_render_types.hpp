@@ -120,6 +120,11 @@ enum ShapeFlags : std::uint32_t {
     // 90-degree increments in iso-adjusted coordinates. Not yet implemented.
     SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
     SHAPE_FLAG_CHECKERBOARD = 1u << 5,
+    // Color each voxel by its LOCAL iso-depth along the camera's forward axis,
+    // normalized to [0,1] over the shape's own depth extent.  Useful for
+    // visually distinguishing individual shapes regardless of their position
+    // in the scene (compared to absolute world-depth colouring).
+    SHAPE_FLAG_DEPTH_COLOR = 1u << 6,
 };
 
 struct GPUShapeDescriptor {

@@ -54,6 +54,7 @@ int g_currentShot = 0;
 int g_settleCounter = 0;
 bool g_screenshotPending = false;
 bool g_autoMode = false;
+bool g_depthColor = false;
 
 } // namespace
 
@@ -73,6 +74,8 @@ int main(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--depth-color") == 0) {
+            g_depthColor = true;
         }
     }
 
@@ -262,6 +265,66 @@ void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
     }
 }
 
+// Bounding half-extent mirroring the GPU formula in
+// system_shapes_to_trixel.hpp / c_shapes_to_trixel.glsl, so that CPU depth
+// normalization uses the exact same range as the GPU shader.
+vec3 computeBoundingHalfCpu(IRRender::ShapeType type, vec4 params) {
+    // Must mirror the GLSL branch in c_shapes_to_trixel.glsl exactly.
+    switch (type) {
+        case IRRender::ShapeType::SPHERE:
+            return vec3(params.x);
+        case IRRender::ShapeType::CYLINDER:
+        case IRRender::ShapeType::CONE:
+            return vec3(params.x, params.x, params.z * 0.5f);
+        case IRRender::ShapeType::TORUS: {
+            float xyR = params.x + params.y;
+            return vec3(xyR, xyR, params.y);
+        }
+        case IRRender::ShapeType::CURVED_PANEL: {
+            vec3 hs = vec3(params) * 0.5f;
+            hs.z += std::abs(params.w) * hs.x;
+            return hs;
+        }
+        default:  // BOX, ELLIPSOID, WEDGE, TAPERED_BOX, CUSTOM_SDF
+            return vec3(params) * 0.5f;
+    }
+}
+
+// Classic HSV->RGB (h,s,v in [0,1]) matching the shader's hsvToRgb helper.
+vec3 hsvToRgbCpu(vec3 c) {
+    const vec4 K(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
+    vec3 p = glm::abs(glm::fract(vec3(c.x) + vec3(K)) * 6.0f - vec3(K.w));
+    return c.z * glm::mix(vec3(K.x), glm::clamp(p - vec3(K.x), 0.0f, 1.0f), c.y);
+}
+
+// Color each active voxel by its LOCAL iso-depth (x+y+z), normalized to
+// [0,1] across the shape's bounding dExtent.  Matches the GPU depth-color
+// path in c_shapes_to_trixel.glsl exactly, so the voxel-pool mirror is
+// indistinguishable from the SDF render.
+void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type,
+                     vec4 sdfParams) {
+    vec3 boundingHalf = computeBoundingHalfCpu(type, sdfParams);
+    // Match GPU: in iso camera convention, smaller d = closer, so visible
+    // window is [-dColor, +dColor/3] and front → t=0 (red), back → t=1.
+    float dColor = boundingHalf.x + boundingHalf.y + boundingHalf.z;
+    float denom = std::max((4.0f / 3.0f) * dColor, 1.0f);
+
+    for (int i = 0; i < voxelSet.numVoxels_; ++i) {
+        if (voxelSet.voxels_[i].color_.alpha_ == 0) continue;
+        ivec3 cellPos = ivec3(glm::round(voxelSet.positions_[i].pos_));
+        float d = static_cast<float>(cellPos.x + cellPos.y + cellPos.z);
+        float t = glm::clamp((d + dColor) / denom, 0.0f, 1.0f);
+        vec3 rgb = hsvToRgbCpu(vec3(0.66f * t, 1.0f, 1.0f));
+        Color c{
+            static_cast<std::uint8_t>(glm::clamp(rgb.x, 0.0f, 1.0f) * 255.0f),
+            static_cast<std::uint8_t>(glm::clamp(rgb.y, 0.0f, 1.0f) * 255.0f),
+            static_cast<std::uint8_t>(glm::clamp(rgb.z, 0.0f, 1.0f) * 255.0f),
+            255
+        };
+        voxelSet.voxels_[i].color_ = c;
+    }
+}
+
 // Create a voxel-pool entity carved to match an SDF shape.  Allocates a
 // centered box of the given halfExtent, then deactivates every voxel whose
 // SDF value exceeds the 0.5 surface threshold.
@@ -296,7 +359,11 @@ EntityId createVoxelPoolShape(
             ++activeCount;
         }
     }
-    applyCheckerboard(vs, color);
+    if (g_depthColor) {
+        applyDepthColor(vs, type, sdfParams);
+    } else {
+        applyCheckerboard(vs, color);
+    }
 
     IR_LOG_INFO(
         "VoxelPool shape entity={} canvas={} total={} active={}",
@@ -313,7 +380,11 @@ EntityId createSDFShape(
     Color color
 ) {
     C_ShapeDescriptor desc{type, params, color};
-    desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
+    if (g_depthColor) {
+        desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
+    } else {
+        desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
+    }
     EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
     auto &sd = IREntity::getComponent<C_ShapeDescriptor>(entity);
     IR_LOG_INFO(

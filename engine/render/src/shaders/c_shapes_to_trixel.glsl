@@ -65,6 +65,7 @@ const uint SHAPE_TORUS = 9u;
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
 const uint FLAG_CHECKERBOARD = 32u;
+const uint FLAG_DEPTH_COLOR = 64u;
 
 // Per-tile descriptor stream. CPU batches every tile of every visible
 // shape into this SSBO, then issues one dispatchCompute(totalTiles, 1, 1).
@@ -95,6 +96,13 @@ layout(std430, binding = 30) readonly buffer ShapeTileBuffer {
 // (and sdf >= -0.5 for hollow shapes).
 // ---------------------------------------------------------------
 
+// Classic HSV->RGB used for per-voxel depth coloring.  h,s,v all in [0,1].
+vec3 hsvToRgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 // SDF evaluation (same functions as before, used for general fallback)
 float sdfBox(vec3 p, vec3 halfExtents) {
     vec3 d = abs(p) - halfExtents;
@@ -111,7 +119,9 @@ float sdfCylinder(vec3 p, float radius, float halfHeight) {
 }
 
 float sdfEllipsoid(vec3 p, vec3 radii) {
+    if (radii.x <= 0.0 || radii.y <= 0.0 || radii.z <= 0.0) return 1.0;
     float k0 = length(p / radii);
+    if (k0 < 1e-6) return -min(radii.x, min(radii.y, radii.z));
     float k1 = length(p / (radii * radii));
     return k0 * (k0 - 1.0) / k1;
 }
@@ -537,34 +547,74 @@ void main() {
         return;
     }
 
-    int surfaceD = findSurfaceDepth(
-        isoPixelRel, shape.shapeType, paramsScaled, shape.flags,
-        dExtent);
-    if (surfaceD == kInvalidDepth) return;
+    int surfaceD;
 
-    // In snapped mode (sub=1) the shape must behave like discrete voxels.
-    // The continuous SDF surface extends up to 0.5 beyond integer boundaries,
-    // producing extra pixels at half-integer positions that the voxel-pool
-    // system would never write.  Snap to the nearest integer voxel position,
-    // re-validate the SDF there, and confirm this iso pixel owns that voxel.
+    // In snapped mode (sub=1) the shape must behave like discrete voxels and
+    // match the CPU voxel-pool carve exactly.  The analytical findSurfaceDepth
+    // is unreliable here because (a) its fast paths evaluate the SDF at the
+    // non-lattice analytical entry point, not at integer voxel centers, and
+    // (b) its generalDepthSearch uses integer-d but non-lattice column points
+    // as well.  Both can miss the true front-most lattice voxel on a column.
+    //
+    // So in snap mode we ignore findSurfaceDepth entirely and walk the ENTIRE
+    // iso-column lattice from -dExtent to +dExtent.  Integer voxels along an
+    // iso column live on a sublattice: only iso pixels with (isoX + isoY)
+    // even have voxels, and the valid depths satisfy d ≡ -isoY (mod 3),
+    // spaced by 3.  The first hit whose integer-voxel SDF is inside the 0.5
+    // carve threshold is the winner — this is exactly what CPU carving does.
     if (!smoothMode) {
-        vec3 surfacePos = isoToLocal3D(isoPixelRel, float(surfaceD));
-        ivec3 voxelPos = ivec3(round(surfacePos));
+        if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) return;
 
-        if (evaluateSDF(vec3(voxelPos), shape.shapeType, paramsScaled) > 0.5)
-            return;
+        int isoY = isoPixelRel.y;
+        int dMin = int(floor(-dExtent)) - 3;
+        int dMax = int(ceil(dExtent)) + 3;
+        int rem = ((dMin + isoY) % 3 + 3) % 3;
+        int dStart = dMin + ((3 - rem) % 3);
 
-        if (pos3DtoPos2DIso(voxelPos) != isoPixelRel)
-            return;
-
-        surfaceD = voxelPos.x + voxelPos.y + voxelPos.z;
+        bool found = false;
+        int validD = 0;
+        for (int d = dStart; d <= dMax; d += 3) {
+            vec3 p = isoToLocal3D(isoPixelRel, float(d));
+            ivec3 voxelPos = ivec3(round(p));
+            if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
+            if (evaluateSDF(vec3(voxelPos), shape.shapeType, paramsScaled) <= 0.5) {
+                validD = voxelPos.x + voxelPos.y + voxelPos.z;
+                found = true;
+                break;
+            }
+        }
+        if (!found) return;
+        surfaceD = validD;
+    } else {
+        surfaceD = findSurfaceDepth(
+            isoPixelRel, shape.shapeType, paramsScaled, shape.flags,
+            dExtent);
+        if (surfaceD == kInvalidDepth) return;
     }
 
     int originDistance = originScaled.x + originScaled.y + originScaled.z;
     int baseDepth = surfaceD + originDistance;
     vec4 baseColor = unpackColor(shape.color);
 
-    if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
+    if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
+        // Normalize local iso-depth over the shape's *visible* iso-depth
+        // range so each shape gets a full near/far gradient independent of
+        // world position.  In this iso convention the camera looks from the
+        // −x−y−z direction, so smaller d = x+y+z is *closer* to camera.
+        // For a box of half h the front corner is d=-3h, and the visible
+        // back edges sit at d=+h — a visible window [-3h, +h] of width 4h.
+        // Map front → t=0 (red) and back → t=1 (blue).
+        //
+        // dExtent above includes a +1 per-axis safety margin for the
+        // lattice walk; use the unpadded boundingHalf sum here instead so
+        // the hue range isn't compressed.
+        float dColor = boundingHalf.x + boundingHalf.y +
+                       boundingHalf.z;
+        float denomC = max((4.0 / 3.0) * dColor, 1.0);
+        float t = clamp(
+            (float(surfaceD) + dColor) / denomC, 0.0, 1.0);
+        baseColor.rgb = hsvToRgb(vec3(0.66 * t, 1.0, 1.0));
+    } else if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
         ivec3 voxelCell = ivec3(round(isoToLocal3D(isoPixelRel, float(surfaceD))));
         if (((voxelCell.x + voxelCell.y + voxelCell.z) & 1) != 0) {
             baseColor.rgb *= 0.55;
