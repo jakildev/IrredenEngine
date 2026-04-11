@@ -69,7 +69,7 @@ class IRGLFWWindow {
 
     int shouldClose();
     void setShouldClose();
-    void setWindowMonitor(); // TODO
+    void setWindowMonitor();
     void setWindowUserPointer(void *pointer);
     GLFWwindow *getRawWindow() const;
 

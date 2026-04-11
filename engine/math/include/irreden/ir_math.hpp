@@ -401,7 +401,9 @@ constexpr ivec3 pos2DIsoToPos3DAtZLevelNew(const ivec2 positionFromOrigin, const
     );
 }
 
-// Alt from above TODO remove above
+// Variant assuming the caller has already adjusted `position` to the
+// origin of the bottom Z face. The two variants above wrap this with
+// different origin computations.
 constexpr ivec3 pos2DIsoToPos3DAtZLevelAlt(const ivec2 position, const int zLevel) {
     return ivec3(
         glm::ceil(-(position.x + position.y) / 2.0),

@@ -11,8 +11,7 @@
 
 namespace IRProfile {
 
-// Profiler colors
-// TODO: make these unsigned ints
+// Profiler colors (ARGB)
 #define IR_PROFILER_COLOR_UPDATE 0xff0000ff
 #define IR_PROFILER_COLOR_RENDER 0xffff0000
 #define IR_PROFILER_COLOR_AUDIO 0xff00ffff
@@ -62,9 +61,8 @@ template <typename... Args> inline void glLogFatal(const char *format, Args &&..
 
 #include <irreden/profile/ir_profile.tpp>
 
-// TODO: somewhere else
-// #define IR_RELEASE
-
+// IR_RELEASE should be defined by the build system (e.g. via CMake) to
+// strip asserts, profiling, and logging from release builds.
 #ifndef IR_RELEASE
 
 #define IR_ASSERT(x, en, ...)                                                                      \

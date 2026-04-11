@@ -31,6 +31,19 @@
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
         "IRREDEN_GRAPHICS_BACKEND": "METAL"
       }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "description": "Linux local configuration for development (OpenGL via GLFW/X11).",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "OPENGL"
+      }
     }
   ],
   "buildPresets": [
@@ -45,6 +58,11 @@
       "configurePreset": "macos-debug"
     },
     {
+      "name": "linux-build-all",
+      "displayName": "Build All Targets (Linux)",
+      "configurePreset": "linux-debug"
+    },
+    {
       "name": "windows-format-check",
       "displayName": "Format Check",
       "configurePreset": "windows-debug",
@@ -56,6 +74,14 @@
       "name": "macos-format-check",
       "displayName": "Format Check (macOS)",
       "configurePreset": "macos-debug",
+      "targets": [
+        "format-check"
+      ]
+    },
+    {
+      "name": "linux-format-check",
+      "displayName": "Format Check (Linux)",
+      "configurePreset": "linux-debug",
       "targets": [
         "format-check"
       ]
@@ -77,6 +103,14 @@
       ]
     },
     {
+      "name": "linux-format",
+      "displayName": "Format (Linux)",
+      "configurePreset": "linux-debug",
+      "targets": [
+        "format"
+      ]
+    },
+    {
       "name": "windows-lint",
       "displayName": "Lint",
       "configurePreset": "windows-debug",
@@ -88,6 +122,14 @@
       "name": "macos-lint",
       "displayName": "Lint (macOS)",
       "configurePreset": "macos-debug",
+      "targets": [
+        "lint"
+      ]
+    },
+    {
+      "name": "linux-lint",
+      "displayName": "Lint (Linux)",
+      "configurePreset": "linux-debug",
       "targets": [
         "lint"
       ]
@@ -107,6 +149,14 @@
       "targets": [
         "IrredenEngineTest"
       ]
+    },
+    {
+      "name": "linux-tests",
+      "displayName": "Build Tests (Linux)",
+      "configurePreset": "linux-debug",
+      "targets": [
+        "IrredenEngineTest"
+      ]
     }
   ],
   "testPresets": [
@@ -122,6 +172,14 @@
       "name": "macos-default-tests",
       "displayName": "Run CTest (macOS)",
       "configurePreset": "macos-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-default-tests",
+      "displayName": "Run CTest (Linux)",
+      "configurePreset": "linux-debug",
       "output": {
         "outputOnFailure": true
       }

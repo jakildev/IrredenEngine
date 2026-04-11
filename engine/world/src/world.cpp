@@ -8,7 +8,6 @@
 #include <irreden/world.hpp>
 
 namespace IREngine {
-// TODO: replace initalization constants with config file.
 
 World::World(const char *configFileName)
     : m_worldConfig{configFileName}

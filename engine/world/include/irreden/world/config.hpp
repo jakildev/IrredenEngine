@@ -11,8 +11,8 @@ using namespace IRMath;
 
 namespace IREngine {
 
-// TODO: https://chatgpt.com/c/67034198-ce68-8005-aa2c-d3a3e08d0d02
-// Remove the interface and make this fully compile time.
+// FUTURE: drop the runtime ILuaValue interface and make WorldConfig
+// fully compile-time, with each entry typed via a constexpr key list.
 class WorldConfig {
   public:
     WorldConfig(const char *luaConfigFile)

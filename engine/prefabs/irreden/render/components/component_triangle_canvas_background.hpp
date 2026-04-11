@@ -93,7 +93,9 @@ struct C_TriangleCanvasBackground {
         }
 
         if (m_type == BackgroundTypes::kGradient) {
-            // TODO
+            // FUTURE: implement linear gradient between m_colors[0..n] across
+            // the canvas. For now this falls through to the no-op branch and
+            // the canvas is left unchanged.
         }
 
         if (m_type == BackgroundTypes::kGradientRandom) {

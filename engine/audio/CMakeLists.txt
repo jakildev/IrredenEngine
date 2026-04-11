@@ -15,6 +15,9 @@ target_compile_options(
 # RtAudio
 set(RTAUDIO_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(RTAUDIO_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+# Pin macOS to CoreAudio only — upstream rtaudio would otherwise probe for
+# brew-installed Pulse/Jack and pull them in. Linux/Windows use upstream's
+# own autodetect defaults.
 if(IR_isDarwin)
     set(RTAUDIO_API_CORE ON CACHE BOOL "" FORCE)
     set(RTAUDIO_API_JACK OFF CACHE BOOL "" FORCE)
@@ -61,11 +64,9 @@ FetchContent_Declare(
     GIT_TAG master
     UPDATE_DISCONNECTED TRUE
 )
-IrredenEngine_applyPatchOnce(
-    rtmidi
-    "fix_rtmidi_target_name_clashes"
-    ${CMAKE_CURRENT_SOURCE_DIR}/patches/ir_rtmidi.patch
-)
+# rtmidi's uninstall target no longer clashes with rtaudio's: upstream renamed
+# RTMIDI_TARGETNAME_UNINSTALL to "rt_uninstall", and ir_rtaudio.patch renames
+# rtaudio's to "RtAudioUninstall".
 FetchContent_MakeAvailable(rtmidi)
 target_link_libraries(
     IrredenEngineAudio PUBLIC

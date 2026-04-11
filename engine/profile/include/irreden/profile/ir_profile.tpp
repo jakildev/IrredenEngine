@@ -10,7 +10,6 @@ namespace IRProfile {
     bool isLoggingEnabled();
     void shutdownLogging();
 
-    // TODO: Disable logging and asserts in release mode
     namespace {
         template <typename... Args>
         inline std::string formatRuntimeString(const char *format, Args &&...args) {
