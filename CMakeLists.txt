@@ -17,18 +17,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
-# On Linux, default every fetched third-party dependency to static so the
-# resulting creation executables are self-contained and do not require
-# LD_LIBRARY_PATH tweaks or POST_BUILD shared-object copying. Windows ships
-# MinGW runtime DLLs alongside the exe and macOS has Homebrew on the rpath,
-# so the default there is unchanged.
-#
-# Several fetched deps (notably easy_profiler) do their own
-# `set(BUILD_SHARED_LIBS ON CACHE BOOL ...)` without FORCE, which creates
-# a cache entry the first time CMake sees it and ends up winning over a
-# plain non-cache set in the parent scope. Promoting this to a FORCE'd
-# cache variable is what actually makes every subproject honor the Linux
-# static default.
+# Default FetchContent deps to static on Linux so creation executables are
+# self-contained (no LD_LIBRARY_PATH tweaks or POST_BUILD .so copying).
+# FORCE is required because subprojects like easy_profiler do their own
+# `set(BUILD_SHARED_LIBS ON CACHE BOOL ...)` without FORCE, which otherwise
+# wins over a plain non-cache parent set.
+# IR_isLinux isn't set yet at this point, so check CMAKE_SYSTEM_NAME directly.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED BUILD_SHARED_LIBS)
     set(
         BUILD_SHARED_LIBS OFF

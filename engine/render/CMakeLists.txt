@@ -54,9 +54,8 @@ elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "METAL")
     set(PLATFORM_SRC ${METAL_SRC})
 endif()
 
-# OpenGL is linked through system OpenGL on Linux (mesa) and through the
-# GLFW-provided gl proc loader on Windows/MinGW. On Linux we also need the
-# dl + pthread libs that glad/opengl loaders rely on.
+# GLFW bundles the GL proc loader on Windows/MinGW, but on Linux we have to
+# link libGL and libdl ourselves for glad to resolve symbols at runtime.
 if(IR_isLinux)
     find_package(OpenGL REQUIRED)
     list(APPEND PLATFORM_LIBS OpenGL::GL ${CMAKE_DL_LIBS})

@@ -15,20 +15,16 @@ target_compile_options(
 # RtAudio
 set(RTAUDIO_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(RTAUDIO_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+# Pin macOS to CoreAudio only — upstream rtaudio would otherwise probe for
+# brew-installed Pulse/Jack and pull them in. Linux/Windows use upstream's
+# own autodetect defaults.
 if(IR_isDarwin)
-    # On macOS we want CoreAudio only. Upstream rtaudio would otherwise
-    # happily probe for brew-installed Pulse/Jack and pull them in.
     set(RTAUDIO_API_CORE ON CACHE BOOL "" FORCE)
     set(RTAUDIO_API_JACK OFF CACHE BOOL "" FORCE)
     set(RTAUDIO_API_PULSE OFF CACHE BOOL "" FORCE)
     set(RTAUDIO_API_ALSA OFF CACHE BOOL "" FORCE)
     set(RTAUDIO_API_OSS OFF CACHE BOOL "" FORCE)
 endif()
-# Linux and Windows: let upstream rtaudio's own Linux/Windows defaults win.
-# On Linux that is ALSA required + Pulse/Jack auto-probed via pkg-config, on
-# Windows it is DirectSound/WASAPI/MMSS. Whichever backends get compiled in
-# is controlled by which dev headers the host actually has installed — see
-# scripts/bootstrap_linux.sh for the full Linux set.
 
 FetchContent_Declare(
     rtaudio
@@ -61,8 +57,6 @@ if(IR_isDarwin)
     set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
     set(RTMIDI_API_ALSA OFF CACHE BOOL "" FORCE)
 endif()
-# Linux/Windows: let upstream rtmidi autodetect which backends to enable
-# based on the installed dev headers, same reasoning as RtAudio above.
 
 FetchContent_Declare(
     rtmidi
@@ -70,11 +64,9 @@ FetchContent_Declare(
     GIT_TAG master
     UPDATE_DISCONNECTED TRUE
 )
-# Upstream rtmidi now sets RTMIDI_TARGETNAME_UNINSTALL to "rt_uninstall" on
-# its own, so the old ir_rtmidi.patch that renamed it for us no longer
-# applies and is no longer needed. rtaudio's uninstall target is still
-# renamed via ir_rtaudio.patch ("RtAudioUninstall"), so both targets coexist
-# in one CMake tree without clashing.
+# rtmidi's uninstall target no longer clashes with rtaudio's: upstream renamed
+# RTMIDI_TARGETNAME_UNINSTALL to "rt_uninstall", and ir_rtaudio.patch renames
+# rtaudio's to "RtAudioUninstall".
 FetchContent_MakeAvailable(rtmidi)
 target_link_libraries(
     IrredenEngineAudio PUBLIC

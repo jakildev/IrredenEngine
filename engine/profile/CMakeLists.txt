@@ -69,20 +69,9 @@ if(IR_isDarwin)
         endif()
     endforeach()
 endif()
-if(IR_isLinux)
-    # Typical distro Qt5 locations. find_package(Qt5Widgets) inside
-    # easy_profiler will pick the first one that exists.
-    foreach(_irreden_qt5_root IN ITEMS
-        /usr/lib/x86_64-linux-gnu/qt5
-        /usr/lib/qt5
-        /usr/lib64/qt5
-        /usr
-    )
-        if(EXISTS "${_irreden_qt5_root}")
-            list(APPEND CMAKE_PREFIX_PATH "${_irreden_qt5_root}")
-        endif()
-    endforeach()
-endif()
+# Linux: apt-installed qtbase5-dev puts Qt5Config.cmake under /usr/lib/<arch>/cmake/Qt5,
+# which find_package already searches via CMake's system prefix probing, so no explicit
+# hint list is needed.
 
 # Remove to disable profiling
 target_compile_definitions(
