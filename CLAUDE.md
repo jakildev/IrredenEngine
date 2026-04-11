@@ -84,69 +84,76 @@ for anything in the "Opus" list above.
 
 ## Build
 
-The project is configured under `build/` using the `windows-debug` CMake
-preset (MinGW Makefiles, MSYS2 GCC at `C:\msys64\mingw64\bin\c++.exe`). The
-configured build tree is already present — do not reconfigure unless the
-user asks.
+The engine has **three supported environments**, each with its own CMake
+preset:
 
-**Important:** the build tree is configured against the **main worktree**
-(`C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine`), not against any
-`.claude/worktrees/...` worktree. When editing C++/GLSL/Lua sources from
-inside a worktree, you must edit the file at the **main worktree path** for
-the change to take effect in the build. (Or, ask the user to reconfigure the
-build against your worktree.) Markdown and skill files can be edited in-
-worktree freely.
+| Preset          | Target                                              | Role                            |
+|-----------------|-----------------------------------------------------|---------------------------------|
+| `linux-debug`   | Linux / WSL2 Ubuntu, gcc-13+, OpenGL                | **Fleet environment**           |
+| `windows-debug` | Windows native, MSYS2 mingw64, OpenGL               | Original / ship-it environment  |
+| `macos-debug`   | macOS native, Metal backend                         | Matured on demand               |
 
-**Canonical build command** from the Bash tool (PATH fix is mandatory — see
-below):
+**Fleet lives in WSL.** The parallel-agent workflow runs inside a WSL2
+Ubuntu distro; the agents' Bash tool shells into Linux natively and
+uses the `linux-debug` preset. The Windows-native clone at
+`C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine` still exists and
+is still authoritative for "does this actually ship", but day-to-day
+agent work happens in the WSL clone (typically at
+`~/src/IrredenEngine`). See `docs/AGENT_FLEET_SETUP.md` for the full
+environment setup.
+
+Most of the engine code was originally written against Windows +
+MSYS2. **Maturing the Linux build is first-class ongoing work** — when
+an agent hits a Linux-only build break, the correct response is to fix
+it in a dedicated PR, not to work around it.
+
+### Which build path applies to you
+
+- **Are you running inside WSL (the fleet)?** → use the Linux section
+  below. Your Bash tool is real Linux; no `cmd.exe` wrapping, no PATH
+  fixes. Work against `~/src/IrredenEngine`.
+- **Are you running on the Windows-native clone?** → use the Windows
+  section below. The MSYS2 / Git mingw64 PATH saga applies to you.
+- **macOS?** → `cmake --preset macos-debug` + `cmake --build build`
+  once deps are installed via homebrew. The details haven't been
+  stress-tested recently — flag anything you hit as you go.
+
+In all three cases:
+
+- The build tree is configured against the **main clone**, not against
+  `.claude/worktrees/...` subdirectories. Agents inside a worktree
+  must edit files at the main clone path for the change to reach the
+  build. Markdown, skill files, and docs can be edited in-worktree
+  freely.
+- `CMAKE_CXX_STANDARD` is **23**; your compiler must support it.
+  (gcc ≥ 13 on Linux/WSL, gcc ≥ 13 via MSYS2 on Windows.)
+
+### Linux / WSL build (fleet environment)
+
+One-time configure from the fleet clone:
 
 ```bash
-cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1
+cd ~/src/IrredenEngine
+cmake --preset linux-debug
 ```
 
-Swap the `--target` for whichever executable(s) you need, e.g. `IRShapeDebug`,
-`IRCreationDefault`, or a creation-specific target.
-
-### ⚠ Critical: `cc1plus` silent-crash root cause
-
-The Bash tool inherits a Windows `PATH` where `C:\Program Files\Git\mingw64\bin`
-(shipped with Git-for-Windows) appears **before** `C:\msys64\mingw64\bin`. When
-`gcc.exe` spawns `cc1.exe`/`cc1plus.exe`, the Windows DLL loader picks up Git's
-older mingw runtime DLLs while GCC's own come from MSYS2 — an ABI mismatch that
-kills `cc1plus` **silently with zero output on any stream**. Symptoms: `gcc
---version` works, but actually compiling anything exits 1 with no output.
-
-**Mandatory fix:** every Bash-tool invocation of the compiler / `cmake --build`
-/ anything downstream **must** wrap the command so MSYS2's mingw64 is prepended
-to `PATH` inside `cmd /c`:
+Canonical build command from the Bash tool:
 
 ```bash
-cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && <your build command>" 2>&1
+cmake --build build --target IRShapeDebug -j$(nproc)
 ```
 
-Setting `PATH=/c/msys64/mingw64/bin:$PATH` in bash alone is **not enough** —
-MSYS path translation re-injects Git's mingw64 back to the front when the
-child Win32 process is spawned. You need the `set PATH=` inside `cmd /c` to
-guarantee the DLL loader sees MSYS2's `mingw64\bin` first.
+Swap `--target` for whichever executable or library you're working on
+(`IRCreationDefault`, `IrredenEngineTest`, a creation-specific target).
+No wrapping, no PATH workarounds — `gcc-13`, `cmake`, `ninja`, `make`
+are all on the normal Linux PATH inside WSL.
 
-The user's VSCode terminal does not have Git's mingw64 on PATH, so builds work
-there unconditionally. Never tell the user "something is wrong with your GCC"
-based on a Bash-tool-only failure — first verify with the PATH prefix.
+**Expect Linux-specific breakage.** The engine compiles cleanly on
+Windows/MSYS2; the Linux path is still being matured. Common first-time
+issues and how to attack them are documented in
+`docs/AGENT_FLEET_SETUP.md` §10.
 
-### Build-hygiene canary
-
-A `[100%] Built target` line **does not prove anything compiled** — if nothing
-was dirty, `make` prints the same success lines without invoking the compiler.
-When investigating build-breaking edits, look for at least one `[xx%] Building
-CXX object …` line. If there is none, `touch` the translation unit you care
-about to force a real compile.
-
-**Known shell limitation:** `cc1plus` diagnostics sometimes stream through the
-Bash tool with heavy buffering. If output looks suspiciously empty after the
-PATH fix, redirect to a file inside the `cmd /c`
-(`> C:\Users\evinj\AppData\Local\Temp\build.log 2>&1`) and then `cat` the file.
-
-Utility targets:
+Utility targets (Linux):
 
 ```bash
 cmake --build build --target format        # auto-format
@@ -154,20 +161,106 @@ cmake --build build --target format-check  # check only
 cmake --build build --target lint          # clang-tidy
 ```
 
-**Before declaring a task done: always build the target you touched and run
-the relevant executable at least once.** Untested commits are the single
-biggest waste of reviewer-agent time.
+### Windows-native build (original environment)
+
+The Windows clone is configured under `build/` using the `windows-debug`
+CMake preset (MinGW Makefiles, MSYS2 GCC at `C:\msys64\mingw64\bin\c++.exe`).
+The configured build tree is already present — do not reconfigure unless
+the user asks.
+
+**Canonical build command** from the Bash tool on Windows native (PATH
+fix is mandatory — see below):
+
+```bash
+cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1
+```
+
+#### ⚠ Critical: `cc1plus` silent-crash root cause (Windows only)
+
+On the Windows-native clone, the Bash tool inherits a Windows `PATH`
+where `C:\Program Files\Git\mingw64\bin` (shipped with Git-for-Windows)
+appears **before** `C:\msys64\mingw64\bin`. When `gcc.exe` spawns
+`cc1.exe`/`cc1plus.exe`, the Windows DLL loader picks up Git's older
+mingw runtime DLLs while GCC's own come from MSYS2 — an ABI mismatch
+that kills `cc1plus` **silently with zero output on any stream**.
+Symptoms: `gcc --version` works, but actually compiling anything
+exits 1 with no output.
+
+**Mandatory fix:** every Bash-tool invocation of the compiler /
+`cmake --build` / anything downstream **must** wrap the command so
+MSYS2's mingw64 is prepended to `PATH` inside `cmd /c`:
+
+```bash
+cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && <your build command>" 2>&1
+```
+
+Setting `PATH=/c/msys64/mingw64/bin:$PATH` in bash alone is **not
+enough** — MSYS path translation re-injects Git's mingw64 back to the
+front when the child Win32 process is spawned. You need the `set PATH=`
+inside `cmd /c` to guarantee the DLL loader sees MSYS2's `mingw64\bin`
+first.
+
+This whole section **does not apply in WSL** — WSL has a single clean
+Linux PATH, no Git-for-Windows mingw64 to fight. If you're running in
+the fleet, skip it.
+
+The user's VSCode terminal does not have Git's mingw64 on PATH, so
+builds work there unconditionally. Never tell the user "something is
+wrong with your GCC" based on a Bash-tool-only failure on
+Windows-native — first verify with the PATH prefix.
+
+### Build-hygiene canary (both environments)
+
+A `[100%] Built target` line **does not prove anything compiled** — if
+nothing was dirty, `make` prints the same success lines without invoking
+the compiler. When investigating build-breaking edits, look for at
+least one `[xx%] Building CXX object …` line. If there is none, `touch`
+the translation unit you care about to force a real compile.
+
+**Known shell limitation (Windows only):** `cc1plus` diagnostics
+sometimes stream through the Bash tool with heavy buffering. If output
+looks suspiciously empty after the PATH fix, redirect to a file inside
+the `cmd /c` (`> C:\Users\evinj\AppData\Local\Temp\build.log 2>&1`) and
+then `cat` the file. Linux/WSL builds don't have this buffering issue.
+
+**Before declaring a task done: always build the target you touched and
+run the relevant executable at least once.** Untested commits are the
+single biggest waste of reviewer-agent time.
 
 ---
 
 ## Running an executable
 
+### On Linux / WSL (fleet)
+
+No runtime-DLL drama. Binaries are ELF files; deps resolve through the
+normal dynamic linker using `rpath` (CMake sets this automatically for
+targets in `build/`). Run the exe from its own build directory so its
+sibling `data/`, `shaders/`, and `scripts/` are on its working
+directory:
+
+```bash
+cd ~/src/IrredenEngine/build/creations/demos/shape_debug
+./IRShapeDebug
+```
+
+WSLg routes GLFW/OpenGL windows to the Windows host automatically on
+Windows 11 and recent Windows 10 — no X server setup required. Audio
+goes through PulseAudio passthrough. **MIDI** hardware from the Windows
+side does not cleanly forward into WSL's ALSA yet; for demos that need
+a real MIDI controller, run them from the Windows-native clone
+instead. See `docs/AGENT_FLEET_SETUP.md` §11 for the full WSLg
+caveats.
+
+### On Windows native
+
 Each `add_executable(...)` has a Windows POST_BUILD step that copies
-CMake-tracked runtime DLLs next to the `.exe`. However, the MinGW C++ runtime
-(`libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`) and FFmpeg
-DLLs (`avcodec-*`, `avformat-*`, `avutil-*`, `swscale-*`) are toolchain-
-supplied and live at `C:\msys64\mingw64\bin` — they are **not** copied next to
-the exe. The Windows DLL loader needs that directory on `PATH`.
+CMake-tracked runtime DLLs next to the `.exe`. However, the MinGW C++
+runtime (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`,
+`libwinpthread-1.dll`) and FFmpeg DLLs (`avcodec-*`, `avformat-*`,
+`avutil-*`, `swscale-*`) are toolchain-supplied and live at
+`C:\msys64\mingw64\bin` — they are **not** copied next to the exe. The
+Windows DLL loader needs that directory on `PATH`.
 
 From the Bash tool:
 
@@ -176,11 +269,13 @@ cd "C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build/creations/demos/sha
 PATH="/c/msys64/mingw64/bin:$PATH" cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && .\IRShapeDebug.exe"
 ```
 
-The double `PATH` set is intentional. Run from the exe's own directory —
-that's where its sibling DLLs and `data/`, `shaders/`, `scripts/` live.
+The double `PATH` set is intentional. Run from the exe's own directory
+— that's where its sibling DLLs and `data/`, `shaders/`, `scripts/`
+live.
 
-Each creation typically defines an `IR<Name>Run` custom target that builds +
-launches with the correct working directory.
+Each creation typically defines an `IR<Name>Run` custom target that
+builds + launches with the correct working directory (on both
+platforms).
 
 ---
 

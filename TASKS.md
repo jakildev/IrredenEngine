@@ -96,12 +96,39 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
+  fix every compile/link/runtime issue encountered when building the
+  engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
+  24.04. This is the umbrella epic — break it into smaller follow-up
+  tasks as concrete issues are found.
+  - **Area:** engine/* (anywhere the Linux path breaks)
+  - **Model:** opus (for anything touching core-engine invariants) /
+    sonnet (for mechanical port fixes like missing `#include`, case-
+    sensitive paths, EOL drift)
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** from a fresh WSL2 Ubuntu 24.04 clone,
+    `cmake --preset linux-debug && cmake --build build -j$(nproc)`
+    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
+    with zero warnings escalated to errors, and `IRShapeDebug` launches
+    via WSLg without crashing on its first frame.
+  - **Notes:** the engine was originally written against Windows +
+    MSYS2. Expect missing Linux branches under `#ifdef _WIN32`, missing
+    system libs (update the apt list in `docs/AGENT_FLEET_SETUP.md` §1
+    as you find them), case-sensitive include mismatches, and EOL
+    drift. Every real fix should land as its own dedicated PR — do
+    **not** bundle unrelated Linux-port fixes into feature work.
+    Reference `docs/AGENT_FLEET_SETUP.md` §10 for the list of known
+    first-time issues.
+  - **Links:**
+
 - [ ] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
   timing and file a report.
   - **Area:** engine/profile
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** (none)
+  - **Blocked by:** Linux build maturation (if running in the fleet;
+    the Windows-native clone can start this immediately)
   - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with
     per-system `easy_profiler` screenshots and a 1-paragraph summary of the
     top 3 hotspots.
@@ -115,7 +142,7 @@ Avoid:
   - **Area:** engine/math
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** (none)
+  - **Blocked by:** (none — unit tests don't care which platform builds them)
   - **Acceptance:** new test binary builds, tests cover all four physics
     helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`,
     `isTunnelingSafe`) with edge cases, all pass.
