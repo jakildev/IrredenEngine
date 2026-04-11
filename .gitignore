@@ -25,8 +25,9 @@ Thumbs.db
 .vs/
 *.vcxproj.user
 
-# creations: keep demos, ignore other top-level folders
+# creations: keep demos + top-level CLAUDE.md, ignore other folders
 creations/*
+!creations/CLAUDE.md
 !creations/demos/
 !creations/demos/**
 
