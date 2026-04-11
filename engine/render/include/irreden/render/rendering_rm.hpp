@@ -99,7 +99,7 @@ class RenderingResourceManager {
   private:
     std::queue<ResourceId> m_resourcePool;
     int m_liveResourceCount = 0;
-    // TODO: Does this have to be a unique pointer
+    // unique_ptr is required for polymorphic ResourceDataImpl<T> storage.
     std::unordered_map<ResourceType, std::unique_ptr<ResourceData>> m_resourceMaps;
     std::unordered_map<std::string, ResourceType> m_resourceTypes;
     std::unordered_map<std::string, ResourceId> m_namedResources;

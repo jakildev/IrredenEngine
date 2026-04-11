@@ -33,33 +33,6 @@ template <> struct System<OUTPUT_MIDI_MESSAGE_OUT> {
         IRSystem::addSystemTag<C_MidiOut>(system);
         return system;
     }
-
-    // // TODO: This is just a prefab
-    // EntityId createMidiDeviceOut(
-    //     std::string name,
-    //     MidiChannels channel
-    // )
-    // {
-    //     MidiChannel channelValue = (MidiChannel)channel;
-
-    //     int newDeviceId = m_nextDeviceId++;
-    //     EntityId device = IRECS::createEntity(
-    //         C_Name{name},
-    //         C_MidiChannel{channelValue},
-    //         C_MidiOut{},
-    //         C_MidiDevice{newDeviceId}
-    //     );
-    //     m_midiOutDeviceChannels.push_back(channelValue);
-    //     m_midiOutDevices.push_back(device);
-    //     IRE_LOG_INFO("
-    //         "Created MIDI device OUT {} (id: {}) on channel {} (value: {})",
-    //         name,
-    //         newDeviceId,
-    //         static_cast<int>(channelValue) + 1,
-    //         static_cast<int>(channelValue)
-    //     );
-    //     return device;
-    // }
 };
 
 } // namespace IRSystem

@@ -11,7 +11,10 @@ using namespace IRComponents;
 
 namespace IRECS {
 
-// TODO
+// STATUS: stub. PrefabTypes::kMidiSequenceAnimated is declared but no
+// creation instantiates it yet. Intended to wrap a MIDI sequence entity
+// with C_ProceduralAnimation parameters so the playhead can drive
+// per-note animation.
 template <> struct Prefab<PrefabTypes::kMidiSequenceAnimated> {
     static EntityHandle create(
 

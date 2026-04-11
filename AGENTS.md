@@ -168,7 +168,7 @@ ECS supports `CHILD_OF`, `PARENT_TO`, `SIBLING_OF` for hierarchy. Pass a `Relati
 | Components  | `*/components/component_*.hpp`          | `component_move_order.hpp`      |
 | Systems     | `*/systems/system_*.hpp`                | `system_velocity_drag.hpp`      |
 | Commands    | `*/commands/command_*.hpp`              | `command_zoom_in.hpp`           |
-| Entities    | `*/entities/entity_*.hpp`              | `entity_camera.hpp`             |
+| Entities    | `*/entities/entity_*.hpp`              | `entity_trixel_canvas.hpp`      |
 
 Prefabs are grouped by domain under `engine/prefabs/irreden/`:
 
