@@ -583,6 +583,8 @@ frequently `gh pr checkout <N>`. That requires the reviewer worktree to
 be on a throwaway branch so `gh pr checkout` can replace it without
 protesting.
 
+### Basic setup
+
 Before starting a reviewer session:
 
 ```bash
@@ -596,6 +598,144 @@ the next PR.
 
 Don't commit or push from a reviewer worktree. The `review-pr` skill
 enforces this, but a human reviewer should know too.
+
+### Reviewer-loop pattern (poll-and-review while you're offline)
+
+The whole point of a fleet is that author and reviewer agents can have
+a back-and-forth while you're AFK. That requires the reviewer agent to
+keep checking for new PRs on its own, not wait for you to type "review
+PR 42" each time. Here are three ways to run it, from simplest to most
+robust. Pick one per reviewer window.
+
+**Option A — session-prompt loop (simplest, what the dry run uses).**
+Launch the reviewer window's Claude Code session with a prompt that
+tells the agent it is a persistent reviewer and to poll on an interval.
+Something like:
+
+```text
+You are a persistent PR reviewer for the Irreden Engine fleet. Your job
+is to review open PRs on github.com/jakildev/IrredenEngine that have
+not yet been reviewed by this fleet.
+
+Every 10 minutes:
+
+1. Run `gh pr list --state open --json number,title,headRefName,reviews`
+   and filter for PRs where `reviews` does not already contain a review
+   authored by this reviewer (check the author login — yours is
+   `<github username>`).
+2. For each unreviewed PR, invoke the `review-pr` skill with that PR
+   number. The skill will `gh pr checkout`, read the diff in context,
+   write a structured review, and post it.
+3. After reviewing everything new, wait 10 minutes and check again.
+4. If you hit a usage-limit error, print the error, wait until the
+   stated reset time, and resume.
+5. Keep doing this until I return and stop you. Do not open new PRs,
+   do not commit from this worktree, do not merge anything.
+
+Start by listing what's currently open so I know what you see.
+```
+
+The `review-pr` skill's trigger phrases already cover the loop case
+(`"review any new PRs"` / `"review the PR queue"`), so the agent will
+naturally engage it from inside this loop without a magic phrase.
+
+Drawbacks: dies when the tmux window dies, dies when Claude Code
+hits an unrecoverable error, dies when you `C-c` out. Fine for "I'm
+stepping away for a few hours," not great for "I'm asleep for eight
+hours."
+
+**Option B — `loop` skill on top of option A.** The built-in `loop`
+skill (`/loop 10m <prompt-or-slash-command>`) re-runs a prompt on an
+interval inside the same session. You can use it to schedule a short
+poll prompt every N minutes instead of having the agent manage its own
+sleep:
+
+```text
+/loop 10m Run `gh pr list --state open --json number,title,reviews` and
+invoke the `review-pr` skill on any PR that hasn't been reviewed by
+this fleet yet. Report what you did.
+```
+
+Still dies with the session, but the loop driver is tighter than an
+agent running its own `while` logic and is easier to pause (`/loop
+stop`) when you come back.
+
+**Option C — `scheduled-tasks` / `schedule` skill (most robust).** For
+"keep running even if every tmux session is dead and my laptop slept,"
+create a scheduled remote trigger that fires every 15 minutes and
+re-runs a small review-new-PRs prompt. Unlike options A and B, this
+runs independently of any running Claude Code window — it spawns a
+fresh Claude run on each fire. Downside: each fire has no memory of
+the previous fire, so the agent has to re-derive "what have I already
+reviewed" from the GitHub state every time (cheap, but not free).
+
+Use the `schedule` skill to create it:
+
+```text
+Schedule a task to run every 15 minutes:
+"On github.com/jakildev/IrredenEngine, run `gh pr list --state open`,
+and for every PR that does not yet have a review authored by
+<reviewer github username>, invoke the `review-pr` skill on it. Then
+exit."
+```
+
+Layer this on top of option A or B if you want redundancy: the tmux
+reviewer window handles the common case with low latency; the
+scheduled task is the safety net that catches everything if the tmux
+window dies.
+
+### Two-tier review with both reviewers running
+
+The Opus/Sonnet model split (see root `CLAUDE.md`) wants most first-
+pass reviews to be Sonnet and only have Opus look at core-engine PRs
+or Sonnet-escalated ones. In the reviewer-loop pattern that means:
+
+- `sonnet-rev` window polls every 10 minutes, reviews **every** open
+  unreviewed PR at Sonnet cost, and writes a verdict. If the PR
+  touches `engine/render/`, `engine/entity/`, `engine/system/`,
+  `engine/world/`, `engine/audio/`, `engine/video/`, or
+  `engine/math/`, or the Sonnet verdict ends with an Opus-escalation
+  line, the review body explicitly says "please Opus-recheck."
+- `opus-rev` window polls on a **longer** interval (e.g. 30 minutes)
+  and filters for PRs whose latest Sonnet review asked for an Opus
+  recheck. It reads the Sonnet review first, then focuses on what
+  Sonnet couldn't confirm — concurrency, lifetime, ECS invariants
+  three systems deep.
+
+This keeps most reviews on Sonnet (cheap) while guaranteeing core
+invariants still get an Opus pass. When Opus budget is tight, you
+can safely disable the `opus-rev` loop for a while — the
+escalation notes accumulate in the PR comments and you can come back
+and drain them manually or by enabling the loop again.
+
+### Author-side response loop (close the back-and-forth)
+
+The complement to a polling reviewer is a polling author. Each
+`sonnet-1` / `sonnet-2` window can be launched with a prompt like:
+
+```text
+You are a persistent task runner for the Irreden Engine fleet. Your
+workflow is:
+
+1. If any PR you previously opened has new review comments you have
+   not yet addressed, read the comments and fix them. Use
+   `commit-and-push` to push the fix. Request re-review via
+   `gh pr comment <N> --body "re-review please"`.
+2. Otherwise, pick the next unblocked `[sonnet]`-tagged task from
+   `TASKS.md`, work it, and use `commit-and-push` when done.
+3. After `commit-and-push`, use `start-next-task` to land on a fresh
+   branch before step 1 repeats.
+4. If you hit a usage-limit error, wait until the stated reset time
+   and resume.
+```
+
+With both the reviewer loop and the author loop running, an offline
+round trip looks like: author opens PR → Sonnet reviewer posts needs-
+fix within ~10 min → Opus reviewer escalates within ~30 min if core
+is touched → author sees the review comments on its next poll, fixes,
+re-pushes → reviewer re-reviews → either approve (waiting for you to
+merge) or another round. You come back, look at what converged, merge
+the clean ones, pick apart the stuck ones.
 
 ---
 
@@ -825,6 +965,132 @@ the dry run is to uncover workflow bugs, not to complete a task.
 
 ---
 
+## 15. Token exhaustion and recovery
+
+You will hit your Anthropic subscription usage cap during fleet runs,
+especially on Opus windows. Here's what actually happens and how to
+make the fleet survive it.
+
+### What happens when a window hits its cap
+
+- **The in-flight turn fails.** The API returns a usage-limit error,
+  Claude Code surfaces it in the tmux pane, and the current response
+  ends partway through. Tool calls that already ran stay run — files
+  written are written, commits made are made — so the filesystem is
+  never in a half-state you can't recover from.
+- **The session state is preserved on disk.** The conversation
+  transcript lives in `~/.claude/projects/<project-slug>/<session-id>.jsonl`
+  regardless of how the turn ended. You don't lose the conversation,
+  the todo list, or the context window. `claude --continue` /
+  `claude --resume <id>` re-enters the exact session after the reset.
+- **The other models keep working.** Opus and Sonnet budgets are
+  separate. When Opus is capped, every Sonnet window in the fleet
+  keeps going and vice versa. This is the single biggest reason the
+  root `CLAUDE.md` wants you to tag tasks `[opus]` or `[sonnet]` — it
+  turns the budget split into a backpressure signal instead of a
+  fleet-wide stall.
+- **Resumption is manual by default.** I don't think Claude Code
+  auto-retries the failed request at reset time — the pane just sits
+  on the error until you re-prompt. If you want automatic resumption,
+  you need to wrap the agent invocation in a retry loop (below).
+
+### Defensive practices that pay off here
+
+- **Commit early, commit often.** Agents should call `commit-and-push`
+  at every logical boundary, not "when the task feels done." If a
+  Sonnet window hits the cap mid-refactor and you only re-enter it
+  hours later, you want its last good state already on a pushed
+  branch, not stuck in an unsaved edit buffer.
+- **Author-side response loops should handle the error explicitly.**
+  The launch prompt for `sonnet-1` / `sonnet-2` (see §9, "Author-side
+  response loop") already tells the agent to wait until the stated
+  reset time and resume. Keep that line in every persistent-agent
+  prompt — it's the difference between a window that comes back on
+  its own and one that sits dead until you attach.
+- **Keep `TASKS.md` in git.** It already is. The effect is that if a
+  window dies permanently, the next window picking up from `TASKS.md`
+  knows where to start — no state is stranded in one dead agent.
+- **Watch Opus usage.** Opus eats budget much faster than Sonnet per
+  dollar. If you find yourself running two Opus windows in parallel
+  on core-engine work, ask whether one of them can demote to Sonnet
+  with an Opus final-pass review. The `[opus]` / `[sonnet]` tags are
+  the control knob — re-tag aggressively when you see Opus budget
+  dropping.
+- **Sonnet-first review.** As above in §9, every PR gets a Sonnet
+  first-pass review cheaply; Opus only looks at core-engine PRs or
+  ones where the Sonnet review asked for escalation. Skipping the
+  Sonnet pass and going straight to Opus is the fastest way to burn
+  through Opus budget on style nits.
+- **Reviewer windows are safe to pause.** If you see Opus budget
+  cratering, disable the `opus-rev` loop window first — Sonnet first-
+  pass reviews still run, escalation notes accumulate as PR comments,
+  and you can drain them manually or re-enable Opus review later. No
+  reviewer work is lost, it just waits.
+
+### Shell-level retry wrapper (optional but robust)
+
+If you want a window to come back on its own after a usage-limit
+stall, wrap the `claude` invocation in a loop that retries at a
+reasonable interval:
+
+```bash
+# ~/bin/claude-persistent <session-name> <launch-prompt-file>
+# Keeps a Claude Code session alive across usage-limit stalls.
+#!/usr/bin/env bash
+set -u
+session="$1"
+prompt_file="$2"
+while true; do
+    claude --session-name "$session" --input-file "$prompt_file"
+    rc=$?
+    case "$rc" in
+        0) break ;;                 # agent exited cleanly, stop
+        2) sleep 300 ;;              # usage-limit-ish error, wait 5 min
+        *) sleep 30 ;;               # other error, shorter backoff
+    esac
+done
+```
+
+(Exact exit codes and flags depend on your Claude Code version — treat
+the above as a template, not copy-paste.) Launch it from a tmux window
+instead of calling `claude` directly, and the window will self-heal
+after resets. Pair it with `tmux-resurrect` so the window survives
+reboots too.
+
+### When the error persists after reset
+
+If a window keeps hitting the cap even after the stated reset time:
+
+- Check whether the Mac and the WSL host are both running Opus windows
+  against the same account — they share a budget, so "two hosts" does
+  not mean "two budgets."
+- Check whether a background `loop` or scheduled task is quietly
+  burning budget in parallel — `schedule list` / whatever the
+  equivalent is on your setup.
+- Consider demoting one or more windows to Sonnet temporarily. Tag
+  the in-flight task in `TASKS.md` with `[sonnet]` so the agent knows
+  it has been demoted and doesn't reach for Opus-only reasoning.
+
+### When a window dies entirely
+
+If a tmux window's Claude process exits hard (not just stalls on a
+usage error):
+
+1. Check the JSONL transcript at
+   `~/.claude/projects/<slug>/<session>.jsonl` — it should still be
+   there.
+2. Start a new `claude` in the same worktree, pass `--resume <session-id>`,
+   and you land back in the same conversation with the same context
+   window.
+3. If the session-id is lost, `claude` in that worktree with no flags
+   still picks up the latest session for that project in most Claude
+   Code versions.
+
+No work is ever lost as long as `commit-and-push` was run at the last
+logical boundary. That's the whole reason the skill exists.
+
+---
+
 ## Recap
 
 **On each host you intend to run the fleet on (WSL and/or macOS):**
@@ -847,10 +1113,14 @@ the dry run is to uncover workflow bugs, not to complete a task.
 - Model defaults per worktree memorized. ✅
 - Optional settings allowlist in place. ✅
 - Decision made about `creations/game/` (or other private creations). ✅
-- Session starter prompts saved. ✅
+- Session starter prompts saved, including the reviewer-loop launch
+  prompt (§9) for at least one reviewer window. ✅
 - "What not to automate" understood. ✅
 - `backend-parity` skill documented and known — you know to invoke it
   after any render PR that touched only one backend. ✅
+- Token-exhaustion recovery plan understood (§15): which windows
+  self-heal, which sit dead, which pause first when Opus budget
+  craters. ✅
 - One dry run through the full loop completed on at least one host. ✅
 
 Then let the fleet loose.

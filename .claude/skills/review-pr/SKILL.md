@@ -3,11 +3,14 @@ name: review-pr
 description: >-
   Review an open GitHub PR on the Irreden Engine repo and post a structured
   review. Use when the user says "review PR <N>", "review #<N>", "review the
-  last PR", "check my PR", or otherwise asks for a code review. Designed to be
-  invoked inside a dedicated "reviewer" worktree/agent whose job is to look at
-  another agent's work with a fresh context. Writes a structured review
-  covering ownership, ECS invariants, allocation hot paths, naming, tests, and
-  project-specific smells, then posts it as a PR comment.
+  last PR", "check my PR", "review any new PRs", "review the PR queue", "check
+  for new PRs to review", "review the open PRs", or otherwise asks for a code
+  review — and also invoke automatically from a persistent reviewer-loop session
+  when `gh pr list` surfaces a PR that has not yet been reviewed by this fleet.
+  Designed to be invoked inside a dedicated "reviewer" worktree/agent whose job
+  is to look at another agent's work with a fresh context. Writes a structured
+  review covering ownership, ECS invariants, allocation hot paths, naming,
+  tests, and project-specific smells, then posts it as a PR comment.
 ---
 
 # review-pr
@@ -23,9 +26,19 @@ Trigger when the user says:
 - "review PR 42" / "review #42"
 - "review the last PR" / "review the open PR"
 - "check my PR" / "give me a review"
+- "review any new PRs" / "review the PR queue" / "check for new PRs to review"
 - Any phrase implying: look at this PR and tell me what's wrong.
 
-Do **not** invoke proactively. Only when asked.
+**Also trigger from a persistent reviewer-loop session**, where the session's
+own launch prompt told it to poll `gh pr list` on an interval and review
+anything new. In that mode the reviewer agent resolves the set of unreviewed
+PRs itself and invokes this skill once per PR without the user typing a fresh
+phrase each time. The loop pattern is documented in `docs/AGENT_FLEET_SETUP.md`.
+
+Do **not** invoke proactively inside an unrelated working session — e.g. while
+an author-agent is mid-refactor on its own PR, don't auto-jump into reviewing
+a third-party PR you happen to notice. The bar is: either the user asked, or
+this session's whole job is to be a reviewer.
 
 ## Model expectations (two-tier review)
 
