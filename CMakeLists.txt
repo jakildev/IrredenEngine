@@ -17,6 +17,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
+# Default FetchContent deps to static on Linux so creation executables are
+# self-contained (no LD_LIBRARY_PATH tweaks or POST_BUILD .so copying).
+# FORCE is required because subprojects like easy_profiler do their own
+# `set(BUILD_SHARED_LIBS ON CACHE BOOL ...)` without FORCE, which otherwise
+# wins over a plain non-cache parent set.
+# IR_isLinux isn't set yet at this point, so check CMAKE_SYSTEM_NAME directly.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED BUILD_SHARED_LIBS)
+    set(
+        BUILD_SHARED_LIBS OFF
+        CACHE BOOL
+        "Build all FetchContent dependencies as static libraries on Linux"
+        FORCE
+    )
+endif()
+
 # Build-profile defaults:
 # - Only true Release builds compile as release-style engine builds.
 # - Apply compiler-appropriate optimization flags (MSVC does not use -O3).

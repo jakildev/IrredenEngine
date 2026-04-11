@@ -69,6 +69,9 @@ if(IR_isDarwin)
         endif()
     endforeach()
 endif()
+# Linux: apt-installed qtbase5-dev puts Qt5Config.cmake under /usr/lib/<arch>/cmake/Qt5,
+# which find_package already searches via CMake's system prefix probing, so no explicit
+# hint list is needed.
 
 # Remove to disable profiling
 target_compile_definitions(

@@ -44,7 +44,7 @@ if(IR_isDarwin)
     set(PLATFORM_SRC ${METAL_SRC})
 endif()
 
-if(IR_isWindows)
+if(IR_isWindows OR IR_isLinux)
     set(PLATFORM_SRC ${OPENGL_SRC})
 endif()
 
@@ -52,6 +52,13 @@ if(IRREDEN_GRAPHICS_BACKEND STREQUAL "OPENGL")
     set(PLATFORM_SRC ${OPENGL_SRC})
 elseif(IRREDEN_GRAPHICS_BACKEND STREQUAL "METAL")
     set(PLATFORM_SRC ${METAL_SRC})
+endif()
+
+# GLFW bundles the GL proc loader on Windows/MinGW, but on Linux we have to
+# link libGL and libdl ourselves for glad to resolve symbols at runtime.
+if(IR_isLinux)
+    find_package(OpenGL REQUIRED)
+    list(APPEND PLATFORM_LIBS OpenGL::GL ${CMAKE_DL_LIBS})
 endif()
 
 add_library(IrredenEngineRendering STATIC
