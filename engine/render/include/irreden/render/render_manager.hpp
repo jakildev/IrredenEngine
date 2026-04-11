@@ -39,9 +39,6 @@ class RenderManager {
     inline ivec2 getOutputScaleFactor() const {
         return m_outputScaleFactor;
     }
-    // TODO: Remove once a better render pipeline creator is in place
-    // inline const Buffer& getBufferVoxelPositions() const { return m_bufferVoxelPositions; }
-    // inline const Buffer& getBufferVoxelColors() const { return m_bufferVoxelColors; }
 
     EntityId getCanvas(std::string canvasName);
     vec2 getCameraPosition2DIso() const;

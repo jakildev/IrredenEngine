@@ -24,7 +24,7 @@ class LoggerSpd {
 
   private:
     LoggerSpd();
-    // TODO: Make unique pointer
+    // shared_ptr is required by spdlog::register_logger.
     std::shared_ptr<spdlog::logger> m_engineLogger;
     std::shared_ptr<spdlog::logger> m_GLAPILogger;
     std::shared_ptr<spdlog::logger> m_clientLogger;
