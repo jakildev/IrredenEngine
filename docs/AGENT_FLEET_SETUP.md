@@ -358,22 +358,51 @@ A reasonable starting setup with the model split in mind:
 | `sonnet-reviewer`     | Sonnet | First-pass PR review                |
 | `opus-reviewer`       | Opus   | Second-pass review + merge sign-off |
 
-Create them once:
+Create them once. Each worktree needs its own seed branch — git
+refuses to check out `master` in a second worktree while the main
+clone still has it checked out, so we create each worktree on a
+`fleet/<role>` branch that starts from `origin/master`. The seed
+branch is just a parking spot; `start-next-task` moves the worktree
+off it onto a real `claude/<area>-<topic>` branch as soon as the
+first task starts.
 
 ```bash
 cd ~/src/IrredenEngine
+git fetch origin master
 
-git worktree add .claude/worktrees/opus-architect master
-git worktree add .claude/worktrees/sonnet-fleet-1 master
-git worktree add .claude/worktrees/sonnet-fleet-2 master
-git worktree add .claude/worktrees/sonnet-reviewer master
-git worktree add .claude/worktrees/opus-reviewer master
+git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  origin/master
+git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
+git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
+git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
+git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
 ```
 
-These live forever. Each agent session opens the worktree it wants and
-the `start-next-task` skill resets its branch back to `origin/master`
-after each PR, so the worktree itself is reused but the branch name
-changes each task.
+Verify:
+
+```bash
+git worktree list
+```
+
+You should see the main clone on `master` plus five worktrees each on
+their own `fleet/*` seed branch. The `fleet/` prefix keeps these
+distinct from `claude/<area>-<topic>` agent branches so `gh pr list`
+and branch-completion never confuse them.
+
+These worktrees live forever. Each agent session opens the worktree
+it wants and the `start-next-task` skill creates a fresh
+`claude/<area>-<topic>` branch off `origin/master` inside it after
+each PR, so the worktree is reused but the branch name changes each
+task. The initial `fleet/<role>` seed branches stay in `git branch`
+output as harmless markers of which worktree exists — if you ever
+want to remove a worktree entirely, `git worktree remove <path> &&
+git branch -D fleet/<role>`.
+
+**Common first-run error:** if you see `fatal: 'master' is already
+checked out at '<main clone>'`, you ran `git worktree add <path>
+master` (checking out the `master` branch directly) instead of
+`git worktree add -b fleet/<role> <path> origin/master` (creating a
+new seed branch starting from `origin/master`). Fix by using the
+`-b` form above.
 
 You can delete the old ephemeral worktrees (`adoring-gates`,
 `goofy-jones`, `vectorized-sauteeing-yeti`) from the Windows-native
