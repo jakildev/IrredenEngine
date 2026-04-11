@@ -1,44 +1,61 @@
-#include <metal_stdlib>
-using namespace metal;
+#include "ir_iso_common.metal"
 
-float4 unpackColor(uint packedColor) {
-    return float4(
-        float(packedColor & 0xFFu) / 255.0,
-        float((packedColor >> 8) & 0xFFu) / 255.0,
-        float((packedColor >> 16) & 0xFFu) / 255.0,
-        float((packedColor >> 24) & 0xFFu) / 255.0
-    );
-}
+// Per-glyph text rasterization onto the trixel canvas.  Mirrors
+// shaders/c_text_to_trixel.glsl — supports a fontSize multiplier so each
+// glyph cell is rendered as fontSize x fontSize trixel pixels.
+//
+// Workgroup dimensions: (7, 11, 1) — one thread per (col, row) of the 7x11
+// glyph bitmap.
+
+struct GlyphDrawCommand {
+    uint positionPacked;  // x | (y << 16)
+    uint glyphIndex;      // 0-127 ASCII index into the font atlas
+    uint colorPacked;     // RGBA8 packed
+    uint distance;        // depth value to stamp
+    uint styleFlags;      // low byte = fontSize (pixels per glyph trixel)
+};
 
 kernel void c_text_to_trixel(
     device const uint* fontRows [[buffer(11)]],
-    device const uint4* commands [[buffer(12)]],
+    device const GlyphDrawCommand* commands [[buffer(12)]],
     texture2d<float, access::write> canvasColors [[texture(0)]],
     texture2d<int, access::write> canvasDistances [[texture(1)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
-    uint4 cmd = commands[groupId.x];
-    int2 basePos = int2(int(cmd.x & 0xFFFFu), int(cmd.x >> 16u));
-    uint glyphIdx = cmd.y;
+    const GlyphDrawCommand cmd = commands[groupId.x];
+    const int2 basePos = int2(
+        int(cmd.positionPacked & 0xFFFFu),
+        int(cmd.positionPacked >> 16u)
+    );
+    const uint glyphIdx = cmd.glyphIndex;
+    const uint fontSize = max(cmd.styleFlags & 0xFFu, 1u);
 
-    uint rowBits = fontRows[glyphIdx * 11u + localId.y];
-    uint col = localId.x;
+    const uint rowBits = fontRows[glyphIdx * 11u + localId.y];
+    const uint col = localId.x;
+    const uint row = localId.y;
 
     if (((rowBits >> (6u - col)) & 1u) == 0u) {
         return;
     }
 
-    int2 pixel = basePos + int2(int(col), int(localId.y));
+    const int2 canvasSize = int2(
+        int(canvasColors.get_width()),
+        int(canvasColors.get_height())
+    );
+    const float4 color = unpackColor(cmd.colorPacked);
+    const int2 blockOrigin =
+        basePos +
+        int2(int(col) * int(fontSize), int(row) * int(fontSize));
 
-    if (pixel.x < 0 || pixel.x >= int(canvasColors.get_width())) {
-        return;
+    for (uint dy = 0u; dy < fontSize; ++dy) {
+        for (uint dx = 0u; dx < fontSize; ++dx) {
+            const int2 pixel = blockOrigin + int2(int(dx), int(dy));
+            if (!isInsideCanvas(pixel, canvasSize)) {
+                continue;
+            }
+            canvasColors.write(color, uint2(pixel));
+            canvasDistances.write(int4(int(cmd.distance), 0, 0, 0), uint2(pixel));
+        }
     }
-    if (pixel.y < 0 || pixel.y >= int(canvasColors.get_height())) {
-        return;
-    }
-
-    float4 color = unpackColor(cmd.z);
-    canvasColors.write(color, uint2(pixel));
-    canvasDistances.write(int4(int(cmd.w)), uint2(pixel));
 }

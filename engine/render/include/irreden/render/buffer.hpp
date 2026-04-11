@@ -13,6 +13,9 @@ class BufferImpl {
   public:
     virtual ~BufferImpl() = default;
     virtual std::uint32_t getHandle() const = 0;
+    // Native backend object (MTL::Buffer* on Metal, nullptr on OpenGL where
+    // getHandle is canonical). Mirrors Texture2DImpl::getNativeTexture.
+    virtual void *getNativeBuffer() const = 0;
     virtual void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const = 0;
     virtual void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const = 0;
     virtual void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size) = 0;
@@ -38,6 +41,7 @@ class Buffer {
     Buffer &operator=(const Buffer &) = delete;
 
     std::uint32_t getHandle() const;
+    void *getNativeBuffer() const;
     void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const;
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const;
     void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size);

@@ -83,8 +83,21 @@ MTL::Texture *metalCurrentDepthTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
 
-std::uint32_t registerMetalBufferHandle(MTL::Buffer *buffer);
-void unregisterMetalBufferHandle(std::uint32_t handle);
-MTL::Buffer *lookupMetalBufferHandle(std::uint32_t handle);
+// Buffer orphaning: every subData() allocates a fresh MTL::Buffer and
+// defer-releases the old one so already-encoded encoders keep their
+// pre-write snapshot. See metal_runtime.cpp for the lifetime contract.
+void deferReleaseMetalBuffer(MTL::Buffer *buffer);
+void releaseDeferredMetalBuffers();
+void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
+
+// Per-texture scratch buffer mirroring an R32I distance texture, used as
+// the target for `device atomic_int*` min ops because MSL has no portable
+// image-atomic syntax across macOS versions. See metal_runtime.cpp.
+constexpr std::uint32_t kMetalImageAtomicScratchSlot = 16;
+MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture);
+MTL::Buffer *lookupImageAtomicScratchBuffer(MTL::Texture *texture);
+void releaseImageAtomicScratchBuffer(MTL::Texture *texture);
+void setCurrentImageAtomicScratch(MTL::Buffer *buffer);
+MTL::Buffer *currentImageAtomicScratch();
 
 } // namespace IRRender

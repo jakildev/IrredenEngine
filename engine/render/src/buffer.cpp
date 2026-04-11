@@ -35,6 +35,10 @@ std::uint32_t Buffer::getHandle() const {
     return m_impl->getHandle();
 }
 
+void *Buffer::getNativeBuffer() const {
+    return m_impl->getNativeBuffer();
+}
+
 void Buffer::subData(std::ptrdiff_t offset, std::size_t size, const void *data) const {
     m_impl->subData(offset, size, data);
 }
