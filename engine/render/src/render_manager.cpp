@@ -360,8 +360,8 @@ void RenderManager::initRenderingResources() {
                               .second;
     IRRender::createNamedResource<VAO>(
         "QuadVAO",
-        vertexBuffer->getHandle(),
-        indexBuffer->getHandle(),
+        vertexBuffer,
+        indexBuffer,
         1,
         &kAttrFloat2
     );
@@ -374,8 +374,8 @@ void RenderManager::initRenderingResources() {
                                        .second;
     IRRender::createNamedResource<VAO>(
         "QuadVAOArrays",
-        vertexBufferTextured->getHandle(),
-        0,
+        vertexBufferTextured,
+        static_cast<const Buffer *>(nullptr),
         2,
         kAttrList2Float2
     );

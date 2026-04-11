@@ -209,9 +209,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         1, TextureAccess::READ_WRITE, TextureFormat::R32I
                     );
 
+                    s_shapesFrameDataBuf->bindBase(
+                        BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
+
                     // Pass 0: depth via imageAtomicMin
                     frameData.passIndex = 0;
-                    s_shapesFrameDataBuf->subData(0, sizeof(GPUShapesFrameData), &frameData);
+                    s_shapesFrameDataBuf->subData(
+                        0, sizeof(GPUShapesFrameData), &frameData);
 
                     IRRender::TimePoint pass0Start;
                     if (timing.enabled_) {
@@ -241,8 +245,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     canvasTextures.getTextureEntityIds()->bindAsImage(
                         2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI
                     );
+
                     frameData.passIndex = 1;
-                    s_shapesFrameDataBuf->subData(0, sizeof(GPUShapesFrameData), &frameData);
+                    s_shapesFrameDataBuf->subData(
+                        0, sizeof(GPUShapesFrameData), &frameData);
 
                     IRRender::device()->dispatchCompute(
                         static_cast<std::uint32_t>(tileCount), 1, 1);

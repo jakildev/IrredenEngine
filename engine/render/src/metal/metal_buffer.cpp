@@ -15,7 +15,6 @@ class MetalBufferImpl final : public BufferImpl {
             MTL::ResourceStorageModeShared
         );
         IR_ASSERT(m_buffer != nullptr, "Failed to create Metal buffer");
-        m_handle = registerMetalBufferHandle(m_buffer);
         if (data != nullptr && size > 0) {
             std::memcpy(m_buffer->contents(), data, size);
         }
@@ -32,7 +31,6 @@ class MetalBufferImpl final : public BufferImpl {
     }
 
     ~MetalBufferImpl() override {
-        unregisterMetalBufferHandle(m_handle);
         if (m_buffer != nullptr) {
             m_buffer->release();
             m_buffer = nullptr;
@@ -40,7 +38,11 @@ class MetalBufferImpl final : public BufferImpl {
     }
 
     std::uint32_t getHandle() const override {
-        return m_handle;
+        return 0;
+    }
+
+    void *getNativeBuffer() const override {
+        return m_buffer;
     }
 
     void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const override {
@@ -51,7 +53,30 @@ class MetalBufferImpl final : public BufferImpl {
             static_cast<std::size_t>(offset) + size <= m_size,
             "Metal buffer subData write exceeded buffer size"
         );
-        std::memcpy(static_cast<std::uint8_t *>(m_buffer->contents()) + offset, data, size);
+
+        // Orphan-on-write: see deferReleaseMetalBuffer in metal_runtime.cpp.
+        auto *newBuffer = metalDevice()->newBuffer(
+            static_cast<NS::UInteger>(m_size),
+            MTL::ResourceStorageModeShared
+        );
+        IR_ASSERT(newBuffer != nullptr, "Failed to orphan Metal buffer in subData");
+
+        std::uint8_t *src = static_cast<std::uint8_t *>(m_buffer->contents());
+        std::uint8_t *dst = static_cast<std::uint8_t *>(newBuffer->contents());
+        const std::size_t writeOffset = static_cast<std::size_t>(offset);
+        if (writeOffset > 0) {
+            std::memcpy(dst, src, writeOffset);
+        }
+        std::memcpy(dst + writeOffset, data, size);
+        const std::size_t tailStart = writeOffset + size;
+        if (tailStart < m_size) {
+            std::memcpy(dst + tailStart, src + tailStart, m_size - tailStart);
+        }
+
+        MTL::Buffer *oldBuffer = m_buffer;
+        m_buffer = newBuffer;
+        replaceMetalBufferInBindings(oldBuffer, m_buffer);
+        deferReleaseMetalBuffer(oldBuffer);
     }
 
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const override {
@@ -85,9 +110,10 @@ class MetalBufferImpl final : public BufferImpl {
     void unmap() override {}
 
   private:
-    MTL::Buffer *m_buffer = nullptr;
+    // mutable: subData is const on the BufferImpl interface but orphans the
+    // backing buffer on every write (see subData).
+    mutable MTL::Buffer *m_buffer = nullptr;
     std::size_t m_size = 0;
-    std::uint32_t m_handle = 0;
 };
 
 std::unique_ptr<BufferImpl> createBufferImpl(const void *data, std::size_t size, std::uint32_t) {

@@ -115,7 +115,7 @@ inline void clearCanvasAndDistances(
     static const std::int32_t clearValue =
         static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
     IRRender::device()->clearTexImage(
-        canvas.getTextureDistances()->getHandle(), 0, &clearValue
+        canvas.getTextureDistances(), 0, &clearValue
     );
 }
 
@@ -294,7 +294,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 triangleCanvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::READ_ONLY, TextureFormat::R32I
                 );
-                IRRender::device()->dispatchComputeIndirect(s_indirectBuf->getHandle(), 0);
+                IRRender::device()->dispatchComputeIndirect(s_indirectBuf, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
                 if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.voxelStage1Ms_ = IRRender::elapsedMs(t0, t1); }
@@ -347,7 +347,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                     2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI
                 );
 
-                IRRender::device()->dispatchComputeIndirect(s_indirectBuf->getHandle(), 0);
+                IRRender::device()->dispatchComputeIndirect(s_indirectBuf, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
                 if (timing.enabled_) { IRRender::device()->finish(); timing.voxelStage2Ms_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }

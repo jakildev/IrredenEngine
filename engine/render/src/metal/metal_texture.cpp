@@ -53,11 +53,6 @@ std::size_t pixelSizeBytes(PixelDataFormat format, PixelDataType type) {
     return typeSize * components;
 }
 
-std::uint32_t nextMetalTextureHandle() {
-    static std::uint32_t s_nextHandle = 1;
-    return s_nextHandle++;
-}
-
 MTL::TextureUsage defaultTextureUsage(TextureFormat format) {
     if (format == TextureFormat::DEPTH24_STENCIL8) {
         return MTL::TextureUsageRenderTarget;
@@ -79,8 +74,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
   public:
     MetalTexture2DImpl(unsigned int width, unsigned int height, TextureFormat format)
         : m_size(width, height)
-        , m_pixelFormat(toMetalTextureFormat(format))
-        , m_handle(nextMetalTextureHandle()) {
+        , m_pixelFormat(toMetalTextureFormat(format)) {
         auto *descriptor = MTL::TextureDescriptor::alloc()->init();
         descriptor->setTextureType(MTL::TextureType2D);
         descriptor->setWidth(width);
@@ -99,6 +93,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     }
 
     ~MetalTexture2DImpl() override {
+        releaseImageAtomicScratchBuffer(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;
@@ -110,7 +105,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     }
 
     std::uint32_t getHandle() const override {
-        return m_handle;
+        return 0;
     }
 
     void *getNativeTexture() const override {
@@ -134,6 +129,11 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         int
     ) const override {
         bindMetalImageTexture(unit, m_texture);
+        // R32I distance images participate in atomic image-min operations
+        // through a sibling scratch buffer; see metal_runtime.hpp.
+        if (m_pixelFormat == MTL::PixelFormatR32Sint) {
+            setCurrentImageAtomicScratch(ensureImageAtomicScratchBuffer(m_texture));
+        }
     }
 
     void uploadSubImage2D(
@@ -207,7 +207,6 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     uvec2 m_size;
     MTL::Texture *m_texture = nullptr;
     MTL::PixelFormat m_pixelFormat = MTL::PixelFormatInvalid;
-    std::uint32_t m_handle = 0;
 };
 
 class MetalTexture3DImpl final : public Texture3DImpl {
@@ -217,8 +216,7 @@ class MetalTexture3DImpl final : public Texture3DImpl {
         unsigned int height,
         unsigned int depth,
         TextureFormat format
-    )
-        : m_handle(nextMetalTextureHandle()) {
+    ) {
         auto *descriptor = MTL::TextureDescriptor::alloc()->init();
         descriptor->setTextureType(MTL::TextureType3D);
         descriptor->setWidth(width);
@@ -241,14 +239,14 @@ class MetalTexture3DImpl final : public Texture3DImpl {
     }
 
     std::uint32_t getHandle() const override {
-        return m_handle;
+        return 0;
     }
 
-    void *getNativeTexture() const {
+    void *getNativeTexture() const override {
         return m_texture;
     }
 
-    std::uint32_t getNativePixelFormat() const {
+    std::uint32_t getNativePixelFormat() const override {
         return static_cast<std::uint32_t>(m_texture->pixelFormat());
     }
 
@@ -280,7 +278,6 @@ class MetalTexture3DImpl final : public Texture3DImpl {
 
   private:
     MTL::Texture *m_texture = nullptr;
-    std::uint32_t m_handle = 0;
 };
 
 std::unique_ptr<Texture2DImpl> createTexture2DImpl(

@@ -1,3 +1,4 @@
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/framebuffer.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/vao.hpp>
@@ -67,14 +68,13 @@ class MetalFramebufferImpl final : public FramebufferImpl {
 class MetalVertexLayoutImpl final : public VertexLayoutImpl {
   public:
     MetalVertexLayoutImpl(
-        std::uint32_t vertexBufferHandle,
-        std::uint32_t indexBufferHandle,
+        const Buffer *vertexBuffer,
+        const Buffer *indexBuffer,
         unsigned int numAttributes,
         const VertexArrayAttribute *attributes
-    ) {
-        m_vertexBuffer = lookupMetalBufferHandle(vertexBufferHandle);
-        m_indexBuffer = lookupMetalBufferHandle(indexBufferHandle);
-
+    )
+        : m_vertexBufferWrapper(vertexBuffer)
+        , m_indexBufferWrapper(indexBuffer) {
         auto *vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
         std::size_t stride = 0;
         for (unsigned int i = 0; i < numAttributes; ++i) {
@@ -97,12 +97,20 @@ class MetalVertexLayoutImpl final : public VertexLayoutImpl {
     }
 
     void bind() const override {
-        setActiveMetalVertexLayout(m_vertexBuffer, m_indexBuffer, m_vertexDescriptor);
+        // Resolve the live native pointers at bind time so buffer orphaning
+        // (see MetalBufferImpl::subData) is picked up automatically.
+        MTL::Buffer *vertexBuffer = m_vertexBufferWrapper != nullptr
+            ? static_cast<MTL::Buffer *>(m_vertexBufferWrapper->getNativeBuffer())
+            : nullptr;
+        MTL::Buffer *indexBuffer = m_indexBufferWrapper != nullptr
+            ? static_cast<MTL::Buffer *>(m_indexBufferWrapper->getNativeBuffer())
+            : nullptr;
+        setActiveMetalVertexLayout(vertexBuffer, indexBuffer, m_vertexDescriptor);
     }
 
   private:
-    MTL::Buffer *m_vertexBuffer = nullptr;
-    MTL::Buffer *m_indexBuffer = nullptr;
+    const Buffer *m_vertexBufferWrapper = nullptr;
+    const Buffer *m_indexBufferWrapper = nullptr;
     MTL::VertexDescriptor *m_vertexDescriptor = nullptr;
 };
 
@@ -114,14 +122,14 @@ std::unique_ptr<FramebufferImpl> createFramebufferImpl(
 }
 
 std::unique_ptr<VertexLayoutImpl> createVertexLayoutImpl(
-    std::uint32_t vertexBufferHandle,
-    std::uint32_t indexBufferHandle,
+    const Buffer *vertexBuffer,
+    const Buffer *indexBuffer,
     unsigned int numAttributes,
     const VertexArrayAttribute *attributes
 ) {
     return std::make_unique<MetalVertexLayoutImpl>(
-        vertexBufferHandle,
-        indexBufferHandle,
+        vertexBuffer,
+        indexBuffer,
         numAttributes,
         attributes
     );

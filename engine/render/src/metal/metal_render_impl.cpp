@@ -1,7 +1,9 @@
 #include <irreden/render/metal/metal_render_impl.hpp>
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/metal/metal_cocoa_bridge.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/render_device.hpp>
+#include <irreden/render/texture.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -71,6 +73,12 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
         if (MTL::Texture *imageTexture = boundMetalImageTexture(i); imageTexture != nullptr) {
             encoder->setTexture(imageTexture, i);
         }
+    }
+
+    // Image atomic scratch buffer (mirrors the canvas distance R32I texture).
+    // See metal_runtime.hpp for the rationale; binding slot is fixed.
+    if (MTL::Buffer *scratch = currentImageAtomicScratch(); scratch != nullptr) {
+        encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
     }
 }
 
@@ -168,6 +176,9 @@ setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        // Now that the GPU has finished consuming any encoders that
+        // captured orphaned buffers, it is safe to release them.
+        releaseDeferredMetalBuffers();
 setMetalDrawable(nullptr);
 setMetalCommandBuffer(nullptr);
     }
@@ -199,6 +210,21 @@ bindMetalDefaultRenderTarget();
         if (x < 0 || y < 0 || x + width > static_cast<int>(texture->width()) ||
             y + height > static_cast<int>(texture->height())) {
             return false;
+        }
+
+        // World::render() calls videoManager.render() (which lands here for
+        // screenshots) BEFORE presentFrame, so the current command buffer
+        // still has the entire frame's render work merely encoded — the GPU
+        // has not executed it yet. Reading texture->getBytes() at this point
+        // would return stale content from a previous frame, producing an
+        // off-by-one screenshot. Flush the encoded work synchronously here
+        // and start a fresh command buffer so present() can still encode the
+        // drawable presentation on top.
+        if (auto *commandBuffer = metalCommandBuffer(); commandBuffer != nullptr) {
+            commandBuffer->commit();
+            commandBuffer->waitUntilCompleted();
+            releaseDeferredMetalBuffers();
+            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
         }
 
         const std::size_t rowBytes = static_cast<std::size_t>(width) * 4U;
@@ -246,8 +272,36 @@ bindMetalDefaultRenderTarget();
         encoder->endEncoding();
     }
 
-    void memoryBarrier(BarrierType) override {}
-    void dispatchComputeIndirect(std::uint32_t, std::ptrdiff_t) override {}
+    void memoryBarrier(BarrierType) override {
+        // Metal command-encoder boundaries (one encoder per dispatch in this
+        // backend) act as implicit barriers between dispatches that touch
+        // shared resources, so an explicit barrier is unnecessary here.
+    }
+
+    void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) override {
+        auto *commandBuffer = metalCommandBuffer();
+        auto *pipeline = activeMetalPipeline();
+        if (commandBuffer == nullptr || pipeline == nullptr || !pipeline->isComputePipeline()) {
+            return;
+        }
+        if (indirectBuffer == nullptr) {
+            return;
+        }
+        auto *mtlIndirectBuffer = static_cast<MTL::Buffer *>(indirectBuffer->getNativeBuffer());
+        if (mtlIndirectBuffer == nullptr) {
+            return;
+        }
+
+        auto *encoder = commandBuffer->computeCommandEncoder();
+        encoder->setComputePipelineState(pipeline->getComputePipelineState());
+        bindComputeResources(encoder);
+        encoder->dispatchThreadgroups(
+            mtlIndirectBuffer,
+            static_cast<NS::UInteger>(offset),
+            pipeline->getThreadsPerThreadgroup()
+        );
+        encoder->endEncoding();
+    }
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();
@@ -339,8 +393,65 @@ setMetalDepthTestEnabled(enabled);
     void setDepthWrite(bool enabled) override {
 setMetalDepthWriteEnabled(enabled);
     }
-    void clearTexImage(std::uint32_t, int, const void *) override {}
-    void finish() override {}
+    void clearTexImage(const Texture2D *textureWrapper, int level, const void *data) override {
+        if (textureWrapper == nullptr) {
+            return;
+        }
+        auto *texture = static_cast<MTL::Texture *>(textureWrapper->getNativeTexture());
+        if (texture == nullptr) {
+            return;
+        }
+        const NS::UInteger width = texture->width();
+        const NS::UInteger height = texture->height();
+        if (width == 0 || height == 0) {
+            return;
+        }
+        // Pixel size derived from format. For the formats we currently
+        // create through the engine (RGBA8, R32I, RG32UI, RGBA32F) the
+        // bytes-per-pixel is uniquely determined.
+        std::size_t bytesPerPixel = 4;
+        const auto pixelFormat = texture->pixelFormat();
+        if (pixelFormat == MTL::PixelFormatRG32Uint) {
+            bytesPerPixel = 8;
+        } else if (pixelFormat == MTL::PixelFormatRGBA32Float) {
+            bytesPerPixel = 16;
+        }
+
+        std::vector<std::uint8_t> clearData(
+            static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel
+        );
+        if (data != nullptr) {
+            for (std::size_t i = 0; i < clearData.size(); i += bytesPerPixel) {
+                std::memcpy(clearData.data() + i, data, bytesPerPixel);
+            }
+        } else {
+            std::memset(clearData.data(), 0, clearData.size());
+        }
+        texture->replaceRegion(
+            MTL::Region::Make2D(0, 0, width, height),
+            static_cast<NS::UInteger>(level),
+            clearData.data(),
+            static_cast<NS::UInteger>(width * bytesPerPixel)
+        );
+
+        // Mirror the clear into the image atomic scratch buffer so atomic
+        // image-min sees the same starting state as the texture itself.
+        if (pixelFormat == MTL::PixelFormatR32Sint) {
+            if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                scratch != nullptr) {
+                std::memcpy(scratch->contents(), clearData.data(), clearData.size());
+            }
+        }
+    }
+
+    void finish() override {
+        // The Metal render impl already commits-and-waits each frame at
+        // present(), so finish() is only used by GPU stage timing. Spinning
+        // up a no-op command buffer here would force a flush, but stage
+        // timing is OFF by default and the per-command-buffer cost is
+        // dominated by the present-time wait. Leaving as a no-op until we
+        // need precise per-stage timings on Metal.
+    }
 };
 
 MetalRenderDevice g_metalRenderDevice;
