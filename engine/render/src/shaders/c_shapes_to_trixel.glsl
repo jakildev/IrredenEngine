@@ -489,7 +489,13 @@ void main() {
 
     int renderMode = voxelRenderOptions.x;
     int subdivisions = max(voxelRenderOptions.y, 1);
-    bool smoothMode = (renderMode != 0);
+    // Smooth mode degenerates to snap when there is nothing to smooth.  At
+    // sub == 1 the analytical path would paint a 2x3 diamond at every iso
+    // pixel (both parities), producing overlapping diamonds that alias into
+    // the voxel-pool tiling.  Route sub==1 through the exact lattice walk
+    // used by snap mode so shapes at minimum zoom match C_VoxelSetNew output
+    // trixel-for-trixel.
+    bool smoothMode = (renderMode != 0) && (subdivisions > 1);
     int sub = smoothMode ? subdivisions : 1;
 
     // For BOX shapes, params.xyz is the voxel count per axis.  Convert to

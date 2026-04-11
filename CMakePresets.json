@@ -34,8 +34,8 @@
     },
     {
       "name": "linux-debug",
-      "displayName": "Linux Debug",
-      "description": "Linux local configuration for development (OpenGL via GLFW/X11).",
+      "displayName": "Linux / WSL Debug",
+      "description": "Linux and WSL2 local configuration for development. Target environment for the parallel-agent fleet.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
