@@ -80,6 +80,36 @@ Two-tier review is legitimate and encouraged: Sonnet catches the obvious
 stuff cheaply, Opus looks at what's left. Don't skip the Opus second pass
 for anything in the "Opus" list above.
 
+### Cross-platform parity (OpenGL ↔ Metal)
+
+The fleet can run from either a **WSL2 Ubuntu** host (Linux,
+OpenGL backend via `linux-debug`) or a **macOS** host (Metal backend
+via `macos-debug`), or both simultaneously. Running on both sides in
+parallel is how we mature the two graphics backends in lockstep.
+
+New rendering work usually lands on whichever backend the author
+happened to be running at the time. That creates drift — a GLSL
+compute shader that has no MSL counterpart, or vice versa. The
+`backend-parity` skill exists to catch and close those gaps.
+
+Rules:
+
+- After any render PR that touched only one backend, run the
+  `backend-parity` skill **on the host matching the lagging side**
+  (macOS to add Metal; WSL/Windows to add OpenGL).
+- A parity port is not complete until it **builds clean on the lagging
+  preset** and the target demo **renders at functional parity** with
+  the leading backend. Build-only is not enough.
+- One logical feature per parity PR. Don't bundle unrelated parity
+  fixes — reviewer agents can't usefully sign off on them.
+- Parity work that touches `engine/math/`, dispatch-grid helpers, GPU
+  buffer lifetime, or anything where the two backends share a CPU-side
+  feeder struct is **Opus work**. Sonnet-fleet agents should escalate.
+
+See `.claude/skills/backend-parity/SKILL.md` for the full flow, the
+GLSL↔MSL cheatsheet, and `engine/render/CLAUDE.md` for the pipeline
+overview each port must respect.
+
 ---
 
 ## Build

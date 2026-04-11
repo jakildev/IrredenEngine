@@ -114,12 +114,109 @@ Avoid:
     via WSLg without crashing on its first frame.
   - **Notes:** the engine was originally written against Windows +
     MSYS2. Expect missing Linux branches under `#ifdef _WIN32`, missing
-    system libs (update the apt list in `docs/AGENT_FLEET_SETUP.md` §1
+    system libs (update the apt list in `docs/AGENT_FLEET_SETUP.md` §1a
     as you find them), case-sensitive include mismatches, and EOL
     drift. Every real fix should land as its own dedicated PR — do
     **not** bundle unrelated Linux-port fixes into feature work.
     Reference `docs/AGENT_FLEET_SETUP.md` §10 for the list of known
     first-time issues.
+  - **Links:**
+
+- [ ] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
+  mirror of the Linux-maturation task, on the Mac side. Umbrella epic
+  for fixing every compile/link/runtime issue in the Metal backend
+  as the fleet surfaces them. Must be run from a macOS host (Apple
+  Silicon or Intel) — the Metal backend can't be cross-compiled.
+  - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
+    anywhere the Metal path breaks
+  - **Model:** opus (backend/render work is Opus territory)
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** from a fresh macOS clone at `~/src/IrredenEngine`,
+    `cmake --preset macos-debug && cmake --build build -j$(sysctl -n hw.ncpu)`
+    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
+    with zero warnings escalated to errors, and `IRShapeDebug` launches
+    and renders the same reference frame as the OpenGL backend.
+  - **Notes:** see `docs/AGENT_FLEET_SETUP.md` §10 (macOS subsection)
+    for the known first-time issues on macOS — Objective-C++ flags,
+    shader parity gaps, FFmpeg `pkg-config` path, Metal 3 target
+    version, Retina scaling. Unlike Linux maturation, shader parity
+    gaps should be handed to the `backend-parity` skill as dedicated
+    parity PRs (see the three concrete MSL port tasks below).
+  - **Links:**
+
+- [ ] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
+  the GLSL compute for writing 2D shape SDFs into trixel canvases has
+  no Metal counterpart. Invoke the `backend-parity` skill on a macOS
+  host and port it.
+  - **Area:** engine/render/src/shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** macOS/Metal build maturation (need the preset to
+    build cleanly before you can prove the port works end-to-end)
+  - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
+    exists and matches the GLSL binding/uniform layout, the
+    `macos-debug` build is clean, and the shapes-rendering demo
+    (whichever creation exercises `SHAPES_TO_TRIXEL`) renders
+    visually identically to the OpenGL version.
+  - **Notes:** read `engine/render/CLAUDE.md` pipeline overview and
+    the GLSL source in full before porting. Use the cheatsheet in
+    `.claude/skills/backend-parity/SKILL.md`.
+  - **Links:**
+
+- [ ] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
+  GPU-side voxel-position update compute with no Metal counterpart.
+  Same skill flow as above.
+  - **Area:** engine/render/src/shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** macOS/Metal build maturation
+  - **Acceptance:** `engine/render/src/shaders/metal/c_update_voxel_positions.metal`
+    exists and matches the GLSL binding/uniform layout, `macos-debug`
+    build is clean, and a voxel-animation demo (e.g. one of the
+    `creations/demos/*` that exercises moving voxels) animates
+    identically to the OpenGL version.
+  - **Notes:** dispatch size and buffer bindings must match exactly
+    — any mismatch will race or corrupt the voxel pool. This one is
+    higher-stakes than `c_shapes_to_trixel`; be thorough.
+  - **Links:**
+
+- [ ] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
+  the voxel-visibility compaction pass (reduces visible-voxel indices
+  into a dense buffer) has no Metal counterpart. Same skill flow.
+  - **Area:** engine/render/src/shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** macOS/Metal build maturation
+  - **Acceptance:** `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal`
+    exists, matches the GLSL binding/uniform layout, `macos-debug`
+    build is clean, and `IRShapeDebug` on Metal gives the same
+    visible-voxel counts per frame as the OpenGL version.
+  - **Notes:** compaction shaders rely on atomic operations — pay
+    attention to the `atomicAdd` → `atomic_fetch_add_explicit`
+    translation and the memory-order argument (use `relaxed` unless
+    the GLSL source implies otherwise). See the cheatsheet in the
+    `backend-parity` skill.
+  - **Links:**
+
+- [ ] **Wire up a `backend-parity` dry run** — use the new
+  `backend-parity` skill end-to-end on a known-small parity gap
+  (pick one of the three MSL port tasks above, ideally
+  `c_shapes_to_trixel` as the least invasive). This is the equivalent
+  of the "example" tasks below — the goal is to exercise the skill's
+  flow and catch any workflow bugs before running it on real
+  production gaps.
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** macOS/Metal build maturation
+  - **Acceptance:** one parity PR opened, reviewed by `review-pr`,
+    merged. Any workflow bugs in the `backend-parity` skill itself
+    are filed as follow-up `[sonnet]` tasks to fix the skill.
+  - **Notes:** treat any skill failure as a skill bug, not a task
+    failure. The point of this dry run is to uncover workflow
+    issues, not to ship the parity port (that happens as a natural
+    side effect).
   - **Links:**
 
 - [ ] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
