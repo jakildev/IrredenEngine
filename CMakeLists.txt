@@ -22,8 +22,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # LD_LIBRARY_PATH tweaks or POST_BUILD shared-object copying. Windows ships
 # MinGW runtime DLLs alongside the exe and macOS has Homebrew on the rpath,
 # so the default there is unchanged.
+#
+# Several fetched deps (notably easy_profiler) do their own
+# `set(BUILD_SHARED_LIBS ON CACHE BOOL ...)` without FORCE, which creates
+# a cache entry the first time CMake sees it and ends up winning over a
+# plain non-cache set in the parent scope. Promoting this to a FORCE'd
+# cache variable is what actually makes every subproject honor the Linux
+# static default.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED BUILD_SHARED_LIBS)
-    set(BUILD_SHARED_LIBS OFF)
+    set(
+        BUILD_SHARED_LIBS OFF
+        CACHE BOOL
+        "Build all FetchContent dependencies as static libraries on Linux"
+        FORCE
+    )
 endif()
 
 # Build-profile defaults:

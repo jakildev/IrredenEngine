@@ -9,7 +9,8 @@
 # only things we install here are:
 #   - a C/C++ toolchain + cmake + ninja + pkg-config
 #   - OpenGL, X11 extensions, and libxkbcommon for GLFW
-#   - ALSA for RtAudio / RtMidi
+#   - ALSA + PulseAudio + JACK for RtAudio / RtMidi (all three are enabled
+#     by rtaudio/rtmidi autodetection whenever their dev headers are present)
 #   - FFmpeg dev libraries for IrredenEngineVideo
 #   - Qt5 (optional) for the easy_profiler GUI target
 #   - clang-format + clang-tidy for the quality targets
@@ -48,6 +49,8 @@ ${SUDO} apt-get install -y \
     libxkbcommon-dev \
     libwayland-dev \
     libasound2-dev \
+    libpulse-dev \
+    libjack-jackd2-dev \
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
@@ -77,6 +80,8 @@ verify_tool "cmake available" cmake --version
 verify_tool "g++ available" g++ --version
 verify_tool "pkg-config finds libavcodec" pkg-config --exists libavcodec
 verify_tool "pkg-config finds alsa" pkg-config --exists alsa
+verify_tool "pkg-config finds libpulse-simple" pkg-config --exists libpulse-simple
+verify_tool "pkg-config finds jack" pkg-config --exists jack
 verify_tool "pkg-config finds gl" pkg-config --exists gl
 verify_tool "clang-format available" clang-format --version
 verify_tool "clang-tidy available" clang-tidy --version
