@@ -16,7 +16,7 @@ if(IR_isDarwin)
     set(VIDEO_PLATFORM_SRC ${VIDEO_METAL_SRC})
 endif()
 
-if(IR_isWindows)
+if(IR_isWindows OR IR_isLinux)
     set(VIDEO_PLATFORM_SRC ${VIDEO_OPENGL_SRC})
 endif()
 
@@ -74,6 +74,12 @@ if(IR_isDarwin)
         /opt/homebrew/opt/ffmpeg
         /usr/local
         /usr/local/opt/ffmpeg
+    )
+endif()
+if(IR_isLinux)
+    list(APPEND IRREDEN_FFMPEG_ROOT_HINTS
+        /usr
+        /usr/local
     )
 endif()
 

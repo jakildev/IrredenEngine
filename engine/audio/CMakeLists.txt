@@ -22,6 +22,15 @@ if(IR_isDarwin)
     set(RTAUDIO_API_ALSA OFF CACHE BOOL "" FORCE)
     set(RTAUDIO_API_OSS OFF CACHE BOOL "" FORCE)
 endif()
+if(IR_isLinux)
+    # ALSA is always present on desktop Linux; Pulse/Jack are opt-in so the
+    # bootstrap footprint stays small. Flip these on explicitly if you need
+    # them in your distro.
+    set(RTAUDIO_API_ALSA ON CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_PULSE OFF CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_JACK OFF CACHE BOOL "" FORCE)
+    set(RTAUDIO_API_OSS OFF CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_Declare(
     rtaudio
@@ -53,6 +62,10 @@ if(IR_isDarwin)
     set(RTMIDI_API_CORE ON CACHE BOOL "" FORCE)
     set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
     set(RTMIDI_API_ALSA OFF CACHE BOOL "" FORCE)
+endif()
+if(IR_isLinux)
+    set(RTMIDI_API_ALSA ON CACHE BOOL "" FORCE)
+    set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
 endif()
 
 FetchContent_Declare(

@@ -69,6 +69,20 @@ if(IR_isDarwin)
         endif()
     endforeach()
 endif()
+if(IR_isLinux)
+    # Typical distro Qt5 locations. find_package(Qt5Widgets) inside
+    # easy_profiler will pick the first one that exists.
+    foreach(_irreden_qt5_root IN ITEMS
+        /usr/lib/x86_64-linux-gnu/qt5
+        /usr/lib/qt5
+        /usr/lib64/qt5
+        /usr
+    )
+        if(EXISTS "${_irreden_qt5_root}")
+            list(APPEND CMAKE_PREFIX_PATH "${_irreden_qt5_root}")
+        endif()
+    endforeach()
+endif()
 
 # Remove to disable profiling
 target_compile_definitions(

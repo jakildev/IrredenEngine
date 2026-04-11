@@ -17,6 +17,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
+# On Linux, default every fetched third-party dependency to static so the
+# resulting creation executables are self-contained and do not require
+# LD_LIBRARY_PATH tweaks or POST_BUILD shared-object copying. Windows ships
+# MinGW runtime DLLs alongside the exe and macOS has Homebrew on the rpath,
+# so the default there is unchanged.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED BUILD_SHARED_LIBS)
+    set(BUILD_SHARED_LIBS OFF)
+endif()
+
 # Build-profile defaults:
 # - Only true Release builds compile as release-style engine builds.
 # - Apply compiler-appropriate optimization flags (MSVC does not use -O3).
