@@ -493,54 +493,48 @@ The same files are also checked into the repos for version control:
 - game: `.claude/commands/role-game-architect.md`
 
 Treat the in-repo copies as the source of truth and the user-level
-copies (`~/.claude/commands/`) as the runtime cache. If you edit one,
-copy to the other:
+copies (`~/.claude/commands/`) as the runtime cache. `scripts/fleet/install.sh`
+(described in §5c) creates `~/.claude/commands/role-*.md` as **symlinks**
+into the repo copies — edit the repo file, commit, and every machine
+that has run `install.sh` picks up the new version on its next `git pull`.
+Re-running `install.sh` is only required when a role file is **added**
+or **removed**, not when an existing one is edited.
+
+### Step 5c — `scripts/fleet/install.sh` and `fleet-up`
+
+The fleet launcher and its installer live in the engine repo under
+[`scripts/fleet/`](../scripts/fleet/). Two files:
+
+- **`scripts/fleet/fleet-up`** — the launcher. Does four things in
+  order:
+  1. Ensures all 7 worktrees exist (creates any that are missing).
+  2. Resets each worktree to a fresh branch off `origin/master`,
+     skipping any that have uncommitted changes.
+  3. Creates the tmux session with 7 tiled panes.
+  4. In each pane, runs `claude --model <m> "/role-<role> <mode>"`
+     with the appropriate model and role. Default mode is `dry-run`;
+     pass `live` to skip dry-run.
+- **`scripts/fleet/install.sh`** — the one-time per-machine installer.
+  Symlinks `scripts/fleet/fleet-up` into `~/bin/fleet-up` and symlinks
+  each `.claude/commands/role-*.md` into `~/.claude/commands/`. Picks
+  up `creations/game/.claude/commands/role-game-architect.md` too if
+  the game repo is cloned.
+
+First-time setup on this machine:
 
 ```bash
-# repo → runtime
-cp ~/src/IrredenEngine/.claude/commands/role-*.md ~/.claude/commands/
-cp ~/src/IrredenEngine/creations/game/.claude/commands/role-*.md ~/.claude/commands/
+cd ~/src/IrredenEngine
+scripts/fleet/install.sh
 ```
 
-(A later improvement would be a `sync-roles` script or git hook; for
-now, manual cp is fine.)
+If the installer warns that `~/bin` is not on PATH, add the line it
+prints to your shell startup file (`~/.zprofile` for zsh,
+`~/.bash_profile` for bash) and open a new terminal.
 
-### Step 5c — `~/bin/fleet-up`
-
-The `fleet-up` script does four things in order:
-
-1. Ensures all 7 worktrees exist (creates any that are missing).
-2. Resets each worktree to a fresh branch off `origin/master`,
-   skipping any that have uncommitted changes.
-3. Creates the tmux session with 7 tiled panes.
-4. In each pane, runs `claude --model <m> "/role-<role> dry-run"`
-   with the appropriate model and role.
-
-Source lives at `~/bin/fleet-up`. The current version handles all of
-the above; if you need to recreate it from scratch, the relevant
-shape is:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-ENGINE="$HOME/src/IrredenEngine"
-GAME="$ENGINE/creations/game"
-SESSION="fleet"
-MODE="${1:-dry-run}"
-
-# (1) ensure worktrees, (2) reset to fresh branches, (3) tmux session
-# with 7 tiled panes, each running:
-#     claude --model <m> "/role-<role> ${MODE}"; exec $SHELL
-```
-
-The trailing `exec $SHELL` keeps the pane alive with a usable shell
-if claude exits or errors out, instead of letting the pane vanish.
-
-Make sure `~/bin` is on PATH:
-
-```bash
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
-```
+Because `install.sh` uses symlinks, a subsequent `git pull` on the
+engine repo is enough to update both `fleet-up` and the role slash
+commands on every machine — you only need to re-run `install.sh` when
+a new role file is **added** to the repo (or an existing one deleted).
 
 ### Step 5d — daily ritual
 

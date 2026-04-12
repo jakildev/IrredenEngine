@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# fleet-up — bring the Irreden Engine + Game agent fleet online.
+#
+# Idempotent. Creates any missing worktrees, resets each to a fresh
+# branch off origin/master (skipping any that have uncommitted work),
+# then builds a single tmux session "fleet" with one window "agents"
+# containing 7 tiled panes — each launching `claude` with the right
+# model and the matching role slash command in dry-run mode.
+#
+# Source of truth: scripts/fleet/fleet-up in the engine repo.
+# Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
+#
+# Role slash commands live in ~/.claude/commands/role-*.md and are
+# the runtime source. The same files are checked into the engine and
+# game repos under .claude/commands/ for version control;
+# scripts/fleet/install.sh symlinks the repo copies into the runtime
+# location so a git pull updates both sides at once.
+
+set -euo pipefail
+
+ENGINE="$HOME/src/IrredenEngine"
+GAME="$ENGINE/creations/game"
+SESSION="fleet"
+
+if ! command -v tmux >/dev/null 2>&1; then
+    echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
+    exit 1
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+    echo "fleet-up: claude CLI not found on PATH." >&2
+    exit 1
+fi
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "fleet session already exists — attach with: tmux attach -t $SESSION"
+    echo "(kill with \`tmux kill-session -t $SESSION\` first if you want a fresh layout)"
+    exit 0
+fi
+
+# ----------------------------------------------------------------------
+# Step 1: ensure all worktrees exist
+# ----------------------------------------------------------------------
+
+ensure_worktree() {
+    # $1 = repo root, $2 = worktree subpath relative to repo root,
+    # $3 = branch name to create or attach
+    local repo="$1"
+    local subpath="$2"
+    local branch="$3"
+    local wt="$repo/$subpath"
+
+    if [[ -d "$wt" ]]; then
+        return 0
+    fi
+    echo "fleet-up: creating worktree $wt (branch $branch)"
+    (cd "$repo" && git worktree add "$wt" -b "$branch" origin/master 2>&1 \
+        || git worktree add "$wt" "$branch")
+}
+
+(cd "$ENGINE" && git fetch origin --quiet) || {
+    echo "fleet-up: engine git fetch failed" >&2; exit 1; }
+
+ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
+ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
+
+if [[ -d "$GAME/.git" ]]; then
+    (cd "$GAME" && git fetch origin --quiet) || {
+        echo "fleet-up: game git fetch failed (continuing without game pane)" >&2; }
+    ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+else
+    echo "fleet-up: game repo not found at $GAME — skipping game pane"
+fi
+
+# ----------------------------------------------------------------------
+# Step 2: reset each worktree to a fresh branch off origin/master
+# ----------------------------------------------------------------------
+
+reset_worktree() {
+    # $1 = worktree path, $2 = scratch branch name to land on
+    local wt="$1"
+    local branch="$2"
+
+    if [[ ! -d "$wt" ]]; then
+        return 0
+    fi
+
+    # Refuse to clobber uncommitted work — the human can clean up first.
+    local dirty
+    dirty="$(cd "$wt" && git status --porcelain 2>/dev/null || echo SKIP)"
+    if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
+        echo "fleet-up: $wt has uncommitted changes — leaving as-is."
+        echo "          (commit or stash and rerun fleet-up to reset.)"
+        return 0
+    fi
+
+    echo "fleet-up: resetting $wt -> $branch"
+    (cd "$wt" \
+        && git fetch origin --quiet \
+        && git checkout -B "$branch" origin/master >/dev/null 2>&1) || {
+        echo "fleet-up: failed to reset $wt — leaving as-is" >&2; }
+}
+
+reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" review-scratch-sonnet
+reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   review-scratch-opus
+reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
+fi
+
+# ----------------------------------------------------------------------
+# Step 3: build the tmux session
+# ----------------------------------------------------------------------
+#
+# Each pane execs:
+#     claude --model <m> "/role-<role> <mode>"; exec $SHELL
+#
+# The trailing `exec $SHELL` keeps the pane alive with a usable shell
+# if claude exits or errors out, instead of letting the pane vanish.
+#
+# Default mode: dry-run. The agents do their startup actions and then
+# stand by for human instruction. Promote a pane to full operation by
+# typing in it: "you can stop dry-run mode and start working".
+
+MODE="${1:-dry-run}"
+
+launch_cmd() {
+    # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
+    local model="$1"
+    local role="$2"
+    printf 'claude --model %s "/role-%s %s"; exec $SHELL\n' \
+        "$model" "$role" "$MODE"
+}
+
+# Pane 1: opus-architect
+tmux new-session -d -s "$SESSION" -n agents \
+    -c "$ENGINE/.claude/worktrees/opus-architect" \
+    "$(launch_cmd opus opus-architect)"
+
+# Helper: split + tile
+split_pane() {
+    local cwd="$1"
+    local cmd="$2"
+    tmux split-window -t "$SESSION":agents -c "$cwd" "$cmd"
+    tmux select-layout -t "$SESSION":agents tiled >/dev/null
+}
+
+split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
+    "$(launch_cmd sonnet sonnet-author)"
+split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd sonnet sonnet-author)"
+split_pane "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    "$(launch_cmd sonnet sonnet-reviewer)"
+split_pane "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "$(launch_cmd opus opus-reviewer)"
+split_pane "$ENGINE/.claude/worktrees/queue-manager" \
+    "$(launch_cmd sonnet queue-manager)"
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    split_pane "$GAME/.claude/worktrees/game-architect" \
+        "$(launch_cmd opus game-architect)"
+fi
+
+tmux select-pane -t "$SESSION":agents.1
+
+cat <<EOF
+
+fleet session created with tiled panes — mode: ${MODE}.
+attach with:  tmux attach -t ${SESSION}
+
+panes (left-to-right, top-to-bottom in tiled layout):
+  1. opus-architect   (engine, opus,   stand-by)
+  2. sonnet-fleet-1   (engine, sonnet, author)
+  3. sonnet-fleet-2   (engine, sonnet, author)
+  4. sonnet-reviewer  (engine, sonnet, polling reviewer)
+  5. opus-reviewer    (engine, opus,   polling reviewer)
+  6. queue-manager    (engine, sonnet, task intake)
+  7. game-architect   (game,   opus,   stand-by)
+
+mode "dry-run" means each agent does its startup actions and then
+waits. promote a pane to full operation by typing in it:
+  "exit dry-run mode and begin your normal loop"
+
+other modes you can pass to fleet-up:
+  fleet-up dry-run   # default — startup + stand-by
+  fleet-up live      # full loop from the start (use after a clean dry run)
+EOF
