@@ -30,8 +30,8 @@ conditions, allocator behavior, hot-path costs.
 
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
 2. Confirm you are on the throwaway branch
-   `review-scratch-opus`. If not:
-   `git fetch origin && git checkout -B review-scratch-opus origin/master`.
+   `claude/opus-reviewer-scratch`. If not:
+   `git fetch origin && git checkout -B claude/opus-reviewer-scratch origin/master`.
 3. `gh pr list --state open --json number,title,headRefName,reviews`
    — print the result.
 4. Identify the candidates: PRs where the latest review body contains
