@@ -25,8 +25,8 @@ treat it as a hard rule for this role.
 1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
 2. Confirm you are on the throwaway branch:
    `git branch --show-current` should report something like
-   `review-scratch-sonnet`. If not, run
-   `git fetch origin && git checkout -B review-scratch-sonnet origin/master`.
+   `claude/sonnet-reviewer-scratch`. If not, run
+   `git fetch origin && git checkout -B claude/sonnet-reviewer-scratch origin/master`.
    `gh pr checkout` will rewrite this branch on each review.
 3. `gh pr list --state open --json number,title,headRefName,author,reviews`
    — print the result so we both see the current PR queue.
