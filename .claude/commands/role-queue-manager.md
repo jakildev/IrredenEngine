@@ -22,10 +22,12 @@ merges.
 ## Startup actions
 
 1. `pwd` — confirm you are in the `queue-manager` worktree.
-2. `git fetch origin --quiet`
+2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. `cat TASKS.md` — read the engine queue.
-4. If `~/src/IrredenEngine/creations/game/.git` exists:
-   `(cd ~/src/IrredenEngine/creations/game && git fetch origin --quiet && cat TASKS.md)`
+4. If `~/src/IrredenEngine/creations/game/.git` exists, run these two
+   commands separately (do NOT combine with `cd ... &&`):
+   `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
+   `cat ~/src/IrredenEngine/creations/game/TASKS.md`
    — read the game queue too.
 5. `gh pr list --state open --json number,title,headRefName` for both
    repos — see what is in flight.
@@ -142,3 +144,6 @@ stop and wait for human instruction.
 - Queue-only PRs are explicitly allowed by `TASKS.md` as queue
   maintenance — you do not need to bundle a task add with actual
   work.
+- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
+  Compound `cd`+git commands trigger a Claude Code security prompt on
+  every invocation and block unattended operation.

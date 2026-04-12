@@ -27,7 +27,7 @@ list above.
 
 ## Startup actions (do these immediately, in order)
 
-1. `git fetch origin --quiet`
+1. `git -C ~/src/IrredenEngine fetch origin --quiet`
 2. `cat TASKS.md` — review the current queue.
 3. `gh pr list --state open --json number,title,headRefName,author` —
    see what is currently in flight.
@@ -90,3 +90,6 @@ Stop and surface to the human when:
 - Never run `cmake --preset` — only `cmake --build` against the
   already-configured tree.
 - Never touch the `.claude/worktrees/` layout.
+- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
+  Compound `cd`+git commands trigger a Claude Code security prompt on
+  every invocation and block unattended operation.
