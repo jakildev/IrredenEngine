@@ -111,6 +111,8 @@ budget split. Just wait.
 - Never touch the `.claude/worktrees/` layout.
 - Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select` — those are human-initiated.
-- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
-  Compound `cd`+git commands trigger a Claude Code security prompt on
-  every invocation and block unattended operation.
+- Never use `&&` to chain commands in a single Bash invocation. Issue
+  each command as its own separate Bash tool call. Compound commands
+  don't match the allowlist and trigger interactive prompts that block
+  unattended operation. For git specifically, use `git -C <path>`
+  instead of `cd <path> && git`.

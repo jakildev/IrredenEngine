@@ -90,6 +90,8 @@ Stop and surface to the human when:
 - Never run `cmake --preset` — only `cmake --build` against the
   already-configured tree.
 - Never touch the `.claude/worktrees/` layout.
-- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
-  Compound `cd`+git commands trigger a Claude Code security prompt on
-  every invocation and block unattended operation.
+- Never use `&&` to chain commands in a single Bash invocation. Issue
+  each command as its own separate Bash tool call. Compound commands
+  don't match the allowlist and trigger interactive prompts that block
+  unattended operation. For git specifically, use `git -C <path>`
+  instead of `cd <path> && git`.
