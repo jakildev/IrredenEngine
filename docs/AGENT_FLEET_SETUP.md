@@ -350,21 +350,35 @@ clone gets its own independent set of worktrees — they don't share.
 
 A reasonable starting setup with the model split in mind:
 
-| Worktree              | Model  | Role                                |
-|-----------------------|--------|-------------------------------------|
-| `opus-architect`      | Opus   | Core engine work, ECS/render/audio  |
-| `sonnet-fleet-1`      | Sonnet | TASKS.md items, tests, docs         |
-| `sonnet-fleet-2`      | Sonnet | TASKS.md items, tests, docs         |
-| `sonnet-reviewer`     | Sonnet | First-pass PR review                |
-| `opus-reviewer`       | Opus   | Second-pass review + merge sign-off |
+| Worktree            | Repo   | Model  | Role                                                |
+|---------------------|--------|--------|-----------------------------------------------------|
+| `opus-architect`    | engine | Opus   | Core engine work, ECS/render/audio. Stand-by.       |
+| `sonnet-fleet-1`    | engine | Sonnet | TASKS.md `[sonnet]` items, tests, docs              |
+| `sonnet-fleet-2`    | engine | Sonnet | TASKS.md `[sonnet]` items, tests, docs              |
+| `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
+| `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
+| `queue-manager`     | engine | Sonnet | Task intake — categorizes and files new tasks       |
+| `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
 
-Create them once. Each worktree needs its own seed branch — git
-refuses to check out `master` in a second worktree while the main
-clone still has it checked out, so we create each worktree on a
-`fleet/<role>` branch that starts from `origin/master`. The seed
-branch is just a parking spot; `start-next-task` moves the worktree
-off it onto a real `claude/<area>-<topic>` branch as soon as the
-first task starts.
+The first six live in `~/src/IrredenEngine/.claude/worktrees/`. The
+last (`game-architect`) lives inside the game repo at
+`~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
+because the game is its own git repo with its own PR namespace.
+
+You don't have to create these by hand — `fleet-up` (described in §5)
+creates any missing worktrees on first run. The manual `git worktree
+add` commands below are documented for completeness, in case you want
+to bootstrap by hand or recover from a broken state.
+
+Each worktree needs its own seed branch — git refuses to check out
+`master` in a second worktree while the main clone still has it
+checked out, so we create each worktree on a `fleet/<role>` branch
+that starts from `origin/master`. The seed branch is just a parking
+spot; `fleet-up` resets it to a fresh `claude/<role>-scratch` branch
+on every invocation, and `start-next-task` will move it onto a real
+`claude/<area>-<topic>` branch as soon as a task starts.
+
+Manual bootstrap (only if `fleet-up` won't be doing it):
 
 ```bash
 cd ~/src/IrredenEngine
@@ -375,6 +389,11 @@ git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  orig
 git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
+git worktree add -b fleet/queue-manager   .claude/worktrees/queue-manager   origin/master
+
+cd ~/src/IrredenEngine/creations/game
+git fetch origin master
+git worktree add -b fleet/game-architect  .claude/worktrees/game-architect  origin/master
 ```
 
 Verify:
@@ -383,10 +402,13 @@ Verify:
 git worktree list
 ```
 
-You should see the main clone on `master` plus five worktrees each on
-their own `fleet/*` seed branch. The `fleet/` prefix keeps these
-distinct from `claude/<area>-<topic>` agent branches so `gh pr list`
-and branch-completion never confuse them.
+You should see the main clone on `master` plus six engine worktrees
+(`opus-architect`, `sonnet-fleet-1`, `sonnet-fleet-2`, `sonnet-reviewer`,
+`opus-reviewer`, `queue-manager`) each on their own `fleet/*` seed
+branch, plus a seventh `game-architect` worktree under
+`creations/game/` if the game repo is present. The `fleet/` prefix
+keeps these distinct from `claude/<area>-<topic>` agent branches so
+`gh pr list` and branch-completion never confuse them.
 
 These worktrees live forever. Each agent session opens the worktree
 it wants and the `start-next-task` skill creates a fresh
@@ -413,15 +435,28 @@ no persistent role in the fleet.
 
 ## 5. tmux session layout
 
-tmux is how you keep all five fleet sessions visible and
-attachable/detachable from one terminal, on either host. A simple
-starting layout is one tmux session named `fleet` with one window per
-worktree role. On macOS, if you want `pbcopy`/`pbpaste` to work inside
-tmux, also `brew install reattach-to-user-namespace` — otherwise the
-tmux config below works identically on both hosts.
+tmux is how you keep all the fleet agents visible and
+attachable/detachable from one terminal, on either host. The `fleet-up`
+script creates **one tmux session** named `fleet` with **one window**
+named `agents` containing **seven tiled panes** — one per worktree
+role — and auto-launches `claude` in each pane with the matching
+**role slash command**.
 
-First-time setup: drop a minimal `~/.tmux.conf` that makes prefix `C-a`
-(easier to reach than default `C-b`) and gives you mouse scroll:
+**Key terminology:** in tmux a *window* fills the whole terminal (only
+one shows at a time); a *pane* is a split inside a window. The fleet
+uses one window with multiple panes so you can see all agents
+simultaneously. The default tmux prefix is `C-b` (Ctrl+B); the config
+below remaps it to `C-a` (Ctrl+A) which is easier to reach. **`C-a`
+means hold Control, press A.**
+
+On macOS, if you want `pbcopy`/`pbpaste` to work inside tmux, also
+`brew install reattach-to-user-namespace` — otherwise the tmux config
+below works identically on both hosts.
+
+### Step 5a — `~/.tmux.conf`
+
+First-time setup: drop a minimal `~/.tmux.conf` that makes prefix
+`C-a` and gives you mouse scroll:
 
 ```bash
 cat > ~/.tmux.conf <<'EOF'
@@ -436,60 +471,125 @@ set -g status-right "#(whoami)@#H | %Y-%m-%d %H:%M"
 EOF
 ```
 
-Create a helper script that spins up the whole fleet layout in one
-command. Save as `~/bin/fleet-up`:
+### Step 5b — role slash commands at `~/.claude/commands/`
+
+Each pane in the fleet runs `claude` with a role-specific slash command
+as its initial prompt. The role files live at:
+
+- `~/.claude/commands/role-opus-architect.md`
+- `~/.claude/commands/role-sonnet-author.md`
+- `~/.claude/commands/role-sonnet-reviewer.md`
+- `~/.claude/commands/role-opus-reviewer.md`
+- `~/.claude/commands/role-queue-manager.md`
+- `~/.claude/commands/role-game-architect.md`
+
+Each one is a markdown file with frontmatter that Claude Code
+auto-discovers and exposes as a slash command (`/role-opus-architect`,
+etc.). Inside Claude, typing the command at the prompt is the same as
+the agent receiving that command's body as instructions.
+
+The same files are also checked into the repos for version control:
+- engine: `.claude/commands/role-*.md` (everything except game-architect)
+- game: `.claude/commands/role-game-architect.md`
+
+Treat the in-repo copies as the source of truth and the user-level
+copies (`~/.claude/commands/`) as the runtime cache. If you edit one,
+copy to the other:
 
 ```bash
-mkdir -p ~/bin
-cat > ~/bin/fleet-up <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-REPO="$HOME/src/IrredenEngine"
-SESSION="fleet"
-
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-    echo "fleet session already exists — attach with: tmux attach -t $SESSION"
-    exit 0
-fi
-
-# opus-architect: first window
-tmux new-session -d -s "$SESSION" -n opus-arch \
-    -c "$REPO/.claude/worktrees/opus-architect"
-
-# sonnet fleet and reviewers in subsequent windows
-tmux new-window -t "$SESSION":2 -n sonnet-1 \
-    -c "$REPO/.claude/worktrees/sonnet-fleet-1"
-tmux new-window -t "$SESSION":3 -n sonnet-2 \
-    -c "$REPO/.claude/worktrees/sonnet-fleet-2"
-tmux new-window -t "$SESSION":4 -n sonnet-rev \
-    -c "$REPO/.claude/worktrees/sonnet-reviewer"
-tmux new-window -t "$SESSION":5 -n opus-rev \
-    -c "$REPO/.claude/worktrees/opus-reviewer"
-
-tmux select-window -t "$SESSION":1
-echo "fleet session created. attach with: tmux attach -t $SESSION"
-EOF
-chmod +x ~/bin/fleet-up
+# repo → runtime
+cp ~/src/IrredenEngine/.claude/commands/role-*.md ~/.claude/commands/
+cp ~/src/IrredenEngine/creations/game/.claude/commands/role-*.md ~/.claude/commands/
 ```
 
-Add `~/bin` to PATH if it isn't already (`echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc`).
+(A later improvement would be a `sync-roles` script or git hook; for
+now, manual cp is fine.)
 
-After that, the daily ritual is:
+### Step 5c — `~/bin/fleet-up`
+
+The `fleet-up` script does four things in order:
+
+1. Ensures all 7 worktrees exist (creates any that are missing).
+2. Resets each worktree to a fresh branch off `origin/master`,
+   skipping any that have uncommitted changes.
+3. Creates the tmux session with 7 tiled panes.
+4. In each pane, runs `claude --model <m> "/role-<role> dry-run"`
+   with the appropriate model and role.
+
+Source lives at `~/bin/fleet-up`. The current version handles all of
+the above; if you need to recreate it from scratch, the relevant
+shape is:
 
 ```bash
-fleet-up                # creates the tmux session with one window per worktree
+#!/usr/bin/env bash
+set -euo pipefail
+ENGINE="$HOME/src/IrredenEngine"
+GAME="$ENGINE/creations/game"
+SESSION="fleet"
+MODE="${1:-dry-run}"
+
+# (1) ensure worktrees, (2) reset to fresh branches, (3) tmux session
+# with 7 tiled panes, each running:
+#     claude --model <m> "/role-<role> ${MODE}"; exec $SHELL
+```
+
+The trailing `exec $SHELL` keeps the pane alive with a usable shell
+if claude exits or errors out, instead of letting the pane vanish.
+
+Make sure `~/bin` is on PATH:
+
+```bash
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
+```
+
+### Step 5d — daily ritual
+
+```bash
+fleet-up                # creates the session, prepares worktrees, launches claude in each pane
 tmux attach -t fleet    # attach to it
 ```
 
-Inside each window, launch Claude Code with the role in mind:
+By default `fleet-up` starts every agent in **dry-run mode**. Each
+agent runs its startup actions (fetch, read TASKS, list open PRs,
+print a summary) and then **stands by** for explicit human
+instruction. This is the safe default — no work happens until you
+authorize it.
+
+When you've validated everything looks healthy, promote a pane to its
+normal loop by typing in it:
+
+> exit dry-run mode and begin your normal loop
+
+You can also start the whole fleet in live mode from the get-go:
 
 ```bash
-claude                  # starts a session in the current worktree directory
+fleet-up live           # all panes go straight to their normal loop
 ```
 
-Navigate windows with `C-a 1` / `C-a 2` / … or cycle with `C-a n`.
-Detach with `C-a d`, reattach later with `tmux attach -t fleet`.
+Don't do that until you've successfully run `fleet-up dry-run` end to
+end at least once on this machine.
+
+### Tmux navigation cheat sheet
+
+Prefix is `C-a` (Ctrl+A). To send a command, hold Control, press A,
+release, then press the next key.
+
+| Binding             | Effect                                            |
+|---------------------|---------------------------------------------------|
+| `C-a d`             | detach (leaves session running)                   |
+| `C-a` then arrow    | move focus between panes                          |
+| `C-a o`             | cycle panes                                       |
+| `C-a z`             | zoom/unzoom current pane (fullscreen toggle)      |
+| `C-a space`         | cycle pane layouts (tiled / even-horizontal / …)  |
+| `C-a %`             | split pane vertical                               |
+| `C-a "`             | split pane horizontal                             |
+| `C-a {` / `C-a }`   | swap current pane with prev/next                  |
+| `C-a x`             | kill current pane (confirms)                      |
+| `C-a [`             | enter scroll/copy mode (`q` to exit)              |
+| `C-a ?`             | list all bindings                                 |
+| mouse               | click focuses, drag borders resizes, wheel scrolls |
+
+Reattach after a detach: `tmux attach -t fleet`.
 
 ### Persistence across reboots (optional)
 
@@ -925,29 +1025,106 @@ translation cheatsheet.
 
 ---
 
-## 12. Session starter prompts
+## 12. Role slash commands (replaces the old paste-prompts ritual)
 
-When kicking off a worktree session in its tmux window, start with a
-one-liner that tells the agent which role it's in, and which host it
-is running on (so it knows which preset to build against). Examples:
+Each fleet pane runs `claude` with a **role slash command** as its
+initial prompt. The role files at `~/.claude/commands/role-*.md`
+define what each agent does, in much more detail than a one-line
+prompt — they include startup actions, the loop the agent runs, the
+escalation rules, the hard rules, and a `dry-run` mode.
 
-- **Opus architect session:**
-  > "You are the Opus architect agent in `~/src/IrredenEngine/.claude/worktrees/opus-architect`, running on `<WSL/Ubuntu | macOS>`. Pick the next unblocked `[opus]` task from `TASKS.md`, complete it, and open a PR via the `commit-and-push` skill. Build the target you touched with `cmake --build build --target <name>` (use `-j$(nproc)` on WSL or `-j$(sysctl -n hw.ncpu)` on macOS) and run the relevant executable before declaring done."
+You don't need to paste prompts into each pane every morning anymore.
+`fleet-up` does it for you: each pane is launched with
+`claude --model <m> "/role-<role> dry-run"` baked in. The role files
+are the source of truth for agent behavior; if an agent is doing the
+wrong thing repeatedly, edit its role file once and the change applies
+to every future fleet-up.
 
-- **Sonnet fleet session:**
-  > "You are a Sonnet fleet agent in `~/src/IrredenEngine/.claude/worktrees/sonnet-fleet-1`, running on `<WSL/Ubuntu | macOS>`. Pick the next unblocked `[sonnet]` task from `TASKS.md`, complete it, and open a PR via the `commit-and-push` skill. If the task turns out to touch core engine invariants (rendering, ECS, ownership, concurrency), stop and requeue it as `[opus]` with a note instead of charging ahead. Build and run before declaring done."
+### Available roles
 
-- **Sonnet reviewer session:**
-  > "You are a Sonnet first-pass reviewer in `~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer`, running on `<WSL/Ubuntu | macOS>`. Review the oldest unreviewed open PR using the `review-pr` skill. Post a first-pass review and end with an explicit escalation line saying whether Opus recheck is required."
+| Slash command              | Model  | Worktree           | Loop?         |
+|----------------------------|--------|--------------------|---------------|
+| `/role-opus-architect`     | Opus   | `opus-architect`   | Stand-by      |
+| `/role-sonnet-author`      | Sonnet | `sonnet-fleet-*`   | Continuous    |
+| `/role-sonnet-reviewer`    | Sonnet | `sonnet-reviewer`  | Polling 10min |
+| `/role-opus-reviewer`      | Opus   | `opus-reviewer`    | Polling 30min |
+| `/role-queue-manager`      | Sonnet | `queue-manager`    | On demand     |
+| `/role-game-architect`     | Opus   | `game-architect`   | Stand-by      |
 
-- **Opus reviewer session:**
-  > "You are the Opus final reviewer in `~/src/IrredenEngine/.claude/worktrees/opus-reviewer`, running on `<WSL/Ubuntu | macOS>`. Review any open PR that has a Sonnet first-pass review flagged for Opus escalation, or any open PR touching core engine invariants. Post a final review and, if approving, use `gh pr review <N> --approve`. Do not merge — I merge."
+Each command takes one optional argument: `dry-run` or `live`.
+`dry-run` means "do startup actions and then stop." `live` (or no
+argument when invoked from inside an interactive session) means "run
+your normal loop."
 
-- **Backend-parity session (Mac or WSL, whichever lags):**
-  > "You are running on `<macOS | WSL/Ubuntu>` to bring the `<Metal | OpenGL>` backend into parity with the leading side. Run the `backend-parity` skill. Either pick a specific PR/commit range the user gives you, or do a full audit if they said 'audit'. Port one logical feature per PR, build-clean and smoke-run the target on this host, then open the PR via `commit-and-push`."
+### Role file shape (for editing)
 
-Save these as Claude Code custom commands (or just paste them) so you
-don't retype them each morning.
+The role files are markdown with frontmatter:
+
+```markdown
+---
+description: <short description shown in /help>
+---
+
+You are the <role> for the fleet, running on macOS in <worktree>.
+
+Mode (optional argument): $ARGUMENTS
+
+## Responsibilities
+...
+
+## Startup actions
+...
+
+## Loop behavior
+...
+
+## Hard rules
+...
+```
+
+`$ARGUMENTS` is substituted with whatever was passed to the slash
+command — that's how `dry-run` vs `live` flows through.
+
+To edit a role's behavior:
+
+```bash
+$EDITOR ~/src/IrredenEngine/.claude/commands/role-sonnet-author.md
+# then mirror to runtime location:
+cp ~/src/IrredenEngine/.claude/commands/role-sonnet-author.md \
+   ~/.claude/commands/
+```
+
+The next `fleet-up` (or any new `claude "/role-..."` invocation) picks
+up the change.
+
+### Inserting a task while the fleet is running
+
+If you want to add a task to the queue while agents are working:
+
+1. Switch to the `queue-manager` pane (`C-a` then click, or `C-a` then
+   arrow keys).
+2. Type a rough description of the task. Don't worry about format,
+   tags, or repo — just describe what you want done.
+3. The queue-manager will categorize (engine vs game), tag (`[opus]`
+   vs `[sonnet]`), pick an Area, draft the entry using the TASKS.md
+   template, and open a queue-update PR. Paste the PR URL.
+4. Once the queue PR merges, the next sonnet-fleet pane on its
+   `start-next-task` cycle will see the new task and pick it up
+   automatically.
+
+The queue-manager will push back if your description is missing a
+concrete Acceptance criterion. That's intentional — tasks without
+acceptance checks are tasks that get half-finished.
+
+### Backend-parity sessions (still ad-hoc, not a fleet pane)
+
+`backend-parity` work isn't a permanent role — it's run on demand on
+whichever host is lagging. From any worktree on the lagging host,
+just type:
+
+> Run the backend-parity skill. <pick a feature, PR range, or "audit">
+
+The skill flow is documented in `.claude/skills/backend-parity/SKILL.md`.
 
 ---
 
@@ -967,30 +1144,178 @@ A few things should stay manual even with a fleet running:
   the apt list in this document.
 - **Editing this document.** (Or they can, but you sign off.)
 
-The `commit-and-push` and `review-pr` skills enforce most of this, but
-a human check is the last line of defense.
+The `commit-and-push` and `review-pr` skills document most of this as
+hard-rule anti-patterns, and the role files reinforce them, but a human
+check is the last line of defense.
 
 ---
 
-## 14. Dry run
+## 14. Dry run — first time bringing up the fleet
 
-Before handing work to the fleet, do one manual end-to-end run with
-yourself in the loop:
+Before handing real work to the fleet, do one manual end-to-end run
+with yourself in the loop. The point is to uncover workflow bugs in
+the role files, the skills, or the permissions setup — not to
+complete an actual task. Anything that breaks here is a real fleet
+bug worth fixing before unattended runs.
 
-1. `fleet-up && tmux attach -t fleet`
-2. In the `opus-arch` window, run `claude` and ask it to pick the
-   example `TASKS.md` item (`benchmark IRShapeDebug at zoom 4`) and
-   work through it.
-3. Watch the `commit-and-push` skill open a PR.
-4. `C-a 4` → `sonnet-rev` window → `claude` → ask it to review the
-   PR.
-5. `C-a 5` → `opus-rev` window → `claude` → ask it to re-review.
-6. Merge manually on GitHub.
-7. Back in `opus-arch`, run `start-next-task`, verify the branch
-   resets cleanly.
+### Step 1 — bring the fleet up in dry-run mode
 
-If any of those steps fail, fix the skill — not the task. The point of
-the dry run is to uncover workflow bugs, not to complete a task.
+```bash
+fleet-up                # defaults to dry-run mode
+tmux attach -t fleet
+```
+
+Each pane will:
+1. Start `claude` with the right model.
+2. Auto-execute its `/role-<x> dry-run` command.
+3. The agent does its startup actions: `git fetch`, reads `TASKS.md`,
+   runs `gh pr list`, prints a one-line summary.
+4. The agent prints `<role> standing by (dry-run)` and waits.
+
+Walk through every pane (`C-a` then arrow, or click) and confirm
+each one printed its standing-by line. If any pane shows an error
+instead, that's the first thing to fix.
+
+### Step 2 — drive one author task through the full cycle
+
+Switch to **sonnet-fleet-1** and type:
+
+> exit dry-run mode and do exactly ONE task end-to-end. Pick the
+> "Example: unit tests for engine/math/physics.hpp" task — it's
+> bounded, sonnet-tagged, and has a concrete acceptance check.
+> Build with `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`. After
+> `commit-and-push`, stop and wait — do not pick another task or loop.
+
+Watch the agent:
+- Cross-check `gh pr list` (it should mention this in its picking step).
+- Flip the task to `[~]` in `TASKS.md` and commit.
+- Read `engine/math/CLAUDE.md` for the helper specs.
+- Write the test file, build the test target, run it.
+- Call `commit-and-push`. A PR opens.
+- Stop and print the PR URL.
+
+If the agent prompts for permission on commands that should be in
+your allowlist, **note them down** — they go into `~/.claude/settings.json`
+(or your `permissions.allow` list) for next time. Don't fix them mid-run;
+finish the dry run first.
+
+### Step 3 — watch the Sonnet reviewer pick it up
+
+Switch to **sonnet-reviewer** and type:
+
+> exit dry-run mode and review exactly ONE PR — the one sonnet-fleet-1
+> just opened. Use the `review-pr` skill. End with the explicit
+> "Opus recheck not required" or "Opus recheck required" line. Stop
+> after the review posts.
+
+Watch the agent:
+- `gh pr checkout` the new PR.
+- Read the diff in context.
+- Post a structured review via `review-pr`.
+- End with the recheck-line. For physics tests it should be
+  "Opus recheck not required" — physics.hpp is math-only and touches no
+  invariants.
+
+### Step 4 — Opus reviewer stays idle (no escalation)
+
+Switch to **opus-reviewer**. It should still be standing by — the
+Sonnet review didn't flag for Opus recheck, so there's nothing for
+Opus to do. Confirm the pane is healthy and waiting.
+
+### Step 5 — you merge
+
+From a separate terminal (or any pane that isn't running an agent —
+`C-a c` to open a fresh window inside the fleet session):
+
+```bash
+gh pr merge <N> --squash
+```
+
+Or merge through the GitHub web UI. **Agents never merge.**
+
+### Step 6 — test `start-next-task`
+
+Switch back to **sonnet-fleet-1** and type:
+
+> run the `start-next-task` skill
+
+It should rebase onto the merged master, land on a fresh `claude/...`
+branch, and the `[x]` Done move from the merged PR should now be
+visible in `TASKS.md`.
+
+### Step 7 — test the queue-manager
+
+Switch to **queue-manager** and type a rough task:
+
+> add a task: I want exhaustive tests for engine/common/ir_constants.hpp.
+> Sonnet should be able to handle this. Acceptance is "test binary
+> builds and all assertions pass".
+
+Watch the queue-manager:
+- Categorize as engine repo, `[sonnet]`, area `engine/common`.
+- Format the task using the template.
+- Append to `TASKS.md`.
+- Call `commit-and-push` with a `queue: add task ...` PR.
+- Paste the PR URL.
+
+This validates the task-intake flow. You can merge that queue PR
+or close it — the point was to see the flow work, not to land the
+task.
+
+### Step 8 — test the game-architect (cross-repo awareness)
+
+Switch to **game-architect** and type:
+
+> read the engine TASKS.md and the game TASKS.md, then describe a
+> hypothetical game task that would require an engine change. Don't
+> file it — just walk me through what the cross-repo flow would look
+> like.
+
+The game-arch should:
+- Reference the cross-repo escalation flow from the game `CLAUDE.md`.
+- Explain that it would file the engine task FIRST, then the blocked
+  game task with `Blocked by:` pointing at the engine PR URL.
+- NOT actually file anything.
+
+This validates the agent has read the game `CLAUDE.md` correctly.
+
+### What to look for
+
+- Did `commit-and-push` open a PR cleanly without permission prompts?
+- Did `review-pr` check out the PR, post the review, and detach cleanly?
+- Did the `[~]` → `[x]` move land in the merged commit, and did the
+  Done list pick it up?
+- Did `gh pr list` show the claim quickly enough that
+  `sonnet-fleet-2` would not have picked the same task?
+  (Test: while sonnet-fleet-1 is mid-task, switch to sonnet-fleet-2
+  and ask it to "list candidate tasks." It should NOT include the
+  in-flight task.)
+- Did the build go cleanly with
+  `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`? On macOS,
+  hitting an Objective-C++ flag, missing Metal shader, or FFmpeg
+  `pkg-config` issue is realistic on first run; on Linux/WSL, expect
+  case-sensitive include drift, missing `#include` for headers Windows
+  was transitively pulling in, and EOL trouble. Either way, when it
+  happens, file the build break as its own task per §10 rather than
+  working around it.
+
+### After the dry run
+
+If everything went clean, you can promote the fleet to live mode:
+
+```bash
+tmux kill-session -t fleet
+fleet-up live
+tmux attach -t fleet
+```
+
+All panes will start their normal continuous loops immediately. You
+can then walk away (or watch) and let the fleet drain `TASKS.md`
+overnight.
+
+If something broke, fix the role file, the skill, or the permissions
+list — and run the dry run again. Don't go to `fleet-up live` until
+the dry run passes end-to-end.
 
 ---
 

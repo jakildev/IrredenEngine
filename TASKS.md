@@ -7,21 +7,58 @@ append here, and the next unblocked item is what an idle agent should pick up.
 
 1. **Picking a task:** skim the `## Open` section. Find the first `[ ]` item
    whose **Owner** is `free` or your worktree name, and whose **Blocked by**
-   list is empty. Change its status to `[~]` (in progress), set Owner to your
-   worktree, and push the edit in your first commit so other agents see it.
+   list is empty. **Then cross-check `gh pr list --state open`** — if any
+   open PR's title or branch name looks like it's already working on that
+   task, skip to the next candidate. The open-PR list is the authoritative
+   claim signal; the `[~]` flip on a feature branch is invisible to other
+   agents until merge, so two agents can race to claim the same task in the
+   ~minutes-to-hours window between picking and merging. Cross-checking
+   `gh pr list` closes most of that race.
+
+   Once you've picked, change the status to `[~]` (in progress), set Owner
+   to your worktree, and push the edit in your first commit so other agents
+   see it once your PR merges.
 2. **Finishing a task:** change `[~]` to `[x]`, set the final commit or PR
    URL in the **Links** line, and move the item to `## Done — last 20` at
    the bottom. Keep only the last 20 done items; prune older ones.
 3. **Adding a task:** append to `## Open` with the template below. Err on the
    side of creating small tasks (one PR's worth of work). If a task needs
    research first, file it as `Research:` — the deliverable is a short
-   findings note, not code.
+   findings note, not code. The fastest way to add a task is to ask the
+   `queue-manager` pane in the fleet — paste a rough description and it
+   will categorize, tag, format, and file the queue-update PR for you.
 4. **Blocking on another task:** put the blocking task's title in
-   **Blocked by**. An agent should skip blocked items.
+   **Blocked by**. An agent should skip blocked items. For cross-repo
+   blocks (game blocked on engine), put the engine PR URL in **Blocked by**
+   so any agent can resolve it without context.
 5. **Touching this file:** always stage and commit `TASKS.md` edits in the
-   same PR as the work they describe, so history stays consistent. Don't
-   land a TASKS change as its own drive-by PR unless it's purely queue
-   maintenance.
+   same PR as the work they describe, so history stays consistent.
+   Queue-maintenance-only PRs (e.g. `queue: add task X`, batched task
+   adds) are also explicitly allowed and merge fast.
+
+### Race conditions and how the fleet handles them
+
+`TASKS.md` is git-versioned, which means an agent's `[~]` claim only
+becomes visible to other agents after its PR merges. Between picking and
+merging, two agents can independently pick the same task. The fleet
+defends against this in three layers:
+
+1. **Pre-pick `gh pr list` cross-check** (rule 1 above) — closes most
+   of the window.
+2. **Merge conflict on the second `[~]` flip** — both PRs edit the same
+   line in `TASKS.md`, so whichever one merges second will hit a
+   GitHub-side merge conflict and refuse to auto-merge. The human
+   reviewer sees the conflict before merging and rejects the loser.
+3. **Loser requeues and picks again** — the agent whose PR conflicts
+   uses `start-next-task` to reset to a fresh branch off `origin/master`,
+   picks the next available task, and moves on. The work isn't lost; it
+   just gets rescheduled.
+
+Don't try to engineer this away with file locking or external state. The
+PR-list cross-check plus GitHub's merge-conflict detection handles it
+cheaply. If collisions become frequent enough to be painful, the upgrade
+path is GitHub Issues as the queue with labels for claims — but only do
+that when the pain is real.
 
 This file is the **engine-level** task queue. Private creations that live
 under `creations/` may define their own `TASKS.md` inside their own
