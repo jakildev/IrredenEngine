@@ -289,6 +289,19 @@ Avoid:
     profiler build flag.
   - **Links:**
 
+- [~] **Doc pass: add doc comments to `physics.hpp`** — upgrade the five `//`
+  comments in `engine/math/include/irreden/math/physics.hpp` to `///` and
+  expand with formula derivations and units.
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** all five public declarations have `///` doc comments with
+    formula notes; build passes.
+  - **Notes:** formulas are v=√(2gh), t=2√(2h/g), h=v²/(2g). isTunnelingSafe
+    uses maxFrameDisplacement as the tunneling threshold.
+  - **Links:**
+
 - [~] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
   add `test/math/ir_math_test.cpp` covering the untested `constexpr`/`inline`
   helpers that `physics_test.cpp` does not exercise.
