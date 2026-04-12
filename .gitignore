@@ -31,7 +31,9 @@ creations/*
 !creations/demos/
 !creations/demos/**
 
-# claude code: share skills, ignore worktrees and local session state
+# claude code: share skills + role slash commands, ignore worktrees and local session state
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+!.claude/commands/
+!.claude/commands/**
