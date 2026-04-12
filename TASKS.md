@@ -271,19 +271,22 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [ ] **Example: unit tests for engine/math/physics.hpp** — exhaustive
-  tests for ballistic helpers.
+- [~] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
+  add `test/math/ir_math_test.cpp` covering the untested `constexpr`/`inline`
+  helpers that `physics_test.cpp` does not exercise.
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none — unit tests don't care which platform builds them)
-  - **Acceptance:** new test binary builds, tests cover all four physics
-    helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`,
-    `isTunnelingSafe`) with edge cases, all pass.
-  - **Notes:** pattern-heavy; the function spec is in
-    `engine/math/CLAUDE.md` under "Physics". If a test uncovers a real bug
-    in the helpers, stop and requeue as `[opus]` with a bug report rather
-    than fixing inline.
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** `test/math/ir_math_test.cpp` exists and is listed in
+    `test/CMakeLists.txt`; `IrredenEngineTest` builds and all new tests pass;
+    coverage includes `pos3DtoPos2DIso` (ivec3 and vec3 overloads),
+    `pos3DtoDistance`, `isoDepthShift`, `lerpByte`, `lerpColor`, `lerpHSV`,
+    `IsoBounds2D::contains`/`center`/`extent`/`fromCorners`, `entityIsoBounds`,
+    `divCeil`, `index2DtoIndex1D`, `index3DtoIndex1D`.
+  - **Notes:** skip `pos3DtoPos2DScreen` and `screenDeltaToIsoDelta` — they
+    depend on `IRPlatform::kGfx` compile-time constants and are platform-specific.
+    If a test uncovers a math bug, requeue the fix as `[opus]`.
   - **Links:**
 
 ---
@@ -300,4 +303,17 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-(none yet)
+- [x] **Example: unit tests for engine/math/physics.hpp** — exhaustive
+  tests for ballistic helpers.
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-1
+  - **Blocked by:** (none — unit tests don't care which platform builds them)
+  - **Acceptance:** new test binary builds, tests cover all four physics
+    helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`,
+    `isTunnelingSafe`) with edge cases, all pass.
+  - **Notes:** pattern-heavy; the function spec is in
+    `engine/math/CLAUDE.md` under "Physics". If a test uncovers a real bug
+    in the helpers, stop and requeue as `[opus]` with a bug report rather
+    than fixing inline.
+  - **Links:** included in math-iso-tests PR
