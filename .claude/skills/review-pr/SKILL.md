@@ -192,10 +192,23 @@ compliance or raise an issue.
 ### 5. Write the review
 
 Post the review via `gh pr review`, using the review state that matches
-the verdict (`--approve`, `--request-changes`, or `--comment` for
-informational-only re-reviews). The body format is the same in all cases:
+the verdict. The body format is the same in all cases — only the
+`gh pr review` flag changes.
+
+**Important — two-tier approve gate:** only **Opus** reviewers may use
+`--approve`. Sonnet first-pass reviewers use `--comment` for approve
+verdicts (the Sonnet review is informational; the Opus pass or the
+human is what actually gates merge). Both tiers use `--request-changes`
+for needs-fix / blocker verdicts.
+
+| Verdict | Sonnet first-pass | Opus final review |
+|---------|-------------------|-------------------|
+| approve | `--comment` | `--approve` |
+| needs-fix | `--request-changes` | `--request-changes` |
+| blocker | `--request-changes` | `--request-changes` |
 
 ```bash
+# Opus approve example (Sonnet: swap --approve for --comment)
 gh pr review <N> --approve --body "$(cat <<'EOF'
 ## Review — <title>
 
@@ -210,12 +223,12 @@ gh pr review <N> --approve --body "$(cat <<'EOF'
 ### Test plan the author should run before merge
 - [ ] <...>
 
-🤖 Reviewed by Claude Sonnet 4.6 (review-pr skill)
+🤖 Reviewed by <your model name> (review-pr skill)
 EOF
 )"
 ```
 
-For needs-fix / blocker verdicts, swap `--approve` for `--request-changes`:
+For needs-fix / blocker verdicts (both tiers use `--request-changes`):
 
 ```bash
 gh pr review <N> --request-changes --body "$(cat <<'EOF'
@@ -239,10 +252,13 @@ gh pr review <N> --request-changes --body "$(cat <<'EOF'
 - [ ] <...>
 - [ ] <...>
 
-🤖 Reviewed by Claude Sonnet 4.6 (review-pr skill)
+🤖 Reviewed by <your model name> (review-pr skill)
 EOF
 )"
 ```
+
+Replace `<your model name>` with the actual model you are running as
+(e.g. `Claude Sonnet 4.6` or `Claude Opus 4.6`).
 
 Rules for the review body:
 
@@ -256,16 +272,8 @@ Rules for the review body:
   - **needs-fix** — one or more needs-fix items. No blockers.
   - **blocker** — at least one blocker. Merging would break master.
 
-Use the matching `gh pr review` state so GitHub's PR list shows the
-verdict at a glance:
-
-- **approve** → post the body with `gh pr review <N> --approve --body "..."`
-  (green checkmark in the PR list).
-- **needs-fix** or **blocker** → post the body with
-  `gh pr review <N> --request-changes --body "..."` (red "Changes
-  requested" badge in the PR list).
-
-Do **not** approve and then merge — merging is the user's call.
+See the table above for which `gh pr review` flag to use per tier and
+verdict. Do **not** approve and then merge — merging is the user's call.
 
 ### 6. Report back
 

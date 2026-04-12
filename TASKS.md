@@ -288,22 +288,24 @@ Avoid:
 
 - [ ] **Unit tests: expand EntityManager coverage** — add tests for
   the EntityManager operations not yet covered by
-  `test/ecs/entity_manager_test.cpp`.
-  - **Area:** test/ecs
+  `entity_manager_test.cpp`.
+  - **Area:** test/entity
   - **Model:** sonnet
   - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** `test/ecs/entity_manager_test.cpp` covers: entity
+  - **Acceptance:** `test/entity/entity_manager_test.cpp` covers: entity
     create/destroy lifecycle, entity pool recycling, named entities
     (`setName`/`getEntityByName`), `destroyAllEntities`, entity flags
     (`setFlags`, `markEntityForDeletion`, `destroyMarkedEntities`),
     and archetype migration when components are added/removed via
     `setComponent`/`removeComponentById`. All tests pass.
-  - **Notes:** follow the conventions in `test/CLAUDE.md`. The existing
-    file already has a `IREntityTest` fixture that constructs an
-    `EntityManager` — extend it. The constructor sets `g_entityManager`,
-    so both member-instance and free-function calls work. Existing tests
-    cover deferred removal and simple removal — focus on the gaps. If a
+  - **Notes:** follow the conventions in `test/CLAUDE.md`. First, move
+    the existing file from `test/ecs/entity_manager_test.cpp` to
+    `test/entity/entity_manager_test.cpp` and update the source path
+    in `test/CMakeLists.txt`. Then extend the existing `IREntityTest`
+    fixture. The constructor sets `g_entityManager`, so both
+    member-instance and free-function calls work. Existing tests cover
+    deferred removal and simple removal — focus on the gaps. If a
     test uncovers a real bug, stop and requeue as `[opus]`.
   - **Links:**
 
@@ -407,7 +409,7 @@ Avoid:
   - **Notes:** these are pure functions with no global state — use
     plain `TEST()`, no fixture needed. `kTolerance` for float
     comparisons. The `ir_math.cpp` iso-math tests are being handled
-    on a separate branch (`claude/math-iso-tests`) — do not duplicate
+    on a separate PR (jakildev/IrredenEngine#79) — do not duplicate
     that work. Focus only on the header-only helpers listed above.
     Follow `test/CLAUDE.md` conventions.
   - **Links:**

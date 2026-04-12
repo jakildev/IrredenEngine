@@ -43,6 +43,10 @@ test/
 
 Create the subdirectory when adding the first test file for a module.
 
+**Migration note:** `entity_manager_test.cpp` currently lives at
+`test/ecs/` (legacy path). The first entity-test task should move it to
+`test/entity/` and update `test/CMakeLists.txt` accordingly.
+
 ---
 
 ## File naming
