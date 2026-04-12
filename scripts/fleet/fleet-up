@@ -108,8 +108,8 @@ reset_worktree() {
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" review-scratch-sonnet
-reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   review-scratch-opus
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then

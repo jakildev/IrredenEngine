@@ -712,12 +712,12 @@ Before starting a reviewer session:
 
 ```bash
 cd ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer
-git checkout -B review-scratch origin/master
+git checkout -B claude/sonnet-reviewer-scratch origin/master
 ```
 
 Then inside the session you can `gh pr checkout 42`, review, post the
-comment, and `git checkout -B review-scratch origin/master` again for
-the next PR.
+comment, and `git checkout -B claude/sonnet-reviewer-scratch origin/master`
+again for the next PR.
 
 Don't commit or push from a reviewer worktree. The `review-pr` skill
 enforces this, but a human reviewer should know too.
@@ -1454,7 +1454,7 @@ logical boundary. That's the whole reason the skill exists.
   (`linux-debug` on WSL / `macos-debug` on macOS) and `IRShapeDebug`
   builds cleanly (or cross-platform-maturation tasks are filed for
   whatever doesn't). ✅
-- Reviewer worktrees parked on `review-scratch`. ✅
+- Reviewer worktrees parked on `claude/<role>-scratch`. ✅
 
 **Shared across hosts:**
 
