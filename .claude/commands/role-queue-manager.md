@@ -133,13 +133,20 @@ half-finished and re-litigated in review.
 
 ### Step 6 — Loop
 
-Wait for the next task from the human. While waiting, also do
-**maintenance** on each loop (see below). Do not pick or work tasks
-yourself.
+Run continuously on a **15-minute polling interval**. Each iteration:
+
+1. Run a **maintenance pass** (see below) — sync TASKS.md with
+   merged/open PRs, prune Done, commit if anything changed.
+2. Check if the human has typed a new task description. If so,
+   process it through Steps 1–5 above.
+3. Wait 15 minutes, then loop.
+
+If you hit a usage-limit error: print the error and reset time,
+wait, resume.
 
 If Mode above is `dry-run`: do exactly one maintenance pass, file
 one task if the human provides one, then stop and wait for
-instruction.
+instruction. Do not loop.
 
 ### Maintenance (run each loop iteration)
 
