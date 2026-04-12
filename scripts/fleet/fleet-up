@@ -252,12 +252,13 @@ launch_cmd() {
         "$model" "$role" "$MODE"
 }
 
-# Single window, two rows:
-#   Top row  (~70% height, equal-width): authors + architects  — big panes
-#   Bottom row (~30% height, equal-width): reviewers + queue  — small panes
+# Single window, three rows:
+#   Top    (~45% height): sonnet authors + game-sonnet  — biggest panes
+#   Middle (~30% height): architects                    — medium panes
+#   Bottom (~25% height): reviewers + queue-manager     — small panes
 #
 # Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
-# Within-row cycling: Ctrl-a o (next pane) or Ctrl-a ; (last pane).
+# Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
 
 # Label a pane by its tmux pane ID using @role.
 # Using @role instead of pane_title makes it immune to application
@@ -273,63 +274,66 @@ active_pane_id() {
     tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
 }
 
-# --- Pane 1: sonnet-fleet-1 (starts full-screen; becomes top-left) ------
+# --- Row 1: authors (starts full-screen; will become top ~45%) ----------
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$(launch_cmd sonnet sonnet-author)"
-BIG1=$(active_pane_id)
-label_pane_id "$BIG1" "sonnet-fleet-1 [sonnet]"
+TOP1=$(active_pane_id)
+label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 
-# --- Bottom strip (30% height): reviewers + queue-manager ---------------
-# Split BIG1 vertically first so the height ratio is locked in before
-# any horizontal splits widen the top row.
-tmux split-window -v -t "$BIG1" -p 30 \
+# --- Row 3 (bottom, ~25%): reviewers + queue-manager -------------------
+# Split off the bottom strip first. The percentage is relative to the
+# full window height at this point — 25% bottom, 75% top.
+tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$(launch_cmd sonnet sonnet-reviewer)"
-SMALL1=$(active_pane_id)
-label_pane_id "$SMALL1" "sonnet-reviewer [sonnet]"
+BOT1=$(active_pane_id)
+label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
-tmux split-window -h -t "$SMALL1" \
+tmux split-window -h -t "$BOT1" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "$(launch_cmd opus opus-reviewer)"
-SMALL2=$(active_pane_id)
-label_pane_id "$SMALL2" "opus-reviewer [opus]"
+BOT2=$(active_pane_id)
+label_pane_id "$BOT2" "opus-reviewer [opus]"
 
-tmux split-window -h -t "$SMALL2" \
+tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
     "$(launch_cmd sonnet queue-manager)"
-SMALL3=$(active_pane_id)
-label_pane_id "$SMALL3" "queue-manager [sonnet]"
+BOT3=$(active_pane_id)
+label_pane_id "$BOT3" "queue-manager [sonnet]"
 
-# --- Top row (70% height): authors + architects -------------------------
-# All horizontal splits below inherit BIG1's height constraint, so they
-# stay in the top row regardless of the order panes were created.
-tmux split-window -h -t "$BIG1" \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)"
-LAST_BIG=$(active_pane_id)
-label_pane_id "$LAST_BIG" "sonnet-fleet-2 [sonnet]"
-
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    tmux split-window -h -t "$LAST_BIG" \
-        -c "$GAME/.claude/worktrees/game-sonnet" \
-        "$(launch_cmd sonnet game-sonnet)"
-    LAST_BIG=$(active_pane_id)
-    label_pane_id "$LAST_BIG" "game-sonnet [sonnet]"
-fi
-
-tmux split-window -h -t "$LAST_BIG" \
+# --- Row 2 (middle, ~30%): architects ----------------------------------
+# Split off the middle row from TOP1. TOP1 is currently 75% of the
+# window. Splitting 40% off the bottom of that gives:
+#   TOP1 = 75% * 60% = ~45% of window  (authors)
+#   MID1 = 75% * 40% = ~30% of window  (architects)
+tmux split-window -v -t "$TOP1" -p 40 \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
-LAST_BIG=$(active_pane_id)
-label_pane_id "$LAST_BIG" "opus-architect [opus]"
+MID1=$(active_pane_id)
+label_pane_id "$MID1" "opus-architect [opus]"
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$LAST_BIG" \
+    tmux split-window -h -t "$MID1" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd opus game-architect)"
-    LAST_BIG=$(active_pane_id)
-    label_pane_id "$LAST_BIG" "game-architect [opus]"
+    MID2=$(active_pane_id)
+    label_pane_id "$MID2" "game-architect [opus]"
+fi
+
+# --- Expand Row 1 (top) with remaining authors -------------------------
+tmux split-window -h -t "$TOP1" \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd sonnet sonnet-author)"
+TOP2=$(active_pane_id)
+label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
+
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    tmux split-window -h -t "$TOP2" \
+        -c "$GAME/.claude/worktrees/game-sonnet" \
+        "$(launch_cmd sonnet game-sonnet)"
+    TOP3=$(active_pane_id)
+    label_pane_id "$TOP3" "game-sonnet [sonnet]"
 fi
 
 # Enable pane border labels using @role (immune to program overrides)
@@ -337,16 +341,17 @@ tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
 # Focus sonnet-fleet-1 on attach
-tmux select-pane -t "$BIG1"
+tmux select-pane -t "$TOP1"
 
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-layout (single window, two rows):
-  top (big)   — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]  opus-architect  [game-architect]
-  bottom (sm) — sonnet-reviewer  opus-reviewer  queue-manager
+layout (single window, three rows):
+  top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
+  middle (med) — opus-architect  [game-architect]                (architects)
+  bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
 
 navigation (no prefix needed):
   Option+Up/Down/Left/Right — move to pane in that direction
