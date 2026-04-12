@@ -46,8 +46,8 @@ limit. Each loop iteration:
    `gh pr comment <N> --body "re-review please"`. Move to the next loop
    iteration.
 
-2. **Pick the next task.** Find the first `[ ]` `[sonnet]`-tagged item
-   in `## Open` whose:
+2. **Pick the next task.** Read `TASKS.md` (use the Read tool) and find
+   the first `[ ]` `[sonnet]`-tagged item in `## Open` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
@@ -55,10 +55,16 @@ limit. Each loop iteration:
 
    Print the task and explain why you picked it.
 
-3. **Claim it.** Flip `[ ]` → `[~]`, set Owner to your worktree name.
-   Commit that edit as the first commit on your work branch (the
-   branch the worktree is already on — it was prepared fresh by
-   `fleet-up` or `start-next-task`).
+3. **Claim the task by opening a PR with `fleet:wip` immediately.**
+   Do NOT edit `TASKS.md` — only the queue-manager touches it.
+   Create a branch whose name includes the task area (e.g.
+   `claude/doc-pass-ir-math`), make one empty commit
+   (`git commit --allow-empty -m "claim: <task title>"`), push the
+   branch, and open a PR with the WIP label:
+   `gh pr create --title "<task title>" --body "Claiming task. Work in progress." --label "fleet:wip"`
+   This makes the claim visible to other agents within seconds via
+   `gh pr list`. Reference the task title in the PR title so the
+   queue-manager can match it.
 
 4. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
@@ -78,12 +84,15 @@ limit. Each loop iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. Requeue the task as `[opus]` with a note in **Notes:**
-   ("escalated from sonnet — touches X invariant, deferring to opus
-   architect"). Open a queue-update PR with the requeue. Move on to the
-   next task.
+   STOP. Post a comment on your PR (or open a stub PR if none exists)
+   noting the escalation: "escalated — touches X invariant, deferring
+   to opus architect". The queue-manager will update TASKS.md. Move
+   on to the next task.
 
-7. **Open the PR.** Use the `commit-and-push` skill. Paste the PR URL.
+7. **Finalize the PR.** Use the `commit-and-push` skill to push your
+   work commits to the existing PR branch. Then remove the WIP label:
+   `gh pr edit <N> --remove-label "fleet:wip"`
+   Paste the PR URL.
 
 8. **Reset.** Use the `start-next-task` skill to land on a fresh branch
    off `origin/master`. Loop back to step 1.

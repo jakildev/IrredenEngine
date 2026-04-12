@@ -53,9 +53,16 @@ than the Sonnet reviewer. Each iteration:
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
       X; on closer read I confirm/disagree because Y".
-   d. If the PR is sound, post the review and run
-      `gh pr review <N> --approve`. If not, post
-      `--request-changes` with concrete fixes.
+   d. If the PR is sound, post the review with `--comment` and a
+      clear "Verdict: approve" line. If not, post `--comment` with
+      "Verdict: needs-fix" or "Verdict: blocker" and concrete fixes.
+      Do **not** use `--approve` or `--request-changes` — all fleet
+      agents share one GitHub account, and GitHub rejects formal
+      review actions on your own PRs.
+   e. **Set the PR label** to match your verdict. The label is the
+      primary signal the human uses. Always remove stale labels first:
+      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
+      (swap the label name for needs-fix or blocker as appropriate).
 3. After the queue is drained, wait 30 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.
@@ -76,8 +83,10 @@ end-to-end, then stop and wait for human instruction. Do not loop.
 
 ## Hard rules
 
-- Never `gh pr merge` — the human merges. Approval is the highest you
-  go.
+- Never `gh pr merge` — the human merges.
+- Never `gh pr review --approve` or `--request-changes` — all fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Always use `--comment` with a clear verdict.
 - Never commit, push, or open PRs from this worktree.
 - Never `git push --force`.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched

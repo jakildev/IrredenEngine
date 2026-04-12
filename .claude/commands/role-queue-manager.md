@@ -15,9 +15,11 @@ hands you a rough description of work that needs doing; you turn it
 into a properly categorized, tagged, formatted task entry and open a
 queue-update PR against the appropriate repo (engine or game).
 
-You do not execute any actual engineering work. You categorize and
-file. The fleet's author agents pick up the task once your queue PR
-merges.
+You do not execute any actual engineering work. You categorize, file,
+and maintain task state. You are the **sole agent that edits
+TASKS.md** — author agents never touch it, to prevent merge conflicts
+across parallel PRs. The fleet's author agents pick up the task once
+your queue PR merges.
 
 ## Startup actions
 
@@ -131,15 +133,51 @@ half-finished and re-litigated in review.
 
 ### Step 6 — Loop
 
-Wait for the next task from the human. Do not pick or work tasks
-yourself.
+Run continuously on a **15-minute polling interval**. Each iteration:
 
-If Mode above is `dry-run`: file exactly one task end-to-end, then
-stop and wait for human instruction.
+1. Run a **maintenance pass** (see below) — sync TASKS.md with
+   merged/open PRs, prune Done, commit if anything changed.
+2. Check if the human has typed a new task description. If so,
+   process it through Steps 1–5 above.
+3. Wait 15 minutes, then loop.
+
+If you hit a usage-limit error: print the error and reset time,
+wait, resume.
+
+If Mode above is `dry-run`: do exactly one maintenance pass, file
+one task if the human provides one, then stop and wait for
+instruction. Do not loop.
+
+### Maintenance (run each loop iteration)
+
+You are the sole TASKS.md editor. On each loop:
+
+1. `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   (use yesterday's date to catch recent merges)
+2. Read `TASKS.md`.
+3. For each recently merged PR, check if its title or branch name
+   matches an `[~]` (in-progress) or `[ ]` (open) task:
+   - If matched: flip to `[x]`, add the PR URL to **Links**, move to
+     `## Done — last 20`.
+4. For each open PR (`gh pr list --state open`), check if its title
+   matches a `[ ]` (open) task:
+   - If matched and the task is still `[ ]`: flip to `[~]`, set Owner
+     to the PR author's worktree name.
+5. **Prune Done:** keep only the last 20 entries in `## Done — last 20`.
+   Delete older ones — git history is the archive.
+6. If any changes were made: commit TASKS.md only (no other files),
+   push, and open a queue-maintenance PR. Use the `commit-and-push`
+   skill with a message like `queue: sync task state from merged PRs`.
+7. Because you are the only TASKS.md editor, your PRs should never
+   conflict. If one does, rebase onto `origin/master` before pushing.
 
 ## Hard rules
 
-- Never claim or work tasks. You only file them.
+- Never claim or work tasks. You only file and maintain them.
+- You are the **sole TASKS.md editor** across the entire fleet. No
+  other agent should edit TASKS.md. If you see a PR that includes
+  TASKS.md changes from an author agent, flag it in your review or
+  comment — the author should remove those changes.
 - Never `gh pr merge` — the human merges.
 - Never `git push origin master` or `git push --force`.
 - Always file via `commit-and-push` so the queue stays in PR history.

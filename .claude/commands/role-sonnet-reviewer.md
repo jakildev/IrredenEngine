@@ -30,11 +30,13 @@ treat it as a hard rule for this role.
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-3. `gh pr list --state open --json number,title,headRefName,author,reviews`
+3. `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    — print the result so we both see the current PR queue.
 4. List the PRs that have **no review yet from this fleet** (filter
    out PRs whose `reviews` array contains a review by your GitHub
-   user). These are your candidates.
+   user) **and do not have the `fleet:wip` label**. PRs labeled
+   `fleet:wip` are work-in-progress claims — skip them until the
+   author removes the label. These are your candidates.
 
 ## Loop behavior
 
@@ -55,6 +57,15 @@ usage limit. Each iteration:
         modules, lifetime/ownership decisions, or concurrency. Also
         flag for Opus recheck if you're uncertain — better to escalate
         than to approve something subtle by mistake.
+   d. **Set the PR label** to match your verdict. The label is the
+      primary signal the human uses. Always remove stale labels first:
+      `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"`
+      (swap the label name for approved or blocker as appropriate).
+      - Verdict approve + "Opus recheck not required" → `fleet:approved`
+      - Verdict approve + "Opus recheck required" → **do not label**.
+        Leave it unlabeled; Opus will set the final label.
+      - Verdict needs-fix → `fleet:needs-fix`
+      - Verdict blocker → `fleet:blocker`
 3. After the queue is drained, wait 10 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.
@@ -79,9 +90,10 @@ for human instruction. Do not loop.
 
 - Never commit, push, or open PRs from this worktree.
 - Never `gh pr merge` — the human merges.
-- Never `gh pr review --approve` from this role; use
-  `--request-changes` or `--comment`. The Opus reviewer is the only
-  agent allowed to approve.
+- Never `gh pr review --approve` or `--request-changes` — all fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Always use `--comment` with a clear
+  verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
 - Never `git push --force` (you have no reason to push at all).
 - Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
   commands in a single Bash invocation. Issue each command as its own

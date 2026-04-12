@@ -232,9 +232,32 @@ Rules for the review body:
   - **needs-fix** — one or more needs-fix items. No blockers.
   - **blocker** — at least one blocker. Merging would break master.
 
-If the verdict is **approve**, also use `gh pr review <N> --approve` (in
-addition to the comment). Do **not** approve and then merge — merging is the
-user's call.
+**Do not use `gh pr review --approve` or `--request-changes`.** All fleet
+agents share the same GitHub account, and GitHub's API rejects formal
+review actions on your own PRs. The `--comment` review above is sufficient;
+the verdict line in the body is what the human reads to decide whether to
+merge. Merging is always the user's call.
+
+### 5b. Set the PR label to match the verdict
+
+After posting the review comment, set the label so the human can see
+at a glance which PRs are ready. **Always remove stale labels before
+adding the new one** — a PR should have exactly one fleet label at a
+time.
+
+```bash
+# For approve:
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"
+
+# For needs-fix:
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"
+
+# For blocker:
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --add-label "fleet:blocker"
+```
+
+This label is the **primary signal** the human uses to decide what to
+merge. The comment body has the details; the label has the verdict.
 
 ### 6. Report back
 
