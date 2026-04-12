@@ -55,12 +55,16 @@ limit. Each loop iteration:
 
    Print the task and explain why you picked it.
 
-3. **Do NOT edit TASKS.md.** Feature PRs must not touch `TASKS.md` —
-   every agent editing the same file causes merge conflicts that
-   cascade across all open PRs. The queue-manager agent handles all
-   TASKS.md bookkeeping (claiming, completing, moving to Done).
-   Instead, reference the task title in your PR description and
-   branch name so the queue-manager can match it.
+3. **Claim the task by opening a PR with `fleet:wip` immediately.**
+   Do NOT edit `TASKS.md` — only the queue-manager touches it.
+   Create a branch whose name includes the task area (e.g.
+   `claude/doc-pass-ir-math`), make one empty commit
+   (`git commit --allow-empty -m "claim: <task title>"`), push the
+   branch, and open a PR with the WIP label:
+   `gh pr create --title "<task title>" --body "Claiming task. Work in progress." --label "fleet:wip"`
+   This makes the claim visible to other agents within seconds via
+   `gh pr list`. Reference the task title in the PR title so the
+   queue-manager can match it.
 
 4. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
@@ -85,7 +89,10 @@ limit. Each loop iteration:
    to opus architect". The queue-manager will update TASKS.md. Move
    on to the next task.
 
-7. **Open the PR.** Use the `commit-and-push` skill. Paste the PR URL.
+7. **Finalize the PR.** Use the `commit-and-push` skill to push your
+   work commits to the existing PR branch. Then remove the WIP label:
+   `gh pr edit <N> --remove-label "fleet:wip"`
+   Paste the PR URL.
 
 8. **Reset.** Use the `start-next-task` skill to land on a fresh branch
    off `origin/master`. Loop back to step 1.

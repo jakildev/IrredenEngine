@@ -30,11 +30,13 @@ treat it as a hard rule for this role.
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-3. `gh pr list --state open --json number,title,headRefName,author,reviews`
+3. `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    — print the result so we both see the current PR queue.
 4. List the PRs that have **no review yet from this fleet** (filter
    out PRs whose `reviews` array contains a review by your GitHub
-   user). These are your candidates.
+   user) **and do not have the `fleet:wip` label**. PRs labeled
+   `fleet:wip` are work-in-progress claims — skip them until the
+   author removes the label. These are your candidates.
 
 ## Loop behavior
 
