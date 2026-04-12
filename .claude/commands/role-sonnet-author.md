@@ -46,8 +46,8 @@ limit. Each loop iteration:
    `gh pr comment <N> --body "re-review please"`. Move to the next loop
    iteration.
 
-2. **Pick the next task.** Find the first `[ ]` `[sonnet]`-tagged item
-   in `## Open` whose:
+2. **Pick the next task.** Read `TASKS.md` (use the Read tool) and find
+   the first `[ ]` `[sonnet]`-tagged item in `## Open` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
@@ -55,10 +55,12 @@ limit. Each loop iteration:
 
    Print the task and explain why you picked it.
 
-3. **Claim it.** Flip `[ ]` → `[~]`, set Owner to your worktree name.
-   Commit that edit as the first commit on your work branch (the
-   branch the worktree is already on — it was prepared fresh by
-   `fleet-up` or `start-next-task`).
+3. **Do NOT edit TASKS.md.** Feature PRs must not touch `TASKS.md` —
+   every agent editing the same file causes merge conflicts that
+   cascade across all open PRs. The queue-manager agent handles all
+   TASKS.md bookkeeping (claiming, completing, moving to Done).
+   Instead, reference the task title in your PR description and
+   branch name so the queue-manager can match it.
 
 4. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
@@ -78,10 +80,10 @@ limit. Each loop iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. Requeue the task as `[opus]` with a note in **Notes:**
-   ("escalated from sonnet — touches X invariant, deferring to opus
-   architect"). Open a queue-update PR with the requeue. Move on to the
-   next task.
+   STOP. Post a comment on your PR (or open a stub PR if none exists)
+   noting the escalation: "escalated — touches X invariant, deferring
+   to opus architect". The queue-manager will update TASKS.md. Move
+   on to the next task.
 
 7. **Open the PR.** Use the `commit-and-push` skill. Paste the PR URL.
 

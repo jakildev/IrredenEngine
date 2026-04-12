@@ -35,7 +35,10 @@ This repo runs a parallel-agent workflow. The rules:
 5. **Never `--force` push to `master`.** Never use `--no-verify` to skip hooks
    unless the user explicitly asks.
 6. **Shared task queue lives in `TASKS.md`.** Pick the next unblocked item
-   from there rather than inventing work.
+   from there rather than inventing work. **Only the queue-manager agent
+   edits `TASKS.md`** — author agents must never include TASKS.md changes
+   in their feature PRs (this causes merge conflicts across all parallel
+   PRs). Reference the task title in your PR description instead.
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
