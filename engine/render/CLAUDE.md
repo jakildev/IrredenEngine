@@ -138,7 +138,11 @@ engine/render/
   `kBufferIndex_FrameDataVoxelToCanvas = 7` appear in both C++ and GLSL. A
   mismatch is silent — wrong uniforms, no error.
 - **Distance texture clear.** Cleared to `kTrixelDistanceMaxDistance`
-  (INT32_MAX sentinel). If a clear is skipped, stale depth causes flicker.
+  (65535, **not** INT32_MAX). Voxels and shapes both write smaller values
+  via `imageAtomicMin`; the clear value acts as the "nothing here" background.
+  The shape SDF helpers use a separate `kInvalidDepth = 0x7FFFFFFF` (INT32_MAX)
+  constant to signal "ray missed" and skip writing — don't confuse the two.
+  If a clear is skipped, stale depth causes flicker.
 - **Persistent mapped buffers.** `HoveredEntityIdBuffer` is
   `PERSISTENT | COHERENT`. Reading it too early (before GPU write) returns
   garbage from the previous frame.
