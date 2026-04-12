@@ -144,6 +144,8 @@ stop and wait for human instruction.
 - Queue-only PRs are explicitly allowed by `TASKS.md` as queue
   maintenance — you do not need to bundle a task add with actual
   work.
-- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
-  Compound `cd`+git commands trigger a Claude Code security prompt on
-  every invocation and block unattended operation.
+- Never use `&&` to chain commands in a single Bash invocation. Issue
+  each command as its own separate Bash tool call. Compound commands
+  don't match the allowlist and trigger interactive prompts that block
+  unattended operation. For git specifically, use `git -C <path>`
+  instead of `cd <path> && git`.
