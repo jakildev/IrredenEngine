@@ -180,8 +180,15 @@ tmux new-session -d -s "$SESSION" -n agents \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
 
-# Helper: split, tile, and label
+# Helper: split, tile, and label using a custom tmux variable @role
+# that Claude Code cannot override (unlike pane_title which programs
+# can set via terminal escape sequences).
 PANE_INDEX=1
+label_pane() {
+    local idx="$1"
+    local label="$2"
+    tmux set-option -t "$SESSION":agents.$idx -p @role "$label"
+}
 split_pane() {
     local cwd="$1"
     local cmd="$2"
@@ -189,15 +196,11 @@ split_pane() {
     tmux split-window -t "$SESSION":agents -c "$cwd" "$cmd"
     tmux select-layout -t "$SESSION":agents tiled >/dev/null
     PANE_INDEX=$((PANE_INDEX + 1))
-    tmux select-pane -t "$SESSION":agents.$PANE_INDEX -T "$label"
+    label_pane "$PANE_INDEX" "$label"
 }
 
-# Prevent Claude Code from overwriting pane titles with "· Claude Code"
-tmux set-option -t "$SESSION" allow-rename off
-tmux set-option -t "$SESSION" automatic-rename off
-
 # Label pane 1
-tmux select-pane -t "$SESSION":agents.1 -T "opus-architect [opus]"
+label_pane 1 "opus-architect [opus]"
 
 split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-1 [sonnet]"
@@ -215,9 +218,9 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
         "$(launch_cmd opus game-architect)" "game-architect [opus]"
 fi
 
-# Enable pane border labels
+# Enable pane border labels using @role (immune to program overrides)
 tmux set-option -t "$SESSION" pane-border-status top
-tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{pane_title} "
+tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
 tmux select-pane -t "$SESSION":agents.1
 
