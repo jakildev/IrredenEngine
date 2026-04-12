@@ -271,11 +271,11 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [ ] **Example: unit tests for engine/math/physics.hpp** — exhaustive
+- [x] **Example: unit tests for engine/math/physics.hpp** — exhaustive
   tests for ballistic helpers.
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none — unit tests don't care which platform builds them)
   - **Acceptance:** new test binary builds, tests cover all four physics
     helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`,
@@ -284,6 +284,38 @@ Avoid:
     `engine/math/CLAUDE.md` under "Physics". If a test uncovers a real bug
     in the helpers, stop and requeue as `[opus]` with a bug report rather
     than fixing inline.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
+
+- [~] **Doc pass: add doc comments to `ir_platform.hpp`, `color.hpp`, and `easing_functions.hpp`** —
+  document the platform-detection scheme, graphics-convention struct, HSV
+  color sorting helpers, and easing function map so contributors don't have
+  to grep call sites to understand the non-obvious values.
+  - **Area:** engine/common, engine/math
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** every public declaration in the three files has a `///`
+    doc comment; no APIs renamed or removed; build passes.
+  - **Notes:** key non-obvious items — `screenYDirection_` sign convention
+    (OpenGL Y-up vs Metal/Vulkan Y-down), `backEaseIn/Out/InOut` hardcoded
+    overshoot params, `kIsoToScreenSign` derivation.
+  - **Links:**
+
+- [ ] **Perf: cache HSV in color sort helpers** — `sortByHue`, `sortBySaturation`,
+  and `sortByValue` in `engine/math/include/irreden/math/color.hpp` each call
+  `glm::hsvColor` twice per comparison (once for `a`, once for `b`), resulting
+  in O(n log n) redundant HSV conversions. Pre-compute HSV for each element
+  before calling `std::sort`.
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** each of the three HSV sort functions converts each Color to
+    HSV exactly once (O(n) total); `sortByLuminance` is unchanged; build passes.
+  - **Notes:** uncovered by simplify review on the doc-pass PR. Fix is a
+    standard Schwartzian-transform pattern: build a `vector<pair<float,Color>>`
+    sorted on the cached channel, then strip the key. Only worthwhile if these
+    functions are ever called on palettes larger than ~50 colors.
   - **Links:**
 
 ---

@@ -1,4 +1,4 @@
-// Easing function implementations come from the GLM library
+// Easing function implementations come from glm/gtx/easing.hpp
 
 #ifndef EASING_FUNCTIONS_H
 #define EASING_FUNCTIONS_H
@@ -9,6 +9,9 @@
 
 namespace IRMath {
 
+/// Enumeration of all available easing curves.
+/// Use as a key into `kEasingFunctions` to retrieve a callable that maps a
+/// normalized time `t ∈ [0, 1]` to an eased output value.
 enum IREasingFunctions {
     kLinearInterpolation,
     kQuadraticEaseIn,
@@ -43,12 +46,19 @@ enum IREasingFunctions {
     kBounceEaseInOut
 };
 
+/// Callable type for a GLM easing function: maps normalized `t ∈ [0, 1]` to
+/// an eased output. Stored as `std::function` so lambdas (e.g. back-ease with
+/// a captured overshoot parameter) can be held alongside raw function pointers.
 using GLMEasingFunction = std::function<float(const float &)>;
-// using GLMEasingFunction = float (*)(float);
 
-// const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions = {
-//     {kLinearInterpolation, glm::linearInterpolation<float>}
-// };
+/// Maps every `IREasingFunctions` variant to its GLM implementation.
+/// Look up an easing function by key and call it with a normalized `t` value.
+///
+/// Note: the three back-ease variants use non-default overshoot parameters:
+/// `backEaseIn(t, 0.0)` — no overshoot on the approach;
+/// `backEaseOut(t, 6.0)` — exaggerated overshoot on the release;
+/// `backEaseInOut(t, 0.5)` — mild overshoot in both directions.
+/// These were tuned for the engine's animation feel; change with care.
 const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions = {
     {kLinearInterpolation, glm::linearInterpolation<float>},
     {kQuadraticEaseIn, glm::quadraticEaseIn<float>},
