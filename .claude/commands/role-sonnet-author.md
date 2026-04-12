@@ -29,7 +29,7 @@ whatever directory the task touches before editing anything.
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. `cat TASKS.md` — review the current queue.
+3. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
 5. Print a one-line summary: which `[sonnet]` items look unblocked and
@@ -111,6 +111,10 @@ budget split. Just wait.
 - Never touch the `.claude/worktrees/` layout.
 - Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select` — those are human-initiated.
-- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
-  Compound `cd`+git commands trigger a Claude Code security prompt on
-  every invocation and block unattended operation.
+- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
+  commands in a single Bash invocation. Issue each command as its own
+  separate tool call (Bash or Read). Compound commands don't match the
+  allowlist and trigger interactive prompts that block unattended
+  operation. For git specifically, use `git -C <path>` instead of
+  `cd <path> && git`. For reading files, use the Read tool instead of
+  `cat`.
