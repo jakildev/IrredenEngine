@@ -192,6 +192,10 @@ split_pane() {
     tmux select-pane -t "$SESSION":agents.$PANE_INDEX -T "$label"
 }
 
+# Prevent Claude Code from overwriting pane titles with "· Claude Code"
+tmux set-option -t "$SESSION" allow-rename off
+tmux set-option -t "$SESSION" automatic-rename off
+
 # Label pane 1
 tmux select-pane -t "$SESSION":agents.1 -T "opus-architect [opus]"
 
