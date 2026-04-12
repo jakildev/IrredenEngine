@@ -191,13 +191,37 @@ compliance or raise an issue.
 
 ### 5. Write the review
 
-Post the review as a PR comment via `gh pr review`:
+Post the review via `gh pr review`, using the review state that matches
+the verdict (`--approve`, `--request-changes`, or `--comment` for
+informational-only re-reviews). The body format is the same in all cases:
 
 ```bash
-gh pr review <N> --comment --body "$(cat <<'EOF'
+gh pr review <N> --approve --body "$(cat <<'EOF'
 ## Review — <title>
 
-**Verdict:** <approve | needs-fix | blocker>
+**Verdict:** approve
+
+### Nits
+- <path:line> — <nit>
+
+### Praise
+- <non-obvious good decision, if any>
+
+### Test plan the author should run before merge
+- [ ] <...>
+
+🤖 Reviewed by Claude Sonnet 4.6 (review-pr skill)
+EOF
+)"
+```
+
+For needs-fix / blocker verdicts, swap `--approve` for `--request-changes`:
+
+```bash
+gh pr review <N> --request-changes --body "$(cat <<'EOF'
+## Review — <title>
+
+**Verdict:** <needs-fix | blocker>
 
 ### Blockers
 - <path:line> — <issue> — <suggested fix>
@@ -215,7 +239,7 @@ gh pr review <N> --comment --body "$(cat <<'EOF'
 - [ ] <...>
 - [ ] <...>
 
-🤖 Reviewed by Claude Opus 4.6 (review-pr skill)
+🤖 Reviewed by Claude Sonnet 4.6 (review-pr skill)
 EOF
 )"
 ```
@@ -232,9 +256,16 @@ Rules for the review body:
   - **needs-fix** — one or more needs-fix items. No blockers.
   - **blocker** — at least one blocker. Merging would break master.
 
-If the verdict is **approve**, also use `gh pr review <N> --approve` (in
-addition to the comment). Do **not** approve and then merge — merging is the
-user's call.
+Use the matching `gh pr review` state so GitHub's PR list shows the
+verdict at a glance:
+
+- **approve** → post the body with `gh pr review <N> --approve --body "..."`
+  (green checkmark in the PR list).
+- **needs-fix** or **blocker** → post the body with
+  `gh pr review <N> --request-changes --body "..."` (red "Changes
+  requested" badge in the PR list).
+
+Do **not** approve and then merge — merging is the user's call.
 
 ### 6. Report back
 
