@@ -271,6 +271,21 @@ Avoid:
     profiler build flag.
   - **Links:**
 
+- [~] **Doc pass: add doc comments to `ir_constants.hpp`** — explain the
+  non-obvious engine-wide constants (chunk size, voxel pool limits, distance
+  sentinel range, extra pixel buffer) so new contributors don't have to
+  grep call sites to understand their purpose.
+  - **Area:** engine/common
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** every constant in `engine/common/include/irreden/ir_constants.hpp`
+    has a `///` doc comment; no constants renamed or removed; build passes.
+  - **Notes:** mechanical doc pass. Source of truth for semantic meaning is
+    `engine/render/src/render_manager.cpp` (pixel buffer, voxel pool) and
+    `engine/prefabs/irreden/render/` (distance sentinels).
+  - **Links:**
+
 - [ ] **Example: unit tests for engine/math/physics.hpp** — exhaustive
   tests for ballistic helpers.
   - **Area:** engine/math
