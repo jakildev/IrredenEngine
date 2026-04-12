@@ -181,21 +181,20 @@ except: pass
         "Bash(dirname:*)"
     )
 
-    # Deduplicate: baseline + existing
-    local -A seen
+    # Deduplicate: baseline + existing (bash 3-compatible — no -A arrays)
     local -a all_allows=()
-    for entry in "${baseline_allows[@]}"; do
-        if [[ -z "${seen[$entry]:-}" ]]; then
-            seen[$entry]=1
-            all_allows+=("$entry")
-        fi
-    done
+    # Baseline has no internal duplicates; add all of it first.
+    all_allows=("${baseline_allows[@]}")
+    # For each existing entry, only add if not already in baseline.
     if [[ -n "$existing_allows" ]]; then
         while IFS= read -r entry; do
-            if [[ -n "$entry" && -z "${seen[$entry]:-}" ]]; then
-                seen[$entry]=1
-                all_allows+=("$entry")
-            fi
+            [[ -z "$entry" ]] && continue
+            local found=0
+            local b
+            for b in "${all_allows[@]}"; do
+                if [[ "$b" == "$entry" ]]; then found=1; break; fi
+            done
+            [[ $found -eq 0 ]] && all_allows+=("$entry")
         done <<< "$existing_allows"
     fi
 
