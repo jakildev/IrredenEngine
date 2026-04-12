@@ -108,12 +108,21 @@ done
 # Step 3: symlink game role slash command if the game repo is present
 # ----------------------------------------------------------------------
 
-GAME_ROLE="$REPO_ROOT/creations/game/.claude/commands/role-game-architect.md"
-if [[ -f "$GAME_ROLE" ]]; then
-    ln -sf "$GAME_ROLE" "$HOME/.claude/commands/role-game-architect.md"
-    echo "symlinked $HOME/.claude/commands/role-game-architect.md -> $GAME_ROLE"
+GAME_CMDS_DIR="$REPO_ROOT/creations/game/.claude/commands"
+if [[ -d "$GAME_CMDS_DIR" ]]; then
+    shopt -s nullglob
+    GAME_ROLES=("$GAME_CMDS_DIR"/role-*.md)
+    shopt -u nullglob
+    for src in "${GAME_ROLES[@]}"; do
+        dest="$HOME/.claude/commands/$(basename "$src")"
+        ln -sf "$src" "$dest"
+        echo "symlinked $dest -> $src"
+    done
+    if [[ ${#GAME_ROLES[@]} -eq 0 ]]; then
+        echo "note: no game role files found in $GAME_CMDS_DIR"
+    fi
 else
-    echo "note: game role file not found at $GAME_ROLE"
+    echo "note: game commands dir not found at $GAME_CMDS_DIR"
     echo "      (clone jakildev/irreden into creations/game/ and re-run to pick it up.)"
 fi
 

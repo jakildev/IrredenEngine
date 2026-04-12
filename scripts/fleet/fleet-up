@@ -70,10 +70,11 @@ ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manage
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
-        echo "fleet-up: game git fetch failed (continuing without game pane)" >&2; }
+        echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+    ensure_worktree "$GAME" .claude/worktrees/game-sonnet     fleet/game-sonnet
 else
-    echo "fleet-up: game repo not found at $GAME — skipping game pane"
+    echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
 
 # ----------------------------------------------------------------------
@@ -114,6 +115,9 @@ reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-sonnet" claude/game-sonnet-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -228,10 +232,21 @@ done
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
 fi
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME"
+fi
 
 # ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
+#
+# Layout: 4 named windows instead of one mega-window.
+#   1:authors  — sonnet-fleet-1, sonnet-fleet-2, game-sonnet
+#   2:review   — sonnet-reviewer, opus-reviewer
+#   3:arch     — opus-architect, game-architect
+#   4:ops      — queue-manager
+#
+# Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
 # Each pane execs:
 #     claude --model <m> "/role-<role> <mode>"; exec $SHELL
@@ -253,68 +268,91 @@ launch_cmd() {
         "$model" "$role" "$MODE"
 }
 
-# Pane 1: opus-architect
-tmux new-session -d -s "$SESSION" -n agents \
+# Helper: label a pane using a custom tmux variable @role that Claude
+# Code cannot override (unlike pane_title which programs can set via
+# terminal escape sequences).
+label_pane() {
+    local window="$1"
+    local idx="$2"
+    local label="$3"
+    tmux set-option -t "$SESSION":"$window"."$idx" -p @role "$label"
+}
+
+# Helper: split a pane within a specific window, tile, and label.
+PANE_INDEX=1
+split_pane() {
+    local window="$1"
+    local cwd="$2"
+    local cmd="$3"
+    local label="$4"
+    tmux split-window -t "$SESSION":"$window" -c "$cwd" "$cmd"
+    tmux select-layout -t "$SESSION":"$window" tiled >/dev/null
+    PANE_INDEX=$((PANE_INDEX + 1))
+    label_pane "$window" "$PANE_INDEX" "$label"
+}
+
+# --- Window 1: authors ---------------------------------------------------
+tmux new-session -d -s "$SESSION" -n authors \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
+    "$(launch_cmd sonnet sonnet-author)"
+PANE_INDEX=1
+label_pane authors 1 "sonnet-fleet-1 [sonnet]"
+
+split_pane authors "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-2 [sonnet]"
+
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    split_pane authors "$GAME/.claude/worktrees/game-sonnet" \
+        "$(launch_cmd sonnet game-sonnet)" "game-sonnet [sonnet]"
+fi
+
+# --- Window 2: review ----------------------------------------------------
+tmux new-window -t "$SESSION" -n review \
+    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    "$(launch_cmd sonnet sonnet-reviewer)"
+PANE_INDEX=1
+label_pane review 1 "sonnet-reviewer [sonnet]"
+
+split_pane review "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "$(launch_cmd opus opus-reviewer)" "opus-reviewer [opus]"
+
+# --- Window 3: arch -------------------------------------------------------
+tmux new-window -t "$SESSION" -n arch \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
-
-# Helper: split, tile, and label using a custom tmux variable @role
-# that Claude Code cannot override (unlike pane_title which programs
-# can set via terminal escape sequences).
 PANE_INDEX=1
-label_pane() {
-    local idx="$1"
-    local label="$2"
-    tmux set-option -t "$SESSION":agents.$idx -p @role "$label"
-}
-split_pane() {
-    local cwd="$1"
-    local cmd="$2"
-    local label="$3"
-    tmux split-window -t "$SESSION":agents -c "$cwd" "$cmd"
-    tmux select-layout -t "$SESSION":agents tiled >/dev/null
-    PANE_INDEX=$((PANE_INDEX + 1))
-    label_pane "$PANE_INDEX" "$label"
-}
-
-# Label pane 1
-label_pane 1 "opus-architect [opus]"
-
-split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-1 [sonnet]"
-split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-2 [sonnet]"
-split_pane "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer)" "sonnet-reviewer [sonnet]"
-split_pane "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer)" "opus-reviewer [opus]"
-split_pane "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager)" "queue-manager [sonnet]"
+label_pane arch 1 "opus-architect [opus]"
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    split_pane "$GAME/.claude/worktrees/game-architect" \
+    split_pane arch "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd opus game-architect)" "game-architect [opus]"
 fi
+
+# --- Window 4: ops --------------------------------------------------------
+tmux new-window -t "$SESSION" -n ops \
+    -c "$ENGINE/.claude/worktrees/queue-manager" \
+    "$(launch_cmd sonnet queue-manager)"
+PANE_INDEX=1
+label_pane ops 1 "queue-manager [sonnet]"
 
 # Enable pane border labels using @role (immune to program overrides)
 tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
-tmux select-pane -t "$SESSION":agents.1
+# Start on the authors window
+tmux select-window -t "$SESSION":authors
+tmux select-pane -t "$SESSION":authors.1
 
 cat <<EOF
 
-fleet session created with tiled panes — mode: ${MODE}.
+fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-panes (left-to-right, top-to-bottom in tiled layout):
-  1. opus-architect   (engine, opus,   stand-by)
-  2. sonnet-fleet-1   (engine, sonnet, author)
-  3. sonnet-fleet-2   (engine, sonnet, author)
-  4. sonnet-reviewer  (engine, sonnet, polling reviewer)
-  5. opus-reviewer    (engine, opus,   polling reviewer)
-  6. queue-manager    (engine, sonnet, task intake)
-  7. game-architect   (game,   opus,   stand-by)
+windows (Ctrl-b n/p to cycle, Ctrl-b <number> to jump):
+  1:authors  — sonnet-fleet-1, sonnet-fleet-2, game-sonnet
+  2:review   — sonnet-reviewer, opus-reviewer
+  3:arch     — opus-architect, game-architect
+  4:ops      — queue-manager
 
 mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
