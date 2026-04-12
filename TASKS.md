@@ -286,6 +286,132 @@ Avoid:
     than fixing inline.
   - **Links:**
 
+- [ ] **Unit tests: expand EntityManager coverage** — add tests for
+  the EntityManager operations not yet covered by
+  `test/ecs/entity_manager_test.cpp`.
+  - **Area:** test/ecs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `test/ecs/entity_manager_test.cpp` covers: entity
+    create/destroy lifecycle, entity pool recycling, named entities
+    (`setName`/`getEntityByName`), `destroyAllEntities`, entity flags
+    (`setFlags`, `markEntityForDeletion`, `destroyMarkedEntities`),
+    and archetype migration when components are added/removed via
+    `setComponent`/`removeComponentById`. All tests pass.
+  - **Notes:** follow the conventions in `test/CLAUDE.md`. The existing
+    file already has a `IREntityTest` fixture that constructs an
+    `EntityManager` — extend it. The constructor sets `g_entityManager`,
+    so both member-instance and free-function calls work. Existing tests
+    cover deferred removal and simple removal — focus on the gaps. If a
+    test uncovers a real bug, stop and requeue as `[opus]`.
+  - **Links:**
+
+- [ ] **Unit tests: archetype and archetype_node** — test archetype
+  creation, component string formatting, and ArchetypeNode construction
+  and child-of relation lookup.
+  - **Area:** test/entity
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** new file `test/entity/archetype_test.cpp` added to
+    `test/CMakeLists.txt`, covers: `makeComponentStringInternal`
+    formatting, `ArchetypeNode` construction with pure components,
+    `getChildOfRelation` returning `kNullRelation` when no child-of
+    relation is present. All tests pass.
+  - **Notes:** `archetype.cpp` is small (just string formatting) and
+    `archetype_node.cpp` is small (constructor + one query). Combine
+    into one test file. Use an `EntityManager` fixture since
+    `ArchetypeNode` construction calls `isPureComponent` and
+    `createComponentData` which need the global entity manager. Follow
+    `test/CLAUDE.md` conventions.
+  - **Links:**
+
+- [ ] **Unit tests: ArchetypeGraph** — test graph construction, node
+  lookup/creation, edge wiring, and the BFS relation sort.
+  - **Area:** test/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** new file `test/entity/archetype_graph_test.cpp`
+    added to `test/CMakeLists.txt`, covers: base node exists after
+    construction, `findArchetypeNode` returns nullptr for unknown type,
+    `findCreateArchetypeNode` creates and wires add/remove edges,
+    repeated `findCreateArchetypeNode` returns the same node,
+    `sortArchetypeNodesByRelationChildOf` orders parents before
+    children. All tests pass.
+  - **Notes:** this is `[opus]` because the graph traversal logic,
+    edge wiring, and BFS sort are subtle — a Sonnet agent could
+    miss edge cases around shared intermediate nodes or the
+    unused-but-present `createArchetypeNodeWithArchetype` /
+    `connectNodeToBase` / `createNodeChainToBase` functions. Need an
+    `EntityManager` fixture for the global state. Follow
+    `test/CLAUDE.md` conventions.
+  - **Links:**
+
+- [ ] **Unit tests: ir_entity free-function API** — test the global
+  facade functions in `engine/entity/src/ir_entity.cpp`.
+  - **Area:** test/entity
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** new file `test/entity/ir_entity_test.cpp` added to
+    `test/CMakeLists.txt`, covers: `createEntity`, `destroyEntity`,
+    `destroyAllEntities`, `makeComponentString`, `setParent` /
+    `getParentEntityFromArchetype` relation wiring, `setName` /
+    `getEntity` named-entity round-trip. All tests pass.
+  - **Notes:** these are thin wrappers over `EntityManager` — the
+    tests verify the global wiring works, not the underlying logic
+    (that's covered by the EntityManager tests). Keep tests focused
+    on "does the facade route correctly." The old stub
+    `ir_entity_test.cpp` was deleted in the test-conventions PR —
+    create a fresh file. Follow `test/CLAUDE.md` conventions.
+  - **Links:**
+
+- [ ] **Unit tests: SystemManager** — test system registration,
+  pipeline execution order, and relation tick dispatch.
+  - **Area:** test/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** new file `test/system/system_manager_test.cpp`
+    added to `test/CMakeLists.txt`, covers: `registerPipeline` stores
+    the pipeline, `executePipeline` calls systems in order and flushes
+    structural changes, `handleRelationTick` fires once per unique
+    related entity. All tests pass.
+  - **Notes:** this is `[opus]` because the tick dispatch, relation
+    tick deduplication, and interaction with `flushStructuralChanges`
+    are subtle. The fixture needs both `EntityManager` and
+    `SystemManager` initialized (both set their global pointers in
+    their constructors). Creating test systems requires the
+    `createSystem<>` template machinery — read
+    `engine/system/CLAUDE.md` before writing tests. Follow
+    `test/CLAUDE.md` conventions.
+  - **Links:**
+
+- [ ] **Unit tests: math headers (easing, color, bezier)** — test
+  pure-function math helpers in the header-only math utilities.
+  - **Area:** test/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** new file(s) under `test/math/` added to
+    `test/CMakeLists.txt`, covering: easing functions
+    (`engine/math/include/irreden/math/easing_functions.hpp`) —
+    boundary values (t=0 returns 0, t=1 returns 1), monotonicity for
+    a sampling of t values; color helpers
+    (`engine/math/include/irreden/math/color.hpp`) — round-trip
+    conversions if any, boundary values; bezier curves
+    (`engine/math/include/irreden/math/bezier_curves.hpp`) — endpoint
+    interpolation (t=0 returns start, t=1 returns end). All tests pass.
+  - **Notes:** these are pure functions with no global state — use
+    plain `TEST()`, no fixture needed. `kTolerance` for float
+    comparisons. The `ir_math.cpp` iso-math tests are being handled
+    on a separate branch (`claude/math-iso-tests`) — do not duplicate
+    that work. Focus only on the header-only helpers listed above.
+    Follow `test/CLAUDE.md` conventions.
+  - **Links:**
+
 ---
 
 ## In progress
