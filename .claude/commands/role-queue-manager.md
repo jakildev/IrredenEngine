@@ -28,12 +28,10 @@ use `cat` — use the Read tool for files.
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. Read tool → `TASKS.md`
-4. `ls ~/src/IrredenEngine/creations/game/.git`
-   - If it succeeds → step 4a, 4b, 4c (each a separate tool call):
-     4a. `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
-     4b. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
-     4c. `gh pr list --repo jakildev/IrredenEngine-game --state open --json number,title,headRefName`
-   - If it fails (not found) → skip 4a–4c.
+4. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
+   - If the Read succeeds (file exists) → also run step 4a (separate tool call):
+     4a. `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName`
+   - If the Read fails (file not found) → skip 4a. No game repo on this machine.
 5. `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
 6. Print `queue-manager standing by — paste a task description and I will
    categorize and file it`.
