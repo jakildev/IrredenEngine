@@ -133,12 +133,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
+- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
   `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
   opens files expecting `.irtxl`. Standardize both on `.txl`.
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
     use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
@@ -149,7 +149,7 @@ Avoid:
     backward-compat concern. While editing, add `if (!f) { IRE_LOG_ERROR(...); return; }`
     guards around both `fopen` calls — the current code crashes on any I/O
     failure. Single-file change, one PR.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/80
 
 - [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
@@ -305,6 +305,26 @@ Avoid:
   - **Notes:** skip `pos3DtoPos2DScreen` and `screenDeltaToIsoDelta` — they
     depend on `IRPlatform::kGfx` compile-time constants and are platform-specific.
     If a test uncovers a math bug, requeue the fix as `[opus]`.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
+
+- [~] **Doc pass: add doc comments to `ir_math.hpp`** — document the ~50
+  public functions in `engine/math/include/irreden/ir_math.hpp` which
+  currently has zero `///` comments. Focus on the non-obvious: iso-projection
+  formula, depth-shift invariant, `IsoBounds2D` semantics, inverse-projection
+  variants, face-type helpers, and partner-triangle calculation.
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** every public function, struct, and type alias in
+    `ir_math.hpp` has a `///` doc comment; no APIs renamed or removed;
+    build passes.
+  - **Notes:** 737 lines, zero existing doc comments. GLM-wrapper functions
+    (round, clamp, mix, etc.) need only a one-liner explaining the engine
+    use case. The iso-projection and bounds functions need more detail.
+    Skip platform-dependent functions (`pos3DtoPos2DScreen`,
+    `screenDeltaToIsoDelta`) — their comments should explain the
+    platform-constant dependency.
   - **Links:**
 
 ---
