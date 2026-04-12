@@ -289,7 +289,21 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [~] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
+---
+
+## In progress
+
+<!-- Tasks currently being worked on. Mirror of [~] items above. -->
+
+(none yet)
+
+---
+
+## Done — last 20
+
+<!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
   add `test/math/ir_math_test.cpp` covering the untested `constexpr`/`inline`
   helpers that `physics_test.cpp` does not exercise.
   - **Area:** engine/math
@@ -305,21 +319,7 @@ Avoid:
   - **Notes:** skip `pos3DtoPos2DScreen` and `screenDeltaToIsoDelta` — they
     depend on `IRPlatform::kGfx` compile-time constants and are platform-specific.
     If a test uncovers a math bug, requeue the fix as `[opus]`.
-  - **Links:**
-
----
-
-## In progress
-
-<!-- Tasks currently being worked on. Mirror of [~] items above. -->
-
-(none yet)
-
----
-
-## Done — last 20
-
-<!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
 
 - [x] **Example: unit tests for engine/math/physics.hpp** — exhaustive
   tests for ballistic helpers.
@@ -334,4 +334,4 @@ Avoid:
     `engine/math/CLAUDE.md` under "Physics". If a test uncovers a real bug
     in the helpers, stop and requeue as `[opus]` with a bug report rather
     than fixing inline.
-  - **Links:** included in math-iso-tests PR
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
