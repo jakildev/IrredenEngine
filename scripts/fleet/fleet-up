@@ -252,97 +252,117 @@ launch_cmd() {
         "$model" "$role" "$MODE"
 }
 
-# Helper: label a pane using a custom tmux variable @role that Claude
-# Code cannot override (unlike pane_title which programs can set via
-# terminal escape sequences).
-label_pane() {
-    local window="$1"
-    local idx="$2"
-    local label="$3"
-    tmux set-option -t "$SESSION":"$window"."$idx" -p @role "$label"
+# Single window, three rows:
+#   Top    (~45% height): sonnet authors + game-sonnet  — biggest panes
+#   Middle (~30% height): architects                    — medium panes
+#   Bottom (~25% height): reviewers + queue-manager     — small panes
+#
+# Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
+# Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
+
+# Label a pane by its tmux pane ID using @role.
+# Using @role instead of pane_title makes it immune to application
+# overwrites via terminal escape sequences (which Claude Code does).
+label_pane_id() {
+    tmux set-option -t "$1" -p @role "$2"
 }
 
-# Helper: split a pane within a specific window, tile, and label.
-PANE_INDEX=1
-split_pane() {
-    local window="$1"
-    local cwd="$2"
-    local cmd="$3"
-    local label="$4"
-    tmux split-window -t "$SESSION":"$window" -c "$cwd" "$cmd"
-    tmux select-layout -t "$SESSION":"$window" tiled >/dev/null
-    PANE_INDEX=$((PANE_INDEX + 1))
-    label_pane "$window" "$PANE_INDEX" "$label"
+# Return the active pane ID in the fleet window.
+# split-window selects the new pane, so calling this right after a
+# split-window returns the newly created pane's ID.
+active_pane_id() {
+    tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
 }
 
-# --- Window 1: authors ---------------------------------------------------
-tmux new-session -d -s "$SESSION" -n authors \
+# --- Row 1: authors (starts full-screen; will become top ~45%) ----------
+tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$(launch_cmd sonnet sonnet-author)"
-PANE_INDEX=1
-label_pane authors 1 "sonnet-fleet-1 [sonnet]"
+TOP1=$(active_pane_id)
+label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 
-split_pane authors "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-2 [sonnet]"
-
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    split_pane authors "$GAME/.claude/worktrees/game-sonnet" \
-        "$(launch_cmd sonnet game-sonnet)" "game-sonnet [sonnet]"
-fi
-
-# --- Window 2: review ----------------------------------------------------
-tmux new-window -t "$SESSION" -n review \
+# --- Row 3 (bottom, ~25%): reviewers + queue-manager -------------------
+# Split off the bottom strip first. The percentage is relative to the
+# full window height at this point — 25% bottom, 75% top.
+tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$(launch_cmd sonnet sonnet-reviewer)"
-PANE_INDEX=1
-label_pane review 1 "sonnet-reviewer [sonnet]"
+BOT1=$(active_pane_id)
+label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
-split_pane review "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer)" "opus-reviewer [opus]"
+tmux split-window -h -t "$BOT1" \
+    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "$(launch_cmd opus opus-reviewer)"
+BOT2=$(active_pane_id)
+label_pane_id "$BOT2" "opus-reviewer [opus]"
 
-# --- Window 3: arch -------------------------------------------------------
-tmux new-window -t "$SESSION" -n arch \
-    -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd opus opus-architect)"
-PANE_INDEX=1
-label_pane arch 1 "opus-architect [opus]"
-
-if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    split_pane arch "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd opus game-architect)" "game-architect [opus]"
-fi
-
-# --- Window 4: ops --------------------------------------------------------
-tmux new-window -t "$SESSION" -n ops \
+tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
     "$(launch_cmd sonnet queue-manager)"
-PANE_INDEX=1
-label_pane ops 1 "queue-manager [sonnet]"
+BOT3=$(active_pane_id)
+label_pane_id "$BOT3" "queue-manager [sonnet]"
+
+# --- Row 2 (middle, ~30%): architects ----------------------------------
+# Split off the middle row from TOP1. TOP1 is currently 75% of the
+# window. Splitting 40% off the bottom of that gives:
+#   TOP1 = 75% * 60% = ~45% of window  (authors)
+#   MID1 = 75% * 40% = ~30% of window  (architects)
+tmux split-window -v -t "$TOP1" -p 40 \
+    -c "$ENGINE/.claude/worktrees/opus-architect" \
+    "$(launch_cmd opus opus-architect)"
+MID1=$(active_pane_id)
+label_pane_id "$MID1" "opus-architect [opus]"
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    tmux split-window -h -t "$MID1" \
+        -c "$GAME/.claude/worktrees/game-architect" \
+        "$(launch_cmd opus game-architect)"
+    MID2=$(active_pane_id)
+    label_pane_id "$MID2" "game-architect [opus]"
+fi
+
+# --- Expand Row 1 (top) with remaining authors -------------------------
+tmux split-window -h -t "$TOP1" \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd sonnet sonnet-author)"
+TOP2=$(active_pane_id)
+label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
+
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    tmux split-window -h -t "$TOP2" \
+        -c "$GAME/.claude/worktrees/game-sonnet" \
+        "$(launch_cmd sonnet game-sonnet)"
+    TOP3=$(active_pane_id)
+    label_pane_id "$TOP3" "game-sonnet [sonnet]"
+fi
 
 # Enable pane border labels using @role (immune to program overrides)
 tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
-# Start on the authors window
-tmux select-window -t "$SESSION":authors
-tmux select-pane -t "$SESSION":authors.1
+# Focus sonnet-fleet-1 on attach
+tmux select-pane -t "$TOP1"
 
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-windows (Ctrl-b n/p to cycle, Ctrl-b <number> to jump):
-  1:authors  — sonnet-fleet-1, sonnet-fleet-2, game-sonnet
-  2:review   — sonnet-reviewer, opus-reviewer
-  3:arch     — opus-architect, game-architect
-  4:ops      — queue-manager
+layout (single window, three rows):
+  top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
+  middle (med) — opus-architect  [game-architect]                (architects)
+  bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
+
+navigation (no prefix needed):
+  Option+Up/Down/Left/Right — move to pane in that direction
+  Ctrl-a o                  — cycle to next pane
+  Ctrl-a ;                  — jump to last-used pane
 
 mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
   "exit dry-run mode and begin your normal loop"
 
-other modes you can pass to fleet-up:
-  fleet-up dry-run   # default — startup + stand-by
-  fleet-up live      # full loop from the start (use after a clean dry run)
+other modes:
+  fleet-up dry-run   # default
+  fleet-up live      # full loop from the start
 EOF
