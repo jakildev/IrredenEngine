@@ -133,6 +133,24 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
+  `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
+  opens files expecting `.irtxl`. Standardize both on `.txl`.
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
+    use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
+    `C_TriangleCanvasTextures::saveToFile` followed by `loadFromFile` round-
+    trips a canvas without corruption.
+  - **Notes:** Bug in `engine/asset/src/ir_asset.cpp` line 32 — change
+    `.irtxl` → `.txl`. No `.irtxl` files exist in the repo so there is no
+    backward-compat concern. While editing, add `if (!f) { IRE_LOG_ERROR(...); return; }`
+    guards around both `fopen` calls — the current code crashes on any I/O
+    failure. Single-file change, one PR.
+  - **Links:**
+
 - [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
   engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
