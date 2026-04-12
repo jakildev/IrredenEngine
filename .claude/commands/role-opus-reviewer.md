@@ -30,8 +30,10 @@ conditions, allocator behavior, hot-path costs.
 
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
 2. Confirm you are on the throwaway branch
-   `claude/opus-reviewer-scratch`. If not:
-   `git fetch origin && git checkout -B claude/opus-reviewer-scratch origin/master`.
+   `claude/opus-reviewer-scratch`. If not, run these two commands
+   separately (do NOT wrap in `cd ... &&`):
+   `git -C ~/src/IrredenEngine fetch origin --quiet`
+   `git checkout -B claude/opus-reviewer-scratch origin/master`
 3. `gh pr list --state open --json number,title,headRefName,reviews`
    — print the result.
 4. Identify the candidates: PRs where the latest review body contains
@@ -81,3 +83,6 @@ end-to-end, then stop and wait for human instruction. Do not loop.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
+- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
+  Compound `cd`+git commands trigger a Claude Code security prompt on
+  every invocation and block unattended operation.

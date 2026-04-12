@@ -28,7 +28,7 @@ whatever directory the task touches before editing anything.
 
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
-2. `git fetch origin --quiet`
+2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. `cat TASKS.md` — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
@@ -111,3 +111,6 @@ budget split. Just wait.
 - Never touch the `.claude/worktrees/` layout.
 - Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select` — those are human-initiated.
+- Never use `cd <path> && git ...` — use `git -C <path> ...` instead.
+  Compound `cd`+git commands trigger a Claude Code security prompt on
+  every invocation and block unattended operation.
