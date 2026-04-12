@@ -133,21 +133,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Docs: doc pass on `ir_math_types.hpp` and `color_palettes.hpp`** —
-  add `///` to every public declaration in both files; remove dead commented-
-  out code (the `kFaceCameraRotations` stub in `ir_math_types.hpp` and the
-  commented-out alternative color values in `color_palettes.hpp`).
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
-  - **Blocked by:** (none)
-  - **Acceptance:** every public enum, struct, field, and constant in both
-    files has a `///` doc comment; no `//`-commented-out dead code remains;
-    all existing `///` comments from prior passes are preserved.
-  - **Notes:** skip `kInvisable` typo rename — that affects a prefab header
-    in a different module and belongs in its own PR.
-  - **Links:**
-
 - [ ] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
   `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
   opens files expecting `.irtxl`. Standardize both on `.txl`.
@@ -317,6 +302,21 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Docs: doc pass on `ir_math_types.hpp` and `color_palettes.hpp`** —
+  add `///` to every public declaration in both files; remove dead commented-
+  out code (the `kFaceCameraRotations` stub in `ir_math_types.hpp` and the
+  commented-out alternative color values in `color_palettes.hpp`).
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** every public enum, struct, field, and constant in both
+    files has a `///` doc comment; no `//`-commented-out dead code remains;
+    all existing `///` comments from prior passes are preserved.
+  - **Notes:** skip `kInvisable` typo rename — that affects a prefab header
+    in a different module and belongs in its own PR.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/90
 
 - [x] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
   add `test/math/ir_math_test.cpp` covering the untested `constexpr`/`inline`
