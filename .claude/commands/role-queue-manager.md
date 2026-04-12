@@ -156,10 +156,12 @@ You are the sole TASKS.md editor. On each loop:
    matches a `[ ]` (open) task:
    - If matched and the task is still `[ ]`: flip to `[~]`, set Owner
      to the PR author's worktree name.
-5. If any changes were made: commit TASKS.md only (no other files),
+5. **Prune Done:** keep only the last 20 entries in `## Done — last 20`.
+   Delete older ones — git history is the archive.
+6. If any changes were made: commit TASKS.md only (no other files),
    push, and open a queue-maintenance PR. Use the `commit-and-push`
    skill with a message like `queue: sync task state from merged PRs`.
-6. Because you are the only TASKS.md editor, your PRs should never
+7. Because you are the only TASKS.md editor, your PRs should never
    conflict. If one does, rebase onto `origin/master` before pushing.
 
 ## Hard rules
