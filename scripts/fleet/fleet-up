@@ -180,29 +180,40 @@ tmux new-session -d -s "$SESSION" -n agents \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
 
-# Helper: split + tile
+# Helper: split, tile, and label
+PANE_INDEX=1
 split_pane() {
     local cwd="$1"
     local cmd="$2"
+    local label="$3"
     tmux split-window -t "$SESSION":agents -c "$cwd" "$cmd"
     tmux select-layout -t "$SESSION":agents tiled >/dev/null
+    PANE_INDEX=$((PANE_INDEX + 1))
+    tmux select-pane -t "$SESSION":agents.$PANE_INDEX -T "$label"
 }
 
+# Label pane 1
+tmux select-pane -t "$SESSION":agents.1 -T "opus-architect [opus]"
+
 split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd sonnet sonnet-author)"
+    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-1 [sonnet]"
 split_pane "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)"
+    "$(launch_cmd sonnet sonnet-author)" "sonnet-fleet-2 [sonnet]"
 split_pane "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer)"
+    "$(launch_cmd sonnet sonnet-reviewer)" "sonnet-reviewer [sonnet]"
 split_pane "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer)"
+    "$(launch_cmd opus opus-reviewer)" "opus-reviewer [opus]"
 split_pane "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager)"
+    "$(launch_cmd sonnet queue-manager)" "queue-manager [sonnet]"
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     split_pane "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd opus game-architect)"
+        "$(launch_cmd opus game-architect)" "game-architect [opus]"
 fi
+
+# Enable pane border labels
+tmux set-option -t "$SESSION" pane-border-status top
+tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{pane_title} "
 
 tmux select-pane -t "$SESSION":agents.1
 
