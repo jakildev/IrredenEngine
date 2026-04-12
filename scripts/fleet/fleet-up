@@ -117,7 +117,42 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
 fi
 
 # ----------------------------------------------------------------------
-# Step 3: build the tmux session
+# Step 3: write per-worktree .claude/settings.local.json
+# ----------------------------------------------------------------------
+#
+# Worktrees are treated as separate projects by Claude Code. Without
+# additionalDirectories, any access to the main clone (build/, test/,
+# engine/) triggers a path-scope prompt that blocks unattended operation.
+
+write_worktree_settings() {
+    local wt="$1"
+    local repo_root="$2"
+    local settings_dir="$wt/.claude"
+    local settings_file="$settings_dir/settings.local.json"
+
+    [[ -d "$wt" ]] || return 0
+    mkdir -p "$settings_dir"
+    cat > "$settings_file" <<SETTINGS
+{
+  "permissions": {
+    "additionalDirectories": [
+      "$repo_root"
+    ]
+  }
+}
+SETTINGS
+}
+
+for wt in opus-architect sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+    write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
+done
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
+fi
+
+# ----------------------------------------------------------------------
+# Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
 # Each pane execs:
