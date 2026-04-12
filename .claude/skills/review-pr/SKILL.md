@@ -232,9 +232,11 @@ Rules for the review body:
   - **needs-fix** — one or more needs-fix items. No blockers.
   - **blocker** — at least one blocker. Merging would break master.
 
-If the verdict is **approve**, also use `gh pr review <N> --approve` (in
-addition to the comment). Do **not** approve and then merge — merging is the
-user's call.
+**Do not use `gh pr review --approve` or `--request-changes`.** All fleet
+agents share the same GitHub account, and GitHub's API rejects formal
+review actions on your own PRs. The `--comment` review above is sufficient;
+the verdict line in the body is what the human reads to decide whether to
+merge. Merging is always the user's call.
 
 ### 6. Report back
 

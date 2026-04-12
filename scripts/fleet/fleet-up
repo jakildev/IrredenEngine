@@ -132,11 +132,89 @@ write_worktree_settings() {
 
     [[ -d "$wt" ]] || return 0
     mkdir -p "$settings_dir"
+
+    # Merge: preserve any user-granted "allow" entries from previous
+    # sessions, then ensure our baseline entries are present.
+    local existing_allows=""
+    if [[ -f "$settings_file" ]] && command -v python3 >/dev/null 2>&1; then
+        existing_allows="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$settings_file'))
+    for a in d.get('permissions',{}).get('allow',[]):
+        print(a)
+except: pass
+" 2>/dev/null)"
+    fi
+
+    # Baseline allows that every fleet agent needs (beyond the user-level
+    # ~/.claude/settings.json entries). These cover tools the agents use
+    # during freeform work that aren't in the user-level allowlist.
+    local -a baseline_allows=(
+        "Bash(grep:*)"
+        "Bash(find:*)"
+        "Bash(head:*)"
+        "Bash(tail:*)"
+        "Bash(wc:*)"
+        "Bash(diff:*)"
+        "Bash(mkdir:*)"
+        "Bash(cp:*)"
+        "Bash(mv:*)"
+        "Bash(chmod:*)"
+        "Bash(sort:*)"
+        "Bash(uniq:*)"
+        "Bash(tr:*)"
+        "Bash(cut:*)"
+        "Bash(sed:*)"
+        "Bash(awk:*)"
+        "Bash(xargs:*)"
+        "Bash(tee:*)"
+        "Bash(python3:*)"
+        "Bash(file:*)"
+        "Bash(stat:*)"
+        "Bash(realpath:*)"
+        "Bash(basename:*)"
+        "Bash(dirname:*)"
+    )
+
+    # Deduplicate: baseline + existing
+    local -A seen
+    local -a all_allows=()
+    for entry in "${baseline_allows[@]}"; do
+        if [[ -z "${seen[$entry]:-}" ]]; then
+            seen[$entry]=1
+            all_allows+=("$entry")
+        fi
+    done
+    if [[ -n "$existing_allows" ]]; then
+        while IFS= read -r entry; do
+            if [[ -n "$entry" && -z "${seen[$entry]:-}" ]]; then
+                seen[$entry]=1
+                all_allows+=("$entry")
+            fi
+        done <<< "$existing_allows"
+    fi
+
+    # Build the JSON allow array
+    local allow_json=""
+    local first=1
+    for entry in "${all_allows[@]}"; do
+        if [[ $first -eq 1 ]]; then
+            allow_json="\"$entry\""
+            first=0
+        else
+            allow_json="$allow_json, \"$entry\""
+        fi
+    done
+
     cat > "$settings_file" <<SETTINGS
 {
   "permissions": {
     "additionalDirectories": [
       "$repo_root"
+    ],
+    "allow": [
+      $allow_json
     ]
   }
 }

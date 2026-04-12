@@ -79,9 +79,10 @@ for human instruction. Do not loop.
 
 - Never commit, push, or open PRs from this worktree.
 - Never `gh pr merge` — the human merges.
-- Never `gh pr review --approve` from this role; use
-  `--request-changes` or `--comment`. The Opus reviewer is the only
-  agent allowed to approve.
+- Never `gh pr review --approve` or `--request-changes` — all fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Always use `--comment` with a clear
+  verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
 - Never `git push --force` (you have no reason to push at all).
 - Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
   commands in a single Bash invocation. Issue each command as its own

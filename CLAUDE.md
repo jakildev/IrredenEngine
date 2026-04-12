@@ -362,6 +362,45 @@ namespaces in headers; keep them in `.cpp`.
 
 ---
 
+## Bash tool rules (applies everywhere, all agents)
+
+**Every Bash invocation must be a single, simple command.** Never use
+shell compound operators (`&&`, `||`, `;`, `|`) to chain commands.
+Issue each command as its own separate Bash tool call, or use the
+Read/Glob/Grep tools instead of Bash when possible.
+
+- **No `cd <path> && git ...`** — use `git -C <path> ...` instead.
+  `cd && git` triggers a hardcoded Claude Code security gate
+  ("Compound commands with cd and git require approval to prevent
+  bare repository attacks") that **cannot be suppressed** by any
+  allowlist or setting. It always prompts interactively.
+- **No `cat file || echo fallback`** — use the Read tool for files.
+- **No `cmd1 | cmd2`** — run `cmd1`, read the output, then run `cmd2`
+  if needed.
+- **No `sed -n 'N,Mp' file`** — use the Read tool with `offset` and
+  `limit` parameters instead. `sed` triggers its own security gate.
+- **Use `git -C`** for any git operation on a repo other than the
+  current working directory.
+- **Use `--repo owner/name`** for any `gh` operation on a repo other
+  than the current working directory.
+- **Use the Grep tool** instead of `grep` via Bash. The built-in Grep
+  tool is already allowlisted and doesn't require approval.
+- **Use the Glob tool** instead of `find`. Glob supports patterns like
+  `**/*.hpp` and is already allowlisted.
+- **Use `--jq`** on `gh` commands instead of piping to `python3` or
+  `jq`. Example: `gh pr list --json number,title --jq '.[] | "#\(.number) \(.title)"'`
+- **No `git show ref:file | sed/head/tail`** — run `git show ref:file`
+  alone, or use `git -C <path> log`/`git -C <path> diff` with
+  appropriate flags instead of piping.
+
+This rule exists because the user-level allowlist (`~/.claude/settings.json`)
+matches on the first token of each Bash command. A compound command like
+`cd path && git log` starts with `cd`, not `git`, so it won't match
+`Bash(git:*)` and will always prompt. The bare-repo check for `cd && git`
+is an additional hardcoded gate on top of that.
+
+---
+
 ## Project layout (pointers to deeper CLAUDE.md files)
 
 ```
