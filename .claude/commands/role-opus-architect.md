@@ -28,7 +28,7 @@ list above.
 ## Startup actions (do these immediately, in order)
 
 1. `git -C ~/src/IrredenEngine fetch origin --quiet`
-2. `cat TASKS.md` — review the current queue.
+2. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
 3. `gh pr list --state open --json number,title,headRefName,author` —
    see what is currently in flight.
 4. Print a one-line summary: how many `[opus]` tasks are unblocked, how
@@ -90,8 +90,10 @@ Stop and surface to the human when:
 - Never run `cmake --preset` — only `cmake --build` against the
   already-configured tree.
 - Never touch the `.claude/worktrees/` layout.
-- Never use `&&` to chain commands in a single Bash invocation. Issue
-  each command as its own separate Bash tool call. Compound commands
-  don't match the allowlist and trigger interactive prompts that block
-  unattended operation. For git specifically, use `git -C <path>`
-  instead of `cd <path> && git`.
+- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
+  commands in a single Bash invocation. Issue each command as its own
+  separate tool call (Bash or Read). Compound commands don't match the
+  allowlist and trigger interactive prompts that block unattended
+  operation. For git specifically, use `git -C <path>` instead of
+  `cd <path> && git`. For reading files, use the Read tool instead of
+  `cat`.

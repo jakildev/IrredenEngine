@@ -83,8 +83,10 @@ end-to-end, then stop and wait for human instruction. Do not loop.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
-- Never use `&&` to chain commands in a single Bash invocation. Issue
-  each command as its own separate Bash tool call. Compound commands
-  don't match the allowlist and trigger interactive prompts that block
-  unattended operation. For git specifically, use `git -C <path>`
-  instead of `cd <path> && git`.
+- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
+  commands in a single Bash invocation. Issue each command as its own
+  separate tool call (Bash or Read). Compound commands don't match the
+  allowlist and trigger interactive prompts that block unattended
+  operation. For git specifically, use `git -C <path>` instead of
+  `cd <path> && git`. For reading files, use the Read tool instead of
+  `cat`.

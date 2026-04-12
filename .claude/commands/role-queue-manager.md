@@ -23,11 +23,10 @@ merges.
 
 1. `pwd` — confirm you are in the `queue-manager` worktree.
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. `cat TASKS.md` — read the engine queue.
-4. If `~/src/IrredenEngine/creations/game/.git` exists, run these two
-   commands separately (do NOT combine with `cd ... &&`):
+3. Read `TASKS.md` (use the Read tool, not `cat`) — read the engine queue.
+4. If `~/src/IrredenEngine/creations/game/.git` exists:
    `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
-   `cat ~/src/IrredenEngine/creations/game/TASKS.md`
+   Then read `~/src/IrredenEngine/creations/game/TASKS.md` (Read tool)
    — read the game queue too.
 5. `gh pr list --state open --json number,title,headRefName` for both
    repos — see what is in flight.
@@ -144,8 +143,10 @@ stop and wait for human instruction.
 - Queue-only PRs are explicitly allowed by `TASKS.md` as queue
   maintenance — you do not need to bundle a task add with actual
   work.
-- Never use `&&` to chain commands in a single Bash invocation. Issue
-  each command as its own separate Bash tool call. Compound commands
-  don't match the allowlist and trigger interactive prompts that block
-  unattended operation. For git specifically, use `git -C <path>`
-  instead of `cd <path> && git`.
+- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
+  commands in a single Bash invocation. Issue each command as its own
+  separate tool call (Bash or Read). Compound commands don't match the
+  allowlist and trigger interactive prompts that block unattended
+  operation. For git specifically, use `git -C <path>` instead of
+  `cd <path> && git`. For reading files, use the Read tool instead of
+  `cat`.

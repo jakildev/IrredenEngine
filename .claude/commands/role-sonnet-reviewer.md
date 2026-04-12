@@ -83,8 +83,10 @@ for human instruction. Do not loop.
   `--request-changes` or `--comment`. The Opus reviewer is the only
   agent allowed to approve.
 - Never `git push --force` (you have no reason to push at all).
-- Never use `&&` to chain commands in a single Bash invocation. Issue
-  each command as its own separate Bash tool call. Compound commands
-  don't match the allowlist and trigger interactive prompts that block
-  unattended operation. For git specifically, use `git -C <path>`
-  instead of `cd <path> && git`.
+- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
+  commands in a single Bash invocation. Issue each command as its own
+  separate tool call (Bash or Read). Compound commands don't match the
+  allowlist and trigger interactive prompts that block unattended
+  operation. For git specifically, use `git -C <path>` instead of
+  `cd <path> && git`. For reading files, use the Read tool instead of
+  `cat`.
