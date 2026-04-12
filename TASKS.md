@@ -271,6 +271,19 @@ Avoid:
     profiler build flag.
   - **Links:**
 
+- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
+  `saveTrixelTextureData` writes `.txl` but `loadTrixelTextureData` opens `.irtxl`.
+  Standardize both on `.txl` and add null-check guards around fopen results.
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Acceptance:** both functions use `.txl`; both `fopen` results are null-checked
+    with `IRE_LOG_ERROR` and early return; build passes.
+  - **Notes:** bug is in `engine/asset/src/ir_asset.cpp` line 32. No `.irtxl` files
+    exist in the repo; no backward-compat concern.
+  - **Links:**
+
 - [ ] **Example: unit tests for engine/math/physics.hpp** — exhaustive
   tests for ballistic helpers.
   - **Area:** engine/math
