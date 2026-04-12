@@ -238,6 +238,27 @@ review actions on your own PRs. The `--comment` review above is sufficient;
 the verdict line in the body is what the human reads to decide whether to
 merge. Merging is always the user's call.
 
+### 5b. Set the PR label to match the verdict
+
+After posting the review comment, set the label so the human can see
+at a glance which PRs are ready. **Always remove stale labels before
+adding the new one** — a PR should have exactly one fleet label at a
+time.
+
+```bash
+# For approve:
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"
+
+# For needs-fix:
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"
+
+# For blocker:
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --add-label "fleet:blocker"
+```
+
+This label is the **primary signal** the human uses to decide what to
+merge. The comment body has the details; the label has the verdict.
+
 ### 6. Report back
 
 Reply with a compact summary to the calling session:

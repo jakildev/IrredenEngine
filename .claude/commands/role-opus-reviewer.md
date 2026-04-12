@@ -59,6 +59,10 @@ than the Sonnet reviewer. Each iteration:
       Do **not** use `--approve` or `--request-changes` — all fleet
       agents share one GitHub account, and GitHub rejects formal
       review actions on your own PRs.
+   e. **Set the PR label** to match your verdict. The label is the
+      primary signal the human uses. Always remove stale labels first:
+      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
+      (swap the label name for needs-fix or blocker as appropriate).
 3. After the queue is drained, wait 30 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.

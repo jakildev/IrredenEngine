@@ -55,6 +55,15 @@ usage limit. Each iteration:
         modules, lifetime/ownership decisions, or concurrency. Also
         flag for Opus recheck if you're uncertain — better to escalate
         than to approve something subtle by mistake.
+   d. **Set the PR label** to match your verdict. The label is the
+      primary signal the human uses. Always remove stale labels first:
+      `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"`
+      (swap the label name for approved or blocker as appropriate).
+      - Verdict approve + "Opus recheck not required" → `fleet:approved`
+      - Verdict approve + "Opus recheck required" → **do not label**.
+        Leave it unlabeled; Opus will set the final label.
+      - Verdict needs-fix → `fleet:needs-fix`
+      - Verdict blocker → `fleet:blocker`
 3. After the queue is drained, wait 10 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.
