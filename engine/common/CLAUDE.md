@@ -16,7 +16,7 @@ There is no `ir_common.hpp` umbrella — include the specific header.
 
 ## `ir_constants.hpp` highlights
 
-- `IRConstants::kTargetFps = 60` — main loop fixed-step rate.
+- `IRConstants::kFPS = 60` — main loop fixed-step rate.
 - `IRConstants::kChunkSize = 32` — voxel chunk edge (32×32×32).
 - `IRConstants::kTrixelDistanceMaxDistance` — sentinel distance used to
   clear the trixel depth texture. Read by GLSL as the "nothing here" depth.
@@ -28,8 +28,8 @@ systems.
 
 ## `ir_platform.hpp` highlights
 
-- `IRPlatform::kIsOpenGL`, `kIsMetal`, `kIsVulkan` (compile-time bools).
-- `IRPlatform::kIsWindows`, `kIsMac`, `kIsLinux`.
+- `IRPlatform::kIsOpenGL` (compile-time bool; no `kIsMetal`/`kIsVulkan` bools — check `kGraphicsBackend` directly for those backends).
+- `IRPlatform::kIsWindows`, `kIsMacOS`, `kIsLinux`.
 - `IRPlatform::kGfx` — a struct of conventions that differ by backend:
   NDC Y direction, depth range convention (0..1 vs -1..1), mouse Y flip.
   Use this instead of `#ifdef`ing backends in call sites.
