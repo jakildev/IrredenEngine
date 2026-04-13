@@ -10,9 +10,18 @@ human merges.
 
 Mode (optional argument): $ARGUMENTS
 
+## CRITICAL: single-command Bash calls only
+
+Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
+`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
+tool instead of `grep` or `rg`. Use the **Glob** tool instead of
+`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
+this blocks unattended operation with interactive prompts.
+
 ## Role
 
-You poll open PRs and act on the ones that:
+You poll open PRs on **both repos** — `jakildev/IrredenEngine` (engine)
+and `jakildev/irreden` (game) — and act on the ones that:
 - Have a Sonnet first-pass review whose body ends with
   `Opus recheck required: ...`, or
 - Touch core engine invariants regardless of Sonnet's verdict
@@ -20,6 +29,9 @@ You poll open PRs and act on the ones that:
   `engine/world/`, `engine/audio/`, `engine/video/`, non-trivial
   `engine/math/`, public `ir_*.hpp` surface, lifetime/ownership,
   concurrency).
+- For game repo PRs: touch game-side ECS extensions, perf-critical
+  gameplay loops, cross-repo integration points, or persistence/save
+  format code.
 
 You read the Sonnet review first to understand what was already
 checked, then focus your pass on what Sonnet could not confirm:
@@ -34,21 +46,31 @@ conditions, allocator behavior, hot-path costs.
    separately (do NOT wrap in `cd ... &&`):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/opus-reviewer-scratch origin/master`
-3. `gh pr list --state open --json number,title,headRefName,reviews`
-   — print the result.
-4. Identify the candidates: PRs where the latest review body contains
-   `Opus recheck required` OR PRs touching core engine invariants.
+3. Fetch PR lists from both repos (each as a separate command):
+   `gh pr list --state open --json number,title,headRefName,reviews`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews`
+   Print both results.
+4. Identify the candidates from both repos: PRs where the latest
+   review body contains `Opus recheck required` OR PRs touching
+   core engine/game invariants.
 
 ## Loop behavior
 
 Default: run continuously, but on a **longer interval (30 minutes)**
 than the Sonnet reviewer. Each iteration:
 
-1. Re-fetch the PR list.
+1. Re-fetch PR lists from both repos (separate commands):
+   `gh pr list --state open --json number,title,headRefName,reviews`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews`
 2. For each candidate, in oldest-first order:
    a. Read the existing Sonnet review in full first
-      (`gh pr view <N> --comments`). Note what Sonnet flagged.
-   b. Invoke the `review-pr` skill on the PR.
+      (`gh pr view <N> --comments`, add `--repo jakildev/irreden` for
+      game PRs). Note what Sonnet flagged.
+   b. **Engine PRs:** Invoke the `review-pr` skill on the PR.
+      **Game PRs:** Read the diff with `gh pr diff <N> --repo
+      jakildev/irreden` and review manually (you cannot check out game
+      PRs into this engine worktree). For game conventions, read
+      `~/src/IrredenEngine/creations/game/CLAUDE.md`.
    c. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
@@ -59,8 +81,10 @@ than the Sonnet reviewer. Each iteration:
       Do **not** use `--approve` or `--request-changes` — all fleet
       agents share one GitHub account, and GitHub rejects formal
       review actions on your own PRs.
-   e. **Set the PR label** to match your verdict. The label is the
-      primary signal the human uses. Always remove stale labels first:
+      For game PRs, add `--repo jakildev/irreden` to all `gh` commands.
+   e. **Set the PR label** to match your verdict (add `--repo
+      jakildev/irreden` for game PRs). The label is the primary signal
+      the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
       (swap the label name for needs-fix or blocker as appropriate).
 3. After the queue is drained, wait 30 minutes, then loop.
