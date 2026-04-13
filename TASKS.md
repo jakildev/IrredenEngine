@@ -133,12 +133,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
+- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
   `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
   opens files expecting `.irtxl`. Standardize both on `.txl`.
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** asset-extension-fix (PR #96), asset-txl-fix-v2 (PR #97) — RACE: two agents claimed this task; human should close one before merging
   - **Blocked by:** (none)
   - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
     use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
@@ -295,7 +295,9 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-(none yet)
+- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** — PR #96
+  (claude/asset-extension-fix) and PR #97 (claude/asset-txl-fix-v2) both open;
+  race condition — human should close one before merging the other.
 
 ---
 
