@@ -169,11 +169,19 @@ You are the sole TASKS.md editor. On each loop:
      to the PR author's worktree name.
 5. **Prune Done:** keep only the last 20 entries in `## Done — last 20`.
    Delete older ones — git history is the archive.
-6. If any changes were made: commit TASKS.md only (no other files),
-   push, and open a queue-maintenance PR. Use the `commit-and-push`
-   skill with a message like `queue: sync task state from merged PRs`.
-7. Because you are the only TASKS.md editor, your PRs should never
-   conflict. If one does, rebase onto `origin/master` before pushing.
+6. If any changes were made: commit TASKS.md only (no other files)
+   and push directly to master. You are the sole TASKS.md editor, so
+   this is safe and avoids creating PRs the human has to merge for
+   pure bookkeeping. Steps:
+   - `git fetch origin`
+   - `git rebase origin/master`  (land on top of latest master)
+   - `git add TASKS.md`
+   - `git commit -m "queue: sync task state from merged PRs"`
+   - `git push origin HEAD:master`
+   Use `HEAD:master` (refspec form) — this pushes the current HEAD to
+   the remote's master branch. If the push is rejected, rebase again:
+   - `git pull --rebase origin master`
+   - `git push origin HEAD:master`
 
 ## Hard rules
 
@@ -183,8 +191,14 @@ You are the sole TASKS.md editor. On each loop:
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
 - Never `gh pr merge` — the human merges.
-- Never `git push origin master` or `git push --force`.
-- Always file via `commit-and-push` so the queue stays in PR history.
+- **TASKS.md exception:** you MAY `git push origin HEAD:master` when
+  the commit touches **only** TASKS.md. This is the sole exception to
+  the no-direct-push rule — TASKS.md is bookkeeping, not code, and
+  you are its sole editor. Never push any other file to master.
+- Never `git push --force`.
+- New-task PRs (Step 5) still go through `commit-and-push` so the
+  human sees the task description in a PR. Maintenance syncs (Step 6
+  in Maintenance) push directly.
 - Queue-only PRs are explicitly allowed by `TASKS.md` as queue
   maintenance — you do not need to bundle a task add with actual
   work.
