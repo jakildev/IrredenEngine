@@ -71,6 +71,22 @@ When you do pick a task:
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.
 
+## Filing tasks
+
+When you identify work that needs doing — by you, a Sonnet agent, or
+anyone — file it as a GitHub issue with the `fleet:task` label:
+
+`gh issue create --repo jakildev/IrredenEngine --title "<short title>" --label "fleet:task" --body "<description>"`
+
+Include in the body:
+- **Area** (e.g. `engine/render`, `engine/math`, `docs`)
+- **Suggested model** (`[opus]` or `[sonnet]`)
+- **Acceptance criteria** (concrete check: build passes, test X works)
+- **Context** (why this matters, what you observed)
+
+The queue-manager will pick it up within 15 minutes, categorize it,
+and add it to TASKS.md. You do NOT edit TASKS.md directly.
+
 ## Escalation rules (always)
 
 Stop and surface to the human when:
