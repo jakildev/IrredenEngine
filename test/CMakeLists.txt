@@ -5,6 +5,7 @@ add_executable(IrredenEngineTest
   ecs/entity_manager_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
+  math/ir_math_coord_helpers_test.cpp
 )
 
 FetchContent_Declare(
