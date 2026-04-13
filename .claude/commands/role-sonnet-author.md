@@ -91,10 +91,11 @@ limit. Each loop iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. Post a comment on your PR (or open a stub PR if none exists)
-   noting the escalation: "escalated — touches X invariant, deferring
-   to opus architect". The queue-manager will update TASKS.md. Move
-   on to the next task.
+   STOP. File a GitHub issue for the opus work and note the escalation
+   on your PR:
+   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --label "fleet:task" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
+   Then comment on your PR: "escalated — filed issue #N for opus".
+   The queue-manager will add it to TASKS.md. Move on to the next task.
 
 7. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label

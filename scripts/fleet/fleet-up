@@ -360,6 +360,30 @@ tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 # Focus sonnet-fleet-1 on attach
 tmux select-pane -t "$TOP1"
 
+# ----------------------------------------------------------------------
+# Step 5: start the queue-manager maintenance timer
+# ----------------------------------------------------------------------
+#
+# Claude Code agents can't self-loop — they process input, respond,
+# then wait. This background loop sends "run maintenance" to the
+# queue-manager pane every 15 minutes, triggering the maintenance pass.
+# The loop exits automatically when the tmux session is killed.
+#
+# In dry-run mode, skip the timer (queue-manager does one pass and
+# stops; the human triggers subsequent runs manually).
+
+if [[ "$MODE" != "dry-run" ]]; then
+    (
+        sleep 120  # let agents finish startup before first trigger
+        while tmux has-session -t "$SESSION" 2>/dev/null; do
+            tmux send-keys -t "$BOT3" "run maintenance" Enter 2>/dev/null || true
+            sleep 900  # 15 minutes
+        done
+    ) &
+    TIMER_PID=$!
+    echo "fleet-up: maintenance timer started (PID $TIMER_PID, every 15 min)"
+fi
+
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
@@ -381,5 +405,5 @@ waits. promote a pane to full operation by typing in it:
 
 other modes:
   fleet-up dry-run   # default
-  fleet-up live      # full loop from the start
+  fleet-up live      # full loop from the start (timer sends maintenance triggers)
 EOF
