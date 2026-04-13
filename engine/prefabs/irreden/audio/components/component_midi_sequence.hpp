@@ -10,6 +10,7 @@
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
 
+#include <algorithm>
 #include <optional>
 
 using namespace IRMath;
