@@ -152,6 +152,10 @@ instruction. Do not loop.
 
 You are the sole TASKS.md editor. On each loop:
 
+0. **Clean stale claims:**
+   `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
+   This removes filesystem claims whose task title matches a merged or
+   closed PR. Harmless if no claims exist.
 1. `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
 2. Read `TASKS.md`.

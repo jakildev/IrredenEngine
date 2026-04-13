@@ -55,16 +55,23 @@ limit. Each loop iteration:
 
    Print the task and explain why you picked it.
 
-3. **Claim the task by opening a PR with `fleet:wip` immediately.**
+3. **Claim the task, then open a PR with `fleet:wip`.**
    Do NOT edit `TASKS.md` — only the queue-manager touches it.
-   Create a branch whose name includes the task area (e.g.
-   `claude/doc-pass-ir-math`), make one empty commit
-   (`git commit --allow-empty -m "claim: <task title>"`), push the
-   branch, and open a PR with the WIP label:
+
+   First, acquire the local filesystem lock (atomic — prevents another
+   agent on this machine from picking the same task):
+   `fleet-claim claim "<exact task title from TASKS.md>" <your-worktree-name>`
+
+   - **Exit 0** — you own it. Proceed to open the PR.
+   - **Exit 1** — already taken. Go back to step 2 and pick another.
+
+   Then create the branch, commit, and open a `fleet:wip` PR:
+   `git checkout -b claude/<area>-<topic>`
+   `git commit --allow-empty -m "claim: <task title>"`
    `gh pr create --title "<task title>" --body "Claiming task. Work in progress." --label "fleet:wip"`
-   This makes the claim visible to other agents within seconds via
-   `gh pr list`. Reference the task title in the PR title so the
-   queue-manager can match it.
+
+   Reference the task title in the PR title so the queue-manager can
+   match it.
 
 4. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
@@ -90,8 +97,10 @@ limit. Each loop iteration:
    on to the next task.
 
 7. **Finalize the PR.** Use the `commit-and-push` skill to push your
-   work commits to the existing PR branch. Then remove the WIP label:
+   work commits to the existing PR branch. Then remove the WIP label
+   and release the claim:
    `gh pr edit <N> --remove-label "fleet:wip"`
+   `fleet-claim release "<exact task title>"`
    Paste the PR URL.
 
 8. **Reset.** Use the `start-next-task` skill to land on a fresh branch

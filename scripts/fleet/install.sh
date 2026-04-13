@@ -62,26 +62,35 @@ fi
 
 FLEET_UP_SRC="$SCRIPT_DIR/fleet-up"
 FLEET_UP_DEST="$HOME/bin/fleet-up"
+FLEET_CLAIM_SRC="$SCRIPT_DIR/fleet-claim"
+FLEET_CLAIM_DEST="$HOME/bin/fleet-claim"
 
 if [[ ! -f "$FLEET_UP_SRC" ]]; then
     echo "install.sh: $FLEET_UP_SRC does not exist — repo is incomplete" >&2
     exit 1
 fi
 
-# Ensure the source is executable. Git normally preserves the +x bit,
+# Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-if [[ ! -x "$FLEET_UP_SRC" ]]; then
-    chmod +x "$FLEET_UP_SRC"
-fi
+for src in "$FLEET_UP_SRC" "$FLEET_CLAIM_SRC"; do
+    if [[ -f "$src" && ! -x "$src" ]]; then
+        chmod +x "$src"
+    fi
+done
 
 # ----------------------------------------------------------------------
-# Step 1: symlink fleet-up into ~/bin
+# Step 1: symlink fleet scripts into ~/bin
 # ----------------------------------------------------------------------
 
 mkdir -p "$HOME/bin"
 ln -sf "$FLEET_UP_SRC" "$FLEET_UP_DEST"
 echo "symlinked $FLEET_UP_DEST -> $FLEET_UP_SRC"
+
+if [[ -f "$FLEET_CLAIM_SRC" ]]; then
+    ln -sf "$FLEET_CLAIM_SRC" "$FLEET_CLAIM_DEST"
+    echo "symlinked $FLEET_CLAIM_DEST -> $FLEET_CLAIM_SRC"
+fi
 
 # ----------------------------------------------------------------------
 # Step 2: symlink engine role slash commands into ~/.claude/commands
