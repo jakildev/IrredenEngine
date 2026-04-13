@@ -87,7 +87,7 @@ limit. Each loop iteration:
    the engine style guide.
 
 5. **Build and run.**
-   `cmake --build build --target <name> -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`.
+   `fleet-build --target <name>`
    If the touched code has an executable target, run it once. Untested
    commits are the single biggest waste of reviewer-agent time.
 

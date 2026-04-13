@@ -67,8 +67,7 @@ When you do pick a task:
    are not visible to other agents until merge.
 2. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
    the edit in your first commit on the work branch.
-3. Build the target you touched with
-   `cmake --build build --target <name> -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`.
+3. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code.
 4. Use the `commit-and-push` skill to open the PR.
 5. After the PR is open, use the `start-next-task` skill to land on a
