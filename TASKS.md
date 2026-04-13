@@ -133,24 +133,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
-  `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
-  opens files expecting `.irtxl`. Standardize both on `.txl`.
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** asset-extension-fix (PR #96), asset-txl-fix-v2 (PR #97) — RACE: two agents claimed this task; human should close one before merging
-  - **Blocked by:** (none)
-  - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
-    use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
-    `C_TriangleCanvasTextures::saveToFile` followed by `loadFromFile` round-
-    trips a canvas without corruption.
-  - **Notes:** Bug in `engine/asset/src/ir_asset.cpp` line 32 — change
-    `.irtxl` → `.txl`. No `.irtxl` files exist in the repo so there is no
-    backward-compat concern. While editing, add `if (!f) { IRE_LOG_ERROR(...); return; }`
-    guards around both `fopen` calls — the current code crashes on any I/O
-    failure. Single-file change, one PR.
-  - **Links:**
-
 - [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
   engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
@@ -295,15 +277,29 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** — PR #96
-  (claude/asset-extension-fix) and PR #97 (claude/asset-txl-fix-v2) both open;
-  race condition — human should close one before merging the other.
+(none)
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
+  `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
+  opens files expecting `.irtxl`. Standardize both on `.txl`.
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** asset-extension-fix
+  - **Blocked by:** (none)
+  - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
+    use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
+    `C_TriangleCanvasTextures::saveToFile` followed by `loadFromFile` round-
+    trips a canvas without corruption.
+  - **Notes:** Bug in `engine/asset/src/ir_asset.cpp` line 32 — change
+    `.irtxl` → `.txl`. No `.irtxl` files exist in the repo so there is no
+    backward-compat concern.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/96
 
 - [x] **Docs: doc pass on `ir_math_types.hpp` and `color_palettes.hpp`** —
   add `///` to every public declaration in both files; remove dead commented-
