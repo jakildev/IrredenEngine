@@ -2,6 +2,8 @@
 #define COMPONENT_PERIODIC_IDLE_H
 
 #include <irreden/ir_math.hpp>
+
+#include <algorithm>
 #include <cmath>
 
 using namespace IRMath;

@@ -178,6 +178,7 @@ baseline = [
     "Bash(basename:*)",
     "Bash(dirname:*)",
     "Bash(fleet-claim:*)",
+    "Bash(fleet-build:*)",
 ]
 
 # Preserve any user-granted "always allow" entries from previous sessions,
@@ -265,7 +266,7 @@ launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
     local model="$1"
     local role="$2"
-    printf 'claude --model %s "/role-%s %s"; exec $SHELL\n' \
+    printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
         "$model" "$role" "$MODE"
 }
 
@@ -360,6 +361,30 @@ tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 # Focus sonnet-fleet-1 on attach
 tmux select-pane -t "$TOP1"
 
+# ----------------------------------------------------------------------
+# Step 5: start the queue-manager maintenance timer
+# ----------------------------------------------------------------------
+#
+# Claude Code agents can't self-loop — they process input, respond,
+# then wait. This background loop sends "run maintenance" to the
+# queue-manager pane every 15 minutes, triggering the maintenance pass.
+# The loop exits automatically when the tmux session is killed.
+#
+# In dry-run mode, skip the timer (queue-manager does one pass and
+# stops; the human triggers subsequent runs manually).
+
+if [[ "$MODE" != "dry-run" ]]; then
+    (
+        sleep 120  # let agents finish startup before first trigger
+        while tmux has-session -t "$SESSION" 2>/dev/null; do
+            tmux send-keys -t "$BOT3" "run maintenance" Enter 2>/dev/null || true
+            sleep 900  # 15 minutes
+        done
+    ) &
+    TIMER_PID=$!
+    echo "fleet-up: maintenance timer started (PID $TIMER_PID, every 15 min)"
+fi
+
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
@@ -379,7 +404,12 @@ mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
   "exit dry-run mode and begin your normal loop"
 
-other modes:
-  fleet-up dry-run   # default
-  fleet-up live      # full loop from the start
+babysit: each agent is wrapped in fleet-babysit, which auto-resumes
+the session if claude exits (crash, usage limit, network drop).
+  dry-run — auto-resumes on crash, stops on clean exit
+  live    — auto-resumes on any exit (runs indefinitely)
+
+other modes you can pass to fleet-up:
+  fleet-up dry-run   # default — startup + stand-by
+  fleet-up live      # full loop from the start (use after a clean dry run)
 EOF
