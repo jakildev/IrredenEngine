@@ -71,9 +71,10 @@ usage limit. Each iteration:
       this engine worktree). Focus on code quality, style, and obvious
       bugs. For game-specific conventions, read the game CLAUDE.md at
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   d. Post the review: `gh pr comment <N> --repo jakildev/irreden --body "<review>"`
-   e. Set labels: `gh pr edit <N> --repo jakildev/irreden --add-label "fleet:approved"`
-      (or `fleet:needs-fix` / `fleet:blocker`).
+   d. Post the review: `gh pr review <N> --repo jakildev/irreden --comment --body "<review>"`
+   e. Set labels — always remove stale labels first:
+      `gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
+      (swap the add-label name for `fleet:needs-fix` or `fleet:blocker` as appropriate).
 
    For all PRs, the review body MUST end with one of these explicit lines:
       - `Opus recheck not required.`
