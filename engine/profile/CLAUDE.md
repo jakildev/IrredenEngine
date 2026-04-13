@@ -6,7 +6,7 @@ builds.
 
 ## Entry point
 
-`engine/profile/ir_profile.hpp` — macros and free-function wrappers. No
+`engine/profile/include/irreden/ir_profile.hpp` — macros and free-function wrappers. No
 class to instantiate on the caller side; the underlying `LoggerSpd` and
 `CPUProfiler` are singletons.
 
@@ -30,12 +30,12 @@ strings work. In `IR_RELEASE` mode every log macro is an empty statement
 ## Assertion
 
 ```cpp
-IR_ASSERT(cond, "formatted message %d", value);
+IR_ASSERT(cond, "formatted message {}", value);
 ```
 
-On failure: logs a critical GL error via the engine logger and throws
-`std::runtime_error`. In `IR_RELEASE` it's still evaluated (the
-assertion is not eliminated) but no log is emitted.
+On failure: logs a critical message via the GL API logger and throws
+`std::runtime_error`. In `IR_RELEASE` the macro expands to nothing —
+both the condition and the message arguments are not evaluated.
 
 ## Profiling macros
 
@@ -45,7 +45,7 @@ Wrap easy_profiler:
 - `IR_PROFILE_BLOCK(name, color)` — named scope.
 - `IR_PROFILE_END_BLOCK` — manual block close.
 
-Colors are ABGR hex: `0xff0000ff` = pure blue, `0xff00ff00` = green, etc.
+Colors are ARGB hex: `0xff0000ff` = pure blue, `0xffff0000` = pure red, etc.
 
 `CPUProfiler::setEnabled(bool)` gates all profile macros. Call it from a
 creation's startup if you want profiling off by default.
@@ -54,11 +54,13 @@ creation's startup if you want profiling off by default.
 
 ```
 engine/profile/
-├── ir_profile.hpp             — public macros
-├── ir_profile.tpp             — template impls for log macros
-└── profile/
-    ├── logger_spd.hpp         — spdlog singleton (engine/gl/game sinks)
-    └── cpu_profiler.hpp       — easy_profiler singleton
+├── include/irreden/
+│   ├── ir_profile.hpp         — public facade (macros + free-function decls)
+│   └── profile/
+│       ├── ir_profile.tpp     — template impls for log and assert functions
+│       ├── logger_spd.hpp     — spdlog singleton (engine/gl/game sinks)
+│       └── cpu_profiler.hpp   — easy_profiler singleton
+└── src/                       — singleton implementations
 ```
 
 ## Gotchas
