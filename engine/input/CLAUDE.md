@@ -11,9 +11,10 @@ functions:
 
 - `getInputManager()`.
 - `checkKeyMouseButton(button, status)` — is this button in this state?
-- `checkKeyMouseModifiers(mods)` — Shift/Ctrl/Alt.
-- `getMousePosition(event)` — cursor position as of a specific pipeline
-  event.
+- `checkKeyMouseModifiers(requiredMods, blockedMods)` — Shift/Ctrl/Alt mask check.
+- `getMousePosition()` — cursor position in iso/world space for the current
+  pipeline event's snapshot.
+- `getMousePositionScreen()` — cursor position in screen (pixel) space.
 - Per-button press/release frame counters.
 
 ## `InputManager`
@@ -24,9 +25,9 @@ Owns:
   `C_KeyMouseButton` holding the current `ButtonStatuses`.
 - A vector of gamepad entities (`C_GlfwGamepad`, `C_GlfwJoystick`).
 - Scroll deltas, mouse position cache, press/release accumulators.
-- One `EventInputState` per pipeline event (INPUT, UPDATE, RENDER), so
-  `getMousePosition(UPDATE)` returns the cursor as it was at the UPDATE
-  tick's snapshot.
+- One `EventInputState` per pipeline event (INPUT, UPDATE, RENDER). Each
+  state holds its own `mousePosition_` snapshot; `getMousePosition()` returns
+  the snapshot for whichever event is currently advancing.
 
 ### Button state machine
 
