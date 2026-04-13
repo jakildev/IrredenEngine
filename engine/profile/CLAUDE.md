@@ -6,7 +6,7 @@ builds.
 
 ## Entry point
 
-`engine/profile/ir_profile.hpp` — macros and free-function wrappers. No
+`engine/profile/include/irreden/ir_profile.hpp` — macros and free-function wrappers. No
 class to instantiate on the caller side; the underlying `LoggerSpd` and
 `CPUProfiler` are singletons.
 
@@ -33,9 +33,9 @@ strings work. In `IR_RELEASE` mode every log macro is an empty statement
 IR_ASSERT(cond, "formatted message %d", value);
 ```
 
-On failure: logs a critical GL error via the engine logger and throws
-`std::runtime_error`. In `IR_RELEASE` it's still evaluated (the
-assertion is not eliminated) but no log is emitted.
+On failure: logs via the GL API logger at `critical` severity and throws
+`std::runtime_error`. In `IR_RELEASE` the macro expands to nothing —
+the condition is **not evaluated** at all, not merely silenced.
 
 ## Profiling macros
 
@@ -54,11 +54,13 @@ creation's startup if you want profiling off by default.
 
 ```
 engine/profile/
-├── ir_profile.hpp             — public macros
-├── ir_profile.tpp             — template impls for log macros
-└── profile/
-    ├── logger_spd.hpp         — spdlog singleton (engine/gl/game sinks)
-    └── cpu_profiler.hpp       — easy_profiler singleton
+└── include/irreden/
+    ├── ir_profile.hpp             — public macros
+    └── profile/
+        ├── ir_profile.tpp         — template impls for log macros
+        ├── ir_profile_types.hpp   — shared type helpers
+        ├── logger_spd.hpp         — spdlog singleton (engine/gl/game sinks)
+        └── cpu_profiler.hpp       — easy_profiler singleton
 ```
 
 ## Gotchas
