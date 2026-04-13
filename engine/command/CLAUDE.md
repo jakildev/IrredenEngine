@@ -67,7 +67,7 @@ engine/command/
 │   └── command/
 │       ├── ir_command_types.hpp  — CommandNames enum, InputTypes
 │       ├── command_manager.hpp
-│       └── command_struct.hpp    — CommandStruct<T>
+│       └── command.hpp           — CommandStruct<T> specializations
 └── src/
     ├── ir_command.cpp
     └── command_manager.cpp
