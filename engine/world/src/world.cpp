@@ -219,8 +219,8 @@ void World::buildAndWriteProfileReport() {
     if (!m_frameTimingEnabled) return;
 
     IRProfile::ProfileReport report;
-    report.frameTimesMs_ = std::move(m_frameTimesMs);
     report.totalFrames_ = static_cast<uint32_t>(m_frameTimesMs.size());
+    report.frameTimesMs_ = std::move(m_frameTimesMs);
     report.totalUpdateTicks_ = m_frameTotalUpdateTicks;
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
     report.entityCount_ = IREntity::getLiveEntityCount();

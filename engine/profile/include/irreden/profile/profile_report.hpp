@@ -1,5 +1,5 @@
-#ifndef PROFILE_REPORT_H
-#define PROFILE_REPORT_H
+#ifndef IR_PROFILE_REPORT_H
+#define IR_PROFILE_REPORT_H
 
 #include <cstdint>
 #include <string>
@@ -44,4 +44,4 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath);
 
 } // namespace IRProfile
 
-#endif /* PROFILE_REPORT_H */
+#endif /* IR_PROFILE_REPORT_H */
