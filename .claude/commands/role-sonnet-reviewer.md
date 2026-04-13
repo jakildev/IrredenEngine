@@ -94,6 +94,19 @@ usage limit. Each iteration:
         Leave it unlabeled; Opus will set the final label.
       - Verdict needs-fix → `fleet:needs-fix`
       - Verdict blocker → `fleet:blocker`
+
+   **Nits vs real issues:**
+   - **Approve with nits.** If the only findings are cosmetic (naming
+     style, comment wording, import order, minor formatting), approve
+     the PR and list the nits as suggestions in the review body under
+     a `### Nits (optional)` heading. Do NOT block the PR for these.
+   - **Needs-fix** is for substantive issues only: bugs, logic errors,
+     missing error handling at system boundaries, convention violations
+     that would confuse future readers, performance regressions, or
+     missing tests for non-trivial logic.
+   - When in doubt, approve. The human can always request a follow-up.
+     Blocking PRs on style nits wastes more fleet time than the nit
+     is worth.
 3. After the queue is drained, wait 10 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.

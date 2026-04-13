@@ -87,6 +87,17 @@ than the Sonnet reviewer. Each iteration:
       the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
       (swap the label name for needs-fix or blocker as appropriate).
+
+   **Nits vs real issues:**
+   - **Approve with nits.** If the only remaining findings are cosmetic
+     (naming style, comment wording, formatting), approve the PR and
+     list nits as suggestions under `### Nits (optional)`. Do NOT
+     block the PR for these — the human decides whether to address them.
+   - **Needs-fix** is for substantive issues only: correctness bugs,
+     invariant violations, lifetime/ownership mistakes, missing
+     synchronization, performance regressions, or unsafe API use.
+   - Opus budget is expensive. Don't spend it requesting a second
+     round-trip over a renamed variable. When in doubt, approve.
 3. After the queue is drained, wait 30 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.
