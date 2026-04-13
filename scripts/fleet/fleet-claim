@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+# fleet-claim — filesystem-based task claiming for the agent fleet.
+#
+# Uses atomic mkdir(2) to prevent two agents from picking the same task.
+# All agents on the same machine share ~/.fleet/claims/. Each claim is a
+# directory named after the canonicalized task title (the "slug"); the
+# directory contains metadata files (owner, title, timestamp).
+#
+# Slug canonicalization: lowercase, non-alphanumeric → hyphen, collapse
+# runs, trim edges, truncate to 80 chars. Deterministic — every agent
+# derives the same slug from the same TASKS.md title.
+#
+# Installed to ~/bin/fleet-claim by scripts/fleet/install.sh.
+#
+# Usage:
+#   fleet-claim claim "<task title>" <agent-name>
+#   fleet-claim release "<task title>"
+#   fleet-claim check "<task title>"
+#   fleet-claim list
+#   fleet-claim cleanup [--repo <owner/repo>] ...
+#   fleet-claim clear-all
+
+set -euo pipefail
+
+CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
+
+# --- slug canonicalization ------------------------------------------------
+
+slugify() {
+    # Lowercase → replace non-alnum with hyphen → collapse runs → trim
+    # edges → truncate. Pure POSIX tools, no bash 4+ features.
+    echo "$1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9]/-/g' \
+        | sed 's/--*/-/g' \
+        | sed 's/^-//' \
+        | sed 's/-$//' \
+        | cut -c1-80
+}
+
+# --- subcommands ----------------------------------------------------------
+
+cmd_claim() {
+    # Try to atomically claim a task. Exit 0 = claimed, exit 1 = taken.
+    local title="$1"
+    local agent="${2:-unknown}"
+    local slug
+    slug=$(slugify "$title")
+
+    mkdir -p "$CLAIMS_DIR"
+
+    if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
+        echo "$agent" > "$CLAIMS_DIR/$slug/owner"
+        echo "$title" > "$CLAIMS_DIR/$slug/title"
+        date +%s     > "$CLAIMS_DIR/$slug/created"
+        echo "claimed: $title (slug: $slug, agent: $agent)"
+        return 0
+    else
+        local owner="unknown"
+        if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
+            owner=$(cat "$CLAIMS_DIR/$slug/owner")
+        fi
+        echo "already claimed by $owner: $title (slug: $slug)"
+        return 1
+    fi
+}
+
+cmd_release() {
+    local title="$1"
+    local slug
+    slug=$(slugify "$title")
+
+    if [[ -d "$CLAIMS_DIR/$slug" ]]; then
+        rm -rf "$CLAIMS_DIR/$slug"
+        echo "released: $title (slug: $slug)"
+    else
+        echo "not claimed: $title (slug: $slug)"
+    fi
+}
+
+cmd_check() {
+    # Exit 0 = free, exit 1 = claimed.
+    local title="$1"
+    local slug
+    slug=$(slugify "$title")
+
+    if [[ -d "$CLAIMS_DIR/$slug" ]]; then
+        local owner="unknown"
+        if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
+            owner=$(cat "$CLAIMS_DIR/$slug/owner")
+        fi
+        echo "claimed by $owner (slug: $slug)"
+        return 1
+    else
+        echo "free (slug: $slug)"
+        return 0
+    fi
+}
+
+cmd_list() {
+    mkdir -p "$CLAIMS_DIR"
+    local found=0
+
+    for dir in "$CLAIMS_DIR"/*/; do
+        # Guard against the glob not matching (no claims).
+        [[ -d "$dir" ]] || continue
+        found=1
+        local slug
+        slug=$(basename "$dir")
+        local owner="unknown"
+        local title="$slug"
+        if [[ -f "$dir/owner" ]]; then owner=$(cat "$dir/owner"); fi
+        if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
+        printf "  %-20s  %s\n" "$owner" "$title"
+    done
+
+    if [[ $found -eq 0 ]]; then
+        echo "no active claims"
+    fi
+}
+
+cmd_cleanup() {
+    # Remove claims whose task title matches a merged or closed PR title.
+    # Accepts zero or more --repo flags; defaults to jakildev/IrredenEngine.
+    mkdir -p "$CLAIMS_DIR"
+
+    local -a repos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --repo) repos+=("$2"); shift 2 ;;
+            *)      shift ;;
+        esac
+    done
+    if [[ ${#repos[@]} -eq 0 ]]; then
+        repos=("jakildev/IrredenEngine")
+    fi
+
+    # Collect slugified titles of all merged + closed PRs from each repo.
+    local -a done_slugs=()
+    for repo in "${repos[@]}"; do
+        local titles
+        titles=$(gh pr list --repo "$repo" --state merged \
+            --json title --jq '.[].title' 2>/dev/null || true)
+        while IFS= read -r t; do
+            [[ -z "$t" ]] && continue
+            done_slugs+=("$(slugify "$t")")
+        done <<< "$titles"
+
+        titles=$(gh pr list --repo "$repo" --state closed \
+            --json title --jq '.[].title' 2>/dev/null || true)
+        while IFS= read -r t; do
+            [[ -z "$t" ]] && continue
+            done_slugs+=("$(slugify "$t")")
+        done <<< "$titles"
+    done
+
+    local cleaned=0
+    for dir in "$CLAIMS_DIR"/*/; do
+        [[ -d "$dir" ]] || continue
+        local slug
+        slug=$(basename "$dir")
+        for ds in "${done_slugs[@]}"; do
+            if [[ "$slug" == "$ds" ]]; then
+                local title="$slug"
+                if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
+                rm -rf "$dir"
+                echo "cleaned: $title (merged/closed)"
+                cleaned=$((cleaned + 1))
+                break
+            fi
+        done
+    done
+
+    if [[ $cleaned -eq 0 ]]; then
+        echo "no stale claims found"
+    else
+        echo "cleaned $cleaned stale claim(s)"
+    fi
+}
+
+cmd_clear_all() {
+    if [[ -d "$CLAIMS_DIR" ]]; then
+        rm -rf "$CLAIMS_DIR"
+        mkdir -p "$CLAIMS_DIR"
+        echo "all claims cleared"
+    else
+        echo "no claims directory"
+    fi
+}
+
+# --- main -----------------------------------------------------------------
+
+case "${1:-}" in
+    claim)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim claim \"<title>\" [agent-name]" >&2
+            exit 2
+        fi
+        cmd_claim "$2" "${3:-unknown}"
+        ;;
+    release)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim release \"<title>\"" >&2
+            exit 2
+        fi
+        cmd_release "$2"
+        ;;
+    check)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim check \"<title>\"" >&2
+            exit 2
+        fi
+        cmd_check "$2"
+        ;;
+    list)
+        cmd_list
+        ;;
+    cleanup)
+        shift
+        cmd_cleanup "$@"
+        ;;
+    clear-all)
+        cmd_clear_all
+        ;;
+    *)
+        cat <<'USAGE'
+usage: fleet-claim <command> [args]
+
+commands:
+  claim "<title>" [agent]   claim a task (exit 0=claimed, 1=taken)
+  release "<title>"         release a claim
+  check "<title>"           check if free (exit 0=free, 1=taken)
+  list                      list all active claims
+  cleanup [--repo o/r] ...  remove claims for merged/closed PRs
+  clear-all                 wipe all claims (used by fleet-up on restart)
+
+Slug canonicalization:
+  Title → lowercase → non-alnum to hyphen → collapse → trim → 80 chars.
+  All agents derive the same slug from the same TASKS.md title.
+USAGE
+        exit 2
+        ;;
+esac

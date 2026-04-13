@@ -221,6 +221,22 @@ if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# Step 3b: clear stale task claims
+# ----------------------------------------------------------------------
+#
+# fleet-up resets every worktree to a fresh branch, so any claims from
+# a previous fleet session are stale. Wipe them so agents start clean.
+
+if command -v fleet-claim >/dev/null 2>&1; then
+    fleet-claim clear-all
+elif [[ -x "$ENGINE/scripts/fleet/fleet-claim" ]]; then
+    "$ENGINE/scripts/fleet/fleet-claim" clear-all
+else
+    echo "fleet-up: fleet-claim not found — skipping claims cleanup"
+    echo "          (run scripts/fleet/install.sh to install it)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
