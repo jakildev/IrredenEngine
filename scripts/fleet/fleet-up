@@ -266,7 +266,7 @@ launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
     local model="$1"
     local role="$2"
-    printf 'claude --model %s "/role-%s %s"; exec $SHELL\n' \
+    printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
         "$model" "$role" "$MODE"
 }
 
@@ -404,7 +404,12 @@ mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
   "exit dry-run mode and begin your normal loop"
 
-other modes:
-  fleet-up dry-run   # default
-  fleet-up live      # full loop from the start (timer sends maintenance triggers)
+babysit: each agent is wrapped in fleet-babysit, which auto-resumes
+the session if claude exits (crash, usage limit, network drop).
+  dry-run — auto-resumes on crash, stops on clean exit
+  live    — auto-resumes on any exit (runs indefinitely)
+
+other modes you can pass to fleet-up:
+  fleet-up dry-run   # default — startup + stand-by
+  fleet-up live      # full loop from the start (use after a clean dry run)
 EOF
