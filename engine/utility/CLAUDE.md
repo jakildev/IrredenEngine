@@ -12,7 +12,8 @@ functions for reading files and composing paths. Used by `asset/`,
 ## What's here
 
 - `IRUtility::readFileAsString(filepath)` — load a text file into a
-  `std::string`. No encoding normalization. Throws on failure.
+  `std::string`. No encoding normalization. On failure: logs fatal +
+  asserts in debug builds; returns `{}` silently in release.
 - `IRUtility::joinPath(dir, filename, ext)` — concatenate a directory,
   filename, and extension. Handles separator insertion.
 - `IRUtility::pathWithExtension(path, ext)` — replace or append an
@@ -33,8 +34,11 @@ engine/utility/
 
 ## Gotchas
 
-- **`readFileAsString` throws.** Catch it where you care; don't let the
-  exception cross a callback boundary.
+- **`readFileAsString` failure is build-mode dependent.** In debug builds
+  it calls `IRE_LOG_FATAL` + `IR_ASSERT(false)`, which throws
+  `std::runtime_error` via `engAssert`. In release both macros are
+  no-ops and the function returns `{}` silently. Don't depend on the
+  exception in production paths.
 - **Separator handling is C++-string-based.** It assumes forward slashes
   work on Windows (they do, mostly). If a path eventually reaches a Win32
   API that insists on backslashes, normalize at the call site.

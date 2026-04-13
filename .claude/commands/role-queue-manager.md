@@ -131,57 +131,75 @@ half-finished and re-litigated in review.
    PR FIRST so the game task can reference its title in `Blocked by`,
    then file the game task.
 
-### Step 6 — Loop
+### Step 6 — Wait for triggers
 
-Run continuously on a **15-minute polling interval**. Each iteration:
+After the startup actions (and one initial maintenance pass), **wait
+for input**. You will receive two kinds of messages:
 
-1. Run a **maintenance pass** (see below) — sync TASKS.md with
-   merged/open PRs, prune Done, commit if anything changed.
-2. Check if the human has typed a new task description. If so,
-   process it through Steps 1–5 above.
-3. Wait 15 minutes, then loop.
+- **"run maintenance"** — sent automatically every 15 minutes by the
+  fleet timer in tmux. Run the full maintenance pass below, print a
+  one-line summary of what changed, then wait again.
+- **Human-typed task descriptions** — any other input. Process it
+  through Steps 1–5 above (categorize, format, file to TASKS.md),
+  then wait again.
+
+You do NOT need to sleep, poll, or self-loop. The timer handles
+scheduling. Just respond to each message as it arrives.
 
 If you hit a usage-limit error: print the error and reset time,
-wait, resume.
+wait, resume when the next trigger arrives.
 
-If Mode above is `dry-run`: do exactly one maintenance pass, file
-one task if the human provides one, then stop and wait for
-instruction. Do not loop.
+If Mode above is `dry-run`: do exactly one maintenance pass, then
+stop and wait for human instruction. Do not respond to timer
+triggers.
 
-### Maintenance (run each loop iteration)
+### Maintenance pass
 
-You are the sole TASKS.md editor. On each loop:
+You are the sole TASKS.md editor. Each maintenance pass:
 
 0. **Clean stale claims:**
    `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
-   This removes filesystem claims whose task title matches a merged or
-   closed PR. Harmless if no claims exist.
-1. `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+
+1. **Ingest `fleet:task` issues (engine repo):**
+   `gh issue list --repo jakildev/IrredenEngine --label "fleet:task" --state open --json number,title,body`
+   For each open issue:
+   - Read the title and body as a task description.
+   - Categorize it (model tag, area) per Steps 2–3 above.
+   - Append a properly formatted entry to `## Open` in `TASKS.md`.
+   - Close the issue with a comment:
+     `gh issue close <N> --repo jakildev/IrredenEngine --comment "Filed in TASKS.md"`
+
+2. **Ingest `fleet:task` issues (game repo):**
+   `gh issue list --repo jakildev/irreden --label "fleet:task" --state open --json number,title,body`
+   Same flow as above, but append to the game repo's `TASKS.md`.
+   Close the issue:
+   `gh issue close <N> --repo jakildev/irreden --comment "Filed in TASKS.md"`
+
+3. **Sync merged PRs → Done:**
+   `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
-2. Read `TASKS.md`.
-3. For each recently merged PR, check if its title or branch name
-   matches an `[~]` (in-progress) or `[ ]` (open) task:
-   - If matched: flip to `[x]`, add the PR URL to **Links**, move to
-     `## Done — last 20`.
-4. For each open PR (`gh pr list --state open`), check if its title
-   matches a `[ ]` (open) task:
-   - If matched and the task is still `[ ]`: flip to `[~]`, set Owner
-     to the PR author's worktree name.
-5. **Prune Done:** keep only the last 20 entries in `## Done — last 20`.
-   Delete older ones — git history is the archive.
-6. If any changes were made: commit TASKS.md only (no other files)
-   and push directly to master. You are the sole TASKS.md editor, so
-   this is safe and avoids creating PRs the human has to merge for
-   pure bookkeeping. Steps:
+   Read `TASKS.md`. For each recently merged PR whose title or branch
+   matches an `[~]` or `[ ]` task: flip to `[x]`, add the PR URL to
+   **Links**, move to `## Done — last 20`.
+
+4. **Sync open PRs → In-progress:**
+   `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
+   For each open PR whose title matches a `[ ]` task: flip to `[~]`,
+   set Owner to the PR author's worktree name.
+
+5. **Prune Done:** keep only the last 20 entries. Delete older ones.
+
+6. **Push changes (if any).** Commit TASKS.md only and push directly
+   to master:
    - `git fetch origin`
-   - `git rebase origin/master`  (land on top of latest master)
+   - `git rebase origin/master`
    - `git add TASKS.md`
-   - `git commit -m "queue: sync task state from merged PRs"`
+   - `git commit -m "queue: maintenance sync"`
    - `git push origin HEAD:master`
-   Use `HEAD:master` (refspec form) — this pushes the current HEAD to
-   the remote's master branch. If the push is rejected, rebase again:
-   - `git pull --rebase origin master`
-   - `git push origin HEAD:master`
+   If push rejected, `git pull --rebase origin master` then retry.
+
+7. Print a one-line summary: how many issues ingested, tasks flipped,
+   claims cleaned.
 
 ## Hard rules
 
@@ -196,12 +214,6 @@ You are the sole TASKS.md editor. On each loop:
   the no-direct-push rule — TASKS.md is bookkeeping, not code, and
   you are its sole editor. Never push any other file to master.
 - Never `git push --force`.
-- New-task PRs (Step 5) still go through `commit-and-push` so the
-  human sees the task description in a PR. Maintenance syncs (Step 6
-  in Maintenance) push directly.
-- Queue-only PRs are explicitly allowed by `TASKS.md` as queue
-  maintenance — you do not need to bundle a task add with actual
-  work.
 - Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
   commands in a single Bash invocation. Issue each command as its own
   separate tool call (Bash or Read). Compound commands don't match the

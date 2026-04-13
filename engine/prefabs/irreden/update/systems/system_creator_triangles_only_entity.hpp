@@ -1,93 +1,94 @@
-#ifndef SYSTEM_TRIANGLE_PAINTER_H
-#define SYSTEM_TRIANGLE_PAINTER_H
+// WIP — needs rewriting against the modern prefab API before use.
+// Includes below reference files that no longer exist and use
+// Windows-style backslash paths; the class body also has syntax
+// errors (malformed System<> template specialisation).  Left for
+// reference; do not include or enable until the rewrite is done.
 
-#include <irreden/ir_system.hpp>
+// #ifndef SYSTEM_TRIANGLE_PAINTER_H
+// #define SYSTEM_TRIANGLE_PAINTER_H
 
-#include "../game_entities/entity_triangle_canvas.hpp"
-#include "..\game_components\component_keyboard_key_status.hpp"
-#include "..\game_components\component_color_hsva.hpp"
-#include "..\game_components\component_triangles_only_set.hpp"
+// #include <irreden/ir_system.hpp>
 
-#include <utility> // std::pair
+// #include "../update/entities/entity_triangle_canvas.hpp"
+// #include "../input/components/component_keyboard_key_status.hpp"
+// #include "../render/components/component_color_hsva.hpp"
+// #include "../render/components/component_triangles_only_set.hpp"
 
-using namespace IRComponents;
-using namespace IRMath;
-using namespace IRECS;
-using namespace IRInput;
+// #include <utility> // std::pair
 
-namespace IRECS {
+// using namespace IRComponents;
+// using namespace IRMath;
+// using namespace IRECS;
+// using namespace IRInput;
 
-enum EnumPaintingModes { TRIANGLES, FACES, CUBES, SELECTION, PASTE_SELECTION };
+// namespace IRECS {
 
-constexpr std::pair<KeyMouseButtons, EnumPaintingModes> kKeyCommandsPaintingModes[] = {
-    {kKeyButtonT, TRIANGLES},
-    {kKeyButtonF, FACES},
-    {kKeyButtonC, CUBES},
-    {kKeyButtonS, SELECTION},
-    {kKeyButtonP, PASTE_SELECTION}
-};
-constexpr int kNumKeyCommandsPaintingMode =
-    sizeof(kKeyCommandsPaintingModes) / sizeof(kKeyCommandsPaintingModes[0]);
+// enum EnumPaintingModes { TRIANGLES, FACES, CUBES, SELECTION, PASTE_SELECTION };
 
-constexpr std::pair<KeyMouseButtons, int> kKeyCommandsPaletteColor[] = {
-    {kKeyButton1, 0},
-    {kKeyButton2, 1},
-    {kKeyButton3, 2},
-    {kKeyButton4, 3},
-    {kKeyButton5, 4},
-    {kKeyButton6, 5}
-};
-constexpr int kNumKeyCommandsPaletteColor =
-    sizeof(kKeyCommandsPaletteColor) / sizeof(kKeyCommandsPaletteColor[0]);
+// constexpr std::pair<KeyMouseButtons, EnumPaintingModes> kKeyCommandsPaintingModes[] = {
+//     {kKeyButtonT, TRIANGLES},
+//     {kKeyButtonF, FACES},
+//     {kKeyButtonC, CUBES},
+//     {kKeyButtonS, SELECTION},
+//     {kKeyButtonP, PASTE_SELECTION}
+// };
+// constexpr int kNumKeyCommandsPaintingMode =
+//     sizeof(kKeyCommandsPaintingModes) / sizeof(kKeyCommandsPaintingModes[0]);
 
-constexpr std::pair<KeyMouseButtons, FaceType> kKeyCommandsFaceType[] = {
-    {kKeyButtonX, FaceType::X_FACE},
-    {kKeyButtonY, FaceType::Y_FACE},
-    {kKeyButtonZ, FaceType::Z_FACE}
-};
-constexpr int kNumKeyCommandsFaceType =
-    sizeof(kKeyCommandsFaceType) / sizeof(kKeyCommandsFaceType[0]);
+// constexpr std::pair<KeyMouseButtons, int> kKeyCommandsPaletteColor[] = {
+//     {kKeyButton1, 0},
+//     {kKeyButton2, 1},
+//     {kKeyButton3, 2},
+//     {kKeyButton4, 3},
+//     {kKeyButton5, 4},
+//     {kKeyButton6, 5}
+// };
+// constexpr int kNumKeyCommandsPaletteColor =
+//     sizeof(kKeyCommandsPaletteColor) / sizeof(kKeyCommandsPaletteColor[0]);
 
-struct System<IRECS::> {
-  public:
-    SystemCreatorTrianglesOnlyEntity(
-        uvec2 triangleCanvasSize = IRConstants::kScreenTrixelMaxCanvasSize,
-        const char *palletFile = nullptr
-    );
-    ~SystemCreatorTrianglesOnlyEntity();
+// constexpr std::pair<KeyMouseButtons, FaceType> kKeyCommandsFaceType[] = {
+//     {kKeyButtonX, FaceType::X_FACE},
+//     {kKeyButtonY, FaceType::Y_FACE},
+//     {kKeyButtonZ, FaceType::Z_FACE}
+// };
+// constexpr int kNumKeyCommandsFaceType =
+//     sizeof(kKeyCommandsFaceType) / sizeof(kKeyCommandsFaceType[0]);
 
-    void beginExecute();
-    void endExecute();
+// struct System<IRECS::CREATOR_TRIANGLES_ONLY_ENTITY> {
+//   public:
+//     SystemCreatorTrianglesOnlyEntity(
+//         uvec2 triangleCanvasSize = IRConstants::kScreenTrixelMaxCanvasSize,
+//         const char *palletFile = nullptr
+//     );
+//     ~SystemCreatorTrianglesOnlyEntity();
 
-  private:
-    EntityHandle m_entityTriangleCanvas;
-    // TODO: create/implement single component entity
-    // and make this a reference to a component/entity
-    int m_activeColorIndex;
-    Color m_activeColor;
-    C_ColorHSV m_activeColorHSV;
-    std::unordered_map<FaceType, C_ColorHSV> m_mapFaceColors;
-    EnumPaintingModes m_activePaintingMode;
-    FaceType m_activeFaceType;
+//     void beginExecute();
+//     void endExecute();
 
-    // C_FaceType m_faceType;
-    // C_Distance m_activeDistanceStart;
-    bool m_hasSelection;
-    ivec2 m_trianglePositionStart;
-    ivec2 m_trianglePositionEnd;
-    std::vector<Color> m_colorPallet;
-    C_TrianglesOnlySet m_triangleSelectionCopy;
+//   private:
+//     EntityHandle m_entityTriangleCanvas;
+//     int m_activeColorIndex;
+//     Color m_activeColor;
+//     C_ColorHSV m_activeColorHSV;
+//     std::unordered_map<FaceType, C_ColorHSV> m_mapFaceColors;
+//     EnumPaintingModes m_activePaintingMode;
+//     FaceType m_activeFaceType;
 
-    template <EnumPaintingModes mode> void paintStart();
+//     bool m_hasSelection;
+//     ivec2 m_trianglePositionStart;
+//     ivec2 m_trianglePositionEnd;
+//     std::vector<Color> m_colorPallet;
+//     C_TrianglesOnlySet m_triangleSelectionCopy;
 
-    template <EnumPaintingModes mode> void paintEnd();
+//     template <EnumPaintingModes mode> void paintStart();
+//     template <EnumPaintingModes mode> void paintEnd();
 
-    void moveSelection(ivec2 moveDistance);
-    void loadPalette(const char *paletteFile);
-    void saveTrianglesToFile(const char *filename = "currentTriangleProject.irt");
-    void loadTrianglesFromFile(const char *filename = "currentTriangleProject.irt");
-};
+//     void moveSelection(ivec2 moveDistance);
+//     void loadPalette(const char *paletteFile);
+//     void saveTrianglesToFile(const char *filename = "currentTriangleProject.irt");
+//     void loadTrianglesFromFile(const char *filename = "currentTriangleProject.irt");
+// };
 
-} // namespace IRECS
+// } // namespace IRECS
 
-#endif /* SYSTEM_TRIANGLE_PAINTER_H */
+// #endif /* SYSTEM_TRIANGLE_PAINTER_H */

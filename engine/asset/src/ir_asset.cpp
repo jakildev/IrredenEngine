@@ -2,6 +2,7 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
 
+#include <cstdio>
 #include <string>
 
 namespace IRAsset {
