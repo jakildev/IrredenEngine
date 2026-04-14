@@ -6,20 +6,17 @@ systems that populate button state. The underlying polling lives in
 
 ## Key components
 
-- `component_hitbox_2d.hpp` — `C_HitBox2D`, half-extents + `hovered_`
-  flag. Tested against mouse position per frame.
-- `component_keyboard_key.hpp` — `C_KeyboardKey`, GLFW key code.
-- `component_key_mouse_button.hpp` — `C_KeyMouseButton`, wraps the
-  `KeyMouseButtons` enum value. One entity per physical button, created
-  at engine init.
-- `component_key_status.hpp` — `C_KeyStatus`, a button state machine
+- `C_HitBox2D` — half-extents + `hovered_` flag. Tested against mouse
+  position per frame.
+- `C_KeyboardKey` — GLFW key code.
+- `C_KeyMouseButton` — wraps the `KeyMouseButtons` enum value. One entity
+  per physical button, created at engine init.
+- `C_KeyStatus` — a button state machine
   (`NOT_HELD`/`PRESSED`/`HELD`/`RELEASED`/`PRESSED_AND_RELEASED`) plus
   press/release frame counts.
-- `component_mouse_position.hpp` — `C_MousePosition`, cached cursor.
-- `component_mouse_scroll.hpp` — `C_MouseScroll`, ephemeral per-scroll
-  event (`C_Lifetime{1}`).
-- `component_glfw_gamepad_state.hpp` — `C_GLFWGamepadState`, 15 button
-  states + 6 axes.
+- `C_MousePosition` — cached cursor.
+- `C_MouseScroll` — ephemeral per-scroll event (`C_Lifetime{1}`).
+- `C_GLFWGamepadState` — 15 button states + 6 axes.
 
 ## Key systems
 

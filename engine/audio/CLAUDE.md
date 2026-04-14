@@ -57,27 +57,6 @@ functions:
 
 Plus `*_lua.hpp` variants for sequences and notes.
 
-## Internal layout
-
-```
-engine/audio/
-├── include/irreden/
-│   ├── ir_audio.hpp                — public facade
-│   └── audio/
-│       ├── ir_audio_types.hpp      — MidiChannels, IRMidiNote, CC consts
-│       ├── audio_manager.hpp       — owns Audio, MidiIn, MidiOut
-│       ├── audio.hpp               — RtAudio wrapper
-│       ├── midi_in.hpp             — RtMidi input + per-channel queues
-│       ├── midi_out.hpp            — RtMidi output
-│       ├── audio_capture_source.hpp — IAudioCaptureSource interface
-│       ├── midi_messages.hpp       — templated message builders
-│       └── music_theory.hpp        — note/octave helpers
-├── src/                             — impls + music_notes.hpp
-└── patches/
-    ├── ir_rtmidi.patch
-    └── ir_rtaudio.patch            — custom upstream patches
-```
-
 ## Gotchas
 
 - **No hot-swap.** If a MIDI device is unplugged mid-run, the `RtMidiIn`
@@ -85,7 +64,7 @@ engine/audio/
 - **Per-frame queue wipe.** Query MIDI state only in systems that run
   after `MidiIn::tick()` and before the next one. Holding a reference
   across frames is UB.
-- **Callback lifetime.** `Audio::m_inputCallback` is a `std::function`.
+- **Callback lifetime.** The input callback is a `std::function`.
   Destroying `Audio` while a stream is running can crash; always
   `stopStreamIn()` before teardown.
 - **Custom RtMidi/RtAudio patches.** Don't assume stock upstream behavior

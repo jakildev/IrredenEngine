@@ -6,21 +6,19 @@ creation composes MIDI behavior by adding components to entities.
 
 ## Key components
 
-- `component_midi_message.hpp` — `C_MidiMessage`, status + channel +
-  data1/data2. Helpers for note number, velocity, CC value.
-- `component_midi_sequence.hpp` — `C_MidiSequence`, BPM, time
-  signature, measures, tick-based playback, loop flag, message buffer.
-- `component_midi_note.hpp` — `C_MidiNote`, note number, velocity,
-  channel, hold duration. **`onDestroy()` sends `NOTE_OFF`** — a free
-  cleanup when an entity dies.
-- `component_midi_device.hpp` — `C_MidiDevice`, wraps an RtMidi port
-  index (-1 = uninitialized). Pair with `C_MidiIn` / `C_MidiOut` tags.
-- `component_midi_channel.hpp` — `C_MidiChannel`, 0–15 wrapper.
-  `normalizeMidiChannel()` converts to MIDI wire format.
-- `component_midi_delay.hpp` — `C_MidiDelay`, countdown timer for
-  scheduling a delayed `NOTE_OFF`.
-- `component_contact_event.hpp` — `C_ContactEvent`, tag for entities
-  whose collision events should trigger MIDI.
+- `C_MidiMessage` — status + channel + data1/data2. Helpers for note
+  number, velocity, CC value.
+- `C_MidiSequence` — BPM, time signature, measures, tick-based playback,
+  loop flag, message buffer.
+- `C_MidiNote` — note number, velocity, channel, hold duration.
+  **`onDestroy()` sends `NOTE_OFF`** — a free cleanup when an entity dies.
+- `C_MidiDevice` — wraps an RtMidi port index (-1 = uninitialized). Pair
+  with `C_MidiIn` / `C_MidiOut` tags.
+- `C_MidiChannel` — 0–15 wrapper. `normalizeMidiChannel()` converts to
+  MIDI wire format.
+- `C_MidiDelay` — countdown timer for scheduling a delayed `NOTE_OFF`.
+- `C_ContactEvent` — tag for entities whose collision events should trigger
+  MIDI.
 
 Many of these have `_lua.hpp` siblings that bind them into Lua.
 
@@ -57,10 +55,10 @@ None. MIDI control is entirely entity-driven.
 - **Ephemeral messages die every frame.** `C_Lifetime{1}` means a MIDI
   message is valid for exactly one UPDATE tick. If a system runs after
   the lifetime-decrement system, it will never see the message.
-- **`C_MidiSequence` ticks are frame-dependent.** Internal `m_bps`,
-  `m_ticksPerSecond` are computed from `deltaTime(UPDATE)`, so slow
-  frames slow down sequences. If you need sample-accurate timing,
-  you'll need to rebuild the sequence on a wall-clock basis.
+- **`C_MidiSequence` ticks are frame-dependent.** The BPM/timing fields
+  are computed from `deltaTime(UPDATE)`, so slow frames slow down
+  sequences. If you need sample-accurate timing, you'll need to rebuild
+  the sequence on a wall-clock basis.
 - **Trigger systems need *both* components.** `CONTACT_MIDI_TRIGGER`
   archetype-matches on `C_ContactEvent + C_MidiNote`. If either is
   missing, nothing fires.

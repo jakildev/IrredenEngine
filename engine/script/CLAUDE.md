@@ -4,14 +4,9 @@ Thin wrapper around sol2 that exposes ECS components, math, and input to
 Lua. Creations register *which* components get bound via a per-creation
 `lua_component_pack.hpp` file.
 
-## Entry point
-
-`engine/script/include/irreden/ir_script.hpp` — routes to
-`script/lua_script.hpp` and binding trait helpers.
-
 ## `LuaScript`
 
-One `sol::state m_lua` per `World`. Opens `base`, `package`, `string`,
+One `sol::state` per `World`. Opens `base`, `package`, `string`,
 `table`, `math` libs and pre-binds an `IRMath` Lua table with:
 
 - `fract`, `clamp01`, `lerp`, `lerpByte`.
@@ -78,20 +73,6 @@ include the `_lua.hpp` header or omits the type from
 There is no sandbox, no path-traversal check, and no archive support.
 Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 `main.lua`.
-
-## Internal layout
-
-```
-engine/script/
-├── include/irreden/
-│   ├── ir_script.hpp                — public facade
-│   └── script/
-│       ├── lua_script.hpp           — LuaScript class
-│       └── lua_binding_traits.hpp   — kHasLuaBinding<T> + bindLuaType<T>
-├── src/
-│   └── lua_script.cpp               — sol2 init, IRMath table, helpers
-└── third_party/lua54/               — bundled Lua 5.4 source
-```
 
 ## Gotchas
 

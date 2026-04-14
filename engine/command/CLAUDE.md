@@ -4,14 +4,8 @@ Binds `CommandNames` enum values to callables and wires them up to input
 triggers (keyboard/mouse/gamepad/MIDI). Commands are fire-and-forget:
 they return void, can't be undone, and don't queue.
 
-## Entry point
-
-`engine/command/include/irreden/ir_command.hpp` — exposes `IRCommand::`:
-
-- `getCommandManager()`.
-- `createCommand<COMMAND_NAME>(InputType, ButtonStatus, button, fn, mods)`.
-- `buildCommandListText()` — formats the registered-command table for
-  debug overlay output.
+`IRCommand::` exposes `createCommand<COMMAND_NAME>(InputType, ButtonStatus,
+button, fn, mods)` and `buildCommandListText()` for the debug overlay.
 
 ## The `Command<NAME>` pattern
 
@@ -45,36 +39,13 @@ IRCommand::createCommand<IRCommand::CommandNames::ZOOM_IN>(
 
 ## `CommandManager`
 
-Owns three registries:
+Owns three registries: button commands (keyboard/mouse/gamepad), MIDI note
+commands keyed by `(device, note)`, and MIDI CC commands keyed by
+`(device, cc)`. The registration map is only populated for `PRESSED`-status
+bindings and is used by `buildCommandListText()` for the debug help overlay.
 
-- **Button commands** — keyboard/mouse/gamepad bindings. Stored as
-  `CommandStruct<COMMAND_BUTTON>` wrapping a `std::function<void()>`.
-- **MIDI note commands** — keyed by `(device, note)`.
-- **MIDI CC commands** — keyed by `(device, cc)`.
-- `m_commandRegistrations` — only filled for `PRESSED`-status bindings,
-  used by `buildCommandListText()` for the debug help overlay.
-
-`CommandManager` does **not** poll. The input systems
-(`system_input_key_mouse`, `system_input_gamepad`, MIDI systems) look up
-matching commands each tick and invoke them directly.
-
-## Internal layout
-
-```
-engine/command/
-├── include/irreden/
-│   ├── ir_command.hpp            — public facade
-│   └── command/
-│       ├── ir_command_types.hpp  — CommandNames enum, InputTypes
-│       ├── command_manager.hpp
-│       └── command.hpp           — CommandStruct<T> specializations
-└── src/
-    ├── ir_command.cpp
-    └── command_manager.cpp
-```
-
-Per-command specializations live in
-`engine/prefabs/irreden/<domain>/commands/command_<name>.hpp`.
+`CommandManager` does **not** poll. The input systems look up matching
+commands each tick and invoke them directly.
 
 ## Gotchas
 

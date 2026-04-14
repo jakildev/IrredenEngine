@@ -27,9 +27,8 @@ functions:
 - **PBO readback infrastructure** — double-buffered Pixel Buffer Objects
   for async GPU → CPU frame copies. Priming skips the first few frames so
   the PBO ring is valid.
-- **Screenshot numbering** — `m_nextScreenshotIndex` is seeded by
-  scanning the output dir for existing files, so numbers don't collide
-  across runs.
+- **Screenshot numbering** — seeded by scanning the output dir for
+  existing files, so numbers don't collide across runs.
 - **Audio arming** — delegates to `IRAudio::Audio` (or an external
   `IAudioCaptureSource`) for the recording's soundtrack.
 - **Async finalize thread** — encoder shutdown runs off the main thread
@@ -67,23 +66,6 @@ the PATH-fix wrapper.
   `C_OutputResolution` — placeholder components tagging framebuffers
   that participate in capture.
 
-## Internal layout
-
-```
-engine/video/
-├── include/irreden/
-│   ├── ir_video.hpp              — public facade
-│   └── video/
-│       ├── ir_video_types.hpp
-│       ├── video_manager.hpp     — owns VideoRecorder + PBOs
-│       └── video_recorder.hpp    — FFmpeg state machine
-└── src/
-    ├── ir_video.cpp, video_manager.cpp, video_recorder.cpp
-    ├── video_backend.hpp         — CaptureFrameStatus + PBO API
-    ├── opengl/video_backend.cpp  — GL PBO impl
-    └── metal/video_backend.cpp   — Metal impl
-```
-
 ## Gotchas
 
 - **FFmpeg missing → silent.** `IR_VIDEO_HAS_FFMPEG=0` makes
@@ -91,9 +73,9 @@ engine/video/
   work".
 - **PBO priming.** First 2+ frames of a recording are dropped to fill the
   PBO ring. Starting/stopping rapidly truncates short clips.
-- **Finalize-thread races.** Don't call `toggleRecording()` while
-  `m_finalizeThread` is still joining — locks are there, but you can
-  still deadlock if the main thread is holding `m_recorderMutex`.
+- **Finalize-thread races.** Don't call `toggleRecording()` while the
+  finalize thread is still joining — locks are there, but you can still
+  deadlock if the main thread is holding the recorder mutex.
 - **Partial files on crash.** Writes are not atomic. A crash during
   encoding leaves a half-written mp4 that most players refuse to open.
 - **macOS mic permission.** On macOS, `IAudioCaptureSource` asks for

@@ -50,9 +50,14 @@ conditions, allocator behavior, hot-path costs.
    `gh pr list --state open --json number,title,headRefName,reviews`
    `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews`
    Print both results.
-4. Identify the candidates from both repos: PRs where the latest
-   review body contains `Opus recheck required` OR PRs touching
-   core engine/game invariants.
+4. Identify the candidates from both repos. A PR is a candidate if:
+   - The latest Sonnet review body contains `Opus recheck required`, OR
+   - The PR touches core engine/game invariants, OR
+   - The author pushed fixes and commented "re-review please" after
+     a previous Opus review (check comments after your last review).
+
+   Also re-review PRs where the human set `human:needs-fix`, the
+   author fixed and removed it, and the PR now needs a fresh pass.
 
 ## Loop behavior
 

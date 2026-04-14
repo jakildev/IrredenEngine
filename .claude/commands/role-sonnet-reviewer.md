@@ -43,11 +43,16 @@ treat it as a hard rule for this role.
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
    Print both results so we both see the current PR queues.
-4. List the PRs (from both repos) that have **no review yet from this
-   fleet** (filter out PRs whose `reviews` array contains a review by
-   your GitHub user) **and do not have the `fleet:wip` label**. PRs
-   labeled `fleet:wip` are work-in-progress claims — skip them until
-   the author removes the label. These are your candidates.
+4. Identify review candidates from both repos. A PR is a candidate if:
+   - It has **no fleet review yet** (no review from your GitHub user)
+     AND does not have the `fleet:wip` label, OR
+   - It **previously had a fleet review** but the author pushed fixes
+     and commented "re-review please" (check the comments array for
+     this text after your last review), OR
+   - It has a `human:needs-fix` label that was later removed (meaning
+     the author fixed the human's feedback) and needs a fresh pass.
+
+   Skip PRs labeled `fleet:wip` — those are work-in-progress claims.
 
 ## Loop behavior
 

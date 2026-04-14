@@ -17,11 +17,8 @@ Owns:
 
 - `GLFWwindow*` and the monitor list.
 - Fullscreen state.
-- Event queues populated by GLFW callbacks:
-  `m_keysPressedToProcess`, `m_keysReleasedToProcess`,
-  `m_mouseButtonsPressedToProcess`, `m_mouseButtonsReleasedToProcess`,
-  `m_scrollsToProcess`. `InputManager::tick()` drains these into button
-  state.
+- Event queues for keys, mouse buttons, and scroll that `InputManager` drains
+  each frame.
 
 Construction sets GLFW hints: OpenGL 4.6 core profile when
 `IR_GRAPHICS_OPENGL`, no API (`GLFW_NO_API`) for Metal/Vulkan builds.
@@ -35,17 +32,6 @@ Under HiDPI / scaling, the framebuffer is larger than the window. Use
 `getFramebufferSize()` when you need the actual render target dimensions
 and `getWindowSize()` when you need "logical" pixels. `RenderManager`
 calls `getFramebufferSize()` internally.
-
-## Internal layout
-
-```
-engine/window/
-├── include/irreden/
-│   ├── ir_window.hpp           — public facade
-│   └── window/
-│       └── ir_glfw_window.hpp  — IRGLFWWindow class
-└── src/                         — GLFW callback routing
-```
 
 ## Gotchas
 

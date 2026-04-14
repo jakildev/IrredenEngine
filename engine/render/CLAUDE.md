@@ -105,33 +105,6 @@ header when you add or rename a shader.
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
 
-## Internal layout
-
-```
-engine/render/
-├── include/irreden/
-│   ├── ir_render.hpp                — public facade
-│   └── render/
-│       ├── ir_render_types.hpp      — FrameData*, TrixelData, GlobalConstants
-│       ├── ir_render_enums.hpp      — TextureFormat, BufferTarget, ShaderType
-│       ├── render_manager.hpp
-│       ├── rendering_rm.hpp
-│       ├── renderer_impl.hpp        — abstract RenderImpl
-│       ├── render_device.hpp        — abstract RenderDevice
-│       ├── framebuffer.hpp, texture.hpp, buffer.hpp, shader.hpp, vao.hpp
-│       ├── shader_names.hpp         — shader file-path constants
-│       ├── opengl/                  — OpenGL impl headers
-│       ├── metal/                   — Metal impl headers
-│       └── gl_wrap/                 — GL debug tracing
-├── src/
-│   ├── ir_render.cpp, render_manager.cpp, rendering_rm.cpp, ...
-│   ├── shaders/                     — GLSL + metal/ equivalents
-│   ├── opengl/                      — OpenGL .cpp impl
-│   └── metal/                       — Metal .cpp impl
-├── data/                            — runtime data (palettes, etc.)
-└── third_party/                     — Metal C++ headers
-```
-
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like

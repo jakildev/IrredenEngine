@@ -6,16 +6,14 @@ in `update/`.
 
 ## Key components
 
-- `component_position_3d.hpp` — `C_Position3D`, local vec3.
-- `component_position_global_3d.hpp` — `C_PositionGlobal3D`, world-space
-  vec3. **Auto-added by `createEntity(...)`**.
-- `component_position_offset_3d.hpp` — `C_PositionOffset3D`, ephemeral
-  delta added on top of global. **Auto-added by `createEntity(...)`**.
-- `component_rotation.hpp` — Euler vec3.
-- `component_name.hpp` — debug/display string.
-- `component_player.hpp` — tag for player-controlled entities.
-- `component_selected.hpp` — tag for UI selection.
-- `component_tags_all.hpp` — enum registry of tag components.
+- `C_Position3D` — local vec3.
+- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**.
+- `C_PositionOffset3D` — ephemeral delta added on top of global.
+  **Auto-added by `createEntity(...)`**.
+- `C_Rotation` — Euler vec3.
+- `C_Name` — debug/display string.
+- `C_Player` — tag for player-controlled entities.
+- `C_Selected` — tag for UI selection.
 
 ## Systems
 

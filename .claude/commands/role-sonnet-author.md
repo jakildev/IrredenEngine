@@ -48,11 +48,27 @@ whatever directory the task touches before editing anything.
 Default: run continuously until the human stops you or you hit a usage
 limit. Each loop iteration:
 
-1. **Check for review comments on PRs you previously opened.** If any
-   have unaddressed comments, address them first: read the comments,
-   make the fixes, build, use `commit-and-push` to push the fix, then
-   `gh pr comment <N> --body "re-review please"`. Move to the next loop
-   iteration.
+1. **Check for feedback on PRs you previously opened.**
+   `gh pr list --state open --json number,title,labels`
+   Look for any of your PRs with `human:needs-fix`, `human:blocker`,
+   or `fleet:needs-fix` labels. Human feedback takes priority.
+
+   For each flagged PR:
+   a. Read **all** feedback (two separate commands):
+      `gh pr view <N> --comments`
+      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
+      The first gets conversation-level comments. The second gets
+      inline review comments on specific lines — this is where most
+      human feedback lives. Address every comment, not just the first.
+   b. Address each issue raised. Build and test.
+   c. Push fixes with `commit-and-push`.
+   d. Remove the feedback label and request re-review:
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker"`
+      `gh pr comment <N> --body "Fixed — re-review please"`
+   e. If the PR also had `fleet:approved`, `fleet:needs-fix`, or `fleet:blocker`,
+      remove those too — the reviewer will re-review the updated PR.
+
+   Address all flagged PRs before picking new work.
 
 2. **Pick the next task.** Read `TASKS.md` (use the Read tool) and find
    the first `[ ]` `[sonnet]`-tagged item in `## Open` whose:

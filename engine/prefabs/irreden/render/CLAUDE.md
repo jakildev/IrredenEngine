@@ -7,22 +7,20 @@ the ECS surface.
 
 ## Key components
 
-- `component_triangle_canvas_textures.hpp` — `C_TriangleCanvasTextures`.
-  Owns 3 GPU textures (color / distance / entity-id). **Created in
-  ctor, destroyed in `onDestroy()`.**
-- `component_trixel_canvas_render_behavior.hpp` —
-  `C_TrixelCanvasRenderBehavior`. Toggles: use camera pan/zoom, run
+- `C_TriangleCanvasTextures` — owns 3 GPU textures (color / distance /
+  entity-id). **Created in ctor, destroyed in `onDestroy()`.**
+- `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
-- `component_trixel_framebuffer.hpp` — `C_TrixelFramebuffer`. Wraps a
-  `Framebuffer` (color + depth). Also ctor-allocated, `onDestroy()`-freed.
-- `component_camera.hpp` — `C_Camera`, tag.
-- `component_camera_position_2d_iso.hpp` — iso-space position.
-- `component_zoom_level.hpp` — `C_ZoomLevel`, float zoom.
-- `component_text_segment.hpp` — UTF-8 string for text-to-trixel.
-- `component_text_style.hpp` — font, size, color.
-- `component_geometric_shape.hpp` — 2D overlay shape descriptor.
-- `component_frame_data_trixel_to_framebuffer.hpp` — per-frame UBO
-  (MVP, hover coord, distance offset).
+- `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
+  ctor-allocated, `onDestroy()`-freed.
+- `C_Camera` — tag.
+- `C_CameraPosition2DIso` — iso-space position.
+- `C_ZoomLevel` — float zoom.
+- `C_TextSegment` — UTF-8 string for text-to-trixel.
+- `C_TextStyle` — font, size, color.
+- `C_GeometricShape` — 2D overlay shape descriptor.
+- `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
+  distance offset).
 
 ## Key systems (all RENDER pipeline)
 
@@ -37,27 +35,6 @@ the ECS surface.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
-
-## Commands
-
-- `command_zoom_in.hpp`, `command_zoom_out.hpp`.
-- `command_background_zoom_in.hpp`, `command_background_zoom_out.hpp`.
-- `command_gui_zoom.hpp`.
-- `command_move_camera.hpp`.
-- `command_set_trixel_color.hpp`.
-- `command_toggle_culling_freeze.hpp`.
-- `command_toggle_gui.hpp`.
-
-## Entity builders
-
-- `entity_trixel_canvas.hpp` — bundles `C_SizeTriangles` +
-  `C_TriangleCanvasTextures` + `C_Name` and parents to the main
-  framebuffer by default.
-- `entity_framebuffer.hpp` — creates a framebuffer entity.
-- `entity_voxel_pool_canvas.hpp` — canvas that *also* has a
-  `C_VoxelPool` (the common case).
-- `entity_camera.hpp` — bundles `C_Camera`, `C_Position2DIso`,
-  `C_Velocity2DIso`, `C_ZoomLevel`.
 
 ## Gotchas
 
