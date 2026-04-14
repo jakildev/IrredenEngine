@@ -727,69 +727,39 @@ enforces this, but a human reviewer should know too.
 The whole point of a fleet is that author and reviewer agents can have
 a back-and-forth while you're AFK. That requires the reviewer agent to
 keep checking for new PRs on its own, not wait for you to type "review
-PR 42" each time. Here are three ways to run it, from simplest to most
-robust. Pick one per reviewer window.
+PR 42" each time.
 
-**Option A — session-prompt loop (simplest, what the dry run uses).**
-Launch the reviewer window's Claude Code session with a prompt that
-tells the agent it is a persistent reviewer and to poll on an interval.
-Something like:
-
-```text
-You are a persistent PR reviewer for the Irreden Engine fleet. Your job
-is to review open PRs on github.com/jakildev/IrredenEngine that have
-not yet been reviewed by this fleet.
-
-Every 10 minutes:
-
-1. Run `gh pr list --state open --json number,title,headRefName,reviews`
-   and filter for PRs where `reviews` does not already contain a review
-   authored by this reviewer (check the author login — yours is
-   `<github username>`).
-2. For each unreviewed PR, invoke the `review-pr` skill with that PR
-   number. The skill will `gh pr checkout`, read the diff in context,
-   write a structured review, and post it.
-3. After reviewing everything new, wait 10 minutes and check again.
-4. If you hit a usage-limit error, print the error, wait until the
-   stated reset time, and resume.
-5. Keep doing this until I return and stop you. Do not open new PRs,
-   do not commit from this worktree, do not merge anything.
-
-Start by listing what's currently open so I know what you see.
-```
-
-The `review-pr` skill's trigger phrases already cover the loop case
-(`"review any new PRs"` / `"review the PR queue"`), so the agent will
-naturally engage it from inside this loop without a magic phrase.
-
-Drawbacks: dies when the tmux window dies, dies when Claude Code
-hits an unrecoverable error, dies when you `C-c` out. Fine for "I'm
-stepping away for a few hours," not great for "I'm asleep for eight
-hours."
-
-**Option B — `loop` skill on top of option A.** The built-in `loop`
-skill (`/loop 10m <prompt-or-slash-command>`) re-runs a prompt on an
-interval inside the same session. You can use it to schedule a short
-poll prompt every N minutes instead of having the agent manage its own
-sleep:
+**Primary approach — `/loop` via `fleet-babysit` (what the fleet uses).**
+`fleet-up` launches each reviewer with `fleet-babysit` and a loop
+interval. In live mode, `fleet-babysit` wraps the role invocation in
+Claude's built-in `/loop` skill:
 
 ```text
-/loop 10m Run `gh pr list --state open --json number,title,reviews` and
-invoke the `review-pr` skill on any PR that hasn't been reviewed by
-this fleet yet. Report what you did.
+# What fleet-babysit runs under the hood:
+claude --model sonnet "/loop 10m /role-sonnet-reviewer"
+claude --model opus  "/loop 30m /role-opus-reviewer"
 ```
 
-Still dies with the session, but the loop driver is tighter than an
-agent running its own `while` logic and is easier to pause (`/loop
-stop`) when you come back.
+Each `/loop` fire re-invokes the full role — the agent fetches PR
+lists, reviews candidates, and exits cleanly. The `/loop` driver
+handles the interval between fires. `fleet-babysit` handles crash
+recovery and rate-limit backoff around the outer session.
 
-**Option C — `scheduled-tasks` / `schedule` skill (most robust).** For
+Benefits over the old self-managed sleep and tmux-timer approaches:
+- Consistent scheduling across all polling agents
+- Claude-runtime-managed intervals (survives session compaction)
+- Built-in rate-limit awareness
+- Easy to pause (`/loop stop`) when you come back
+
+The queue-manager uses the same pattern at a 15-minute interval.
+
+**Alternative — `scheduled-tasks` / `schedule` skill (most robust).** For
 "keep running even if every tmux session is dead and my laptop slept,"
 create a scheduled remote trigger that fires every 15 minutes and
-re-runs a small review-new-PRs prompt. Unlike options A and B, this
-runs independently of any running Claude Code window — it spawns a
-fresh Claude run on each fire. Downside: each fire has no memory of
-the previous fire, so the agent has to re-derive "what have I already
+re-runs a small review-new-PRs prompt. Unlike `/loop`, this runs
+independently of any running Claude Code window — it spawns a fresh
+Claude run on each fire. Downside: each fire has no memory of the
+previous fire, so the agent has to re-derive "what have I already
 reviewed" from the GitHub state every time (cheap, but not free).
 
 Use the `schedule` skill to create it:
@@ -802,8 +772,8 @@ and for every PR that does not yet have a review authored by
 exit."
 ```
 
-Layer this on top of option A or B if you want redundancy: the tmux
-reviewer window handles the common case with low latency; the
+Layer this on top of the `/loop` approach if you want redundancy: the
+tmux reviewer window handles the common case with low latency; the
 scheduled task is the safety net that catches everything if the tmux
 window dies.
 
@@ -813,21 +783,20 @@ The Opus/Sonnet model split (see root `CLAUDE.md`) wants most first-
 pass reviews to be Sonnet and only have Opus look at core-engine PRs
 or Sonnet-escalated ones. In the reviewer-loop pattern that means:
 
-- `sonnet-rev` window polls every 10 minutes, reviews **every** open
+- `sonnet-reviewer` uses `/loop 10m`, reviews **every** open
   unreviewed PR at Sonnet cost, and writes a verdict. If the PR
   touches `engine/render/`, `engine/entity/`, `engine/system/`,
   `engine/world/`, `engine/audio/`, `engine/video/`, or
   `engine/math/`, or the Sonnet verdict ends with an Opus-escalation
   line, the review body explicitly says "please Opus-recheck."
-- `opus-rev` window polls on a **longer** interval (e.g. 30 minutes)
-  and filters for PRs whose latest Sonnet review asked for an Opus
-  recheck. It reads the Sonnet review first, then focuses on what
-  Sonnet couldn't confirm — concurrency, lifetime, ECS invariants
-  three systems deep.
+- `opus-reviewer` uses `/loop 30m` and filters for PRs whose latest
+  Sonnet review asked for an Opus recheck. It reads the Sonnet review
+  first, then focuses on what Sonnet couldn't confirm — concurrency,
+  lifetime, ECS invariants three systems deep.
 
 This keeps most reviews on Sonnet (cheap) while guaranteeing core
 invariants still get an Opus pass. When Opus budget is tight, you
-can safely disable the `opus-rev` loop for a while — the
+can safely disable the `opus-reviewer` loop for a while — the
 escalation notes accumulate in the PR comments and you can come back
 and drain them manually or by enabling the loop again.
 
@@ -1421,18 +1390,20 @@ If a window keeps hitting the cap even after the stated reset time:
 
 ### When a window dies entirely
 
-If a tmux window's Claude process exits hard (not just stalls on a
-usage error):
+Each agent is wrapped in `fleet-babysit`, which auto-resumes the
+session on crash, usage limit, or clean exit. Crash diagnostics are
+logged to `~/.fleet/logs/<role>.log`. If an agent hits the 200-attempt
+safety limit, an alert file is written to `~/.fleet/logs/<role>.alert`.
 
-1. Check the JSONL transcript at
+If you need to investigate a crash manually:
+
+1. Check `~/.fleet/logs/<role>.log` for exit codes and timestamps.
+2. Check the JSONL transcript at
    `~/.claude/projects/<slug>/<session>.jsonl` — it should still be
    there.
-2. Start a new `claude` in the same worktree, pass `--resume <session-id>`,
+3. Start a new `claude` in the same worktree, pass `--resume <session-id>`,
    and you land back in the same conversation with the same context
    window.
-3. If the session-id is lost, `claude` in that worktree with no flags
-   still picks up the latest session for that project in most Claude
-   Code versions.
 
 No work is ever lost as long as `commit-and-push` was run at the last
 logical boundary. That's the whole reason the skill exists.

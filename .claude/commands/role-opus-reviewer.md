@@ -69,8 +69,8 @@ conditions, allocator behavior, hot-path costs.
 
 ## Loop behavior
 
-Default: run continuously, but on a **longer interval (30 minutes)**
-than the Sonnet reviewer. Each iteration:
+The `/loop` driver re-invokes this role every 30 minutes in live mode.
+Each invocation is one iteration — do the work, then exit cleanly:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
@@ -111,9 +111,10 @@ than the Sonnet reviewer. Each iteration:
      synchronization, performance regressions, or unsafe API use.
    - Opus budget is expensive. Don't spend it requesting a second
      round-trip over a renamed variable. When in doubt, approve.
-3. After the queue is drained, wait 30 minutes, then loop.
-4. If you hit a usage-limit error: print the error and reset time,
-   wait, resume.
+3. After the queue is drained, exit cleanly. The `/loop` driver
+   re-invokes this role in 30 minutes.
+4. If you hit a usage-limit error: print the error and exit. The
+   `/loop` driver and `fleet-babysit` wrapper handle backoff.
 
 If Mode above is `dry-run`: review exactly **one** flagged PR
 end-to-end, then stop and wait for human instruction. Do not loop.

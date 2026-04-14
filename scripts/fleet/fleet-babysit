@@ -7,12 +7,16 @@
 # which repo/session context claude uses.
 #
 # Usage:
-#   fleet-babysit <model> <role> [mode]
+#   fleet-babysit <model> <role> [mode] [loop-interval]
 #
 # Examples:
 #   fleet-babysit sonnet sonnet-author dry-run
-#   fleet-babysit opus  opus-architect live
-#   fleet-babysit sonnet game-sonnet live    # game worktree cwd
+#   fleet-babysit sonnet sonnet-author live          # continuous, no /loop
+#   fleet-babysit sonnet sonnet-reviewer live 10m    # /loop every 10 min
+#   fleet-babysit opus  opus-reviewer live 30m       # /loop every 30 min
+#   fleet-babysit sonnet queue-manager live 15m      # /loop every 15 min
+#   fleet-babysit opus  opus-architect live           # on-demand, no /loop
+#   fleet-babysit sonnet game-sonnet live             # game worktree cwd
 #
 # Behavior by mode:
 #   dry-run  — start the agent, auto-resume on crash, but do NOT
@@ -29,9 +33,10 @@
 
 set -euo pipefail
 
-MODEL="${1:?usage: fleet-babysit <model> <role> [mode]}"
-ROLE="${2:?usage: fleet-babysit <model> <role> [mode]}"
+MODEL="${1:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
+ROLE="${2:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 MODE="${3:-dry-run}"
+LOOP_INTERVAL="${4:-}"
 
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
@@ -39,22 +44,52 @@ LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY=60        # seconds to wait after clean exit
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
 
+# Logging
+LOG_DIR="${FLEET_LOG_DIR:-$HOME/.fleet/logs}"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/$ROLE.log"
+
 attempt=0
 
-log() { echo "[babysit $(date +%H:%M:%S)] $ROLE: $*"; }
+log() {
+    local msg="[babysit $(date '+%Y-%m-%d %H:%M:%S')] $ROLE: $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
 
-log "starting ($MODEL) mode=$MODE in $(pwd)"
+# Rotate log if it grows too large (keep last 1000 lines at 5000)
+rotate_log() {
+    if [[ -f "$LOG_FILE" ]] && [[ $(wc -l < "$LOG_FILE") -gt 5000 ]]; then
+        tail -1000 "$LOG_FILE" > "$LOG_FILE.tmp"
+        mv "$LOG_FILE.tmp" "$LOG_FILE"
+        log "log rotated (kept last 1000 lines)"
+    fi
+}
+
+log "starting ($MODEL) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
 
 # --- First run: send the role slash command --------------------------------
-claude --model "$MODEL" "/role-$ROLE $MODE"
+# If a loop interval is set and mode is live, wrap the role invocation in
+# /loop so Claude's runtime handles the scheduling (replaces sleep-based
+# polling and external tmux timers).
+if [[ -n "$LOOP_INTERVAL" && "$MODE" == "live" ]]; then
+    log "using /loop $LOOP_INTERVAL for scheduling"
+    claude --model "$MODEL" "/loop $LOOP_INTERVAL /role-$ROLE"
+else
+    claude --model "$MODEL" "/role-$ROLE $MODE"
+fi
 last_exit=$?
 
 # --- Resume loop -----------------------------------------------------------
 while true; do
     attempt=$((attempt + 1))
 
+    rotate_log
+
     if [[ $attempt -ge $MAX_ATTEMPTS ]]; then
-        log "safety limit reached ($MAX_ATTEMPTS attempts). stopping."
+        log "ALERT: safety limit reached ($MAX_ATTEMPTS attempts). stopping."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $ROLE hit $MAX_ATTEMPTS attempts. Manual intervention needed." \
+            > "$LOG_DIR/$ROLE.alert"
         break
     fi
 
@@ -68,16 +103,19 @@ while true; do
     # Pick a wait time based on exit code
     case $last_exit in
         0)
-            log "exited cleanly. resuming in ${CLEAN_DELAY}s..."
+            log "exit_code=0 attempt=$attempt (clean)"
+            log "resuming in ${CLEAN_DELAY}s..."
             sleep "$CLEAN_DELAY"
             ;;
         2)
             # Exit code 2 often indicates usage limit
-            log "possible usage limit (exit 2). waiting ${LIMIT_DELAY}s..."
+            log "exit_code=2 attempt=$attempt (suspected usage limit)"
+            log "waiting ${LIMIT_DELAY}s..."
             sleep "$LIMIT_DELAY"
             ;;
         *)
-            log "exited with code $last_exit. resuming in ${CRASH_DELAY}s..."
+            log "exit_code=$last_exit attempt=$attempt (crash)"
+            log "resuming in ${CRASH_DELAY}s..."
             sleep "$CRASH_DELAY"
             ;;
     esac

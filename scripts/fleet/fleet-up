@@ -264,10 +264,17 @@ MODE="${1:-dry-run}"
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
+    # $3 = loop interval (optional — for polling roles like reviewers/queue-mgr)
     local model="$1"
     local role="$2"
-    printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
-        "$model" "$role" "$MODE"
+    local loop="${3:-}"
+    if [[ -n "$loop" ]]; then
+        printf 'fleet-babysit %s %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE" "$loop"
+    else
+        printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE"
+    fi
 }
 
 # Single window, three rows:
@@ -304,19 +311,19 @@ label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 # full window height at this point — 25% bottom, 75% top.
 tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer)"
+    "$(launch_cmd sonnet sonnet-reviewer 10m)"
 BOT1=$(active_pane_id)
 label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
 tmux split-window -h -t "$BOT1" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer)"
+    "$(launch_cmd opus opus-reviewer 30m)"
 BOT2=$(active_pane_id)
 label_pane_id "$BOT2" "opus-reviewer [opus]"
 
 tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager)"
+    "$(launch_cmd sonnet queue-manager 15m)"
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
@@ -361,30 +368,6 @@ tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 # Focus sonnet-fleet-1 on attach
 tmux select-pane -t "$TOP1"
 
-# ----------------------------------------------------------------------
-# Step 5: start the queue-manager maintenance timer
-# ----------------------------------------------------------------------
-#
-# Claude Code agents can't self-loop — they process input, respond,
-# then wait. This background loop sends "run maintenance" to the
-# queue-manager pane every 15 minutes, triggering the maintenance pass.
-# The loop exits automatically when the tmux session is killed.
-#
-# In dry-run mode, skip the timer (queue-manager does one pass and
-# stops; the human triggers subsequent runs manually).
-
-if [[ "$MODE" != "dry-run" ]]; then
-    (
-        sleep 120  # let agents finish startup before first trigger
-        while tmux has-session -t "$SESSION" 2>/dev/null; do
-            tmux send-keys -t "$BOT3" "run maintenance" Enter 2>/dev/null || true
-            sleep 900  # 15 minutes
-        done
-    ) &
-    TIMER_PID=$!
-    echo "fleet-up: maintenance timer started (PID $TIMER_PID, every 15 min)"
-fi
-
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
@@ -408,6 +391,12 @@ babysit: each agent is wrapped in fleet-babysit, which auto-resumes
 the session if claude exits (crash, usage limit, network drop).
   dry-run — auto-resumes on crash, stops on clean exit
   live    — auto-resumes on any exit (runs indefinitely)
+
+scheduling (live mode): polling roles use Claude's /loop for managed intervals:
+  sonnet-reviewer — /loop 10m    opus-reviewer — /loop 30m
+  queue-manager   — /loop 15m    authors — continuous (no /loop)
+
+logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 
 other modes you can pass to fleet-up:
   fleet-up dry-run   # default — startup + stand-by
