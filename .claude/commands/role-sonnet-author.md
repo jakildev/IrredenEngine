@@ -76,9 +76,11 @@ limit. Each loop iteration:
       - If it was `fleet:needs-fix` → no response label needed
         (fleet reviewer will re-review automatically on next poll)
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
-   f. If the PR also had `fleet:approved`, `fleet:needs-fix`, or
-      `fleet:blocker`, remove those too — the reviewer will re-review
-      the updated PR.
+   f. Remove stale fleet review labels (`fleet:needs-fix`,
+      `fleet:blocker`) if present — but **keep `fleet:approved`**.
+      The fleet's approval is still valid; human tweaks don't
+      invalidate it. The reviewer will re-review only if the stale
+      labels triggered it.
    g. Move to the next loop iteration.
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
