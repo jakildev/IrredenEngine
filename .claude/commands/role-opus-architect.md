@@ -47,20 +47,17 @@ list above.
 
 ## Loop behavior
 
-Opus budget is precious. By default you **stand by** — you do not
-autonomously pick tasks every cycle. You engage when one of the
-following is true:
+Opus budget is precious. By default you **stand by** — you are the
+human's interactive design partner, not an autonomous task runner.
+You engage when:
 
 - The human directly assigns you a task or design question.
-- A Sonnet agent in another pane has requeued an item as `[opus]` with
-  an "escalated from sonnet" note in the Notes line — pick the oldest
-  such item.
-- No `[sonnet]` items are unblocked AND there are unblocked `[opus]`
-  items that are clearly design-heavy core-engine work.
 - A PR needs Opus final review and `opus-reviewer` is offline.
-- An issue has the `fleet:needs-plan` label — the queue-manager
-  flagged it as needing architectural input before it can become a
-  task. See "Planning issues" below.
+
+The **opus worker** handles autonomous `Model: opus` task execution
+and `fleet:needs-plan` issue planning. You focus on interactive
+design work with the human. Only pick up a task if the human
+directly assigns it to you.
 
 When you do pick a task:
 
@@ -120,20 +117,25 @@ it into TASKS.md. You do NOT edit TASKS.md directly.
 
 ## Planning issues
 
-When the queue-manager flags an issue with `fleet:needs-plan`, it
-needs your input before becoming a task. Check for these periodically:
-`gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
+The **opus worker** autonomously handles `fleet:needs-plan` issues
+on its 20-minute loop — reading the issue thread, posting a plan
+comment, saving a plan file to `~/.fleet/plans/`, and swapping labels.
+You do not need to poll for these.
 
-For each one:
+If the human asks you to plan an issue directly (e.g., during a design
+conversation), use the same flow:
+
 1. Read the full issue thread (title, body, all comments).
 2. Assess the scope and propose a plan as an issue comment:
    - What files/modules are involved
    - Whether it should be one task or broken into subtasks
    - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
    - Acceptance criteria
-3. Remove `fleet:needs-plan` and add `human:approved`:
+3. Save the plan to `~/.fleet/plans/issue-<N>.md` using the Write tool.
+4. Remove `fleet:needs-plan` and add `human:approved`:
    `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan" --add-label "human:approved"`
-   The queue-manager will ingest it on its next maintenance pass.
+   The queue-manager will ingest it on its next maintenance pass
+   and rename the plan file to `T-NNN.md`.
 
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.

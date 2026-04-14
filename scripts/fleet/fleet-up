@@ -62,6 +62,7 @@ ensure_worktree() {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker       fleet/opus-worker
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
@@ -107,6 +108,7 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker"     claude/opus-worker-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
@@ -211,7 +213,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
@@ -238,15 +240,17 @@ else
     echo "          (run scripts/fleet/install.sh to install it)"
 fi
 
+# Ensure the plans directory exists for opus-worker and architect to write to.
+mkdir -p "$HOME/.fleet/plans"
+
 # ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: 4 named windows instead of one mega-window.
-#   1:authors  — sonnet-fleet-1, sonnet-fleet-2, game-sonnet
-#   2:review   — sonnet-reviewer, opus-reviewer
-#   3:arch     — opus-architect, game-architect
-#   4:ops      — queue-manager
+# Layout: single window with three rows.
+#   top    — sonnet-fleet-1, sonnet-fleet-2, game-sonnet  (authors)
+#   middle — opus-architect, opus-worker, game-architect  (architects + worker)
+#   bottom — sonnet-reviewer, opus-reviewer, queue-manager (ops)
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -327,23 +331,29 @@ tmux split-window -h -t "$BOT2" \
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
-# --- Row 2 (middle, ~30%): architects ----------------------------------
+# --- Row 2 (middle, ~30%): architects + opus-worker --------------------
 # Split off the middle row from TOP1. TOP1 is currently 75% of the
 # window. Splitting 40% off the bottom of that gives:
 #   TOP1 = 75% * 60% = ~45% of window  (authors)
-#   MID1 = 75% * 40% = ~30% of window  (architects)
+#   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
 tmux split-window -v -t "$TOP1" -p 40 \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
 MID1=$(active_pane_id)
 label_pane_id "$MID1" "opus-architect [opus]"
 
+tmux split-window -h -t "$MID1" \
+    -c "$ENGINE/.claude/worktrees/opus-worker" \
+    "$(launch_cmd opus opus-worker 20m)"
+MID2=$(active_pane_id)
+label_pane_id "$MID2" "opus-worker [opus]"
+
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$MID1" \
+    tmux split-window -h -t "$MID2" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd opus game-architect)"
-    MID2=$(active_pane_id)
-    label_pane_id "$MID2" "game-architect [opus]"
+    MID3=$(active_pane_id)
+    label_pane_id "$MID3" "game-architect [opus]"
 fi
 
 # --- Expand Row 1 (top) with remaining authors -------------------------
@@ -375,7 +385,7 @@ attach with:  tmux attach -t ${SESSION}
 
 layout (single window, three rows):
   top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
-  middle (med) — opus-architect  [game-architect]                (architects)
+  middle (med) — opus-architect  opus-worker  [game-architect]   (architects + worker)
   bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
 
 navigation (no prefix needed):
@@ -394,7 +404,9 @@ the session if claude exits (crash, usage limit, network drop).
 
 scheduling (live mode): polling roles use Claude's /loop for managed intervals:
   sonnet-reviewer — /loop 10m    opus-reviewer — /loop 30m
-  queue-manager   — /loop 15m    authors — continuous (no /loop)
+  opus-worker     — /loop 20m   queue-manager  — /loop 15m
+  authors — continuous (no /loop)
+  opus-architect — interactive (no /loop, human's design partner)
 
 logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 

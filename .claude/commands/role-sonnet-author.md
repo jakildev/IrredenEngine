@@ -131,17 +131,28 @@ limit. Each loop iteration:
    Reference the task title in the PR title so the queue-manager can
    match it.
 
-4. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
+4. **Read the plan file (if it exists).** Check
+   `~/.fleet/plans/<task-ID>.md` (e.g. `~/.fleet/plans/T-003.md`).
+   If it exists, read it with the Read tool — it contains the
+   implementation approach, affected files, and gotchas. Use it to
+   guide your work. If `T-NNN.md` doesn't exist but the task has an
+   `Issue: #N` field, also check `~/.fleet/plans/issue-<N>.md` — the
+   plan may not have been renamed yet by the queue-manager. If no
+   plan file exists at either path, proceed with the task description
+   from TASKS.md and read the issue thread for additional context:
+   `gh issue view <N> --repo jakildev/IrredenEngine`
+
+5. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
    rule, early returns, `unique_ptr` over `shared_ptr`, and the rest of
    the engine style guide.
 
-5. **Build and run.**
+6. **Build and run.**
    `fleet-build --target <name>`
    If the touched code has an executable target, run it once. Untested
    commits are the single biggest waste of reviewer-agent time.
 
-6. **Stop and escalate if the task is subtler than expected.** If the
+7. **Stop and escalate if the task is subtler than expected.** If the
    work touches:
    - Core ECS types (`engine/entity/`)
    - Render pipeline state, GPU buffer lifetime, shader compilation
@@ -157,18 +168,18 @@ limit. Each loop iteration:
    ready. The queue-manager then adds it to TASKS.md. Move on to the
    next task.
 
-7. **Finalize the PR.** Use the `commit-and-push` skill to push your
+8. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
    and release the claim:
    `gh pr edit <N> --remove-label "fleet:wip"`
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-8. **Reset.** Use the `start-next-task` skill to land on a fresh branch
+9. **Reset.** Use the `start-next-task` skill to land on a fresh branch
    off `origin/master`. Loop back to step 1.
 
 If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
-1-7), print the PR URL, then stop and wait for human instruction. Do
+1-8), print the PR URL, then stop and wait for human instruction. Do
 not loop.
 
 ## Usage-limit handling

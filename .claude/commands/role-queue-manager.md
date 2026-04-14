@@ -222,10 +222,14 @@ You are the sole TASKS.md editor. Each maintenance pass:
    b. Append a properly formatted entry to `## Open` in `TASKS.md`.
       Include `**Issue:** #N` in the entry. Synthesize acceptance
       criteria from the full issue thread, not just the title.
-   c. Remove the `human:approved` label (so the issue isn't
+   c. If `~/.fleet/plans/issue-<N>.md` exists (the opus worker or
+      architect wrote a plan for this issue), rename it to match the
+      assigned task ID:
+      `mv ~/.fleet/plans/issue-<N>.md ~/.fleet/plans/T-<NNN>.md`
+   d. Remove the `human:approved` label (so the issue isn't
       re-ingested):
       `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
-   d. Do **NOT** close the issue. It stays open until the author
+   e. Do **NOT** close the issue. It stays open until the author
       agent's PR merges via `Closes #N`.
 
    **If the issue needs a plan first** — the scope is large, the
@@ -261,6 +265,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
    For each recently merged PR whose title or branch matches an
    `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
    `[x]`, add the PR URL to **Links**, move to `## Done — last 20`.
+   If `~/.fleet/plans/<task-ID>.md` exists for the completed task,
+   delete it — the plan has served its purpose:
+   `rm -f ~/.fleet/plans/<task-ID>.md`
 
 4. **Sync open PRs → In-progress (both repos):**
    Engine:
