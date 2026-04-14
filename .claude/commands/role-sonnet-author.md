@@ -63,9 +63,9 @@ limit. Each loop iteration:
    b. Address each issue raised. Build and test.
    c. Push fixes with `commit-and-push`.
    d. Remove the feedback label and request re-review:
-      `gh pr edit <N> --remove-label "human:needs-fix"`
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker"`
       `gh pr comment <N> --body "Fixed — re-review please"`
-   e. If the PR also had `fleet:approved` or `fleet:needs-fix`,
+   e. If the PR also had `fleet:approved`, `fleet:needs-fix`, or `fleet:blocker`,
       remove those too — the reviewer will re-review the updated PR.
 
    Address all flagged PRs before picking new work.
