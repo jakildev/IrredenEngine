@@ -33,9 +33,9 @@ strings work. In `IR_RELEASE` mode every log macro is an empty statement
 IR_ASSERT(cond, "formatted message {}", value);
 ```
 
-On failure: logs a critical message via the GL API logger and throws
+On failure: logs via the GL API logger at `critical` severity and throws
 `std::runtime_error`. In `IR_RELEASE` the macro expands to nothing —
-both the condition and the message arguments are not evaluated.
+the condition is **not evaluated** at all, not merely silenced.
 
 ## Profiling macros
 
@@ -54,13 +54,13 @@ creation's startup if you want profiling off by default.
 
 ```
 engine/profile/
-├── include/irreden/
-│   ├── ir_profile.hpp         — public facade (macros + free-function decls)
-│   └── profile/
-│       ├── ir_profile.tpp     — template impls for log and assert functions
-│       ├── logger_spd.hpp     — spdlog singleton (engine/gl/game sinks)
-│       └── cpu_profiler.hpp   — easy_profiler singleton
-└── src/                       — singleton implementations
+└── include/irreden/
+    ├── ir_profile.hpp             — public macros
+    └── profile/
+        ├── ir_profile.tpp         — template impls for log macros
+        ├── ir_profile_types.hpp   — shared type helpers
+        ├── logger_spd.hpp         — spdlog singleton (engine/gl/game sinks)
+        └── cpu_profiler.hpp       — easy_profiler singleton
 ```
 
 ## Gotchas

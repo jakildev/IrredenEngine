@@ -8,6 +8,14 @@ WSL2 Ubuntu or macOS).
 
 Mode (optional argument): $ARGUMENTS
 
+## CRITICAL: single-command Bash calls only
+
+Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
+`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
+tool instead of `grep` or `rg`. Use the **Glob** tool instead of
+`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
+this blocks unattended operation with interactive prompts.
+
 ## Role
 
 You are the **task intake** for the fleet. The human (or an idle agent)
@@ -35,7 +43,10 @@ use `cat` — use the Read tool for files.
      4a. `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName`
    - If the Read fails (file not found) → skip 4a. No game repo on this machine.
 5. `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
-6. Print `queue-manager standing by — paste a task description and I will
+6. Print a **one-line queue summary** followed by the standing-by message.
+   Format: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
+   Count from both engine and game TASKS.md (if present). Then print:
+   `queue-manager standing by — paste a task description and I will
    categorize and file it`.
 
 ## Loop behavior
@@ -198,8 +209,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
    - `git push origin HEAD:master`
    If push rejected, `git pull --rebase origin master` then retry.
 
-7. Print a one-line summary: how many issues ingested, tasks flipped,
-   claims cleaned.
+7. Print the maintenance summary AND the queue summary on two lines:
+   `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
+   `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
 
 ## Hard rules
 

@@ -30,6 +30,7 @@ class World {
     void gameLoop();
     void setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings);
     void runScript(const char *fileName);
+    void enableFrameTiming(bool enabled);
 
     // void setPlayer(const IREntity::EntityId& player);
     // void setCameraPosition3D(const vec3& position);
@@ -49,6 +50,12 @@ class World {
     bool m_waitForFirstUpdateInput = false;
     bool m_startRecordingOnFirstInput = false;
     bool m_hasHandledFirstInput = false;
+
+    // Agent-readable profiling: frame timing accumulation
+    bool m_frameTimingEnabled = false;
+    std::vector<float> m_frameTimesMs;
+    uint32_t m_frameTotalUpdateTicks = 0;
+    uint32_t m_frameMaxUpdateTicksPerFrame = 0;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;
@@ -65,6 +72,7 @@ class World {
     void start();
     void end();
     void render();
+    void buildAndWriteProfileReport();
 };
 
 } // namespace IREngine

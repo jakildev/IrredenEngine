@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# fleet-babysit — auto-resume wrapper for fleet Claude Code agents.
+#
+# Runs claude interactively with a role slash command, then auto-resumes
+# the session if claude exits (usage limit, crash, network drop, etc.).
+# Works identically for engine and game worktrees — the cwd determines
+# which repo/session context claude uses.
+#
+# Usage:
+#   fleet-babysit <model> <role> [mode]
+#
+# Examples:
+#   fleet-babysit sonnet sonnet-author dry-run
+#   fleet-babysit opus  opus-architect live
+#   fleet-babysit sonnet game-sonnet live    # game worktree cwd
+#
+# Behavior by mode:
+#   dry-run  — start the agent, auto-resume on crash, but do NOT
+#              auto-resume on clean exit (exit 0). The human decides
+#              when to promote to live.
+#   live     — auto-resume on any exit. Keeps the agent running
+#              indefinitely until the fleet session is killed.
+#
+# On resume, sends "resume your work from where you left off" so the
+# agent auto-continues without human intervention.
+#
+# Source of truth: scripts/fleet/fleet-babysit in the engine repo.
+# Installed to ~/bin/fleet-babysit by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+MODEL="${1:?usage: fleet-babysit <model> <role> [mode]}"
+ROLE="${2:?usage: fleet-babysit <model> <role> [mode]}"
+MODE="${3:-dry-run}"
+
+# Timing
+CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
+LIMIT_DELAY=300       # seconds to wait on suspected usage limit (exit 2)
+CLEAN_DELAY=60        # seconds to wait after clean exit
+MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
+
+attempt=0
+
+log() { echo "[babysit $(date +%H:%M:%S)] $ROLE: $*"; }
+
+log "starting ($MODEL) mode=$MODE in $(pwd)"
+
+# --- First run: send the role slash command --------------------------------
+claude --model "$MODEL" "/role-$ROLE $MODE"
+last_exit=$?
+
+# --- Resume loop -----------------------------------------------------------
+while true; do
+    attempt=$((attempt + 1))
+
+    if [[ $attempt -ge $MAX_ATTEMPTS ]]; then
+        log "safety limit reached ($MAX_ATTEMPTS attempts). stopping."
+        break
+    fi
+
+    # In dry-run mode, don't auto-resume on clean exit — the agent
+    # completed its one-shot task and the human should review.
+    if [[ "$MODE" == "dry-run" && $last_exit -eq 0 ]]; then
+        log "clean exit in dry-run mode. standing by (type 'claude --continue' to resume manually)."
+        break
+    fi
+
+    # Pick a wait time based on exit code
+    case $last_exit in
+        0)
+            log "exited cleanly. resuming in ${CLEAN_DELAY}s..."
+            sleep "$CLEAN_DELAY"
+            ;;
+        2)
+            # Exit code 2 often indicates usage limit
+            log "possible usage limit (exit 2). waiting ${LIMIT_DELAY}s..."
+            sleep "$LIMIT_DELAY"
+            ;;
+        *)
+            log "exited with code $last_exit. resuming in ${CRASH_DELAY}s..."
+            sleep "$CRASH_DELAY"
+            ;;
+    esac
+
+    log "resuming session (attempt $attempt)..."
+    claude --model "$MODEL" --continue "resume your work from where you left off"
+    last_exit=$?
+done

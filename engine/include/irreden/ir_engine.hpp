@@ -53,6 +53,10 @@ inline void runScript(const char *scriptFileName) {
     g_world->runScript(resolveScriptPath(scriptFileName).c_str());
 }
 
+inline void enableFrameTiming(bool enabled) {
+    getWorld().enableFrameTiming(enabled);
+}
+
 inline void gameLoop() {
     getWorld().gameLoop();
 }

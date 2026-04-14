@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# fleet-build — cmake --build wrapper with auto-parallelism.
+#
+# Removes the need for agents to embed $(nproc) or $(sysctl -n hw.ncpu)
+# in their Bash calls, which triggers Claude Code's command_substitution
+# security gate and blocks unattended operation.
+#
+# Usage:
+#   fleet-build --target IRShapeDebug
+#   fleet-build --target IRCreationDefault
+#   fleet-build --target IrredenEngineTest -- -j4   # override parallelism
+#
+# All arguments are forwarded to `cmake --build`. If no -j flag is
+# provided, one is injected automatically using the detected CPU count.
+#
+# Source of truth: scripts/fleet/fleet-build in the engine repo.
+# Installed to ~/bin/fleet-build (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+BUILD_DIR="${IRREDEN_BUILD_DIR:-$HOME/src/IrredenEngine/build}"
+
+# Auto-detect CPU count if no -j flag was passed.
+has_j_flag=false
+for arg in "$@"; do
+    case "$arg" in
+        -j*|--parallel*) has_j_flag=true ;;
+    esac
+done
+
+if $has_j_flag; then
+    exec cmake --build "$BUILD_DIR" "$@"
+else
+    if command -v nproc >/dev/null 2>&1; then
+        JOBS=$(nproc)
+    elif command -v sysctl >/dev/null 2>&1; then
+        JOBS=$(sysctl -n hw.ncpu)
+    else
+        JOBS=4
+    fi
+    exec cmake --build "$BUILD_DIR" -j"$JOBS" "$@"
+fi
