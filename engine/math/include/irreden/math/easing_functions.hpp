@@ -71,7 +71,15 @@ const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions 
     {kCircularEaseInOut, glm::circularEaseInOut<float>},
     {kExponentialEaseIn, glm::exponentialEaseIn<float>},
     {kExponentialEaseOut, glm::exponentialEaseOut<float>},
-    {kExponentialEaseInOut, glm::exponentialEaseInOut<float>},
+    // GLM 1.1.0 exponentialEaseInOut lacks boundary guards: at t=0 the formula
+    // evaluates to 0.5*2^(-10) ≈ 1/2048 instead of 0, and at t=1 it evaluates
+    // to 1-1/2048 instead of 1.  Wrap with explicit boundary clamps so the
+    // function satisfies f(0)=0 and f(1)=1 as expected by all callers.
+    {kExponentialEaseInOut, [](float t) -> float {
+        if (t == 0.0f) return 0.0f;
+        if (t == 1.0f) return 1.0f;
+        return glm::exponentialEaseInOut(t);
+    }},
     {kElasticEaseIn, glm::elasticEaseIn<float>},
     {kElasticEaseOut, glm::elasticEaseOut<float>},
     {kElasticEaseInOut, glm::elasticEaseInOut<float>},
