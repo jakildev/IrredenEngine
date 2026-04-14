@@ -65,15 +65,32 @@ When you do pick a task:
    title appears in an open PR's title or branch name. The open-PR list
    is the real claim signal — `TASKS.md` `[~]` flips on feature branches
    are not visible to other agents until merge.
-2. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
+2. **Claim the task by its ID** (the `**ID:** T-NNN` field, not the
+   free-text title):
+   `fleet-claim claim "<task ID, e.g. T-003>" opus-architect`
+   Exit 0 = claimed, exit 1 = already taken (pick another).
+3. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
    the edit in your first commit on the work branch.
-3. Build the target you touched with `fleet-build --target <name>`.
+4. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code.
-4. Use the `commit-and-push` skill to open the PR.
-5. After the PR is open, use the `start-next-task` skill to land on a
-   fresh branch off `origin/master`.
-6. Check whether your previously-opened PRs have new review comments —
-   address them before picking new work.
+5. Use the `commit-and-push` skill to open the PR.
+6. After the PR is open, release the claim and reset:
+   `fleet-claim release "<task ID>"`
+   Then use the `start-next-task` skill to land on a fresh branch off
+   `origin/master`.
+7. **Check for feedback labels on open PRs** before picking new work:
+   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix")) | "#\(.number) \(.title)"'`
+   If any PR has `human:needs-fix` or `fleet:needs-fix`:
+   a. Read ALL comments:
+      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // "general")] \(.body)"'`
+      `gh api repos/jakildev/IrredenEngine/pulls/<N>/reviews --jq '.[] | select(.body != "") | .body'`
+   b. Remove the feedback label immediately:
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "fleet:needs-fix"`
+   c. Address every piece of feedback. Build with `fleet-build`.
+   d. Push fixes using `commit-and-push`.
+   e. If it was `human:needs-fix`, add `fleet:changes-made`:
+      `gh pr edit <N> --add-label "fleet:changes-made"`
+      `gh pr comment <N> --body "Addressed feedback: <summary>"`
 
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.

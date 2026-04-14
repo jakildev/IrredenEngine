@@ -44,15 +44,18 @@ treat it as a hard rule for this role.
    `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
    Print both results so we both see the current PR queues.
 4. Identify review candidates from both repos. A PR is a candidate if:
-   - It has **no fleet review yet** (no review from your GitHub user)
-     AND does not have the `fleet:wip` label, OR
+   - It has **no fleet review yet** (no review from your GitHub user), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" (check the comments array for
-     this text after your last review), OR
-   - It has a `human:needs-fix` label that was later removed (meaning
-     the author fixed the human's feedback) and needs a fresh pass.
+     this text after your last review).
 
-   Skip PRs labeled `fleet:wip` — those are work-in-progress claims.
+   **Skip** PRs with any of these labels:
+   - `fleet:wip` — work-in-progress claim, not ready for review.
+   - `human:needs-fix` — human requested changes, author agent is
+     handling it. Don't pile on a fleet review while the human's
+     feedback is being addressed.
+   - `fleet:changes-made` — agent addressed human feedback, waiting
+     for human re-review. Not your turn.
 
 ## Loop behavior
 
@@ -62,7 +65,10 @@ usage limit. Each iteration:
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
-2. For each unreviewed PR, in oldest-first order:
+2. Re-apply the same skip criteria from startup step 4: skip PRs that
+   already have a fleet review, or carry any of `fleet:wip`,
+   `human:needs-fix`, or `fleet:changes-made`. For each remaining
+   candidate, in oldest-first order:
 
    **Engine PRs** (default repo):
    a. Invoke the `review-pr` skill with the PR number.

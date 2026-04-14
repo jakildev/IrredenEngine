@@ -54,11 +54,12 @@ defends against this in three layers:
    picks the next available task, and moves on. The work isn't lost; it
    just gets rescheduled.
 
-Don't try to engineer this away with file locking or external state. The
-PR-list cross-check plus GitHub's merge-conflict detection handles it
-cheaply. If collisions become frequent enough to be painful, the upgrade
-path is GitHub Issues as the queue with labels for claims — but only do
-that when the pain is real.
+The local `fleet-claim` script adds a fourth layer: agents call
+`fleet-claim claim "T-NNN" <agent>` using the task's **ID** (not the
+free-text title) before starting work. The short deterministic ID
+prevents the failure mode where two agents slugify different
+paraphrasings of the same title and both succeed. If `fleet-claim`
+returns exit 1 (already taken), skip to the next task.
 
 This file is the **engine-level** task queue. Private creations that live
 under `creations/` may define their own `TASKS.md` inside their own
@@ -70,6 +71,7 @@ them in the creation's own `TASKS.md`.
 
 ```
 - [ ] **<short title>** — <one-line goal>
+  - **ID:** T-NNN  (sequential, assigned by the queue-manager)
   - **Area:** engine/render | engine/entity | engine/prefabs/... | docs | build | creations/demos/... | ...
   - **Model:** opus | sonnet  (which model should run this)
   - **Owner:** free | <worktree-name>
@@ -78,6 +80,12 @@ them in the creation's own `TASKS.md`.
   - **Notes:** <context, links, prior attempts>
   - **Links:** (fill in PR URL when done)
 ```
+
+The **ID** is the canonical claim key. When calling `fleet-claim`, pass the
+task ID (e.g. `fleet-claim claim "T-003" sonnet-fleet-1`), **not** the
+free-text title. IDs are short and unambiguous — agents can't accidentally
+paraphrase them, which is the failure mode that free-text title slugification
+is vulnerable to.
 
 Status markers: `[ ]` open, `[~]` in progress, `[x]` done, `[!]` blocked/stuck.
 
@@ -138,6 +146,7 @@ Avoid:
   engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
   24.04. This is the umbrella epic — break it into smaller follow-up
   tasks as concrete issues are found.
+  - **ID:** T-001
   - **Area:** engine/* (anywhere the Linux path breaks)
   - **Model:** opus (for anything touching core-engine invariants) /
     sonnet (for mechanical port fixes like missing `#include`, case-
@@ -160,6 +169,7 @@ Avoid:
   - **Links:**
 
 - [~] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
+  - **ID:** T-002
   - **Area:** build, engine/video
   - **Model:** sonnet
   - **Owner:** build-macos-ffmpeg-pkgconfig-2
@@ -173,6 +183,7 @@ Avoid:
   for fixing every compile/link/runtime issue in the Metal backend
   as the fleet surfaces them. Must be run from a macOS host (Apple
   Silicon or Intel) — the Metal backend can't be cross-compiled.
+  - **ID:** T-003
   - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
     anywhere the Metal path breaks
   - **Model:** opus (backend/render work is Opus territory)
@@ -195,6 +206,7 @@ Avoid:
   the GLSL compute for writing 2D shape SDFs into trixel canvases has
   no Metal counterpart. Invoke the `backend-parity` skill on a macOS
   host and port it.
+  - **ID:** T-004
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
@@ -213,6 +225,7 @@ Avoid:
 - [ ] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
   GPU-side voxel-position update compute with no Metal counterpart.
   Same skill flow as above.
+  - **ID:** T-005
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
@@ -230,6 +243,7 @@ Avoid:
 - [ ] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
   the voxel-visibility compaction pass (reduces visible-voxel indices
   into a dense buffer) has no Metal counterpart. Same skill flow.
+  - **ID:** T-006
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
@@ -252,6 +266,7 @@ Avoid:
   of the "example" tasks below — the goal is to exercise the skill's
   flow and catch any workflow bugs before running it on real
   production gaps.
+  - **ID:** T-007
   - **Area:** tooling
   - **Model:** opus
   - **Owner:** free
@@ -267,6 +282,7 @@ Avoid:
 
 - [ ] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
   timing and file a report.
+  - **ID:** T-008
   - **Area:** engine/profile
   - **Model:** opus
   - **Owner:** free
