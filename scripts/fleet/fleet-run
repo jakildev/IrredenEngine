@@ -66,7 +66,7 @@ if [[ ! -d "$BUILD_DIR" ]]; then
 fi
 
 # Find the executable in the build tree.
-EXE_PATH=$(find "$BUILD_DIR" -name "$EXE_NAME" -type f -perm +111 2>/dev/null | head -1)
+EXE_PATH=$(find "$BUILD_DIR" -name "$EXE_NAME" -type f -perm -u=x 2>/dev/null | head -1)
 
 if [[ -z "$EXE_PATH" ]]; then
     echo "fleet-run: could not find executable '$EXE_NAME' in $BUILD_DIR" >&2

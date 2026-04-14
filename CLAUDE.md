@@ -311,7 +311,8 @@ runtime (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`,
 `avutil-*`, `swscale-*`) are toolchain-supplied and live at
 `C:\msys64\mingw64\bin` — they are **not** copied next to the exe. The
 Windows DLL loader needs that directory on `PATH`. `fleet-run` handles
-this automatically on Windows.
+the working-directory requirement, but you still need
+`C:\msys64\mingw64\bin` on PATH for the MinGW runtime DLLs.
 
 Each creation typically defines an `IR<Name>Run` custom target that
 builds + launches with the correct working directory (on both
