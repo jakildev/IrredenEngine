@@ -7,7 +7,7 @@ time to run another UPDATE tick, and reads `deltaTime(event)` for dt.
 ## `IRTime::` public API
 
 - `shouldUpdate()` — true when the UPDATE accumulator has buffered at
-  least one frame period (1/kTargetFps).
+  least one frame period (1/kFPS).
 - `deltaTime(Events event)` — actual wall-clock dt for this event's last
   tick.
 - `renderFps()`, `updateFps()` — 1-second rolling averages.
@@ -62,7 +62,7 @@ of lag manually (used by the loading-screen / pause path).
 ## Gotchas
 
 - **`deltaTime(UPDATE)` is wall-clock, not fixed.** It's the actual time
-  the last UPDATE tick took, not `1.0 / kTargetFps`. Good for physics
+  the last UPDATE tick took, not `1.0 / kFPS`. Good for physics
   damping and decay, but **do not** use it to advance simulation state
   you expect to be deterministic — that's why the fixed-step loop exists.
 - **Lag can cascade.** If one frame takes 50 ms, the next loop iteration

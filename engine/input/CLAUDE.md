@@ -7,9 +7,10 @@ RENDER) so each stage sees the state relevant to its tick.
 ## `IRInput::` public API
 
 - `checkKeyMouseButton(button, status)` — is this button in this state?
-- `checkKeyMouseModifiers(mods)` — Shift/Ctrl/Alt.
-- `getMousePosition(event)` — cursor position as of a specific pipeline
-  event.
+- `checkKeyMouseModifiers(requiredMods, blockedMods)` — Shift/Ctrl/Alt mask check.
+- `getMousePosition()` — cursor position in iso/world space for the current
+  pipeline event's snapshot.
+- `getMousePositionScreen()` — cursor position in screen (pixel) space.
 - Per-button press/release frame counters.
 
 ## `InputManager`

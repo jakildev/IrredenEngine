@@ -36,27 +36,29 @@ so there's one place to fix a coordinate-system bug.
 
 ## Layout helpers
 
-Entity-positioning helpers that return `std::vector<vec3>` or similar:
+Entity-positioning helpers — each returns a single `vec3` for one `index`.
+Call in a loop from `0` to `count - 1` to place a group of entities:
 
-- `layoutGridCentered(count, spacing, plane)` — grid of N positions on a
-  `PlaneIso`.
-- `layoutZigZagCentered(...)` — zig-zag variant.
-- `layoutCircle(count, radius, plane)` — ring.
-- `layoutHelix(count, radius, pitch, axis)` — vertical spiral.
-- `layoutPathTangentArcs(...)` — along a parametric path with tangent-
-  aligned rotation.
+- `layoutGridCentered(index, count, columns, spacingPrimary, spacingSecondary, plane, depth)` — rectangular grid.
+- `layoutZigZagCentered(index, count, itemsPerZag, spacingPrimary, spacingSecondary, plane, depth)` — zig-zag variant.
+- `layoutZigZagPath(index, count, itemsPerSegment, spacingPrimary, spacingSecondary, plane, depth)` — zig-zag along a path.
+- `layoutCircle(index, count, radius, startAngleRad, plane, depth)` — ring.
+- `layoutSquareSpiral(index, spacing, plane, depth)` — outward square spiral.
+- `layoutHelix(index, count, radius, turns, heightSpan, axis)` — vertical spiral; `turns` is full rotations, `heightSpan` is total rise.
+- `layoutPathTangentArcs(index, count, radius, blocksPerArc, zStep, axis, startAngleRad, invert)` — along a parametric arc path.
 
-All take a `PlaneIso` selector. Double-check the plane axis — `XY` vs `YZ`
-is the #1 bug source.
+Helpers that take `PlaneIso` (most of them): double-check the plane axis —
+`XY` vs `YZ` is the #1 bug source.
 
 ## Color
 
-- `hsvToRgb` / `rgbToHsv` — convert between Color and ColorHSV.
+- `colorToColorHSV(Color) → ColorHSV` / `colorHSVToColor(ColorHSV) → Color` — convert between `Color` (u8 RGBA) and `ColorHSV` (float HSV).
+- `hsvToRgb(vec3 hsv) → vec3` — raw float HSV → RGB (no `Color` wrapping).
 - `lerpColor(a, b, t)` / `lerpHSV(a, b, t)` — interpolation.
 - `applyHSVOffset(base, hsvDelta)` — shift hue/saturation/value on a
   packed RGBA color.
 - `IRColors::kBlack/kWhite/kRed/...` — canned constants.
-- `color_palettes.hpp` — load palette files from the asset path.
+- `color_palettes.hpp` — compile-time palette arrays (no file I/O).
 - `color.hpp` — sorting (`sortByHue`).
 
 ## Physics
