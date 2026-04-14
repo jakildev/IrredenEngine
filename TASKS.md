@@ -77,6 +77,7 @@ them in the creation's own `TASKS.md`.
   - **Owner:** free | <worktree-name>
   - **Blocked by:** (none) | <title of blocking task>
   - **Acceptance:** <concrete check: build passes, test X passes, PR merged, screenshot Y looks like Z>
+  - **Issue:** (none) | #N  (GitHub issue number, if task originated from an issue)
   - **Notes:** <context, links, prior attempts>
   - **Links:** (fill in PR URL when done)
 ```

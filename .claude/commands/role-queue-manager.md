@@ -123,6 +123,7 @@ Use the exact template from `TASKS.md`:
   - **Owner:** free
   - **Blocked by:** (none) | <title or PR URL>
   - **Acceptance:** <concrete check: build passes, test X passes, screenshot looks like Y>
+  - **Issue:** (none) | #N
   - **Notes:** <context, links, prior attempts>
   - **Links:** (empty until done)
 ```
@@ -131,6 +132,11 @@ Use the exact template from `TASKS.md`:
 for the highest `T-NNN` ID currently in use, then assign the next
 sequential number. IDs are never reused. The ID is the canonical claim
 key — agents pass it (not the free-text title) to `fleet-claim`.
+
+**Issue field:** if the task was ingested from a GitHub issue, set
+`**Issue:** #N` (the issue number). Author agents use this to include
+`Closes #N` in their PR body, so the issue closes automatically when
+the PR merges. For human-pasted tasks with no issue, set `(none)`.
 
 The **Acceptance** line is the most important. If the human's
 description is fuzzy, push back and ask for a concrete check before
@@ -177,20 +183,28 @@ You are the sole TASKS.md editor. Each maintenance pass:
 0. **Clean stale claims:**
    `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
 
-1. **Ingest `fleet:task` issues (engine repo):**
-   `gh issue list --repo jakildev/IrredenEngine --label "fleet:task" --state open --json number,title,body`
-   For each open issue:
+1. **Ingest triaged issues (engine repo):**
+   `gh issue list --repo jakildev/IrredenEngine --label "fleet:task" --label "human:approved" --state open --json number,title,body`
+   Only issues with **both** `fleet:task` AND `human:approved` are
+   ingested — the human must triage agent-filed issues before they
+   enter the queue. For each matching issue:
    - Read the title and body as a task description.
    - Categorize it (model tag, area) per Steps 2–3 above.
    - Append a properly formatted entry to `## Open` in `TASKS.md`.
-   - Close the issue with a comment:
-     `gh issue close <N> --repo jakildev/IrredenEngine --comment "Filed in TASKS.md"`
+     Include `**Issue:** #N` in the entry so author agents can link
+     their PR back to this issue.
+   - Remove the `human:approved` label (so the issue isn't re-ingested):
+     `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved"`
+   - Do **NOT** close the issue. It stays open until the author agent's
+     PR merges — the PR body will contain `Closes #N` which lets
+     GitHub close the issue automatically on merge.
 
-2. **Ingest `fleet:task` issues (game repo):**
-   `gh issue list --repo jakildev/irreden --label "fleet:task" --state open --json number,title,body`
+2. **Ingest triaged issues (game repo):**
+   `gh issue list --repo jakildev/irreden --label "fleet:task" --label "human:approved" --state open --json number,title,body`
    Same flow as above, but append to the game repo's `TASKS.md`.
-   Close the issue:
-   `gh issue close <N> --repo jakildev/irreden --comment "Filed in TASKS.md"`
+   Remove `human:approved`:
+   `gh issue edit <N> --repo jakildev/irreden --remove-label "human:approved"`
+   Do NOT close the issue — the PR will close it on merge.
 
 3. **Sync merged PRs → Done:**
    `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`

@@ -73,7 +73,9 @@ When you do pick a task:
    the edit in your first commit on the work branch.
 4. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code.
-5. Use the `commit-and-push` skill to open the PR.
+5. Use the `commit-and-push` skill to open the PR. If the task has an
+   `**Issue:** #N` field, include `Closes #N` in the PR body so the
+   issue closes automatically when the PR merges.
 6. After the PR is open, release the claim and reset:
    `fleet-claim release "<task ID>"`
    Then use the `start-next-task` skill to land on a fresh branch off
@@ -108,8 +110,9 @@ Include in the body:
 - **Acceptance criteria** (concrete check: build passes, test X works)
 - **Context** (why this matters, what you observed)
 
-The queue-manager will pick it up within 15 minutes, categorize it,
-and add it to TASKS.md. You do NOT edit TASKS.md directly.
+The issue will sit in the backlog until the **human triages and adds
+the `human:approved` label**. Only then does the queue-manager ingest
+it into TASKS.md. You do NOT edit TASKS.md directly.
 
 ## Escalation rules (always)
 

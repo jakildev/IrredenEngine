@@ -117,7 +117,12 @@ limit. Each loop iteration:
    Then create the branch, commit, and open a `fleet:wip` PR:
    `git checkout -b claude/<area>-<topic>`
    `git commit --allow-empty -m "claim: <task title>"`
-   `gh pr create --title "<task title>" --body "Claiming task. Work in progress." --label "fleet:wip"`
+
+   Check the task's **Issue:** field. If it has a `#N` reference,
+   include `Closes #N` in the PR body so the issue closes
+   automatically when the PR merges:
+   `gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
+   If there is no issue (`(none)`), omit the `Closes` line.
 
    Reference the task title in the PR title so the queue-manager can
    match it.
@@ -144,7 +149,9 @@ limit. Each loop iteration:
    on your PR:
    `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --label "fleet:task" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
    Then comment on your PR: "escalated — filed issue #N for opus".
-   The queue-manager will add it to TASKS.md. Move on to the next task.
+   The human will triage the issue and add `human:approved` when
+   ready. The queue-manager then adds it to TASKS.md. Move on to the
+   next task.
 
 7. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
