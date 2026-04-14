@@ -59,11 +59,13 @@ ${SUDO} apt-get install -y \
     clang-format \
     clang-tidy
 
-# If gcc-13 is not the default g++ (possible on Ubuntu 22.04), register it.
-if command -v g++-13 >/dev/null 2>&1 && ! g++ --version 2>&1 | grep -q "gcc-13\|13\."; then
+# Ensure gcc-13 is registered as a default-priority alternative for g++ and gcc.
+# Ubuntu 24.04 ships gcc-13 as the system default via build-essential, but on
+# 22.04 (or when multiple versions coexist) this pins the C++23-capable toolchain.
+if command -v g++-13 >/dev/null 2>&1; then
     ${SUDO} update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
     ${SUDO} update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
-    echo "[ok] Registered gcc-13 / g++-13 as default via update-alternatives"
+    echo "[ok] Registered gcc-13 / g++-13 as priority-100 alternative for g++/gcc"
 fi
 
 # Qt5 is optional and only used by the easy_profiler GUI. Install on a
