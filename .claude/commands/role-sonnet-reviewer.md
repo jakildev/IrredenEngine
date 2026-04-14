@@ -51,6 +51,7 @@ treat it as a hard rule for this role.
 
    **Skip** PRs with any of these labels:
    - `fleet:wip` — work-in-progress claim, not ready for review.
+   - `human:wip` — human is working on this PR. Hands off.
    - `human:needs-fix` — human requested changes, author agent is
      handling it. Don't pile on a fleet review while the human's
      feedback is being addressed.
@@ -148,10 +149,4 @@ for human instruction. Do not loop.
   actions on your own PRs. Always use `--comment` with a clear
   verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
 - Never `git push --force` (you have no reason to push at all).
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).

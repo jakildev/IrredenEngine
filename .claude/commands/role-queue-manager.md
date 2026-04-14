@@ -95,9 +95,11 @@ Per the top-level engine `CLAUDE.md` "Model split":
   changes, gameplay work where mistakes are cheap to catch, bounded
   shader tweaks with a written spec.
 
-When in doubt, tag `[opus]` and let the human downgrade. Over-tagging
-to Opus burns budget; under-tagging to Sonnet causes a Sonnet agent
-to escalate mid-task, which wastes more.
+**Issue author's tag takes precedence.** If the issue body explicitly
+says `[opus]` or `[sonnet]`, use that — the filer knows the work best.
+Otherwise, when in doubt, tag `[opus]` and let the human downgrade.
+Over-tagging to Opus burns budget; under-tagging to Sonnet causes a
+Sonnet agent to escalate mid-task, which wastes more.
 
 ### Step 3 — Pick the area
 
@@ -123,6 +125,7 @@ Use the exact template from `TASKS.md`:
   - **Owner:** free
   - **Blocked by:** (none) | <title or PR URL>
   - **Acceptance:** <concrete check: build passes, test X passes, screenshot looks like Y>
+  - **Issue:** (none) | #N
   - **Notes:** <context, links, prior attempts>
   - **Links:** (empty until done)
 ```
@@ -131,6 +134,11 @@ Use the exact template from `TASKS.md`:
 for the highest `T-NNN` ID currently in use, then assign the next
 sequential number. IDs are never reused. The ID is the canonical claim
 key — agents pass it (not the free-text title) to `fleet-claim`.
+
+**Issue field:** if the task was ingested from a GitHub issue, set
+`**Issue:** #N` (the issue number). Author agents use this to include
+`Closes #N` in their PR body, so the issue closes automatically when
+the PR merges. For human-pasted tasks with no issue, set `(none)`.
 
 The **Acceptance** line is the most important. If the human's
 description is fuzzy, push back and ask for a concrete check before
@@ -177,20 +185,58 @@ You are the sole TASKS.md editor. Each maintenance pass:
 0. **Clean stale claims:**
    `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
 
-1. **Ingest `fleet:task` issues (engine repo):**
-   `gh issue list --repo jakildev/IrredenEngine --label "fleet:task" --state open --json number,title,body`
-   For each open issue:
-   - Read the title and body as a task description.
-   - Categorize it (model tag, area) per Steps 2–3 above.
-   - Append a properly formatted entry to `## Open` in `TASKS.md`.
-   - Close the issue with a comment:
-     `gh issue close <N> --repo jakildev/IrredenEngine --comment "Filed in TASKS.md"`
+1. **Ingest triaged issues (engine repo):**
+   `gh issue list --repo jakildev/IrredenEngine --label "human:approved" --state open --json number,title,body,comments,labels`
+   Only issues with the `human:approved` label are ingested — this
+   is the universal gate for both human-filed and agent-filed issues.
 
-2. **Ingest `fleet:task` issues (game repo):**
-   `gh issue list --repo jakildev/irreden --label "fleet:task" --state open --json number,title,body`
-   Same flow as above, but append to the game repo's `TASKS.md`.
-   Close the issue:
-   `gh issue close <N> --repo jakildev/irreden --comment "Filed in TASKS.md"`
+   For each matching issue, **read the full context** — title, body,
+   AND all comments. Comments often contain clarifications, scope
+   refinements, or design decisions that the body alone misses.
+
+   **Assess readiness** before ingesting. The issue must have:
+   - A clear, bounded scope (one PR's worth of work)
+   - Enough detail to derive acceptance criteria
+   - No open questions that would block an author mid-task
+
+   **If the issue is ready** — ingest it:
+   a. Categorize it (model tag, area) per Steps 2–3 above.
+      If the issue body explicitly says `[opus]` or `[sonnet]`, that
+      takes precedence over your own assessment. Otherwise, assess:
+      is this a hard problem (design decisions, core invariants,
+      cross-cutting changes → `[opus]`) or bounded/mechanical work
+      (tests, docs, refactors, clear spec → `[sonnet]`)?
+   b. Append a properly formatted entry to `## Open` in `TASKS.md`.
+      Include `**Issue:** #N` in the entry. Synthesize acceptance
+      criteria from the full issue thread, not just the title.
+   c. Remove the `human:approved` label (so the issue isn't
+      re-ingested):
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved"`
+   d. Do **NOT** close the issue. It stays open until the author
+      agent's PR merges via `Closes #N`.
+
+   **If the issue needs a plan first** — the scope is large, the
+   approach is unclear, or it needs architectural input:
+   a. Add the `fleet:needs-plan` label:
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-plan"`
+   b. Comment explaining what's missing and that the architect
+      should weigh in before this becomes a task:
+      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Needs planning: <what's unclear>. Tagging for architect review."`
+   c. Do NOT add it to TASKS.md yet. The human or architect will
+      refine the issue, then the human re-adds `human:approved`.
+
+   **If the issue is too vague** — not enough info to even plan:
+   a. Add the `fleet:needs-info` label:
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-info"`
+   b. Comment with specific questions:
+      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Need more info before scheduling: <specific questions>"`
+   c. Do NOT add it to TASKS.md.
+
+2. **Ingest triaged issues (game repo):**
+   `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body,comments,labels`
+   Same full-context assessment as above. Apply the same ready /
+   needs-plan / needs-info logic, using `--repo jakildev/irreden`
+   on all `gh` commands.
 
 3. **Sync merged PRs → Done:**
    `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
@@ -232,10 +278,4 @@ You are the sole TASKS.md editor. Each maintenance pass:
   the no-direct-push rule — TASKS.md is bookkeeping, not code, and
   you are its sole editor. Never push any other file to master.
 - Never `git push --force`.
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).

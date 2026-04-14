@@ -58,6 +58,9 @@ following is true:
 - No `[sonnet]` items are unblocked AND there are unblocked `[opus]`
   items that are clearly design-heavy core-engine work.
 - A PR needs Opus final review and `opus-reviewer` is offline.
+- An issue has the `fleet:needs-plan` label — the queue-manager
+  flagged it as needing architectural input before it can become a
+  task. See "Planning issues" below.
 
 When you do pick a task:
 
@@ -73,13 +76,16 @@ When you do pick a task:
    the edit in your first commit on the work branch.
 4. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code.
-5. Use the `commit-and-push` skill to open the PR.
+5. Use the `commit-and-push` skill to open the PR. If the task has an
+   `**Issue:** #N` field, include `Closes #N` in the PR body so the
+   issue closes automatically when the PR merges.
 6. After the PR is open, release the claim and reset:
    `fleet-claim release "<task ID>"`
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`.
 7. **Check for feedback labels on open PRs** before picking new work:
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix")) | "#\(.number) \(.title)"'`
+   **Skip** PRs labeled `human:wip` — human is working on it directly.
    If any PR has `human:needs-fix` or `fleet:needs-fix`:
    a. Read ALL comments:
       `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // "general")] \(.body)"'`
@@ -108,8 +114,29 @@ Include in the body:
 - **Acceptance criteria** (concrete check: build passes, test X works)
 - **Context** (why this matters, what you observed)
 
-The queue-manager will pick it up within 15 minutes, categorize it,
-and add it to TASKS.md. You do NOT edit TASKS.md directly.
+The issue will sit in the backlog until the **human triages and adds
+the `human:approved` label**. Only then does the queue-manager ingest
+it into TASKS.md. You do NOT edit TASKS.md directly.
+
+## Planning issues
+
+When the queue-manager flags an issue with `fleet:needs-plan`, it
+needs your input before becoming a task. Check for these periodically:
+`gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
+
+For each one:
+1. Read the full issue thread (title, body, all comments).
+2. Assess the scope and propose a plan as an issue comment:
+   - What files/modules are involved
+   - Whether it should be one task or broken into subtasks
+   - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
+   - Acceptance criteria
+3. Remove `fleet:needs-plan` and add `human:approved`:
+   `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan" --add-label "human:approved"`
+   The queue-manager will ingest it on its next maintenance pass.
+
+If you disagree with the issue's direction, comment with your
+concerns but leave `fleet:needs-plan` on — let the human decide.
 
 ## Escalation rules (always)
 
@@ -130,10 +157,4 @@ Stop and surface to the human when:
 - Never run `cmake --preset` — only `cmake --build` against the
   already-configured tree.
 - Never touch the `.claude/worktrees/` layout.
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).
