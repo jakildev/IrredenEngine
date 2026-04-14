@@ -5,7 +5,7 @@ Tiny module. The only thing it does today is save and load trixel textures
 
 ## Entry point
 
-`engine/asset/ir_asset.hpp` — exposes two free functions in `IRAsset::`:
+`engine/asset/include/irreden/ir_asset.hpp` — exposes two free functions in `IRAsset::`:
 
 - `saveTrixelTextureData(name, path, size, colors, distances)` —
   writes a binary file.
@@ -37,26 +37,26 @@ import/export. Runtime gameplay code generally does not touch this module.
 
 ```
 engine/asset/
-├── ir_asset.hpp        — public facade
+├── include/irreden/
+│   ├── ir_asset.hpp              — public facade
+│   └── asset/
+│       └── ir_asset_types.hpp    — (empty placeholder)
 └── src/
-    └── ir_asset.cpp    — file I/O
+    └── ir_asset.cpp              — file I/O
 ```
 
 ## Gotchas
 
-- **Extension mismatch.** `save` writes `.txl`, `load` reads `.irtxl` in
-  the current code. Either name the file consistently or pre-rename
-  before loading. Verify the actual extensions in `src/ir_asset.cpp`
-  before shipping anything that depends on them.
-- **No error handling.** `fwrite`/`fread` failures aren't checked. A
-  truncated file loads as garbage. Wrap calls in `std::filesystem::exists`
-  and size checks.
+- **`fwrite`/`fread` return values unchecked.** A truncated file loads as
+  garbage with no error. Check return values against the expected element
+  count if correctness matters. `fopen` failures are caught (returns early
+  with `IRE_LOG_ERROR`).
 - **Path joining.** Paths are composed with `IRUtility::joinPath`.
   Windows vs POSIX separators are handled there, but double-check when
   you're debugging a missing-file bug.
 - **Not a general asset pipeline.** Don't add shader hot-reload, audio
   decoding, or model loading here without a design pass — the file name
   suggests an abstraction that doesn't exist yet.
-- **Only trixel data.** The commented-out `kSpriteImage`/`kVoxelImage`
-  enum values are aspirational; there are no load/save routines for
-  them.
+- **Only trixel data.** The `FileTypes` enum in `ir_asset.hpp` has
+  `kSpriteImage` and `kVoxelImage` values but no corresponding load/save
+  routines — they're aspirational stubs only.

@@ -57,6 +57,10 @@ template <typename Params> Params *getSystemParams(SystemId system) {
 void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 void executePipeline(IRTime::Events event);
 
+inline void setTimingEnabled(bool enabled) { getSystemManager().setTimingEnabled(enabled); }
+inline bool isTimingEnabled() { return getSystemManager().isTimingEnabled(); }
+inline void resetTimingStats() { getSystemManager().resetTimingStats(); }
+
 } // namespace IRSystem
 
 #endif /* IR_SYSTEM_H */
