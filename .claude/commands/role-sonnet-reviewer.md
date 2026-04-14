@@ -91,7 +91,11 @@ usage limit. Each iteration:
       this engine worktree). Focus on code quality, style, and obvious
       bugs. For game-specific conventions, read the game CLAUDE.md at
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   d. Post the review: `gh pr review <N> --repo <game-repo> --comment --body "<review>"`
+   d. Post the review: write the review body to `/tmp/review-body.md`
+      using the **Write tool**, then:
+      `gh pr review <N> --repo <game-repo> --comment --body-file /tmp/review-body.md`
+      **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
+      escaping of backticks and special characters causes parse errors.
    e. Set labels — always remove stale labels first:
       `gh pr edit <N> --repo <game-repo> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
       (swap the add-label name for `fleet:needs-fix` or `fleet:blocker` as appropriate).

@@ -179,6 +179,7 @@ baseline = [
     "Bash(dirname:*)",
     "Bash(fleet-claim:*)",
     "Bash(fleet-build:*)",
+    "Bash(fleet-run:*)",
 ]
 
 # Preserve any user-granted "always allow" entries from previous sessions,

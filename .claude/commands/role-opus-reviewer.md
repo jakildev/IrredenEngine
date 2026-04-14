@@ -88,13 +88,15 @@ than the Sonnet reviewer. Each iteration:
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
       X; on closer read I confirm/disagree because Y".
-   d. If the PR is sound, post the review with `--comment` and a
-      clear "Verdict: approve" line. If not, post `--comment` with
-      "Verdict: needs-fix" or "Verdict: blocker" and concrete fixes.
+   d. Post the review: write the review body to `/tmp/review-body.md`
+      using the **Write tool**, then:
+      `gh pr review <N> --comment --body-file /tmp/review-body.md`
+      For game PRs, add `--repo <game-repo>`.
+      **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
+      escaping of backticks and special characters causes parse errors.
       Do **not** use `--approve` or `--request-changes` — all fleet
       agents share one GitHub account, and GitHub rejects formal
       review actions on your own PRs.
-      For game PRs, add `--repo <game-repo>` to all `gh` commands.
    e. **Set the PR label** to match your verdict (add `--repo
       <game-repo>` for game PRs). The label is the primary signal
       the human uses. Always remove stale labels first:
