@@ -48,10 +48,11 @@ whatever directory the task touches before editing anything.
 Default: run continuously until the human stops you or you hit a usage
 limit. Each loop iteration:
 
-1. **Check for feedback on PRs you previously opened.**
-   `gh pr list --state open --json number,title,labels`
-   Look for any of your PRs with `human:needs-fix`, `human:blocker`,
-   or `fleet:needs-fix` labels. Human feedback takes priority.
+1. **Check for feedback labels on open PRs.**
+   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
+
+   If any PR has `human:needs-fix`, `human:blocker`, or `fleet:needs-fix`,
+   address the **oldest** one first. Human feedback takes priority.
 
    For each flagged PR:
    a. Read **all** feedback (two separate commands):
@@ -60,13 +61,34 @@ limit. Each loop iteration:
       The first gets conversation-level comments. The second gets
       inline review comments on specific lines — this is where most
       human feedback lives. Address every comment, not just the first.
-   b. Address each issue raised. Build and test.
-   c. Push fixes with `commit-and-push`.
-   d. Remove the feedback label and request re-review:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker"`
-      `gh pr comment <N> --body "Fixed — re-review please"`
-   e. If the PR also had `fleet:approved`, `fleet:needs-fix`, or `fleet:blocker`,
-      remove those too — the reviewer will re-review the updated PR.
+   b. **Immediately remove the feedback label** to prevent another agent
+      from also picking it up:
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix"`
+   c. Address every piece of feedback. Make the edits, build with
+      `fleet-build --target <name>`.
+   d. Push fixes using `commit-and-push`.
+   e. Add the appropriate response label and post a summary:
+      - If it was `human:needs-fix` or `human:blocker` → add
+        `fleet:changes-made` (signals human to re-review):
+        `gh pr edit <N> --add-label "fleet:changes-made"`
+      - If it was `fleet:needs-fix` → no response label needed
+        (fleet reviewer will re-review automatically on next poll)
+      `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
+   f. If the PR also had `fleet:approved`, `fleet:needs-fix`, or
+      `fleet:blocker`, remove those too — the reviewer will re-review
+      the updated PR.
+   g. Move to the next loop iteration.
+
+   **Human feedback label cycle:** human adds `human:needs-fix` (+
+   comments) → agent removes it, works, adds `fleet:changes-made` →
+   human reviews again. Human can add multiple comments before
+   re-tagging; ALL are picked up when the tag appears. If the human
+   wants more changes, they remove `fleet:changes-made`, add
+   `human:needs-fix` again.
+
+   **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
+   author removes it, fixes, pushes → fleet reviewer sees the new
+   commits on next poll and re-reviews.
 
    Address all flagged PRs before picking new work.
 
@@ -83,8 +105,11 @@ limit. Each loop iteration:
    Do NOT edit `TASKS.md` — only the queue-manager touches it.
 
    First, acquire the local filesystem lock (atomic — prevents another
-   agent on this machine from picking the same task):
-   `fleet-claim claim "<exact task title from TASKS.md>" <your-worktree-name>`
+   agent on this machine from picking the same task). **Always pass the
+   task ID**, not the free-text title — IDs are short and unambiguous,
+   so two agents can never accidentally derive different claim slugs
+   for the same task:
+   `fleet-claim claim "<task ID, e.g. T-002>" <your-worktree-name>`
 
    - **Exit 0** — you own it. Proceed to open the PR.
    - **Exit 1** — already taken. Go back to step 2 and pick another.
@@ -125,7 +150,7 @@ limit. Each loop iteration:
    work commits to the existing PR branch. Then remove the WIP label
    and release the claim:
    `gh pr edit <N> --remove-label "fleet:wip"`
-   `fleet-claim release "<exact task title>"`
+   `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
 8. **Reset.** Use the `start-next-task` skill to land on a fresh branch

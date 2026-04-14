@@ -47,8 +47,8 @@ conditions, allocator behavior, hot-path costs.
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/opus-reviewer-scratch origin/master`
 3. Fetch PR lists from both repos (each as a separate command):
-   `gh pr list --state open --json number,title,headRefName,reviews`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews`
+   `gh pr list --state open --json number,title,headRefName,reviews,labels`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews,labels`
    Print both results.
 4. Identify the candidates from both repos. A PR is a candidate if:
    - The latest Sonnet review body contains `Opus recheck required`, OR
@@ -56,8 +56,9 @@ conditions, allocator behavior, hot-path costs.
    - The author pushed fixes and commented "re-review please" after
      a previous Opus review (check comments after your last review).
 
-   Also re-review PRs where the human set `human:needs-fix`, the
-   author fixed and removed it, and the PR now needs a fresh pass.
+   **Skip** PRs labeled `fleet:wip`, `human:needs-fix`, or
+   `fleet:changes-made` — those are either in-progress or in the
+   human feedback loop, not ready for review.
 
 ## Loop behavior
 
@@ -65,8 +66,8 @@ Default: run continuously, but on a **longer interval (30 minutes)**
 than the Sonnet reviewer. Each iteration:
 
 1. Re-fetch PR lists from both repos (separate commands):
-   `gh pr list --state open --json number,title,headRefName,reviews`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews`
+   `gh pr list --state open --json number,title,headRefName,reviews,labels`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews,labels`
 2. For each candidate, in oldest-first order:
    a. Read the existing Sonnet review in full first
       (`gh pr view <N> --comments`, add `--repo jakildev/irreden` for

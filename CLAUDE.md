@@ -147,7 +147,7 @@ it in a dedicated PR, not to work around it.
   fixes. Work against `~/src/IrredenEngine`.
 - **Are you running on the Windows-native clone?** → use the Windows
   section below. The MSYS2 / Git mingw64 PATH saga applies to you.
-- **macOS?** → `cmake --preset macos-debug` + `cmake --build build`
+- **macOS?** → `cmake --preset macos-debug` + `fleet-build --target <name>`
   once deps are installed via homebrew. The details haven't been
   stress-tested recently — flag anything you hit as you go.
 
@@ -174,6 +174,15 @@ Canonical build command from the Bash tool:
 
 ```bash
 cmake --build build --target IRShapeDebug -j$(nproc)
+```
+
+**Fleet agents: use `fleet-build` instead.** The `$(nproc)` command
+substitution triggers Claude Code's `command_substitution` security
+gate, which blocks unattended operation with an interactive prompt.
+The `fleet-build` wrapper handles parallelism automatically:
+
+```bash
+fleet-build --target IRShapeDebug
 ```
 
 Swap `--target` for whichever executable or library you're working on

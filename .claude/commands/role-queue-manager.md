@@ -117,6 +117,7 @@ Use the exact template from `TASKS.md`:
 
 ```
 - [ ] **<short title>** — <one-line goal>
+  - **ID:** T-NNN
   - **Area:** <area>
   - **Model:** opus | sonnet
   - **Owner:** free
@@ -125,6 +126,11 @@ Use the exact template from `TASKS.md`:
   - **Notes:** <context, links, prior attempts>
   - **Links:** (empty until done)
 ```
+
+**Assigning task IDs:** scan the existing `## Open` and `## Done` sections
+for the highest `T-NNN` ID currently in use, then assign the next
+sequential number. IDs are never reused. The ID is the canonical claim
+key — agents pass it (not the free-text title) to `fleet-claim`.
 
 The **Acceptance** line is the most important. If the human's
 description is fuzzy, push back and ask for a concrete check before
