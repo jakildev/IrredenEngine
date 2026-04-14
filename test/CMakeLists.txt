@@ -6,6 +6,7 @@ add_executable(IrredenEngineTest
   math/physics_test.cpp
   math/ir_math_test.cpp
   math/ir_math_easing_color_sort_test.cpp
+  math/ir_math_random_misc_test.cpp
   math/ir_math_trixel_index_test.cpp
   math/ir_math_color_layout_test.cpp
   utility/ir_utility_test.cpp
