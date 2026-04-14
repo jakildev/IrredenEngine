@@ -35,7 +35,7 @@ MODE="${3:-dry-run}"
 
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
-LIMIT_DELAY=300       # seconds to wait on suspected usage limit (exit 2)
+LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY=60        # seconds to wait after clean exit
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
 
