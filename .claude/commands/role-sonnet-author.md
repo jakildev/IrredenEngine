@@ -51,6 +51,8 @@ limit. Each loop iteration:
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
 
+   **Skip** PRs labeled `human:wip` — human is working on it directly.
+
    If any PR has `human:needs-fix`, `human:blocker`, or `fleet:needs-fix`,
    address the **oldest** one first. Human feedback takes priority.
 
@@ -186,10 +188,4 @@ budget split. Just wait.
 - Never touch the `.claude/worktrees/` layout.
 - Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select` — those are human-initiated.
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).

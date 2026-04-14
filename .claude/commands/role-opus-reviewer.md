@@ -56,9 +56,9 @@ conditions, allocator behavior, hot-path costs.
    - The author pushed fixes and commented "re-review please" after
      a previous Opus review (check comments after your last review).
 
-   **Skip** PRs labeled `fleet:wip`, `human:needs-fix`, or
-   `fleet:changes-made` — those are either in-progress or in the
-   human feedback loop, not ready for review.
+   **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
+   or `fleet:changes-made` — those are either in-progress, human-owned,
+   or in the feedback loop.
 
 ## Loop behavior
 
@@ -133,10 +133,4 @@ end-to-end, then stop and wait for human instruction. Do not loop.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).

@@ -184,10 +184,10 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
 
 1. **Ingest triaged issues (engine repo):**
-   `gh issue list --repo jakildev/IrredenEngine --label "fleet:task" --label "human:approved" --state open --json number,title,body`
-   Only issues with **both** `fleet:task` AND `human:approved` are
-   ingested — the human must triage agent-filed issues before they
-   enter the queue. For each matching issue:
+   `gh issue list --repo jakildev/IrredenEngine --label "human:approved" --state open --json number,title,body`
+   Only issues with the `human:approved` label are ingested — this
+   is the universal gate for both human-filed and agent-filed issues.
+   For each matching issue:
    - Read the title and body as a task description.
    - Categorize it (model tag, area) per Steps 2–3 above.
    - Append a properly formatted entry to `## Open` in `TASKS.md`.
@@ -200,7 +200,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
      GitHub close the issue automatically on merge.
 
 2. **Ingest triaged issues (game repo):**
-   `gh issue list --repo jakildev/irreden --label "fleet:task" --label "human:approved" --state open --json number,title,body`
+   `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body`
    Same flow as above, but append to the game repo's `TASKS.md`.
    Remove `human:approved`:
    `gh issue edit <N> --repo jakildev/irreden --remove-label "human:approved"`
@@ -246,10 +246,4 @@ You are the sole TASKS.md editor. Each maintenance pass:
   the no-direct-push rule — TASKS.md is bookkeeping, not code, and
   you are its sole editor. Never push any other file to master.
 - Never `git push --force`.
-- Never use shell compound operators (`&&`, `||`, `;`, `|`) to chain
-  commands in a single Bash invocation. Issue each command as its own
-  separate tool call (Bash or Read). Compound commands don't match the
-  allowlist and trigger interactive prompts that block unattended
-  operation. For git specifically, use `git -C <path>` instead of
-  `cd <path> && git`. For reading files, use the Read tool instead of
-  `cat`.
+- Single-command Bash only (see CRITICAL section above).
