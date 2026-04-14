@@ -4,26 +4,11 @@ GLM aliases, isometric projection, layout helpers, easing, color, ballistic
 physics, and random utilities. Everything here is namespace `IRMath::` and
 dependency-free beyond GLM.
 
-## Entry point
+## GLM alias rule
 
-`engine/math/include/irreden/ir_math.hpp` — the public facade. Pulls in
-every submodule header below and re-exports the aliases.
-
-## Key types
-
-- **GLM aliases** (`ir_math_types.hpp`): `vec2/3/4`, `ivec2/3/4`, `uvec2/3/4`,
-  `u8vec2/3/4`, `mat2/3/4`. Use these, not raw `glm::` names.
-- **`Color`** — RGBA u8 struct with `toPackedRGBA()`. Stored packed in ECS
-  components.
-- **`ColorHSV`** — float HSV variant. Convert via `hsvToRgb` /
-  `colorToColorHSV`.
-- **`FaceType`** enum — `X_FACE`, `Y_FACE`, `Z_FACE`, `NONE_FACE`. Which of
-  a voxel's three visible iso faces a triangle belongs to.
-- **`PlaneIso`** enum — `XY`, `XZ`, `YZ`. Which 2D plane a layout helper
-  operates in; determines which axis becomes "depth".
-- **`CoordinateAxis`** enum — `XAxis`, `YAxis`, `ZAxis`.
-- **`IREasingFunctions`** enum — wraps GLM easing fns (linear, quad, cubic,
-  etc.). Exposed to ECS animation components.
+Use `IRMath::vec2/3/4`, `ivec2/3/4`, `uvec2/3/4`, `u8vec2/3/4`, `mat2/3/4`
+— never raw `glm::` names. The aliases are defined in `ir_math_types.hpp`
+and re-exported through `ir_math.hpp`.
 
 ## Isometric projection — the equations
 
@@ -105,20 +90,3 @@ Uses `std::rand`; deterministic if you seed.
 - **`IREasingFunctions` enum is not 1:1 with GLM.** Not all GLM easing
   functions are exposed; check `easing_functions.hpp` before assuming.
 
-## Internal layout
-
-```
-engine/math/
-├── include/irreden/
-│   ├── ir_math.hpp                — public facade
-│   └── math/
-│       ├── ir_math_types.hpp      — GLM aliases, Color, enums
-│       ├── easing_functions.hpp   — IREasingFunctions + GLM wrappers
-│       ├── color.hpp              — sorting, hue utilities
-│       ├── color_palettes.hpp     — palette file loading
-│       ├── physics.hpp            — ballistic helpers
-│       ├── bezier_curves.hpp      — interpolation helpers
-│       └── percolation.hpp        — procedural/noise helpers
-└── src/
-    └── ir_math.cpp                — non-inlined impls
-```

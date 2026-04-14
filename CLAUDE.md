@@ -365,6 +365,36 @@ namespaces in headers; keep them in `.cpp`.
 
 ---
 
+## What belongs in CLAUDE.md files (applies everywhere)
+
+CLAUDE.md files document **concepts, constraints, and gotchas** — things
+that aren't obvious from reading the code. They are NOT inventories.
+
+**Do NOT include:**
+- File/directory tree listings or layout blocks. Agents can Glob/Grep.
+- Catalogs of type, class, or struct names. Agents can Grep for them.
+- Variable or field name references (e.g., `m_foo`, `kBar`). Grep.
+- Lists of "files in this module" that just mirror `ls`.
+
+**DO include:**
+- Design decisions and their rationale ("we use X because Y").
+- Constraints and invariants not obvious from the code ("never call
+  getComponent inside a tick function — here's why").
+- Gotchas and footguns that have bitten before.
+- Conceptual relationships that span multiple directories ("the trixel
+  pipeline spans prefabs/render, prefabs/update, and shaders/glsl").
+- Pipeline or ordering constraints that affect correctness.
+- Code examples that demonstrate a **pattern** (e.g., tick-function
+  signatures) — use illustrative names, but the pattern is the point.
+
+Names are fine when they're part of a pattern example or a gotcha where
+the specific name is the actionable fix. They're clutter when they're
+just listing what exists. The test: "would this section survive a
+rename refactor, or would it go stale?" If it would go stale, it
+doesn't belong.
+
+---
+
 ## Bash tool rules (applies everywhere, all agents)
 
 **Every Bash invocation must be a single, simple command.** Never use

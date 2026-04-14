@@ -4,12 +4,8 @@ Polls GLFW event queues each frame and exposes per-button state machines
 and mouse position. Input state is split by pipeline event (INPUT, UPDATE,
 RENDER) so each stage sees the state relevant to its tick.
 
-## Entry point
+## `IRInput::` public API
 
-`engine/input/include/irreden/ir_input.hpp` — exposes `IRInput::` free
-functions:
-
-- `getInputManager()`.
 - `checkKeyMouseButton(button, status)` — is this button in this state?
 - `checkKeyMouseModifiers(mods)` — Shift/Ctrl/Alt.
 - `getMousePosition(event)` — cursor position as of a specific pipeline
@@ -18,15 +14,9 @@ functions:
 
 ## `InputManager`
 
-Owns:
-
-- One entity per `KeyMouseButton` (keyboard keys + mouse buttons), with
-  `C_KeyMouseButton` holding the current `ButtonStatuses`.
-- A vector of gamepad entities (`C_GlfwGamepad`, `C_GlfwJoystick`).
-- Scroll deltas, mouse position cache, press/release accumulators.
-- One `EventInputState` per pipeline event (INPUT, UPDATE, RENDER), so
-  `getMousePosition(UPDATE)` returns the cursor as it was at the UPDATE
-  tick's snapshot.
+Creates one entity per physical button and one per gamepad. Input state is
+snapshotted per pipeline event (INPUT, UPDATE, RENDER) so each stage gets
+the cursor position and button states that were current at its tick.
 
 ### Button state machine
 
@@ -47,41 +37,14 @@ stage. Forgetting to advance for an event means stale state persists.
 ## Hover / hitbox
 
 Input-driven but render-aware. `C_Hitbox2D` is a screen-space axis-aligned
-rectangle on an entity. `system_entity_hover_detect` (in
-`prefabs/irreden/input/systems/`) tests the cursor against every hitbox
-each INPUT tick and fires registered callbacks:
+rectangle on an entity. The hover-detect system tests the cursor against
+every hitbox each INPUT tick and fires registered callbacks:
 
 - `onHovered` / `onUnhovered` — entity-wide.
 - `onClicked` — matches a button status.
 
 Callbacks are `sol::protected_function` (Lua) or plain `std::function`
 (C++). They're stored by handler id so you can deregister them.
-
-## Key components (prefabs/irreden/input)
-
-- `C_KeyMouseButton` — holds a `KeyMouseButtons` enum value + current
-  status. One per physical button.
-- `C_GlfwGamepad`, `C_GlfwJoystick` — per-controller state.
-- `C_MousePosition` — cached cursor.
-- `C_CursorPosition` — hover detection target.
-- `C_Hitbox2D` — rectangle for hit testing.
-
-## Internal layout
-
-```
-engine/input/
-├── include/irreden/
-│   ├── ir_input.hpp              — public facade
-│   └── input/
-│       ├── ir_input_types.hpp    — ButtonStatuses, KeyMouseButtons
-│       └── input_manager.hpp     — InputManager class
-└── src/
-    ├── ir_input.cpp
-    └── input_manager.cpp
-```
-
-Plus the prefab components, systems, and commands under
-`engine/prefabs/irreden/input/`.
 
 ## Gotchas
 

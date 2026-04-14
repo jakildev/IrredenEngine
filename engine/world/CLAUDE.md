@@ -71,12 +71,3 @@ resolve from cwd.
   clips from starting mid-loading-screen. If video recording is not
   starting, check these flags first.
 
-## Internal layout
-
-```
-engine/world/
-├── include/irreden/world/
-│   ├── world.hpp       — class World
-│   └── config.hpp      — WorldConfig struct
-└── src/                — gameLoop, manager wiring, init* functions
-```

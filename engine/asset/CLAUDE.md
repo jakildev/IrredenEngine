@@ -3,9 +3,7 @@
 Tiny module. The only thing it does today is save and load trixel textures
 (a `(size, colors[], distances[])` tuple) to disk as a raw binary format.
 
-## Entry point
-
-`engine/asset/ir_asset.hpp` — exposes two free functions in `IRAsset::`:
+`IRAsset::` exposes two free functions:
 
 - `saveTrixelTextureData(name, path, size, colors, distances)` —
   writes a binary file.
@@ -32,15 +30,6 @@ No checksum, no magic bytes, no compression. Treat the file as volatile.
 Creations call this during tool runs (e.g. the `shape_debug` demo dumps
 generated trixel shapes to disk for later loading) and during
 import/export. Runtime gameplay code generally does not touch this module.
-
-## Internal layout
-
-```
-engine/asset/
-├── ir_asset.hpp        — public facade
-└── src/
-    └── ir_asset.cpp    — file I/O
-```
 
 ## Gotchas
 

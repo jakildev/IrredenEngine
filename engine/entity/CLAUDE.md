@@ -88,18 +88,3 @@ adding a relation moves the entity to a different archetype node.
 - **Global manager lifetime.** `g_entityManager` is valid only while the
   `World` is alive. Don't capture it in lambdas that outlive the loop.
 
-## Internal layout
-
-```
-engine/entity/
-├── include/irreden/
-│   └── ir_entity.hpp              — public facade
-│   └── entity/
-│       ├── ir_entity_types.hpp    — EntityId, ComponentId, Relation enum
-│       ├── entity_manager.hpp     — EntityManager (template-heavy)
-│       ├── archetype.hpp
-│       ├── archetype_node.hpp
-│       ├── archetype_graph.hpp
-│       └── prefabs.hpp            — PrefabTypes enum + factories
-└── src/                            — EntityManager impl, graph logic
-```

@@ -6,44 +6,24 @@ for single voxels and particles.
 
 ## Key components
 
-- `component_voxel.hpp` — `C_Voxel`, a single RGBA color. Usually
-  handled as spans inside a `C_VoxelPool`.
-- `component_voxel_pool.hpp` — `C_VoxelPool`. Master allocator;
-  allocates/deallocates contiguous spans, tracks per-chunk bounds for
-  visibility culling. **One pool per canvas entity.**
-- `component_voxel_set.hpp` — `C_VoxelSetNew`. Owns a span of voxels
-  from a pool; pushes local → global position updates; supports reshape
-  (box/sphere SDF).
-- `component_shape_descriptor.hpp` — `C_ShapeDescriptor`, SDF shape
-  type + params + color + flags (visible, hollow, mirror). Rendered
-  directly by the GPU; **does not allocate voxels**.
-- `component_joint_hierarchy.hpp` — WIP; articulated voxel rigs.
+- `C_Voxel` — a single RGBA color. Usually handled as spans inside a
+  `C_VoxelPool`.
+- `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
+  tracks per-chunk bounds for visibility culling. **One pool per canvas entity.**
+- `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
+  position updates; supports reshape (box/sphere SDF).
+- `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
+  hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
+- `C_JointHierarchy` — WIP; articulated voxel rigs.
 
 ## Key systems
 
-- `system_update_voxel_set_children.hpp` — `UPDATE_VOXEL_SET_CHILDREN`,
-  UPDATE pipeline. Pushes per-voxel-set global-position updates into
-  the pool, also registers ownership lookups.
-- `system_voxel_squash_stretch.hpp` — animates voxel set scale/
-  deformation via easing.
-- `system_voxel_pool.hpp` — commented out, was intended for pool
-  hierarchy/sort. **Do not re-enable without a design pass.**
-- `system_voxel_scene.hpp` — WIP skeleton/hierarchy traversal.
-
-## Commands
-
-- `command_randomize_voxels.hpp` — shuffle voxel colors in a set.
-- `command_spawn_particle_mouse_position.hpp` — spawn a particle at
-  the cursor's world position.
-
-## Entity builders
-
-- `entity_single_voxel.hpp` — `C_Position3D + C_Voxel`, for debug
-  single-cell markers.
-- `entity_voxel_particle.hpp` — 1×1×1 voxel set with `C_PeriodicIdle +
-  C_Lifetime`. Used by the particle spawner.
-- `entity_voxel_sprite.hpp` — commented out; was the image-to-voxel
-  importer.
+- `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
+  global-position updates into the pool, also registers ownership lookups.
+- `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
+- A pool hierarchy/sort system exists but is commented out — **do not
+  re-enable without a design pass.**
+- A WIP scene/skeleton hierarchy traversal system is present but incomplete.
 
 ## Gotchas
 

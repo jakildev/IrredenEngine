@@ -6,27 +6,10 @@ Systems are themselves entities: `SystemId` is an alias for `EntityId`, and a
 system's behavior is stored as `C_SystemEvent<TICK>` etc. components on the
 system entity.
 
-## Entry point
+## Public API
 
-`engine/system/include/irreden/ir_system.hpp` — exposes `IRSystem::`:
-`createSystem<...>()`, `registerPipeline()`, `executePipeline()`, system
-tag helpers, and per-system-parameters.
-
-## Key types
-
-- **`SystemId`** — `EntityId` alias. Systems are ECS entities.
-- **`SystemEvent`** enum (`ir_system_types.hpp`) — `BEGIN_TICK`, `TICK`,
-  `END_TICK`, `RELATION_TICK`, `START`, `STOP`. These are the dispatch
-  slots a system can hook.
-- **`SystemName`** enum (`ir_system_types.hpp`) — predefined system type
-  identifiers (e.g. `VELOCITY_3D`, `VOXEL_TO_TRIXEL_STAGE_1`). Prefab
-  systems specialize `template <> struct System<SYSTEM_NAME>::create()`.
-  **Any new prefab system must add its name to this enum first or the
-  specialization won't link.**
-- **`C_SystemEvent<T>`** — component specialization holding the function
-  pointer and archetype for each dispatch slot.
-- **`RelationParams<Components...>`** — passed to `createSystem` when the
-  system needs a `RELATION_TICK` for a specific relation/component combo.
+`IRSystem::` exposes: `createSystem<...>()`, `registerPipeline()`,
+`executePipeline()`, system tag helpers, and per-system-parameters.
 
 ## Three valid TICK function signatures
 
@@ -112,17 +95,3 @@ mid-frame is supported but uncommon.
   `RelationParams<...>` will ever fire `RELATION_TICK`, even if the
   relation exists in the ECS.
 
-## Internal layout
-
-```
-engine/system/
-├── include/irreden/
-│   ├── ir_system.hpp               — public facade
-│   └── system/
-│       ├── ir_system_types.hpp     — SystemEvent, SystemName, RelationParams
-│       ├── system_manager.hpp      — SystemManager template impl
-│       └── components/
-│           ├── component_system_event.hpp     — C_SystemEvent<T>
-│           └── component_system_relation.hpp  — C_SystemRelation
-└── src/                             — SystemManager impl, pipeline exec
-```

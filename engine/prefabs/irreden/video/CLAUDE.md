@@ -6,36 +6,22 @@ capture is global, triggered via `IRVideo::` free functions.
 
 ## Components
 
-All currently tags / placeholders:
-
-- `component_framebuffer_capture.hpp` — `C_FramebufferCapture`, empty
-  tag. Intended to mark framebuffers that participate in capture, but
-  the capture pipeline doesn't read it yet.
-- `component_output_resolution.hpp` — `C_OutputResolution`, empty.
-- `component_framebuffer_output_position.hpp` —
-  `C_FramebufferOutputPosition`, empty.
-
-Treat these as sketches until they're wired into `engine/video/`.
+All currently tags / placeholders. `C_FramebufferCapture` is intended to mark
+framebuffers that participate in capture, but the capture pipeline doesn't read
+it yet. Treat all components here as sketches until they're wired into
+`engine/video/`.
 
 ## Commands
 
-- `command_take_screenshot.hpp` — `IRVideo::requestScreenshot()`.
-- `command_take_screenshot_canvas.hpp` —
-  `IRVideo::requestCanvasScreenshot()`.
-- `command_toggle_recording.hpp` — `IRVideo::toggleRecording()`.
-
-All three just call the corresponding free function. Requests are
-serviced on the next render frame.
+Three commands wrap `IRVideo::` free functions: take a screenshot, take a
+canvas screenshot, and toggle recording. All three just enqueue requests that
+are serviced on the next render frame.
 
 ## Systems
 
-- `system_video_encoder.hpp` — largely commented out. An earlier
-  attempt at ECS-driven encoder integration; **do not resurrect without
-  a design pass**, and read `engine/video/CLAUDE.md` first.
-
-## Entity builders
-
-None.
+A video encoder system exists but is largely commented out — an earlier attempt
+at ECS-driven encoder integration. **Do not resurrect without a design pass**;
+read `engine/video/CLAUDE.md` first.
 
 ## Gotchas
 

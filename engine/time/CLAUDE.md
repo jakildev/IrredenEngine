@@ -4,12 +4,8 @@ Owns the master clock, the fixed-step accumulator, and per-event profilers
 for UPDATE and RENDER. `World::gameLoop()` asks `TimeManager` whether it's
 time to run another UPDATE tick, and reads `deltaTime(event)` for dt.
 
-## Entry point
+## `IRTime::` public API
 
-`engine/time/include/irreden/ir_time.hpp` — exposes `IRTime::` free
-functions:
-
-- `getTimeManager()`.
 - `shouldUpdate()` — true when the UPDATE accumulator has buffered at
   least one frame period (1/kTargetFps).
 - `deltaTime(Events event)` — actual wall-clock dt for this event's last
@@ -62,19 +58,6 @@ while (running) {
 `shouldUpdate()` can return `true` multiple frames in a row if the loop
 fell behind — that's the variable catch-up. `skipUpdate()` drops one frame
 of lag manually (used by the loading-screen / pause path).
-
-## Internal layout
-
-```
-engine/time/
-├── include/irreden/
-│   ├── ir_time.hpp             — public facade
-│   └── time/
-│       ├── ir_time_types.hpp   — Events enum, aliases, constants
-│       ├── time_manager.hpp    — TimeManager class
-│       └── event_profiler.hpp  — EventProfiler<T> template specializations
-└── src/                         — TimeManager impl
-```
 
 ## Gotchas
 

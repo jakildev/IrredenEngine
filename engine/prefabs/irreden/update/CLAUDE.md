@@ -6,38 +6,27 @@ in the `UPDATE` pipeline unless explicitly noted.
 
 ## Key components
 
-- `component_velocity_3d.hpp` — `C_Velocity3D`, vec3 in **blocks per
-  second**, not pixels.
-- `component_velocity_drag.hpp` — `C_VelocityDrag`, configurable drag,
-  hover damping, post-hover reset.
-- `component_gravity_3d.hpp` — `C_Gravity3D`, direction + magnitude.
-- `component_animation_clip.hpp` — `C_AnimationClip`, an array of
-  animation phases.
-- `component_action_animation.hpp` — `C_ActionAnimation`, playback
-  state for the above.
-- `component_particle_burst.hpp` — one-shot particle spawn config
-  (direction override, face bias, gravity mode).
-- `component_periodic_idle.hpp` — `C_PeriodicIdle`, sine/easing
-  position offset for drift.
-- `component_lifetime.hpp` — `C_Lifetime`, integer countdown; destroyed
-  when ≤ 0.
+- `C_Velocity3D` — vec3 in **blocks per second**, not pixels.
+- `C_VelocityDrag` — configurable drag, hover damping, post-hover reset.
+- `C_Gravity3D` — direction + magnitude.
+- `C_AnimationClip` — an array of animation phases.
+- `C_ActionAnimation` — playback state for the above.
+- `C_ParticleBurst` — one-shot particle spawn config (direction override,
+  face bias, gravity mode).
+- `C_PeriodicIdle` — sine/easing position offset for drift.
+- `C_Lifetime` — integer countdown; destroyed when ≤ 0.
 
 ## Key systems (all UPDATE pipeline)
 
-- `system_velocity.hpp` — `VELOCITY_3D`. Applies `velocity *
-  deltaTime(UPDATE)` to position.
-- `system_gravity_3d.hpp` — `GRAVITY_3D`. Accumulates gravity into
-  velocity.
-- `system_velocity_drag.hpp` — `VELOCITY_DRAG`. Applies drag, hover
-  damping, post-hover reset.
-- `system_animation_color.hpp` — `ANIMATION_COLOR`. Plays an
-  `AnimationClip` on a voxel set via HSV blending.
-- `system_particle_spawner.hpp` — spawns particles at configured rate
-  via `entity_voxel_particle` builder.
-- `system_lifetime.hpp` — decrements `C_Lifetime`; destroys entities at
-  zero.
-- `system_periodic_idle.hpp` — drives `C_PositionOffset3D` via sine /
-  easing for drift/hover.
+- `VELOCITY_3D` — applies `velocity * deltaTime(UPDATE)` to position.
+- `GRAVITY_3D` — accumulates gravity into velocity.
+- `VELOCITY_DRAG` — applies drag, hover damping, post-hover reset.
+- `ANIMATION_COLOR` — plays an `AnimationClip` on a voxel set via HSV blending.
+- `PARTICLE_SPAWNER` — spawns particles at configured rate via the voxel
+  particle entity builder.
+- `LIFETIME` — decrements `C_Lifetime`; destroys entities at zero.
+- `PERIODIC_IDLE` — drives `C_PositionOffset3D` via sine / easing for
+  drift/hover.
 
 ## Commands
 
