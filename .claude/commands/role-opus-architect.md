@@ -104,7 +104,8 @@ a task. Wait for explicit human instruction.
 ## Filing tasks
 
 When you identify work that needs doing — by you, a Sonnet agent, or
-anyone — file it as a GitHub issue with the `fleet:task` label:
+anyone — file it as a GitHub issue. Add `fleet:task` as metadata so
+the human knows it came from the fleet:
 
 `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --label "fleet:task" --body "<description>"`
 
@@ -114,9 +115,10 @@ Include in the body:
 - **Acceptance criteria** (concrete check: build passes, test X works)
 - **Context** (why this matters, what you observed)
 
-The issue will sit in the backlog until the **human triages and adds
-the `human:approved` label**. Only then does the queue-manager ingest
-it into TASKS.md. You do NOT edit TASKS.md directly.
+The issue sits in the backlog until the **human adds
+`human:approved`** — that's the sole intake gate. The queue-manager
+only checks for `human:approved`, not `fleet:task`. You do NOT edit
+TASKS.md directly.
 
 ## Planning issues
 
