@@ -6,6 +6,7 @@ add_executable(IrredenEngineTest
   ecs/entity_manager_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
+  math/ir_math_viewport_helpers_test.cpp
   math/ir_math_color_layout_test.cpp
   math/ir_math_coord_helpers_test.cpp
   math/ir_math_easing_color_sort_test.cpp
