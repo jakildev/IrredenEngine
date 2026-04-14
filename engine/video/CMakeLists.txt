@@ -69,11 +69,14 @@ set(
 
 set(IRREDEN_FFMPEG_ROOT_HINTS "")
 if(IR_isDarwin)
+    # Prefer the keg-only paths first: they contain only FFmpeg headers and
+    # avoid shadowing other FetchContent deps (e.g. fmt) that live under the
+    # generic /opt/homebrew/include alongside Homebrew's own fmt package.
     list(APPEND IRREDEN_FFMPEG_ROOT_HINTS
-        /opt/homebrew
         /opt/homebrew/opt/ffmpeg
-        /usr/local
+        /opt/homebrew
         /usr/local/opt/ffmpeg
+        /usr/local
     )
 endif()
 if(IR_isLinux)
@@ -96,6 +99,16 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
                 break()
             endif()
         endforeach()
+        # When the root was auto-detected (not user-supplied), clear any stale
+        # cached find_path/find_library results so they re-discover from the
+        # new root on this configure run.
+        if(IRREDEN_FFMPEG_ROOT)
+            unset(IRREDEN_FFMPEG_INCLUDE_DIR CACHE)
+            foreach(_lib IN LISTS _ffmpeg_components)
+                string(TOUPPER "${_lib}" _lib_upper)
+                unset(IRREDEN_FFMPEG_${_lib_upper}_LIBRARY CACHE)
+            endforeach()
+        endif()
     endif()
 
     if(IRREDEN_FFMPEG_ROOT)
@@ -105,6 +118,7 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
             HINTS
             ${IRREDEN_FFMPEG_ROOT}/include
             ${IRREDEN_FFMPEG_ROOT}
+            NO_DEFAULT_PATH
         )
 
         foreach(_ffmpeg_lib IN LISTS _ffmpeg_components)
@@ -115,6 +129,7 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
                 HINTS
                 ${IRREDEN_FFMPEG_ROOT}/lib
                 ${IRREDEN_FFMPEG_ROOT}
+                NO_DEFAULT_PATH
             )
             if(IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY)
                 list(APPEND IRREDEN_VIDEO_FFMPEG_LIBS ${IRREDEN_FFMPEG_${_ffmpeg_lib_upper}_LIBRARY})
