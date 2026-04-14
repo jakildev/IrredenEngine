@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# fleet-run — find and run a built executable from its own directory.
+#
+# Avoids the `cd <dir> && ./<exe>` pattern that triggers Claude Code's
+# compound-command security gate and blocks unattended operation.
+#
+# The executable runs from its own directory so sibling data/, shaders/,
+# and scripts/ directories are on its CWD (required by most creations).
+#
+# Usage:
+#   fleet-run IrredenEngineTest --gtest_brief=1
+#   fleet-run IRShapeDebug
+#   fleet-run --build-dir /path/to/build IrredenEngineTest
+#
+# Source of truth: scripts/fleet/fleet-run in the engine repo.
+# Installed to ~/bin/fleet-run (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+BUILD_DIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build-dir) BUILD_DIR="$2"; shift 2 ;;
+        --help|-h)
+            cat <<'USAGE'
+usage: fleet-run [--build-dir <dir>] <executable-name> [args...]
+
+Finds <executable-name> in the build tree, cd's into its directory,
+and runs it. Sibling data/shaders/scripts directories are on CWD.
+
+Options:
+  --build-dir <dir>   Override the build directory (default: auto-detect)
+
+Build directory resolution (in order):
+  1. --build-dir flag
+  2. $IRREDEN_BUILD_DIR environment variable
+  3. <git-worktree-root>/build
+  4. ~/src/IrredenEngine/build (fallback)
+USAGE
+            exit 0
+            ;;
+        --) shift; break ;;
+        -*) echo "fleet-run: unknown option $1" >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+
+if [[ $# -eq 0 ]]; then
+    echo "usage: fleet-run [--build-dir <dir>] <executable-name> [args...]" >&2
+    exit 2
+fi
+
+EXE_NAME="$1"
+shift
+
+# Default build dir: same auto-detection logic as fleet-build.
+if [[ -z "$BUILD_DIR" ]]; then
+    WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+fi
+
+if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "fleet-run: build directory $BUILD_DIR does not exist." >&2
+    echo "           run 'fleet-build --target $EXE_NAME' first." >&2
+    exit 1
+fi
+
+# Find the executable in the build tree.
+EXE_PATH=$(find "$BUILD_DIR" -name "$EXE_NAME" -type f -perm +111 2>/dev/null | head -1)
+
+if [[ -z "$EXE_PATH" ]]; then
+    echo "fleet-run: could not find executable '$EXE_NAME' in $BUILD_DIR" >&2
+    echo "           build it first: fleet-build --target $EXE_NAME" >&2
+    exit 1
+fi
+
+EXE_DIR=$(dirname "$EXE_PATH")
+
+echo "fleet-run: $EXE_PATH $*"
+cd "$EXE_DIR"
+exec "./$EXE_NAME" "$@"

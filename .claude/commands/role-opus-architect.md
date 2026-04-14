@@ -75,7 +75,8 @@ When you do pick a task:
 3. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
    the edit in your first commit on the work branch.
 4. Build the target you touched with `fleet-build --target <name>`.
-   Run the relevant executable if one exists for the touched code.
+   Run the relevant executable if one exists for the touched code:
+   `fleet-run <executable-name>`
 5. Use the `commit-and-push` skill to open the PR. If the task has an
    `**Issue:** #N` field, include `Closes #N` in the PR body so the
    issue closes automatically when the PR merges.

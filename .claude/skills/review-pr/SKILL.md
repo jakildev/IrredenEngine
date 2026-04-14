@@ -191,10 +191,16 @@ compliance or raise an issue.
 
 ### 5. Write the review
 
-Post the review as a PR comment via `gh pr review`:
+Post the review as a PR comment via `gh pr review`. **Do NOT use
+`--body "$(cat <<'EOF'...)"` or any `$(...)` command substitution** —
+it triggers Claude Code's `command_substitution` security gate and
+causes parse errors when the body contains backticks or special
+characters. Instead, write the body to a temp file with the **Write
+tool**, then pass it with `--body-file`:
 
-```bash
-gh pr review <N> --comment --body "$(cat <<'EOF'
+1. Use the **Write tool** to write the review body to `/tmp/review-body.md`:
+
+```markdown
 ## Review — <title>
 
 **Verdict:** <approve | needs-fix | blocker>
@@ -216,8 +222,12 @@ gh pr review <N> --comment --body "$(cat <<'EOF'
 - [ ] <...>
 
 🤖 Reviewed by Claude Opus 4.6 (review-pr skill)
-EOF
-)"
+```
+
+2. Post the review:
+
+```bash
+gh pr review <N> --comment --body-file /tmp/review-body.md
 ```
 
 Rules for the review body:

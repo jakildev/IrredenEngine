@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# fleet-build — cmake --build wrapper with auto-parallelism.
+# fleet-build — cmake --build wrapper with auto-parallelism and worktree detection.
 #
 # Removes the need for agents to embed $(nproc) or $(sysctl -n hw.ncpu)
 # in their Bash calls, which triggers Claude Code's command_substitution
 # security gate and blocks unattended operation.
+#
+# Auto-detects the current git worktree root and uses <root>/build as
+# the build directory. Each worktree gets its own build tree — no more
+# conflicts between parallel agents. If the build tree hasn't been
+# configured yet, fleet-build runs cmake --preset automatically.
 #
 # Usage:
 #   fleet-build --target IRShapeDebug
@@ -18,9 +23,29 @@
 
 set -euo pipefail
 
-BUILD_DIR="${IRREDEN_BUILD_DIR:-$HOME/src/IrredenEngine/build}"
+# --- Build directory resolution ---
+# Priority: $IRREDEN_BUILD_DIR > <worktree-root>/build > ~/src/IrredenEngine/build
+WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
 
-# Auto-detect CPU count if no -j flag was passed.
+# --- Auto-configure if the build tree doesn't exist yet ---
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+    case "$(uname -s)" in
+        Darwin)          PRESET="macos-debug" ;;
+        Linux)           PRESET="linux-debug" ;;
+        MINGW*|MSYS*|CYGWIN*) PRESET="windows-debug" ;;
+        *)
+            echo "fleet-build: unsupported platform $(uname -s)" >&2
+            exit 1
+            ;;
+    esac
+    echo "fleet-build: no build tree at $BUILD_DIR"
+    echo "fleet-build: configuring with preset '$PRESET'..."
+    cmake --preset "$PRESET" -S "$WORKTREE_ROOT"
+    echo "fleet-build: configure done."
+fi
+
+# --- Auto-detect CPU count if no -j flag was passed ---
 has_j_flag=false
 for arg in "$@"; do
     case "$arg" in
