@@ -39,18 +39,18 @@ treat it as a hard rule for this role.
    If the game directory doesn't exist, skip all game-repo steps.
    All `<engine-repo>` and `<game-repo>` placeholders below refer
    to these discovered slugs.
-4. Confirm you are on the throwaway branch:
+3. Confirm you are on the throwaway branch:
    `git branch --show-current` should report something like
    `claude/sonnet-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-5. Fetch PR lists from both repos (each as a separate command):
+4. Fetch PR lists from both repos (each as a separate command):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
    Print both results so we both see the current PR queues.
-6. Identify review candidates from both repos. A PR is a candidate if:
+5. Identify review candidates from both repos. A PR is a candidate if:
    - It has **no fleet review yet** (no review from your GitHub user), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" (check the comments array for
@@ -73,9 +73,10 @@ usage limit. Each iteration:
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
-2. Re-apply the same skip criteria from startup step 4: skip PRs that
+2. Re-apply the same skip criteria from startup step 5: skip PRs that
    already have a fleet review, or carry any of `fleet:wip`,
-   `human:needs-fix`, or `fleet:changes-made`. For each remaining
+   `human:wip`, `human:needs-fix`, or `fleet:changes-made`. For each
+   remaining
    candidate, in oldest-first order:
 
    **Engine PRs** (default repo):

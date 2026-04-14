@@ -39,20 +39,21 @@ use `cat` — use the Read tool for files.
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. **Discover repo slugs** (used in all `--repo` flags below):
    Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
-   Game: Read `~/src/IrredenEngine/creations/game/TASKS.md` (next step).
-   If the game TASKS.md exists, run:
-   `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
-   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
-   If the game repo doesn't exist, skip all game-repo steps below.
+   Game: determined in step 5 below (probe the game directory).
    All `<engine-repo>` and `<game-repo>` placeholders below refer
    to these discovered slugs.
 4. Read tool → `TASKS.md`
 5. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
-   - If the Read succeeds (file exists) → also run step 5a:
-     5a. `gh pr list --repo <game-repo> --state open --json number,title,headRefName`
-   - If the Read fails (file not found) → skip 5a. No game repo.
+   - If the Read succeeds (file exists), the game repo is present.
+     Run these two commands (separate tool calls):
+     5a. `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
+         Parse `owner/repo` from the URL (strip protocol, `.git`
+         suffix). This is `<game-repo>`.
+     5b. `gh pr list --repo <game-repo> --state open --json number,title,headRefName`
+   - If the Read fails (file not found) → skip 5a–5b. No game repo.
+     All game-repo steps below are skipped.
 6. `gh pr list --repo <engine-repo> --state open --json number,title,headRefName`
-6. Print a **one-line queue summary** followed by the standing-by message.
+7. Print a **one-line queue summary** followed by the standing-by message.
    Format: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
    Count from both engine and game TASKS.md (if present). Then print:
    `queue-manager standing by — paste a task description and I will
@@ -270,12 +271,13 @@ You are the sole TASKS.md editor. Each maintenance pass:
 5. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
 6. **Push changes (if any).**
-   Engine TASKS.md — commit and push directly to master:
-   - `git -C ~/src/IrredenEngine fetch origin`
-   - `git -C ~/src/IrredenEngine rebase origin/master`
-   - `git -C ~/src/IrredenEngine add TASKS.md`
-   - `git -C ~/src/IrredenEngine commit -m "queue: maintenance sync"`
-   - `git -C ~/src/IrredenEngine push origin HEAD:master`
+   Engine TASKS.md — commit and push directly to master (bare `git`
+   is correct here — your CWD is an engine worktree):
+   - `git fetch origin`
+   - `git rebase origin/master`
+   - `git add TASKS.md`
+   - `git commit -m "queue: maintenance sync"`
+   - `git push origin HEAD:master`
    Game TASKS.md — separate commit and push to game repo master:
    - `git -C ~/src/IrredenEngine/creations/game fetch origin`
    - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`

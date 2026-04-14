@@ -57,7 +57,7 @@ conditions, allocator behavior, hot-path costs.
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
    `gh pr list --repo <game-repo> --state open --json number,title,headRefName,reviews,labels`
    Print both results.
-4. Identify the candidates from both repos. A PR is a candidate if:
+5. Identify the candidates from both repos. A PR is a candidate if:
    - The latest Sonnet review body contains `Opus recheck required`, OR
    - The PR touches core engine/game invariants, OR
    - The author pushed fixes and commented "re-review please" after
