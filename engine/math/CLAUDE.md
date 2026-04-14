@@ -73,7 +73,7 @@ Helpers that take `PlaneIso` (most of them): double-check the plane axis —
 - `applyHSVOffset(base, hsvDelta)` — shift hue/saturation/value on a
   packed RGBA color.
 - `IRColors::kBlack/kWhite/kRed/...` — canned constants.
-- `color_palettes.hpp` — load palette files from the asset path.
+- `color_palettes.hpp` — compile-time palette arrays (no file I/O).
 - `color.hpp` — sorting (`sortByHue`).
 
 ## Physics
@@ -117,10 +117,10 @@ engine/math/
 │       ├── ir_math_types.hpp      — GLM aliases, Color, enums
 │       ├── easing_functions.hpp   — IREasingFunctions + GLM wrappers
 │       ├── color.hpp              — sorting, hue utilities
-│       ├── color_palettes.hpp     — palette file loading
+│       ├── color_palettes.hpp     — compile-time palette arrays
 │       ├── physics.hpp            — ballistic helpers
-│       ├── bezier_curves.hpp      — interpolation helpers
-│       └── percolation.hpp        — procedural/noise helpers
+│       ├── bezier_curves.hpp      — stub (not yet implemented)
+│       └── percolation.hpp        — stub (not yet implemented)
 └── src/
     └── ir_math.cpp                — non-inlined impls
 ```
