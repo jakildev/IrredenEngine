@@ -2,6 +2,7 @@ include(GoogleTest)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(IrredenEngineTest
+  audio/music_theory_test.cpp
   ecs/entity_manager_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
