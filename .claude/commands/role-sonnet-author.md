@@ -9,6 +9,14 @@ tasks from `TASKS.md`, work them end-to-end, and open PRs.
 
 Mode (optional argument): $ARGUMENTS
 
+## CRITICAL: single-command Bash calls only
+
+Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
+`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
+tool instead of `grep` or `rg`. Use the **Glob** tool instead of
+`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
+this blocks unattended operation with interactive prompts.
+
 ## Responsibilities
 
 - Test generation against a clear spec.
@@ -79,7 +87,7 @@ limit. Each loop iteration:
    the engine style guide.
 
 5. **Build and run.**
-   `cmake --build build --target <name> -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`.
+   `fleet-build --target <name>`
    If the touched code has an executable target, run it once. Untested
    commits are the single biggest waste of reviewer-agent time.
 
@@ -91,10 +99,11 @@ limit. Each loop iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. Post a comment on your PR (or open a stub PR if none exists)
-   noting the escalation: "escalated — touches X invariant, deferring
-   to opus architect". The queue-manager will update TASKS.md. Move
-   on to the next task.
+   STOP. File a GitHub issue for the opus work and note the escalation
+   on your PR:
+   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --label "fleet:task" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
+   Then comment on your PR: "escalated — filed issue #N for opus".
+   The queue-manager will add it to TASKS.md. Move on to the next task.
 
 7. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
