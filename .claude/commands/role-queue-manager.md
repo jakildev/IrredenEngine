@@ -37,12 +37,21 @@ use `cat` — use the Read tool for files.
 
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. Read tool → `TASKS.md`
-4. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
-   - If the Read succeeds (file exists) → also run step 4a (separate tool call):
-     4a. `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName`
-   - If the Read fails (file not found) → skip 4a. No game repo on this machine.
-5. `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
+3. **Discover repo slugs** (used in all `--repo` flags below):
+   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
+   Game: Read `~/src/IrredenEngine/creations/game/TASKS.md` (next step).
+   If the game TASKS.md exists, run:
+   `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
+   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
+   If the game repo doesn't exist, skip all game-repo steps below.
+   All `<engine-repo>` and `<game-repo>` placeholders below refer
+   to these discovered slugs.
+4. Read tool → `TASKS.md`
+5. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
+   - If the Read succeeds (file exists) → also run step 5a:
+     5a. `gh pr list --repo <game-repo> --state open --json number,title,headRefName`
+   - If the Read fails (file not found) → skip 5a. No game repo.
+6. `gh pr list --repo <engine-repo> --state open --json number,title,headRefName`
 6. Print a **one-line queue summary** followed by the standing-by message.
    Format: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
    Count from both engine and game TASKS.md (if present). Then print:
@@ -183,10 +192,10 @@ triggers.
 You are the sole TASKS.md editor. Each maintenance pass:
 
 0. **Clean stale claims:**
-   `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
+   `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
 
 1. **Ingest triaged issues (engine repo):**
-   `gh issue list --repo jakildev/IrredenEngine --label "human:approved" --state open --json number,title,body,comments,labels`
+   `gh issue list --repo <engine-repo> --label "human:approved" --state open --json number,title,body,comments,labels`
    Only issues with the `human:approved` label are ingested — this
    is the universal gate for both human-filed and agent-filed issues.
 
@@ -211,39 +220,39 @@ You are the sole TASKS.md editor. Each maintenance pass:
       criteria from the full issue thread, not just the title.
    c. Remove the `human:approved` label (so the issue isn't
       re-ingested):
-      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved"`
+      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
    d. Do **NOT** close the issue. It stays open until the author
       agent's PR merges via `Closes #N`.
 
    **If the issue needs a plan first** — the scope is large, the
    approach is unclear, or it needs architectural input:
    a. Add the `fleet:needs-plan` label:
-      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-plan"`
+      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved" --add-label "fleet:needs-plan"`
    b. Comment explaining what's missing and that the architect
       should weigh in before this becomes a task:
-      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Needs planning: <what's unclear>. Tagging for architect review."`
+      `gh issue comment <N> --repo <engine-repo> --body "Needs planning: <what's unclear>. Tagging for architect review."`
    c. Do NOT add it to TASKS.md yet. The human or architect will
       refine the issue, then the human re-adds `human:approved`.
 
    **If the issue is too vague** — not enough info to even plan:
    a. Add the `fleet:needs-info` label:
-      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-info"`
+      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved" --add-label "fleet:needs-info"`
    b. Comment with specific questions:
-      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Need more info before scheduling: <specific questions>"`
+      `gh issue comment <N> --repo <engine-repo> --body "Need more info before scheduling: <specific questions>"`
    c. Do NOT add it to TASKS.md.
 
 2. **Ingest triaged issues (game repo):**
-   `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body,comments,labels`
+   `gh issue list --repo <game-repo> --label "human:approved" --state open --json number,title,body,comments,labels`
    Same full-context assessment as above. Apply the same ready /
-   needs-plan / needs-info logic, using `--repo jakildev/irreden`
+   needs-plan / needs-info logic, using `--repo <game-repo>`
    on all `gh` commands. Append to the **game** TASKS.md at
    `~/src/IrredenEngine/creations/game/TASKS.md`.
 
 3. **Sync merged PRs → Done (both repos):**
    Engine:
-   `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   `gh pr list --repo <engine-repo> --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    Game:
-   `gh pr list --repo jakildev/irreden --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   `gh pr list --repo <game-repo> --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
    For each recently merged PR whose title or branch matches an
    `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
@@ -251,9 +260,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
 
 4. **Sync open PRs → In-progress (both repos):**
    Engine:
-   `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
+   `gh pr list --repo <engine-repo> --state open --json number,title,headRefName`
    Game:
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName`
    For each open PR whose title matches a `[ ]` task in the matching
    repo's TASKS.md: flip to `[~]`, set Owner to the PR author's
    worktree name.

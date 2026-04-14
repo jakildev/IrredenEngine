@@ -20,8 +20,8 @@ this blocks unattended operation with interactive prompts.
 
 ## Role
 
-You poll open PRs on **both repos** — `jakildev/IrredenEngine` (engine)
-and `jakildev/irreden` (game) — and act on the ones that:
+You poll open PRs on **both repos** — the engine repo and the game
+repo at `creations/game/` (if present) — and act on the ones that:
 - Have a Sonnet first-pass review whose body ends with
   `Opus recheck required: ...`, or
 - Touch core engine invariants regardless of Sonnet's verdict
@@ -41,14 +41,21 @@ conditions, allocator behavior, hot-path costs.
 ## Startup actions
 
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
-2. Confirm you are on the throwaway branch
+2. **Discover repo slugs** (used in all `--repo` flags below):
+   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
+   Game: `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
+   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
+   If the game directory doesn't exist, skip all game-repo steps.
+   All `<engine-repo>` and `<game-repo>` placeholders below refer
+   to these discovered slugs.
+3. Confirm you are on the throwaway branch
    `claude/opus-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/opus-reviewer-scratch origin/master`
-3. Fetch PR lists from both repos (each as a separate command):
+4. Fetch PR lists from both repos (each as a separate command):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews,labels`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,reviews,labels`
    Print both results.
 4. Identify the candidates from both repos. A PR is a candidate if:
    - The latest Sonnet review body contains `Opus recheck required`, OR
@@ -67,14 +74,14 @@ than the Sonnet reviewer. Each iteration:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,reviews,labels`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,reviews,labels`
 2. For each candidate, in oldest-first order:
    a. Read the existing Sonnet review in full first
-      (`gh pr view <N> --comments`, add `--repo jakildev/irreden` for
+      (`gh pr view <N> --comments`, add `--repo <game-repo>` for
       game PRs). Note what Sonnet flagged.
    b. **Engine PRs:** Invoke the `review-pr` skill on the PR.
       **Game PRs:** Read the diff with `gh pr diff <N> --repo
-      jakildev/irreden` and review manually (you cannot check out game
+      <game-repo>` and review manually (you cannot check out game
       PRs into this engine worktree). For game conventions, read
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
    c. Focus your review on the items Sonnet could not confirm — do
@@ -87,9 +94,9 @@ than the Sonnet reviewer. Each iteration:
       Do **not** use `--approve` or `--request-changes` — all fleet
       agents share one GitHub account, and GitHub rejects formal
       review actions on your own PRs.
-      For game PRs, add `--repo jakildev/irreden` to all `gh` commands.
+      For game PRs, add `--repo <game-repo>` to all `gh` commands.
    e. **Set the PR label** to match your verdict (add `--repo
-      jakildev/irreden` for game PRs). The label is the primary signal
+      <game-repo>` for game PRs). The label is the primary signal
       the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
       (swap the label name for needs-fix or blocker as appropriate).

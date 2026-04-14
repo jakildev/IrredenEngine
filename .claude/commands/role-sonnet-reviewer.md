@@ -19,8 +19,8 @@ this blocks unattended operation with interactive prompts.
 
 ## Role
 
-You poll open PRs on **both repos** — `github.com/jakildev/IrredenEngine`
-(engine) and `github.com/jakildev/irreden` (game) — run the `review-pr`
+You poll open PRs on **both repos** — the engine repo and the game
+repo at `creations/game/` (if present) — run the `review-pr`
 skill on any that have not been reviewed by this fleet yet, and post a
 structured first-pass review. You also flag PRs that need an Opus final
 pass.
@@ -32,18 +32,25 @@ treat it as a hard rule for this role.
 ## Startup actions
 
 1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
-2. Confirm you are on the throwaway branch:
+2. **Discover repo slugs** (used in all `--repo` flags below):
+   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
+   Game: `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
+   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
+   If the game directory doesn't exist, skip all game-repo steps.
+   All `<engine-repo>` and `<game-repo>` placeholders below refer
+   to these discovered slugs.
+4. Confirm you are on the throwaway branch:
    `git branch --show-current` should report something like
    `claude/sonnet-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-3. Fetch PR lists from both repos (each as a separate command):
+5. Fetch PR lists from both repos (each as a separate command):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
    Print both results so we both see the current PR queues.
-4. Identify review candidates from both repos. A PR is a candidate if:
+6. Identify review candidates from both repos. A PR is a candidate if:
    - It has **no fleet review yet** (no review from your GitHub user), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" (check the comments array for
@@ -65,7 +72,7 @@ usage limit. Each iteration:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
-   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
 2. Re-apply the same skip criteria from startup step 4: skip PRs that
    already have a fleet review, or carry any of `fleet:wip`,
    `human:needs-fix`, or `fleet:changes-made`. For each remaining
@@ -76,16 +83,16 @@ usage limit. Each iteration:
    b. The skill checks out the PR, reads the diff in context, writes
       a structured review, and posts it.
 
-   **Game PRs** (`jakildev/irreden`):
-   a. Read the diff: `gh pr diff <N> --repo jakildev/irreden`
-   b. Read PR details: `gh pr view <N> --repo jakildev/irreden`
+   **Game PRs** (`<game-repo>`):
+   a. Read the diff: `gh pr diff <N> --repo <game-repo>`
+   b. Read PR details: `gh pr view <N> --repo <game-repo>`
    c. Review the diff manually (you cannot check out game PRs into
       this engine worktree). Focus on code quality, style, and obvious
       bugs. For game-specific conventions, read the game CLAUDE.md at
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   d. Post the review: `gh pr review <N> --repo jakildev/irreden --comment --body "<review>"`
+   d. Post the review: `gh pr review <N> --repo <game-repo> --comment --body "<review>"`
    e. Set labels — always remove stale labels first:
-      `gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
+      `gh pr edit <N> --repo <game-repo> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
       (swap the add-label name for `fleet:needs-fix` or `fleet:blocker` as appropriate).
 
    For all PRs, the review body MUST end with one of these explicit lines:
@@ -98,7 +105,7 @@ usage limit. Each iteration:
         flag for Opus recheck if you're uncertain — better to escalate
         than to approve something subtle by mistake.
    d. **Set the PR label** to match your verdict (add `--repo
-      jakildev/irreden` for game PRs). The label is the primary signal
+      <game-repo>` for game PRs). The label is the primary signal
       the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"`
       (swap the label name for approved or blocker as appropriate).
