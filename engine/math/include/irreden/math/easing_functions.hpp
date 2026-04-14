@@ -9,6 +9,10 @@
 
 namespace IRMath {
 
+/// Identifies an easing curve backed by `glm/gtx/easing.hpp`.
+/// Not every GLM easing overload is exposed — some variants (e.g. back-ease
+/// overshoot parameters) are pre-configured with engine defaults in
+/// @ref kEasingFunctions.
 enum IREasingFunctions {
     kLinearInterpolation,
     kQuadraticEaseIn,
@@ -43,12 +47,14 @@ enum IREasingFunctions {
     kBounceEaseInOut
 };
 
+/// Callable type for a single-argument easing function: `float f(float t)`
+/// where `t ∈ [0, 1]` and the return value is typically in [0, 1] (some
+/// curves like elastic and back overshoot this range).
 using GLMEasingFunction = std::function<float(const float &)>;
-// using GLMEasingFunction = float (*)(float);
 
-// const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions = {
-//     {kLinearInterpolation, glm::linearInterpolation<float>}
-// };
+/// Dispatch table mapping each @ref IREasingFunctions variant to its
+/// GLM-backed implementation.  Back-ease variants use engine-default
+/// overshoot factors rather than raw GLM defaults.
 const std::unordered_map<IREasingFunctions, GLMEasingFunction> kEasingFunctions = {
     {kLinearInterpolation, glm::linearInterpolation<float>},
     {kQuadraticEaseIn, glm::quadraticEaseIn<float>},
