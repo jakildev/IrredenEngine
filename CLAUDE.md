@@ -153,11 +153,12 @@ it in a dedicated PR, not to work around it.
 
 In all three cases:
 
-- The build tree is configured against the **main clone**, not against
-  `.claude/worktrees/...` subdirectories. Agents inside a worktree
-  must edit files at the main clone path for the change to reach the
-  build. Markdown, skill files, and docs can be edited in-worktree
-  freely.
+- **Each worktree has its own build tree.** `fleet-build` auto-detects
+  the worktree root (`git rev-parse --show-toplevel`) and uses
+  `<worktree>/build/`. If the build hasn't been configured yet,
+  `fleet-build` runs `cmake --preset` automatically. Agents edit
+  files in their own worktree and build there — no need to touch the
+  main clone.
 - `CMAKE_CXX_STANDARD` is **23**; your compiler must support it.
   (gcc ≥ 13 on Linux/WSL, gcc ≥ 13 via MSYS2 on Windows.)
 
@@ -273,18 +274,25 @@ single biggest waste of reviewer-agent time.
 
 ## Running an executable
 
+**Fleet agents: use `fleet-run` instead of `cd <dir> && ./<exe>`.**
+The `cd && command` pattern triggers Claude Code's compound-command
+security gate and blocks unattended operation. `fleet-run` finds the
+executable in the build tree, cd's into its directory (so sibling
+`data/`, `shaders/`, `scripts/` are on its CWD), and runs it:
+
+```bash
+fleet-run IRShapeDebug
+fleet-run IrredenEngineTest --gtest_brief=1
+```
+
+`fleet-run` auto-detects the build directory using the same logic as
+`fleet-build` (worktree root → `<root>/build`).
+
 ### On Linux / WSL (fleet)
 
 No runtime-DLL drama. Binaries are ELF files; deps resolve through the
 normal dynamic linker using `rpath` (CMake sets this automatically for
-targets in `build/`). Run the exe from its own build directory so its
-sibling `data/`, `shaders/`, and `scripts/` are on its working
-directory:
-
-```bash
-cd ~/src/IrredenEngine/build/creations/demos/shape_debug
-./IRShapeDebug
-```
+targets in `build/`).
 
 WSLg routes GLFW/OpenGL windows to the Windows host automatically on
 Windows 11 and recent Windows 10 — no X server setup required. Audio
@@ -302,18 +310,9 @@ runtime (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`,
 `libwinpthread-1.dll`) and FFmpeg DLLs (`avcodec-*`, `avformat-*`,
 `avutil-*`, `swscale-*`) are toolchain-supplied and live at
 `C:\msys64\mingw64\bin` — they are **not** copied next to the exe. The
-Windows DLL loader needs that directory on `PATH`.
-
-From the Bash tool:
-
-```bash
-cd "C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build/creations/demos/shape_debug" && \
-PATH="/c/msys64/mingw64/bin:$PATH" cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && .\IRShapeDebug.exe"
-```
-
-The double `PATH` set is intentional. Run from the exe's own directory
-— that's where its sibling DLLs and `data/`, `shaders/`, `scripts/`
-live.
+Windows DLL loader needs that directory on `PATH`. `fleet-run` handles
+the working-directory requirement, but you still need
+`C:\msys64\mingw64\bin` on PATH for the MinGW runtime DLLs.
 
 Each creation typically defines an `IR<Name>Run` custom target that
 builds + launches with the correct working directory (on both
