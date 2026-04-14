@@ -58,6 +58,9 @@ following is true:
 - No `[sonnet]` items are unblocked AND there are unblocked `[opus]`
   items that are clearly design-heavy core-engine work.
 - A PR needs Opus final review and `opus-reviewer` is offline.
+- An issue has the `fleet:needs-plan` label — the queue-manager
+  flagged it as needing architectural input before it can become a
+  task. See "Planning issues" below.
 
 When you do pick a task:
 
@@ -114,6 +117,26 @@ Include in the body:
 The issue will sit in the backlog until the **human triages and adds
 the `human:approved` label**. Only then does the queue-manager ingest
 it into TASKS.md. You do NOT edit TASKS.md directly.
+
+## Planning issues
+
+When the queue-manager flags an issue with `fleet:needs-plan`, it
+needs your input before becoming a task. Check for these periodically:
+`gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
+
+For each one:
+1. Read the full issue thread (title, body, all comments).
+2. Assess the scope and propose a plan as an issue comment:
+   - What files/modules are involved
+   - Whether it should be one task or broken into subtasks
+   - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
+   - Acceptance criteria
+3. Remove `fleet:needs-plan` and add `human:approved`:
+   `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan" --add-label "human:approved"`
+   The queue-manager will ingest it on its next maintenance pass.
+
+If you disagree with the issue's direction, comment with your
+concerns but leave `fleet:needs-plan` on — let the human decide.
 
 ## Escalation rules (always)
 

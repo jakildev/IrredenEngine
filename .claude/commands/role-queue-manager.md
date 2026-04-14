@@ -95,9 +95,11 @@ Per the top-level engine `CLAUDE.md` "Model split":
   changes, gameplay work where mistakes are cheap to catch, bounded
   shader tweaks with a written spec.
 
-When in doubt, tag `[opus]` and let the human downgrade. Over-tagging
-to Opus burns budget; under-tagging to Sonnet causes a Sonnet agent
-to escalate mid-task, which wastes more.
+**Issue author's tag takes precedence.** If the issue body explicitly
+says `[opus]` or `[sonnet]`, use that — the filer knows the work best.
+Otherwise, when in doubt, tag `[opus]` and let the human downgrade.
+Over-tagging to Opus burns budget; under-tagging to Sonnet causes a
+Sonnet agent to escalate mid-task, which wastes more.
 
 ### Step 3 — Pick the area
 
@@ -184,27 +186,57 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `fleet-claim cleanup --repo jakildev/IrredenEngine --repo jakildev/irreden`
 
 1. **Ingest triaged issues (engine repo):**
-   `gh issue list --repo jakildev/IrredenEngine --label "human:approved" --state open --json number,title,body`
+   `gh issue list --repo jakildev/IrredenEngine --label "human:approved" --state open --json number,title,body,comments,labels`
    Only issues with the `human:approved` label are ingested — this
    is the universal gate for both human-filed and agent-filed issues.
-   For each matching issue:
-   - Read the title and body as a task description.
-   - Categorize it (model tag, area) per Steps 2–3 above.
-   - Append a properly formatted entry to `## Open` in `TASKS.md`.
-     Include `**Issue:** #N` in the entry so author agents can link
-     their PR back to this issue.
-   - Remove the `human:approved` label (so the issue isn't re-ingested):
-     `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved"`
-   - Do **NOT** close the issue. It stays open until the author agent's
-     PR merges — the PR body will contain `Closes #N` which lets
-     GitHub close the issue automatically on merge.
+
+   For each matching issue, **read the full context** — title, body,
+   AND all comments. Comments often contain clarifications, scope
+   refinements, or design decisions that the body alone misses.
+
+   **Assess readiness** before ingesting. The issue must have:
+   - A clear, bounded scope (one PR's worth of work)
+   - Enough detail to derive acceptance criteria
+   - No open questions that would block an author mid-task
+
+   **If the issue is ready** — ingest it:
+   a. Categorize it (model tag, area) per Steps 2–3 above.
+      If the issue body explicitly says `[opus]` or `[sonnet]`, that
+      takes precedence over your own assessment. Otherwise, assess:
+      is this a hard problem (design decisions, core invariants,
+      cross-cutting changes → `[opus]`) or bounded/mechanical work
+      (tests, docs, refactors, clear spec → `[sonnet]`)?
+   b. Append a properly formatted entry to `## Open` in `TASKS.md`.
+      Include `**Issue:** #N` in the entry. Synthesize acceptance
+      criteria from the full issue thread, not just the title.
+   c. Remove the `human:approved` label (so the issue isn't
+      re-ingested):
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved"`
+   d. Do **NOT** close the issue. It stays open until the author
+      agent's PR merges via `Closes #N`.
+
+   **If the issue needs a plan first** — the scope is large, the
+   approach is unclear, or it needs architectural input:
+   a. Add the `fleet:needs-plan` label:
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-plan"`
+   b. Comment explaining what's missing and that the architect
+      should weigh in before this becomes a task:
+      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Needs planning: <what's unclear>. Tagging for architect review."`
+   c. Do NOT add it to TASKS.md yet. The human or architect will
+      refine the issue, then the human re-adds `human:approved`.
+
+   **If the issue is too vague** — not enough info to even plan:
+   a. Add the `fleet:needs-info` label:
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "human:approved" --add-label "fleet:needs-info"`
+   b. Comment with specific questions:
+      `gh issue comment <N> --repo jakildev/IrredenEngine --body "Need more info before scheduling: <specific questions>"`
+   c. Do NOT add it to TASKS.md.
 
 2. **Ingest triaged issues (game repo):**
-   `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body`
-   Same flow as above, but append to the game repo's `TASKS.md`.
-   Remove `human:approved`:
-   `gh issue edit <N> --repo jakildev/irreden --remove-label "human:approved"`
-   Do NOT close the issue — the PR will close it on merge.
+   `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body,comments,labels`
+   Same full-context assessment as above. Apply the same ready /
+   needs-plan / needs-info logic, using `--repo jakildev/irreden`
+   on all `gh` commands.
 
 3. **Sync merged PRs → Done:**
    `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
