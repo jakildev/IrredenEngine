@@ -236,30 +236,45 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `gh issue list --repo jakildev/irreden --label "human:approved" --state open --json number,title,body,comments,labels`
    Same full-context assessment as above. Apply the same ready /
    needs-plan / needs-info logic, using `--repo jakildev/irreden`
-   on all `gh` commands.
+   on all `gh` commands. Append to the **game** TASKS.md at
+   `~/src/IrredenEngine/creations/game/TASKS.md`.
 
-3. **Sync merged PRs → Done:**
+3. **Sync merged PRs → Done (both repos):**
+   Engine:
    `gh pr list --repo jakildev/IrredenEngine --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   Game:
+   `gh pr list --repo jakildev/irreden --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
-   Read `TASKS.md`. For each recently merged PR whose title or branch
-   matches an `[~]` or `[ ]` task: flip to `[x]`, add the PR URL to
-   **Links**, move to `## Done — last 20`.
+   For each recently merged PR whose title or branch matches an
+   `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
+   `[x]`, add the PR URL to **Links**, move to `## Done — last 20`.
 
-4. **Sync open PRs → In-progress:**
+4. **Sync open PRs → In-progress (both repos):**
+   Engine:
    `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName`
-   For each open PR whose title matches a `[ ]` task: flip to `[~]`,
-   set Owner to the PR author's worktree name.
+   Game:
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName`
+   For each open PR whose title matches a `[ ]` task in the matching
+   repo's TASKS.md: flip to `[~]`, set Owner to the PR author's
+   worktree name.
 
-5. **Prune Done:** keep only the last 20 entries. Delete older ones.
+5. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
-6. **Push changes (if any).** Commit TASKS.md only and push directly
-   to master:
-   - `git fetch origin`
-   - `git rebase origin/master`
-   - `git add TASKS.md`
-   - `git commit -m "queue: maintenance sync"`
-   - `git push origin HEAD:master`
-   If push rejected, `git pull --rebase origin master` then retry.
+6. **Push changes (if any).**
+   Engine TASKS.md — commit and push directly to master:
+   - `git -C ~/src/IrredenEngine fetch origin`
+   - `git -C ~/src/IrredenEngine rebase origin/master`
+   - `git -C ~/src/IrredenEngine add TASKS.md`
+   - `git -C ~/src/IrredenEngine commit -m "queue: maintenance sync"`
+   - `git -C ~/src/IrredenEngine push origin HEAD:master`
+   Game TASKS.md — separate commit and push to game repo master:
+   - `git -C ~/src/IrredenEngine/creations/game fetch origin`
+   - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
+   - `git -C ~/src/IrredenEngine/creations/game add TASKS.md`
+   - `git -C ~/src/IrredenEngine/creations/game commit -m "queue: maintenance sync"`
+   - `git -C ~/src/IrredenEngine/creations/game push origin HEAD:master`
+   If either push is rejected, rebase and retry. Only push TASKS.md
+   — never push other files to master.
 
 7. Print the maintenance summary AND the queue summary on two lines:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
@@ -273,9 +288,10 @@ You are the sole TASKS.md editor. Each maintenance pass:
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
 - Never `gh pr merge` — the human merges.
-- **TASKS.md exception:** you MAY `git push origin HEAD:master` when
-  the commit touches **only** TASKS.md. This is the sole exception to
-  the no-direct-push rule — TASKS.md is bookkeeping, not code, and
-  you are its sole editor. Never push any other file to master.
+- **TASKS.md exception:** you MAY push directly to master in **both**
+  repos (engine and game) when the commit touches **only** TASKS.md.
+  This is the sole exception to the no-direct-push rule — TASKS.md is
+  bookkeeping, not code, and you are its sole editor. Never push any
+  other file to master in either repo.
 - Never `git push --force`.
 - Single-command Bash only (see CRITICAL section above).
