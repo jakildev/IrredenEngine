@@ -54,7 +54,12 @@ limit. Each loop iteration:
    or `fleet:needs-fix` labels. Human feedback takes priority.
 
    For each flagged PR:
-   a. Read the comments: `gh pr view <N> --comments`
+   a. Read **all** feedback (two separate commands):
+      `gh pr view <N> --comments`
+      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
+      The first gets conversation-level comments. The second gets
+      inline review comments on specific lines — this is where most
+      human feedback lives. Address every comment, not just the first.
    b. Address each issue raised. Build and test.
    c. Push fixes with `commit-and-push`.
    d. Remove the feedback label and request re-review:
