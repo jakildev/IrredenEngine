@@ -30,7 +30,7 @@ strings work. In `IR_RELEASE` mode every log macro is an empty statement
 ## Assertion
 
 ```cpp
-IR_ASSERT(cond, "formatted message %d", value);
+IR_ASSERT(cond, "formatted message {}", value);
 ```
 
 On failure: logs via the GL API logger at `critical` severity and throws
@@ -45,7 +45,7 @@ Wrap easy_profiler:
 - `IR_PROFILE_BLOCK(name, color)` — named scope.
 - `IR_PROFILE_END_BLOCK` — manual block close.
 
-Colors are ABGR hex: `0xff0000ff` = pure blue, `0xff00ff00` = green, etc.
+Colors are ARGB hex: `0xff0000ff` = pure blue, `0xffff0000` = pure red, etc.
 
 `CPUProfiler::setEnabled(bool)` gates all profile macros. Call it from a
 creation's startup if you want profiling off by default.
