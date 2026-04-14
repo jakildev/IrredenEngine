@@ -159,14 +159,14 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [ ] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
+- [~] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
   - **Area:** build, engine/video
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** build-macos-ffmpeg-pkgconfig
   - **Blocked by:** (none)
   - **Acceptance:** `cmake --preset macos-debug && cmake --build build --target IRShapeDebug` completes with zero FFmpeg-related include or linker errors; `avcodec`, `avformat`, `avutil`, and `swscale` all appear in the final link line.
-  - **Notes:** Known macOS first-time issue per `docs/AGENT_FLEET_SETUP.md` §10 — Homebrew FFmpeg pkg-config path differs from Linux (`/opt/homebrew/lib/pkgconfig` on Apple Silicon, `/usr/local/lib/pkgconfig` on Intel). If the fix requires changes to `engine/video/` source beyond CMake, escalate to `[opus]`.
-  - **Links:**
+  - **Notes:** Known macOS first-time issue per `docs/AGENT_FLEET_SETUP.md` §10 — Homebrew FFmpeg pkg-config path differs from Linux (`/opt/homebrew/lib/pkgconfig` on Apple Silicon, `/usr/local/lib/pkgconfig` on Intel). If the fix requires changes to `engine/video/` source beyond CMake, escalate to `[opus]`. **Race:** two open PRs for this task — #127 (`claude/build-macos-ffmpeg-pkgconfig`) and #128 (`claude/build-macos-ffmpeg-pkgconfig-2`). The second one to merge will hit a conflict; human should close the loser.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/127 https://github.com/jakildev/IrredenEngine/pull/128
 
 - [ ] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
   mirror of the Linux-maturation task, on the Mac side. Umbrella epic
