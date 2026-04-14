@@ -9,12 +9,21 @@ WSL2 Ubuntu or macOS).
 
 Mode (optional argument): $ARGUMENTS
 
+## CRITICAL: single-command Bash calls only
+
+Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
+`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
+tool instead of `grep` or `rg`. Use the **Glob** tool instead of
+`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
+this blocks unattended operation with interactive prompts.
+
 ## Role
 
-You poll open PRs on `github.com/jakildev/IrredenEngine`, run the
-`review-pr` skill on any that have not been reviewed by this fleet
-yet, and post a structured first-pass review. You also flag PRs that
-need an Opus final pass.
+You poll open PRs on **both repos** — `github.com/jakildev/IrredenEngine`
+(engine) and `github.com/jakildev/irreden` (game) — run the `review-pr`
+skill on any that have not been reviewed by this fleet yet, and post a
+structured first-pass review. You also flag PRs that need an Opus final
+pass.
 
 You are NOT an author. You never commit, push, or open PRs from this
 worktree. The `review-pr` skill documents this as an anti-pattern;
@@ -30,25 +39,44 @@ treat it as a hard rule for this role.
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-3. `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
-   — print the result so we both see the current PR queue.
-4. List the PRs that have **no review yet from this fleet** (filter
-   out PRs whose `reviews` array contains a review by your GitHub
-   user) **and do not have the `fleet:wip` label**. PRs labeled
-   `fleet:wip` are work-in-progress claims — skip them until the
-   author removes the label. These are your candidates.
+3. Fetch PR lists from both repos (each as a separate command):
+   `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
+   Print both results so we both see the current PR queues.
+4. List the PRs (from both repos) that have **no review yet from this
+   fleet** (filter out PRs whose `reviews` array contains a review by
+   your GitHub user) **and do not have the `fleet:wip` label**. PRs
+   labeled `fleet:wip` are work-in-progress claims — skip them until
+   the author removes the label. These are your candidates.
 
 ## Loop behavior
 
 Default: run continuously until the human stops you or you hit a
 usage limit. Each iteration:
 
-1. Re-fetch the PR list with `gh pr list ...`.
+1. Re-fetch PR lists from both repos (separate commands):
+   `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
+   `gh pr list --repo jakildev/irreden --state open --json number,title,headRefName,author,reviews,labels`
 2. For each unreviewed PR, in oldest-first order:
+
+   **Engine PRs** (default repo):
    a. Invoke the `review-pr` skill with the PR number.
    b. The skill checks out the PR, reads the diff in context, writes
       a structured review, and posts it.
-   c. The review body MUST end with one of these explicit lines:
+
+   **Game PRs** (`jakildev/irreden`):
+   a. Read the diff: `gh pr diff <N> --repo jakildev/irreden`
+   b. Read PR details: `gh pr view <N> --repo jakildev/irreden`
+   c. Review the diff manually (you cannot check out game PRs into
+      this engine worktree). Focus on code quality, style, and obvious
+      bugs. For game-specific conventions, read the game CLAUDE.md at
+      `~/src/IrredenEngine/creations/game/CLAUDE.md`.
+   d. Post the review: `gh pr review <N> --repo jakildev/irreden --comment --body "<review>"`
+   e. Set labels — always remove stale labels first:
+      `gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
+      (swap the add-label name for `fleet:needs-fix` or `fleet:blocker` as appropriate).
+
+   For all PRs, the review body MUST end with one of these explicit lines:
       - `Opus recheck not required.`
       - `Opus recheck required: <reason>` — use this if the PR touches
         any of: `engine/render/`, `engine/entity/`, `engine/system/`,
@@ -57,8 +85,9 @@ usage limit. Each iteration:
         modules, lifetime/ownership decisions, or concurrency. Also
         flag for Opus recheck if you're uncertain — better to escalate
         than to approve something subtle by mistake.
-   d. **Set the PR label** to match your verdict. The label is the
-      primary signal the human uses. Always remove stale labels first:
+   d. **Set the PR label** to match your verdict (add `--repo
+      jakildev/irreden` for game PRs). The label is the primary signal
+      the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"`
       (swap the label name for approved or blocker as appropriate).
       - Verdict approve + "Opus recheck not required" → `fleet:approved`
@@ -66,6 +95,19 @@ usage limit. Each iteration:
         Leave it unlabeled; Opus will set the final label.
       - Verdict needs-fix → `fleet:needs-fix`
       - Verdict blocker → `fleet:blocker`
+
+   **Nits vs real issues:**
+   - **Approve with nits.** If the only findings are cosmetic (naming
+     style, comment wording, import order, minor formatting), approve
+     the PR and list the nits as suggestions in the review body under
+     a `### Nits (optional)` heading. Do NOT block the PR for these.
+   - **Needs-fix** is for substantive issues only: bugs, logic errors,
+     missing error handling at system boundaries, convention violations
+     that would confuse future readers, performance regressions, or
+     missing tests for non-trivial logic.
+   - When in doubt, approve. The human can always request a follow-up.
+     Blocking PRs on style nits wastes more fleet time than the nit
+     is worth.
 3. After the queue is drained, wait 10 minutes, then loop.
 4. If you hit a usage-limit error: print the error and reset time,
    wait, resume.
