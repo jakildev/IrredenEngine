@@ -9,6 +9,14 @@ Your role is **design and heavy core-engine work**, not rapid task picking.
 
 Mode (optional argument): $ARGUMENTS
 
+## CRITICAL: single-command Bash calls only
+
+Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
+`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
+tool instead of `grep` or `rg`. Use the **Glob** tool instead of
+`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
+this blocks unattended operation with interactive prompts.
+
 ## Responsibilities
 
 - Core engine architecture: ECS design, ownership and lifetime rules,
@@ -59,8 +67,7 @@ When you do pick a task:
    are not visible to other agents until merge.
 2. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
    the edit in your first commit on the work branch.
-3. Build the target you touched with
-   `cmake --build build --target <name> -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`.
+3. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code.
 4. Use the `commit-and-push` skill to open the PR.
 5. After the PR is open, use the `start-next-task` skill to land on a
@@ -70,6 +77,22 @@ When you do pick a task:
 
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.
+
+## Filing tasks
+
+When you identify work that needs doing — by you, a Sonnet agent, or
+anyone — file it as a GitHub issue with the `fleet:task` label:
+
+`gh issue create --repo jakildev/IrredenEngine --title "<short title>" --label "fleet:task" --body "<description>"`
+
+Include in the body:
+- **Area** (e.g. `engine/render`, `engine/math`, `docs`)
+- **Suggested model** (`[opus]` or `[sonnet]`)
+- **Acceptance criteria** (concrete check: build passes, test X works)
+- **Context** (why this matters, what you observed)
+
+The queue-manager will pick it up within 15 minutes, categorize it,
+and add it to TASKS.md. You do NOT edit TASKS.md directly.
 
 ## Escalation rules (always)
 

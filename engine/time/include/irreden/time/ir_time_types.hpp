@@ -2,6 +2,7 @@
 #define IR_TIME_TYPES_H
 
 #include <chrono>
+#include <cstddef>
 #include <irreden/ir_constants.hpp>
 
 namespace IRTime {
