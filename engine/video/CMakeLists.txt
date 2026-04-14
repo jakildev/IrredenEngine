@@ -99,9 +99,8 @@ if(IRREDEN_VIDEO_ENABLE_FFMPEG)
                 break()
             endif()
         endforeach()
-        # When the root was auto-detected (not user-supplied), clear any stale
-        # cached find_path/find_library results so they re-discover from the
-        # new root on this configure run.
+        # root was just set by the loop above; only unset cache if we actually
+        # found one (user-supplied IRREDEN_FFMPEG_ROOT skips this block entirely).
         if(IRREDEN_FFMPEG_ROOT)
             unset(IRREDEN_FFMPEG_INCLUDE_DIR CACHE)
             foreach(_lib IN LISTS _ffmpeg_components)
