@@ -189,7 +189,10 @@ Each invocation is one iteration — do the work, then exit cleanly:
 
 7. **Build and run.**
    `fleet-build --target <name>`
-   Run the relevant executable with `fleet-run <name>` if one exists.
+   Run the relevant executable with a timeout so the window auto-closes:
+   `fleet-run --timeout 5 <name>`
+   **Always use `--timeout`** for GUI executables — without it the
+   window stays open and steals focus from the human.
    Untested commits are the single biggest waste of reviewer-agent time.
 
 8. **Stop and escalate if the task scope grows.** If:

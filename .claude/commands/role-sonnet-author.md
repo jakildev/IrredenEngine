@@ -155,11 +155,15 @@ limit. Each loop iteration:
 
 6. **Build and run.**
    `fleet-build --target <name>`
-   If the touched code has an executable target, run it once:
-   `fleet-run <executable-name>`
-   **Never** use `cd <dir> && ./<exe>` — that triggers the compound-
-   command security gate. Untested commits are the single biggest
-   waste of reviewer-agent time.
+   If the touched code has an executable target, run it once with a
+   timeout so the window auto-closes:
+   `fleet-run --timeout 5 <executable-name>`
+   **Always use `--timeout`** for GUI executables — without it the
+   window stays open and steals focus from the human. Use `--timeout`
+   for test executables too (they exit on their own, but the timeout
+   is a safety net). **Never** use `cd <dir> && ./<exe>` — that
+   triggers the compound-command security gate. Untested commits are
+   the single biggest waste of reviewer-agent time.
 
 7. **Stop and escalate if the task is subtler than expected.** If the
    work touches:
