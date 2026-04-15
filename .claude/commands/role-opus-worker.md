@@ -17,10 +17,24 @@ Mode (optional argument): $ARGUMENTS
 ## CRITICAL: single-command Bash calls only
 
 Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
-`;`, or `|`. Use the **Read** tool instead of `cat`. Use the **Grep**
-tool instead of `grep` or `rg`. Use the **Glob** tool instead of
-`find`. Use `git -C <path>` instead of `cd <path> && git`. Violating
-this blocks unattended operation with interactive prompts.
+`;`, or `|`. Never append `2>/dev/null`. Use the **Read** tool instead
+of `cat`. Use the **Grep** tool instead of `grep` or `rg`. Use the
+**Glob** tool instead of `find`. Use `git -C <path>` instead of
+`cd <path> && git`. Violating this blocks unattended operation with
+interactive prompts.
+
+Common patterns and their correct alternatives:
+
+- **Check if a file exists:** Use the **Read** tool — it returns an
+  error if the file doesn't exist, which is fine. Do NOT use
+  `ls <file> 2>/dev/null || echo "missing"`.
+- **Check if a directory exists:** `ls <dir>` alone (no `||`, no
+  `2>/dev/null`). If it fails, the error message tells you.
+- **Read a file that might not exist:** Use the **Read** tool. A "file
+  not found" error is a normal signal, not something to suppress.
+- **Run a command and fall back:** Issue the command alone. Read the
+  exit status / error. Issue the fallback as a separate Bash call if
+  needed.
 
 ## Responsibilities
 
