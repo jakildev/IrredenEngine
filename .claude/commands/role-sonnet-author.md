@@ -51,7 +51,11 @@ whatever directory the task touches before editing anything.
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
+3. Sync TASKS.md from origin/master (the working copy may be stale
+   if the worktree is on a feature branch or a queue-manager push
+   landed since last fetch):
+   `git checkout origin/master -- TASKS.md`
+4. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
 5. Print a one-line summary: which `[sonnet]` items look unblocked and
