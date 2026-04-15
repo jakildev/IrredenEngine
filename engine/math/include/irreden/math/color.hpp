@@ -8,6 +8,7 @@
 
 namespace IRMath {
 
+/// Returns @p colors sorted by HSV hue, ascending (red → yellow → green → … → red).
 inline std::vector<Color> sortByHue(std::vector<Color> colors) {
     std::sort(colors.begin(), colors.end(), [](const Color &a, const Color &b) {
         vec3 ha = glm::hsvColor(vec3(a.red_ / 255.0f, a.green_ / 255.0f, a.blue_ / 255.0f));
@@ -17,6 +18,7 @@ inline std::vector<Color> sortByHue(std::vector<Color> colors) {
     return colors;
 }
 
+/// Returns @p colors sorted by HSV saturation, ascending (grey → vivid).
 inline std::vector<Color> sortBySaturation(std::vector<Color> colors) {
     std::sort(colors.begin(), colors.end(), [](const Color &a, const Color &b) {
         vec3 ha = glm::hsvColor(vec3(a.red_ / 255.0f, a.green_ / 255.0f, a.blue_ / 255.0f));
@@ -26,6 +28,7 @@ inline std::vector<Color> sortBySaturation(std::vector<Color> colors) {
     return colors;
 }
 
+/// Returns @p colors sorted by HSV value (brightness), ascending (dark → bright).
 inline std::vector<Color> sortByValue(std::vector<Color> colors) {
     std::sort(colors.begin(), colors.end(), [](const Color &a, const Color &b) {
         vec3 ha = glm::hsvColor(vec3(a.red_ / 255.0f, a.green_ / 255.0f, a.blue_ / 255.0f));
@@ -35,6 +38,8 @@ inline std::vector<Color> sortByValue(std::vector<Color> colors) {
     return colors;
 }
 
+/// Returns @p colors sorted by perceptual luminance, ascending (dark → bright).
+/// Luminance formula: `0.299r + 0.587g + 0.114b` (BT.601 luma coefficients).
 inline std::vector<Color> sortByLuminance(std::vector<Color> colors) {
     std::sort(colors.begin(), colors.end(), [](const Color &a, const Color &b) {
         float la = 0.299f * a.red_ + 0.587f * a.green_ + 0.114f * a.blue_;
