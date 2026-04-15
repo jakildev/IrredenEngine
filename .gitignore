@@ -25,6 +25,9 @@ Thumbs.db
 .vs/
 *.vcxproj.user
 
+# fleet agent temp files
+.review-body.md
+
 # creations: keep demos + top-level CLAUDE.md, ignore other folders
 creations/*
 !creations/CLAUDE.md

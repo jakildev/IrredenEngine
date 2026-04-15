@@ -198,7 +198,9 @@ causes parse errors when the body contains backticks or special
 characters. Instead, write the body to a temp file with the **Write
 tool**, then pass it with `--body-file`:
 
-1. Use the **Write tool** to write the review body to `/tmp/review-body.md`:
+1. Use the **Write tool** to write the review body to `.review-body.md`
+   in the worktree root (NOT `/tmp/` — the sandbox may block writes
+   outside the project tree). This file is gitignored:
 
 ```markdown
 ## Review — <title>
@@ -227,7 +229,7 @@ tool**, then pass it with `--body-file`:
 2. Post the review:
 
 ```bash
-gh pr review <N> --comment --body-file /tmp/review-body.md
+gh pr review <N> --comment --body-file .review-body.md
 ```
 
 Rules for the review body:
