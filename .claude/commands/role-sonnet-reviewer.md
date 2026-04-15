@@ -149,9 +149,15 @@ Each invocation is one iteration — do the work, then exit cleanly:
    - When in doubt, approve. The human can always request a follow-up.
      Blocking PRs on style nits wastes more fleet time than the nit
      is worth.
-3. After the queue is drained, exit cleanly. The `/loop` driver
-   re-invokes this role in 3 minutes.
-4. If you hit a usage-limit error: print the error and exit. The
+3. **Reset to scratch branch.** After reviewing all candidates (or if
+   none existed), return to the scratch branch so no PR branch is left
+   checked out — other agents may need to check out the same branch:
+   `git checkout -B claude/sonnet-reviewer-scratch origin/master`
+   This prevents "branch already checked out in worktree" errors when
+   a worker agent tries to check out a PR branch you just reviewed.
+4. After the reset, exit cleanly. The `/loop` driver re-invokes this
+   role in 3 minutes.
+5. If you hit a usage-limit error: print the error and exit. The
    `/loop` driver and `fleet-babysit` wrapper handle backoff.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
