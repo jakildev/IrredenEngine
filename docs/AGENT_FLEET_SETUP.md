@@ -893,10 +893,19 @@ Common first-time issues you might hit:
   versions of most but not all shaders. When a demo links against a
   missing shader, that's a `backend-parity` skill job. Keep a list
   and run the skill after the build is otherwise green.
-- **FFmpeg framework paths** — `brew install ffmpeg` puts libs under
-  `/opt/homebrew/` (Apple Silicon) or `/usr/local/` (Intel). CMake's
-  `pkg_check_modules(FFMPEG ...)` picks them up via `pkg-config`, but
-  if it can't, `export PKG_CONFIG_PATH="$(brew --prefix ffmpeg)/lib/pkgconfig:$PKG_CONFIG_PATH"`.
+- **FFmpeg / fmt header shadowing** — `brew install ffmpeg` installs
+  headers under `/opt/homebrew/include/` (Apple Silicon), which also
+  contains Homebrew's own `fmt`. Earlier versions of the engine put
+  this broad prefix first in the hint list, causing Homebrew `fmt 12.x`
+  to shadow the FetchContent-fetched `fmt 10.1.1` that spdlog depends
+  on, and failing compilation with "no template named
+  `basic_format_string` in namespace `fmt`". Fixed in the engine:
+  `engine/video/CMakeLists.txt` now prefers the keg-only path
+  `/opt/homebrew/opt/ffmpeg/include` (FFmpeg-only headers) first.
+  Detection is automatic; no `PKG_CONFIG_PATH` export needed. If
+  detection still fails, set `IRREDEN_FFMPEG_ROOT=/opt/homebrew/opt/ffmpeg`
+  (Apple Silicon) or `IRREDEN_FFMPEG_ROOT=/usr/local/opt/ffmpeg` (Intel)
+  as a CMake cache variable.
 - **Apple Silicon vs Intel** — the Metal backend should work on
   both, but if you're on an older Intel Mac and hit Metal 3-only
   features, flag it. The engine targets Metal 3+.
