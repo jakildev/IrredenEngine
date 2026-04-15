@@ -279,7 +279,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-(none)
+- [~] **T-009** — Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL) · Owner: render-subdivision-mode · PR: https://github.com/jakildev/IrredenEngine/pull/160
 
 ---
 
