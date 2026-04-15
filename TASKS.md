@@ -169,30 +169,6 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
-  mirror of the Linux-maturation task, on the Mac side. Umbrella epic
-  for fixing every compile/link/runtime issue in the Metal backend
-  as the fleet surfaces them. Must be run from a macOS host (Apple
-  Silicon or Intel) — the Metal backend can't be cross-compiled.
-  - **ID:** T-003
-  - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
-    anywhere the Metal path breaks
-  - **Model:** opus (backend/render work is Opus territory)
-  - **Owner:** metal-build-maturation
-  - **Blocked by:** (none)
-  - **Acceptance:** from a fresh macOS clone at `~/src/IrredenEngine`,
-    `cmake --preset macos-debug && cmake --build build -j$(sysctl -n hw.ncpu)`
-    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
-    with zero warnings escalated to errors, and `IRShapeDebug` launches
-    and renders the same reference frame as the OpenGL backend.
-  - **Notes:** see `docs/AGENT_FLEET_SETUP.md` §10 (macOS subsection)
-    for the known first-time issues on macOS — Objective-C++ flags,
-    shader parity gaps, FFmpeg `pkg-config` path, Metal 3 target
-    version, Retina scaling. Unlike Linux maturation, shader parity
-    gaps should be handed to the `backend-parity` skill as dedicated
-    parity PRs (see the three concrete MSL port tasks below).
-  - **Links:**
-
 - [ ] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
   the GLSL compute for writing 2D shape SDFs into trixel canvases has
   no Metal counterpart. Invoke the `backend-parity` skill on a macOS
@@ -201,8 +177,7 @@ Avoid:
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** macOS/Metal build maturation (need the preset to
-    build cleanly before you can prove the port works end-to-end)
+  - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
     exists and matches the GLSL binding/uniform layout, the
     `macos-debug` build is clean, and the shapes-rendering demo
@@ -220,7 +195,7 @@ Avoid:
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** macOS/Metal build maturation
+  - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_update_voxel_positions.metal`
     exists and matches the GLSL binding/uniform layout, `macos-debug`
     build is clean, and a voxel-animation demo (e.g. one of the
@@ -238,7 +213,7 @@ Avoid:
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** macOS/Metal build maturation
+  - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal`
     exists, matches the GLSL binding/uniform layout, `macos-debug`
     build is clean, and `IRShapeDebug` on Metal gives the same
@@ -261,7 +236,7 @@ Avoid:
   - **Area:** tooling
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** macOS/Metal build maturation
+  - **Blocked by:** (none)
   - **Acceptance:** one parity PR opened, reviewed by `review-pr`,
     merged. Any workflow bugs in the `backend-parity` skill itself
     are filed as follow-up `[sonnet]` tasks to fix the skill.
@@ -311,6 +286,27 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
+  mirror of the Linux-maturation task, on the Mac side. Umbrella epic
+  for fixing every compile/link/runtime issue in the Metal backend
+  as the fleet surfaces them.
+  - **ID:** T-003
+  - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
+    anywhere the Metal path breaks
+  - **Model:** opus (backend/render work is Opus territory)
+  - **Owner:** metal-build-maturation
+  - **Blocked by:** (none)
+  - **Acceptance:** from a fresh macOS clone at `~/src/IrredenEngine`,
+    `cmake --preset macos-debug && cmake --build build -j$(sysctl -n hw.ncpu)`
+    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
+    with zero warnings escalated to errors, and `IRShapeDebug` launches
+    and renders the same reference frame as the OpenGL backend.
+  - **Notes:** see `docs/AGENT_FLEET_SETUP.md` §10 (macOS subsection)
+    for the known first-time issues on macOS — Objective-C++ flags,
+    shader parity gaps, FFmpeg `pkg-config` path, Metal 3 target
+    version, Retina scaling.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/154
 
 - [x] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
   - **ID:** T-002
