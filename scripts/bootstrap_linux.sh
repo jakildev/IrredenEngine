@@ -7,8 +7,8 @@
 #
 # The engine itself is built from source via CMake + FetchContent, so the
 # only things we install here are:
-#   - a C/C++ toolchain + cmake + ninja + pkg-config
-#   - OpenGL, X11 extensions, and libxkbcommon for GLFW
+#   - gcc-13 / g++-13 for C++23 support (cmake + ninja + pkg-config)
+#   - OpenGL, X11 extensions, libxkbcommon, and wayland-protocols for GLFW
 #   - ALSA + PulseAudio + JACK for RtAudio / RtMidi (all three are enabled
 #     by rtaudio/rtmidi autodetection whenever their dev headers are present)
 #   - FFmpeg dev libraries for IrredenEngineVideo
@@ -33,7 +33,7 @@ fi
 ${SUDO} apt-get update
 
 ${SUDO} apt-get install -y \
-    build-essential \
+    build-essential gcc-13 g++-13 \
     cmake \
     ninja-build \
     pkg-config \
@@ -48,6 +48,7 @@ ${SUDO} apt-get install -y \
     libxext-dev \
     libxkbcommon-dev \
     libwayland-dev \
+    wayland-protocols \
     libasound2-dev \
     libpulse-dev \
     libjack-jackd2-dev \
@@ -57,6 +58,15 @@ ${SUDO} apt-get install -y \
     libswscale-dev \
     clang-format \
     clang-tidy
+
+# Ensure gcc-13 is registered as a default-priority alternative for g++ and gcc.
+# Ubuntu 24.04 ships gcc-13 as the system default via build-essential, but on
+# 22.04 (or when multiple versions coexist) this pins the C++23-capable toolchain.
+if command -v g++-13 >/dev/null 2>&1; then
+    ${SUDO} update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+    ${SUDO} update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
+    echo "[ok] Registered gcc-13 / g++-13 as priority-100 alternative for g++/gcc"
+fi
 
 # Qt5 is optional and only used by the easy_profiler GUI. Install on a
 # best-effort basis so a missing package on newer Ubuntu (which renamed
@@ -77,12 +87,13 @@ verify_tool() {
 echo
 echo "Verifying toolchain..."
 verify_tool "cmake available" cmake --version
-verify_tool "g++ available" g++ --version
+verify_tool "g++ available (C++23)" g++-13 --version
 verify_tool "pkg-config finds libavcodec" pkg-config --exists libavcodec
 verify_tool "pkg-config finds alsa" pkg-config --exists alsa
 verify_tool "pkg-config finds libpulse-simple" pkg-config --exists libpulse-simple
 verify_tool "pkg-config finds jack" pkg-config --exists jack
 verify_tool "pkg-config finds gl" pkg-config --exists gl
+verify_tool "pkg-config finds wayland-protocols" pkg-config --exists wayland-protocols
 verify_tool "clang-format available" clang-format --version
 verify_tool "clang-tidy available" clang-tidy --version
 
