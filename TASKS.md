@@ -169,16 +169,6 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
-  - **ID:** T-002
-  - **Area:** build, engine/video
-  - **Model:** sonnet
-  - **Owner:** build-macos-ffmpeg-pkgconfig-2
-  - **Blocked by:** (none)
-  - **Acceptance:** `cmake --preset macos-debug && cmake --build build --target IRShapeDebug` completes with zero FFmpeg-related include or linker errors; `avcodec`, `avformat`, `avutil`, and `swscale` all appear in the final link line.
-  - **Notes:** Known macOS first-time issue per `docs/AGENT_FLEET_SETUP.md` §10 — Homebrew FFmpeg pkg-config path differs from Linux (`/opt/homebrew/lib/pkgconfig` on Apple Silicon, `/usr/local/lib/pkgconfig` on Intel). If the fix requires changes to `engine/video/` source beyond CMake, escalate to `[opus]`.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/128
-
 - [ ] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
   mirror of the Linux-maturation task, on the Mac side. Umbrella epic
   for fixing every compile/link/runtime issue in the Metal backend
@@ -310,6 +300,16 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
+  - **ID:** T-002
+  - **Area:** build, engine/video
+  - **Model:** sonnet
+  - **Owner:** build-macos-ffmpeg-pkgconfig-2
+  - **Blocked by:** (none)
+  - **Acceptance:** `cmake --preset macos-debug && cmake --build build --target IRShapeDebug` completes with zero FFmpeg-related include or linker errors; `avcodec`, `avformat`, `avutil`, and `swscale` all appear in the final link line.
+  - **Notes:** Known macOS first-time issue per `docs/AGENT_FLEET_SETUP.md` §10 — Homebrew FFmpeg pkg-config path differs from Linux (`/opt/homebrew/lib/pkgconfig` on Apple Silicon, `/usr/local/lib/pkgconfig` on Intel).
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/128
 
 - [x] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
   `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
