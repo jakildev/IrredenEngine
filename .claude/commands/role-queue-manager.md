@@ -182,7 +182,7 @@ half-finished and re-litigated in review.
 
 ### Step 6 — Maintenance scheduling
 
-The `/loop` driver re-invokes this role every 15 minutes in live
+The `/loop` driver re-invokes this role every 5 minutes in live
 mode. Each invocation runs the startup actions and a full maintenance
 pass, then exits cleanly. The `/loop` driver and `fleet-babysit`
 wrapper handle scheduling and crash recovery.
