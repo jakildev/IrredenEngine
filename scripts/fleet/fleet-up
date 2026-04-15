@@ -131,8 +131,11 @@ fi
 # engine/) triggers a path-scope prompt that blocks unattended operation.
 
 write_worktree_settings() {
+    # $1 = worktree path, $2 = primary repo root,
+    # $3.. = additional directory roots (optional — for cross-repo access)
     local wt="$1"
     local repo_root="$2"
+    shift 2
     local settings_dir="$wt/.claude"
     local settings_file="$settings_dir/settings.local.json"
 
@@ -148,11 +151,13 @@ write_worktree_settings() {
     # Baseline allows that every fleet agent needs (beyond the user-level
     # ~/.claude/settings.json entries). These cover tools the agents use
     # during freeform work that aren't in the user-level allowlist.
-    python3 - "$settings_file" "$repo_root" <<'PYEOF'
+    # "$@" passes any extra directory arguments (already shifted past $1/$2).
+    python3 - "$settings_file" "$repo_root" "$@" <<'PYEOF'
 import json, sys, os
 
 settings_file = sys.argv[1]
 repo_root     = sys.argv[2]
+extra_dirs    = sys.argv[3:]  # additional directories for cross-repo access
 
 baseline = [
     "Edit(*)",
@@ -202,9 +207,11 @@ if os.path.isfile(settings_file):
 
 all_allows = baseline + existing_extra
 
+dirs = [repo_root] + [d for d in extra_dirs if os.path.isdir(d)]
+
 out = {
     "permissions": {
-        "additionalDirectories": [repo_root],
+        "additionalDirectories": dirs,
         "allow": all_allows,
     }
 }
@@ -220,10 +227,10 @@ for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-review
 done
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
+    write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME" "$ENGINE"
 fi
 if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME"
+    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------
