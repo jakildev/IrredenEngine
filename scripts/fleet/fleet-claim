@@ -178,6 +178,42 @@ cmd_cleanup() {
     fi
 }
 
+cmd_check_stale() {
+    # Release claims older than max_age seconds (default: 7200 = 2 hours).
+    local max_age="${1:-7200}"
+    local now
+    now=$(date +%s)
+    local stale=0
+
+    mkdir -p "$CLAIMS_DIR"
+
+    for dir in "$CLAIMS_DIR"/*/; do
+        [[ -d "$dir" ]] || continue
+        local created=0
+        if [[ -f "$dir/created" ]]; then
+            created=$(cat "$dir/created")
+        fi
+        local age=$(( now - created ))
+        if [[ $age -ge $max_age ]]; then
+            local slug
+            slug=$(basename "$dir")
+            local owner="unknown"
+            local title="$slug"
+            if [[ -f "$dir/owner" ]]; then owner=$(cat "$dir/owner"); fi
+            if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
+            echo "stale ($((age / 60))m old): $title (owner: $owner)"
+            rm -rf "$dir"
+            stale=$((stale + 1))
+        fi
+    done
+
+    if [[ $stale -eq 0 ]]; then
+        echo "no stale claims"
+    else
+        echo "released $stale stale claim(s)"
+    fi
+}
+
 cmd_clear_all() {
     if [[ -d "$CLAIMS_DIR" ]]; then
         rm -rf "$CLAIMS_DIR"
@@ -215,6 +251,10 @@ case "${1:-}" in
     list)
         cmd_list
         ;;
+    check-stale)
+        shift
+        cmd_check_stale "${1:-7200}"
+        ;;
     cleanup)
         shift
         cmd_cleanup "$@"
@@ -231,6 +271,7 @@ commands:
   release "<title>"         release a claim
   check "<title>"           check if free (exit 0=free, 1=taken)
   list                      list all active claims
+  check-stale [max-secs]    release claims older than max-secs (default: 7200)
   cleanup [--repo o/r] ...  remove claims for merged/closed PRs
   clear-all                 wipe all claims (used by fleet-up on restart)
 

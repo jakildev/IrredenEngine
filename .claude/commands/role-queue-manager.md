@@ -166,27 +166,23 @@ half-finished and re-litigated in review.
    PR FIRST so the game task can reference its title in `Blocked by`,
    then file the game task.
 
-### Step 6 — Wait for triggers
+### Step 6 — Maintenance scheduling
 
-After the startup actions (and one initial maintenance pass), **wait
-for input**. You will receive two kinds of messages:
+The `/loop` driver re-invokes this role every 15 minutes in live
+mode. Each invocation runs the startup actions and a full maintenance
+pass, then exits cleanly. The `/loop` driver and `fleet-babysit`
+wrapper handle scheduling and crash recovery.
 
-- **"run maintenance"** — sent automatically every 15 minutes by the
-  fleet timer in tmux. Run the full maintenance pass below, print a
-  one-line summary of what changed, then wait again.
-- **Human-typed task descriptions** — any other input. Process it
-  through Steps 1–5 above (categorize, format, file to TASKS.md),
-  then wait again.
+Between `/loop` fires, the human can still type task descriptions
+into this pane. Process those through Steps 1–5 above (categorize,
+format, file to TASKS.md).
 
-You do NOT need to sleep, poll, or self-loop. The timer handles
-scheduling. Just respond to each message as it arrives.
-
-If you hit a usage-limit error: print the error and reset time,
-wait, resume when the next trigger arrives.
+If you hit a usage-limit error: print the error and exit. The
+`/loop` driver and `fleet-babysit` handle backoff.
 
 If Mode above is `dry-run`: do exactly one maintenance pass, then
-stop and wait for human instruction. Do not respond to timer
-triggers.
+stop and wait for human instruction. `/loop` is not active in
+dry-run mode.
 
 ### Maintenance pass
 
@@ -194,6 +190,13 @@ You are the sole TASKS.md editor. Each maintenance pass:
 
 0. **Clean stale claims:**
    `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
+
+0b. **Release timed-out claims:**
+    `fleet-claim check-stale 7200`
+    Claims older than 2 hours with no corresponding PR are likely
+    orphaned (agent crashed without releasing). This supplements
+    the `cleanup` step above, which only catches claims whose PRs
+    have already merged or closed.
 
 1. **Ingest triaged issues (engine repo):**
    `gh issue list --repo <engine-repo> --label "human:approved" --state open --json number,title,body,comments,labels`
@@ -219,10 +222,14 @@ You are the sole TASKS.md editor. Each maintenance pass:
    b. Append a properly formatted entry to `## Open` in `TASKS.md`.
       Include `**Issue:** #N` in the entry. Synthesize acceptance
       criteria from the full issue thread, not just the title.
-   c. Remove the `human:approved` label (so the issue isn't
+   c. If `~/.fleet/plans/issue-<N>.md` exists (the opus worker or
+      architect wrote a plan for this issue), rename it to match the
+      assigned task ID:
+      `mv ~/.fleet/plans/issue-<N>.md ~/.fleet/plans/T-<NNN>.md`
+   d. Remove the `human:approved` label (so the issue isn't
       re-ingested):
       `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
-   d. Do **NOT** close the issue. It stays open until the author
+   e. Do **NOT** close the issue. It stays open until the author
       agent's PR merges via `Closes #N`.
 
    **If the issue needs a plan first** — the scope is large, the
@@ -258,6 +265,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
    For each recently merged PR whose title or branch matches an
    `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
    `[x]`, add the PR URL to **Links**, move to `## Done — last 20`.
+   If `~/.fleet/plans/<task-ID>.md` exists for the completed task,
+   delete it — the plan has served its purpose:
+   `rm -f ~/.fleet/plans/<task-ID>.md`
 
 4. **Sync open PRs → In-progress (both repos):**
    Engine:

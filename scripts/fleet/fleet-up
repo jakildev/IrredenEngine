@@ -62,6 +62,7 @@ ensure_worktree() {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker       fleet/opus-worker
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
@@ -107,6 +108,7 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker"     claude/opus-worker-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
@@ -212,7 +214,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
@@ -239,15 +241,17 @@ else
     echo "          (run scripts/fleet/install.sh to install it)"
 fi
 
+# Ensure the plans directory exists for opus-worker and architect to write to.
+mkdir -p "$HOME/.fleet/plans"
+
 # ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: 4 named windows instead of one mega-window.
-#   1:authors  — sonnet-fleet-1, sonnet-fleet-2, game-sonnet
-#   2:review   — sonnet-reviewer, opus-reviewer
-#   3:arch     — opus-architect, game-architect
-#   4:ops      — queue-manager
+# Layout: single window with three rows.
+#   top    — sonnet-fleet-1, sonnet-fleet-2, game-sonnet  (authors)
+#   middle — opus-architect, opus-worker, game-architect  (architects + worker)
+#   bottom — sonnet-reviewer, opus-reviewer, queue-manager (ops)
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -265,10 +269,17 @@ MODE="${1:-dry-run}"
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
+    # $3 = loop interval (optional — for polling roles like reviewers/queue-mgr)
     local model="$1"
     local role="$2"
-    printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
-        "$model" "$role" "$MODE"
+    local loop="${3:-}"
+    if [[ -n "$loop" ]]; then
+        printf 'fleet-babysit %s %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE" "$loop"
+    else
+        printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE"
+    fi
 }
 
 # Single window, three rows:
@@ -305,39 +316,45 @@ label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 # full window height at this point — 25% bottom, 75% top.
 tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer)"
+    "$(launch_cmd sonnet sonnet-reviewer 10m)"
 BOT1=$(active_pane_id)
 label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
 tmux split-window -h -t "$BOT1" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer)"
+    "$(launch_cmd opus opus-reviewer 30m)"
 BOT2=$(active_pane_id)
 label_pane_id "$BOT2" "opus-reviewer [opus]"
 
 tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager)"
+    "$(launch_cmd sonnet queue-manager 15m)"
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
-# --- Row 2 (middle, ~30%): architects ----------------------------------
+# --- Row 2 (middle, ~30%): architects + opus-worker --------------------
 # Split off the middle row from TOP1. TOP1 is currently 75% of the
 # window. Splitting 40% off the bottom of that gives:
 #   TOP1 = 75% * 60% = ~45% of window  (authors)
-#   MID1 = 75% * 40% = ~30% of window  (architects)
+#   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
 tmux split-window -v -t "$TOP1" -p 40 \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd opus opus-architect)"
 MID1=$(active_pane_id)
 label_pane_id "$MID1" "opus-architect [opus]"
 
+tmux split-window -h -t "$MID1" \
+    -c "$ENGINE/.claude/worktrees/opus-worker" \
+    "$(launch_cmd opus opus-worker 20m)"
+MID2=$(active_pane_id)
+label_pane_id "$MID2" "opus-worker [opus]"
+
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$MID1" \
+    tmux split-window -h -t "$MID2" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd opus game-architect)"
-    MID2=$(active_pane_id)
-    label_pane_id "$MID2" "game-architect [opus]"
+    MID3=$(active_pane_id)
+    label_pane_id "$MID3" "game-architect [opus]"
 fi
 
 # --- Expand Row 1 (top) with remaining authors -------------------------
@@ -362,30 +379,6 @@ tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 # Focus sonnet-fleet-1 on attach
 tmux select-pane -t "$TOP1"
 
-# ----------------------------------------------------------------------
-# Step 5: start the queue-manager maintenance timer
-# ----------------------------------------------------------------------
-#
-# Claude Code agents can't self-loop — they process input, respond,
-# then wait. This background loop sends "run maintenance" to the
-# queue-manager pane every 15 minutes, triggering the maintenance pass.
-# The loop exits automatically when the tmux session is killed.
-#
-# In dry-run mode, skip the timer (queue-manager does one pass and
-# stops; the human triggers subsequent runs manually).
-
-if [[ "$MODE" != "dry-run" ]]; then
-    (
-        sleep 120  # let agents finish startup before first trigger
-        while tmux has-session -t "$SESSION" 2>/dev/null; do
-            tmux send-keys -t "$BOT3" "run maintenance" Enter 2>/dev/null || true
-            sleep 900  # 15 minutes
-        done
-    ) &
-    TIMER_PID=$!
-    echo "fleet-up: maintenance timer started (PID $TIMER_PID, every 15 min)"
-fi
-
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
@@ -393,7 +386,7 @@ attach with:  tmux attach -t ${SESSION}
 
 layout (single window, three rows):
   top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
-  middle (med) — opus-architect  [game-architect]                (architects)
+  middle (med) — opus-architect  opus-worker  [game-architect]   (architects + worker)
   bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
 
 navigation (no prefix needed):
@@ -409,6 +402,14 @@ babysit: each agent is wrapped in fleet-babysit, which auto-resumes
 the session if claude exits (crash, usage limit, network drop).
   dry-run — auto-resumes on crash, stops on clean exit
   live    — auto-resumes on any exit (runs indefinitely)
+
+scheduling (live mode): polling roles use Claude's /loop for managed intervals:
+  sonnet-reviewer — /loop 10m    opus-reviewer — /loop 30m
+  opus-worker     — /loop 20m   queue-manager  — /loop 15m
+  authors — continuous (no /loop)
+  opus-architect — interactive (no /loop, human's design partner)
+
+logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 
 other modes you can pass to fleet-up:
   fleet-up dry-run   # default — startup + stand-by

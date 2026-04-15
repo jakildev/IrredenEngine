@@ -67,8 +67,8 @@ treat it as a hard rule for this role.
 
 ## Loop behavior
 
-Default: run continuously until the human stops you or you hit a
-usage limit. Each iteration:
+The `/loop` driver re-invokes this role every 10 minutes in live mode.
+Each invocation is one iteration — do the work, then exit cleanly:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
@@ -132,9 +132,10 @@ usage limit. Each iteration:
    - When in doubt, approve. The human can always request a follow-up.
      Blocking PRs on style nits wastes more fleet time than the nit
      is worth.
-3. After the queue is drained, wait 10 minutes, then loop.
-4. If you hit a usage-limit error: print the error and reset time,
-   wait, resume.
+3. After the queue is drained, exit cleanly. The `/loop` driver
+   re-invokes this role in 10 minutes.
+4. If you hit a usage-limit error: print the error and exit. The
+   `/loop` driver and `fleet-babysit` wrapper handle backoff.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait
