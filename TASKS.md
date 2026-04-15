@@ -169,14 +169,14 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
+- [ ] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
   the GLSL compute for writing 2D shape SDFs into trixel canvases has
   no Metal counterpart. Invoke the `backend-parity` skill on a macOS
   host and port it.
   - **ID:** T-004
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
-  - **Owner:** metal-parity-shapes-to-trixel
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
     exists and matches the GLSL binding/uniform layout, the
