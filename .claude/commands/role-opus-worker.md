@@ -143,8 +143,10 @@ Each invocation is one iteration — do the work, then exit cleanly:
    - **Title is NOT referenced in any open PR's title or branch name**
      (cross-check with the `gh pr list` output)
 
-   If no `Model: opus` tasks are available, exit cleanly. The `/loop`
-   driver will re-invoke in 20 minutes.
+   If no `Model: opus` tasks are available, print
+   `no unblocked [opus] tasks — standing by` and exit cleanly. Do NOT
+   invent work, self-assign documentation passes, or create tasks
+   outside the queue. The `/loop` driver will re-invoke in 20 minutes.
 
    Print the task and explain why you picked it.
 
