@@ -36,7 +36,7 @@ and runs it. Sibling data/shaders/scripts directories are on CWD.
 
 Options:
   --build-dir <dir>   Override the build directory (default: auto-detect)
-  --timeout <secs>    Auto-kill after N seconds (for fleet verification).
+  --timeout|-t <secs> Auto-kill after N seconds (for fleet verification).
                       Exit 0 if the process survived the timeout (healthy).
                       Exit 1 if the process crashed before the timeout.
                       Fleet agents should use this for GUI executables to
@@ -58,6 +58,11 @@ done
 
 if [[ $# -eq 0 ]]; then
     echo "usage: fleet-run [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
+    exit 2
+fi
+
+if [[ -n "$TIMEOUT" ]] && ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$TIMEOUT" == "0" ]]; then
+    echo "fleet-run: --timeout must be a positive integer, got '$TIMEOUT'" >&2
     exit 2
 fi
 
@@ -105,8 +110,8 @@ elapsed=0
 while [[ $elapsed -lt $TIMEOUT ]]; do
     if ! kill -0 "$PID" 2>/dev/null; then
         # Process exited before timeout — check if it crashed.
-        wait "$PID" 2>/dev/null
-        exit_code=$?
+        exit_code=0
+        wait "$PID" 2>/dev/null || exit_code=$?
         if [[ $exit_code -eq 0 ]]; then
             echo "fleet-run: $EXE_NAME exited cleanly after ${elapsed}s"
             exit 0
