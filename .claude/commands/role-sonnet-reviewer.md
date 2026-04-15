@@ -67,7 +67,7 @@ treat it as a hard rule for this role.
 
 ## Loop behavior
 
-The `/loop` driver re-invokes this role every 10 minutes in live mode.
+The `/loop` driver re-invokes this role every 3 minutes in live mode.
 Each invocation is one iteration — do the work, then exit cleanly:
 
 1. Re-fetch PR lists from both repos (separate commands):
@@ -133,7 +133,7 @@ Each invocation is one iteration — do the work, then exit cleanly:
      Blocking PRs on style nits wastes more fleet time than the nit
      is worth.
 3. After the queue is drained, exit cleanly. The `/loop` driver
-   re-invokes this role in 10 minutes.
+   re-invokes this role in 3 minutes.
 4. If you hit a usage-limit error: print the error and exit. The
    `/loop` driver and `fleet-babysit` wrapper handle backoff.
 

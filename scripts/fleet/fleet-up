@@ -316,7 +316,7 @@ label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 # full window height at this point — 25% bottom, 75% top.
 tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer 10m)"
+    "$(launch_cmd sonnet sonnet-reviewer 3m)"
 BOT1=$(active_pane_id)
 label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
@@ -328,7 +328,7 @@ label_pane_id "$BOT2" "opus-reviewer [opus]"
 
 tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager 15m)"
+    "$(launch_cmd sonnet queue-manager 5m)"
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
@@ -404,8 +404,8 @@ the session if claude exits (crash, usage limit, network drop).
   live    — auto-resumes on any exit (runs indefinitely)
 
 scheduling (live mode): polling roles use Claude's /loop for managed intervals:
-  sonnet-reviewer — /loop 10m    opus-reviewer — /loop 30m
-  opus-worker     — /loop 20m   queue-manager  — /loop 15m
+  sonnet-reviewer — /loop 3m     opus-reviewer — /loop 30m
+  opus-worker     — /loop 20m   queue-manager  — /loop 5m
   authors — continuous (no /loop)
   opus-architect — interactive (no /loop, human's design partner)
 
