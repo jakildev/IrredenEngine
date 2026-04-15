@@ -155,6 +155,7 @@ settings_file = sys.argv[1]
 repo_root     = sys.argv[2]
 
 baseline = [
+    "Edit(*)",
     "Bash(grep:*)",
     "Bash(find:*)",
     "Bash(head:*)",

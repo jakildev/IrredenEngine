@@ -130,9 +130,15 @@ Each invocation is one iteration — do the work, then exit cleanly:
      synchronization, performance regressions, or unsafe API use.
    - Opus budget is expensive. Don't spend it requesting a second
      round-trip over a renamed variable. When in doubt, approve.
-3. After the queue is drained, exit cleanly. The `/loop` driver
-   re-invokes this role in 30 minutes.
-4. If you hit a usage-limit error: print the error and exit. The
+3. **Reset to scratch branch.** After reviewing all candidates (or if
+   none existed), return to the scratch branch so no PR branch is left
+   checked out — other agents may need to check out the same branch:
+   `git checkout -B claude/opus-reviewer-scratch origin/master`
+   This prevents "branch already checked out in worktree" errors when
+   a worker agent tries to check out a PR branch you just reviewed.
+4. After the reset, exit cleanly. The `/loop` driver re-invokes this
+   role in 30 minutes.
+5. If you hit a usage-limit error: print the error and exit. The
    `/loop` driver and `fleet-babysit` wrapper handle backoff.
 
 If Mode above is `dry-run`: review exactly **one** flagged PR
