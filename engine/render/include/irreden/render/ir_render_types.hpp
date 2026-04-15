@@ -85,12 +85,17 @@ struct GlyphDrawCommand {
 /// How the output canvas is scaled to fill the window.
 enum class FitMode { FIT, STRETCH, UNKNOWN };
 
-/// Controls sub-voxel positioning in the voxel→trixel compute pass.
-/// - @c SNAPPED — voxels snap to the nearest trixel grid cell. Fast, pixel-perfect.
-/// - @c SMOOTH  — sub-trixel offsets are applied using @c subdivisions × zoom.
-///   Produces smoother camera panning but costs more GPU time. Changing mode or
-///   subdivisions mid-frame stalls the pipeline.
-enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
+/// Controls how the voxel→trixel compute pass subdivides trixel cells.
+/// - @c NONE          — no subdivision; voxels snap to the nearest trixel
+///   grid cell. Fast, pixel-perfect. Equivalent to the old SNAPPED mode.
+/// - @c POSITION_ONLY — positions are subdivided by @c subdivisions (no zoom
+///   scaling), but SDF/shape evaluation stays at base resolution. Gives
+///   smooth entity movement without the GPU cost of full zoom subdivision.
+/// - @c FULL          — positions subdivided by @c subdivisions × zoom.
+///   Smoothest camera panning but highest GPU cost. Equivalent to the old
+///   SMOOTH mode. Changing mode or subdivisions mid-frame stalls the pipeline.
+/// @note Currently global (per-frame). Per-entity subdivision modes are future work.
+enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 enum class LodLevel : std::uint32_t {
     LOD_0 = 0,
     LOD_1 = 1,

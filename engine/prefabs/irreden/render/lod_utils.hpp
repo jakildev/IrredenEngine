@@ -26,7 +26,7 @@
 //   - Create a system that selects active LOD per entity per frame.
 //   - Design and implement LOD interpolation strategy.
 //   - Hook into the voxel_set_maker editor for authoring LOD tiers.
-// DEPENDENCIES: IRMath, IRRender (getVoxelRenderMode, zoom level).
+// DEPENDENCIES: IRMath, IRRender (getSubdivisionMode, zoom level).
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>

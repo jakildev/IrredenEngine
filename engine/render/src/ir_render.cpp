@@ -125,12 +125,12 @@ void setCameraPosition2DIso(vec2 pos) {
     getRenderManager().setCameraPosition2DIso(pos);
 }
 
-void setVoxelRenderMode(VoxelRenderMode mode) {
-    getRenderManager().setVoxelRenderMode(mode);
+void setSubdivisionMode(SubdivisionMode mode) {
+    getRenderManager().setSubdivisionMode(mode);
 }
 
-VoxelRenderMode getVoxelRenderMode() {
-    return getRenderManager().getVoxelRenderMode();
+SubdivisionMode getSubdivisionMode() {
+    return getRenderManager().getSubdivisionMode();
 }
 
 void setVoxelRenderSubdivisions(int subdivisions) {

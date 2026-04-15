@@ -48,10 +48,11 @@ void registerLuaBindings() {
             "IRFitMode",
             {{"FIT", IRRender::FitMode::FIT}, {"STRETCH", IRRender::FitMode::STRETCH}}
         );
-        luaScript.registerEnum<IRRender::VoxelRenderMode>(
-            "IRVoxelRenderMode",
-            {{"SNAPPED", IRRender::VoxelRenderMode::SNAPPED},
-             {"SMOOTH", IRRender::VoxelRenderMode::SMOOTH}}
+        luaScript.registerEnum<IRRender::SubdivisionMode>(
+            "IRSubdivisionMode",
+            {{"NONE", IRRender::SubdivisionMode::NONE},
+             {"POSITION_ONLY", IRRender::SubdivisionMode::POSITION_ONLY},
+             {"FULL", IRRender::SubdivisionMode::FULL}}
         );
 
         luaScript.registerType<Color, Color(int, int, int, int)>(

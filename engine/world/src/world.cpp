@@ -47,8 +47,8 @@ World::World(const char *configFileName)
           m_worldConfig["start_recording_on_first_key_press"].get_boolean()
       }
     , m_hasHandledFirstInput{false} {
-    IRRender::setVoxelRenderMode(
-        static_cast<IRRender::VoxelRenderMode>(m_worldConfig["voxel_render_mode"].get_enum())
+    IRRender::setSubdivisionMode(
+        static_cast<IRRender::SubdivisionMode>(m_worldConfig["subdivision_mode"].get_enum())
     );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());

@@ -154,7 +154,7 @@ Metal equivalents exist under `engine/render/src/shaders/metal/`.
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;
-    ivec2 voxelRenderOptions_;   // x = VoxelRenderMode, y = subdivisions
+    ivec2 voxelRenderOptions_;   // x = SubdivisionMode, y = subdivisions
     ivec2 voxelDispatchGrid_;
     int voxelCount_;
     int _voxelDispatchPadding_;
@@ -189,8 +189,9 @@ Points an entity to a specific canvas entity for rendering (defaults to main can
 
 | Mode | Enum | Effect |
 |------|------|--------|
-| Snapped | `VoxelRenderMode::SNAPPED` (0) | Integer-aligned voxel positions |
-| Smooth | `VoxelRenderMode::SMOOTH` (1) | Sub-pixel interpolation with subdivisions |
+| None | `SubdivisionMode::NONE` (0) | Integer-aligned voxel positions (no subdivision) |
+| Position Only | `SubdivisionMode::POSITION_ONLY` (1) | Subdivided positioning, base-resolution SDF eval |
+| Full | `SubdivisionMode::FULL` (2) | Full subdivision: positions × subdivisions × zoom |
 
 `voxelRenderOptions_.x` controls mode, `.y` controls subdivision level.
 

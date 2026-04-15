@@ -75,7 +75,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
                 vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
                 const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-                const IRRender::VoxelRenderMode renderMode = IRRender::getVoxelRenderMode();
+                const IRRender::SubdivisionMode renderMode = IRRender::getSubdivisionMode();
                 auto renderBehavior =
                     IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
                 const C_TrixelCanvasRenderBehavior behavior =
@@ -89,7 +89,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
                 frameData.frameData_.canvasZoomLevel_ = baseCanvasZoom;
                 if (behavior.applyRenderSubdivisions_ &&
-                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    renderMode != IRRender::SubdivisionMode::NONE) {
                     frameData.frameData_.canvasZoomLevel_ /= vec2(effectiveSubdivisions);
                 }
 
@@ -99,7 +99,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 frameData.frameData_.cameraTrixelOffset_ +=
                     vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
                 if (behavior.applyRenderSubdivisions_ &&
-                    renderMode != IRRender::VoxelRenderMode::SNAPPED) {
+                    renderMode != IRRender::SubdivisionMode::NONE) {
                     frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
                 }
                 frameData.frameData_.textureOffset_ = vec2(0);

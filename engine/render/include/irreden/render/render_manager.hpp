@@ -47,8 +47,8 @@ class RenderManager {
     vec2 getTriangleStepSizeGameResolution() const;
     ivec2 getMainCanvasSizeTriangles() const;
     vec2 screenToOutputWindowOffset() const;
-    void setVoxelRenderMode(VoxelRenderMode mode);
-    VoxelRenderMode getVoxelRenderMode() const;
+    void setSubdivisionMode(SubdivisionMode mode);
+    SubdivisionMode getSubdivisionMode() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -120,7 +120,7 @@ class RenderManager {
     std::unordered_map<std::string, EntityId> m_canvasMap;
     EntityId m_activeCanvas = kNullEntity;
     FitMode m_fitMode;
-    VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
+    SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;

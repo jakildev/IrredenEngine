@@ -221,12 +221,12 @@ vec2 RenderManager::getCameraZoom() const {
     return IREntity::getComponent<C_ZoomLevel>(m_camera).zoom_;
 }
 
-void RenderManager::setVoxelRenderMode(VoxelRenderMode mode) {
-    m_voxelRenderMode = mode;
+void RenderManager::setSubdivisionMode(SubdivisionMode mode) {
+    m_subdivisionMode = mode;
 }
 
-VoxelRenderMode RenderManager::getVoxelRenderMode() const {
-    return m_voxelRenderMode;
+SubdivisionMode RenderManager::getSubdivisionMode() const {
+    return m_subdivisionMode;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
@@ -238,12 +238,19 @@ int RenderManager::getVoxelRenderSubdivisions() const {
 }
 
 int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
-    if (m_voxelRenderMode == VoxelRenderMode::SNAPPED) {
+    switch (m_subdivisionMode) {
+    case SubdivisionMode::NONE:
         return 1;
+    case SubdivisionMode::POSITION_ONLY:
+        return IRMath::clamp(m_voxelRenderSubdivisions, 1, 16);
+    case SubdivisionMode::FULL: {
+        const int zoomScale = static_cast<int>(
+            IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
+        return IRMath::clamp(
+            m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
     }
-    const int zoomScale =
-        static_cast<int>(IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
-    return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
+    }
+    return 1;
 }
 
 void RenderManager::setCameraZoom(float zoom) {

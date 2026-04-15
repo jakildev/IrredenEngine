@@ -21,7 +21,7 @@ Key exposed surface:
   `setActiveCanvas(name)`.
 - Camera and viewport: `getCameraPosition2DIso()`, `getCameraZoom()`,
   `getViewport()`, `getOutputScaleFactor()`, `mousePosToWorldPos()`.
-- Render mode: `setVoxelRenderMode(SNAPPED|SMOOTH)`,
+- Subdivision mode: `setSubdivisionMode(NONE|POSITION_ONLY|FULL)`,
   `setVoxelRenderSubdivisions(n)`.
 - GUI state: `setGuiVisible`, `setGuiScale`, `setHoveredTrixelVisible`.
 

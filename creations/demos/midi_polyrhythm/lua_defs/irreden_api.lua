@@ -329,10 +329,11 @@ IRFitMode = {
     STRETCH = 1,
 }
 
----@enum IRVoxelRenderMode Exposed from C++ IRRender::VoxelRenderMode
-IRVoxelRenderMode = {
-    SNAPPED = 0,
-    SMOOTH  = 1,
+---@enum IRSubdivisionMode Exposed from C++ IRRender::SubdivisionMode
+IRSubdivisionMode = {
+    NONE          = 0,
+    POSITION_ONLY = 1,
+    FULL          = 2,
 }
 
 ---@enum LayoutMode

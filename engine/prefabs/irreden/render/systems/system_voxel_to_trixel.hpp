@@ -69,8 +69,7 @@ inline void buildVoxelFrameData(
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount
 ) {
-    const auto renderMode = IRRender::getVoxelRenderMode();
-    const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
+    const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
     const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
 
@@ -86,14 +85,13 @@ inline void buildVoxelFrameData(
     static int previousEffectiveSubdivisions = -1;
     if (static_cast<int>(renderMode) != previousRenderMode ||
         effectiveSubdivisions != previousEffectiveSubdivisions) {
+        const vec2 zoom = IRRender::getCameraZoom();
         IRE_LOG_INFO(
             "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
             "effective_subdivisions={}",
             static_cast<int>(renderMode),
-            baseSubdivisions,
-            static_cast<int>(IRMath::round(
-                IRMath::max(IRRender::getCameraZoom().x, IRRender::getCameraZoom().y)
-            )),
+            IRRender::getVoxelRenderSubdivisions(),
+            static_cast<int>(IRMath::round(IRMath::max(zoom.x, zoom.y))),
             effectiveSubdivisions
         );
         previousRenderMode = static_cast<int>(renderMode);
