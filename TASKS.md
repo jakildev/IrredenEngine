@@ -169,7 +169,7 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [ ] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
+- [~] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
   mirror of the Linux-maturation task, on the Mac side. Umbrella epic
   for fixing every compile/link/runtime issue in the Metal backend
   as the fleet surfaces them. Must be run from a macOS host (Apple
@@ -178,7 +178,7 @@ Avoid:
   - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
     anywhere the Metal path breaks
   - **Model:** opus (backend/render work is Opus territory)
-  - **Owner:** free
+  - **Owner:** metal-build-maturation
   - **Blocked by:** (none)
   - **Acceptance:** from a fresh macOS clone at `~/src/IrredenEngine`,
     `cmake --preset macos-debug && cmake --build build -j$(sysctl -n hw.ncpu)`
