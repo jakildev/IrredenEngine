@@ -337,6 +337,9 @@ metalCurrentDepthPixelFormat(),
     }
 
     void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
+        if (instanceCount <= 0) {
+            return;
+        }
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();
         if (pipeline == nullptr || pipeline->isComputePipeline() || layout.indexBuffer_ == nullptr) {
