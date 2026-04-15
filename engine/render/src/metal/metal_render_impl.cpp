@@ -337,10 +337,38 @@ metalCurrentDepthPixelFormat(),
     }
 
     void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
-        // Metal instanced draw - stub for now, not yet wired for entity canvas instancing.
-        for (int i = 0; i < instanceCount; ++i) {
-            drawElements(drawMode, count, indexType);
+        auto *pipeline = activeMetalPipeline();
+        const auto &layout = activeMetalVertexLayout();
+        if (pipeline == nullptr || pipeline->isComputePipeline() || layout.indexBuffer_ == nullptr) {
+            return;
         }
+
+        auto *encoder = createRenderEncoder();
+        if (encoder == nullptr) {
+            return;
+        }
+
+        auto *pipelineState = pipeline->getRenderPipelineState(
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_
+        );
+        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
+        encoder->setRenderPipelineState(pipelineState);
+        if (metalCurrentDepthTexture() != nullptr) {
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
+        }
+        bindRenderResources(encoder);
+        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        encoder->drawIndexedPrimitives(
+            toMetalPrimitiveType(drawMode),
+            static_cast<NS::UInteger>(count),
+            toMetalIndexType(indexType),
+            layout.indexBuffer_,
+            0,
+            static_cast<NS::UInteger>(instanceCount)
+        );
+        encoder->endEncoding();
     }
 
     void copyImageSubData(
