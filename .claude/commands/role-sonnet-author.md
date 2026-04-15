@@ -103,6 +103,12 @@ limit. Each loop iteration:
    - **Title is NOT referenced in any open PR's title or branch name**
      (cross-check with the `gh pr list` output)
 
+   **If no matching task exists, exit cleanly.** Print
+   `no unblocked [sonnet] tasks — standing by` and stop. Do NOT
+   invent work, self-assign documentation passes, or create tasks
+   outside the queue. The `/loop` driver or `fleet-babysit` will
+   re-invoke you later when new tasks may have appeared.
+
    Print the task and explain why you picked it.
 
 3. **Claim the task, then open a PR with `fleet:wip`.**
