@@ -9,14 +9,23 @@ namespace IRAudio {
 
 class AudioManager;
 
+/// MIDI channel number (0-based; channel 1 = value 0).
 using MidiChannel = unsigned char;
+/// Raw MIDI status byte (high nibble = message type, low nibble = channel).
 using MidiStatus = unsigned char;
+/// MIDI CC (control-change) value byte.
 using CCData = unsigned char;
+/// MIDI CC (control-change) message number byte.
 using CCMessage = unsigned char;
 
+/// Sentinel value returned by @ref checkCCMessage when no CC was received this frame.
 constexpr CCData kCCFalse = 0xFF;
+/// Default RtAudio input buffer size in frames (samples per callback invocation).
 constexpr unsigned int kAudioInputDefaultBufferFrames = 1024;
 
+/// Indices into the hardcoded MIDI-input device list.
+/// Pass to `openPortMidiIn(MidiInInterfaces)` to open by index, or use
+/// @ref kMidiInInterfaceNames to open by substring match.
 enum MidiInInterfaces {
     MIDI_IN_UMC,
     MIDI_IN_FOCUSRITE,
@@ -25,6 +34,7 @@ enum MidiInInterfaces {
     NUM_MIDI_IN_INTERFACES
 };
 
+/// Indices into the hardcoded MIDI-output device list.
 enum MidiOutInterfaces {
     MIDI_OUT_UMC,
     MIDI_OUT_FOCUSRITE,
@@ -33,16 +43,22 @@ enum MidiOutInterfaces {
     NUM_MIDI_OUT_INTERFACES
 };
 
+/// Casts a @ref MidiInInterfaces value to its array index.
 constexpr std::size_t midiInInterfaceIndex(MidiInInterfaces midiInInterface) {
     return static_cast<std::size_t>(midiInInterface);
 }
 
+/// Casts a @ref MidiOutInterfaces value to its array index.
 constexpr std::size_t midiOutInterfaceIndex(MidiOutInterfaces midiOutInterface) {
     return static_cast<std::size_t>(midiOutInterface);
 }
 
+/// Discriminant for whether a MIDI device handle is input or output.
 enum MidiDeviceType { MIDI_DEVICE_TYPE_IN, MIDI_DEVICE_TYPE_OUT };
 
+/// Named MIDI channel aliases (0-indexed: `kMidiChannel1` = 0).
+/// `kMidiChannelAll` = 16 is a convention used by the engine to mean
+/// "broadcast to all channels".
 enum MidiChannels {
     kMidiChannel1 = 0,
     kMidiChannel2 = 1,
@@ -64,6 +80,8 @@ enum MidiChannels {
 
 };
 
+/// @name Hardcoded MIDI device port name substrings (used for substring-match port opening)
+/// @{
 const char *const kMidiInInterfaceName_UMC = "UMC1820 MIDI In";
 const char *const kMidiInInterfaceName_FOCUSRITE = "Focusrite USB MIDI";
 const char *const kMidiInInterfaceName_MPK = "MPKmini2";
@@ -73,8 +91,9 @@ const char *const kMidiOutInterfaceName_UMC = "UMC1820 MIDI Out";
 const char *const kMidiOutInterfaceName_FOCUSRITE = "Focusrite USB MIDI";
 const char *const kMidiOutInterfaceName_MPK = "MPKmini2";
 const char *const kMidiOutInterfaceName_OP1 = "OP-1 Midi Device";
+/// @}
 
-// map midi in interface to name
+/// Maps @ref MidiInInterfaces index to its device name substring.
 inline const std::array<const char *, NUM_MIDI_IN_INTERFACES> kMidiInInterfaceNames = {
     kMidiInInterfaceName_UMC,
     kMidiInInterfaceName_FOCUSRITE,
@@ -82,7 +101,7 @@ inline const std::array<const char *, NUM_MIDI_IN_INTERFACES> kMidiInInterfaceNa
     kMidiInInterfaceName_OP1
 };
 
-// map midi out interface to name
+/// Maps @ref MidiOutInterfaces index to its device name substring.
 inline const std::array<const char *, NUM_MIDI_OUT_INTERFACES> kMidiOutInterfaceNames = {
     kMidiOutInterfaceName_UMC,
     kMidiOutInterfaceName_FOCUSRITE,
@@ -90,23 +109,31 @@ inline const std::array<const char *, NUM_MIDI_OUT_INTERFACES> kMidiOutInterface
     kMidiOutInterfaceName_OP1
 };
 
+/// High-nibble mask for the status byte (message type bits).
 const unsigned char kMidiMessageBits_STATUS = 0xF0;
+/// Low-nibble mask for the status byte (channel bits).
 const unsigned char kMidiMessageBits_CHANNEL = 0x0F;
 
+/// Strips the message-type bits from a combined status byte, leaving only the channel.
 constexpr MidiChannel normalizeMidiChannel(MidiChannel channel) {
     return static_cast<MidiChannel>(channel & kMidiMessageBits_CHANNEL);
 }
 
+/// Strips the channel bits from a combined status byte, leaving only the message type.
 constexpr MidiStatus normalizeMidiStatus(MidiStatus status) {
     return static_cast<MidiStatus>(status & kMidiMessageBits_STATUS);
 }
 
+/// Combines a message-type status nibble and a channel nibble into a single status byte.
 constexpr MidiStatus buildMidiStatus(MidiStatus status, MidiChannel channel) {
     return static_cast<MidiStatus>(normalizeMidiStatus(status) | normalizeMidiChannel(channel));
 }
 
+/// Total number of MIDI channels per device (standard MIDI: 16).
 constexpr MidiChannel kNumMidiChannels = 16;
 
+/// @name MIDI message-type status bytes (high nibble of the status byte)
+/// @{
 constexpr MidiStatus kMidiStatus_NOTE_OFF = 0x80;
 constexpr MidiStatus kMidiStatus_NOTE_ON = 0x90;
 constexpr MidiStatus kMidiStatus_POLYPHONIC_KEY_PRESSURE = 0xA0;
@@ -114,7 +141,10 @@ constexpr MidiStatus kMidiStatus_CONTROL_CHANGE = 0xB0;
 constexpr MidiStatus kMidiStatus_PROGRAM_CHANGE = 0xC0;
 constexpr MidiStatus kMidiStatus_CHANNEL_PRESSURE = 0xD0;
 constexpr MidiStatus kMidiStatus_PITCH_BEND = 0xE0;
+/// @}
 
+/// MIDI note numbers for the 88-key piano range (A0=21 … C8=108).
+/// Values follow the General MIDI standard (middle C = C4 = 60).
 enum IRMidiNote {
     NOTE_A0 = 21,
     NOTE_A0_SHARP = 22,
@@ -206,7 +236,9 @@ enum IRMidiNote {
     NOTE_C8 = 108
 };
 
+/// MIDI CC 120 — silences all sounding notes immediately (no release).
 constexpr unsigned char kMidiCC_ALL_SOUND_OFF = 120;
+/// MIDI CC 123 — releases all held notes (allows natural release/decay).
 constexpr unsigned char kMidiCC_ALL_NOTES_OFF = 123;
 
 } // namespace IRAudio
