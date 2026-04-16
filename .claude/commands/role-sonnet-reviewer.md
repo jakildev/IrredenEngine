@@ -69,9 +69,15 @@ treat it as a hard rule for this role.
    Print both results so we both see the current PR queues.
 5. Identify review candidates from both repos. A PR is a candidate if:
    - It has **no fleet review yet** (no review from your GitHub user), OR
+   - It has the `human:re-review` label (human made changes and
+     explicitly requested re-review via the `request-re-review` skill), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" (check the comments array for
      this text after your last review).
+
+   When picking up a `human:re-review` PR, **immediately remove the
+   label** so another reviewer doesn't also grab it:
+   `gh pr edit <N> --remove-label "human:re-review"`
 
    **Skip** PRs with any of these labels:
    - `fleet:wip` — work-in-progress claim, not ready for review.
