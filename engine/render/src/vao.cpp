@@ -1,22 +1,23 @@
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/vao.hpp>
 
 namespace IRRender {
 
 std::unique_ptr<VertexLayoutImpl> createVertexLayoutImpl(
-    std::uint32_t vertexBufferHandle,
-    std::uint32_t indexBufferHandle,
+    const Buffer *vertexBuffer,
+    const Buffer *indexBuffer,
     unsigned int numAttributes,
     const VertexArrayAttribute *attributes
 );
 
 VertexLayout::VertexLayout(
-    std::uint32_t vertexBufferHandle,
-    std::uint32_t indexBufferHandle,
+    const Buffer *vertexBuffer,
+    const Buffer *indexBuffer,
     unsigned int numAttributes,
     const VertexArrayAttribute *attributes
 )
     : m_impl(createVertexLayoutImpl(
-          vertexBufferHandle, indexBufferHandle, numAttributes, attributes
+          vertexBuffer, indexBuffer, numAttributes, attributes
       )) {}
 
 VertexLayout::~VertexLayout() = default;

@@ -2,9 +2,14 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
 
+#include <cstdio>
 #include <string>
 
 namespace IRAsset {
+
+namespace {
+constexpr const char* kTrixelExtension = ".txl";
+}
 
 void saveTrixelTextureData(
     const std::string &name,
@@ -13,8 +18,12 @@ void saveTrixelTextureData(
     const std::vector<Color> &colors,
     const std::vector<Distance> &distances
 ) {
-    const std::string filename = IRUtility::joinPath(path, name, ".txl");
+    const std::string filename = IRUtility::joinPath(path, name, kTrixelExtension);
     FILE *f = fopen(filename.c_str(), "wb");
+    if (!f) {
+        IRE_LOG_ERROR("Failed to open file for writing: {}", filename);
+        return;
+    }
     fwrite(&size, sizeof(size), 1, f);
     fwrite(colors.data(), sizeof(colors.at(0)), size.x * size.y, f);
     fwrite(distances.data(), sizeof(distances.at(0)), size.x * size.y, f);
@@ -29,8 +38,12 @@ void loadTrixelTextureData(
     std::vector<Color> &colors,
     std::vector<Distance> &distances
 ) {
-    const std::string filename = IRUtility::joinPath(path, name, ".irtxl");
+    const std::string filename = IRUtility::joinPath(path, name, kTrixelExtension);
     FILE *f = fopen(filename.c_str(), "rb");
+    if (!f) {
+        IRE_LOG_ERROR("Failed to open file for reading: {}", filename);
+        return;
+    }
     fread(&size, sizeof(size), 1, f);
     colors.resize(size.x * size.y);
     distances.resize(size.x * size.y);

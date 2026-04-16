@@ -1,116 +1,57 @@
-#include <metal_stdlib>
-using namespace metal;
+#include "ir_iso_common.metal"
+#include "ir_constants.metal"
 
-struct FrameDataVoxelToTrixel {
-    float2 frameCanvasOffset;
-    int2 trixelCanvasOffsetZ1;
-    int2 voxelRenderOptions;
-    int2 voxelDispatchGrid;
-    int voxelCount;
-    int voxelDispatchPadding;
+// Stage 2 of the voxel→trixel pipeline: each surviving voxel re-evaluates the
+// canvas distance scratch buffer (populated by stage 1) and, on a depth
+// match, writes its color/distance/entityId taps into the trixel canvas
+// textures.  Reads compacted visible voxel indices produced by
+// c_voxel_visibility_compact.metal.
+//
+// We read the depth via the scratch buffer (atomic_load) rather than the
+// R32I texture, mirroring the write path used by stage 1 — see
+// engine/render/include/irreden/render/metal/metal_runtime.hpp.
+
+struct IndirectDispatchParamsRO {
+    uint numGroupsX;
+    uint numGroupsY;
+    uint numGroupsZ;
+    uint visibleCount;
 };
 
-int2 pos3DtoPos2DIso(int3 position) {
-    return int2(
-        -position.x + position.y,
-        -position.x - position.y + (2 * position.z)
-    );
-}
-
-int pos3DtoDistance(int3 position) {
-    return position.x + position.y + position.z;
-}
-
-float4 unpackColor(uint packedColor) {
-    return float4(
-        float(packedColor & 0xFFu) / 255.0,
-        float((packedColor >> 8) & 0xFFu) / 255.0,
-        float((packedColor >> 16) & 0xFFu) / 255.0,
-        float((packedColor >> 24) & 0xFFu) / 255.0
-    );
-}
-
-constant int kXFace = 0;
-constant int kYFace = 1;
-constant int kZFace = 2;
-
-int localIDToFace(uint2 localId) {
-    if (localId.y == 0) {
-        return kZFace;
-    }
-    if (localId.x == 1) {
-        return kXFace;
-    }
-    return kYFace;
-}
-
-int3 faceMicroPositionFixed(int face, int3 voxelPositionFixed, int u, int v) {
-    if (face == kXFace) {
-        return int3(voxelPositionFixed.x, voxelPositionFixed.y + u, voxelPositionFixed.z + v);
-    }
-    if (face == kYFace) {
-        return int3(voxelPositionFixed.x + u, voxelPositionFixed.y, voxelPositionFixed.z + v);
-    }
-    return int3(voxelPositionFixed.x + u, voxelPositionFixed.y + v, voxelPositionFixed.z);
-}
-
-float3 snapNearIntegerVoxelPosition(float3 voxelPosition) {
-    const float3 voxelRounded = round(voxelPosition);
-    const bool3 nearGrid = abs(voxelPosition - voxelRounded) <= float3(0.0001);
-    return select(voxelPosition, voxelRounded, nearGrid);
-}
-
-float4 adjustColorForFace(float4 color, int face) {
-    float brightness = 1.0;
-    if (face == kYFace) {
-        brightness = 0.75;
-    }
-    if (face == kZFace) {
-        brightness = 1.25;
-    }
-    return float4(clamp(color.rgb * brightness, 0.0, 1.0), color.a);
-}
-
-void writeColorTap(
-    texture2d<float, access::write> triangleCanvasColors,
-    texture2d<int, access::write> triangleCanvasDistances,
-    texture2d<uint, access::write> triangleCanvasEntityIds,
-    device const atomic_int* distanceScratch,
+inline void writeColorTap(
     int2 canvasPixel,
     int voxelDistance,
     float4 voxelColor,
-    ulong entityId
+    uint2 packedEntityId,
+    int2 canvasSize,
+    device const atomic_int* distanceScratch,
+    texture2d<float, access::write> triangleCanvasColors,
+    texture2d<int, access::write> triangleCanvasDistances,
+    texture2d<uint, access::write> triangleCanvasEntityIds
 ) {
-    if (canvasPixel.x < 0 || canvasPixel.y < 0) {
+    if (!isInsideCanvas(canvasPixel, canvasSize)) {
         return;
     }
-    if (canvasPixel.x >= int(triangleCanvasDistances.get_width()) ||
-        canvasPixel.y >= int(triangleCanvasDistances.get_height())) {
-        return;
-    }
-
     const uint linearIndex =
-        uint(canvasPixel.y) * triangleCanvasDistances.get_width() + uint(canvasPixel.x);
+        uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
     const int canvasDistance =
         atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed);
-    if (voxelDistance == canvasDistance) {
-        triangleCanvasColors.write(voxelColor, uint2(canvasPixel));
-        triangleCanvasDistances.write(int4(voxelDistance), uint2(canvasPixel));
-        const uint4 packedEntityId = uint4(
-            uint(entityId & 0xffffffffull),
-            uint((entityId >> 32ull) & 0xffffffffull),
-            0u,
-            0u
-        );
-        triangleCanvasEntityIds.write(packedEntityId, uint2(canvasPixel));
+    if (voxelDistance != canvasDistance) {
+        return;
     }
+    const uint2 pixel = uint2(canvasPixel);
+    triangleCanvasColors.write(voxelColor, pixel);
+    triangleCanvasDistances.write(int4(voxelDistance, 0, 0, 0), pixel);
+    triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
 kernel void c_voxel_to_trixel_stage_2(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
     device const uint* colors [[buffer(6)]],
-    device const ulong* entityIds [[buffer(13)]],
+    device const uint2* entityIds [[buffer(13)]],
+    device const uint* compactedVoxelIndices [[buffer(25)]],
+    device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
     device const atomic_int* distanceScratch [[buffer(16)]],
     texture2d<float, access::write> triangleCanvasColors [[texture(0)]],
     texture2d<int, access::write> triangleCanvasDistances [[texture(1)]],
@@ -118,71 +59,74 @@ kernel void c_voxel_to_trixel_stage_2(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
-    const uint voxelIndex = groupId.x + groupId.y * uint(frameData.voxelDispatchGrid.x);
-    if (voxelIndex >= uint(frameData.voxelCount)) {
+    const uint compactedIdx = groupId.x + groupId.y * indirectParams.numGroupsX;
+    if (compactedIdx >= indirectParams.visibleCount) {
         return;
     }
-    const uint2 localId = localId3.xy;
+
+    const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
     float4 voxelColor = unpackColor(colors[voxelIndex]);
     if (voxelColor.a == 0.0) {
         return;
     }
-    voxelColor = adjustColorForFace(voxelColor, localIDToFace(localId));
+    const uint2 localId = localId3.xy;
+    const int face = localIDToFace_2x3(localId);
+    voxelColor = adjustColorForFace(voxelColor, face);
+
+    const int2 canvasSize = frameData.canvasSizePixels;
+    const uint2 packedEntityId = entityIds[voxelIndex];
 
     if (frameData.voxelRenderOptions.x == 0) {
-        const int3 voxelPositionInt = int3(
-            round(voxelPosition.x),
-            round(voxelPosition.y),
-            round(voxelPosition.z)
+        const int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        const int voxelDistance = encodeDepthWithFace(
+            pos3DtoDistance(voxelPositionInt), face
         );
-        const int voxelDistance = pos3DtoDistance(voxelPositionInt);
         const int2 canvasPixel =
             frameData.trixelCanvasOffsetZ1 +
-            int2(floor(frameData.frameCanvasOffset.x), floor(frameData.frameCanvasOffset.y)) +
+            int2(floor(frameData.frameCanvasOffset)) +
             int2(localId) +
             pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(
-            triangleCanvasColors,
-            triangleCanvasDistances,
-            triangleCanvasEntityIds,
-            distanceScratch,
             canvasPixel,
             voxelDistance,
             voxelColor,
-            entityIds[voxelIndex]
+            packedEntityId,
+            canvasSize,
+            distanceScratch,
+            triangleCanvasColors,
+            triangleCanvasDistances,
+            triangleCanvasEntityIds
         );
         return;
     }
 
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+    const int u = int(groupId.z) / subdivisions;
+    const int v = int(groupId.z) % subdivisions;
+
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 voxelPositionFixed = int3(round(voxelPositionAligned * float(subdivisions)));
     const int2 frameOffsetFixed =
         frameData.trixelCanvasOffsetZ1 +
         int2(floor(frameData.frameCanvasOffset * float(subdivisions)));
-    const int2 localFaceOffsetFixed = int2(localId);
-    const int face = localIDToFace(localId);
 
-    for (int u = 0; u < subdivisions; ++u) {
-        for (int v = 0; v < subdivisions; ++v) {
-            const int3 microPositionFixed =
-                faceMicroPositionFixed(face, voxelPositionFixed, u, v);
-            const int depthBase =
-                microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-            const int voxelDistance = depthBase * 4 + face;
-            const int2 canvasPixel =
-                frameOffsetFixed + localFaceOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-            writeColorTap(
-                triangleCanvasColors,
-                triangleCanvasDistances,
-                triangleCanvasEntityIds,
-                distanceScratch,
-                canvasPixel,
-                voxelDistance,
-                voxelColor,
-                entityIds[voxelIndex]
-            );
-        }
-    }
+    const int3 microPositionFixed =
+        faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+    const int depthBase =
+        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const int2 canvasPixel =
+        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
+    writeColorTap(
+        canvasPixel,
+        voxelDistance,
+        voxelColor,
+        packedEntityId,
+        canvasSize,
+        distanceScratch,
+        triangleCanvasColors,
+        triangleCanvasDistances,
+        triangleCanvasEntityIds
+    );
 }

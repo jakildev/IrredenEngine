@@ -34,6 +34,10 @@ class OpenGLBufferImpl final : public BufferImpl {
         return m_handle;
     }
 
+    void *getNativeBuffer() const override {
+        return nullptr;
+    }
+
     void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const override {
         ENG_API->glNamedBufferSubData(
             m_handle, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size), data

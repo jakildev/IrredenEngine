@@ -55,6 +55,8 @@ int g_settleCounter = 0;
 bool g_screenshotPending = false;
 bool g_autoMode = false;
 bool g_depthColor = false;
+int g_autoProfileFrames = 0;  // 0 = disabled
+int g_autoProfileCount = 0;
 
 } // namespace
 
@@ -74,6 +76,15 @@ int main(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
+            g_autoProfileFrames = 300;  // default
+            if (i + 1 < argc) {
+                int frames = std::atoi(argv[i + 1]);
+                if (frames > 0) {
+                    g_autoProfileFrames = frames;
+                    ++i;
+                }
+            }
         } else if (std::strcmp(argv[i], "--depth-color") == 0) {
             g_depthColor = true;
         }
@@ -81,6 +92,9 @@ int main(int argc, char **argv) {
 
     IR_LOG_INFO("Starting creation: shape_debug");
     IREngine::init(argv[0]);
+    if (g_autoProfileFrames > 0) {
+        IREngine::enableFrameTiming(true);
+    }
     initSystems();
     initCommands();
     initEntities();
@@ -107,6 +121,22 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
+
+    if (g_autoProfileFrames > 0) {
+        IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_VoxelSetNew>(
+            "AutoProfile",
+            [](C_VoxelSetNew &) {},
+            []() {
+                ++g_autoProfileCount;
+                if (g_autoProfileCount >= g_autoProfileFrames) {
+                    IR_LOG_INFO("Auto-profile: {} frames collected, exiting",
+                                g_autoProfileFrames);
+                    IRWindow::closeWindow();
+                }
+            }
+        );
+        renderPipeline.push_back(autoProfileId);
+    }
 
     if (g_autoMode) {
         IRSystem::SystemId autoScreenshotId = IRSystem::createSystem<C_VoxelSetNew>(

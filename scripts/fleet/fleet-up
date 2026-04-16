@@ -1,0 +1,418 @@
+#!/usr/bin/env bash
+# fleet-up — bring the Irreden Engine + Game agent fleet online.
+#
+# Idempotent. Creates any missing worktrees, resets each to a fresh
+# branch off origin/master (skipping any that have uncommitted work),
+# then builds a single tmux session "fleet" with one window "agents"
+# containing 7 tiled panes — each launching `claude` with the right
+# model and the matching role slash command in dry-run mode.
+#
+# Source of truth: scripts/fleet/fleet-up in the engine repo.
+# Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
+#
+# Role slash commands live in ~/.claude/commands/role-*.md and are
+# the runtime source. The same files are checked into the engine and
+# game repos under .claude/commands/ for version control;
+# scripts/fleet/install.sh symlinks the repo copies into the runtime
+# location so a git pull updates both sides at once.
+
+set -euo pipefail
+
+ENGINE="$HOME/src/IrredenEngine"
+GAME="$ENGINE/creations/game"
+SESSION="fleet"
+
+if ! command -v tmux >/dev/null 2>&1; then
+    echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
+    exit 1
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+    echo "fleet-up: claude CLI not found on PATH." >&2
+    exit 1
+fi
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "fleet session already exists — attach with: tmux attach -t $SESSION"
+    echo "(kill with \`tmux kill-session -t $SESSION\` first if you want a fresh layout)"
+    exit 0
+fi
+
+# ----------------------------------------------------------------------
+# Step 1: ensure all worktrees exist
+# ----------------------------------------------------------------------
+
+ensure_worktree() {
+    # $1 = repo root, $2 = worktree subpath relative to repo root,
+    # $3 = branch name to create or attach
+    local repo="$1"
+    local subpath="$2"
+    local branch="$3"
+    local wt="$repo/$subpath"
+
+    if [[ -d "$wt" ]]; then
+        return 0
+    fi
+    echo "fleet-up: creating worktree $wt (branch $branch)"
+    (cd "$repo" && git worktree add "$wt" -b "$branch" origin/master 2>&1 \
+        || git worktree add "$wt" "$branch")
+}
+
+(cd "$ENGINE" && git fetch origin --quiet) || {
+    echo "fleet-up: engine git fetch failed" >&2; exit 1; }
+
+ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker       fleet/opus-worker
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
+ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
+
+if [[ -d "$GAME/.git" ]]; then
+    (cd "$GAME" && git fetch origin --quiet) || {
+        echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
+    ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+    ensure_worktree "$GAME" .claude/worktrees/game-sonnet     fleet/game-sonnet
+else
+    echo "fleet-up: game repo not found at $GAME — skipping game panes"
+fi
+
+# ----------------------------------------------------------------------
+# Step 2: reset each worktree to a fresh branch off origin/master
+# ----------------------------------------------------------------------
+
+reset_worktree() {
+    # $1 = worktree path, $2 = scratch branch name to land on
+    local wt="$1"
+    local branch="$2"
+
+    if [[ ! -d "$wt" ]]; then
+        return 0
+    fi
+
+    # Refuse to clobber uncommitted work — the human can clean up first.
+    local dirty
+    dirty="$(cd "$wt" && git status --porcelain 2>/dev/null || echo SKIP)"
+    if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
+        echo "fleet-up: $wt has uncommitted changes — leaving as-is."
+        echo "          (commit or stash and rerun fleet-up to reset.)"
+        return 0
+    fi
+
+    echo "fleet-up: resetting $wt -> $branch"
+    (cd "$wt" \
+        && git fetch origin --quiet \
+        && git checkout -B "$branch" origin/master >/dev/null 2>&1) || {
+        echo "fleet-up: failed to reset $wt — leaving as-is" >&2; }
+}
+
+reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker"     claude/opus-worker-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
+reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-sonnet" claude/game-sonnet-scratch
+fi
+
+# ----------------------------------------------------------------------
+# Step 3: write per-worktree .claude/settings.local.json
+# ----------------------------------------------------------------------
+#
+# Worktrees are treated as separate projects by Claude Code. Without
+# additionalDirectories, any access to the main clone (build/, test/,
+# engine/) triggers a path-scope prompt that blocks unattended operation.
+
+write_worktree_settings() {
+    local wt="$1"
+    local repo_root="$2"
+    local settings_dir="$wt/.claude"
+    local settings_file="$settings_dir/settings.local.json"
+
+    [[ -d "$wt" ]] || return 0
+    mkdir -p "$settings_dir"
+
+    # Use python3 to merge baseline allows with any user-granted entries from
+    # previous sessions and write properly-escaped JSON. Bash string concat
+    # cannot safely embed arbitrary allow-rule strings (they may contain
+    # quotes, backslashes, parens) into a JSON file. python3's json.dumps
+    # handles all escaping correctly.
+    #
+    # Baseline allows that every fleet agent needs (beyond the user-level
+    # ~/.claude/settings.json entries). These cover tools the agents use
+    # during freeform work that aren't in the user-level allowlist.
+    python3 - "$settings_file" "$repo_root" <<'PYEOF'
+import json, sys, os
+
+settings_file = sys.argv[1]
+repo_root     = sys.argv[2]
+
+baseline = [
+    "Edit(*)",
+    "Bash(grep:*)",
+    "Bash(find:*)",
+    "Bash(head:*)",
+    "Bash(tail:*)",
+    "Bash(wc:*)",
+    "Bash(diff:*)",
+    "Bash(mkdir:*)",
+    "Bash(cp:*)",
+    "Bash(mv:*)",
+    "Bash(chmod:*)",
+    "Bash(sort:*)",
+    "Bash(uniq:*)",
+    "Bash(tr:*)",
+    "Bash(cut:*)",
+    "Bash(sed:*)",
+    "Bash(awk:*)",
+    "Bash(xargs:*)",
+    "Bash(tee:*)",
+    "Bash(python3:*)",
+    "Bash(file:*)",
+    "Bash(stat:*)",
+    "Bash(realpath:*)",
+    "Bash(basename:*)",
+    "Bash(dirname:*)",
+    "Bash(fleet-claim:*)",
+    "Bash(fleet-build:*)",
+    "Bash(fleet-run:*)",
+]
+
+# Preserve any user-granted "always allow" entries from previous sessions,
+# but skip ones that look like specific inline python3 -c commands — those
+# are session-specific one-liners that shouldn't outlive a session, and
+# they corrupt JSON when bash tries to re-embed them as string literals.
+# The catch-all "Bash(python3:*)" baseline entry covers all python3 use.
+existing_extra = []
+if os.path.isfile(settings_file):
+    try:
+        d = json.load(open(settings_file))
+        for a in d.get("permissions", {}).get("allow", []):
+            if a not in baseline and 'python3 -c' not in a:
+                existing_extra.append(a)
+    except Exception:
+        pass  # malformed file — start fresh with baseline only
+
+all_allows = baseline + existing_extra
+
+out = {
+    "permissions": {
+        "additionalDirectories": [repo_root],
+        "allow": all_allows,
+    }
+}
+
+with open(settings_file, "w") as f:
+    json.dump(out, f, indent=2)
+    f.write("\n")
+PYEOF
+}
+
+for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+    write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
+done
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
+fi
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME"
+fi
+
+# ----------------------------------------------------------------------
+# Step 3b: clear stale task claims
+# ----------------------------------------------------------------------
+#
+# fleet-up resets every worktree to a fresh branch, so any claims from
+# a previous fleet session are stale. Wipe them so agents start clean.
+
+if command -v fleet-claim >/dev/null 2>&1; then
+    fleet-claim clear-all
+elif [[ -x "$ENGINE/scripts/fleet/fleet-claim" ]]; then
+    "$ENGINE/scripts/fleet/fleet-claim" clear-all
+else
+    echo "fleet-up: fleet-claim not found — skipping claims cleanup"
+    echo "          (run scripts/fleet/install.sh to install it)"
+fi
+
+# Ensure the plans directory exists for opus-worker and architect to write to.
+mkdir -p "$HOME/.fleet/plans"
+
+# ----------------------------------------------------------------------
+# Step 4: build the tmux session
+# ----------------------------------------------------------------------
+#
+# Layout: single window with three rows.
+#   top    — sonnet-fleet-1, sonnet-fleet-2, game-sonnet  (authors)
+#   middle — opus-architect, opus-worker, game-architect  (architects + worker)
+#   bottom — sonnet-reviewer, opus-reviewer, queue-manager (ops)
+#
+# Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
+#
+# Each pane execs:
+#     claude --model <m> "/role-<role> <mode>"; exec $SHELL
+#
+# The trailing `exec $SHELL` keeps the pane alive with a usable shell
+# if claude exits or errors out, instead of letting the pane vanish.
+#
+# Default mode: dry-run. The agents do their startup actions and then
+# stand by for human instruction. Promote a pane to full operation by
+# typing in it: "you can stop dry-run mode and start working".
+
+MODE="${1:-dry-run}"
+
+launch_cmd() {
+    # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
+    # $3 = loop interval (optional — for polling roles like reviewers/queue-mgr)
+    local model="$1"
+    local role="$2"
+    local loop="${3:-}"
+    if [[ -n "$loop" ]]; then
+        printf 'fleet-babysit %s %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE" "$loop"
+    else
+        printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
+            "$model" "$role" "$MODE"
+    fi
+}
+
+# Single window, three rows:
+#   Top    (~45% height): sonnet authors + game-sonnet  — biggest panes
+#   Middle (~30% height): architects                    — medium panes
+#   Bottom (~25% height): reviewers + queue-manager     — small panes
+#
+# Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
+# Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
+
+# Label a pane by its tmux pane ID using @role.
+# Using @role instead of pane_title makes it immune to application
+# overwrites via terminal escape sequences (which Claude Code does).
+label_pane_id() {
+    tmux set-option -t "$1" -p @role "$2"
+}
+
+# Return the active pane ID in the fleet window.
+# split-window selects the new pane, so calling this right after a
+# split-window returns the newly created pane's ID.
+active_pane_id() {
+    tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
+}
+
+# --- Row 1: authors (starts full-screen; will become top ~45%) ----------
+tmux new-session -d -s "$SESSION" -n fleet \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
+    "$(launch_cmd sonnet sonnet-author)"
+TOP1=$(active_pane_id)
+label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
+
+# --- Row 3 (bottom, ~25%): reviewers + queue-manager -------------------
+# Split off the bottom strip first. The percentage is relative to the
+# full window height at this point — 25% bottom, 75% top.
+tmux split-window -v -t "$TOP1" -p 25 \
+    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    "$(launch_cmd sonnet sonnet-reviewer 3m)"
+BOT1=$(active_pane_id)
+label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
+
+tmux split-window -h -t "$BOT1" \
+    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "$(launch_cmd opus opus-reviewer 30m)"
+BOT2=$(active_pane_id)
+label_pane_id "$BOT2" "opus-reviewer [opus]"
+
+tmux split-window -h -t "$BOT2" \
+    -c "$ENGINE/.claude/worktrees/queue-manager" \
+    "$(launch_cmd sonnet queue-manager 5m)"
+BOT3=$(active_pane_id)
+label_pane_id "$BOT3" "queue-manager [sonnet]"
+
+# --- Row 2 (middle, ~30%): architects + opus-worker --------------------
+# Split off the middle row from TOP1. TOP1 is currently 75% of the
+# window. Splitting 40% off the bottom of that gives:
+#   TOP1 = 75% * 60% = ~45% of window  (authors)
+#   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
+tmux split-window -v -t "$TOP1" -p 40 \
+    -c "$ENGINE/.claude/worktrees/opus-architect" \
+    "$(launch_cmd opus opus-architect)"
+MID1=$(active_pane_id)
+label_pane_id "$MID1" "opus-architect [opus]"
+
+tmux split-window -h -t "$MID1" \
+    -c "$ENGINE/.claude/worktrees/opus-worker" \
+    "$(launch_cmd opus opus-worker 20m)"
+MID2=$(active_pane_id)
+label_pane_id "$MID2" "opus-worker [opus]"
+
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    tmux split-window -h -t "$MID2" \
+        -c "$GAME/.claude/worktrees/game-architect" \
+        "$(launch_cmd opus game-architect)"
+    MID3=$(active_pane_id)
+    label_pane_id "$MID3" "game-architect [opus]"
+fi
+
+# --- Expand Row 1 (top) with remaining authors -------------------------
+tmux split-window -h -t "$TOP1" \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd sonnet sonnet-author)"
+TOP2=$(active_pane_id)
+label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
+
+if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
+    tmux split-window -h -t "$TOP2" \
+        -c "$GAME/.claude/worktrees/game-sonnet" \
+        "$(launch_cmd sonnet game-sonnet)"
+    TOP3=$(active_pane_id)
+    label_pane_id "$TOP3" "game-sonnet [sonnet]"
+fi
+
+# Enable pane border labels using @role (immune to program overrides)
+tmux set-option -t "$SESSION" pane-border-status top
+tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
+
+# Focus sonnet-fleet-1 on attach
+tmux select-pane -t "$TOP1"
+
+cat <<EOF
+
+fleet session created — mode: ${MODE}.
+attach with:  tmux attach -t ${SESSION}
+
+layout (single window, three rows):
+  top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
+  middle (med) — opus-architect  opus-worker  [game-architect]   (architects + worker)
+  bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
+
+navigation (no prefix needed):
+  Option+Up/Down/Left/Right — move to pane in that direction
+  Ctrl-a o                  — cycle to next pane
+  Ctrl-a ;                  — jump to last-used pane
+
+mode "dry-run" means each agent does its startup actions and then
+waits. promote a pane to full operation by typing in it:
+  "exit dry-run mode and begin your normal loop"
+
+babysit: each agent is wrapped in fleet-babysit, which auto-resumes
+the session if claude exits (crash, usage limit, network drop).
+  dry-run — auto-resumes on crash, stops on clean exit
+  live    — auto-resumes on any exit (runs indefinitely)
+
+scheduling (live mode): polling roles use Claude's /loop for managed intervals:
+  sonnet-reviewer — /loop 3m     opus-reviewer — /loop 30m
+  opus-worker     — /loop 20m   queue-manager  — /loop 5m
+  authors — continuous (no /loop)
+  opus-architect — interactive (no /loop, human's design partner)
+
+logs: crash diagnostics written to ~/.fleet/logs/<role>.log
+
+other modes you can pass to fleet-up:
+  fleet-up dry-run   # default — startup + stand-by
+  fleet-up live      # full loop from the start (use after a clean dry run)
+EOF

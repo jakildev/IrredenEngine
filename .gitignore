@@ -25,12 +25,18 @@ Thumbs.db
 .vs/
 *.vcxproj.user
 
-# creations: keep demos, ignore other top-level folders
+# fleet agent temp files
+.review-body.md
+
+# creations: keep demos + top-level CLAUDE.md, ignore other folders
 creations/*
+!creations/CLAUDE.md
 !creations/demos/
 !creations/demos/**
 
-# claude code: share skills, ignore worktrees and local session state
+# claude code: share skills + role slash commands, ignore worktrees and local session state
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+!.claude/commands/
+!.claude/commands/**

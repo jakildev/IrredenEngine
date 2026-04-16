@@ -3,6 +3,8 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <algorithm>
+
 #include <irreden/input/input_manager.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
 #include <irreden/input/entities/entity_joystick.hpp>

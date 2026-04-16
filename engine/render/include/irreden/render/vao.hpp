@@ -8,6 +8,8 @@
 
 namespace IRRender {
 
+class Buffer;
+
 const unsigned int kMaxVertexAttributes = 16;
 
 class VertexLayoutImpl {
@@ -19,8 +21,8 @@ class VertexLayoutImpl {
 class VertexLayout {
   public:
     VertexLayout(
-        std::uint32_t vertexBufferHandle,
-        std::uint32_t indexBufferHandle,
+        const Buffer *vertexBuffer,
+        const Buffer *indexBuffer,
         unsigned int numAttributes,
         const VertexArrayAttribute *attributes
     );

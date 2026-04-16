@@ -13,10 +13,16 @@
 
 namespace IRScript {
 
+/// Abstract base for a typed, resettable Lua configuration value.
+/// Concrete subtypes are `LuaValue<Type>` specialisations.  Each specialisation
+/// overrides the matching `get_*()` accessor; calling a mismatched accessor
+/// asserts and throws.
 struct ILuaValue {
     virtual ~ILuaValue() = default;
 
+    /// Reads the value from @p obj (a `sol::object`).  Asserts on type mismatch.
     virtual void parse(const sol::object &obj) = 0;
+    /// Resets the stored value to the default supplied at construction time.
     virtual void reset_to_default() = 0;
 
     virtual ILuaValue &operator[](const std::string &key) {
@@ -46,8 +52,10 @@ struct ILuaValue {
     }
 };
 
+/// Concrete typed Lua configuration value.  Specialised for each @ref LuaType.
 template <LuaType Type, typename EnumType = void> struct LuaValue;
 
+/// Boolean configuration value; `get_boolean()` returns the stored bool.
 template <> struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
     bool value_;
     bool defaultValue_;
@@ -70,6 +78,7 @@ template <> struct LuaValue<LuaType::BOOLEAN> : ILuaValue {
     }
 };
 
+/// Floating-point (double) configuration value; `get_number()` returns the stored double.
 template <> struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {
     double value_;
     double defaultValue_;
@@ -92,6 +101,8 @@ template <> struct LuaValue<IRScript::LuaType::NUMBER> : ILuaValue {
     }
 };
 
+/// Integer configuration value (engine-defined sub-type of Lua number).
+/// `get_integer()` returns the stored `int`.
 template <> struct LuaValue<LuaType::INTEGER> : ILuaValue {
     int value_;
     int defaultValue_;
@@ -114,6 +125,7 @@ template <> struct LuaValue<LuaType::INTEGER> : ILuaValue {
     }
 };
 
+/// String configuration value; `get_string()` returns the stored `std::string`.
 template <> struct LuaValue<LuaType::STRING> : ILuaValue {
     std::string value_;
     std::string defaultValue_;
@@ -136,6 +148,9 @@ template <> struct LuaValue<LuaType::STRING> : ILuaValue {
     }
 };
 
+/// Enum configuration value.  Accepts either an integer or a string from Lua;
+/// strings are mapped to the enum via a caller-supplied `stringToEnum_` function.
+/// `get_enum_value()` returns the typed enum; `get_enum()` returns it as `int`.
 template <typename EnumType> struct LuaValue<LuaType::ENUM, EnumType> : ILuaValue {
     using EnumMappingFunction = std::function<EnumType(const std::string &)>;
 
@@ -171,6 +186,10 @@ template <typename EnumType> struct LuaValue<LuaType::ENUM, EnumType> : ILuaValu
     }
 };
 
+/// Nested-table configuration value.  Stores a string-keyed map of child
+/// `ILuaValue` entries; `operator[]` retrieves children by key.
+/// On `parse()`, each child parses its own sub-field from the Lua table,
+/// falling back to its default if the key is absent.
 template <> struct LuaValue<LuaType::TABLE> : ILuaValue {
     std::map<std::string, std::unique_ptr<ILuaValue>> value_;
 

@@ -11,6 +11,7 @@
 #include <irreden/system/components/component_system_event.hpp>
 #include <irreden/system/components/component_system_relation.hpp>
 
+#include <chrono>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -36,6 +37,15 @@ template <typename Params> class ISystemParamsImpl : public ISystemParams {
 class SystemManager {
   public:
     using ErasedParamsPtr = std::unique_ptr<ISystemParams>;
+
+    /// Per-system timing accumulator, populated when timing is enabled.
+    struct TimingAccum {
+        uint64_t totalNs_ = 0;
+        uint64_t minNs_ = UINT64_MAX;
+        uint64_t maxNs_ = 0;
+        uint32_t callCount_ = 0;
+        uint64_t totalEntityCount_ = 0;
+    };
 
     SystemManager();
     ~SystemManager();
@@ -66,6 +76,7 @@ class SystemManager {
 
         m_relations.emplace_back(C_SystemRelation{extraParams.relation_});
         m_systemParams.emplace_back(nullptr);
+        m_timingAccum.emplace_back();
         return newSystemId;
     }
 
@@ -86,6 +97,17 @@ class SystemManager {
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);
 
+    void setTimingEnabled(bool enabled) { m_timingEnabled = enabled; }
+    bool isTimingEnabled() const { return m_timingEnabled; }
+    void resetTimingStats();
+
+    const std::string &getSystemName(SystemId id) const { return m_systemNames[id].name_; }
+    SystemId getSystemCount() const { return m_nextSystemId; }
+    const TimingAccum &getTimingAccum(SystemId id) const { return m_timingAccum[id]; }
+    const std::unordered_map<IRTime::Events, std::list<SystemId>> &getPipelines() const {
+        return m_systemPipelinesNew;
+    }
+
   private:
     SystemId m_nextSystemId = 0;
     std::vector<C_Name> m_systemNames;
@@ -98,6 +120,9 @@ class SystemManager {
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
     std::unordered_map<IRTime::Events, std::list<SystemId>> m_systemPipelinesNew;
+
+    bool m_timingEnabled = false;
+    std::vector<TimingAccum> m_timingAccum;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>

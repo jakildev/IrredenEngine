@@ -1,100 +1,108 @@
 ---
 name: commit-and-push
 description: >-
-  Stage, commit, and push Irreden Engine changes to origin/master in the
-  project's overview-style commit format. Use whenever the user says
-  "commit", "commit my changes", "commit and push", "make a PR" (this repo
-  commits direct to master, no branch), or asks to wrap up a session's
-  work. Auto-summarises the diff into a short title + body describing what
-  changed and why, preserves the project's lowercase informal tone, and
-  always pushes to origin/master when done.
+  Stage, commit, push a feature branch, and open a GitHub PR against master for
+  the Irreden Engine repo. Use whenever the user says "commit", "commit my
+  changes", "commit and push", "open a PR", "make a PR", "wrap up this chunk",
+  or otherwise indicates the current slice of work is ready for review. The
+  skill assumes the parallel-agent workflow where work happens on short-lived
+  feature branches, another agent reviews the PR, and the user merges via the
+  GitHub UI. NEVER commit directly to master.
 ---
 
 # commit-and-push
 
-End-to-end flow for checkpointing a session's work into `master` on the
-Irreden Engine repo. This repo's convention is **direct commits to master**
-(no feature branches, no PR review) with **overview-style** messages that
-describe the session's work, not line-by-line mechanics.
+End-to-end flow for packaging a chunk of work into a reviewable PR on the
+Irreden Engine repo. This repo runs a parallel-agent workflow: each working
+agent lives in its own worktree, commits on a short-lived feature branch, and
+opens a PR that a reviewer agent inspects before the user merges.
 
 ## When to invoke
 
-Trigger this skill whenever the user asks to:
+Trigger this skill whenever the user says something like:
 
 - "commit" / "commit my changes" / "commit and push"
-- "make a PR" (there is no PR — this repo commits straight to master)
-- "save progress" / "wrap up" / "push this"
-- Any phrase that implies checkpointing the current working tree
+- "open a PR" / "make a PR" / "send it for review"
+- "wrap up" / "save progress" / "this slice is done"
 
 Do **not** invoke proactively — only when the user explicitly asks.
+
+## Preconditions — do these before anything else
+
+1. **You must NOT be on `master`.** If `git rev-parse --abbrev-ref HEAD` reports
+   `master`, stop and warn the user. Branch off master first (see step 2 of
+   the flow) — do not commit to master. The old direct-push workflow is
+   retired.
+2. **`gh` must be authenticated.** If `gh auth status` fails, stop and ask the
+   user to run `gh auth login`.
+3. **The working tree must have something to commit.** If `git status` is
+   clean, tell the user and stop.
 
 ## Flow
 
 ### 1. Gather state (parallel)
 
-Run these three commands in a single Bash-tool batch (multiple tool calls
-in one message):
+Run these in a single Bash-tool batch (one message, multiple tool calls):
 
 ```
+git rev-parse --abbrev-ref HEAD
 git status
 git diff --stat && git diff
 git log --oneline -10
 ```
 
-- `git status` — see every modified / untracked path.
-- `git diff --stat` then full `git diff` — understand *what* changed in
-  each file. The stat gives you a map; the full diff gives you the
-  substance. Read enough of the diff to be able to summarise intent, not
-  just filenames.
-- `git log --oneline -10` — match the tone and level of detail of the
-  last several commit titles. Example recent titles:
-  - `lots and lots, mostly rendering stuff`
-  - `working on rendering optimizations and shape renderer`
-  - `build on windows again`
-  - `shape_debug: match CPU/GPU shapes exactly + local iso-depth coloring`
+- The branch name tells you whether you're already on a feature branch or
+  still on master.
+- `git status` / `git diff` — understand **what** changed and **why** so you
+  can write the PR body.
+- `git log --oneline -10` — match the tone of recent titles.
 
-  Titles are lowercase, informal, and prefer an area prefix
-  (`shape_debug:`, `render:`, `build:`) when the change is scoped.
+### 2. Ensure you're on a feature branch
 
-### 2. Run `simplify` on the dirty changes
+If you're on `master`:
 
-**Before** drafting the commit message, invoke the `simplify` skill to
-review the staged/unstaged changes for reuse opportunities, quality
-issues, and efficiency problems specific to the Irreden Engine, and to
-fix any issues it finds. Call it via the Skill tool:
+- Derive a short, kebab-case branch name from the session's work. Examples:
+  `claude/render-iso-culling-fix`, `claude/game-ant-pheromone-trails`,
+  `claude/engine-entity-batch-cleanup`. Prefer prefix `claude/<area>-<topic>`.
+- Create the branch **before** staging so the commits land there:
+  ```bash
+  git checkout -b claude/<area>-<topic>
+  ```
+
+If you're already on a feature branch, just use it. Do not rename mid-session.
+
+### 3. Run `simplify` on the dirty changes
+
+**Before** drafting the commit message, invoke the `simplify` skill to review
+the dirty changes for reuse, quality, and efficiency issues specific to
+Irreden Engine. Call it via the Skill tool:
 
 ```
 Skill: simplify
 ```
 
-`simplify` will read the same diff you just gathered, look for things
-like per-entity `getComponent` inside system ticks, redundant
-abstractions, duplicated helpers, naming-convention slips, and other
-project-specific smells called out in `CLAUDE.md`, and apply fixes
-directly to the working tree.
+`simplify` reads the same diff you gathered and looks for things like
+per-entity `getComponent` inside system ticks, duplicated helpers, naming-
+convention slips, and other project-specific smells. It applies fixes
+directly.
 
 After `simplify` finishes:
 
-- Re-run `git status` and `git diff --stat` so you see the *post-simplify*
-  state. The file list and diff you commit must reflect whatever
-  `simplify` modified.
-- If `simplify` reported findings it *couldn't* fix automatically
-  (e.g. design-level concerns), surface them to the user **before**
-  committing and ask whether to proceed, hold, or address them first.
-- If the working tree is now clean (simplify reverted everything or
-  there were no changes to begin with), stop and tell the user —
-  nothing to commit.
+- Re-run `git status` / `git diff --stat` to see the post-simplify state.
+- If `simplify` reported findings it **couldn't** fix automatically, surface
+  them to the user before committing and ask whether to proceed.
+- If the working tree is now clean, stop and report — nothing to commit.
 
-### 3. Draft the commit message
+### 4. Draft the commit message
 
-Write a message with this shape:
+Shape:
 
 ```
-<area>: <one-line overview of what the session accomplished>
+<area>: <one-line overview of what this slice accomplished>
 
 <1–3 short paragraphs describing the *why* and the non-obvious *what*.
 Group related edits. Mention each major subsystem touched. Skip things
-that are obvious from the filename alone.>
+obvious from filenames.>
 
 <If the session unearthed build/runtime gotchas worth remembering, note
 them here so the commit doubles as a changelog entry.>
@@ -102,101 +110,129 @@ them here so the commit doubles as a changelog entry.>
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
 
+If the work is entirely inside a subdirectory with its own `CLAUDE.md`
+that specifies a different commit-message shape (e.g. a private creation
+with its own conventions), prefer the subdirectory's shape over this
+default. Read the nearest `CLAUDE.md` before drafting.
+
 **Rules:**
 
-- Title ≤ 72 chars, lowercase, no period at end.
-- Prefer a scope prefix (`shape_debug:`, `render:`, `engine/voxel:`,
-  `build:`, `docs:`) derived from the dominant changed path.
+- Title ≤ 72 chars, lowercase, no trailing period.
+- Prefer a scope prefix (`render:`, `engine/voxel:`, `game/nav:`, `build:`,
+  `docs:`) derived from the dominant changed path.
 - Body wraps at ~72 chars per line.
-- Describe *why* over *what*. The diff tells you what; the commit tells
-  future-you why it was worth doing.
-- Group multiple unrelated changes only if they were all part of the
-  same session. Don't pretend they're one logical change — just list
-  them as separate paragraphs.
-- **Always** include the `Co-Authored-By` trailer exactly as shown.
+- Describe *why* over *what*.
+- Always include the `Co-Authored-By` trailer exactly as shown.
 
-### 4. Stage files
+### 5. Stage files
 
-Add the specific paths that should be part of this commit. **Never** use
-`git add -A` or `git add .`:
+Add specific paths. **Never** use `git add -A` or `git add .`:
 
 ```
 git add <path1> <path2> ...
 ```
 
-**Exclusions:**
+**Exclusions — never stage these unless the user explicitly asks:**
 
-- `.claude/` — worktree metadata, never tracked.
-- `.vscode/` unless the user explicitly asked for IDE changes.
-- Any path that looks like a secret: `.env*`, `credentials*`,
-  `*_key`, `*.pem`, `save_files/`, `build/`.
+- `.claude/worktrees/` and `.claude/settings.local.json` — worktree/session state.
+- `.vscode/*` unless the user asked for IDE changes.
+- Anything secret-shaped: `.env*`, `credentials*`, `*_key`, `*.pem`, `save_files/`, `build/`.
 - Large binaries or generated assets unless explicitly requested.
+- Anything under `creations/` that is gitignored by the root `.gitignore` — those are private per-implementation projects that may live in their own repos. If the user is actually working inside one of those private creations, the skill still applies but runs against that creation's own git repo / own remote; do not try to commit it into the engine repo from a worktree that doesn't own the files.
 
-If the diff includes any of the above, warn the user before committing
-and let them decide.
+If the diff includes any of the above, warn the user before committing.
 
-### 5. Create the commit
+### 6. Create the commit
 
-Always pass the message via HEREDOC so multi-line bodies format
-correctly:
+Pass the message via HEREDOC:
 
 ```bash
 git commit -m "$(cat <<'EOF'
-shape_debug: match CPU/GPU shapes exactly + local iso-depth coloring
+render: match cpu/gpu iso culling bounds
 
-Snap-mode GPU path now walks the full iso-column lattice... [body]
+Stage-1 compute was over-culling near the left edge because the cpu-side
+visibleIsoViewport used the raw camera pos while the gpu used the
+trixel-offset-corrected one. Align both to the offset-corrected form.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
 
-If the commit fails due to a pre-commit hook, **do not** `--amend`.
-Instead: fix the underlying issue, re-stage, and create a NEW commit.
+If the commit fails due to a pre-commit hook, **do not** `--amend`. Fix the
+underlying issue, re-stage, and create a **new** commit.
 
-### 6. Push to origin/master
-
-This repo's workflow is direct-push to master. After the commit
-succeeds, push immediately:
+### 7. Push the feature branch
 
 ```
-git push origin master
+git push -u origin HEAD
 ```
 
-The master branch has a "PRs required" rule that the user bypasses with
-admin — expect a `remote: Bypassed rule violations` notice. That is
-normal; the push still goes through.
+`-u` sets upstream on the first push of a new branch; on subsequent pushes,
+plain `git push` works.
 
-### 7. Report the result
+### 8. Open the PR
+
+Use `gh pr create`. Target is always `master`. Pass the body via HEREDOC so
+the Markdown renders correctly:
+
+```bash
+gh pr create --base master --title "render: match cpu/gpu iso culling bounds" --body "$(cat <<'EOF'
+## Summary
+- Stage-1 compute vs cpu iso culling bounds were out of sync; fixed.
+- Now both paths use the trixel-offset-corrected camera pos.
+
+## Test plan
+- [ ] `IRShapeDebug` renders without left-edge culling pop at zoom ≥ 2
+- [ ] `render-debug-loop` screenshots diff-clean against baseline
+
+## Notes for reviewer
+Check `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl` vs
+`engine/math/src/ir_math.cpp` `visibleIsoViewport`.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+Title should match the commit title when the PR is a single commit. For
+multi-commit PRs, use a broader title that covers the series.
+
+### 9. Report the result
 
 Reply with a compact summary:
 
-- The new commit SHA (short form).
-- The list of files that went into it.
-- Confirmation that `git push` succeeded and how far ahead the branch
-  is (or isn't) of origin.
-- Any files that were intentionally **not** committed (e.g. `.claude/`,
-  IDE settings) so the user knows what's still pending.
+- The branch name you pushed.
+- The PR URL returned by `gh pr create`.
+- The list of files that went into the commit(s).
+- Confirmation that push + PR both succeeded.
+- Any files you intentionally did **not** stage (and why).
+
+**Do not** start new work in the same worktree after opening the PR. The
+`start-next-task` skill handles resetting the worktree to a fresh branch off
+master for the next chunk — tell the user to invoke it (or invoke it yourself
+if the user already asked for the next task).
 
 ## Anti-patterns
 
-- ❌ `git add -A` / `git add .` — risk of committing secrets or stale
-  build outputs.
-- ❌ Amending a previous commit without being asked. This repo's
-  convention is new commits, not amends.
-- ❌ Skipping hooks (`--no-verify`, `--no-gpg-sign`) unless the user
-  explicitly requests it. Fix the hook failure instead.
-- ❌ Commit titles like "fix bug" or "update files" — always scope
-  and describe the session's intent.
+- ❌ Committing to `master`. Always branch first.
+- ❌ `git add -A` / `git add .` — risk of committing secrets or build junk.
+- ❌ Amending a previous commit without being asked.
 - ❌ Force-pushing master. Never.
-- ❌ Opening a GitHub PR. This repo doesn't use them; the user
-  bypasses the PR rule on purpose.
-- ❌ Creating a branch before committing. Commit on whatever branch
-  you're already on (usually `master`).
+- ❌ Skipping hooks (`--no-verify`) unless the user explicitly requests it.
+- ❌ Bypass-pushing to master with admin — the new workflow uses PRs and
+  reviewer agents. If you feel tempted to bypass, something upstream is
+  broken; flag it to the user instead.
+- ❌ Opening a PR without running `simplify` first.
+- ❌ Continuing to commit on the same feature branch after opening its PR
+  unless the user explicitly asks for it — otherwise use `start-next-task`.
 
 ## Recovery
 
-If you find the working tree dirty with changes that clearly weren't
-made during this session (e.g. a half-finished refactor in an unrelated
-file), ask the user whether to include them before staging. When in
-doubt, stage only the files you know the session touched.
+If the working tree has changes that clearly weren't made during this
+session (e.g. a half-finished refactor in an unrelated file), ask the user
+whether to include them before staging. When in doubt, stage only the files
+you know the session touched.
+
+If `gh pr create` fails because a PR already exists for the branch, report
+the existing PR URL and tell the user — don't try to force a new one.

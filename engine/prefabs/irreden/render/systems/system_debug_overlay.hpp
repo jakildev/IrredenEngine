@@ -288,8 +288,8 @@ template <> struct System<DEBUG_OVERLAY> {
 
         IRRender::createNamedResource<IRRender::VAO>(
             "DebugOverlayVAO",
-            vb->getHandle(),
-            0,
+            vb,
+            static_cast<const IRRender::Buffer *>(nullptr),
             2,
             IRRender::kAttrListDebugVertex
         );

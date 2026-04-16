@@ -25,16 +25,16 @@ jobs:
           version: "18"
 
       - name: Configure
-        run: cmake --preset default
+        run: cmake --preset windows-debug
 
       - name: Format check
-        run: cmake --build --preset format-check
+        run: cmake --build --preset windows-format-check
 
       - name: Lint
-        run: cmake --build --preset lint
+        run: cmake --build --preset windows-lint
 
       - name: Build tests
-        run: cmake --build --preset tests
+        run: cmake --build --preset windows-tests
 
       - name: Run tests
-        run: ctest --preset default-tests
+        run: ctest --preset windows-default-tests

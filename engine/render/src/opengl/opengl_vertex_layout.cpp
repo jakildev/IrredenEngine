@@ -1,5 +1,6 @@
 #include <irreden/ir_profile.hpp>
 
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/vao.hpp>
@@ -9,14 +10,15 @@ namespace IRRender {
 class OpenGLVertexLayoutImpl final : public VertexLayoutImpl {
   public:
     OpenGLVertexLayoutImpl(
-        std::uint32_t vertexBufferHandle,
-        std::uint32_t indexBufferHandle,
+        const Buffer *vertexBuffer,
+        const Buffer *indexBuffer,
         unsigned int numAttributes,
         const VertexArrayAttribute *attributes
     ) {
         ENG_API->glCreateVertexArrays(1, &m_handle);
         GLuint bindingIndex = 0;
         IR_ASSERT(numAttributes <= kMaxVertexAttributes, "Too many vertex attributes for VAO");
+        IR_ASSERT(vertexBuffer != nullptr, "OpenGLVertexLayoutImpl requires a vertex buffer");
 
         std::size_t stride = 0;
         std::size_t attributeSizes[kMaxVertexAttributes] = {};
@@ -27,11 +29,11 @@ class OpenGLVertexLayoutImpl final : public VertexLayoutImpl {
             stride += attributeSizes[i];
         }
 
-        if (indexBufferHandle != 0) {
-            ENG_API->glVertexArrayElementBuffer(m_handle, indexBufferHandle);
+        if (indexBuffer != nullptr) {
+            ENG_API->glVertexArrayElementBuffer(m_handle, indexBuffer->getHandle());
         }
         ENG_API->glVertexArrayVertexBuffer(
-            m_handle, bindingIndex, vertexBufferHandle, 0, static_cast<GLsizei>(stride)
+            m_handle, bindingIndex, vertexBuffer->getHandle(), 0, static_cast<GLsizei>(stride)
         );
 
         GLuint offset = 0;
@@ -63,13 +65,13 @@ class OpenGLVertexLayoutImpl final : public VertexLayoutImpl {
 };
 
 std::unique_ptr<VertexLayoutImpl> createVertexLayoutImpl(
-    std::uint32_t vertexBufferHandle,
-    std::uint32_t indexBufferHandle,
+    const Buffer *vertexBuffer,
+    const Buffer *indexBuffer,
     unsigned int numAttributes,
     const VertexArrayAttribute *attributes
 ) {
     return std::make_unique<OpenGLVertexLayoutImpl>(
-        vertexBufferHandle, indexBufferHandle, numAttributes, attributes
+        vertexBuffer, indexBuffer, numAttributes, attributes
     );
 }
 

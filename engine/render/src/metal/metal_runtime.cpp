@@ -1,7 +1,9 @@
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <cstring>
 #include <unordered_map>
+#include <vector>
 
 namespace IRRender {
 
@@ -37,8 +39,13 @@ struct MetalRuntimeState {
     MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
     MTL::PixelFormat depthPixelFormat_ = MTL::PixelFormatInvalid;
 
-    std::unordered_map<std::uint32_t, MTL::Buffer *> buffersByHandle_;
-    std::uint32_t nextBufferHandle_ = 1;
+    std::unordered_map<MTL::Texture *, MTL::Buffer *> imageAtomicScratchBuffers_;
+    MTL::Buffer *currentImageAtomicScratch_ = nullptr;
+
+    // MTL::Buffers orphaned by subData() that may still be referenced by
+    // an in-flight command encoder.  Released after the next
+    // present/waitUntilCompleted boundary.
+    std::vector<MTL::Buffer *> pendingReleaseBuffers_;
 };
 
 // Intentionally leaked so the runtime state outlives all other statics.
@@ -123,6 +130,7 @@ void shutdownMetalRuntime() {
         g_runtime().depthTestWriteState_->release();
         g_runtime().depthTestWriteState_ = nullptr;
     }
+    releaseDeferredMetalBuffers();
     g_runtime() = MetalRuntimeState{};
 }
 
@@ -292,19 +300,99 @@ MTL::PixelFormat metalCurrentDepthPixelFormat() {
     return g_runtime().depthPixelFormat_;
 }
 
-std::uint32_t registerMetalBufferHandle(MTL::Buffer *buffer) {
-    const std::uint32_t handle = g_runtime().nextBufferHandle_++;
-    g_runtime().buffersByHandle_[handle] = buffer;
-    return handle;
+void deferReleaseMetalBuffer(MTL::Buffer *buffer) {
+    if (buffer == nullptr) {
+        return;
+    }
+    g_runtime().pendingReleaseBuffers_.push_back(buffer);
 }
 
-void unregisterMetalBufferHandle(std::uint32_t handle) {
-    g_runtime().buffersByHandle_.erase(handle);
+void releaseDeferredMetalBuffers() {
+    auto &pending = g_runtime().pendingReleaseBuffers_;
+    for (MTL::Buffer *buffer : pending) {
+        if (buffer != nullptr) {
+            buffer->release();
+        }
+    }
+    pending.clear();
 }
 
-MTL::Buffer *lookupMetalBufferHandle(std::uint32_t handle) {
-    const auto it = g_runtime().buffersByHandle_.find(handle);
-    return it != g_runtime().buffersByHandle_.end() ? it->second : nullptr;
+void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer) {
+    if (oldBuffer == nullptr || oldBuffer == newBuffer) {
+        return;
+    }
+    for (auto &binding : g_runtime().uniformBuffers_) {
+        if (binding.buffer_ == oldBuffer) {
+            binding.buffer_ = newBuffer;
+        }
+    }
+    for (auto &binding : g_runtime().shaderStorageBuffers_) {
+        if (binding.buffer_ == oldBuffer) {
+            binding.buffer_ = newBuffer;
+        }
+    }
+    auto &vertexLayout = g_runtime().activeVertexLayout_;
+    if (vertexLayout.vertexBuffer_ == oldBuffer) {
+        vertexLayout.vertexBuffer_ = newBuffer;
+    }
+    if (vertexLayout.indexBuffer_ == oldBuffer) {
+        vertexLayout.indexBuffer_ = newBuffer;
+    }
+}
+
+MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture) {
+    if (texture == nullptr) {
+        return nullptr;
+    }
+    auto &cache = g_runtime().imageAtomicScratchBuffers_;
+    const auto it = cache.find(texture);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    const std::size_t bytes =
+        static_cast<std::size_t>(texture->width()) *
+        static_cast<std::size_t>(texture->height()) *
+        sizeof(std::int32_t);
+    auto *buffer = g_runtime().device_->newBuffer(
+        static_cast<NS::UInteger>(bytes),
+        MTL::ResourceStorageModeShared
+    );
+    IR_ASSERT(buffer != nullptr, "Failed to create Metal image atomic scratch buffer");
+    std::memset(buffer->contents(), 0, bytes);
+    cache[texture] = buffer;
+    return buffer;
+}
+
+MTL::Buffer *lookupImageAtomicScratchBuffer(MTL::Texture *texture) {
+    if (texture == nullptr) {
+        return nullptr;
+    }
+    auto &cache = g_runtime().imageAtomicScratchBuffers_;
+    const auto it = cache.find(texture);
+    return it != cache.end() ? it->second : nullptr;
+}
+
+void releaseImageAtomicScratchBuffer(MTL::Texture *texture) {
+    if (texture == nullptr) {
+        return;
+    }
+    auto &cache = g_runtime().imageAtomicScratchBuffers_;
+    const auto it = cache.find(texture);
+    if (it == cache.end()) {
+        return;
+    }
+    if (it->second != nullptr) {
+        it->second->release();
+    }
+    cache.erase(it);
+}
+
+void setCurrentImageAtomicScratch(MTL::Buffer *buffer) {
+    g_runtime().currentImageAtomicScratch_ = buffer;
+}
+
+MTL::Buffer *currentImageAtomicScratch() {
+    return g_runtime().currentImageAtomicScratch_;
 }
 
 } // namespace IRRender

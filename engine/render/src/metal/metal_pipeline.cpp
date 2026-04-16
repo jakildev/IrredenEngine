@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace IRRender {
 
@@ -36,7 +37,87 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);
     }
+    if (functionName == "c_shapes_to_trixel") {
+        return MTL::Size(8, 8, 1);
+    }
+    if (functionName == "c_voxel_visibility_compact" ||
+        functionName == "c_update_voxel_positions") {
+        return MTL::Size(64, 1, 1);
+    }
+    if (functionName == "c_trixel_to_trixel") {
+        return MTL::Size(16, 16, 1);
+    }
     return MTL::Size(1, 1, 1);
+}
+
+// Minimal #include "name.metal" preprocessor.  Resolves header references
+// against the directory of the file currently being parsed and prevents
+// infinite recursion via a visited set.  We need this because Metal's
+// newLibraryWithSource: API does not perform user-include resolution.
+std::string loadAndPreprocessMetalSource(
+    const std::string &filepath,
+    std::unordered_set<std::string> &visited
+) {
+    const std::string canonical = std::filesystem::weakly_canonical(filepath).string();
+    if (visited.count(canonical) != 0) {
+        return std::string{};
+    }
+    visited.insert(canonical);
+
+    const std::string source = IRUtility::readFileAsString(filepath);
+    const std::filesystem::path baseDir =
+        std::filesystem::path(filepath).parent_path();
+
+    std::string out;
+    out.reserve(source.size());
+
+    std::size_t pos = 0;
+    while (pos < source.size()) {
+        // Find the next newline so we work line-by-line.
+        const std::size_t lineEnd = source.find('\n', pos);
+        const std::string_view line(
+            source.data() + pos,
+            (lineEnd == std::string::npos ? source.size() : lineEnd) - pos
+        );
+
+        // Check for `#include "name"` after stripping leading whitespace.
+        std::size_t cursor = 0;
+        while (cursor < line.size() && (line[cursor] == ' ' || line[cursor] == '\t')) {
+            ++cursor;
+        }
+        constexpr std::string_view kIncludeKeyword = "#include";
+        bool handled = false;
+        if (cursor + kIncludeKeyword.size() < line.size() &&
+            line.substr(cursor, kIncludeKeyword.size()) == kIncludeKeyword) {
+            cursor += kIncludeKeyword.size();
+            while (cursor < line.size() && (line[cursor] == ' ' || line[cursor] == '\t')) {
+                ++cursor;
+            }
+            if (cursor < line.size() && line[cursor] == '"') {
+                ++cursor;
+                const std::size_t quoteEnd = line.find('"', cursor);
+                if (quoteEnd != std::string_view::npos) {
+                    const std::string headerName(line.substr(cursor, quoteEnd - cursor));
+                    const std::filesystem::path headerPath = baseDir / headerName;
+                    out += "// === begin include: " + headerName + " ===\n";
+                    out += loadAndPreprocessMetalSource(headerPath.string(), visited);
+                    out += "// === end include: " + headerName + " ===\n";
+                    handled = true;
+                }
+            }
+        }
+
+        if (!handled) {
+            out.append(line.data(), line.size());
+            out.push_back('\n');
+        }
+
+        if (lineEnd == std::string::npos) {
+            break;
+        }
+        pos = lineEnd + 1;
+    }
+    return out;
 }
 
 MTL::Library *loadMetalLibrary(const std::string &filepath) {
@@ -46,7 +127,8 @@ MTL::Library *loadMetalLibrary(const std::string &filepath) {
         return cached->second;
     }
 
-    const std::string source = IRUtility::readFileAsString(filepath);
+    std::unordered_set<std::string> visited;
+    const std::string source = loadAndPreprocessMetalSource(filepath, visited);
     NS::Error *error = nullptr;
     NS::String *nsSource = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     MTL::Library *library = metalDevice()->newLibrary(nsSource, nullptr, &error);

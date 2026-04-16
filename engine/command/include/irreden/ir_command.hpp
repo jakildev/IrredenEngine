@@ -10,9 +10,14 @@
 
 namespace IRCommand {
 
+/// Global pointer to the active `CommandManager`; managed by the engine runtime.
+/// Prefer @ref getCommandManager() for safe access.
 extern CommandManager *g_commandManager;
+/// Returns a reference to the active `CommandManager`. Asserts if not initialised.
 CommandManager &getCommandManager();
 
+/// Returns a short human-readable label for @p name (e.g. "ZOOM IN").
+/// Used by the debug overlay and `buildCommandListText()`.
 inline std::string commandNameToString(CommandNames name) {
     switch (name) {
     case ZOOM_IN:                   return "ZOOM IN";
@@ -44,6 +49,8 @@ inline std::string commandNameToString(CommandNames name) {
     }
 }
 
+/// Returns a short display name for a @ref IRInput::KeyMouseButtons value
+/// (e.g. "A", "ENTER", "MOUSE L"). Used in the debug help overlay.
 inline std::string keyButtonToString(int button) {
     using namespace IRInput;
     switch (button) {
@@ -115,6 +122,8 @@ inline std::string keyButtonToString(int button) {
     }
 }
 
+/// Formats an @ref IRInput::KeyModifierMask as a prefix string (e.g. "SHIFT+CTRL+").
+/// Empty string if no modifiers are set.
 inline std::string modifierString(IRInput::KeyModifierMask mods) {
     std::string result;
     if (mods & IRInput::kModifierShift) result += "SHIFT+";
@@ -123,6 +132,9 @@ inline std::string modifierString(IRInput::KeyModifierMask mods) {
     return result;
 }
 
+/// Builds a multi-line human-readable list of all registered `PRESSED` commands
+/// with their modifier + key bindings. Used by the in-game debug help overlay.
+/// Only `PRESSED`-status bindings appear; `HELD`/`RELEASED` bindings are excluded.
 inline std::string buildCommandListText() {
     const auto &regs = getCommandManager().getCommandRegistrations();
     std::string text = "COMMANDS\n";
@@ -136,6 +148,14 @@ inline std::string buildCommandListText() {
     return text;
 }
 
+/// Registers an ad-hoc command from a callable (lambda or functor).
+/// @param inputType    Device class (KEY_MOUSE / GAMEPAD / MIDI_NOTE / MIDI_CC).
+/// @param triggerStatus Button state that fires the command (PRESSED, HELD, …).
+/// @param button       Raw button/key/note identifier.
+/// @param command      The callable to invoke on trigger; `void()` signature.
+/// @param requiredModifiers Modifier bits that must be active (KEY_MOUSE only).
+/// @param blockedModifiers  Modifier bits that must be inactive (KEY_MOUSE only).
+/// @return A `CommandId` handle for the binding.
 template <typename Function>
 int createCommand(
     IRInput::InputTypes inputType,
@@ -155,6 +175,9 @@ int createCommand(
     );
 }
 
+/// Registers a named engine command using its `Command<NAME>::create()` factory.
+/// The enum value doubles as the identifier; the display name is derived from
+/// @ref commandNameToString and appears in the debug help overlay.
 template <CommandNames commandName>
 CommandId createCommand(
     IRInput::InputTypes inputType,

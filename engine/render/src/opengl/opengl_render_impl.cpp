@@ -1,7 +1,9 @@
 #include <irreden/render/opengl/opengl_render_impl.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/render_device.hpp>
+#include <irreden/render/texture.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 
 #include <cstdint>
@@ -23,8 +25,11 @@ class OpenGLRenderDevice final : public RenderDevice {
         glDispatchCompute(x, y, z);
     }
 
-    void dispatchComputeIndirect(std::uint32_t bufferHandle, std::ptrdiff_t offset) override {
-        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, bufferHandle);
+    void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) override {
+        if (indirectBuffer == nullptr) {
+            return;
+        }
+        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirectBuffer->getHandle());
         glDispatchComputeIndirect(static_cast<GLintptr>(offset));
         glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
     }
@@ -119,8 +124,11 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glDepthMask(enabled ? GL_TRUE : GL_FALSE);
     }
 
-    void clearTexImage(std::uint32_t textureHandle, int level, const void *data) override {
-        glClearTexImage(textureHandle, level, GL_RED_INTEGER, GL_INT, data);
+    void clearTexImage(const Texture2D *texture, int level, const void *data) override {
+        if (texture == nullptr) {
+            return;
+        }
+        glClearTexImage(texture->getHandle(), level, GL_RED_INTEGER, GL_INT, data);
     }
 
     void finish() override {

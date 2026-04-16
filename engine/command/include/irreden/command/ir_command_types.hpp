@@ -5,8 +5,12 @@
 
 namespace IRCommand {
 
+/// Opaque handle returned by `createCommand`; identifies a registered binding.
 using CommandId = std::uint32_t;
 
+/// All engine-level command identifiers.
+/// Every prefab command must have an entry here **before** implementing the
+/// `Command<NAME>` specialisation — missing entries cause linker errors.
 enum CommandNames {
     NULL_COMMAND,
     EXAMPLE,
@@ -47,8 +51,12 @@ enum CommandNames {
 
 };
 
+/// Type-tag struct; specialised per command to provide a `create()` factory
+/// that returns the `std::function<void()>` for that command.
 template <CommandNames command> struct Command;
 
+/// Internal binding category used by `CommandManager` to route events to the
+/// right registry (button, MIDI note, or MIDI CC).
 enum CommandTypes { IR_COMMAND_NULL, COMMAND_BUTTON, COMMAND_MIDI_NOTE, COMMAND_MIDI_CC };
 
 } // namespace IRCommand

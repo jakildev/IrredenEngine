@@ -9,14 +9,22 @@
 using namespace IRMath;
 
 namespace IRRender {
+
+/// Opaque handle returned by @c createResource<T>() / @c createNamedResource<T>().
+/// Pass to @c getResource<T>() / @c destroyResource<T>().
 typedef uint32_t ResourceId;
+
+/// Internal type discriminant used by @c RenderingResourceManager; not used by callers.
 typedef uint32_t ResourceType;
 
+/// Single trixel (triangle-pixel) value written by the voxel→trixel compute shaders.
 struct TrixelData {
     vec4 color_;
     int distance_;
 };
 
+/// UBO uploaded once at init time. Contains the distance sentinel values used
+/// in both GLSL and Metal shaders to detect "empty" trixels.
 struct GlobalConstantsGLSL {
     int kMinTriangleDistance = IRConstants::kTrixelDistanceMinDistance;
     int kMaxTriangleDistance = IRConstants::kTrixelDistanceMaxDistance;
@@ -74,7 +82,14 @@ struct GlyphDrawCommand {
     uint32_t styleFlags = 0;
 };
 
+/// How the output canvas is scaled to fill the window.
 enum class FitMode { FIT, STRETCH, UNKNOWN };
+
+/// Controls sub-voxel positioning in the voxel→trixel compute pass.
+/// - @c SNAPPED — voxels snap to the nearest trixel grid cell. Fast, pixel-perfect.
+/// - @c SMOOTH  — sub-trixel offsets are applied using @c subdivisions × zoom.
+///   Produces smoother camera panning but costs more GPU time. Changing mode or
+///   subdivisions mid-frame stalls the pipeline.
 enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
 enum class LodLevel : std::uint32_t {
     LOD_0 = 0,
@@ -97,6 +112,8 @@ struct GPUUpdateParams {
     int _padding[3] = {};
 };
 
+/// SDF primitive type dispatched to the shapes→trixel compute shader.
+/// Each value corresponds to a branch in the shader's SDF evaluation function.
 enum class ShapeType : std::uint32_t {
     BOX = 0,
     SPHERE = 1,
@@ -105,25 +122,26 @@ enum class ShapeType : std::uint32_t {
     CURVED_PANEL = 4,
     WEDGE = 5,
     TAPERED_BOX = 6,
-    CUSTOM_SDF = 7,
+    CUSTOM_SDF = 7,  ///< User-supplied SDF; requires a matching shader specialization.
     CONE = 8,
     TORUS = 9
 };
 
+/// Bit-combinable rendering flags stored in @c GPUShapeDescriptor::flags.
+/// Combine with @c |.
 enum ShapeFlags : std::uint32_t {
-    SHAPE_FLAG_NONE = 0,
-    SHAPE_FLAG_HOLLOW = 1u << 0,
-    SHAPE_FLAG_MIRROR_X = 1u << 1,
-    SHAPE_FLAG_MIRROR_Y = 1u << 2,
-    SHAPE_FLAG_VISIBLE = 1u << 3,
-    // Forward-looking: when joints are wired, snap rotation to nearest
-    // 90-degree increments in iso-adjusted coordinates. Not yet implemented.
+    SHAPE_FLAG_NONE       = 0,
+    SHAPE_FLAG_HOLLOW     = 1u << 0,  ///< Render only the shell; skip interior voxels.
+    SHAPE_FLAG_MIRROR_X   = 1u << 1,
+    SHAPE_FLAG_MIRROR_Y   = 1u << 2,
+    SHAPE_FLAG_VISIBLE    = 1u << 3,
+    /// Forward-looking: snap joint rotation to nearest 90° in iso-adjusted space.
+    /// Not yet implemented.
     SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
-    SHAPE_FLAG_CHECKERBOARD = 1u << 5,
-    // Color each voxel by its LOCAL iso-depth along the camera's forward axis,
-    // normalized to [0,1] over the shape's own depth extent.  Useful for
-    // visually distinguishing individual shapes regardless of their position
-    // in the scene (compared to absolute world-depth colouring).
+    SHAPE_FLAG_CHECKERBOARD      = 1u << 5,
+    /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
+    /// normalized to [0, 1] over the shape's own depth extent. Useful for
+    /// visually distinguishing individual shapes regardless of world position.
     SHAPE_FLAG_DEPTH_COLOR = 1u << 6,
 };
 
@@ -165,6 +183,12 @@ struct GPUShapesFrameData {
     ivec2 cullIsoMax;
 };
 
+/// @{
+/// @name GPU buffer binding points
+/// **CRITICAL:** These indices are hard-coded in both C++ and GLSL/MSL shaders.
+/// A mismatch between C++ and the shader is **silent** — no error, just wrong
+/// uniforms / garbage data. When adding or renaming a buffer, update the
+/// corresponding @c binding or @c [[buffer(N)]] annotation in the shader as well.
 constexpr std::uint32_t kBufferIndex_FrameDataUniform = 0;
 constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
 constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
@@ -191,6 +215,7 @@ constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
+/// @}
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
 // shapeIndex picks the ShapeDescriptor; tileIsoOrigin is the iso-space

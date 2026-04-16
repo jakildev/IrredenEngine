@@ -9,23 +9,39 @@
 #include <cstdint>
 
 namespace IRInput {
+/// Physical device categories that can produce input events.
 enum InputDevices { kKeyboard, kGamepad, kMouse, kMidi };
 
+/// Per-button state machine tracked by `InputManager`.
+/// Transitions each pipeline event via `advanceInputState(event)`:
+/// ```
+/// NOT_HELD → (press)                → PRESSED
+/// PRESSED  → (held next frame)      → HELD
+/// HELD     → (release)              → RELEASED
+/// RELEASED → (idle next frame)      → NOT_HELD
+/// PRESSED  → (release in same frame)→ PRESSED_AND_RELEASED
+/// ```
 enum ButtonStatuses { NOT_HELD, PRESSED, HELD, RELEASED, PRESSED_AND_RELEASED };
 
+/// Categories of input source used when registering commands.
 enum InputTypes { KEY_MOUSE, GAMEPAD, MIDI_NOTE, MIDI_CC };
 
+/// Bitmask type for Shift/Ctrl/Alt modifier state.
 using KeyModifierMask = uint8_t;
+/// No modifiers held.
 constexpr KeyModifierMask kModifierNone = 0;
+/// Shift is held.
 constexpr KeyModifierMask kModifierShift = 1 << 0;
+/// Control is held.
 constexpr KeyModifierMask kModifierControl = 1 << 1;
+/// Alt is held.
 constexpr KeyModifierMask kModifierAlt = 1 << 2;
 
+/// MIDI output event types (note-on / note-off) for MIDI-out commands.
 enum OutputTypes { kMidiOutNotePressed, kMidiOutNoteReleased };
 
-// Key mouse buttons would be another good place to use
-// entity parent child relationships. Each key can be an
-// entity, and could have a parent keyboard controller, etc...
+/// Unified keyboard + mouse button identifiers.
+/// Mapped from GLFW key/button codes via @ref kMapGLFWtoIRKeyMouseButtons.
 enum KeyMouseButtons {
     kNullButton = 0,
     kKeyButtonMinus,
@@ -157,6 +173,9 @@ enum KeyMouseButtons {
     kNumKeyMouseButtons
 };
 
+/// Gamepad button identifiers (Xbox-style layout).
+/// Mapped from GLFW gamepad button codes via @ref kGLFWtoGamepadButtons.
+/// Only gamepad 0 is polled; multi-gamepad support requires engine changes.
 enum GamepadButtons {
     kGamepadButtonA,
     kGamepadButtonB,
@@ -177,6 +196,8 @@ enum GamepadButtons {
     kNumGamepadButtons
 };
 
+/// Gamepad analogue axis identifiers (left/right stick + triggers).
+/// Mapped from GLFW gamepad axis codes via @ref kGLFWtoGamepadAxes.
 enum GamepadAxes {
     kGamepadAxisLeftX,
     kGamepadAxisLeftY,
@@ -188,6 +209,8 @@ enum GamepadAxes {
     kNumGamepadAxes
 };
 
+/// Translates raw GLFW key/mouse-button codes to engine @ref KeyMouseButtons values.
+/// Used by the GLFW key and mouse-button callbacks inside `InputManager`.
 const std::unordered_map<int, KeyMouseButtons> kMapGLFWtoIRKeyMouseButtons = {
     // Key
     {GLFW_KEY_UNKNOWN, kNullButton},
@@ -319,6 +342,7 @@ const std::unordered_map<int, KeyMouseButtons> kMapGLFWtoIRKeyMouseButtons = {
     {GLFW_MOUSE_BUTTON_MIDDLE, kMouseButtonMiddle}
 };
 
+/// Translates raw GLFW gamepad button indices to engine @ref GamepadButtons values.
 const std::unordered_map<int, GamepadButtons> kGLFWtoGamepadButtons = {
     {GLFW_GAMEPAD_BUTTON_A, kGamepadButtonA},
     {GLFW_GAMEPAD_BUTTON_B, kGamepadButtonB},
@@ -337,6 +361,7 @@ const std::unordered_map<int, GamepadButtons> kGLFWtoGamepadButtons = {
     {GLFW_GAMEPAD_BUTTON_DPAD_LEFT, kGamepadButtonDPadLeft}
 };
 
+/// Translates raw GLFW gamepad axis indices to engine @ref GamepadAxes values.
 const std::unordered_map<int, GamepadAxes> kGLFWtoGamepadAxes = {
     {GLFW_GAMEPAD_AXIS_LEFT_X, kGamepadAxisLeftX},
     {GLFW_GAMEPAD_AXIS_LEFT_Y, kGamepadAxisLeftY},

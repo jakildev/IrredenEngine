@@ -1,11 +1,15 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/profile/profile_report.hpp>
 
 #include <irreden/world.hpp>
+
+#include <chrono>
 
 namespace IREngine {
 
@@ -91,6 +95,7 @@ void World::runScript(const char *fileName) {
 }
 
 void World::gameLoop() {
+    using Clock = std::chrono::steady_clock;
     try {
         start();
         if (m_waitForFirstUpdateInput) {
@@ -100,6 +105,12 @@ void World::gameLoop() {
         while (!m_IRGLFWWindow.shouldClose()) {
             m_timeManager.beginMainLoop();
 
+            Clock::time_point frameStart;
+            if (m_frameTimingEnabled) {
+                frameStart = Clock::now();
+            }
+
+            uint32_t updateTicksThisFrame = 0;
             while (m_timeManager.shouldUpdate()) {
                 m_IRGLFWWindow.pollEvents();
                 input();
@@ -118,8 +129,19 @@ void World::gameLoop() {
                 }
 
                 update();
+                ++updateTicksThisFrame;
             }
             render();
+
+            if (m_frameTimingEnabled) {
+                auto elapsed = Clock::now() - frameStart;
+                float ms = std::chrono::duration<float, std::milli>(elapsed).count();
+                m_frameTimesMs.push_back(ms);
+                m_frameTotalUpdateTicks += updateTicksThisFrame;
+                if (updateTicksThisFrame > m_frameMaxUpdateTicksPerFrame) {
+                    m_frameMaxUpdateTicksPerFrame = updateTicksThisFrame;
+                }
+            }
         }
     } catch (...) {
         IRE_LOG_ERROR("Unhandled exception in game loop, running cleanup");
@@ -145,6 +167,7 @@ void World::start() {
 }
 
 void World::end() {
+    buildAndWriteProfileReport();
     m_videoManager.shutdown();
     // Ensure component onDestroy hooks run while managers are still valid
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
@@ -178,6 +201,84 @@ void World::render() {
     m_renderer.presentFrame();
 
     m_timeManager.endEvent<IRTime::RENDER>();
+}
+
+void World::enableFrameTiming(bool enabled) {
+    m_frameTimingEnabled = enabled;
+    m_systemManager.setTimingEnabled(enabled);
+    if (enabled) {
+        m_frameTimesMs.clear();
+        m_frameTimesMs.reserve(1024);
+        m_frameTotalUpdateTicks = 0;
+        m_frameMaxUpdateTicksPerFrame = 0;
+        m_systemManager.resetTimingStats();
+    }
+}
+
+void World::buildAndWriteProfileReport() {
+    if (!m_frameTimingEnabled) return;
+
+    IRProfile::ProfileReport report;
+    report.totalFrames_ = static_cast<uint32_t>(m_frameTimesMs.size());
+    report.frameTimesMs_ = std::move(m_frameTimesMs);
+    report.totalUpdateTicks_ = m_frameTotalUpdateTicks;
+    report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
+    report.entityCount_ = IREntity::getLiveEntityCount();
+    report.archetypeCount_ = static_cast<uint32_t>(m_entityManager.getArchetypeNodes().size());
+
+    // Collect per-system timing, grouped by pipeline
+    auto pipelineName = [](IRTime::Events e) -> const char * {
+        switch (e) {
+            case IRTime::Events::INPUT:  return "INPUT";
+            case IRTime::Events::UPDATE: return "UPDATE";
+            case IRTime::Events::RENDER: return "RENDER";
+            default: return "OTHER";
+        }
+    };
+
+    const auto &pipelines = m_systemManager.getPipelines();
+    for (auto &[event, systemList] : pipelines) {
+        for (auto systemId : systemList) {
+            const auto &acc = m_systemManager.getTimingAccum(systemId);
+            if (acc.callCount_ == 0) continue;
+            IRProfile::SystemTimingEntry entry;
+            entry.name_ = m_systemManager.getSystemName(systemId);
+            entry.pipeline_ = pipelineName(event);
+            entry.totalNs_ = acc.totalNs_;
+            entry.minNs_ = acc.minNs_;
+            entry.maxNs_ = acc.maxNs_;
+            entry.callCount_ = acc.callCount_;
+            entry.totalEntityCount_ = acc.totalEntityCount_;
+            report.systemTimings_.push_back(std::move(entry));
+        }
+    }
+
+    // Collect GPU stage timing if enabled
+    auto &gpu = IRRender::gpuStageTiming();
+    if (gpu.enabled_ && report.totalFrames_ > 0) {
+        auto addGpuStage = [&](const char *name, float perFrameMs) {
+            IRProfile::GpuStageEntry stage;
+            stage.name_ = name;
+            stage.totalMs_ = perFrameMs * static_cast<float>(report.totalFrames_);
+            stage.maxMs_ = perFrameMs;  // Only per-frame snapshot available
+            stage.sampleCount_ = report.totalFrames_;
+            report.gpuStages_.push_back(std::move(stage));
+        };
+        addGpuStage("canvas_clear", gpu.canvasClearMs_);
+        addGpuStage("voxel_compact", gpu.voxelCompactMs_);
+        addGpuStage("voxel_stage_1", gpu.voxelStage1Ms_);
+        addGpuStage("voxel_stage_2", gpu.voxelStage2Ms_);
+        addGpuStage("shape_compact", gpu.shapeCompactMs_);
+        addGpuStage("shape_pass_0", gpu.shapePass0Ms_);
+        addGpuStage("shape_pass_1", gpu.shapePass1Ms_);
+        addGpuStage("trixel_to_framebuffer", gpu.trixelToFbMs_);
+        addGpuStage("entity_canvas_to_framebuffer", gpu.entityCanvasToFbMs_);
+        addGpuStage("framebuffer_to_screen", gpu.fbToScreenMs_);
+    }
+
+    IRProfile::writeProfileReport(report, "save_files/profile_report.txt");
+    IRE_LOG_INFO("Profile report written to save_files/profile_report.txt ({} frames)",
+                 report.totalFrames_);
 }
 
 } // namespace IREngine

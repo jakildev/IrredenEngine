@@ -10,11 +10,9 @@ Irreden is an isometric "pixelatable" voxel content and game engine built around
 IrredenEngine/
 ├── cmake/                  # CMake utility scripts (ir_functions, ir_quality_tools, etc.)
 ├── creations/              # Applications and demos
-│   ├── demos/              # default, midi_polyrhythm, unit_movement, midi_keyboard
-│   ├── editors/            # font_maker, voxel_set_maker
-│   ├── hana_class_projects/# Personal/educational projects
-│   ├── game/               # Conventional private game path (gitignored)
-│   └── template/           # Reference template for new creations
+│   ├── demos/              # default, midi_polyrhythm, midi_keyboard, shape_debug, metal_clear_test
+│   ├── editors/            # font_maker
+│   └── game/               # Conventional private game path (gitignored)
 ├── docs/                   # Style, dependencies, contributing
 ├── engine/                 # Core engine (static libs)
 │   ├── asset/              # IrredenEngineAsset
@@ -362,14 +360,12 @@ creations/demos/your_demo/
 
 ## Creations
 
-1. Add a folder under `creations/demos/your_demo` (or `editors/`, `hana_class_projects/`, etc.).
+1. Add a folder under `creations/demos/your_demo` (or `editors/`, etc.).
 2. Add `CMakeLists.txt` with `add_executable(...)` and `target_link_libraries(... PUBLIC IrredenEngine)`.
 3. Add the subdirectory to the parent `CMakeLists.txt`.
 4. For C++-only creations: use `main.cpp`.
 5. For Lua-driven creations: use `main_lua.cpp` + `lua_bindings.*` + `lua_component_pack.hpp` + Lua scripts. See `creations/demos/midi_polyrhythm/` as the reference.
 6. Register pipelines in `IREngine::init`. Include only the components/systems your creation needs.
-
-The `creations/template/` folder contains a minimal reference structure for new creations.
 
 ### Private Project Workflow
 
@@ -418,8 +414,8 @@ The `creations/template/` folder contains a minimal reference structure for new 
 
 ## Build and Quality
 
-- **Configure:** `cmake -S . -B build` or `cmake --preset default`
-- **Build:** `cmake --build build` or `cmake --build --preset build-all`
+- **Configure:** `cmake --preset linux-debug` (or `macos-debug` / `windows-debug`)
+- **Build:** `cmake --build build --target IRShapeDebug` (or `cmake --build --preset linux-build-all`)
 - **Format check:** `cmake --build build --target format-check`
 - **Format:** `cmake --build build --target format`
 - **Lint:** `cmake --build build --target lint` (includes naming checks)
