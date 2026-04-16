@@ -77,6 +77,9 @@ conditions, allocator behavior, hot-path costs.
 5. Identify the candidates from both repos. A PR is a candidate if:
    - The latest Sonnet review body contains `Opus recheck required`, OR
    - The PR touches core engine/game invariants, OR
+   - The PR has the `human:re-review` label (human made changes and
+     requested re-review — remove the label when you pick it up:
+     `gh pr edit <N> --remove-label "human:re-review"`), OR
    - The author pushed fixes and commented "re-review please" after
      a previous Opus review (check comments after your last review).
 
