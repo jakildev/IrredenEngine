@@ -43,9 +43,13 @@ slugify() {
 check_blockers() {
     # Check if a task's Blocked by: dependencies are all resolved.
     # Uses python3 for robust TASKS.md markdown parsing.
-    # $1 = task ID (T-NNN), $2 = TASKS.md path (optional, auto-detected)
+    # $1 = task ID (T-NNN)
+    # $2 = TASKS.md path (optional, auto-detected)
+    # $3 = space-separated T-NNN IDs to treat as already satisfied
+    #      (used by cmd_stack for intra-stack dependencies)
     local task_id="$1"
     local tasks_file="${2:-}"
+    local skip_ids="${3:-}"
 
     # Auto-detect TASKS.md from the current git repo root
     if [[ -z "$tasks_file" ]]; then
@@ -63,21 +67,23 @@ check_blockers() {
 
     # Python does the heavy lifting: parse TASKS.md, find the task,
     # check each blocker. Exit 0 = all clear, exit 1 = blocked.
-    python3 - "$task_id" "$tasks_file" <<'PYEOF'
+    python3 - "$task_id" "$tasks_file" "$skip_ids" <<'PYEOF'
 import sys, re, os, subprocess
 
 task_id = sys.argv[1]
 tasks_file = sys.argv[2]
+skip_ids = set(sys.argv[3].split()) if len(sys.argv) > 3 and sys.argv[3] else set()
 
 with open(tasks_file) as f:
     content = f.read()
 
 # Parse task entries: find each "- [x]/[ ]/[~]/[!] **Title**" block
-# and extract its ID and Blocked by fields.
+# and extract its ID, title, and Blocked by fields.
 tasks = {}
 current_id = None
 current_status = None
 current_blocked = None
+current_title = None
 
 for line in content.splitlines():
     # Task header line: - [x] **Title** — ...
@@ -86,9 +92,11 @@ for line in content.splitlines():
         if current_id:
             tasks[current_id] = {
                 'status': current_status,
-                'blocked_by': current_blocked or '(none)'
+                'blocked_by': current_blocked or '(none)',
+                'title': current_title or ''
             }
         current_status = m.group(1)
+        current_title = m.group(2)
         current_id = None
         current_blocked = None
         continue
@@ -108,7 +116,8 @@ for line in content.splitlines():
 if current_id:
     tasks[current_id] = {
         'status': current_status,
-        'blocked_by': current_blocked or '(none)'
+        'blocked_by': current_blocked or '(none)',
+        'title': current_title or ''
     }
 
 # Find our task
@@ -130,6 +139,9 @@ for blocker in blockers:
 
     # Task ID reference (T-NNN)
     if re.match(r'^T-\d+$', blocker):
+        # Skip intra-stack blockers (treated as satisfied by claim ordering)
+        if blocker in skip_ids:
+            continue
         if blocker in tasks:
             if tasks[blocker]['status'] != 'x':
                 failed.append(f"{blocker} (status: [{tasks[blocker]['status']}], need: [x])")
@@ -157,7 +169,7 @@ for blocker in blockers:
         # Search for a task whose title contains this text
         found_done = False
         for tid, info in tasks.items():
-            if blocker.lower() in str(info.get('title', '')).lower():
+            if blocker.lower() in info.get('title', '').lower():
                 if info['status'] == 'x':
                     found_done = True
                     break
@@ -177,31 +189,32 @@ PYEOF
 
 cmd_claim() {
     # Try to atomically claim a task. Exit 0 = claimed, exit 1 = taken.
-    local title="$1"
+    # $1 = task ID (T-NNN), $2 = agent name
+    local task_id="$1"
     local agent="${2:-unknown}"
     local slug
-    slug=$(slugify "$title")
+    slug=$(slugify "$task_id")
 
     mkdir -p "$CLAIMS_DIR"
 
     # Check dependency gate BEFORE attempting the atomic claim.
     # This prevents claiming a task whose blockers aren't done yet.
-    if ! check_blockers "$title"; then
+    if ! check_blockers "$task_id"; then
         return 1
     fi
 
     if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
         echo "$agent" > "$CLAIMS_DIR/$slug/owner"
-        echo "$title" > "$CLAIMS_DIR/$slug/title"
+        echo "$task_id" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
-        echo "claimed: $title (slug: $slug, agent: $agent)"
+        echo "claimed: $task_id (slug: $slug, agent: $agent)"
         return 0
     else
         local owner="unknown"
         if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
             owner=$(cat "$CLAIMS_DIR/$slug/owner")
         fi
-        echo "already claimed by $owner: $title (slug: $slug)"
+        echo "already claimed by $owner: $task_id (slug: $slug)"
         return 1
     fi
 }
@@ -377,19 +390,15 @@ cmd_stack() {
     mkdir -p "$CLAIMS_DIR"
 
     # Claim each task in order. If any fails, roll back all.
+    # Build up the set of earlier stack tasks to skip as blockers.
+    local earlier_in_stack=""
     for task_id in "${tasks[@]}"; do
         local slug
         slug=$(slugify "$task_id")
 
-        # Check blockers — but treat earlier stack entries as "done"
-        # for dependency purposes (they'll be processed sequentially).
-        # We do this by checking blockers manually: if a blocker is
-        # in our stack and appears before this task, it's satisfied.
-        if ! check_blockers "$task_id"; then
-            # Before failing, check if the blocker is earlier in our stack
-            # Re-check with the stack context (handled by the agent — the
-            # hard gate catches truly unresolved deps). For now, the agent
-            # must ensure ordering is correct.
+        # Check blockers — tasks earlier in the stack are passed as
+        # skip_ids so intra-stack dependencies don't block the claim.
+        if ! check_blockers "$task_id" "" "$earlier_in_stack"; then
             echo "fleet-claim stack: $task_id has unresolved blockers" >&2
             # Roll back
             for prev in "${claimed[@]}"; do
@@ -397,6 +406,7 @@ cmd_stack() {
             done
             return 1
         fi
+        earlier_in_stack="$earlier_in_stack $task_id"
 
         if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
             echo "$agent" > "$CLAIMS_DIR/$slug/owner"
