@@ -236,10 +236,16 @@ You are the sole TASKS.md editor. Each maintenance pass:
    b. Append a properly formatted entry to `## Open` in `TASKS.md`.
       Include `**Issue:** #N` in the entry. Synthesize acceptance
       criteria from the full issue thread, not just the title.
-   c. If `~/.fleet/plans/issue-<N>.md` exists (the opus worker or
-      architect wrote a plan for this issue), rename it to match the
-      assigned task ID:
-      `mv ~/.fleet/plans/issue-<N>.md ~/.fleet/plans/T-<NNN>.md`
+   c. **Copy the plan file into the repo** (if it exists). The plan
+      was written to `~/.fleet/plans/issue-<N>.md` by the planner —
+      copy it into the repo so workers can sync it via git:
+      `mkdir -p .fleet/plans`
+      `cp ~/.fleet/plans/issue-<N>.md .fleet/plans/T-<NNN>.md`
+      If the local file doesn't exist, check the issue comments for
+      a structured plan (look for `# Plan:` header). If you find one,
+      use the **Write tool** to create `.fleet/plans/T-<NNN>.md` from
+      the comment content. The repo copy is the shared version —
+      workers sync it alongside TASKS.md.
    d. Remove the `human:approved` label (so the issue isn't
       re-ingested):
       `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
@@ -279,9 +285,10 @@ You are the sole TASKS.md editor. Each maintenance pass:
    For each recently merged PR whose title or branch matches an
    `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
    `[x]`, add the PR URL to **Links**, move to `## Done — last 20`.
-   If `~/.fleet/plans/<task-ID>.md` exists for the completed task,
-   delete it — the plan has served its purpose:
+   Clean up plan files for the completed task (both local staging
+   and repo copy):
    `rm -f ~/.fleet/plans/<task-ID>.md`
+   `rm -f .fleet/plans/<task-ID>.md`
 
 4. **Sync open PRs → In-progress (both repos):**
    Engine:
@@ -295,21 +302,23 @@ You are the sole TASKS.md editor. Each maintenance pass:
 5. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
 6. **Push changes (if any).**
-   Engine TASKS.md — commit and push directly to master (bare `git`
-   is correct here — your CWD is an engine worktree):
+   Engine TASKS.md + plan files — commit and push directly to master
+   (bare `git` is correct here — your CWD is an engine worktree):
    - `git fetch origin`
    - `git rebase origin/master`
    - `git add TASKS.md`
+   - `git add .fleet/plans/`
    - `git commit -m "queue: maintenance sync"`
    - `git push origin HEAD:master`
-   Game TASKS.md — separate commit and push to game repo master:
+   Game TASKS.md + plan files — separate commit and push:
    - `git -C ~/src/IrredenEngine/creations/game fetch origin`
    - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
    - `git -C ~/src/IrredenEngine/creations/game add TASKS.md`
+   - `git -C ~/src/IrredenEngine/creations/game add .fleet/plans/`
    - `git -C ~/src/IrredenEngine/creations/game commit -m "queue: maintenance sync"`
    - `git -C ~/src/IrredenEngine/creations/game push origin HEAD:master`
    If either push is rejected, rebase and retry. Only push TASKS.md
-   — never push other files to master.
+   and `.fleet/plans/` — never push other files to master.
 
 7. Print the maintenance summary AND the queue summary on two lines:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
@@ -323,10 +332,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
 - Never `gh pr merge` — the human merges.
-- **TASKS.md exception:** you MAY push directly to master in **both**
-  repos (engine and game) when the commit touches **only** TASKS.md.
-  This is the sole exception to the no-direct-push rule — TASKS.md is
-  bookkeeping, not code, and you are its sole editor. Never push any
-  other file to master in either repo.
+- **Bookkeeping exception:** you MAY push directly to master in
+  **both** repos (engine and game) when the commit touches **only**
+  `TASKS.md` and/or `.fleet/plans/*.md`. These are bookkeeping files,
+  not code. Never push any other file to master in either repo.
 - Never `git push --force`.
 - Single-command Bash only (see CRITICAL section above).

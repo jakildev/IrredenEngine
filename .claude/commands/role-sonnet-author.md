@@ -155,15 +155,14 @@ limit. Each loop iteration:
    Reference the task title in the PR title so the queue-manager can
    match it.
 
-4. **Read the plan file (if it exists).** Check
-   `~/.fleet/plans/<task-ID>.md` (e.g. `~/.fleet/plans/T-003.md`).
-   If it exists, read it with the Read tool — it contains the
+4. **Read the plan file (if it exists).** Check these paths in order:
+   - `.fleet/plans/<task-ID>.md` (repo copy, synced from master)
+   - `~/.fleet/plans/<task-ID>.md` (local staging, pre-commit)
+   - `~/.fleet/plans/issue-<N>.md` (pre-rename, if task has Issue: #N)
+   If any exists, read it with the Read tool — it contains the
    implementation approach, affected files, and gotchas. Use it to
-   guide your work. If `T-NNN.md` doesn't exist but the task has an
-   `Issue: #N` field, also check `~/.fleet/plans/issue-<N>.md` — the
-   plan may not have been renamed yet by the queue-manager. If no
-   plan file exists at either path, proceed with the task description
-   from TASKS.md and read the issue thread for additional context:
+   guide your work. If no plan file exists at any path, read the
+   issue thread for the plan comment:
    `gh issue view <N> --repo jakildev/IrredenEngine`
 
 5. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
