@@ -140,7 +140,18 @@ limit. Each loop iteration:
    `fleet-claim claim "<task ID, e.g. T-002>" <your-worktree-name>`
 
    - **Exit 0** — you own it. Proceed to open the PR.
-   - **Exit 1** — already taken. Go back to step 2 and pick another.
+   - **Exit 1 (already taken)** — go back to step 2, pick another.
+   - **Exit 1 (blocked)** — the task's `Blocked by:` dependencies
+     aren't resolved yet. Skip it and pick another. `fleet-claim`
+     prints a diagnostic showing which blockers failed.
+
+   **Stack claiming** (use sparingly — most sonnet tasks are
+   independent): If you find two tightly coupled `[sonnet]` tasks in
+   a dependency chain, you can claim them atomically:
+   `fleet-claim stack "T-002 T-004" <your-worktree-name>`
+   Work them sequentially on a single branch, one commit per task.
+   Release with `fleet-claim release-stack <your-worktree-name>`.
+   Prefer single claims unless the tasks are genuinely coupled.
 
    Then create the branch, commit, and open a `fleet:wip` PR:
    `git checkout -b claude/<area>-<topic>`

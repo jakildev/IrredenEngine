@@ -233,10 +233,37 @@ You are the sole TASKS.md editor. Each maintenance pass:
       is this a hard problem (design decisions, core invariants,
       cross-cutting changes → `[opus]`) or bounded/mechanical work
       (tests, docs, refactors, clear spec → `[sonnet]`)?
-   b. Append a properly formatted entry to `## Open` in `TASKS.md`.
+   b. **Parse dependencies from the issue.** Scan the issue body AND
+      all comments for dependency patterns:
+      - `Blocked by #NNN` or `Depends on #NNN` → GitHub issue number
+      - `Blocked by: <title>` → free-text title reference
+      - `Blocked by: https://github.com/...` → PR URL
+      - `← blocked by #NNN` → arrow-notation in dependency diagrams
+
+      Resolve each dependency to a **canonical TASKS.md task ID**:
+      - For `#NNN` references: search existing TASKS.md entries for
+        one whose `**Issue:** #NNN` matches. Use that entry's `T-KKK`
+        ID.
+      - For title references: search TASKS.md for a matching title.
+      - For PR URLs: keep the full URL as-is — `fleet-claim` checks
+        merge state via `gh pr view`.
+      - For cross-repo references (e.g. `engine #164` in a game
+        issue): prefix with the repo context — the game TASKS.md
+        should use the engine task ID or PR URL.
+
+      If a blocker references an issue that hasn't been ingested yet,
+      use the issue title as the blocker text. When that issue is
+      ingested later, update the earlier task's `Blocked by:` to use
+      the canonical task ID.
+
+      Write the resolved dependencies as:
+      `**Blocked by:** T-003, T-005` (comma-separated task IDs)
+      or `**Blocked by:** T-003, https://github.com/.../pull/42`
+      If no dependencies, write `**Blocked by:** (none)`.
+   c. Append a properly formatted entry to `## Open` in `TASKS.md`.
       Include `**Issue:** #N` in the entry. Synthesize acceptance
       criteria from the full issue thread, not just the title.
-   c. **Copy the plan file into the repo** (if it exists). The plan
+   d. **Copy the plan file into the repo** (if it exists). The plan
       was written to `~/.fleet/plans/issue-<N>.md` by the planner —
       copy it into the repo so workers can sync it via git:
       `mkdir -p .fleet/plans`
@@ -246,10 +273,10 @@ You are the sole TASKS.md editor. Each maintenance pass:
       use the **Write tool** to create `.fleet/plans/T-<NNN>.md` from
       the comment content. The repo copy is the shared version —
       workers sync it alongside TASKS.md.
-   d. Remove the `human:approved` label (so the issue isn't
+   e. Remove the `human:approved` label (so the issue isn't
       re-ingested):
       `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
-   e. Do **NOT** close the issue. It stays open until the author
+   f. Do **NOT** close the issue. It stays open until the author
       agent's PR merges via `Closes #N`.
 
    **If the issue needs a plan first** — the scope is large, the
@@ -299,9 +326,23 @@ You are the sole TASKS.md editor. Each maintenance pass:
    repo's TASKS.md: flip to `[~]`, set Owner to the PR author's
    worktree name.
 
-5. **Prune Done:** keep only the last 20 entries in each TASKS.md.
+5. **Resolve stale blocker references.** Scan all `## Open` entries in
+   each TASKS.md. For any `Blocked by:` field that contains:
+   - A free-text title that now matches an existing task → replace
+     with the canonical `T-NNN` task ID.
+   - An issue number `#NNN` that now has a corresponding TASKS.md
+     entry → replace with the task ID `T-KKK`.
+   - A task ID whose task is now `[x]` done → remove that blocker
+     from the list (the dependency is resolved). If all blockers are
+     resolved, set `**Blocked by:** (none)`.
 
-6. **Push changes (if any).**
+   This handles out-of-order ingestion: when a batch of related
+   issues arrives, some may reference blockers that weren't ingested
+   yet. This pass resolves those once everything is in the queue.
+
+6. **Prune Done:** keep only the last 20 entries in each TASKS.md.
+
+7. **Push changes (if any).**
    Engine TASKS.md + plan files — commit and push directly to master
    (bare `git` is correct here — your CWD is an engine worktree):
    - `git fetch origin`
@@ -320,7 +361,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    If either push is rejected, rebase and retry. Only push TASKS.md
    and `.fleet/plans/` — never push other files to master.
 
-7. Print the maintenance summary AND the queue summary on two lines:
+8. Print the maintenance summary AND the queue summary on two lines:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
    `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
 

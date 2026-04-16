@@ -177,9 +177,31 @@ Each invocation is one iteration — do the work, then exit cleanly:
    `fleet-claim claim "<task ID, e.g. T-003>" opus-worker`
 
    - **Exit 0** — you own it. Proceed.
-   - **Exit 1** — already taken. Go back to step 3 and pick another.
+   - **Exit 1 (already taken)** — go back to step 3, pick another.
+   - **Exit 1 (blocked)** — the task's `Blocked by:` dependencies
+     aren't resolved yet. Skip it and pick another. `fleet-claim`
+     prints a diagnostic showing which blockers failed.
 
-   Then create the branch, commit, and open a `fleet:wip` PR:
+   **Stack claiming for dependency chains:** If you find a sequence of
+   unblocked tasks that form a dependency chain (e.g. T-005 blocks
+   T-007 blocks T-009), you can claim them atomically:
+   `fleet-claim stack "T-005 T-007 T-009" opus-worker`
+
+   Stack claim is all-or-nothing — if any task is already claimed or
+   has unresolved external blockers, all are rolled back. Within the
+   stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
+   Work the stack sequentially on a **single branch**, one commit per
+   task. Open one PR that covers the full chain (or stacked PRs if the
+   chain is large). When done:
+   `fleet-claim release-stack opus-worker`
+
+   Use stack claiming when:
+   - Two tasks are tightly coupled (e.g. foundation + first consumer)
+   - Context from task A directly informs task B's implementation
+   - The merge → unblock → re-pick latency would waste more budget
+     than keeping the context
+
+   For single tasks, use the normal claim flow:
    `git checkout -b claude/<area>-<topic>`
    `git commit --allow-empty -m "claim: <task title>"`
 

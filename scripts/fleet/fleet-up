@@ -22,6 +22,12 @@ ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
+# Model versions — change these when bumping the fleet to a new release.
+# Use full model names (not aliases) so the fleet is pinned to a known
+# version. The alias "opus" tracks latest and would silently upgrade.
+OPUS_MODEL="claude-opus-4-7"
+SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -308,7 +314,7 @@ active_pane_id() {
 # --- Row 1: authors (starts full-screen; will become top ~45%) ----------
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd sonnet sonnet-author)"
+    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
 TOP1=$(active_pane_id)
 label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 
@@ -317,19 +323,19 @@ label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 # full window height at this point — 25% bottom, 75% top.
 tmux split-window -v -t "$TOP1" -p 25 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer 3m)"
+    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)"
 BOT1=$(active_pane_id)
 label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
 
 tmux split-window -h -t "$BOT1" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer 30m)"
+    "$(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)"
 BOT2=$(active_pane_id)
-label_pane_id "$BOT2" "opus-reviewer [opus]"
+label_pane_id "$BOT2" "opus-reviewer [opus 4.7]"
 
 tmux split-window -h -t "$BOT2" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager 5m)"
+    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)"
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
@@ -340,35 +346,35 @@ label_pane_id "$BOT3" "queue-manager [sonnet]"
 #   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
 tmux split-window -v -t "$TOP1" -p 40 \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd opus opus-architect)"
+    "$(launch_cmd "$OPUS_MODEL" opus-architect)"
 MID1=$(active_pane_id)
-label_pane_id "$MID1" "opus-architect [opus]"
+label_pane_id "$MID1" "opus-architect [opus 4.7]"
 
 tmux split-window -h -t "$MID1" \
     -c "$ENGINE/.claude/worktrees/opus-worker" \
-    "$(launch_cmd opus opus-worker 20m)"
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
 MID2=$(active_pane_id)
-label_pane_id "$MID2" "opus-worker [opus]"
+label_pane_id "$MID2" "opus-worker [opus 4.7]"
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     tmux split-window -h -t "$MID2" \
         -c "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd opus game-architect)"
+        "$(launch_cmd "$OPUS_MODEL" game-architect)"
     MID3=$(active_pane_id)
-    label_pane_id "$MID3" "game-architect [opus]"
+    label_pane_id "$MID3" "game-architect [opus 4.7]"
 fi
 
 # --- Expand Row 1 (top) with remaining authors -------------------------
 tmux split-window -h -t "$TOP1" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)"
+    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
 TOP2=$(active_pane_id)
 label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
 
 if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
     tmux split-window -h -t "$TOP2" \
         -c "$GAME/.claude/worktrees/game-sonnet" \
-        "$(launch_cmd sonnet game-sonnet)"
+        "$(launch_cmd "$SONNET_MODEL" game-sonnet)"
     TOP3=$(active_pane_id)
     label_pane_id "$TOP3" "game-sonnet [sonnet]"
 fi
