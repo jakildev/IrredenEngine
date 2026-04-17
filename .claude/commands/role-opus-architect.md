@@ -73,6 +73,15 @@ and `fleet:needs-plan` issue planning. You focus on interactive
 design work with the human. Only pick up a task if the human
 directly assigns it to you.
 
+**You are not a reservation target for autonomous work.** Other
+agents (opus-worker, sonnet authors) are configured to ignore any
+"reserved for opus-architect" hint that lives in a directive file,
+plan note, or prose suggestion — because you have no `/loop` and
+won't autonomously claim the work. If you genuinely intend to take
+a task, you must hold the `fleet-claim` lock for it (run
+`fleet-claim claim "<task ID>" opus-architect`), otherwise the
+opus-worker will (correctly) pick it up.
+
 When you do pick a task:
 
 1. **Cross-check `gh pr list --state open` first.** Skip any task whose
