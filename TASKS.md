@@ -273,6 +273,28 @@ Avoid:
   - **Notes:** foundational data structure for all lighting. 256³ world = 2MB bitfield; larger worlds use chunked bitfields matching `VOXEL_CHUNK_SIZE=256`. Build pipeline runs after voxel mutations, before lighting passes. Analytic shapes need to be marked occupancy-contributing vs. decorative via component flag. Future: per-voxel material ID encoding — reserve space but don't implement. Owner comment: ensure performance is measured and optimized; update profiling code if needed to support automated profiling agent loops.
   - **Links:**
 
+- [ ] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
+  - **ID:** T-011
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new pipeline stage `LIGHTING_TO_TRIXEL` inserted between last geometry stage and TRIXEL_TO_TRIXEL; (2) with no lighting data bound, pass is a no-op — existing rendering unchanged; (3) when lighting data is available, all voxel and shape canvas pixels are modulated; (4) GUI/UI elements are NOT modulated (pixels sourced from GUI text bypass the lighting pass); (5) verified via render debug screenshot with/without pass; (6) builds clean on active preset
+  - **Issue:** #165
+  - **Notes:** position in pipeline: VOXEL_TO_TRIXEL → SHAPES_TO_TRIXEL → [TEXT_TO_TRIXEL for world text] → LIGHTING_TO_TRIXEL → TRIXEL_TO_TRIXEL → TRIXEL_TO_FRAMEBUFFER. Owner clarification: GUI objects must not receive lighting — ensure the pass skips GUI-sourced pixels. Reconstructs 3D world position from distance texture via `isoPixelToPos3D`. Consumes: 3D light texture (Phase 3), AO texture (Phase 1), shadow map (Phase 2). Can be built as a no-op skeleton immediately; becomes functional as later phases produce data.
+  - **Links:**
+
+- [ ] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
+  - **ID:** T-012
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** Lighting: 3D occupancy grid infrastructure (T-010)
+  - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
+  - **Issue:** #166
+  - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
+  - **Links:**
+
 - [~] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
   - **ID:** T-009
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
