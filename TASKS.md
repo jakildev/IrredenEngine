@@ -262,6 +262,17 @@ Avoid:
     profiler build flag.
   - **Links:**
 
+- [ ] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
+  - **ID:** T-010
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 3D occupancy bitfield (SSBO or R8UI 3D texture) populated from voxel pool data each frame or incrementally on dirty chunks; (2) per-axis columnar span lists buildable from the grid; (3) occupancy data accessible from GPU compute shaders as 3D texture or SSBO; (4) dirty-chunk tracking avoids full rebuild each frame; (5) builds clean on active preset with no regression in existing rendering; (6) performance measured with profiling enabled — report top hotspots; if profiling infrastructure needs changes to support automated profiling loops, include those changes
+  - **Issue:** #164
+  - **Notes:** foundational data structure for all lighting. 256³ world = 2MB bitfield; larger worlds use chunked bitfields matching `VOXEL_CHUNK_SIZE=256`. Build pipeline runs after voxel mutations, before lighting passes. Analytic shapes need to be marked occupancy-contributing vs. decorative via component flag. Future: per-voxel material ID encoding — reserve space but don't implement. Owner comment: ensure performance is measured and optimized; update profiling code if needed to support automated profiling agent loops.
+  - **Links:**
+
 - [~] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
   - **ID:** T-009
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
