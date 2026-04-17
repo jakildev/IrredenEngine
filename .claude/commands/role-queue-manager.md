@@ -213,9 +213,19 @@ You are the sole TASKS.md editor. Each maintenance pass:
     have already merged or closed.
 
 1. **Ingest triaged issues (engine repo):**
-   `gh issue list --repo <engine-repo> --label "human:approved" --state open --json number,title,body,comments,labels`
-   Only issues with the `human:approved` label are ingested — this
-   is the universal gate for both human-filed and agent-filed issues.
+   `gh issue list --repo <engine-repo> --search "is:open is:issue label:human:approved -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info" --json number,title,body,comments,labels`
+
+   Only issues with `human:approved` (and not yet handled) are
+   ingested. The `human:approved` label is a **permanent** signal
+   from the human ("yes, work on this") and is never removed by the
+   fleet — state lives in the `fleet:*` labels:
+   - `fleet:queued` — already ingested into TASKS.md
+   - `fleet:needs-plan` — waiting on architect planning
+   - `fleet:needs-info` — waiting on human clarification
+   - `fleet:in-progress` — agent has opened a PR (set in step 4 below)
+
+   The search excludes issues that already have any of the first
+   three, so each issue is processed exactly once per state transition.
 
    For each matching issue, **read the full context** — title, body,
    AND all comments. Comments often contain clarifications, scope
@@ -273,35 +283,39 @@ You are the sole TASKS.md editor. Each maintenance pass:
       use the **Write tool** to create `.fleet/plans/T-<NNN>.md` from
       the comment content. The repo copy is the shared version —
       workers sync it alongside TASKS.md.
-   e. Remove the `human:approved` label (so the issue isn't
-      re-ingested):
-      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved"`
+   e. Add the `fleet:queued` label (the de-dupe signal — keeps
+      `human:approved` intact):
+      `gh issue edit <N> --repo <engine-repo> --add-label "fleet:queued"`
    f. Do **NOT** close the issue. It stays open until the author
       agent's PR merges via `Closes #N`.
 
    **If the issue needs a plan first** — the scope is large, the
    approach is unclear, or it needs architectural input:
-   a. Add the `fleet:needs-plan` label:
-      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved" --add-label "fleet:needs-plan"`
+   a. Add the `fleet:needs-plan` label (keeps `human:approved`):
+      `gh issue edit <N> --repo <engine-repo> --add-label "fleet:needs-plan"`
    b. Comment explaining what's missing and that the architect
       should weigh in before this becomes a task:
       `gh issue comment <N> --repo <engine-repo> --body "Needs planning: <what's unclear>. Tagging for architect review."`
-   c. Do NOT add it to TASKS.md yet. The human or architect will
-      refine the issue, then the human re-adds `human:approved`.
+   c. Do NOT add it to TASKS.md yet. The opus-worker (planner) picks
+      up `fleet:needs-plan` issues, posts a plan, and removes the
+      label. On the next maintenance pass, the queue-manager's
+      ingestion search picks the issue up again (no longer excluded
+      by `-label:fleet:needs-plan`) and ingests it as `fleet:queued`.
 
    **If the issue is too vague** — not enough info to even plan:
-   a. Add the `fleet:needs-info` label:
-      `gh issue edit <N> --repo <engine-repo> --remove-label "human:approved" --add-label "fleet:needs-info"`
+   a. Add the `fleet:needs-info` label (keeps `human:approved`):
+      `gh issue edit <N> --repo <engine-repo> --add-label "fleet:needs-info"`
    b. Comment with specific questions:
       `gh issue comment <N> --repo <engine-repo> --body "Need more info before scheduling: <specific questions>"`
    c. Do NOT add it to TASKS.md.
 
 2. **Ingest triaged issues (game repo):**
-   `gh issue list --repo <game-repo> --label "human:approved" --state open --json number,title,body,comments,labels`
+   `gh issue list --repo <game-repo> --search "is:open is:issue label:human:approved -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info" --json number,title,body,comments,labels`
    Same full-context assessment as above. Apply the same ready /
    needs-plan / needs-info logic, using `--repo <game-repo>`
    on all `gh` commands. Append to the **game** TASKS.md at
-   `~/src/IrredenEngine/creations/game/TASKS.md`.
+   `~/src/IrredenEngine/creations/game/TASKS.md`. The
+   `human:approved` label is preserved on game-repo issues too.
 
 3. **Sync merged PRs → Done (both repos):**
    Engine:
@@ -319,12 +333,28 @@ You are the sole TASKS.md editor. Each maintenance pass:
 
 4. **Sync open PRs → In-progress (both repos):**
    Engine:
-   `gh pr list --repo <engine-repo> --state open --json number,title,headRefName`
+   `gh pr list --repo <engine-repo> --state open --json number,title,headRefName,body`
    Game:
-   `gh pr list --repo <game-repo> --state open --json number,title,headRefName`
+   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,body`
    For each open PR whose title matches a `[ ]` task in the matching
-   repo's TASKS.md: flip to `[~]`, set Owner to the PR author's
-   worktree name.
+   repo's TASKS.md:
+   a. Flip the task to `[~]`, set Owner to the PR author's worktree name.
+   b. **Tag the linked issue as in-progress.** If the task entry has
+      `**Issue:** #N` (or the PR body has `Closes #N`), add the
+      `fleet:in-progress` label to that issue (idempotent — re-adding
+      is a no-op):
+      `gh issue edit <N> --repo <repo> --add-label "fleet:in-progress"`
+
+4b. **Clean up stale `fleet:in-progress` labels.** For each issue
+   currently labeled `fleet:in-progress` (both repos), check whether
+   any open PR still references it via `Closes #N` (or via the matching
+   TASKS.md entry's PR link). If no open PR matches, the PR closed
+   without merging or was abandoned — remove the label so the issue
+   shows as queued-and-available again:
+   `gh issue list --repo <repo> --label "fleet:in-progress" --state open --json number,body`
+   `gh pr list --repo <repo> --state open --json number,body`
+   For each in-progress issue not referenced by any open PR:
+   `gh issue edit <N> --repo <repo> --remove-label "fleet:in-progress"`
 
 5. **Resolve stale blocker references.** Scan all `## Open` entries in
    each TASKS.md. For any `Blocked by:` field that contains:
@@ -368,6 +398,11 @@ You are the sole TASKS.md editor. Each maintenance pass:
 ## Hard rules
 
 - Never claim or work tasks. You only file and maintain them.
+- **Never remove `human:approved`.** It is a permanent signal from
+  the human and is what humans use to find what they've approved.
+  Use `fleet:queued` / `fleet:needs-plan` / `fleet:needs-info` /
+  `fleet:in-progress` for state. Older tooling that removed
+  `human:approved` was wrong; the new model preserves it.
 - You are the **sole TASKS.md editor** across the entire fleet. No
   other agent should edit TASKS.md. If you see a PR that includes
   TASKS.md changes from an author agent, flag it in your review or
