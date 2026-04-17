@@ -1,0 +1,40 @@
+name: Auto re-review on push to approved PR
+
+# Fires when commits are pushed to a PR that already has fleet:approved.
+# Swaps the label to human:re-review so the fleet reviewers pick it up
+# again on their next poll. This means the human can edit an approved
+# PR and just `git push` — no skill invocation needed.
+#
+# Why filter on fleet:approved only (not all fleet verdict labels):
+#   - During fleet:needs-fix, the author agent is addressing feedback
+#     and pushing fixes via commit-and-push. Auto-swapping there would
+#     fight the fleet:changes-made label the author sets.
+#   - During fleet:wip, the author is actively working. No verdict yet.
+#   - fleet:approved is the only state where a human-pushed change
+#     unambiguously means "I edited after fleet was done — please look
+#     again."
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  pull-requests: write
+  issues: write   # gh pr edit --add-label uses the issues label API
+
+jobs:
+  swap-approval-label:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'fleet:approved')
+    steps:
+      - name: Swap fleet:approved → human:re-review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr edit "$PR" --repo "$REPO" \
+            --remove-label "fleet:approved" \
+            --add-label "human:re-review"
+          gh pr comment "$PR" --repo "$REPO" \
+            --body "New commits pushed after fleet approval. Re-tagging \`human:re-review\` so the fleet picks it up again."
