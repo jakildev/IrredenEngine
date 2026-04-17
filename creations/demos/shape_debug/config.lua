@@ -7,7 +7,7 @@ config = {
     fullscreen = false,
     monitor_index = -1,
     monitor_name = "",
-    subdivision_mode = "none",
+    subdivision_mode = "full",
     voxel_render_subdivisions = 1,
 
     video_capture_output_file = "capture.mp4",

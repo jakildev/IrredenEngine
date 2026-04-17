@@ -22,6 +22,7 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
 // COMMAND SUITES
 #include <irreden/common/command_suite_camera.hpp>
@@ -115,6 +116,7 @@ void initSystems() {
 
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
