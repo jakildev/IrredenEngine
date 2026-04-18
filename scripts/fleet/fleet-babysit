@@ -47,7 +47,9 @@ case "$MODEL" in
     sonnet|claude-sonnet*) EFFORT="high" ;;
     *) EFFORT="high" ;;
 esac
-# Allow override from env if needed (e.g. a debugging session)
+# Global override from env if set. Note: FLEET_EFFORT applies to
+# every pane in the fleet — fleet-up does not thread env per-pane.
+# To change one pane's effort, edit the case statement above.
 EFFORT="${FLEET_EFFORT:-$EFFORT}"
 
 # Timing

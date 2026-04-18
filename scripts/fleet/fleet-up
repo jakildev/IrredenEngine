@@ -4,8 +4,9 @@
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
 # then builds a single tmux session "fleet" with one window "agents"
-# containing 7 tiled panes — each launching `claude` with the right
-# model and the matching role slash command in dry-run mode.
+# containing up to 9 tiled panes (7 engine + 2 game if the game repo
+# is present) — each launching `claude` with the right model and the
+# matching role slash command in dry-run mode.
 #
 # Source of truth: scripts/fleet/fleet-up in the engine repo.
 # Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
@@ -256,10 +257,12 @@ mkdir -p "$HOME/.fleet/plans"
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: single window with three rows.
-#   top    — sonnet-fleet-1, sonnet-fleet-2, game-sonnet  (authors)
-#   middle — opus-architect, opus-worker, game-architect  (architects + worker)
-#   bottom — sonnet-reviewer, opus-reviewer, queue-manager (ops)
+# Layout: single window with three rows (see detailed comment block
+# below the launch_cmd helper — that's the canonical description).
+# Summary:
+#   top    (~32%, 4 panes) — autonomous workers
+#   middle (~40%, 2 panes) — interactive architects (biggest)
+#   bottom (~28%, 3 panes) — ops
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -408,7 +411,9 @@ layout (single window, three rows):
 effort levels:
   opus agents (architects, opus-worker, opus-reviewer) — max
   sonnet agents (workers, reviewer, queue-manager) — high
-  override per-agent with FLEET_EFFORT=<level> in the agent's env.
+  override globally by exporting FLEET_EFFORT=<level> before fleet-up.
+  (to change one pane, edit fleet-babysit's case statement — fleet-up
+  does not thread env per-pane.)
 
 permission mode: auto (model decides when to ask vs proceed)
 
