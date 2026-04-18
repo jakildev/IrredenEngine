@@ -306,15 +306,48 @@ Avoid:
   - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
   - **Links:**
 
-- [~] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
-  - **ID:** T-009
-  - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
+- [ ] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
+  - **ID:** T-014
+  - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** render-subdivision-mode
+  - **Owner:** free
+  - **Blocked by:** T-010, T-011
+  - **Acceptance:** (1) emissive voxels propagate colored light outward, blocked by solid voxels from occupancy grid; (2) skylight propagates top-down via columnar span lists; (3) per-voxel RGB light levels stored in 3D texture accessible from GPU; (4) incremental update on voxel place/remove — no full rebuild per frame; (5) render debug screenshot: torch placement creates visible light pool; (6) performance: initial build < 5ms, incremental < 1ms; (7) builds clean on active preset
+  - **Issue:** #168
+  - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
+  - **Links:**
+
+- [ ] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
+  - **ID:** T-015
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-011
+  - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
+  - **Issue:** #169
+  - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
+  - **Links:**
+
+- [ ] **Lighting: fog of war render pass (Phase 5 engine side)** — render fog-of-war overlay from a 2D visibility texture with LOS ray casting against the occupancy grid, exploiting the fixed iso camera angle for efficient depth calculation
+  - **ID:** T-016
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-010, T-011
+  - **Acceptance:** (1) fog texture renders over scene, darkening fogged/unexplored areas; (2) LOS ray casting returns correct results against occupancy grid; (3) heightmap-aware: units cannot see over hills; (4) solid voxels block LOS, characters and small objects don't; (5) smooth fog edges via blur; (6) Lua API: setFogCell, getFogCell, castLOS, revealRadius, fadeExplored callable; (7) render debug screenshot: fog visible, LOS blocking correct; (8) fog update + render < 1ms for typical map sizes; (9) builds clean on active preset
+  - **Issue:** #170
+  - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
+  - **Links:**
+
+- [ ] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
+  - **ID:** T-017
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** (1) `SubdivisionMode` enum with NONE/POSITION_ONLY/FULL replaces `VoxelRenderMode`; (2) Lua key `"subdivision_mode"` accepts `"none"` / `"position"` / `"full"`, default `"full"`; (3) all three modes build clean on active preset; (4) visual: NONE snaps to grid, POSITION_ONLY at zoom 2 shows identical silhouette to 2×-radius-at-zoom-1, FULL at zoom 2 is visibly smoother; (5) FULL mode (current SMOOTH behavior) has not regressed
-  - **Issue:** #156
-  - **Notes:** `POSITION_ONLY` is the new mode — subdivisions apply to positioning only; SDF evaluates at base-zoom coarse grid. Key files: `VoxelRenderMode` enum definition, RenderManager getters/setters, `system_shapes_to_trixel.hpp` ~line 284 (third branch for POSITION_ONLY), WorldConfig Lua wiring. Per-entity subdivision modes are future work — note in code but do not implement.
+  - **Acceptance:** (1) LightType enum (DIRECTIONAL, POINT, EMISSIVE, SPOT) in engine/prefabs/irreden/render/components/; (2) C_LightSource with type_, emitColor_, intensity_, radius_, direction_[3] defined; (3) C_LightBlocker with blocksLOS_, castsShadow_, opacity_ defined; (4) Lua bindings expose light source creation and configuration; (5) components registered in ECS and queryable by lighting systems; (6) builds clean on active preset
+  - **Issue:** #171
+  - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
   - **Links:**
 
 ---
@@ -323,13 +356,24 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-009** — Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL) · Owner: render-subdivision-mode · PR: https://github.com/jakildev/IrredenEngine/pull/160
+(none)
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
+  - **ID:** T-009
+  - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
+  - **Model:** opus
+  - **Owner:** render-subdivision-mode
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `SubdivisionMode` enum with NONE/POSITION_ONLY/FULL replaces `VoxelRenderMode`; (2) Lua key `"subdivision_mode"` accepts `"none"` / `"position"` / `"full"`, default `"full"`; (3) all three modes build clean on active preset; (4) visual: NONE snaps to grid, POSITION_ONLY at zoom 2 shows identical silhouette to 2×-radius-at-zoom-1, FULL at zoom 2 is visibly smoother; (5) FULL mode (current SMOOTH behavior) has not regressed
+  - **Issue:** #156
+  - **Notes:** `POSITION_ONLY` is the new mode — subdivisions apply to positioning only; SDF evaluates at base-zoom coarse grid. Key files: `VoxelRenderMode` enum definition, RenderManager getters/setters, `system_shapes_to_trixel.hpp` ~line 284 (third branch for POSITION_ONLY), WorldConfig Lua wiring. Per-entity subdivision modes are future work — note in code but do not implement.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/160
 
 - [x] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
   mirror of the Linux-maturation task, on the Mac side. Umbrella epic
