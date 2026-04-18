@@ -327,10 +327,15 @@ You are the sole TASKS.md editor. Each maintenance pass:
    **For each merged PR**, find which TASKS.md tasks it completes:
    - **Single-task PR (most common):** match the PR title or branch
      name against `[~]` or `[ ]` task entries.
-   - **Stack PR (multi-task chain):** scan the merged PR's commit
-     subjects for `T-NNN: ` prefixes. Each unique task ID prefix
-     marks one completed task. A stack PR can complete 2+ tasks in
-     one merge — flip ALL of them.
+   - **Stack PR (multi-task chain):** extract the task IDs from the
+     merged PR's commit subjects. The canonical query (extracts every
+     `T-NNN` referenced as a commit subject prefix, deduplicated):
+     ```
+     gh pr view <N> --repo <repo> --json commits \
+       --jq '[.commits[].messageHeadline | capture("^(?<id>T-[0-9]+):") | .id] | unique'
+     ```
+     Each unique task ID is one completed task. A stack PR can complete
+     2+ tasks in one merge — flip ALL of them.
 
    For every task completed by the merge: flip to `[x]`, add the PR
    URL to **Links**, move to `## Done — last 20`. Clean up plan

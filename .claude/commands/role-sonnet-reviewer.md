@@ -116,12 +116,19 @@ Each invocation is one iteration — do the work, then exit cleanly:
       - List task IDs from the prefixes (e.g. `T-005`, `T-007`).
       - For each task, find its commits:
         `gh pr view <N> --json commits --jq '.commits[] | select(.messageHeadline | startswith("T-005:")) | .oid'`
-      - Review only that task's diff:
-        `gh pr diff <N>` for the whole PR — then mentally segment
-        by task (commits and the PR description's `## T-NNN`
-        sections guide you), OR check out the PR and use
-        `git diff <previous-task-tip>...<this-task-tip>` for the
-        per-task slice.
+      - Review only that task's diff. Two paths:
+        - **Quick:** `gh pr diff <N>` for the whole PR — then
+          mentally segment by task (commits and the PR description's
+          `## T-NNN` sections guide you).
+        - **Precise (for non-trivial stacks, or when tasks touch
+          overlapping files):** check out the PR, then for each task
+          find the task-tip commit — the last commit whose subject
+          starts with that task's prefix:
+          `gh pr view <N> --json commits --jq '.commits[] | select(.messageHeadline | startswith("T-005:")) | .oid' | tail -1`
+          Then diff that slice:
+          `git diff <previous-task-tip>...<this-task-tip>`
+          (For the first task in the stack, use `origin/master` as
+          the previous tip.)
       - Write per-task findings in the review body under
         `## T-NNN` headings. Verdict is one overall approval (the
         whole PR merges as a unit), but the per-task structure

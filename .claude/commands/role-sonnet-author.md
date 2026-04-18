@@ -175,9 +175,12 @@ limit. Each loop iteration:
    ```
 
    This is the load-bearing anchor that lets reviewers segment the
-   PR into per-task review passes. The subject prefix is stable
-   across `git commit --amend` (you amend the body, not the subject)
-   and across rebases — unlike commit SHAs which change on amend.
+   PR into per-task review passes. **Never edit the subject line
+   when amending a stack commit** — only touch the body. `git commit
+   --amend --no-edit` (to add staged files) and body-only amends are
+   safe; `--amend -m "..."` rewrites the subject and breaks reviewer
+   detection for that task. Commit SHAs change on any amend, which is
+   why we use the subject prefix as the anchor instead.
 
    **Stack PR description format:** When opening a stack PR, write
    the body with one section per task:
