@@ -19,6 +19,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -120,6 +121,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
