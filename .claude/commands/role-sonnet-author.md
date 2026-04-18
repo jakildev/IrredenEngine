@@ -209,21 +209,21 @@ limit. Each loop iteration:
    ready. The queue-manager then adds it to TASKS.md. Move on to the
    next task.
 
-8. **Polish before commit.** Before invoking `commit-and-push`, run:
-   - **`optimize`** — but ONLY if the change touches a system tick,
-     a render pipeline stage, a shader, audio/video, math hot paths,
-     or anywhere on the per-frame critical path. Skip for pure docs,
-     tests, mechanical refactors, or build/CI changes.
-   - **`simplify`** — every time, no exceptions. Catches the smells
-     a reviewer would otherwise flag (per-entity getComponent,
-     naming slips, dead code, debug logs, tautological comments).
+8. **Optimize before commit (when relevant).** Run the `optimize`
+   skill ONLY if the change touches a system tick, a render pipeline
+   stage, a shader, audio/video, math hot paths, or anywhere on the
+   per-frame critical path. Skip for pure docs, tests, mechanical
+   refactors, or build/CI changes.
 
-   Order matters: `optimize` first if both apply (it may add
-   `IR_PROFILE_*` blocks and rationale comments that simplify
-   should leave alone). The same applies when **addressing review
-   feedback** — after editing in response to comments, re-run
-   `simplify` (and `optimize` if the perf surface changed) before
-   pushing the fix.
+   You don't need to invoke `simplify` here — `commit-and-push`
+   runs it as part of its flow. Running `optimize` first matters
+   because optimize may add `IR_PROFILE_*` blocks and rationale
+   comments that simplify should leave alone; commit-and-push's
+   simplify pass then polishes everything together.
+
+   The same applies when **addressing review feedback** — after
+   editing in response to comments, re-run `optimize` (if the perf
+   surface changed) before invoking `commit-and-push` to push the fix.
 
 9. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
@@ -236,7 +236,7 @@ limit. Each loop iteration:
    off `origin/master`. Loop back to step 1.
 
 If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
-1-8), print the PR URL, then stop and wait for human instruction. Do
+1-9), print the PR URL, then stop and wait for human instruction. Do
 not loop.
 
 ## Usage-limit handling

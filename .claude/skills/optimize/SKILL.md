@@ -97,7 +97,7 @@ under the hood, exposed through the `IR_PROFILE_*` macros in
 
 ```cpp
 void IRSGlowPulse::tickEntity(C_GlowPulse& glow, C_Color& color) {
-    IR_PROFILE_FUNCTION(0xff00ff00);  // green = render-system family
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
     // ... existing logic
 }
 ```
@@ -106,9 +106,13 @@ Wrap the **entry point** of the new code (system tick function,
 pipeline stage, audio callback). For inner sub-blocks worth
 isolating, use `IR_PROFILE_BLOCK("name", color)` / `IR_PROFILE_END_BLOCK`.
 
-Color convention (ARGB hex): pick consistently with neighboring
-blocks — read other systems in the same module to match. The colors
-are the only way to find your block in the easy_profiler timeline.
+Use the named `IR_PROFILER_COLOR_*` constants from
+`engine/profile/include/irreden/ir_profile.hpp` (`_RENDER`,
+`_ENTITY_OPS`, `_COMMANDS`, etc.). Every existing call site uses
+the named constants — raw ARGB hex literals are an anti-pattern.
+Pick the constant that matches the module of the system you're
+instrumenting; the colors group related blocks visually in the
+easy_profiler timeline.
 
 **Run with profiling enabled:**
 

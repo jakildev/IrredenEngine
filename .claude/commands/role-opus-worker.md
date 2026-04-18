@@ -247,19 +247,21 @@ Each invocation is one iteration — do the work, then exit cleanly:
    mid-task — the architect handles design conversations. Comment on
    your PR explaining the blocker and wait.
 
-9. **Polish before commit.** Before invoking `commit-and-push`, run:
-   - **`optimize`** — `[opus]` work almost always touches perf-critical
-     code (engine/render, engine/system, engine/world, engine/audio,
-     engine/video, engine/math). Run optimize to profile the new code,
-     identify hotspots, and verify no regressions. Skip only for pure
-     docs or mechanical refactors that preserve hot-path structure.
-   - **`simplify`** — every time, no exceptions.
+9. **Optimize before commit.** Run the `optimize` skill — `[opus]`
+   work almost always touches perf-critical code (engine/render,
+   engine/system, engine/world, engine/audio, engine/video,
+   engine/math). Optimize profiles the new code, identifies hotspots,
+   and verifies no regressions. Skip only for pure docs or mechanical
+   refactors that preserve hot-path structure.
 
-   Order: `optimize` first if both apply (it may add `IR_PROFILE_*`
-   blocks and rationale comments that simplify should leave alone).
+   You don't need to invoke `simplify` separately — `commit-and-push`
+   runs it as part of its flow. Running `optimize` first matters
+   because optimize may add `IR_PROFILE_*` blocks and rationale
+   comments that simplify should leave alone.
+
    The same applies when **addressing review feedback** — after
-   editing in response to comments, re-run `simplify` (and `optimize`
-   if the perf surface changed) before pushing the fix.
+   editing in response to comments, re-run `optimize` (if the perf
+   surface changed) before invoking `commit-and-push` to push the fix.
 
 10. **Finalize the PR.** Use `commit-and-push` to push work commits.
     Remove the WIP label and release the claim:
