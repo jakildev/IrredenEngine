@@ -273,11 +273,11 @@ Avoid:
   - **Notes:** foundational data structure for all lighting. 256³ world = 2MB bitfield; larger worlds use chunked bitfields matching `VOXEL_CHUNK_SIZE=256`. Build pipeline runs after voxel mutations, before lighting passes. Analytic shapes need to be marked occupancy-contributing vs. decorative via component flag. Future: per-voxel material ID encoding — reserve space but don't implement. Owner comment: ensure performance is measured and optimized; update profiling code if needed to support automated profiling agent loops.
   - **Links:**
 
-- [ ] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
+- [~] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
   - **ID:** T-011
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-lighting-to-trixel-stage
   - **Blocked by:** (none)
   - **Acceptance:** (1) new pipeline stage `LIGHTING_TO_TRIXEL` inserted between last geometry stage and TRIXEL_TO_TRIXEL; (2) with no lighting data bound, pass is a no-op — existing rendering unchanged; (3) when lighting data is available, all voxel and shape canvas pixels are modulated; (4) GUI/UI elements are NOT modulated (pixels sourced from GUI text bypass the lighting pass); (5) verified via render debug screenshot with/without pass; (6) builds clean on active preset
   - **Issue:** #165
@@ -356,7 +356,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-(none)
+- [~] **T-011** — Lighting: screen-space lighting application pass · Owner: render-lighting-to-trixel-stage · PR: https://github.com/jakildev/IrredenEngine/pull/185
 
 ---
 
