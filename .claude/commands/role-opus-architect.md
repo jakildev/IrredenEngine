@@ -49,6 +49,8 @@ list above.
 
 ## Startup actions (do these immediately, in order)
 
+0. Print your role banner:
+   `[opus-architect] Interactive design partner — core engine architecture, ECS design, render pipeline decisions. On-demand (no loop).`
 1. `git -C ~/src/IrredenEngine fetch origin --quiet`
 2. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
 3. `gh pr list --state open --json number,title,headRefName,author` —

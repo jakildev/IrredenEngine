@@ -48,6 +48,8 @@ whatever directory the task touches before editing anything.
 
 ## Startup actions (do these immediately, in order)
 
+0. Print your role banner:
+   `[sonnet-author] Picks bounded [sonnet] tasks from TASKS.md, works them end-to-end, opens PRs. Runs continuously.`
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
@@ -135,10 +137,9 @@ limit. Each loop iteration:
    the task is yours to claim.
 
    **If no matching task exists, exit cleanly.** Print
-   `no unblocked [sonnet] tasks — standing by` and stop. Do NOT
-   invent work, self-assign documentation passes, or create tasks
-   outside the queue. The `/loop` driver or `fleet-babysit` will
-   re-invoke you later when new tasks may have appeared.
+   `[sonnet-author] No unblocked [sonnet] tasks — standing by. Babysit will re-invoke.`
+   and stop. Do NOT invent work, self-assign documentation passes,
+   or create tasks outside the queue.
 
    Print the task and explain why you picked it.
 

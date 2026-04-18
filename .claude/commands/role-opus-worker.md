@@ -52,6 +52,8 @@ whatever directory the task touches before editing anything.
 
 ## Startup actions (do these immediately, in order)
 
+0. Print your role banner:
+   `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from TASKS.md. Loop: every 20m.`
 1. `pwd` and confirm you are in the `opus-worker` worktree (not
    opus-architect, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
@@ -185,9 +187,9 @@ Each invocation is one iteration — do the work, then exit cleanly:
    get done. Pick it up.
 
    If no `Model: opus` tasks are available, print
-   `no unblocked [opus] tasks — standing by` and exit cleanly. Do NOT
-   invent work, self-assign documentation passes, or create tasks
-   outside the queue. The `/loop` driver will re-invoke in 20 minutes.
+   `[opus-worker] No unblocked [opus] tasks — standing by. Next run in ~20m.`
+   and exit cleanly. Do NOT invent work, self-assign documentation
+   passes, or create tasks outside the queue.
 
    Print the task and explain why you picked it.
 
@@ -294,8 +296,9 @@ Each invocation is one iteration — do the work, then exit cleanly:
     Paste the PR URL.
 
 11. **Reset.** Use the `start-next-task` skill to land on a fresh
-    branch off `origin/master`. Exit cleanly. The `/loop` driver will
-    re-invoke in 20 minutes.
+    branch off `origin/master`. Print
+    `[opus-worker] Iteration complete. Next run in ~20m.`
+    Then exit cleanly. The `/loop` driver will re-invoke in 20 minutes.
 
 If Mode above is `dry-run`: do startup actions only. Do not plan or
 pick a task. Wait for human instruction.
