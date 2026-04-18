@@ -271,13 +271,29 @@ Each invocation is one iteration — do the work, then exit cleanly:
    mid-task — the architect handles design conversations. Comment on
    your PR explaining the blocker and wait.
 
-9. **Finalize the PR.** Use `commit-and-push` to push work commits.
-   Remove the WIP label and release the claim:
-   `gh pr edit <N> --remove-label "fleet:wip"`
-   `fleet-claim release "<task ID>"`
-   Paste the PR URL.
+9. **Optimize before commit.** Run the `optimize` skill — `[opus]`
+   work almost always touches perf-critical code (engine/render,
+   engine/system, engine/world, engine/audio, engine/video,
+   engine/math). Optimize profiles the new code, identifies hotspots,
+   and verifies no regressions. Skip only for pure docs or mechanical
+   refactors that preserve hot-path structure.
 
-10. **Reset.** Use the `start-next-task` skill to land on a fresh
+   You don't need to invoke `simplify` separately — `commit-and-push`
+   runs it as part of its flow. Running `optimize` first matters
+   because optimize may add `IR_PROFILE_*` blocks and rationale
+   comments that simplify should leave alone.
+
+   The same applies when **addressing review feedback** — after
+   editing in response to comments, re-run `optimize` (if the perf
+   surface changed) before invoking `commit-and-push` to push the fix.
+
+10. **Finalize the PR.** Use `commit-and-push` to push work commits.
+    Remove the WIP label and release the claim:
+    `gh pr edit <N> --remove-label "fleet:wip"`
+    `fleet-claim release "<task ID>"`
+    Paste the PR URL.
+
+11. **Reset.** Use the `start-next-task` skill to land on a fresh
     branch off `origin/master`. Exit cleanly. The `/loop` driver will
     re-invoke in 20 minutes.
 
