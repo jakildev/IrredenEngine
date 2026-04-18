@@ -212,6 +212,7 @@ out = {
     "permissions": {
         "additionalDirectories": [repo_root],
         "allow": all_allows,
+        "defaultMode": "auto",
     }
 }
 
@@ -290,9 +291,16 @@ launch_cmd() {
 }
 
 # Single window, three rows:
-#   Top    (~45% height): sonnet authors + game-sonnet  — biggest panes
-#   Middle (~30% height): architects                    — medium panes
-#   Bottom (~25% height): reviewers + queue-manager     — small panes
+#   Top    (~32% height): autonomous workers (4 panes)  — small workspace
+#                         sonnet-fleet-1, sonnet-fleet-2, opus-worker, [game-sonnet]
+#   Middle (~40% height): architects (2 wide panes)     — interactive design
+#                         opus-architect, [game-architect] — biggest, most-used
+#   Bottom (~28% height): ops (3 panes)                 — small status panes
+#                         sonnet-reviewer, opus-reviewer, queue-manager
+#
+# The architect row is widest+tallest because it's where the human
+# spends interactive time. Workers and ops are autonomous loops you
+# only glance at.
 #
 # Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
 # Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
@@ -311,17 +319,16 @@ active_pane_id() {
     tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
 }
 
-# --- Row 1: authors (starts full-screen; will become top ~45%) ----------
+# --- Row 1: workers (starts full-screen, ends as top ~32%) -------------
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
 TOP1=$(active_pane_id)
 label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
 
-# --- Row 3 (bottom, ~25%): reviewers + queue-manager -------------------
-# Split off the bottom strip first. The percentage is relative to the
-# full window height at this point — 25% bottom, 75% top.
-tmux split-window -v -t "$TOP1" -p 25 \
+# --- Row 3 (bottom, ~28%): ops -----------------------------------------
+# Split off the bottom strip first.
+tmux split-window -v -t "$TOP1" -p 28 \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)"
 BOT1=$(active_pane_id)
@@ -339,52 +346,54 @@ tmux split-window -h -t "$BOT2" \
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
-# --- Row 2 (middle, ~30%): architects + opus-worker --------------------
-# Split off the middle row from TOP1. TOP1 is currently 75% of the
-# window. Splitting 40% off the bottom of that gives:
-#   TOP1 = 75% * 60% = ~45% of window  (authors)
-#   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
-tmux split-window -v -t "$TOP1" -p 40 \
+# --- Row 2 (middle, ~40%): architects ---------------------------------
+# Split off the middle row from TOP1. TOP1 is currently 72% of window
+# (after bottom 28%). Splitting 56% off the bottom of TOP1 gives:
+#   TOP1 = 72% * 44% = ~32% of window  (workers)
+#   MID  = 72% * 56% = ~40% of window  (architects — taller)
+tmux split-window -v -t "$TOP1" -p 56 \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd "$OPUS_MODEL" opus-architect)"
 MID1=$(active_pane_id)
 label_pane_id "$MID1" "opus-architect [opus 4.7]"
 
-tmux split-window -h -t "$MID1" \
-    -c "$ENGINE/.claude/worktrees/opus-worker" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
-MID2=$(active_pane_id)
-label_pane_id "$MID2" "opus-worker [opus 4.7]"
-
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$MID2" \
+    tmux split-window -h -t "$MID1" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$OPUS_MODEL" game-architect)"
-    MID3=$(active_pane_id)
-    label_pane_id "$MID3" "game-architect [opus 4.7]"
+    MID2=$(active_pane_id)
+    label_pane_id "$MID2" "game-architect [opus 4.7]"
 fi
 
-# --- Expand Row 1 (top) with remaining authors -------------------------
+# --- Expand Row 1 (top) with remaining workers -------------------------
+# Top row layout: 4 autonomous workers
+#   sonnet-fleet-1, sonnet-fleet-2, opus-worker, [game-sonnet]
 tmux split-window -h -t "$TOP1" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
 TOP2=$(active_pane_id)
 label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
 
+tmux split-window -h -t "$TOP2" \
+    -c "$ENGINE/.claude/worktrees/opus-worker" \
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
+TOP3=$(active_pane_id)
+label_pane_id "$TOP3" "opus-worker [opus 4.7]"
+
 if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    tmux split-window -h -t "$TOP2" \
+    tmux split-window -h -t "$TOP3" \
         -c "$GAME/.claude/worktrees/game-sonnet" \
         "$(launch_cmd "$SONNET_MODEL" game-sonnet)"
-    TOP3=$(active_pane_id)
-    label_pane_id "$TOP3" "game-sonnet [sonnet]"
+    TOP4=$(active_pane_id)
+    label_pane_id "$TOP4" "game-sonnet [sonnet]"
 fi
 
 # Enable pane border labels using @role (immune to program overrides)
 tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
-# Focus sonnet-fleet-1 on attach
-tmux select-pane -t "$TOP1"
+# Focus opus-architect on attach (the human's main interactive pane)
+tmux select-pane -t "$MID1"
 
 cat <<EOF
 
@@ -392,9 +401,16 @@ fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
 layout (single window, three rows):
-  top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
-  middle (med) — opus-architect  opus-worker  [game-architect]   (architects + worker)
-  bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
+  top (~32%, 4 panes) — sonnet-fleet-1  sonnet-fleet-2  opus-worker  [game-sonnet]   (autonomous workers)
+  middle (~40%, 2 panes, taller) — opus-architect  [game-architect]                  (interactive architects — biggest)
+  bottom (~28%, 3 panes) — sonnet-reviewer  opus-reviewer  queue-manager             (ops)
+
+effort levels:
+  opus agents (architects, opus-worker, opus-reviewer) — max
+  sonnet agents (workers, reviewer, queue-manager) — high
+  override per-agent with FLEET_EFFORT=<level> in the agent's env.
+
+permission mode: auto (model decides when to ask vs proceed)
 
 navigation (no prefix needed):
   Option+Up/Down/Left/Right — move to pane in that direction

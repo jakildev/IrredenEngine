@@ -38,6 +38,18 @@ ROLE="${2:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 MODE="${3:-dry-run}"
 LOOP_INTERVAL="${4:-}"
 
+# Effort level — derived from model. Opus agents get max thinking
+# budget (architects + workers do the hard reasoning). Sonnet agents
+# get high (good output without burning the budget on tasks where
+# diminishing returns kick in).
+case "$MODEL" in
+    opus|claude-opus*) EFFORT="max" ;;
+    sonnet|claude-sonnet*) EFFORT="high" ;;
+    *) EFFORT="high" ;;
+esac
+# Allow override from env if needed (e.g. a debugging session)
+EFFORT="${FLEET_EFFORT:-$EFFORT}"
+
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
@@ -66,7 +78,7 @@ rotate_log() {
     fi
 }
 
-log "starting ($MODEL) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
+log "starting ($MODEL effort=$EFFORT) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
 
 # --- First run: send the role slash command --------------------------------
 # If a loop interval is set and mode is live, wrap the role invocation in
@@ -74,9 +86,9 @@ log "starting ($MODEL) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
 # polling and external tmux timers).
 if [[ -n "$LOOP_INTERVAL" && "$MODE" == "live" ]]; then
     log "using /loop $LOOP_INTERVAL for scheduling"
-    claude --model "$MODEL" "/loop $LOOP_INTERVAL /role-$ROLE"
+    claude --model "$MODEL" --effort "$EFFORT" "/loop $LOOP_INTERVAL /role-$ROLE"
 else
-    claude --model "$MODEL" "/role-$ROLE $MODE"
+    claude --model "$MODEL" --effort "$EFFORT" "/role-$ROLE $MODE"
 fi
 last_exit=$?
 
@@ -121,6 +133,6 @@ while true; do
     esac
 
     log "resuming session (attempt $attempt)..."
-    claude --model "$MODEL" --continue "resume your work from where you left off"
+    claude --model "$MODEL" --effort "$EFFORT" --continue "resume your work from where you left off"
     last_exit=$?
 done
