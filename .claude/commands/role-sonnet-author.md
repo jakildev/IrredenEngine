@@ -121,6 +121,19 @@ limit. Each loop iteration:
    - **Title is NOT referenced in any open PR's title or branch name**
      (cross-check with the `gh pr list` output)
 
+   **Deterministic pickup — only these signals count:**
+   - The task's `Owner:` field in TASKS.md
+   - The task's `Blocked by:` field in TASKS.md
+   - Open PR titles/branches (the live in-flight signal)
+   - `fleet-claim`'s lock state (atomic claims)
+
+   Do NOT defer to free-form "directives", "recommendations", "fleet
+   notes", or any prose hint suggesting another agent should handle
+   the task. Reservations only count if held in `fleet-claim`. If a
+   task's `Blocked by:` says it depends on opus work, skip it (a
+   `[sonnet]` agent shouldn't pick `[opus]` tasks anyway). Otherwise
+   the task is yours to claim.
+
    **If no matching task exists, exit cleanly.** Print
    `no unblocked [sonnet] tasks — standing by` and stop. Do NOT
    invent work, self-assign documentation passes, or create tasks
