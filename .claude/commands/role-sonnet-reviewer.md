@@ -103,9 +103,34 @@ Each invocation is one iteration — do the work, then exit cleanly:
    candidate, in oldest-first order:
 
    **Engine PRs** (default repo):
-   a. Invoke the `review-pr` skill with the PR number.
-   b. The skill checks out the PR, reads the diff in context, writes
-      a structured review, and posts it.
+   a. **Detect stack PRs first.** A stack PR has multiple commits
+      whose subjects are prefixed with `T-NNN: ` (one prefix per
+      task in the chain). Check with:
+      `gh pr view <N> --json commits --jq '.commits[].messageHeadline'`
+      If you see two or more `T-NNN:` prefixes, this is a stack PR
+      and you MUST review each task's commits independently — the
+      worker chained dependent tasks into one PR for context
+      efficiency, but the review pass is still per-task.
+
+      For a stack PR:
+      - List task IDs from the prefixes (e.g. `T-005`, `T-007`).
+      - For each task, find its commits:
+        `gh pr view <N> --json commits --jq '.commits[] | select(.messageHeadline | startswith("T-005:")) | .oid'`
+      - Review only that task's diff:
+        `gh pr diff <N>` for the whole PR — then mentally segment
+        by task (commits and the PR description's `## T-NNN`
+        sections guide you), OR check out the PR and use
+        `git diff <previous-task-tip>...<this-task-tip>` for the
+        per-task slice.
+      - Write per-task findings in the review body under
+        `## T-NNN` headings. Verdict is one overall approval (the
+        whole PR merges as a unit), but the per-task structure
+        gives the author and the human a clear view of what's
+        clean vs what needs fixing per task.
+
+   b. **Single-task PR (most common):** Invoke the `review-pr`
+      skill with the PR number. The skill checks out the PR, reads
+      the diff in context, writes a structured review, and posts it.
 
    **Game PRs** (`<game-repo>`):
    a. Read the diff: `gh pr diff <N> --repo <game-repo>`
