@@ -88,14 +88,25 @@ When you do pick a task:
 4. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code:
    `fleet-run <executable-name>`
-5. Use the `commit-and-push` skill to open the PR. If the task has an
+5. **Polish before commit.** Run `optimize` then `simplify` on the
+   dirty working tree before invoking `commit-and-push`. This rule
+   applies to architects too — the architect's PRs touch core
+   engine code and need the same pre-commit polish as worker PRs.
+   - `optimize` — almost always applies (architect work is engine
+     core: render, ECS, math, audio, video). Profile, identify
+     hotspots, verify no regressions.
+   - `simplify` — every time, no exceptions.
+   When **addressing review feedback** (amending or pushing fixes),
+   re-run `simplify` (and `optimize` if the perf surface changed)
+   before pushing.
+6. Use the `commit-and-push` skill to open the PR. If the task has an
    `**Issue:** #N` field, include `Closes #N` in the PR body so the
    issue closes automatically when the PR merges.
-6. After the PR is open, release the claim and reset:
+7. After the PR is open, release the claim and reset:
    `fleet-claim release "<task ID>"`
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`.
-7. **Check for feedback labels on open PRs** before picking new work:
+8. **Check for feedback labels on open PRs** before picking new work:
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix")) | "#\(.number) \(.title)"'`
    **Skip** PRs labeled `human:wip` — human is working on it directly.
    If any PR has `human:needs-fix` or `fleet:needs-fix`:

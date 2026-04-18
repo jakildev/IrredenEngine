@@ -209,14 +209,30 @@ limit. Each loop iteration:
    ready. The queue-manager then adds it to TASKS.md. Move on to the
    next task.
 
-8. **Finalize the PR.** Use the `commit-and-push` skill to push your
+8. **Polish before commit.** Before invoking `commit-and-push`, run:
+   - **`optimize`** — but ONLY if the change touches a system tick,
+     a render pipeline stage, a shader, audio/video, math hot paths,
+     or anywhere on the per-frame critical path. Skip for pure docs,
+     tests, mechanical refactors, or build/CI changes.
+   - **`simplify`** — every time, no exceptions. Catches the smells
+     a reviewer would otherwise flag (per-entity getComponent,
+     naming slips, dead code, debug logs, tautological comments).
+
+   Order matters: `optimize` first if both apply (it may add
+   `IR_PROFILE_*` blocks and rationale comments that simplify
+   should leave alone). The same applies when **addressing review
+   feedback** — after editing in response to comments, re-run
+   `simplify` (and `optimize` if the perf surface changed) before
+   pushing the fix.
+
+9. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
    and release the claim:
    `gh pr edit <N> --remove-label "fleet:wip"`
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-9. **Reset.** Use the `start-next-task` skill to land on a fresh branch
+10. **Reset.** Use the `start-next-task` skill to land on a fresh branch
    off `origin/master`. Loop back to step 1.
 
 If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
