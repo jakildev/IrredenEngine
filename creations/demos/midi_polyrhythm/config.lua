@@ -7,7 +7,7 @@ config = {
     fullscreen = false,
     monitor_index = 1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "smooth",
+    subdivision_mode = "full",
     voxel_render_subdivisions = 1,
 
     video_capture_output_file = "polyrhythm_capture.mp4",

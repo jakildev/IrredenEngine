@@ -179,16 +179,16 @@ void setCameraPosition2DIso(vec2 pos);
 /// @}
 
 /// @{
-/// @name Voxel render mode
-/// @see VoxelRenderMode for SNAPPED vs SMOOTH trade-offs.
+/// @name Subdivision mode
+/// @see SubdivisionMode for NONE / POSITION_ONLY / FULL trade-offs.
 /// @see getVoxelRenderEffectiveSubdivisions for the value actually used by shaders.
-void setVoxelRenderMode(VoxelRenderMode mode);
-VoxelRenderMode getVoxelRenderMode();
-/// Set the subdivision count for @c SMOOTH mode. Higher values = smoother panning,
-/// more GPU work. Also multiplied by zoom in the compute pass.
+void setSubdivisionMode(SubdivisionMode mode);
+SubdivisionMode getSubdivisionMode();
+/// Set the base subdivision count. In @c FULL mode it is multiplied by zoom;
+/// in @c POSITION_ONLY it is used as-is; in @c NONE it is ignored (always 1).
 void setVoxelRenderSubdivisions(int subdivisions);
 int getVoxelRenderSubdivisions();
-/// The actual subdivisions value sent to the shader: @c subdivisions × zoom factor.
+/// The actual subdivisions value sent to the shader, accounting for mode and zoom.
 int getVoxelRenderEffectiveSubdivisions();
 void zoomMainBackgroundPatternIn();
 void zoomMainBackgroundPatternOut();

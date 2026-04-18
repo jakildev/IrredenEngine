@@ -10,7 +10,7 @@ local config_2kfullscreen = {
     fullscreen = true,
     monitor_index = -1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "snapped", -- "snapped" or "smooth"
+    subdivision_mode = "none", -- "none", "position", or "full"
     voxel_render_subdivisions = 1, -- effective subdivisions = base * zoom
 
     -- VIDEO CAPTURE SETTINGS
@@ -44,7 +44,7 @@ local config_1080_windowed = {
     fullscreen = false,
     monitor_index = -1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "smooth", -- "snapped" or "smooth"
+    subdivision_mode = "full", -- "none", "position", or "full"
     voxel_render_subdivisions = 1, -- effective subdivisions = base * zoom
 
     -- VIDEO CAPTURE SETTINGS
@@ -79,7 +79,7 @@ local config_1080_windowed_vertical = {
     fullscreen = false,
     monitor_index = -1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    voxel_render_mode = "smooth", -- "snapped" or "smooth"
+    subdivision_mode = "full", -- "none", "position", or "full"
     voxel_render_subdivisions = 1, -- effective subdivisions = base * zoom
 
     -- VIDEO CAPTURE SETTINGS

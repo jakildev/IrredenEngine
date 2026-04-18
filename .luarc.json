@@ -14,7 +14,7 @@
         "IRMath",
         "IRRender",
         "IRFitMode",
-        "IRVoxelRenderMode",
+        "IRSubdivisionMode",
         "IREntity",
         "IRAudio",
         "IRPhysics",

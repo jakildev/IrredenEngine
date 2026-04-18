@@ -54,6 +54,24 @@ constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_CHECKERBOARD = 32u;
 constant uint FLAG_DEPTH_COLOR  = 64u;
 
+// FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
+// FMA-reordered across GPU scheduling, so a mathematically-integer entry
+// of 5.0 can arrive as 4.9999999 or 5.0000001 on different frames, and
+// ceil() flips between 5 and 6 → ±1 surfaceD jitter → static-scene flicker
+// along shape silhouettes and checker cell boundaries. Biasing the ceil
+// input by a small negative epsilon collapses both noise neighborhoods
+// into the same integer output.
+constant float kCeilBiasEpsilon = 1.0e-3;
+inline int stableCeilToInt(float x) {
+    return int(ceil(x - kCeilBiasEpsilon));
+}
+// SDF carve-threshold jitter guard. The "sdf <= 0.5" carve test flips
+// in/out on FMA noise when the evaluated SDF lands exactly at ±0.5.
+// Biasing thresholds outward makes borderline voxels consistently included
+// across frames, eliminating parity flips on checker cells on a surface-d
+// boundary.
+constant float kSdfBiasEpsilon = 1.0e-3;
+
 // ---------- Color helpers ----------
 
 inline float3 hsvToRgb(float3 c) {
@@ -210,12 +228,12 @@ inline int boxDepthIntersect(int2 isoRel, float3 halfExtents, bool hollow) {
     }
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfBox(p, halfExtents) <= 0.5) {
+        if (sdfBox(p, halfExtents) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= dExit) {
@@ -231,14 +249,14 @@ inline int boxDepthIntersect(int2 isoRel, float3 halfExtents, bool hollow) {
         boxSlabIntersect(isoX, isoY, hInt, dIntEntry, dIntExit);
     }
 
-    int candidate = int(ceil(dEntry));
+    int candidate = stableCeilToInt(dEntry);
     if (float(candidate) > dExit) {
         return kInvalidDepth;
     }
     if (dIntEntry > dIntExit || float(candidate) <= dIntEntry) {
         return candidate;
     }
-    candidate = int(ceil(dIntExit));
+    candidate = stableCeilToInt(dIntExit);
     if (float(candidate) <= dExit) {
         return candidate;
     }
@@ -261,12 +279,12 @@ inline int sphereDepthIntersect(int2 isoRel, float radius, bool hollow) {
     const float tExit  = tClosest + halfChord;
 
     if (!hollow) {
-        int candidate = int(ceil(tEntry));
+        int candidate = stableCeilToInt(tEntry);
         if (float(candidate) > tExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfSphere(p, radius) <= 0.5) {
+        if (sdfSphere(p, radius) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= tExit) {
@@ -284,25 +302,27 @@ inline int sphereDepthIntersect(int2 isoRel, float radius, bool hollow) {
         tIntExit  = tClosest + intHalfChord;
     }
 
+    const int entryBase = stableCeilToInt(tEntry);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(tEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(tIntEntry, tExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(tIntExit);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(tIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > tExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -332,12 +352,12 @@ inline int cylinderDepthIntersect(
     }
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfCylinder(p, radius, halfHeight) <= 0.5) {
+        if (sdfCylinder(p, radius, halfHeight) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= dExit) {
@@ -360,25 +380,27 @@ inline int cylinderDepthIntersect(
         }
     }
 
+    const int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(dEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(dIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > dExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -412,13 +434,14 @@ inline int ellipsoidDepthIntersect(int2 isoRel, float3 radii, bool hollow) {
     const float dExit  = (-B + sqrtDisc) * inv2A;
 
     if (!hollow) {
+        const int entryBase = stableCeilToInt(dEntry);
         for (int i = 0; i < 3; ++i) {
-            const int candidate = int(ceil(dEntry)) + i;
+            const int candidate = entryBase + i;
             if (float(candidate) > dExit) {
                 return kInvalidDepth;
             }
             const float3 p = isoToLocal3D(isoRel, float(candidate));
-            if (sdfEllipsoid(p, radii) <= 0.5) {
+            if (sdfEllipsoid(p, radii) <= 0.5 + kSdfBiasEpsilon) {
                 return candidate;
             }
         }
@@ -449,25 +472,27 @@ inline int ellipsoidDepthIntersect(int2 isoRel, float3 radii, bool hollow) {
         }
     }
 
+    const int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 3; ++i) {
-        const int candidate = int(ceil(dEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 3; ++i) {
-        const int candidate = int(ceil(dIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > dExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -481,13 +506,14 @@ inline int generalDepthSearch(
     bool hollow,
     float dExtent
 ) {
-    const float dMin = floor(-dExtent);
-    const float dMax = ceil(dExtent);
-    for (float d = dMin; d <= dMax; d += 1.0) {
-        const float3 p = isoToLocal3D(isoRel, d);
+    const int dMin = int(floor(-dExtent));
+    const int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        const float3 p = isoToLocal3D(isoRel, float(d));
         const float sdf = evaluateSDF(p, shapeType, params);
-        if (sdf <= 0.5 && (!hollow || sdf >= -0.5)) {
-            return int(round(d));
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
         }
     }
     return kInvalidDepth;
@@ -653,9 +679,20 @@ kernel void c_shapes_to_trixel(
         const float t = clamp((float(surfaceD) + dColor) / denomC, 0.0, 1.0);
         baseColor.rgb = hsvToRgb(float3(0.66 * t, 1.0, 1.0));
     } else if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
-        const int3 voxelCell =
-            int3(round(isoToLocal3D(isoPixelRel, float(surfaceD))));
-        if (((voxelCell.x + voxelCell.y + voxelCell.z) & 1) != 0) {
+        // Checker at EFFECTIVE-voxel (scaled-integer) granularity — as
+        // sub grows (zoom/subdivision), the cube gets more cells, no
+        // collapse to physical voxels. Integer ops are bit-exact across
+        // frames (no FMA flicker).
+        const int iX = isoPixelRel.x;
+        const int iY = isoPixelRel.y;
+        const int d  = surfaceD;
+        const int nx6 = 2 * d - 3 * iX - iY;
+        const int ny6 = 2 * d + 3 * iX - iY;
+        const int nz6 = 2 * d + 2 * iY;
+        const int sx = (nx6 >= 0) ? (nx6 + 3) / 6 : -((-nx6 + 3) / 6);
+        const int sy = (ny6 >= 0) ? (ny6 + 3) / 6 : -((-ny6 + 3) / 6);
+        const int sz = (nz6 >= 0) ? (nz6 + 3) / 6 : -((-nz6 + 3) / 6);
+        if (((sx + sy + sz) & 1) != 0) {
             baseColor.rgb *= 0.55;
         }
     }

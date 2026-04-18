@@ -61,16 +61,18 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("")
         );
         m_config.addEntry(
-            "voxel_render_mode",
-            std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRRender::VoxelRenderMode>>(
-                IRRender::VoxelRenderMode::SNAPPED,
+            "subdivision_mode",
+            std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRRender::SubdivisionMode>>(
+                IRRender::SubdivisionMode::FULL,
                 [](const std::string &enumString) {
-                    if (enumString == "snapped")
-                        return IRRender::VoxelRenderMode::SNAPPED;
-                    if (enumString == "smooth")
-                        return IRRender::VoxelRenderMode::SMOOTH;
-                    IR_ASSERT(false, "Invalid enum value for voxel_render_mode");
-                    return IRRender::VoxelRenderMode::SNAPPED;
+                    if (enumString == "none")
+                        return IRRender::SubdivisionMode::NONE;
+                    if (enumString == "position")
+                        return IRRender::SubdivisionMode::POSITION_ONLY;
+                    if (enumString == "full")
+                        return IRRender::SubdivisionMode::FULL;
+                    IR_ASSERT(false, "Invalid enum value for subdivision_mode");
+                    return IRRender::SubdivisionMode::FULL;
                 }
             )
         );

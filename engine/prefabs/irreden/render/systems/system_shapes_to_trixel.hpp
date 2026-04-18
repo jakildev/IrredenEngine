@@ -177,10 +177,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         IRMath::trixelOriginOffsetZ1(canvasTextures.size_);
                     frameData.canvasSize = canvasTextures.size_;
                     frameData.shapeCount = static_cast<int>(gpuShapes.size());
+                    const auto renderMode = IRRender::getSubdivisionMode();
+                    const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
                     frameData.voxelRenderOptions = ivec2(
-                        static_cast<int>(IRRender::getVoxelRenderMode()),
-                        IRRender::getVoxelRenderEffectiveSubdivisions()
-                    );
+                        static_cast<int>(renderMode), effectiveSub);
                     if (cullBounds.has_value() && canvasId == mainCanvas) {
                         frameData.cullIsoMin = ivec2(glm::floor(cullBounds->min_));
                         frameData.cullIsoMax = ivec2(glm::ceil(cullBounds->max_));
@@ -194,9 +194,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         gpuShapes.size() * sizeof(GPUShapeDescriptor),
                         gpuShapes.data()
                     );
-
-                    const auto renderMode = IRRender::getVoxelRenderMode();
-                    const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
 
                     const int tileCount = buildAndUploadTileDescriptors(
                         gpuShapes, s_shapeTileDescBuf, effectiveSub, renderMode);
@@ -274,14 +271,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         Buffer *tileDescBuf,
         int effectiveSubdivisions,
-        IRRender::VoxelRenderMode renderMode
+        IRRender::SubdivisionMode renderMode
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
 
-        const bool smoothMode =
-            (renderMode != IRRender::VoxelRenderMode::SNAPPED);
-        const int sub = smoothMode ? effectiveSubdivisions : 1;
+        const int sub =
+            (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];

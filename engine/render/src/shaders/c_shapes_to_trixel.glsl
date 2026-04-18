@@ -67,6 +67,25 @@ const uint FLAG_VISIBLE = 8u;
 const uint FLAG_CHECKERBOARD = 32u;
 const uint FLAG_DEPTH_COLOR = 64u;
 
+// FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
+// FMA-reordered across GPU scheduling, so a mathematically-integer entry
+// of 5.0 can arrive as 4.9999999 or 5.0000001 on different frames, and
+// ceil() flips between 5 and 6 → ±1 surfaceD jitter → static-scene flicker
+// along shape silhouettes and checker cell boundaries. Biasing the ceil
+// input by a small negative epsilon collapses both neighborhoods of
+// noise-around-integer into the same integer output, eliminating the
+// flip without meaningfully altering non-knife-edge behavior.
+const float kCeilBiasEpsilon = 1.0e-3;
+int stableCeilToInt(float x) {
+    return int(ceil(x - kCeilBiasEpsilon));
+}
+// SDF carve-threshold jitter guard. The "sdf <= 0.5" carve test flips
+// in/out on FMA noise when the evaluated SDF lands exactly at ±0.5.
+// Biasing the thresholds slightly outward makes borderline voxels
+// consistently included across frames, eliminating parity flips on
+// checker cells that sit on a surface-d boundary.
+const float kSdfBiasEpsilon = 1.0e-3;
+
 // Per-tile descriptor stream. CPU batches every tile of every visible
 // shape into this SSBO, then issues one dispatchCompute(totalTiles, 1, 1).
 // Each workgroup handles one 8×8 iso-pixel tile; shapeIndex selects which
@@ -227,10 +246,10 @@ int boxDepthIntersect(ivec2 isoRel, vec3 halfExtents, bool hollow) {
     }
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) return kInvalidDepth;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfBox(p, halfExtents) <= 0.5) return candidate;
+        if (sdfBox(p, halfExtents) <= 0.5 + kSdfBiasEpsilon) return candidate;
         if (float(candidate + 1) <= dExit) return candidate + 1;
         return kInvalidDepth;
     }
@@ -242,10 +261,10 @@ int boxDepthIntersect(ivec2 isoRel, vec3 halfExtents, bool hollow) {
         boxSlabIntersect(isoX, isoY, hInt, dIntEntry, dIntExit);
     }
 
-    int candidate = int(ceil(dEntry));
+    int candidate = stableCeilToInt(dEntry);
     if (float(candidate) > dExit) return kInvalidDepth;
     if (dIntEntry > dIntExit || float(candidate) <= dIntEntry) return candidate;
-    candidate = int(ceil(dIntExit));
+    candidate = stableCeilToInt(dIntExit);
     if (float(candidate) <= dExit) return candidate;
     return kInvalidDepth;
 }
@@ -269,10 +288,10 @@ int sphereDepthIntersect(ivec2 isoRel, float radius, bool hollow) {
     float tExit  = tClosest + halfChord;
 
     if (!hollow) {
-        int candidate = int(ceil(tEntry));
+        int candidate = stableCeilToInt(tEntry);
         if (float(candidate) > tExit) return kInvalidDepth;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfSphere(p, radius) <= 0.5) return candidate;
+        if (sdfSphere(p, radius) <= 0.5 + kSdfBiasEpsilon) return candidate;
         if (float(candidate + 1) <= tExit) return candidate + 1;
         return kInvalidDepth;
     }
@@ -286,19 +305,21 @@ int sphereDepthIntersect(ivec2 isoRel, float radius, bool hollow) {
         tIntExit  = tClosest + intHalfChord;
     }
 
+    int entryBase = stableCeilToInt(tEntry);
     for (int i = 0; i < 2; i++) {
-        int candidate = int(ceil(tEntry)) + i;
+        int candidate = entryBase + i;
         if (float(candidate) > min(tIntEntry, tExit)) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
+    int exitBase = stableCeilToInt(tIntExit);
     for (int i = 0; i < 2; i++) {
-        int candidate = int(ceil(tIntExit)) + i;
+        int candidate = exitBase + i;
         if (float(candidate) > tExit) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
     return kInvalidDepth;
 }
@@ -321,10 +342,10 @@ int cylinderDepthIntersect(ivec2 isoRel, float radius, float halfHeight,
     if (dEntry > dExit) return kInvalidDepth;
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) return kInvalidDepth;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfCylinder(p, radius, halfHeight) <= 0.5) return candidate;
+        if (sdfCylinder(p, radius, halfHeight) <= 0.5 + kSdfBiasEpsilon) return candidate;
         if (float(candidate + 1) <= dExit) return candidate + 1;
         return kInvalidDepth;
     }
@@ -342,19 +363,21 @@ int cylinderDepthIntersect(ivec2 isoRel, float radius, float halfHeight,
         }
     }
 
+    int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 2; i++) {
-        int candidate = int(ceil(dEntry)) + i;
+        int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
+    int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 2; i++) {
-        int candidate = int(ceil(dIntExit)) + i;
+        int candidate = exitBase + i;
         if (float(candidate) > dExit) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
     return kInvalidDepth;
 }
@@ -389,11 +412,12 @@ int ellipsoidDepthIntersect(ivec2 isoRel, vec3 radii, bool hollow) {
     float dExit  = (-B + sqrtDisc) * inv2A;
 
     if (!hollow) {
+        int entryBase = stableCeilToInt(dEntry);
         for (int i = 0; i < 3; i++) {
-            int candidate = int(ceil(dEntry)) + i;
+            int candidate = entryBase + i;
             if (float(candidate) > dExit) return kInvalidDepth;
             vec3 p = isoToLocal3D(isoRel, float(candidate));
-            if (sdfEllipsoid(p, radii) <= 0.5) return candidate;
+            if (sdfEllipsoid(p, radii) <= 0.5 + kSdfBiasEpsilon) return candidate;
         }
         return kInvalidDepth;
     }
@@ -422,19 +446,21 @@ int ellipsoidDepthIntersect(ivec2 isoRel, vec3 radii, bool hollow) {
         }
     }
 
+    int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 3; i++) {
-        int candidate = int(ceil(dEntry)) + i;
+        int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
+    int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 3; i++) {
-        int candidate = int(ceil(dIntExit)) + i;
+        int candidate = exitBase + i;
         if (float(candidate) > dExit) break;
         vec3 p = isoToLocal3D(isoRel, float(candidate));
         float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) return candidate;
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) return candidate;
     }
     return kInvalidDepth;
 }
@@ -443,13 +469,14 @@ int ellipsoidDepthIntersect(ivec2 isoRel, vec3 radii, bool hollow) {
 // Depth is LOCAL (relative to shape origin), consistent with O(1) functions.
 int generalDepthSearch(ivec2 isoRel, uint shapeType, vec4 params, bool hollow,
                        float dExtent) {
-    float dMin = floor(-dExtent);
-    float dMax = ceil(dExtent);
-    for (float d = dMin; d <= dMax; d += 1.0) {
-        vec3 p = isoToLocal3D(isoRel, d);
+    int dMin = int(floor(-dExtent));
+    int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        vec3 p = isoToLocal3D(isoRel, float(d));
         float sdf = evaluateSDF(p, shapeType, params);
-        if (sdf <= 0.5 && (!hollow || sdf >= -0.5)) {
-            return int(round(d));
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
         }
     }
     return kInvalidDepth;
@@ -621,8 +648,28 @@ void main() {
             (float(surfaceD) + dColor) / denomC, 0.0, 1.0);
         baseColor.rgb = hsvToRgb(vec3(0.66 * t, 1.0, 1.0));
     } else if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
-        ivec3 voxelCell = ivec3(round(isoToLocal3D(isoPixelRel, float(surfaceD))));
-        if (((voxelCell.x + voxelCell.y + voxelCell.z) & 1) != 0) {
+        // Checker at EFFECTIVE-voxel (scaled-integer) granularity. As sub
+        // increases (zoom or subdivision), the cube gets more cells and
+        // the pattern refines — there's no collapse back to physical-voxel
+        // size. Pure integer math from the iso-projection inverse so the
+        // output is bit-exact across frames (no FMA flicker).
+        //
+        // Derivation: given scaled iso (iX, iY) and scaled depth d,
+        //   6·x_scaled = 2d − 3·iX − iY
+        //   6·y_scaled = 2d + 3·iX − iY
+        //   6·z_scaled = 2d + 2·iY
+        // Round each numerator by 6 half-away-from-zero so adjacent
+        // pixels straddling 0 get symmetric cell phase.
+        int iX = isoPixelRel.x;
+        int iY = isoPixelRel.y;
+        int d  = surfaceD;
+        int nx6 = 2 * d - 3 * iX - iY;
+        int ny6 = 2 * d + 3 * iX - iY;
+        int nz6 = 2 * d + 2 * iY;
+        int sx = (nx6 >= 0) ? (nx6 + 3) / 6 : -((-nx6 + 3) / 6);
+        int sy = (ny6 >= 0) ? (ny6 + 3) / 6 : -((-ny6 + 3) / 6);
+        int sz = (nz6 >= 0) ? (nz6 + 3) / 6 : -((-nz6 + 3) / 6);
+        if (((sx + sy + sz) & 1) != 0) {
             baseColor.rgb *= 0.55;
         }
     }
