@@ -156,10 +156,13 @@ conversation), use the same flow:
    - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
    - Acceptance criteria
 3. Save the plan to `~/.fleet/plans/issue-<N>.md` using the Write tool.
-4. Remove `fleet:needs-plan` and add `human:approved`:
-   `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan" --add-label "human:approved"`
+4. Remove `fleet:needs-plan`. Do NOT touch `human:approved` —
+   it's still on the issue from when the human triaged it, and
+   removing it would erase the human's signal:
+   `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan"`
    The queue-manager will ingest it on its next maintenance pass
-   and rename the plan file to `T-NNN.md`.
+   (its search now matches once `fleet:needs-plan` is gone) and
+   rename the plan file to `T-NNN.md`.
 
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.

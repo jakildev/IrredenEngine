@@ -144,10 +144,15 @@ Each invocation is one iteration — do the work, then exit cleanly:
       <pitfalls the worker should watch for>
       ```
 
-   d. Swap labels: remove `fleet:needs-plan`, add `human:approved`:
-      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan" --add-label "human:approved"`
-      The queue-manager will ingest it on its next maintenance pass
-      and rename the plan file from `issue-N.md` to `T-NNN.md`.
+   d. Remove the `fleet:needs-plan` label. Do NOT touch
+      `human:approved` — it's still on the issue from when the
+      human triaged it, and removing it would erase the human's
+      original signal:
+      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan"`
+      The queue-manager's ingestion search (`label:human:approved
+      -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info`)
+      now matches this issue on its next pass — it ingests the issue,
+      adds `fleet:queued`, and renames the plan file to `T-NNN.md`.
 
    If you disagree with the issue's direction, comment with your
    concerns but leave `fleet:needs-plan` on — let the human decide.
