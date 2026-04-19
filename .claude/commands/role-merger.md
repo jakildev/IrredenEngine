@@ -164,8 +164,12 @@ exit cleanly:
       **i. TASKS.md is the ONLY conflicted file.**
          - Use the **Read** tool to read TASKS.md.
          - Both versions appear in the file with `<<<<<<<`,
-           `=======`, `>>>>>>>` markers. The conflict is between
-           HEAD (the PR branch's TASKS.md edits) and origin/master.
+           `=======`, `>>>>>>>` markers. During `git rebase
+           origin/master`, the orientation is inverted from a
+           normal merge: HEAD is the upstream master commits being
+           replayed (the target), so `<<<<<<< HEAD` is master's
+           TASKS.md and the `>>>>>>> <sha>` side is the PR's
+           TASKS.md edits being applied on top.
          - The mechanical resolution: take BOTH new task entries
            (lines added by the PR and lines added by master), sort
            them by task ID under the `## Open` section, and remove
@@ -183,19 +187,32 @@ exit cleanly:
          - If further conflicts surface mid-rebase, fall through to
            case (iii) below.
 
-      **ii. Whitespace-only conflicts.** For each conflicted file,
-         use `git diff --check` to confirm the conflict markers
-         only surround whitespace differences. If yes:
-         - For each such file: `git checkout --theirs <file>`
-           (prefer the rebased master version's whitespace).
-         - `git add <files>`
-         - `git rebase --continue`
+      **ii. Whitespace-only conflicts.** For each conflicted file:
+         - Use the **Read** tool to read the conflicted file.
+         - Parse the conflict block(s): split on the `<<<<<<<`,
+           `=======`, `>>>>>>>` markers. Extract the "ours" half
+           (between `<<<<<<<` and `=======`) and the "theirs" half
+           (between `=======` and `>>>>>>>`). During rebase, ours =
+           master, theirs = the PR commit being applied.
+         - Normalize both halves: strip trailing whitespace from
+           each line, drop leading/trailing blank lines, treat
+           CRLF/LF/CR as equivalent. Compare the normalized halves
+           line-by-line.
+         - **If every conflict block in the file normalizes to
+           equal halves**, the file is whitespace-only and can be
+           auto-resolved by `git checkout --ours <file>` (prefer
+           master's whitespace; during rebase --ours is master).
+         - If ANY conflict block has a non-whitespace difference,
+           the file is semantic — fall through to case (iii) and
+           DO NOT auto-resolve any of the conflicts in this PR.
+           (One semantic conflict in a multi-file rebase taints the
+           whole rebase — don't half-resolve.)
+         - If every conflicted file passes the whitespace check:
+           `git add <files>`
+           `git rebase --continue`
          - Push, comment, cooldown label, log as above with body
            "Merger: whitespace-only conflicts auto-resolved by
            preferring master's formatting."
-         - **If `git diff --check` reports any non-whitespace
-           difference**, fall through to case (iii) — DO NOT
-           auto-resolve.
 
       **iii. Anything else (semantic conflict).**
          - `git rebase --abort`
@@ -242,9 +259,11 @@ exit cleanly:
    Then exit cleanly. The `/loop` driver will re-invoke in 10
    minutes.
 
-If Mode above is `dry-run`: do startup actions only, print the
-candidate list, and stop. Do not check out any branch, do not
-rebase, do not push.
+If Mode above is `dry-run`: do startup actions only and stop at
+the `merger standing by (dry-run)` line. The PR list is not
+fetched (consistent with startup, which deliberately skips that
+work) and no candidates are printed. Do not check out any branch,
+do not rebase, do not push.
 
 If you hit a usage-limit error: print the error and exit. The
 `/loop` driver and `fleet-babysit` wrapper handle backoff.
