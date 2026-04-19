@@ -89,7 +89,24 @@ If the user already gave you a task and a name is obvious, just use it. Do
 not pick a name with a random suffix — permanent worktrees work best with
 human-readable, topic-named branches.
 
-### 5. Check out the new branch off fresh origin/master
+### 5. Discard any staged or working-tree changes from the old branch
+
+Before switching, ensure the working tree is fully clean — even of files
+that look like a no-op (e.g. `TASKS.md` that was checked out from
+`origin/master` to read the latest queue while you were on the feature
+branch — that staging blocks the next branch checkout):
+
+```bash
+git restore --staged .
+git checkout -- .
+```
+
+If `git status` reported clean in the preconditions, these are no-ops.
+If it didn't, these clear any leftover staged changes that would otherwise
+fail the next `git checkout -b` with "your local changes would be
+overwritten by checkout."
+
+### 6. Check out the new branch off fresh origin/master
 
 ```bash
 git checkout -b claude/<new-area>-<new-topic> origin/master
@@ -103,7 +120,7 @@ you'd branch off your old PR branch and carry its commits forward.
 it. That would mix old PR commits with new work, which pollutes the old PR
 when you push. Always start a new branch.
 
-### 6. Sanity-check the state
+### 7. Sanity-check the state
 
 ```bash
 git status
@@ -115,7 +132,7 @@ git log --oneline -5
   commit, not one of your previous PR's commits. If it's still showing old
   PR commits, the checkout went wrong — stop and investigate.
 
-### 7. Read the relevant CLAUDE.md for the new task area
+### 8. Read the relevant CLAUDE.md for the new task area
 
 Before starting the next task, read the most specific `CLAUDE.md` for the
 directory you're about to work in. For example:
@@ -130,7 +147,7 @@ This primes your context with the module's conventions and gotchas before
 you start editing. If the subdirectory has a dedicated workflow that
 differs from the engine baseline, honor the subdirectory's rules.
 
-### 8. Report
+### 9. Report
 
 Reply with a compact summary:
 

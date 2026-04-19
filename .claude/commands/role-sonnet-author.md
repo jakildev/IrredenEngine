@@ -53,11 +53,19 @@ whatever directory the task touches before editing anything.
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. Sync TASKS.md from origin/master (the working copy may be stale
-   if the worktree is on a feature branch or a queue-manager push
-   landed since last fetch):
-   `git checkout origin/master -- TASKS.md`
-4. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
+3. **Read the latest TASKS.md from origin/master without staging it.**
+   The working copy may be stale if the worktree is on a feature
+   branch. Use `git show` to write the current master version to a
+   temp file — this does NOT touch the working tree or index, so it
+   won't break later branch checkouts:
+   `git show origin/master:TASKS.md > /tmp/tasks-master.md`
+   Then read `/tmp/tasks-master.md` with the Read tool.
+
+   Do NOT use `git checkout origin/master -- TASKS.md` here. That
+   stages the file. When `start-next-task` later tries
+   `git checkout -b new-branch origin/master` it errors with
+   "your local changes would be overwritten by checkout."
+4. Read `/tmp/tasks-master.md` (use the Read tool, not `cat`) — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
 5. Print a one-line summary: which `[sonnet]` items look unblocked and
@@ -272,4 +280,13 @@ budget split. Just wait.
 - Never touch the `.claude/worktrees/` layout.
 - Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select` — those are human-initiated.
+- **Never leave dirty edits uncommitted at the end of an iteration.**
+  If you made any changes to the working tree — manual edits, edits
+  that simplify applied, fixes from optimize, anything — you MUST
+  follow with `commit-and-push` to land them. The next iteration's
+  branch switch will discard them. If `simplify` ran and reported
+  fixes applied but you didn't proceed to commit, that's the bug:
+  finish the flow. Don't invoke `simplify` standalone — let
+  `commit-and-push` invoke it for you, so the commit step is
+  guaranteed to follow.
 - Single-command Bash only (see CRITICAL section above).

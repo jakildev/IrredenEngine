@@ -116,10 +116,16 @@ When you do pick a task:
 6. Use the `commit-and-push` skill to open the PR. If the task has an
    `**Issue:** #N` field, include `Closes #N` in the PR body so the
    issue closes automatically when the PR merges.
-7. After the PR is open, release the claim and reset:
+7. **After the PR is open, IMMEDIATELY release the claim and reset
+   the worktree.** Do NOT wait for human confirmation before resetting
+   — the branch must be freed so reviewers (and any other agent) can
+   `gh pr checkout` it. Holding the branch checked out blocks the
+   review pipeline.
    `fleet-claim release "<task ID>"`
    Then use the `start-next-task` skill to land on a fresh branch off
-   `origin/master`.
+   `origin/master`. AFTER the reset is complete, you may ask the human
+   "what's next?" — but the reset itself is non-negotiable, even in
+   interactive mode.
 8. **Check for feedback labels on open PRs** before picking new work:
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix")) | "#\(.number) \(.title)"'`
    **Skip** PRs labeled `human:wip` — human is working on it directly.
@@ -202,4 +208,14 @@ Stop and surface to the human when:
 - Never run `cmake --preset` — only `cmake --build` against the
   already-configured tree.
 - Never touch the `.claude/worktrees/` layout.
+- **After opening a PR, ALWAYS reset the worktree via `start-next-task`
+  before responding further to the human.** Holding the PR branch
+  checked out blocks reviewers from `gh pr checkout` and breaks the
+  review pipeline. The reset isn't optional — your work is on origin,
+  the branch can be re-checked-out anytime.
+- **Never leave dirty edits uncommitted at the end of an iteration.**
+  If you made any changes to the working tree — manual edits, edits
+  that simplify applied, fixes from optimize, anything — you MUST
+  follow with `commit-and-push` to land them. Don't invoke `simplify`
+  standalone — let `commit-and-push` invoke it for you.
 - Single-command Bash only (see CRITICAL section above).

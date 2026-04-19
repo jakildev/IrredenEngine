@@ -57,13 +57,17 @@ whatever directory the task touches before editing anything.
 1. `pwd` and confirm you are in the `opus-worker` worktree (not
    opus-architect, not a reviewer worktree).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. Sync TASKS.md and plan files from origin/master (the working copy
-   may be stale if the worktree is on a feature branch or a
-   queue-manager push landed since last fetch):
-   `git checkout origin/master -- TASKS.md`
-   `git checkout origin/master -- .fleet/plans/` (ignore errors if
-   the directory doesn't exist on master yet)
-4. Read `TASKS.md` (use the Read tool) — review the current queue.
+3. **Read the latest TASKS.md from origin/master without staging it.**
+   The working copy may be stale if the worktree is on a feature
+   branch. Use `git show` to write current master versions to temp
+   files — this does NOT touch the working tree or index, so it
+   won't break later branch checkouts:
+   `git show origin/master:TASKS.md > /tmp/tasks-master.md`
+   For plan files, list them with `git ls-tree -r origin/master --name-only -- .fleet/plans/`
+   then `git show origin/master:.fleet/plans/<file>` for any you
+   need to read. Do NOT use `git checkout origin/master -- ...` —
+   it stages the files and breaks later `git checkout -b`.
+4. Read `/tmp/tasks-master.md` (use the Read tool) — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
 5. Check for `fleet:needs-plan` issues:
@@ -317,6 +321,13 @@ driver and `fleet-babysit` wrapper handle backoff.
   `xcode-select` — those are human-initiated.
 - Never write plan files during task execution. Plan files are written
   only during the planning step (step 2) for `fleet:needs-plan` issues.
+- **Never leave dirty edits uncommitted at the end of an iteration.**
+  If you made any changes to the working tree — manual edits, edits
+  that simplify applied, fixes from optimize, anything — you MUST
+  follow with `commit-and-push` to land them. The next iteration's
+  branch switch will discard them. Don't invoke `simplify` standalone
+  — let `commit-and-push` invoke it for you, so the commit step is
+  guaranteed to follow.
 - **`~/.fleet/plans/` and `.fleet/plans/` are for task plans only.**
   The only valid filenames are `T-NNN.md` (canonical) and
   `issue-N.md` (pre-rename, awaiting queue-manager ingestion).
