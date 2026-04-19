@@ -19,10 +19,16 @@
 #   fleet-claim list
 #   fleet-claim cleanup [--repo <owner/repo>] ...
 #   fleet-claim clear-all
+#   fleet-claim molecule list
+#   fleet-claim molecule show <agent>
+#   fleet-claim molecule resume <agent>
+#   fleet-claim molecule advance <agent> <task-id> <new-state> [--pr URL] [--commit SHA]
+#   fleet-claim molecule complete <agent>
 
 set -euo pipefail
 
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
+MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
 
 # --- slug canonicalization ------------------------------------------------
 
@@ -433,16 +439,26 @@ cmd_stack() {
     printf '%s\n' "${tasks[@]}" > "$stack_dir/tasks"
     date +%s > "$stack_dir/created"
 
+    # Write a molecule file so a crashed agent can resume on restart.
+    # One molecule per agent (mirrors the per-agent stack constraint).
+    molecule_write_initial "$agent" "${tasks[@]}"
+
     echo "stack claimed (${#tasks[@]} tasks): ${tasks[*]} (agent: $agent)"
+    echo "molecule: $(molecule_file "$agent")"
 }
 
 cmd_release_stack() {
     # Release all tasks in an agent's stack claim.
+    # Also archives the molecule (so the crash-recovery file no longer
+    # competes with new TASKS.md work).
     local agent="${1:-unknown}"
     local stack_dir="$CLAIMS_DIR/_stack_${agent}"
 
     if [[ ! -f "$stack_dir/tasks" ]]; then
         echo "no stack claim for agent: $agent"
+        # An orphan molecule can outlive its stack file (e.g. via
+        # clear-all). molecule_archive is a no-op when nothing is there.
+        molecule_archive "$agent"
         return 0
     fi
 
@@ -454,17 +470,372 @@ cmd_release_stack() {
     done < "$stack_dir/tasks"
 
     rm -rf "$stack_dir"
+    molecule_archive "$agent"
+
     echo "released stack ($released tasks) for agent: $agent"
 }
 
 cmd_clear_all() {
+    # Wipe all claims (used by fleet-up on restart) but PRESERVE the
+    # molecule directory — molecules are crash-recovery state and must
+    # survive a fleet bounce.
     if [[ -d "$CLAIMS_DIR" ]]; then
         rm -rf "$CLAIMS_DIR"
         mkdir -p "$CLAIMS_DIR"
-        echo "all claims cleared"
+        echo "all claims cleared (molecules preserved)"
     else
         echo "no claims directory"
     fi
+}
+
+# --- molecules ------------------------------------------------------------
+#
+# Molecules are crash-recovery state for a stack claim. When `fleet-claim
+# stack` runs, it writes a yaml file at $MOLECULES_DIR/<agent>.yml listing
+# every task and its current state (pending|in-progress|done|failed). If
+# the worker crashes mid-stack, the next agent invocation reads the
+# molecule, picks up the in-progress task, and continues.
+#
+# The yaml format is a small fixed subset (no anchors, no flow style, no
+# multi-line scalars except `notes`). We hand-write it with printf and
+# parse it with a tiny inline python helper — no PyYAML dependency.
+#
+# Lifecycle:
+#   stack          → writes a fresh molecule (all pending)
+#   advance        → bumps a single task's state, optional pr/commit fields
+#   resume         → marks the next pending → in-progress, prints task ID
+#   complete       → archives molecule (moves to $MOLECULES_DIR/done/)
+#   release-stack  → also archives the molecule (sibling-effect)
+#   clear-all      → does NOT touch molecules (they outlive a fleet bounce)
+
+molecule_file() {
+    # Path to the active molecule file for an agent.
+    echo "$MOLECULES_DIR/$1.yml"
+}
+
+molecule_archive_dir() {
+    echo "$MOLECULES_DIR/done"
+}
+
+molecule_write_initial() {
+    # Write a fresh molecule for a stack claim. All tasks start as pending.
+    # $1 = agent, remaining args = task IDs in chain order.
+    local agent="$1"
+    shift
+    local -a tasks=("$@")
+
+    mkdir -p "$MOLECULES_DIR"
+    local file
+    file=$(molecule_file "$agent")
+    local created
+    created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local branch
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+    {
+        echo "name: ${agent}-$(date -u +%Y%m%d-%H%M%S)"
+        echo "agent: $agent"
+        echo "created: $created"
+        echo "branch: $branch"
+        echo "tasks:"
+        for tid in "${tasks[@]}"; do
+            echo "  - id: $tid"
+            echo "    state: pending"
+        done
+    } > "$file"
+}
+
+molecule_archive() {
+    # Move the active molecule for an agent into $MOLECULES_DIR/done/.
+    # Adds a timestamp suffix to avoid collisions across multiple stacks
+    # by the same agent.
+    local agent="$1"
+    local src
+    src=$(molecule_file "$agent")
+    if [[ ! -f "$src" ]]; then
+        return 0
+    fi
+    local archive_dir
+    archive_dir=$(molecule_archive_dir)
+    mkdir -p "$archive_dir"
+    local stamp
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    local dest="$archive_dir/${agent}-${stamp}.yml"
+    mv "$src" "$dest"
+    echo "molecule archived: $dest"
+}
+
+molecule_python() {
+    # Run a python helper against a molecule file. Args:
+    #   $1 = action (load|advance|resume)
+    #   $2 = molecule file path
+    #   remaining args = action-specific
+    python3 - "$@" <<'PYEOF'
+import sys, re, os, datetime
+
+action = sys.argv[1]
+path = sys.argv[2]
+extra = sys.argv[3:]
+
+def parse(path):
+    """Parse the small yaml subset used by molecules.
+
+    Top-level scalars: name/agent/created/branch.
+    A 'tasks:' key whose value is a list of dicts. Each dict starts
+    with '- id: ...' and may have 'state', 'pr', 'commit', 'started'.
+    Optional 'notes:' block scalar (we preserve it as a single string).
+    """
+    meta = {}
+    tasks = []
+    notes = None
+    current = None
+    in_tasks = False
+    in_notes = False
+    notes_lines = []
+    with open(path) as f:
+        for raw in f:
+            line = raw.rstrip('\n')
+            if in_notes:
+                if line.startswith('  ') or line == '':
+                    notes_lines.append(line[2:] if line.startswith('  ') else '')
+                    continue
+                in_notes = False
+                notes = '\n'.join(notes_lines).rstrip('\n')
+                notes_lines = []
+                # fall through to handle this line normally
+            if line == 'tasks:':
+                in_tasks = True
+                continue
+            if line.startswith('notes:'):
+                rest = line[len('notes:'):].strip()
+                if rest == '|':
+                    in_notes = True
+                    continue
+                else:
+                    notes = rest
+                    continue
+            if in_tasks:
+                m = re.match(r'^  - id:\s*(.+)$', line)
+                if m:
+                    if current is not None:
+                        tasks.append(current)
+                    current = {'id': m.group(1).strip()}
+                    continue
+                m = re.match(r'^    (\w+):\s*(.*)$', line)
+                if m and current is not None:
+                    current[m.group(1)] = m.group(2).strip()
+                    continue
+                if line.strip() == '':
+                    continue
+                # Anything else means we left the tasks block
+                if current is not None:
+                    tasks.append(current)
+                    current = None
+                in_tasks = False
+            m = re.match(r'^(\w+):\s*(.*)$', line)
+            if m and not in_tasks:
+                meta[m.group(1)] = m.group(2).strip()
+        if current is not None:
+            tasks.append(current)
+        if in_notes:
+            notes = '\n'.join(notes_lines).rstrip('\n')
+    return meta, tasks, notes
+
+def emit(path, meta, tasks, notes):
+    out = []
+    for k in ('name', 'agent', 'created', 'branch'):
+        if k in meta:
+            out.append(f"{k}: {meta[k]}")
+    out.append("tasks:")
+    for t in tasks:
+        out.append(f"  - id: {t['id']}")
+        for k in ('state', 'pr', 'commit', 'started'):
+            if k in t and t[k] != '':
+                out.append(f"    {k}: {t[k]}")
+    if notes is not None and notes != '':
+        out.append("notes: |")
+        for ln in notes.split('\n'):
+            out.append(f"  {ln}")
+    with open(path, 'w') as f:
+        f.write('\n'.join(out) + '\n')
+
+if not os.path.isfile(path):
+    print(f"molecule_python: {path} does not exist", file=sys.stderr)
+    sys.exit(2)
+
+meta, tasks, notes = parse(path)
+
+if action == 'load':
+    # Print a compact one-line-per-field dump for shell consumption.
+    for k, v in meta.items():
+        print(f"meta\t{k}\t{v}")
+    for t in tasks:
+        fields = '\t'.join(f"{k}={v}" for k, v in t.items())
+        print(f"task\t{fields}")
+    sys.exit(0)
+
+if action == 'advance':
+    # extra: [task_id, new_state, *kv-pairs like pr=URL commit=SHA]
+    if len(extra) < 2:
+        print("advance: usage: advance <task-id> <new-state> [pr=URL] [commit=SHA] [started=ISO]",
+              file=sys.stderr)
+        sys.exit(2)
+    tid, new_state = extra[0], extra[1]
+    # Reject typos like 'in-progres' that would otherwise corrupt the
+    # molecule silently (resume looks for exact 'in-progress' / 'pending').
+    valid_states = {'pending', 'in-progress', 'done', 'failed'}
+    if new_state not in valid_states:
+        print(f"advance: invalid state '{new_state}' (must be one of {sorted(valid_states)})",
+              file=sys.stderr)
+        sys.exit(2)
+    kv = {}
+    for arg in extra[2:]:
+        if '=' in arg:
+            k, v = arg.split('=', 1)
+            kv[k] = v
+    found = False
+    for t in tasks:
+        if t['id'] == tid:
+            t['state'] = new_state
+            for k, v in kv.items():
+                t[k] = v
+            if new_state == 'in-progress' and 'started' not in t and 'started' not in kv:
+                t['started'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            found = True
+            break
+    if not found:
+        print(f"advance: task {tid} not in molecule", file=sys.stderr)
+        sys.exit(1)
+    emit(path, meta, tasks, notes)
+    print(f"advanced: {tid} -> {new_state}")
+    sys.exit(0)
+
+if action == 'resume':
+    # Find the first task that is in-progress (resume in place) or
+    # the first pending (start it). Print the task ID on stdout.
+    # Exit 0 if a task was returned, exit 1 if molecule is fully done.
+    in_prog = next((t for t in tasks if t.get('state') == 'in-progress'), None)
+    if in_prog is not None:
+        print(in_prog['id'])
+        sys.exit(0)
+    pending = next((t for t in tasks if t.get('state') == 'pending'), None)
+    if pending is not None:
+        pending['state'] = 'in-progress'
+        pending['started'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        emit(path, meta, tasks, notes)
+        print(pending['id'])
+        sys.exit(0)
+    # Nothing left to do — every task is done or failed.
+    print("", end='')
+    sys.exit(1)
+
+print(f"unknown action: {action}", file=sys.stderr)
+sys.exit(2)
+PYEOF
+}
+
+cmd_molecule_list() {
+    mkdir -p "$MOLECULES_DIR"
+    local found=0
+    for file in "$MOLECULES_DIR"/*.yml; do
+        [[ -f "$file" ]] || continue
+        found=1
+        local agent
+        agent=$(basename "$file" .yml)
+        echo "molecule: $agent  ($file)"
+        local task_line
+        while IFS= read -r line; do
+            case "$line" in
+                meta*) ;;
+                task*)
+                    # task<TAB>id=T-001<TAB>state=pending<TAB>started=...
+                    local id state extra=""
+                    local fields="${line#task	}"
+                    id=""; state=""
+                    local IFS_BAK="$IFS"
+                    IFS=$'\t'
+                    # shellcheck disable=SC2206
+                    local -a parts=($fields)
+                    IFS="$IFS_BAK"
+                    for p in "${parts[@]}"; do
+                        case "$p" in
+                            id=*)    id="${p#id=}" ;;
+                            state=*) state="${p#state=}" ;;
+                            *)       extra="$extra $p" ;;
+                        esac
+                    done
+                    printf "  %-8s %-12s%s\n" "$id" "$state" "$extra"
+                    ;;
+            esac
+        done < <(molecule_python load "$file")
+    done
+    if [[ $found -eq 0 ]]; then
+        echo "no active molecules"
+    fi
+}
+
+cmd_molecule_show() {
+    local agent="$1"
+    local file
+    file=$(molecule_file "$agent")
+    if [[ ! -f "$file" ]]; then
+        echo "no molecule for agent: $agent" >&2
+        return 1
+    fi
+    # The yaml is human-readable as-is; just dump it.
+    while IFS= read -r line; do
+        echo "$line"
+    done < "$file"
+}
+
+cmd_molecule_resume() {
+    # Mark the next pending task as in-progress and print its ID.
+    # Exit 0 if a task was returned (worker should pick it up).
+    # Exit 1 if molecule has no remaining work — worker should run
+    # `fleet-claim molecule complete <agent>` to archive it.
+    local agent="$1"
+    local file
+    file=$(molecule_file "$agent")
+    if [[ ! -f "$file" ]]; then
+        echo "no molecule for agent: $agent" >&2
+        return 2
+    fi
+    if molecule_python resume "$file"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+cmd_molecule_advance() {
+    # Update one task's state inside an agent's molecule.
+    # Usage: molecule advance <agent> <task-id> <new-state> [pr=URL] [commit=SHA]
+    local agent="$1"
+    local task_id="$2"
+    local new_state="$3"
+    shift 3
+    local file
+    file=$(molecule_file "$agent")
+    if [[ ! -f "$file" ]]; then
+        echo "no molecule for agent: $agent" >&2
+        return 2
+    fi
+    molecule_python advance "$file" "$task_id" "$new_state" "$@"
+}
+
+cmd_molecule_complete() {
+    # Archive the molecule and release the stack claim. Use this when
+    # every task in the molecule is done and the worker has nothing
+    # left to resume.
+    local agent="$1"
+    local file
+    file=$(molecule_file "$agent")
+    if [[ ! -f "$file" ]]; then
+        echo "no molecule for agent: $agent" >&2
+        return 1
+    fi
+    # release-stack already archives the molecule via its sibling-effect.
+    cmd_release_stack "$agent"
 }
 
 # --- main -----------------------------------------------------------------
@@ -519,6 +890,52 @@ case "${1:-}" in
     clear-all)
         cmd_clear_all
         ;;
+    molecule)
+        sub="${2:-}"
+        if [[ -z "$sub" ]]; then
+            echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
+            exit 2
+        fi
+        case "$sub" in
+            list)
+                cmd_molecule_list
+                ;;
+            show)
+                if [[ -z "${3:-}" ]]; then
+                    echo "usage: fleet-claim molecule show <agent>" >&2
+                    exit 2
+                fi
+                cmd_molecule_show "$3"
+                ;;
+            resume)
+                if [[ -z "${3:-}" ]]; then
+                    echo "usage: fleet-claim molecule resume <agent>" >&2
+                    exit 2
+                fi
+                cmd_molecule_resume "$3"
+                ;;
+            advance)
+                if [[ -z "${5:-}" ]]; then
+                    echo "usage: fleet-claim molecule advance <agent> <task-id> <new-state> [pr=URL commit=SHA]" >&2
+                    exit 2
+                fi
+                shift 2
+                cmd_molecule_advance "$@"
+                ;;
+            complete)
+                if [[ -z "${3:-}" ]]; then
+                    echo "usage: fleet-claim molecule complete <agent>" >&2
+                    exit 2
+                fi
+                cmd_molecule_complete "$3"
+                ;;
+            *)
+                echo "unknown molecule subcommand: $sub" >&2
+                echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
+                exit 2
+                ;;
+        esac
+        ;;
     *)
         cat <<'USAGE'
 usage: fleet-claim <command> [args]
@@ -534,6 +951,17 @@ commands:
   cleanup [--repo o/r] ...      remove claims for merged/closed PRs
   clear-all                     wipe all claims (used by fleet-up on restart)
 
+molecule commands (crash-recovery state for stack claims):
+  molecule list                          show all active molecules + per-task state
+  molecule show <agent>                  print one molecule yaml verbatim
+  molecule resume <agent>                mark next pending → in-progress, print task ID
+                                         exit 0 = task ID printed, 1 = molecule fully done,
+                                         2 = no molecule for this agent
+  molecule advance <agent> <task-id> <new-state> [pr=URL] [commit=SHA]
+                                         transition one task's state. New state is one of
+                                         pending|in-progress|done|failed.
+  molecule complete <agent>              archive the molecule and release the stack-claim
+
 Dependency gate:
   claim and stack check the task's Blocked by: field in TASKS.md before
   granting the claim. If any blocker is not [x] done (or MERGED for PR
@@ -543,6 +971,10 @@ Stack claiming:
   stack claims a chain of tasks atomically. If any task is already claimed
   or has unresolved blockers, ALL previously claimed tasks in the chain are
   rolled back. The worker processes the stack sequentially on a single branch.
+
+  stack ALSO writes a molecule yaml at $FLEET_MOLECULES_DIR/<agent>.yml so a
+  crashed agent can resume on restart. Workers should call `molecule resume`
+  on startup before picking new TASKS.md work.
 
 Slug canonicalization:
   Title → lowercase → non-alnum to hyphen → collapse → trim → 80 chars.

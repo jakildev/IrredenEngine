@@ -191,8 +191,54 @@ Do the work, then exit cleanly:
    `gh issue list --repo jakildev/irreden --label "fleet:needs-plan" --state open --json number,title,body,comments`
    Same planning flow, but use `--repo jakildev/irreden` for label edits.
 
-3. **Pick the next task.** Read `TASKS.md` (use the Read tool) and find
-   the first `[ ]` item in `## Open` with `Model: opus` whose:
+3. **Resume an active molecule first, then pick the next task.**
+
+   Before reading TASKS.md, check whether you have an in-flight
+   stack-claim ("molecule") to finish:
+
+   `fleet-claim molecule resume <your-worktree-name>`
+
+   - **Exit 0** — a task ID was printed. That task is already part of
+     a stack you started earlier (possibly in a previous process before
+     a crash). It is now (or remains) marked `in-progress`. Skip the
+     normal pickup flow below and jump straight to step 6 to work it.
+     The PR for the stack is also already open — find it via the
+     branch name on `gh pr list` and continue committing to it
+     (use the `T-NNN: ` commit-subject prefix described in the stack
+     PR section).
+
+     **Resume vs restart judgment.** Read the worktree's git status:
+     - If there is no work-in-progress on the branch matching that
+       task ID (no relevant uncommitted edits, no half-finished
+       commit), simply **start the task fresh** as if you had just
+       claimed it.
+     - If there is partial work-in-progress (uncommitted edits, a
+       half-applied refactor, an opened-but-empty file) that looks
+       coherent and on-task, **resume from that state** — don't
+       discard it. The previous process did real work; reuse it.
+     - If the partial work looks incoherent (random files dirty,
+       half-applied edits to unrelated areas, mid-conflict markers),
+       discard it with `git restore --staged .` + `git checkout -- .`
+       and start the task fresh.
+
+     After committing a task in the molecule, advance the molecule
+     state so the next iteration can move on:
+     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
+     If your work failed and the task should be abandoned, use
+     `failed` instead of `done` and surface the failure to the human
+     before continuing.
+
+   - **Exit 1** — the molecule has no remaining work (every task is
+     `done` or `failed`). Archive it and release the stack-claim:
+     `fleet-claim molecule complete <your-worktree-name>`
+     Then proceed with the normal pickup flow.
+
+   - **Exit 2** — no molecule for this agent. Proceed with the normal
+     pickup flow below.
+
+   **Normal pickup (no active molecule):** Read `TASKS.md` (use the
+   Read tool) and find the first `[ ]` item in `## Open` with `Model:
+   opus` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
@@ -245,6 +291,14 @@ Do the work, then exit cleanly:
    stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
    Work the stack sequentially on a **single branch**, one commit per
    task, then `fleet-claim release-stack <your-worktree-name>`.
+
+   **`stack` also writes a molecule file** (`~/.fleet/molecules/<your-
+   worktree-name>.yml`) so a crash mid-stack won't strand the
+   remaining tasks. Step 3's molecule check picks it back up on the
+   next iteration. As you complete each task in the stack, run
+   `fleet-claim molecule advance` so the molecule reflects reality;
+   `release-stack` archives the molecule when you're done with the
+   chain.
 
    Use stack claiming when:
    - Two tasks are tightly coupled (e.g. foundation + first consumer)
