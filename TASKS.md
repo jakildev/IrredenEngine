@@ -339,11 +339,11 @@ Avoid:
   - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
   - **Links:**
 
-- [ ] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
+- [~] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
   - **ID:** T-018
   - **Area:** tooling, .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** skill-attach-screenshots
   - **Blocked by:** (none)
   - **Acceptance:** (1) `.claude/skills/attach-screenshots/SKILL.md` exists with documented API; (2) skill invokes `render-debug-loop` to capture before/after screenshots (stash-run-capture-restore for before, run-capture for after); (3) screenshots committed to `docs/pr-screenshots/<branch>/` as `<scenario>-before.png`, `<scenario>-after.png`, etc.; (4) skill returns a markdown snippet with inline GitHub raw URLs for the PR body; (5) "no obvious demo" case prompts worker or falls back to `IRShapeDebug`; (6) build-broken/crash/no-display failure modes reported cleanly — no partial commit; (7) tested end-to-end on a rendering PR against `IRShapeDebug`; (8) builds clean on active preset
   - **Issue:** #186
@@ -413,6 +413,7 @@ Avoid:
 
 - [~] **T-010** — Lighting: 3D occupancy grid infrastructure · Owner: render-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/188
 - [~] **T-017** — Lighting: C_LightSource component and light type enum · Owner: prefabs-light-source-component · PR: https://github.com/jakildev/IrredenEngine/pull/187
+- [~] **T-018** — Skill: attach-screenshots foundation — engine demo support · Owner: skill-attach-screenshots · PR: https://github.com/jakildev/IrredenEngine/pull/194
 
 ---
 
