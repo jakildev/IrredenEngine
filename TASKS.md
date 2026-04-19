@@ -262,11 +262,11 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [ ] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
+- [~] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
   - **ID:** T-012
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-ao-phase1
   - **Blocked by:** (none)
   - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
   - **Issue:** #166
@@ -378,7 +378,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-(none)
+- [~] **T-012** — Lighting: per-face voxel ambient occlusion Phase 1 · Owner: render-ao-phase1 · PR: https://github.com/jakildev/IrredenEngine/pull/197
 
 ---
 
