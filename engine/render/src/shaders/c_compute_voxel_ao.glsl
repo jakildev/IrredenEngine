@@ -74,7 +74,10 @@ void main() {
     // Reconstruct a voxel-space surface point. In POSITION_ONLY / FULL
     // subdivision modes rawDepth + iso coords are in sub-voxel units —
     // divide back to the integer voxel grid so occupancyGetBit reads from
-    // the same coordinate space the build step wrote.
+    // the same coordinate space the build step wrote. If the subdivision
+    // encoding ever shifts, update c_voxel_to_trixel_stage_1.glsl and
+    // c_voxel_to_trixel_stage_2.glsl in lockstep — all three shaders
+    // must agree on rawDepth scaling.
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (voxelRenderOptions.x != 0) {
@@ -109,8 +112,8 @@ void main() {
     if (occupancyGetBit(baseOut.x + t2.x, baseOut.y + t2.y, baseOut.z + t2.z)) occl++;
     if (occupancyGetBit(baseOut.x - t2.x, baseOut.y - t2.y, baseOut.z - t2.z)) occl++;
 
-    // Each filled edge-neighbor darkens by 15%; all four caps at 60%
+    // Each filled edge-neighbor darkens by 10%; all four caps at 60%
     // brightness keeps crease darkening visually subtle.
-    float ao = 1.0 - float(occl) * 0.15;
+    float ao = 1.0 - float(occl) * 0.10;
     imageStore(canvasAO, pixel, vec4(ao, 0.0, 0.0, 0.0));
 }

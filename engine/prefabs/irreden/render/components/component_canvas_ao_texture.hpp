@@ -6,6 +6,7 @@
 // C_TriangleCanvasTextures to enable AO for a canvas.
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/texture.hpp>
@@ -34,7 +35,14 @@ struct C_CanvasAOTexture {
         IRRender::destroyResource<Texture2D>(textureAO_.first);
     }
 
-    const Texture2D *getTexture() const { return textureAO_.second; }
+    const Texture2D *getTexture() const {
+        IR_ASSERT(
+            textureAO_.second != nullptr,
+            "C_CanvasAOTexture::getTexture() called on default-constructed "
+            "instance — must be constructed with a size."
+        );
+        return textureAO_.second;
+    }
 };
 
 } // namespace IRComponents
