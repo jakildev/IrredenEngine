@@ -101,16 +101,25 @@ Each invocation is one iteration — do the work, then exit cleanly:
    a. Read the existing Sonnet review in full first
       (`gh pr view <N> --comments`, add `--repo <game-repo>` for
       game PRs). Note what Sonnet flagged.
-   b. **Engine PRs:** Invoke the `review-pr` skill on the PR.
+   b. **Detect stack PRs.** Check the commit list:
+      `gh pr view <N> --json commits --jq '.commits[].messageHeadline'`
+      If multiple commit subjects start with `T-NNN: ` prefixes
+      (different task IDs), this is a stack PR. The Sonnet review
+      should already have per-task `## T-NNN` sections — your
+      Opus pass should mirror that structure, reviewing each
+      task's commits independently for the deeper invariants
+      (ECS, lifetime, GPU buffers) that Opus focuses on.
+   c. **Engine PRs:** Invoke the `review-pr` skill on the PR.
       **Game PRs:** Read the diff with `gh pr diff <N> --repo
       <game-repo>` and review manually (you cannot check out game
       PRs into this engine worktree). For game conventions, read
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   c. Focus your review on the items Sonnet could not confirm — do
+   d. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
-      X; on closer read I confirm/disagree because Y".
-   d. Post the review: write the review body to `/tmp/review-body.md`
+      X; on closer read I confirm/disagree because Y". For stack
+      PRs, do this per-task under matching `## T-NNN` headings.
+   e. Post the review: write the review body to `/tmp/review-body.md`
       using the **Write tool**, then:
       `gh pr review <N> --comment --body-file /tmp/review-body.md`
       For game PRs, add `--repo <game-repo>`.
@@ -119,7 +128,7 @@ Each invocation is one iteration — do the work, then exit cleanly:
       Do **not** use `--approve` or `--request-changes` — all fleet
       agents share one GitHub account, and GitHub rejects formal
       review actions on your own PRs.
-   e. **Set the PR label** to match your verdict (add `--repo
+   f. **Set the PR label** to match your verdict (add `--repo
       <game-repo>` for game PRs). The label is the primary signal
       the human uses. Always remove stale labels first:
       `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`

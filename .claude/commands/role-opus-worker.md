@@ -214,15 +214,55 @@ Each invocation is one iteration — do the work, then exit cleanly:
    has unresolved external blockers, all are rolled back. Within the
    stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
    Work the stack sequentially on a **single branch**, one commit per
-   task. Open one PR that covers the full chain (or stacked PRs if the
-   chain is large). When done:
-   `fleet-claim release-stack opus-worker`
+   task, then `fleet-claim release-stack opus-worker`.
 
    Use stack claiming when:
    - Two tasks are tightly coupled (e.g. foundation + first consumer)
    - Context from task A directly informs task B's implementation
    - The merge → unblock → re-pick latency would waste more budget
      than keeping the context
+
+   **Stack PR commit format (REQUIRED):** Each commit subject MUST
+   start with the task ID prefix `T-NNN: `:
+
+   ```
+   T-005: <short description>
+   T-007: <short description>
+   T-009: <short description>
+   ```
+
+   This is the load-bearing anchor that lets reviewers segment the
+   PR into per-task review passes. **Never edit the subject line
+   when amending a stack commit** — only touch the body. `git commit
+   --amend --no-edit` (to add staged files) and body-only amends are
+   safe; `--amend -m "..."` rewrites the subject and breaks reviewer
+   detection for that task. Commit SHAs change on any amend, which is
+   why we use the subject prefix as the anchor instead.
+
+   **Stack PR description format:** When opening a stack PR, write
+   the body with one section per task and tell reviewers to segment:
+
+   ```markdown
+   This PR implements a chain of dependent tasks. Reviewers: please
+   review each task's commit(s) independently — verdict is one
+   overall approval, but findings should be grouped per task.
+
+   ## T-005 — <task title>
+   What this implements, key files touched, what to focus on.
+   Commits prefixed `T-005:` belong to this task.
+
+   ## T-007 — <task title>
+   ...
+
+   Closes #N1
+   Closes #N2
+   Closes #N3
+   ```
+
+   When **amending** a stack commit (e.g. addressing review feedback
+   for one task), keep the `T-NNN: ` subject prefix intact — only
+   amend the body. If you need to add a follow-up commit for one
+   task, use the same prefix: `T-005: address review feedback`.
 
    For single tasks, use the normal claim flow:
    `git checkout -b claude/<area>-<topic>`

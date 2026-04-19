@@ -321,15 +321,27 @@ You are the sole TASKS.md editor. Each maintenance pass:
 
 3. **Sync merged PRs → Done (both repos):**
    Engine:
-   `gh pr list --repo <engine-repo> --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   `gh pr list --repo <engine-repo> --state merged --json number,title,mergedAt,commits --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    Game:
-   `gh pr list --repo <game-repo> --state merged --json number,title,mergedAt --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
+   `gh pr list --repo <game-repo> --state merged --json number,title,mergedAt,commits --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
-   For each recently merged PR whose title or branch matches an
-   `[~]` or `[ ]` task in the **matching repo's** TASKS.md: flip to
-   `[x]`, add the PR URL to **Links**, move to `## Done — last 20`.
-   Clean up plan files for the completed task (both local staging
-   and repo copy):
+
+   **For each merged PR**, find which TASKS.md tasks it completes:
+   - **Single-task PR (most common):** match the PR title or branch
+     name against `[~]` or `[ ]` task entries.
+   - **Stack PR (multi-task chain):** extract the task IDs from the
+     merged PR's commit subjects. The canonical query (extracts every
+     `T-NNN` referenced as a commit subject prefix, deduplicated):
+     ```
+     gh pr view <N> --repo <repo> --json commits \
+       --jq '[.commits[].messageHeadline | capture("^(?<id>T-[0-9]+):") | .id] | unique'
+     ```
+     Each unique task ID is one completed task. A stack PR can complete
+     2+ tasks in one merge — flip ALL of them.
+
+   For every task completed by the merge: flip to `[x]`, add the PR
+   URL to **Links**, move to `## Done — last 20`. Clean up plan
+   files for each completed task (both local staging and repo copy):
    `rm -f ~/.fleet/plans/<task-ID>.md`
    `rm -f .fleet/plans/<task-ID>.md`
 
