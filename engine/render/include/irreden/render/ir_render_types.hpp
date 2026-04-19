@@ -220,6 +220,7 @@ constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
 constexpr std::uint32_t kBufferIndex_OccupancyGrid = 28;
+constexpr std::uint32_t kBufferIndex_FrameDataSunShadow = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 /// @}
 

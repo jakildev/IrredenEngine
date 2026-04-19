@@ -467,4 +467,13 @@ bool RenderManager::isHoveredTrixelVisible() const {
     return m_hoveredTrixelVisible;
 }
 
+void RenderManager::setSunDirection(vec3 dir) {
+    const float len = glm::length(dir);
+    m_sunDirection = len > 0.0f ? dir / len : vec3(0.0f, 1.0f, 0.0f);
+}
+
+vec3 RenderManager::getSunDirection() const {
+    return m_sunDirection;
+}
+
 } // namespace IRRender

@@ -2,9 +2,9 @@
 
 // Screen-space lighting application pass. Runs after all geometry has been
 // rasterized to the trixel canvas (voxels, shapes, text) and before
-// compositing. Samples world-space lighting data (AO currently; shadows
-// and flood-fill propagation later) and modulates the canvas color in
-// place.
+// compositing. Samples world-space lighting data (AO, directional sun
+// shadow; flood-fill propagation later) and modulates the canvas color
+// in place.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -26,6 +26,11 @@ layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasAO;
 layout(binding = 3) uniform sampler2D paletteLUT;
+// canvasSunShadow sits at image unit 4. The Metal backend flattens
+// texture_ and imageTexture_ tables into a shared setTexture slot space,
+// so it cannot collide with paletteLUT at unit 3 — keep the unit
+// numbers in lockstep across GLSL and MSL.
+layout(rgba8, binding = 4) readonly uniform image2D canvasSunShadow;
 
 void main() {
     if (lightingEnabled == 0) {
@@ -46,19 +51,23 @@ void main() {
     }
 
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
-    const float ao  = imageLoad(canvasAO, pixel).r;
-    const vec4  src = imageLoad(trixelColors, pixel);
+    const float ao     = imageLoad(canvasAO, pixel).r;
+    // Shadow factor is 1.0 for lit pixels and kShadowDarken (0.45) for
+    // pixels whose sun ray hit an occluder in COMPUTE_SUN_SHADOW.
+    const float shadow = imageLoad(canvasSunShadow, pixel).r;
+    const vec4  src    = imageLoad(trixelColors, pixel);
 
     if (lutEnabled == 0) {
-        imageStore(trixelColors, pixel, vec4(src.rgb * ao, src.a));
+        imageStore(trixelColors, pixel, vec4(src.rgb * ao * shadow, src.a));
         return;
     }
 
     // LUT palette shading: AO drives the X axis (light level) and pixel
     // luminance selects the palette row so highlights and shadows get
-    // distinct cel-shade colour casts. The LUT encodes both the brightness
-    // curve and the shadow tint, so the plain AO multiply is skipped.
+    // distinct cel-shade colour casts. Shadow darkening is applied after
+    // the LUT lookup so palette shading and directional shadows compose
+    // without needing a 3D LUT.
     const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
     const vec4  lut       = texture(paletteLUT, vec2(ao, luminance));
-    imageStore(trixelColors, pixel, vec4(src.rgb * lut.rgb, src.a));
+    imageStore(trixelColors, pixel, vec4(src.rgb * lut.rgb * shadow, src.a));
 }

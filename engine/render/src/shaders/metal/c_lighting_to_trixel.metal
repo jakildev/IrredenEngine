@@ -2,10 +2,8 @@
 using namespace metal;
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
-// application pass — modulates trixelColors.rgb by the per-pixel AO
-// factor written to canvasAO.r by COMPUTE_VOXEL_AO. When lutEnabled is
-// set, the plain AO multiply is replaced by a luminance-indexed LUT
-// lookup whose X-axis is the AO value.
+// application pass — modulates trixelColors.rgb by (AO × sun-shadow),
+// with an optional LUT palette shading path keyed off lutEnabled.
 
 struct FrameDataLightingToTrixel {
     int   lightingEnabled;
@@ -20,6 +18,10 @@ kernel void c_lighting_to_trixel(
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
     texture2d<float, access::sample> paletteLUT [[texture(3)]],
+    // canvasSunShadow sits at texture unit 4 — Metal flattens texture
+    // and image tables into a shared slot space, so it cannot collide
+    // with paletteLUT at unit 3.
+    texture2d<float, access::read> canvasSunShadow [[texture(4)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     if (frameData.lightingEnabled == 0) {
@@ -40,19 +42,21 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
-    const float  ao  = canvasAO.read(uint2(pixel)).r;
-    const float4 src = trixelColors.read(uint2(pixel));
+    const float  ao     = canvasAO.read(uint2(pixel)).r;
+    const float  shadow = canvasSunShadow.read(uint2(pixel)).r;
+    const float4 src    = trixelColors.read(uint2(pixel));
 
     if (frameData.lutEnabled == 0) {
-        trixelColors.write(float4(src.rgb * ao, src.a), uint2(pixel));
+        trixelColors.write(float4(src.rgb * ao * shadow, src.a), uint2(pixel));
         return;
     }
 
     // LUT palette shading: AO drives the X axis (light level), luminance
-    // drives Y. The LUT encodes both the brightness curve and the shadow
-    // tint, so the plain AO multiply is skipped.
+    // drives Y. Shadow darkening is applied after the LUT lookup so
+    // palette shading and directional shadows compose without needing a
+    // 3D LUT.
     constexpr sampler s(filter::nearest, address::clamp_to_edge);
     const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
     const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
-    trixelColors.write(float4(src.rgb * lut.rgb, src.a), uint2(pixel));
+    trixelColors.write(float4(src.rgb * lut.rgb * shadow, src.a), uint2(pixel));
 }
