@@ -7,6 +7,7 @@
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -22,9 +23,7 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // reserve one for lighting — slot 27 is currently unused.
 constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 
-// CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO. Kept
-// simple during the skeleton phase; later phases will add inputs for AO,
-// shadow map, and flood-fill light volumes.
+// CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
 struct FrameDataLightingToTrixel {
     int lightingEnabled_ = 0;
     int padding0_ = 0;
@@ -32,24 +31,14 @@ struct FrameDataLightingToTrixel {
     int padding2_ = 0;
 };
 
-// T-011: screen-space lighting application pass.
+// Screen-space lighting application pass. Inserts between the final
+// geometry stage and the compositing stage; reads the canvas distance
+// texture plus per-pixel lighting inputs (currently AO via
+// C_CanvasAOTexture) and modulates canvas color in place.
 //
-// Inserts `LIGHTING_TO_TRIXEL` between the final geometry stage (text /
-// shapes / voxels — whichever a creation schedules last) and the
-// compositing stage (`TRIXEL_TO_TRIXEL` / `TRIXEL_TO_FRAMEBUFFER`). The
-// compute shader reconstructs a 3D world position from the distance
-// texture and modulates the canvas color by lighting data produced by
-// later phases (T-010 3D occupancy, T-012 AO, T-013 shadows).
-//
-// Acceptance-criterion notes:
-//  - (2) no-op when no lighting data bound: the UBO's `lightingEnabled`
-//    field stays at 0 until a later phase sets it, so every shader thread
-//    early-returns.
-//  - (4) GUI pixels untouched: we filter canvases on
-//    `C_TrixelCanvasRenderBehavior::useCameraPositionIso_` — the engine's
-//    GUI canvas is constructed with that flag false, so the dispatch
-//    skips GUI-sourced pixels entirely. World canvases (main + any
-//    per-entity canvas the creation parents into the world) pass through.
+// GUI pixels are left untouched: canvases with
+// `C_TrixelCanvasRenderBehavior::useCameraPositionIso_ == false` early-
+// return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
     static SystemId create() {
         static FrameDataLightingToTrixel frameData{};
@@ -74,18 +63,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         static Buffer *s_frameDataBuf =
             IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
 
-        return createSystem<C_TriangleCanvasTextures, C_TrixelCanvasRenderBehavior>(
+        return createSystem<
+            C_TriangleCanvasTextures,
+            C_TrixelCanvasRenderBehavior,
+            C_CanvasAOTexture
+        >(
             "LightingToTrixel",
             [](const C_TriangleCanvasTextures &canvasTextures,
-               const C_TrixelCanvasRenderBehavior &behavior) {
-                // Skip GUI canvases — acceptance criterion 4.
+               const C_TrixelCanvasRenderBehavior &behavior,
+               const C_CanvasAOTexture &ao) {
                 if (!behavior.useCameraPositionIso_) {
-                    return;
-                }
-                // Nothing to modulate until later lighting phases land;
-                // avoid a per-canvas dispatch that would shader-early-out
-                // anyway.
-                if (frameData.lightingEnabled_ == 0) {
                     return;
                 }
 
@@ -94,6 +81,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 );
                 canvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::READ_ONLY, TextureFormat::R32I
+                );
+                ao.getTexture()->bindAsImage(
+                    2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
                 );
                 s_frameDataBuf->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel
@@ -110,9 +100,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             },
             []() {
                 s_program->use();
-                // Lighting inputs land in later phases; until then the
-                // shader treats the pass as a no-op via `lightingEnabled`.
-                frameData.lightingEnabled_ = 0;
+                frameData.lightingEnabled_ = 1;
                 s_frameDataBuf->subData(
                     0, sizeof(FrameDataLightingToTrixel), &frameData
                 );

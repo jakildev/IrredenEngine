@@ -12,6 +12,9 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/render/components/component_occupancy_grid.hpp>
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -20,6 +23,7 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
+#include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -123,6 +127,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -508,5 +513,11 @@ void initEntities() {
         );
     }
 
-    IR_LOG_INFO("Active canvas entity: {}", IRRender::getActiveCanvasEntity());
+    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+    IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
+
+    IREntity::setComponent(mainCanvas, C_OccupancyGrid{256});
+    const ivec2 canvasSize =
+        IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
 }
