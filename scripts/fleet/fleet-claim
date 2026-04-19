@@ -30,18 +30,49 @@ set -euo pipefail
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
 
+# --- global --repo <namespace> ---------------------------------------------
+#
+# Engine and game both use T-NNN task IDs that overlap (engine T-001 and
+# game T-001 are different tasks). To keep their fleet-claim slugs distinct,
+# game-side claims pass `--repo game` BEFORE the subcommand:
+#
+#   fleet-claim claim "T-002" opus-worker-1                # engine: slug=t-002
+#   fleet-claim --repo game claim "T-002" opus-worker-1    # game: slug=game-t-002
+#   fleet-claim --repo game release "T-002"                # release with same prefix
+#
+# This is parsed BEFORE the subcommand so it doesn't collide with cleanup's
+# own `--repo <owner/repo>` flag (cleanup parses --repo args after its own
+# subcommand name, so they're scoped to that subcommand).
+
+REPO_NS=""
+while [[ $# -gt 0 && "$1" == --* ]]; do
+    case "$1" in
+        --repo)    REPO_NS="$2"; shift 2 ;;
+        --repo=*)  REPO_NS="${1#--repo=}"; shift ;;
+        *)         break ;;
+    esac
+done
+
 # --- slug canonicalization ------------------------------------------------
 
 slugify() {
     # Lowercase → replace non-alnum with hyphen → collapse runs → trim
     # edges → truncate. Pure POSIX tools, no bash 4+ features.
-    echo "$1" \
+    # Prepends the global REPO_NS prefix (set by --repo above) so that
+    # game and engine tasks with the same T-NNN don't collide.
+    local base
+    base=$(echo "$1" \
         | tr '[:upper:]' '[:lower:]' \
         | sed 's/[^a-z0-9]/-/g' \
         | sed 's/--*/-/g' \
         | sed 's/^-//' \
         | sed 's/-$//' \
-        | cut -c1-80
+        | cut -c1-80)
+    if [[ -n "$REPO_NS" ]]; then
+        echo "${REPO_NS}-${base}"
+    else
+        echo "$base"
+    fi
 }
 
 # --- dependency checking --------------------------------------------------
@@ -940,7 +971,12 @@ case "${1:-}" in
         ;;
     *)
         cat <<'USAGE'
-usage: fleet-claim <command> [args]
+usage: fleet-claim [--repo <ns>] <command> [args]
+
+global options (must come BEFORE the subcommand):
+  --repo <ns>                   namespace prefix for the slug (e.g. "game").
+                                Engine and game share T-NNN IDs; this keeps
+                                their lock dirs distinct. Omit for engine.
 
 commands:
   claim "<title>" [agent]       claim a task (exit 0=claimed, 1=taken)
@@ -950,7 +986,11 @@ commands:
   stack "T-1 T-2 ..." [agent]  atomically claim a dependency chain (all-or-nothing)
   release-stack <agent>         release all tasks in an agent's stack claim
   check-stale [max-secs]        release claims older than max-secs (default: 7200)
-  cleanup [--repo o/r] ...      remove claims for merged/closed PRs
+  cleanup [--repo o/r] ...      remove claims for merged/closed PRs.
+                                NOTE: cleanup's --repo takes a full owner/repo
+                                path (e.g. "jakildev/IrredenEngine"); it lives
+                                AFTER the subcommand and is unrelated to the
+                                global --repo namespace flag above.
   clear-all                     wipe all claims (used by fleet-up on restart)
 
 molecule commands (crash-recovery state for stack claims):
@@ -967,7 +1007,9 @@ molecule commands (crash-recovery state for stack claims):
 Dependency gate:
   claim and stack check the task's Blocked by: field in TASKS.md before
   granting the claim. If any blocker is not [x] done (or MERGED for PR
-  URLs), the claim is refused. This makes dependency enforcement mechanical.
+  URLs), the claim is refused. The cwd's git repo determines which
+  TASKS.md is consulted — `cd` into the right worktree before claiming
+  cross-repo tasks.
 
 Stack claiming:
   stack claims a chain of tasks atomically. If any task is already claimed
@@ -980,7 +1022,16 @@ Stack claiming:
 
 Slug canonicalization:
   Title → lowercase → non-alnum to hyphen → collapse → trim → 80 chars.
-  All agents derive the same slug from the same TASKS.md title.
+  Optionally prefixed with "<ns>-" via the global --repo flag.
+
+Examples:
+  fleet-claim claim "T-001" opus-worker-1                  # engine claim
+  fleet-claim --repo game claim "T-002" opus-worker-1      # game claim
+  fleet-claim --repo game release "T-002"                  # release game claim
+  fleet-claim list                                         # show all claims
+                                                           # (engine + game,
+                                                           #  prefixed slugs
+                                                           #  visible in list)
 USAGE
         exit 2
         ;;
