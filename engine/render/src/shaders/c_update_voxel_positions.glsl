@@ -32,17 +32,19 @@ void main() {
     uint entityIdx = 0;
     uint voxelOffset = 0;
     uint cumulative = 0;
+    bool found = false;
     for (uint e = 0; e < uint(entityCount); ++e) {
         uint nextCumulative = cumulative + transforms[e].voxelCount;
         if (globalId < nextCumulative) {
             entityIdx = e;
             voxelOffset = globalId - cumulative;
+            found = true;
             break;
         }
         cumulative = nextCumulative;
     }
 
-    if (globalId >= cumulative + transforms[entityIdx].voxelCount) {
+    if (!found) {
         return;
     }
 
