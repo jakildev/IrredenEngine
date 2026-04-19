@@ -301,11 +301,11 @@ Avoid:
   - **Notes:** explicitly [opus] — touches fleet-claim, role files, requires reasoning about edge cases (rebase failures, mid-chain rejections, partial approvals). Current one-PR-multi-commit approach (PR #182) stays in place until this lands. Subcomponents: worker creates chained branches + PRs; queue-manager detects chained PRs and handles cascade; fleet-claim tracks chain state in `~/.fleet/claims/_stack_<agent>/prs`; reviewer notes parent PRs in review. Filed from PR #182; related: jakildev/IrredenEngine#175.
   - **Links:**
 
-- [ ] **Fleet: resumable workflows (molecules) for stacked task chains** — extend `fleet-claim stack` to write a molecule YAML that survives agent crashes, allowing the next worker startup to auto-resume the in-progress step
+- [~] **Fleet: resumable workflows (molecules) for stacked task chains** — extend `fleet-claim stack` to write a molecule YAML that survives agent crashes, allowing the next worker startup to auto-resume the in-progress step
   - **ID:** T-021
   - **Area:** tooling, .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** fleet-resumable-molecules
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-claim stack` creates `~/.fleet/molecules/<name>.yml` with per-task state (pending/in-progress/done/failed); (2) worker crashes mid-stack (kill process during T-002) — on restart, worker reads molecule, resumes or restarts T-002, then completes T-003 without human intervention; (3) `fleet-claim molecule list/resume/advance/complete` commands work correctly; (4) molecule files survive `fleet-up` restarts and are NOT wiped by `fleet-claim clear-all`; (5) worker role files document "check molecule on startup before picking new work" as highest-priority step; (6) at least one real stack crashed-and-resumed in testing
   - **Issue:** #191
@@ -323,11 +323,11 @@ Avoid:
   - **Notes:** explicitly [opus] — conflict classification (mechanical vs semantic) requires judgment. v1 scope: TASKS.md sort-merge, whitespace-only, clean-rebase only. More heuristics added incrementally. Uses `--force-with-lease` not `--force`. Inspiration: gas town Refinery role.
   - **Links:**
 
-- [ ] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
+- [~] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
   - **ID:** T-023
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** fleet-witness-heartbeat
   - **Blocked by:** (none)
   - **Acceptance:** (1) each agent role file writes `date -u` to `~/.fleet/heartbeats/<agent-name>` every loop iteration (and at major checkpoints for long tasks); (2) `~/.fleet/heartbeats/` populates during normal operation; (3) witness pane in `fleet-up`, polls every 60s; (4) killing an agent with `kill -STOP` triggers a stale-heartbeat log entry within 60s of crossing the per-agent threshold; (5) healthy fleet shows "all healthy (N agents tracked)" with no false positives during normal long-running work; (6) opus-architect (interactive, no loop) is excluded from monitoring; (7) stale alerts written to `~/.fleet/alerts/<agent>.stuck`
   - **Issue:** #193
@@ -367,11 +367,11 @@ Avoid:
   - **Notes:** soft dependency on T-027 (#189, "Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
   - **Links:**
 
-- [ ] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
+- [~] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
   - **ID:** T-027
   - **Area:** engine/video, creations/demos/shape_debug
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** engine-video-auto-screenshot-helper
   - **Blocked by:** (none)
   - **Acceptance:** (1) engine exposes `AutoScreenshotShot`, `AutoScreenshotConfig`, and `enableAutoScreenshot()` (or equivalent declarative API); (2) `shape_debug/main.cpp` ported to helper — hand-written `ShotConfig`/`g_shots`/`AutoScreenshot` system deleted, net line count goes down; (3) `fleet-run IRShapeDebug --auto-screenshot 10` produces same screenshot set as before; (4) a second creation opts into helper with a 3-shot table and produces 3 screenshots (proof-of-reuse gate); (5) `.claude/skills/render-debug-loop/SKILL.md` updated to point at helper; (6) builds clean on `linux-debug`
   - **Issue:** #189
@@ -395,6 +395,9 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
+- [~] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
+- [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
