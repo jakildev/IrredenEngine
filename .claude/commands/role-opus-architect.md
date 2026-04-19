@@ -127,18 +127,28 @@ When you do pick a task:
    "what's next?" — but the reset itself is non-negotiable, even in
    interactive mode.
 8. **Check for feedback labels on open PRs** before picking new work:
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix")) | "#\(.number) \(.title)"'`
+   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title)"'`
    **Skip** PRs labeled `human:wip` — human is working on it directly.
-   If any PR has `human:needs-fix` or `fleet:needs-fix`:
+
+   **Priority order**: `human:needs-fix` > `fleet:needs-fix` > `fleet:has-nits`.
+   `fleet:has-nits` means the PR is approved but the reviewer flagged
+   optional improvements that should land before merge — address them.
+
+   If any PR has `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits`:
    a. Read ALL comments:
       `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // "general")] \(.body)"'`
       `gh api repos/jakildev/IrredenEngine/pulls/<N>/reviews --jq '.[] | select(.body != "") | .body'`
+      For `fleet:has-nits`: focus on the latest review's `### Nits`
+      section.
    b. Remove the feedback label immediately:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "fleet:needs-fix"`
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
    c. Address every piece of feedback. Build with `fleet-build`.
    d. Push fixes using `commit-and-push`.
-   e. If it was `human:needs-fix`, add `fleet:changes-made`:
-      `gh pr edit <N> --add-label "fleet:changes-made"`
+   e. Response label:
+      - `human:needs-fix` → add `fleet:changes-made`:
+        `gh pr edit <N> --add-label "fleet:changes-made"`
+      - `fleet:needs-fix` / `fleet:has-nits` → no response label
+        needed; existing `fleet:approved` (if present) stays valid.
       `gh pr comment <N> --body "Addressed feedback: <summary>"`
 
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick

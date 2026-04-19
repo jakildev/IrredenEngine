@@ -244,6 +244,27 @@ Rules for the review body:
   - **needs-fix** — one or more needs-fix items. No blockers.
   - **blocker** — at least one blocker. Merging would break master.
 
+**The bright line between Nits and needs-fix:**
+
+A "Nit" is a **truly optional** improvement the author may skip without
+hurting the merge. Anything you describe with phrases like "must resolve
+before merge", "pre-merge ask", "the comment and code must agree",
+"safe to merge once X is resolved", or "needs to be reconciled" is
+**by definition NOT a Nit** — it is a **needs-fix** item. Move it. The
+verdict drops to `needs-fix`.
+
+The contradiction "approve, but please fix X before merge" is forbidden.
+If X must be fixed before merge, the verdict is needs-fix; if it doesn't,
+say so and stop putting it in the body. The author and the human both
+read the verdict label as the primary signal — equivocating in the body
+defeats the workflow.
+
+**Nits are still encouraged** — author-agents now scan approved PRs for
+any "Nits" section and address every item before considering the PR
+landed (see the role files). So put real nits in the Nits section
+freely; they will get acted on. The bar isn't "is this nit worth
+mentioning?" — it's "is this nit a merge blocker or not?"
+
 **Do not use `gh pr review --approve` or `--request-changes`.** All fleet
 agents share the same GitHub account, and GitHub's API rejects formal
 review actions on your own PRs. The `--comment` review above is sufficient;
@@ -253,23 +274,31 @@ merge. Merging is always the user's call.
 ### 5b. Set the PR label to match the verdict
 
 After posting the review comment, set the label so the human can see
-at a glance which PRs are ready. **Always remove stale labels before
-adding the new one** — a PR should have exactly one fleet label at a
-time.
+at a glance which PRs are ready. **Always remove stale verdict labels
+before adding the new one** — a PR should have exactly one verdict
+label (`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at any
+time. The `fleet:has-nits` label is orthogonal — it can ride on top
+of `fleet:approved`.
 
 ```bash
-# For approve:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"
+# For approve, no nits in body:
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:approved"
 
-# For needs-fix:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"
+# For approve WITH a non-empty Nits section in the body:
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved" --add-label "fleet:has-nits"
+
+# For needs-fix (nits roll into the fix work; no separate label):
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"
 
 # For blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --add-label "fleet:blocker"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --add-label "fleet:blocker"
 ```
 
-This label is the **primary signal** the human uses to decide what to
-merge. The comment body has the details; the label has the verdict.
+The verdict label is the **primary signal** the human uses to decide
+what to merge. The comment body has the details. The `fleet:has-nits`
+label tells the author "you've been approved, and there are nits to
+clean up before this lands" — author roles poll for it and address
+the nits without losing the approval.
 
 ### 6. Report back
 

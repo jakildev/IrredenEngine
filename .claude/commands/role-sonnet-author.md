@@ -77,12 +77,17 @@ Default: run continuously until the human stops you or you hit a usage
 limit. Each loop iteration:
 
 1. **Check for feedback labels on open PRs.**
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
+   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
 
    **Skip** PRs labeled `human:wip` — human is working on it directly.
 
-   If any PR has `human:needs-fix`, `human:blocker`, or `fleet:needs-fix`,
-   address the **oldest** one first. Human feedback takes priority.
+   **Priority order** (address one PR per iteration, oldest within each tier):
+   1. `human:needs-fix` / `human:blocker` — human review feedback, top priority
+   2. `fleet:needs-fix` — fleet review wants concrete fixes before merge
+   3. `fleet:has-nits` — PR is approved, but the reviewer flagged optional
+      improvements that should land before merge to keep code quality high.
+      The cost of a fix-and-push iteration is tiny vs merging with known
+      smells. Address every nit unless it's purely subjective preference.
 
    For each flagged PR:
    a. Read **all** feedback (two separate commands):
@@ -91,9 +96,15 @@ limit. Each loop iteration:
       The first gets conversation-level comments. The second gets
       inline review comments on specific lines — this is where most
       human feedback lives. Address every comment, not just the first.
+
+      **For `fleet:has-nits`** (PR was approved, reviewer flagged
+      improvements): focus on the latest review's `### Nits` section.
+      Address every nit unless it's purely subjective preference. The
+      reviewer's "Nits" section is the comprehensive list — treat it
+      like a checklist.
    b. **Immediately remove the feedback label** to prevent another agent
       from also picking it up:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix"`
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
    c. Address every piece of feedback. Make the edits, build with
       `fleet-build --target <name>`.
    d. Push fixes using `commit-and-push`.
@@ -103,12 +114,15 @@ limit. Each loop iteration:
         `gh pr edit <N> --add-label "fleet:changes-made"`
       - If it was `fleet:needs-fix` → no response label needed
         (fleet reviewer will re-review automatically on next poll)
+      - If it was `fleet:has-nits` → no response label needed; the
+        existing `fleet:approved` stays valid (cleanups don't
+        invalidate the approval)
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
    f. Remove stale fleet review labels (`fleet:needs-fix`,
       `fleet:blocker`) if present — but **keep `fleet:approved`**.
-      The fleet's approval is still valid; human tweaks don't
-      invalidate it. The reviewer will re-review only if the stale
-      labels triggered it.
+      The fleet's approval is still valid; human tweaks and nit
+      cleanups don't invalidate it. The reviewer will re-review only
+      if the stale labels triggered it.
    g. Move to the next loop iteration.
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
