@@ -353,14 +353,15 @@ A reasonable starting setup with the model split in mind:
 | Worktree            | Repo   | Model  | Role                                                |
 |---------------------|--------|--------|-----------------------------------------------------|
 | `opus-architect`    | engine | Opus   | Core engine work, ECS/render/audio. Stand-by.       |
+| `opus-worker-1`     | engine | Opus   | Plans `fleet:needs-plan` issues, executes `[opus]` tasks |
+| `opus-worker-2`     | engine | Opus   | Second opus-worker pane — parallel planning/execution    |
 | `sonnet-fleet-1`    | engine | Sonnet | TASKS.md `[sonnet]` items, tests, docs              |
-| `sonnet-fleet-2`    | engine | Sonnet | TASKS.md `[sonnet]` items, tests, docs              |
 | `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
 | `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
 | `queue-manager`     | engine | Sonnet | Task intake — categorizes and files new tasks       |
 | `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
 
-The first six live in `~/src/IrredenEngine/.claude/worktrees/`. The
+The first seven live in `~/src/IrredenEngine/.claude/worktrees/`. The
 last (`game-architect`) lives inside the game repo at
 `~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
 because the game is its own git repo with its own PR namespace.
@@ -385,8 +386,9 @@ cd ~/src/IrredenEngine
 git fetch origin master
 
 git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  origin/master
+git worktree add -b fleet/opus-worker-1   .claude/worktrees/opus-worker-1   origin/master
+git worktree add -b fleet/opus-worker-2   .claude/worktrees/opus-worker-2   origin/master
 git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
-git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
 git worktree add -b fleet/queue-manager   .claude/worktrees/queue-manager   origin/master
@@ -402,10 +404,10 @@ Verify:
 git worktree list
 ```
 
-You should see the main clone on `master` plus six engine worktrees
-(`opus-architect`, `sonnet-fleet-1`, `sonnet-fleet-2`, `sonnet-reviewer`,
-`opus-reviewer`, `queue-manager`) each on their own `fleet/*` seed
-branch, plus a seventh `game-architect` worktree under
+You should see the main clone on `master` plus seven engine worktrees
+(`opus-architect`, `opus-worker-1`, `opus-worker-2`, `sonnet-fleet-1`,
+`sonnet-reviewer`, `opus-reviewer`, `queue-manager`) each on their own
+`fleet/*` seed branch, plus an eighth `game-architect` worktree under
 `creations/game/` if the game repo is present. The `fleet/` prefix
 keeps these distinct from `claude/<area>-<topic>` agent branches so
 `gh pr list` and branch-completion never confuse them.
@@ -1258,8 +1260,8 @@ This validates the agent has read the game `CLAUDE.md` correctly.
 - Did the `[~]` → `[x]` move land in the merged commit, and did the
   Done list pick it up?
 - Did `gh pr list` show the claim quickly enough that
-  `sonnet-fleet-2` would not have picked the same task?
-  (Test: while sonnet-fleet-1 is mid-task, switch to sonnet-fleet-2
+  `opus-worker-2` would not have picked the same task?
+  (Test: while opus-worker-1 is mid-task, switch to opus-worker-2
   and ask it to "list candidate tasks." It should NOT include the
   in-flight task.)
 - Did the build go cleanly with

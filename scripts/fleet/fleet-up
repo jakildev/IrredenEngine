@@ -4,9 +4,9 @@
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
 # then builds a single tmux session "fleet" with one window "agents"
-# containing up to 9 tiled panes (7 engine + 2 game if the game repo
-# is present) — each launching `claude` with the right model and the
-# matching role slash command in dry-run mode.
+# containing up to 8 tiled panes (7 engine + 1 game architect if the
+# game repo is present) — each launching `claude` with the right model
+# and the matching role slash command in dry-run mode.
 #
 # Source of truth: scripts/fleet/fleet-up in the engine repo.
 # Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
@@ -69,9 +69,9 @@ ensure_worktree() {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker       fleet/opus-worker
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-1     fleet/opus-worker-1
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-2     fleet/opus-worker-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
@@ -80,10 +80,23 @@ if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
-    ensure_worktree "$GAME" .claude/worktrees/game-sonnet     fleet/game-sonnet
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
+
+# Warn about legacy worktrees from the pre-restructure layout.
+# We don't auto-remove them (they may have uncommitted work) — just
+# point the human at them.
+warn_legacy_worktree() {
+    local wt="$1"
+    if [[ -d "$wt" ]]; then
+        echo "fleet-up: legacy worktree at $wt is no longer used."
+        echo "          remove with: git worktree remove $wt (after committing/stashing any work)"
+    fi
+}
+warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
+warn_legacy_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"
+warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 
 # ----------------------------------------------------------------------
 # Step 2: reset each worktree to a fresh branch off origin/master
@@ -115,18 +128,15 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker"     claude/opus-worker-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker-1"   claude/opus-worker-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker-2"   claude/opus-worker-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
-fi
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/game-sonnet" claude/game-sonnet-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -223,15 +233,12 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-reviewer opus-reviewer queue-manager; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
-fi
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME"
 fi
 
 # ----------------------------------------------------------------------
@@ -294,8 +301,8 @@ launch_cmd() {
 }
 
 # Single window, three rows:
-#   Top    (~32% height): autonomous workers (4 panes)  — small workspace
-#                         sonnet-fleet-1, sonnet-fleet-2, opus-worker, [game-sonnet]
+#   Top    (~32% height): autonomous workers (3 panes)  — small workspace
+#                         sonnet-fleet-1, opus-worker-1, opus-worker-2
 #   Middle (~40% height): architects (2 wide panes)     — interactive design
 #                         opus-architect, [game-architect] — biggest, most-used
 #   Bottom (~28% height): ops (3 panes)                 — small status panes
@@ -304,6 +311,12 @@ launch_cmd() {
 # The architect row is widest+tallest because it's where the human
 # spends interactive time. Workers and ops are autonomous loops you
 # only glance at.
+#
+# Worker mix: 2× opus-worker, 1× sonnet-fleet. Most engine work is
+# core/perf-sensitive (rendering, ECS, audio/video, math) which needs
+# Opus reasoning; one Sonnet pane covers tests, docs, and mechanical
+# refactors. The two opus-workers can plan + execute in parallel,
+# halving the planning queue latency.
 #
 # Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
 # Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
@@ -369,27 +382,19 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
 fi
 
 # --- Expand Row 1 (top) with remaining workers -------------------------
-# Top row layout: 4 autonomous workers
-#   sonnet-fleet-1, sonnet-fleet-2, opus-worker, [game-sonnet]
+# Top row layout: 3 autonomous workers
+#   sonnet-fleet-1, opus-worker-1, opus-worker-2
 tmux split-window -h -t "$TOP1" \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
+    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
 TOP2=$(active_pane_id)
-label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
+label_pane_id "$TOP2" "opus-worker-1 [opus 4.7]"
 
 tmux split-window -h -t "$TOP2" \
-    -c "$ENGINE/.claude/worktrees/opus-worker" \
+    -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
 TOP3=$(active_pane_id)
-label_pane_id "$TOP3" "opus-worker [opus 4.7]"
-
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    tmux split-window -h -t "$TOP3" \
-        -c "$GAME/.claude/worktrees/game-sonnet" \
-        "$(launch_cmd "$SONNET_MODEL" game-sonnet)"
-    TOP4=$(active_pane_id)
-    label_pane_id "$TOP4" "game-sonnet [sonnet]"
-fi
+label_pane_id "$TOP3" "opus-worker-2 [opus 4.7]"
 
 # Enable pane border labels using @role (immune to program overrides)
 tmux set-option -t "$SESSION" pane-border-status top
@@ -404,13 +409,13 @@ fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
 layout (single window, three rows):
-  top (~32%, 4 panes) — sonnet-fleet-1  sonnet-fleet-2  opus-worker  [game-sonnet]   (autonomous workers)
+  top (~32%, 3 panes) — sonnet-fleet-1  opus-worker-1  opus-worker-2                  (autonomous workers)
   middle (~40%, 2 panes, taller) — opus-architect  [game-architect]                  (interactive architects — biggest)
   bottom (~28%, 3 panes) — sonnet-reviewer  opus-reviewer  queue-manager             (ops)
 
 effort levels:
-  opus agents (architects, opus-worker, opus-reviewer) — max
-  sonnet agents (workers, reviewer, queue-manager) — high
+  opus agents (architects, opus-workers, opus-reviewer) — max
+  sonnet agents (worker, reviewer, queue-manager) — high
   override globally by exporting FLEET_EFFORT=<level> before fleet-up.
   (to change one pane, edit fleet-babysit's case statement — fleet-up
   does not thread env per-pane.)
@@ -433,9 +438,9 @@ the session if claude exits (crash, usage limit, network drop).
 
 scheduling (live mode): polling roles use Claude's /loop for managed intervals:
   sonnet-reviewer — /loop 3m     opus-reviewer — /loop 30m
-  opus-worker     — /loop 20m   queue-manager  — /loop 5m
-  authors — continuous (no /loop)
-  opus-architect — interactive (no /loop, human's design partner)
+  opus-worker-1/2 — /loop 20m    queue-manager — /loop 5m
+  sonnet-fleet-1  — continuous (no /loop)
+  opus-architect, game-architect — interactive (no /loop, human's design partners)
 
 logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 
