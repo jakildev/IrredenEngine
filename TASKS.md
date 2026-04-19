@@ -262,11 +262,11 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [ ] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
+- [~] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
   - **ID:** T-013
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-shadow-map-phase2
   - **Blocked by:** (none)
   - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
   - **Issue:** #167
@@ -378,6 +378,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 - [~] **T-015** — Lighting: LUT palette shading Phase 4 · Owner: render-lut-palette-shading · PR: https://github.com/jakildev/IrredenEngine/pull/198
 
 ---
