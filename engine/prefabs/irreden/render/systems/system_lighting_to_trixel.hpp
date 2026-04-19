@@ -5,6 +5,9 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <array>
+#include <cstdint>
+
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -24,11 +27,17 @@ constexpr int kLightingToTrixelGroupSize = 16;
 constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 
 // CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
+// `lutEnabled_` activates palette LUT shading, which replaces the plain
+// grayscale AO multiplication with a luminance-indexed palette lookup
+// whose X-axis is driven by the per-pixel AO value.
+// `debugLightLevel_` is reserved for future shadow-preview use; it is
+// kept in the UBO for std140 layout stability but the shader currently
+// uses AO.r as the LUT X-axis input.
 struct FrameDataLightingToTrixel {
-    int lightingEnabled_ = 0;
-    int padding0_ = 0;
-    int padding1_ = 0;
-    int padding2_ = 0;
+    int   lightingEnabled_  = 0;
+    int   lutEnabled_       = 0;
+    float debugLightLevel_  = 0.0f;
+    int   padding2_         = 0;  // std140 alignment
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -57,11 +66,46 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataLightingToTrixel
         );
+        IRRender::createNamedResource<Texture2D>(
+            "PaletteLUT_Nearest",
+            TextureKind::TEXTURE_2D, 256, 16,
+            TextureFormat::RGBA8, TextureWrap::CLAMP_TO_EDGE, TextureFilter::NEAREST
+        );
+        IRRender::createNamedResource<Texture2D>(
+            "PaletteLUT_Linear",
+            TextureKind::TEXTURE_2D, 256, 16,
+            TextureFormat::RGBA8, TextureWrap::CLAMP_TO_EDGE, TextureFilter::LINEAR
+        );
 
         static ShaderProgram *s_program =
             IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
         static Buffer *s_frameDataBuf =
             IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
+        static Texture2D *s_paletteLUT =
+            IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
+        // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
+        // Same data for both filter variants; the difference is sampling mode.
+        {
+            std::array<std::uint8_t, 256 * 16 * 4> data{};
+            for (int row = 0; row < 16; ++row) {
+                for (int col = 0; col < 256; ++col) {
+                    const float t = static_cast<float>(col) / 255.0f;
+                    const std::size_t idx = static_cast<std::size_t>(row * 256 + col) * 4;
+                    data[idx + 0] = static_cast<std::uint8_t>((0.15f + 0.85f * t) * 255.0f);
+                    data[idx + 1] = static_cast<std::uint8_t>((0.20f + 0.80f * t) * 255.0f);
+                    data[idx + 2] = static_cast<std::uint8_t>((0.35f + 0.65f * t) * 255.0f);
+                    data[idx + 3] = 255u;
+                }
+            }
+            s_paletteLUT->subImage2D(
+                0, 0, 256, 16,
+                PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, data.data()
+            );
+            IRRender::getNamedResource<Texture2D>("PaletteLUT_Linear")->subImage2D(
+                0, 0, 256, 16,
+                PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, data.data()
+            );
+        }
 
         return createSystem<
             C_TriangleCanvasTextures,
@@ -85,6 +129,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 ao.getTexture()->bindAsImage(
                     2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
                 );
+                // Palette LUT on texture unit 3; image unit 2 is AO. GLSL
+                // keeps sampler/image namespaces separate, but Metal does
+                // not — keep LUT at 3 for cross-backend parity.
+                s_paletteLUT->bind(3);
                 s_frameDataBuf->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel
                 );
