@@ -275,8 +275,23 @@ mkdir -p "$HOME/.fleet/plans"
 # Default mode: dry-run. The agents do their startup actions and then
 # stand by for human instruction. Promote a pane to full operation by
 # typing in it: "you can stop dry-run mode and start working".
+#
+# Argument parsing:
+#   fleet-up [mode] [--no-attach]
+#     mode = dry-run | live (default: dry-run)
+#     --no-attach: skip the auto-attach (live mode only). Useful for
+#                  headless runs / CI / tests that just need the panes
+#                  spawned but don't want to attach.
 
-MODE="${1:-dry-run}"
+MODE="dry-run"
+ATTACH_LIVE=1   # in live mode, attach to the tmux session at the end
+for arg in "$@"; do
+    case "$arg" in
+        dry-run|live) MODE="$arg" ;;
+        --no-attach)  ATTACH_LIVE=0 ;;
+        *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
@@ -440,6 +455,21 @@ scheduling (live mode): polling roles use Claude's /loop for managed intervals:
 logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 
 other modes you can pass to fleet-up:
-  fleet-up dry-run   # default — startup + stand-by
-  fleet-up live      # full loop from the start (use after a clean dry run)
+  fleet-up dry-run               # default — startup + stand-by, no auto-attach
+  fleet-up live                  # full loop from the start, auto-attaches tmux
+  fleet-up live --no-attach      # full loop, leave detached (CI / headless)
+
+graceful shutdown:
+  fleet-down                     # graceful: send "exit", wait, kill, clear claims
+  fleet-down --force             # immediate: just kill the tmux session
 EOF
+
+# In live mode, attach to the tmux session so the user lands in the
+# fleet without a separate `tmux attach`. dry-run mode leaves the
+# session detached so the user can confirm panes spawned cleanly
+# before opting in.
+if [[ "$MODE" == "live" && "$ATTACH_LIVE" -eq 1 ]]; then
+    echo
+    echo "fleet-up: attaching to tmux session 'fleet' (Ctrl-a d to detach)..."
+    exec tmux attach-session -t "$SESSION"
+fi
