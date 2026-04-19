@@ -466,7 +466,15 @@ other modes you can pass to fleet-up:
 
 graceful shutdown:
   fleet-down                     # graceful: send "exit", wait, kill, clear claims
+  fleet-down --wait              # wait for active claims to drain first
+  fleet-down --summary           # ask each pane to write a session summary
   fleet-down --force             # immediate: just kill the tmux session
+
+architect session resume:
+  ~/.fleet/sessions/<role>.session-id is preserved across fleet-down/up
+  cycles. opus-architect and game-architect will resume their previous
+  conversation on the next fleet-up. To force a fresh architect session
+  next time, delete the corresponding .session-id file.
 EOF
 
 # In live mode, attach to the tmux session so the user lands in the
