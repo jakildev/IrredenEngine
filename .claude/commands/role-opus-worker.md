@@ -86,8 +86,15 @@ whatever directory the task touches before editing anything.
 
 ## Loop behavior
 
-The `/loop` driver re-invokes this role every 20 minutes in live mode.
-Each invocation is one iteration — do the work, then exit cleanly:
+Each invocation of this role is **one task iteration in a fresh
+`claude` process** — `fleet-babysit` relaunches you every ~20 minutes
+in live mode (or sooner if you exit faster), with an empty
+conversation each time. Don't try to "remember" anything from the
+prior iteration; everything you need lives in TASKS.md, the open-PR
+list, plan files under `~/.fleet/plans/`, and the role file you're
+reading right now.
+
+Do the work, then exit cleanly:
 
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
@@ -360,14 +367,15 @@ Each invocation is one iteration — do the work, then exit cleanly:
 
 11. **Reset.** Use the `start-next-task` skill to land on a fresh
     branch off `origin/master`. Print
-    `[opus-worker] Iteration complete. Next run in ~20m.`
-    Then exit cleanly. The `/loop` driver will re-invoke in 20 minutes.
+    `[opus-worker] Iteration complete. Next run in ~20m (fresh context).`
+    Then exit cleanly. `fleet-babysit` will relaunch a fresh `claude`
+    in ~20 minutes — no carry-over from this task.
 
 If Mode above is `dry-run`: do startup actions only. Do not plan or
 pick a task. Wait for human instruction.
 
-If you hit a usage-limit error: print the error and exit. The `/loop`
-driver and `fleet-babysit` wrapper handle backoff.
+If you hit a usage-limit error: print the error and exit. `fleet-babysit`
+detects exit code 2 and waits the limit-delay before relaunching.
 
 ## Hard rules
 

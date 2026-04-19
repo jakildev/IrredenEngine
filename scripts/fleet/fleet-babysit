@@ -2,21 +2,32 @@
 # fleet-babysit — auto-resume wrapper for fleet Claude Code agents.
 #
 # Runs claude interactively with a role slash command, then auto-resumes
-# the session if claude exits (usage limit, crash, network drop, etc.).
-# Works identically for engine and game worktrees — the cwd determines
-# which repo/session context claude uses.
+# on exit. Two distinct lifecycles:
+#
+#   Workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
+#   queue-manager): each task iteration is a *fresh* claude invocation,
+#   so context doesn't accumulate across tasks. After clean exit (task
+#   done), babysit waits the LOOP_INTERVAL (or CLEAN_DELAY if no
+#   interval) and then relaunches with the role slash command — no
+#   --continue, no --resume. Mid-task crashes still use --continue so
+#   partial work isn't lost.
+#
+#   Architects (opus-architect, game-architect): one long conversation,
+#   preserved across crashes AND across fleet-down/fleet-up cycles via
+#   ~/.fleet/sessions/<role>.session-id. Always --resume on relaunch
+#   so the human's interactive design conversation never resets.
 #
 # Usage:
 #   fleet-babysit <model> <role> [mode] [loop-interval]
 #
 # Examples:
 #   fleet-babysit sonnet sonnet-author dry-run
-#   fleet-babysit sonnet sonnet-author live          # continuous, no /loop
-#   fleet-babysit sonnet sonnet-reviewer live 10m    # /loop every 10 min
-#   fleet-babysit opus  opus-reviewer live 30m       # /loop every 30 min
-#   fleet-babysit sonnet queue-manager live 15m      # /loop every 15 min
-#   fleet-babysit opus  opus-architect live           # on-demand, no /loop
-#   fleet-babysit opus  game-architect live           # game worktree cwd
+#   fleet-babysit sonnet sonnet-author live          # fresh per task, no interval
+#   fleet-babysit sonnet sonnet-reviewer live 3m     # fresh per task, 3m between
+#   fleet-babysit opus  opus-reviewer live 30m       # fresh per task, 30m between
+#   fleet-babysit sonnet queue-manager live 5m       # fresh per task, 5m between
+#   fleet-babysit opus  opus-architect live          # interactive, no interval, --resume
+#   fleet-babysit opus  game-architect live          # game worktree cwd, --resume
 #
 # Behavior by mode:
 #   dry-run  — start the agent, auto-resume on crash, but do NOT
@@ -24,9 +35,6 @@
 #              when to promote to live.
 #   live     — auto-resume on any exit. Keeps the agent running
 #              indefinitely until the fleet session is killed.
-#
-# On resume, sends "resume your work from where you left off" so the
-# agent auto-continues without human intervention.
 #
 # Source of truth: scripts/fleet/fleet-babysit in the engine repo.
 # Installed to ~/bin/fleet-babysit by scripts/fleet/install.sh.
@@ -55,8 +63,23 @@ EFFORT="${FLEET_EFFORT:-$EFFORT}"
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
-CLEAN_DELAY=60        # seconds to wait after clean exit
+CLEAN_DELAY=60        # seconds to wait after clean exit (no LOOP_INTERVAL)
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
+
+# Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds.
+# This replaces what /loop used to do internally, so that babysit can
+# enforce the between-iteration delay at the *process* level (each
+# iteration is a fresh `claude` invocation with cleared context).
+parse_interval_seconds() {
+    local s="$1"
+    [[ -z "$s" ]] && { echo 0; return; }
+    case "$s" in
+        *s) echo "${s%s}" ;;
+        *m) echo $(( ${s%m} * 60 )) ;;
+        *h) echo $(( ${s%h} * 3600 )) ;;
+        *)  echo "$s" ;;  # bare number = seconds
+    esac
+}
 
 # Logging
 LOG_DIR="${FLEET_LOG_DIR:-$HOME/.fleet/logs}"
@@ -82,15 +105,98 @@ rotate_log() {
 
 log "starting ($MODEL effort=$EFFORT) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
 
-# --- First run: send the role slash command --------------------------------
-# If a loop interval is set and mode is live, wrap the role invocation in
-# /loop so Claude's runtime handles the scheduling (replaces sleep-based
-# polling and external tmux timers).
-if [[ -n "$LOOP_INTERVAL" && "$MODE" == "live" ]]; then
-    log "using /loop $LOOP_INTERVAL for scheduling"
-    claude --model "$MODEL" --effort "$EFFORT" "/loop $LOOP_INTERVAL /role-$ROLE"
-else
+# --- Cross-restart session resume (architects only) ------------------------
+#
+# Architects (opus-architect, game-architect) are the human's interactive
+# design partners — their conversation context is the most valuable
+# state in the fleet. Other roles (workers, reviewers, queue-manager)
+# are loop-based and benefit from a fresh start each iteration.
+#
+# To preserve architect context across `fleet-down` -> `fleet-up`
+# cycles, we save a stable session UUID per architect role to
+# ~/.fleet/sessions/<role>.session-id. On first launch, generate the
+# UUID and pass --session-id; on subsequent launches, use --resume
+# instead of re-firing the role slash command.
+#
+# fleet-down does NOT delete these files — that's how resume survives
+# restarts. To reset an architect's context (start fresh next time),
+# delete ~/.fleet/sessions/<role>.session-id manually.
+
+SESSIONS_DIR="$HOME/.fleet/sessions"
+mkdir -p "$SESSIONS_DIR"
+SESSION_FILE="$SESSIONS_DIR/$ROLE.session-id"
+
+# Architects qualify for cross-restart resume; everyone else gets a
+# fresh session each fleet-up.
+ARCHITECT_RESUME=0
+case "$ROLE" in
+    *architect*) ARCHITECT_RESUME=1 ;;
+esac
+
+# --- Launch helpers --------------------------------------------------------
+#
+# Two distinct lifecycles:
+#
+#   Architects (opus-architect, game-architect) — one long conversation,
+#     preserved across crashes AND across fleet-down/fleet-up cycles via
+#     a persisted session-id. Always use --resume on relaunch so the
+#     interactive design conversation never resets.
+#
+#   Workers (everyone else: sonnet-author, opus-worker, sonnet-reviewer,
+#     opus-reviewer, queue-manager) — one fresh `claude` invocation per
+#     task iteration. Between tasks, we relaunch with the role slash
+#     command (no --continue, no --resume), so the new task starts with
+#     a clean conversation. This stops a context built up over hours of
+#     prior task work from leaking into the next task's reasoning.
+#
+#     Mid-task crashes are still handled via --continue so partial work
+#     doesn't get lost — the LOOP_INTERVAL gating is the "ok, *task is
+#     done*, start fresh" signal, not "agent is unhealthy, retry".
+
+launch_architect_first() {
+    if [[ -f "$SESSION_FILE" ]]; then
+        SESSION_ID=$(cat "$SESSION_FILE")
+        log "resuming architect session $SESSION_ID (preserved across fleet restart)"
+        claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID" \
+            "fleet just restarted. resume our previous conversation; you don't need to re-run your startup banner. tell me what you were last working on so we can continue."
+    else
+        # Generate and persist a stable session ID so subsequent
+        # fleet-ups can resume this conversation. Persist BEFORE
+        # launching claude — if claude crashes during startup, we
+        # still want the next fleet-up to try resuming.
+        SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+        echo "$SESSION_ID" > "$SESSION_FILE"
+        log "starting architect session $SESSION_ID (saved to $SESSION_FILE)"
+        claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
+            "/role-$ROLE $MODE"
+    fi
+}
+
+launch_worker_fresh() {
+    # No --continue, no --resume — fresh conversation for each task
+    # iteration. Used both on first launch and between task iterations.
     claude --model "$MODEL" --effort "$EFFORT" "/role-$ROLE $MODE"
+}
+
+resume_mid_task() {
+    # Mid-task crash recovery. Architects always --resume their persisted
+    # session. Workers --continue the most recent session in this cwd
+    # (that's whatever crashed mid-task — we want to pick up where it
+    # left off so partial work isn't lost).
+    if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
+            "resume your work from where you left off"
+    else
+        claude --model "$MODEL" --effort "$EFFORT" --continue "resume your work from where you left off"
+    fi
+}
+
+# --- First run -------------------------------------------------------------
+
+if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+    launch_architect_first
+else
+    launch_worker_fresh
 fi
 last_exit=$?
 
@@ -114,27 +220,37 @@ while true; do
         break
     fi
 
-    # Pick a wait time based on exit code
     case $last_exit in
         0)
-            log "exit_code=0 attempt=$attempt (clean)"
-            log "resuming in ${CLEAN_DELAY}s..."
-            sleep "$CLEAN_DELAY"
+            # Clean exit = task complete. Workers get a between-task
+            # delay (LOOP_INTERVAL if set, else CLEAN_DELAY) and then
+            # relaunch *fresh* — the new task gets a clean conversation.
+            # Architects re-resume their preserved session immediately.
+            if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+                log "architect clean exit (attempt $attempt) — re-resuming preserved session in ${CLEAN_DELAY}s..."
+                sleep "$CLEAN_DELAY"
+                launch_architect_first
+            else
+                between_task_delay=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
+                log "worker clean exit (attempt $attempt) — fresh launch in ${between_task_delay}s (clears context for next task)"
+                sleep "$between_task_delay"
+                launch_worker_fresh
+            fi
             ;;
         2)
             # Exit code 2 often indicates usage limit
-            log "exit_code=2 attempt=$attempt (suspected usage limit)"
-            log "waiting ${LIMIT_DELAY}s..."
+            log "exit_code=2 attempt=$attempt (suspected usage limit), waiting ${LIMIT_DELAY}s..."
             sleep "$LIMIT_DELAY"
+            log "resuming session (attempt $attempt)..."
+            resume_mid_task
             ;;
         *)
-            log "exit_code=$last_exit attempt=$attempt (crash)"
-            log "resuming in ${CRASH_DELAY}s..."
+            # Crash mid-task. --continue (workers) / --resume (architects)
+            # so partial work isn't lost.
+            log "exit_code=$last_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
             sleep "$CRASH_DELAY"
+            resume_mid_task
             ;;
     esac
-
-    log "resuming session (attempt $attempt)..."
-    claude --model "$MODEL" --effort "$EFFORT" --continue "resume your work from where you left off"
     last_exit=$?
 done
