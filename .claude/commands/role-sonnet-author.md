@@ -73,8 +73,15 @@ whatever directory the task touches before editing anything.
 
 ## Loop behavior
 
-Default: run continuously until the human stops you or you hit a usage
-limit. Each loop iteration:
+Each invocation of this role is **one task iteration**. After the
+iteration completes (or after determining there's no work to do), exit
+cleanly. `fleet-babysit` then relaunches you with a **fresh `claude`
+process and an empty conversation**, so the next task starts with no
+context carried over from the prior task. This keeps each task's
+reasoning focused on its own files instead of accumulating noise from
+earlier work.
+
+Each iteration:
 
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
@@ -309,8 +316,12 @@ limit. Each loop iteration:
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-10. **Reset.** Use the `start-next-task` skill to land on a fresh branch
-   off `origin/master`. Loop back to step 1.
+10. **Reset and exit cleanly.** Use the `start-next-task` skill to land
+   on a fresh branch off `origin/master`. Print
+   `[sonnet-author] Iteration complete. Exiting; babysit will relaunch with fresh context.`
+   Then exit cleanly (do NOT loop back to step 1 inside this same
+   `claude` session — `fleet-babysit` handles the relaunch with a
+   clean conversation).
 
 If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
 1-9), print the PR URL, then stop and wait for human instruction. Do

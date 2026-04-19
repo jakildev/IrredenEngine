@@ -18,6 +18,14 @@
 #                               before exiting; useful for "what snags did
 #                               we hit today" retros
 #
+# Note on --summary scope: workers run one task per fresh `claude`
+# process (see fleet-babysit), so an end-of-day worker summary covers
+# only the *current* iteration's task — not everything that pane has
+# done since fleet-up. Architects retain full session context across
+# their day and can write a true session summary. For per-task
+# worker history, scrape ~/.fleet/logs/<role>.log (babysit logs every
+# launch + exit) or each PR's own commit + comment trail.
+#
 # Architect session resume (preserved across down/up cycles): each
 # architect role's session ID is saved in ~/.fleet/sessions/. fleet-down
 # does NOT delete those files, so the next fleet-up can resume the
@@ -149,7 +157,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         role=$(tmux show-options -t "$pane_id" -p -v @role 2>/dev/null | awk '{print $1}')
         [[ -z "$role" ]] && role="pane-${pane_id#%}"
         summary_file="$SUMMARY_DIR/$role.md"
-        prompt="Before exiting: use the Write tool to save a short session summary to $summary_file. Cover (1) what tasks/PRs you worked on this session, (2) any snags, surprises, or ergonomics issues that the human might want to fix in the fleet tooling, (3) anything left blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
+        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — for workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer, queue-manager) that's just the current iteration's task; for architects it's the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
         tmux send-keys -t "$pane_id" "$prompt" Enter
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 

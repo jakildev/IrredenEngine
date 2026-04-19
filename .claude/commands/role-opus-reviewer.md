@@ -91,8 +91,10 @@ conditions, allocator behavior, hot-path costs.
 
 ## Loop behavior
 
-The `/loop` driver re-invokes this role every 30 minutes in live mode.
-Each invocation is one iteration — do the work, then exit cleanly:
+`fleet-babysit` relaunches this role every ~30 minutes in live mode
+with a **fresh `claude` process and an empty conversation** — no
+context carries over from prior reviews. Each invocation is one
+iteration of polling, reviewing, and exiting cleanly:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
@@ -168,11 +170,11 @@ Each invocation is one iteration — do the work, then exit cleanly:
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
 4. After the reset, print
-   `[opus-reviewer] Iteration complete. Next run in ~30m.`
-   Then exit cleanly. The `/loop` driver re-invokes this role in 30
-   minutes.
-5. If you hit a usage-limit error: print the error and exit. The
-   `/loop` driver and `fleet-babysit` wrapper handle backoff.
+   `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
+   Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
+   ~30 minutes — no carry-over from this iteration.
+5. If you hit a usage-limit error: print the error and exit.
+   `fleet-babysit` waits the limit-delay before relaunching.
 
 If Mode above is `dry-run`: review exactly **one** flagged PR
 end-to-end, then stop and wait for human instruction. Do not loop.

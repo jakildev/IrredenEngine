@@ -184,21 +184,24 @@ half-finished and re-litigated in review.
 
 ### Step 6 — Maintenance scheduling
 
-The `/loop` driver re-invokes this role every 5 minutes in live
-mode. Each invocation runs the startup actions and a full maintenance
-pass, then exits cleanly. The `/loop` driver and `fleet-babysit`
-wrapper handle scheduling and crash recovery.
+`fleet-babysit` relaunches this role every ~5 minutes in live mode
+with a **fresh `claude` process and an empty conversation**. Each
+invocation runs the startup actions and a full maintenance pass, then
+exits cleanly. `fleet-babysit` handles scheduling and crash recovery
+between fresh launches.
 
-Between `/loop` fires, the human can still type task descriptions
-into this pane. Process those through Steps 1–5 above (categorize,
+Between maintenance passes, the human can still type task descriptions
+into this pane (the conversation is live until the agent exits at the
+end of the pass). Process those through Steps 1–5 above (categorize,
 format, file to TASKS.md).
 
-If you hit a usage-limit error: print the error and exit. The
-`/loop` driver and `fleet-babysit` handle backoff.
+If you hit a usage-limit error: print the error and exit.
+`fleet-babysit` waits the limit-delay before relaunching with a fresh
+context.
 
 If Mode above is `dry-run`: do exactly one maintenance pass, then
-stop and wait for human instruction. `/loop` is not active in
-dry-run mode.
+stop and wait for human instruction. `fleet-babysit` does not
+auto-relaunch in dry-run mode.
 
 ### Maintenance pass
 

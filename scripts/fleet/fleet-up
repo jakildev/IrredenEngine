@@ -451,11 +451,14 @@ the session if claude exits (crash, usage limit, network drop).
   dry-run — auto-resumes on crash, stops on clean exit
   live    — auto-resumes on any exit (runs indefinitely)
 
-scheduling (live mode): polling roles use Claude's /loop for managed intervals:
-  sonnet-reviewer — /loop 3m     opus-reviewer — /loop 30m
-  opus-worker-1/2 — /loop 20m    queue-manager — /loop 5m
-  sonnet-fleet-1  — continuous (no /loop)
-  opus-architect, game-architect — interactive (no /loop, human's design partners)
+scheduling (live mode): each worker iteration is a fresh \`claude\` process
+  (no context carry-over between tasks). babysit relaunches per role's
+  configured interval:
+  sonnet-reviewer — every ~3m     opus-reviewer — every ~30m
+  opus-worker-1/2 — every ~20m    queue-manager — every ~5m
+  sonnet-fleet-1  — back-to-back (60s pause between iterations)
+  opus-architect, game-architect — interactive, persistent session
+                                   (--resume across crashes + fleet-down/up)
 
 logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 

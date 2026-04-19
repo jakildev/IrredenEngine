@@ -92,8 +92,10 @@ treat it as a hard rule for this role.
 
 ## Loop behavior
 
-The `/loop` driver re-invokes this role every 3 minutes in live mode.
-Each invocation is one iteration — do the work, then exit cleanly:
+`fleet-babysit` relaunches this role every ~3 minutes in live mode
+with a **fresh `claude` process and an empty conversation** — no
+context carries over from the prior iteration. Each invocation is one
+iteration of polling, reviewing, and exiting cleanly:
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
@@ -207,11 +209,11 @@ Each invocation is one iteration — do the work, then exit cleanly:
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
 4. After the reset, print
-   `[sonnet-reviewer] Iteration complete. Next run in ~3m.`
-   Then exit cleanly. The `/loop` driver re-invokes this role in 3
-   minutes.
-5. If you hit a usage-limit error: print the error and exit. The
-   `/loop` driver and `fleet-babysit` wrapper handle backoff.
+   `[sonnet-reviewer] Iteration complete. Next run in ~3m (fresh context).`
+   Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
+   ~3 minutes — no carry-over from this iteration.
+5. If you hit a usage-limit error: print the error and exit.
+   `fleet-babysit` waits the limit-delay before relaunching.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait
