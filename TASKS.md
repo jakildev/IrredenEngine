@@ -209,17 +209,6 @@ Avoid:
     side effect).
   - **Links:**
 
-- [~] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
-  - **ID:** T-013
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-shadow-map-phase2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
-  - **Issue:** #167
-  - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
-  - **Links:**
-
 - [~] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
   - **ID:** T-014
   - **Area:** engine/render, shaders/glsl
@@ -273,17 +262,6 @@ Avoid:
   - **Acceptance:** (1) `fleet-claim stack` creates `~/.fleet/molecules/<name>.yml` with per-task state (pending/in-progress/done/failed); (2) worker crashes mid-stack (kill process during T-002) — on restart, worker reads molecule, resumes or restarts T-002, then completes T-003 without human intervention; (3) `fleet-claim molecule list/resume/advance/complete` commands work correctly; (4) molecule files survive `fleet-up` restarts and are NOT wiped by `fleet-claim clear-all`; (5) worker role files document "check molecule on startup before picking new work" as highest-priority step; (6) at least one real stack crashed-and-resumed in testing
   - **Issue:** #191
   - **Notes:** explicitly [opus] — crash-recovery edge cases (resume vs restart judgment) require real reasoning. Builds on fleet-claim stack from #177. Particularly valuable before lighting batch (T-010…T-016) starts in earnest. Molecule format: yaml with name, agent, created, tasks list (id + state + pr + commit). Inspiration: gas town Molecules concept.
-  - **Links:**
-
-- [~] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
-  - **ID:** T-022
-  - **Area:** tooling, .claude/skills
-  - **Model:** opus
-  - **Owner:** fleet-merger-orchestrator
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) merger pane in `fleet-up`, polls every 10m; (2) two PRs touching same file far apart get auto-rebased and emerge MERGEABLE; (3) TASKS.md conflicts (two PRs adding different tasks) auto-resolved by sort-merge; (4) non-mechanical conflicts (same code lines changed differently) labeled `human:needs-fix` with conflict description — NEVER auto-resolved; (5) merger never force-pushes to master, never calls `gh pr merge`; (6) every action logged to `~/.fleet/logs/merger.log` and posted as PR comment; (7) PRs labeled `human:wip`, `fleet:wip`, or `fleet:blocker` are skipped
-  - **Issue:** #192
-  - **Notes:** explicitly [opus] — conflict classification (mechanical vs semantic) requires judgment. v1 scope: TASKS.md sort-merge, whitespace-only, clean-rebase only. More heuristics added incrementally. Uses `--force-with-lease` not `--force`. Inspiration: gas town Refinery role.
   - **Links:**
 
 - [~] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
@@ -363,15 +341,35 @@ Avoid:
 - [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
-- [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
-- [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
+  - **ID:** T-022
+  - **Area:** tooling, .claude/skills
+  - **Model:** opus
+  - **Owner:** fleet-merger-orchestrator
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merger pane in `fleet-up`, polls every 10m; (2) two PRs touching same file far apart get auto-rebased and emerge MERGEABLE; (3) TASKS.md conflicts (two PRs adding different tasks) auto-resolved by sort-merge; (4) non-mechanical conflicts (same code lines changed differently) labeled `human:needs-fix` with conflict description — NEVER auto-resolved; (5) merger never force-pushes to master, never calls `gh pr merge`; (6) every action logged to `~/.fleet/logs/merger.log` and posted as PR comment; (7) PRs labeled `human:wip`, `fleet:wip`, or `fleet:blocker` are skipped
+  - **Issue:** #192
+  - **Notes:** explicitly [opus] — conflict classification (mechanical vs semantic) requires judgment. v1 scope: TASKS.md sort-merge, whitespace-only, clean-rebase only. More heuristics added incrementally. Uses `--force-with-lease` not `--force`. Inspiration: gas town Refinery role.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/224
+
+- [x] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
+  - **ID:** T-013
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** render-shadow-map-phase2
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
+  - **Issue:** #167
+  - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/210
 
 - [x] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** — GPU-side voxel-position update compute ported to Metal.
   - **ID:** T-005
