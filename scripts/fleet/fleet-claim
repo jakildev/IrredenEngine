@@ -834,7 +834,9 @@ cmd_molecule_complete() {
         echo "no molecule for agent: $agent" >&2
         return 1
     fi
-    # release-stack already archives the molecule via its sibling-effect.
+    # molecule complete = release-stack; archives the molecule as a
+    # side-effect. This function exists as a transparent alias so the
+    # `molecule complete` subcommand maps to the same logic.
     cmd_release_stack "$agent"
 }
 

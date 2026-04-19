@@ -201,7 +201,8 @@ Do the work, then exit cleanly:
    - **Exit 0** — a task ID was printed. That task is already part of
      a stack you started earlier (possibly in a previous process before
      a crash). It is now (or remains) marked `in-progress`. Skip the
-     normal pickup flow below and jump straight to step 6 to work it.
+     normal pickup flow below and jump straight to step 6 ("Work it",
+     the implementation step) to begin working it.
      The PR for the stack is also already open — find it via the
      branch name on `gh pr list` and continue committing to it
      (use the `T-NNN: ` commit-subject prefix described in the stack

@@ -155,8 +155,9 @@ Each iteration:
    - **Exit 0** — a task ID was printed. That task is part of a stack
      you started earlier (possibly in a previous process before a
      crash). It is now (or remains) marked `in-progress`. Skip the
-     normal pickup flow and jump straight to step 4 to work it. The
-     stack PR is already open — find it via the branch name on
+     normal pickup flow and jump straight to step 4 ("Read the plan
+     file"), then continue to step 5 ("Work it") to begin working it.
+     The stack PR is already open — find it via the branch name on
      `gh pr list` and continue committing to it (use the `T-NNN: `
      commit-subject prefix from the stack PR section).
 
