@@ -5,20 +5,26 @@ fleet workflow.
 
 ## Files
 
-- **`fleet-up`** — brings the 7-pane tmux fleet online. Idempotent.
+- **`fleet-up`** — brings the 8-pane tmux fleet online. Idempotent.
   Creates any missing worktrees, resets each to a fresh branch off
   `origin/master`, builds a `fleet` tmux session with one tiled
   window, and auto-launches `claude` in each pane with the matching
   role slash command. Default mode is `dry-run` (startup + stand-by);
-  pass `live` to skip dry-run and go straight to the normal loop.
-- **`install.sh`** — one-time setup per machine. Symlinks
-  `scripts/fleet/fleet-up` into `~/bin/fleet-up` and symlinks each
+  `fleet-up live` skips dry-run, goes straight to the normal loop, and
+  auto-attaches the tmux session. Pass `--no-attach` to opt out of
+  the attach (CI / headless runs).
+- **`fleet-down`** — graceful shutdown of the fleet. Sends Ctrl-C +
+  "exit" to each pane, waits a short grace period, then kills the
+  tmux session and clears stale fleet-claim locks. `--force` skips
+  the graceful step; `--keep-claims` preserves `~/.fleet/claims`.
+- **`install.sh`** — one-time setup per machine. Symlinks every
+  `scripts/fleet/fleet-*` script into `~/bin/` and symlinks each
   `.claude/commands/role-*.md` into `~/.claude/commands/`. Picks up
   the game-architect role from `creations/game/` if that repo is
   cloned. Warns (but does not edit) if `~/bin` is not on PATH.
   Idempotent — re-run after every `git pull` that touches fleet tooling.
 
-Both files are portable across Linux (WSL/Ubuntu) and macOS. Neither
+All files are portable across Linux (WSL/Ubuntu) and macOS. None
 requires sudo.
 
 ## Quick start
@@ -27,8 +33,12 @@ requires sudo.
 cd ~/src/IrredenEngine
 scripts/fleet/install.sh
 # (follow the PATH warning if ~/bin isn't on PATH yet)
-fleet-up dry-run
-tmux attach -t fleet
+fleet-up dry-run                # dry run — confirms panes spawn cleanly
+# ...inspect, then promote each pane manually, or:
+fleet-down                      # shut down before going live
+fleet-up live                   # full loop, auto-attaches
+# Ctrl-a d to detach without killing the fleet.
+fleet-down                      # graceful shutdown when done for the day.
 ```
 
 ## Updating the fleet across machines

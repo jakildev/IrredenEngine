@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# fleet-down — bring the Irreden Engine + Game agent fleet down.
+#
+# Counterpart to fleet-up. Sends an "exit" cue to each pane, waits a
+# short grace period for in-flight work to drain, kills the tmux
+# session, and clears stale fleet-claim locks so the next fleet-up
+# starts from a clean slate.
+#
+# Usage:
+#   fleet-down                  graceful: send Ctrl-C + "exit", wait, kill
+#   fleet-down --force          immediate: kill the session, no grace
+#   fleet-down --keep-claims    don't wipe ~/.fleet/claims (default: wipe)
+#
+# Why not just `tmux kill-session`?
+#   - Each pane runs `fleet-babysit`, which itself runs `claude`. A bare
+#     SIGTERM aborts whatever the agent was doing mid-step (mid-build,
+#     mid-edit, mid-PR-create) without giving it a chance to push
+#     uncommitted work or release its claim. Graceful shutdown sends
+#     Ctrl-C + "exit" first so the agent can wind down its current
+#     loop iteration before the session dies.
+#   - Stale claims persist in ~/.fleet/claims after a hard kill, which
+#     blocks the next fleet from picking up the same tasks. Wipe by
+#     default (the next fleet-up does this anyway, but doing it here
+#     too makes the system "clean" between runs).
+#
+# Source of truth: scripts/fleet/fleet-down in the engine repo.
+# Installed to ~/bin/fleet-down by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+SESSION="fleet"
+GRACE_SECONDS=8       # how long to wait for panes to wind down after Ctrl-C
+FORCE=0
+KEEP_CLAIMS=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --force)        FORCE=1 ;;
+        --keep-claims)  KEEP_CLAIMS=1 ;;
+        -h|--help)
+            sed -n '2,30p' "$0"
+            exit 0
+            ;;
+        *) echo "fleet-down: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
+
+if ! command -v tmux >/dev/null 2>&1; then
+    echo "fleet-down: tmux not found." >&2
+    exit 1
+fi
+
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "fleet-down: no '$SESSION' tmux session is running. Nothing to do."
+    exit 0
+fi
+
+# ----------------------------------------------------------------------
+# Step 1: graceful shutdown (unless --force)
+# ----------------------------------------------------------------------
+#
+# Send Ctrl-C to interrupt whatever each pane is doing right now,
+# then send "exit" + Enter to take the surrounding shell down so
+# fleet-babysit's resume loop also dies cleanly. tmux kill-session
+# afterwards is the safety net.
+
+if [[ "$FORCE" -eq 0 ]]; then
+    pane_count=$(tmux list-panes -t "$SESSION" -F '#{pane_id}' | wc -l | tr -d ' ')
+    echo "fleet-down: sending graceful shutdown to $pane_count pane(s)..."
+
+    # Ctrl-C every pane to interrupt the current claude/babysit operation.
+    while IFS= read -r pane_id; do
+        tmux send-keys -t "$pane_id" C-c
+    done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
+
+    # Brief pause so signal handlers in claude/babysit have time to
+    # tear down (release any in-flight write file handles, finalize
+    # the current stream-json line, etc.).
+    sleep 2
+
+    # Send "exit" + Enter so the surrounding shell terminates and
+    # fleet-babysit doesn't auto-resume.
+    while IFS= read -r pane_id; do
+        tmux send-keys -t "$pane_id" "exit" Enter
+    done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
+
+    echo "fleet-down: waiting ${GRACE_SECONDS}s for panes to wind down..."
+    sleep "$GRACE_SECONDS"
+else
+    echo "fleet-down: --force — skipping graceful shutdown."
+fi
+
+# ----------------------------------------------------------------------
+# Step 2: kill the tmux session
+# ----------------------------------------------------------------------
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux kill-session -t "$SESSION"
+    echo "fleet-down: killed tmux session '$SESSION'."
+else
+    echo "fleet-down: tmux session '$SESSION' already gone (graceful exit completed)."
+fi
+
+# ----------------------------------------------------------------------
+# Step 3: clear stale claims (unless --keep-claims)
+# ----------------------------------------------------------------------
+#
+# Even after a graceful shutdown, agents that were mid-task won't have
+# released their fleet-claim locks. Wipe them so the next fleet-up
+# starts clean. (fleet-up itself also does this in step 3b, so this
+# is belt-and-suspenders, but keeping the system "clean between runs"
+# is a useful invariant for the human eyeballing ~/.fleet/claims.)
+
+if [[ "$KEEP_CLAIMS" -eq 0 ]]; then
+    if command -v fleet-claim >/dev/null 2>&1; then
+        fleet-claim clear-all
+    else
+        echo "fleet-down: fleet-claim not found — skipping claim cleanup"
+    fi
+else
+    echo "fleet-down: --keep-claims — leaving ~/.fleet/claims intact."
+fi
+
+echo
+echo "fleet-down: done. Bring the fleet back up with:  fleet-up live"
