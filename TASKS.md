@@ -206,13 +206,13 @@ Avoid:
     higher-stakes than `c_shapes_to_trixel`; be thorough.
   - **Links:**
 
-- [ ] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
+- [~] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
   the voxel-visibility compaction pass (reduces visible-voxel indices
   into a dense buffer) has no Metal counterpart. Same skill flow.
   - **ID:** T-006
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** metal-voxel-visibility-compact-port
   - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal`
     exists, matches the GLSL binding/uniform layout, `macos-debug`
@@ -395,6 +395,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
 - [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
