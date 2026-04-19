@@ -295,11 +295,11 @@ Avoid:
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
   - **Links:**
 
-- [ ] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
+- [~] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
   - **ID:** T-015
   - **Area:** engine/render, shaders/glsl
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** render-lut-palette-shading
   - **Blocked by:** (none)
   - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
   - **Issue:** #169
@@ -390,6 +390,7 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-012** — Lighting: per-face voxel ambient occlusion Phase 1 · Owner: render-ao-phase1 · PR: https://github.com/jakildev/IrredenEngine/pull/197
+- [~] **T-015** — Lighting: LUT palette shading Phase 4 · Owner: render-lut-palette-shading · PR: https://github.com/jakildev/IrredenEngine/pull/198
 
 ---
 
