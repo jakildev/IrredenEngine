@@ -262,23 +262,12 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [~] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
-  - **ID:** T-010
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-occupancy-grid
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 3D occupancy bitfield (SSBO or R8UI 3D texture) populated from voxel pool data each frame or incrementally on dirty chunks; (2) per-axis columnar span lists buildable from the grid; (3) occupancy data accessible from GPU compute shaders as 3D texture or SSBO; (4) dirty-chunk tracking avoids full rebuild each frame; (5) builds clean on active preset with no regression in existing rendering; (6) performance measured with profiling enabled — report top hotspots; if profiling infrastructure needs changes to support automated profiling loops, include those changes
-  - **Issue:** #164
-  - **Notes:** foundational data structure for all lighting. 256³ world = 2MB bitfield; larger worlds use chunked bitfields matching `VOXEL_CHUNK_SIZE=256`. Build pipeline runs after voxel mutations, before lighting passes. Analytic shapes need to be marked occupancy-contributing vs. decorative via component flag. Future: per-voxel material ID encoding — reserve space but don't implement. Owner comment: ensure performance is measured and optimized; update profiling code if needed to support automated profiling agent loops.
-  - **Links:**
-
 - [ ] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
   - **ID:** T-012
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** Lighting: 3D occupancy grid infrastructure (T-010)
+  - **Blocked by:** (none)
   - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
   - **Issue:** #166
   - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
@@ -289,7 +278,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-010
+  - **Blocked by:** (none)
   - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
   - **Issue:** #167
   - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
@@ -300,7 +289,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-010
+  - **Blocked by:** (none)
   - **Acceptance:** (1) emissive voxels propagate colored light outward, blocked by solid voxels from occupancy grid; (2) skylight propagates top-down via columnar span lists; (3) per-voxel RGB light levels stored in 3D texture accessible from GPU; (4) incremental update on voxel place/remove — no full rebuild per frame; (5) render debug screenshot: torch placement creates visible light pool; (6) performance: initial build < 5ms, incremental < 1ms; (7) builds clean on active preset
   - **Issue:** #168
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
@@ -322,7 +311,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-010
+  - **Blocked by:** (none)
   - **Acceptance:** (1) fog texture renders over scene, darkening fogged/unexplored areas; (2) LOS ray casting returns correct results against occupancy grid; (3) heightmap-aware: units cannot see over hills; (4) solid voxels block LOS, characters and small objects don't; (5) smooth fog edges via blur; (6) Lua API: setFogCell, getFogCell, castLOS, revealRadius, fadeExplored callable; (7) render debug screenshot: fog visible, LOS blocking correct; (8) fog update + render < 1ms for typical map sizes; (9) builds clean on active preset
   - **Issue:** #170
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
@@ -389,13 +378,24 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-010** — Lighting: 3D occupancy grid infrastructure · Owner: render-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/188
+(none)
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
+  - **ID:** T-010
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** render-occupancy-grid
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 3D occupancy bitfield populated from voxel pool data; (2) per-axis columnar span lists buildable from the grid; (3) occupancy data accessible from GPU compute shaders; (4) dirty-chunk tracking avoids full rebuild each frame; (5) builds clean on active preset; (6) performance measured and reported
+  - **Issue:** #164
+  - **Notes:** foundational data structure for all lighting — unblocked T-012, T-013, T-014, T-016 on merge.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/188
 
 - [x] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
   - **ID:** T-018
