@@ -188,13 +188,13 @@ Avoid:
     `.claude/skills/backend-parity/SKILL.md`.
   - **Links:**
 
-- [ ] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
+- [~] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
   GPU-side voxel-position update compute with no Metal counterpart.
   Same skill flow as above.
   - **ID:** T-005
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** metal-update-voxel-positions-port
   - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_update_voxel_positions.metal`
     exists and matches the GLSL binding/uniform layout, `macos-debug`
@@ -396,6 +396,7 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
+- [~] **T-005** — Metal parity: port c_update_voxel_positions.glsl to MSL · Owner: metal-update-voxel-positions-port · PR: https://github.com/jakildev/IrredenEngine/pull/223
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
