@@ -262,26 +262,15 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [ ] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
+- [~] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
   - **ID:** T-010
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-occupancy-grid
   - **Blocked by:** (none)
   - **Acceptance:** (1) 3D occupancy bitfield (SSBO or R8UI 3D texture) populated from voxel pool data each frame or incrementally on dirty chunks; (2) per-axis columnar span lists buildable from the grid; (3) occupancy data accessible from GPU compute shaders as 3D texture or SSBO; (4) dirty-chunk tracking avoids full rebuild each frame; (5) builds clean on active preset with no regression in existing rendering; (6) performance measured with profiling enabled — report top hotspots; if profiling infrastructure needs changes to support automated profiling loops, include those changes
   - **Issue:** #164
   - **Notes:** foundational data structure for all lighting. 256³ world = 2MB bitfield; larger worlds use chunked bitfields matching `VOXEL_CHUNK_SIZE=256`. Build pipeline runs after voxel mutations, before lighting passes. Analytic shapes need to be marked occupancy-contributing vs. decorative via component flag. Future: per-voxel material ID encoding — reserve space but don't implement. Owner comment: ensure performance is measured and optimized; update profiling code if needed to support automated profiling agent loops.
-  - **Links:**
-
-- [~] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
-  - **ID:** T-011
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-lighting-to-trixel-stage
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) new pipeline stage `LIGHTING_TO_TRIXEL` inserted between last geometry stage and TRIXEL_TO_TRIXEL; (2) with no lighting data bound, pass is a no-op — existing rendering unchanged; (3) when lighting data is available, all voxel and shape canvas pixels are modulated; (4) GUI/UI elements are NOT modulated (pixels sourced from GUI text bypass the lighting pass); (5) verified via render debug screenshot with/without pass; (6) builds clean on active preset
-  - **Issue:** #165
-  - **Notes:** position in pipeline: VOXEL_TO_TRIXEL → SHAPES_TO_TRIXEL → [TEXT_TO_TRIXEL for world text] → LIGHTING_TO_TRIXEL → TRIXEL_TO_TRIXEL → TRIXEL_TO_FRAMEBUFFER. Owner clarification: GUI objects must not receive lighting — ensure the pass skips GUI-sourced pixels. Reconstructs 3D world position from distance texture via `isoPixelToPos3D`. Consumes: 3D light texture (Phase 3), AO texture (Phase 1), shadow map (Phase 2). Can be built as a no-op skeleton immediately; becomes functional as later phases produce data.
   - **Links:**
 
 - [ ] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
@@ -300,7 +289,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** Lighting: 3D occupancy grid infrastructure (T-010), Lighting: screen-space lighting application pass (T-011)
+  - **Blocked by:** T-010
   - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
   - **Issue:** #167
   - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
@@ -311,7 +300,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-010, T-011
+  - **Blocked by:** T-010
   - **Acceptance:** (1) emissive voxels propagate colored light outward, blocked by solid voxels from occupancy grid; (2) skylight propagates top-down via columnar span lists; (3) per-voxel RGB light levels stored in 3D texture accessible from GPU; (4) incremental update on voxel place/remove — no full rebuild per frame; (5) render debug screenshot: torch placement creates visible light pool; (6) performance: initial build < 5ms, incremental < 1ms; (7) builds clean on active preset
   - **Issue:** #168
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
@@ -322,7 +311,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-011
+  - **Blocked by:** (none)
   - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
   - **Issue:** #169
   - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
@@ -333,17 +322,17 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-010, T-011
+  - **Blocked by:** T-010
   - **Acceptance:** (1) fog texture renders over scene, darkening fogged/unexplored areas; (2) LOS ray casting returns correct results against occupancy grid; (3) heightmap-aware: units cannot see over hills; (4) solid voxels block LOS, characters and small objects don't; (5) smooth fog edges via blur; (6) Lua API: setFogCell, getFogCell, castLOS, revealRadius, fadeExplored callable; (7) render debug screenshot: fog visible, LOS blocking correct; (8) fog update + render < 1ms for typical map sizes; (9) builds clean on active preset
   - **Issue:** #170
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
   - **Links:**
 
-- [ ] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
+- [~] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
   - **ID:** T-017
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** prefabs-light-source-component
   - **Blocked by:** (none)
   - **Acceptance:** (1) LightType enum (DIRECTIONAL, POINT, EMISSIVE, SPOT) in engine/prefabs/irreden/render/components/; (2) C_LightSource with type_, emitColor_, intensity_, radius_, direction_[3] defined; (3) C_LightBlocker with blocksLOS_, castsShadow_, opacity_ defined; (4) Lua bindings expose light source creation and configuration; (5) components registered in ECS and queryable by lighting systems; (6) builds clean on active preset
   - **Issue:** #171
@@ -372,19 +361,42 @@ Avoid:
   - **Notes:** conditional trigger logic must be precise — only visual/render diffs trigger it. Mechanical refactors (rename, extract header) must not trigger it. `attach-screenshots` runs BEFORE `optimize` and `commit-and-push` so screenshots are in the same commit batch.
   - **Links:**
 
+- [ ] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
+  - **ID:** T-020
+  - **Area:** tooling, .claude/skills
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) worker can run `fleet-claim stack "T-A T-B T-C"` and the result is 3 chained PRs (PR-A base=master, PR-B base=PR-A, PR-C base=PR-B); (2) reviewers see and review each PR independently with its own `fleet:approved`/`fleet:needs-fix` label; (3) when PR-A merges, PR-B's base auto-rebases to master without manual intervention (or worker is instructed to rebase as a follow-up); (4) queue-manager correctly handles the cascade: PR-A merge → T-A done, PR-B merge → T-B done, etc.; (5) at least one stack of 3 tasks shipped end-to-end via this flow with no manual intervention
+  - **Issue:** #183
+  - **Notes:** explicitly [opus] — touches fleet-claim, role files, requires reasoning about edge cases (rebase failures, mid-chain rejections, partial approvals). Current one-PR-multi-commit approach (PR #182) stays in place until this lands. Subcomponents: worker creates chained branches + PRs; queue-manager detects chained PRs and handles cascade; fleet-claim tracks chain state in `~/.fleet/claims/_stack_<agent>/prs`; reviewer notes parent PRs in review. Filed from PR #182; related: jakildev/IrredenEngine#175.
+  - **Links:**
+
 ---
 
 ## In progress
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-011** — Lighting: screen-space lighting application pass · Owner: render-lighting-to-trixel-stage · PR: https://github.com/jakildev/IrredenEngine/pull/185
+- [~] **T-010** — Lighting: 3D occupancy grid infrastructure · Owner: render-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/188
+- [~] **T-017** — Lighting: C_LightSource component and light type enum · Owner: prefabs-light-source-component · PR: https://github.com/jakildev/IrredenEngine/pull/187
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
+  - **ID:** T-011
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** render-lighting-to-trixel-stage
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new pipeline stage `LIGHTING_TO_TRIXEL` inserted between last geometry stage and TRIXEL_TO_TRIXEL; (2) with no lighting data bound, pass is a no-op — existing rendering unchanged; (3) when lighting data is available, all voxel and shape canvas pixels are modulated; (4) GUI/UI elements are NOT modulated; (5) verified via render debug screenshot with/without pass; (6) builds clean on active preset
+  - **Issue:** #165
+  - **Notes:** ships as no-op skeleton; later phases activate it by binding AO/shadow/flood-fill data.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/185
 
 - [x] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
   - **ID:** T-009
