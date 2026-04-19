@@ -16,7 +16,7 @@
 #   fleet-babysit opus  opus-reviewer live 30m       # /loop every 30 min
 #   fleet-babysit sonnet queue-manager live 15m      # /loop every 15 min
 #   fleet-babysit opus  opus-architect live           # on-demand, no /loop
-#   fleet-babysit sonnet game-sonnet live             # game worktree cwd
+#   fleet-babysit opus  game-architect live           # game worktree cwd
 #
 # Behavior by mode:
 #   dry-run  — start the agent, auto-resume on crash, but do NOT
