@@ -343,29 +343,47 @@ Do the work, then exit cleanly:
    mid-task — the architect handles design conversations. Comment on
    your PR explaining the blocker and wait.
 
-9. **Optimize before commit.** Run the `optimize` skill — `[opus]`
-   work almost always touches perf-critical code (engine/render,
-   engine/system, engine/world, engine/audio, engine/video,
-   engine/math). Optimize profiles the new code, identifies hotspots,
-   and verifies no regressions. Skip only for pure docs or mechanical
-   refactors that preserve hot-path structure.
+9. **Attach screenshots (when visual output changed).** Check whether
+   the diff touches visual/render code:
+   `git diff --name-only origin/master...HEAD`
 
-   You don't need to invoke `simplify` separately — `commit-and-push`
-   runs it as part of its flow. Running `optimize` first matters
-   because optimize may add `IR_PROFILE_*` blocks and rationale
-   comments that simplify should leave alone.
+   Invoke the `attach-screenshots` skill if the diff includes any file under:
+   - `engine/render/` (any file)
+   - `engine/prefabs/irreden/render/` (any file)
+   - Any `*.glsl` or `*.metal` shader file anywhere in the tree
+   - `creations/demos/*/src/**` or `creations/demos/*/main*.cpp`
 
-   The same applies when **addressing review feedback** — after
-   editing in response to comments, re-run `optimize` (if the perf
-   surface changed) before invoking `commit-and-push` to push the fix.
+   Skip if the diff is purely docs, tests, mechanical refactors (rename,
+   extract-header, add-logging), or build/CI changes with no visual effect.
+   Skip if `docs/pr-screenshots/<branch>/` already contains screenshots
+   from a prior run on this branch.
 
-10. **Finalize the PR.** Use `commit-and-push` to push work commits.
+   Screenshots must be staged before `optimize` and `commit-and-push` so
+   they land in the same commit as the code change.
+
+10. **Optimize before commit.** Run the `optimize` skill — `[opus]`
+    work almost always touches perf-critical code (engine/render,
+    engine/system, engine/world, engine/audio, engine/video,
+    engine/math). Optimize profiles the new code, identifies hotspots,
+    and verifies no regressions. Skip only for pure docs or mechanical
+    refactors that preserve hot-path structure.
+
+    You don't need to invoke `simplify` separately — `commit-and-push`
+    runs it as part of its flow. Running `optimize` first matters
+    because optimize may add `IR_PROFILE_*` blocks and rationale
+    comments that simplify should leave alone.
+
+    The same applies when **addressing review feedback** — after
+    editing in response to comments, re-run `optimize` (if the perf
+    surface changed) before invoking `commit-and-push` to push the fix.
+
+11. **Finalize the PR.** Use `commit-and-push` to push work commits.
     Remove the WIP label and release the claim:
     `gh pr edit <N> --remove-label "fleet:wip"`
     `fleet-claim release "<task ID>"`
     Paste the PR URL.
 
-11. **Reset.** Use the `start-next-task` skill to land on a fresh
+12. **Reset.** Use the `start-next-task` skill to land on a fresh
     branch off `origin/master`. Print
     `[opus-worker] Iteration complete. Next run in ~20m (fresh context).`
     Then exit cleanly. `fleet-babysit` will relaunch a fresh `claude`
