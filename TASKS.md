@@ -279,11 +279,11 @@ Avoid:
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
   - **Links:**
 
-- [ ] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
+- [~] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
   - **ID:** T-019
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** skills-attach-screenshots-wiring
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` invoke `attach-screenshots` before `optimize`/`commit-and-push` when diff touches `engine/render/`, `engine/prefabs/irreden/render/`, any `.glsl`/`.metal` shader file, or `creations/demos/*/src/`; (2) purely mechanical refactors and doc PRs do NOT invoke the skill; (3) `commit-and-push` detects render/visual files in diff and prompts worker to run `attach-screenshots` first if `docs/pr-screenshots/<branch>/` does not yet exist; (4) all engine author role files build/parse cleanly; (5) at least one manually-verified run shows screenshots landing in the PR
   - **Issue:** #186
@@ -395,6 +395,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
 - [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
 - [~] **T-005** — Metal parity: port c_update_voxel_positions.glsl to MSL · Owner: metal-update-voxel-positions-port · PR: https://github.com/jakildev/IrredenEngine/pull/223
