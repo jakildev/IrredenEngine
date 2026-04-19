@@ -169,14 +169,14 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [ ] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
+- [~] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
   the GLSL compute for writing 2D shape SDFs into trixel canvases has
   no Metal counterpart. Invoke the `backend-parity` skill on a macOS
   host and port it.
   - **ID:** T-004
   - **Area:** engine/render/src/shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** metal-shapes-to-trixel-port
   - **Blocked by:** (none)
   - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
     exists and matches the GLSL binding/uniform layout, the
@@ -345,12 +345,35 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — this is a write-up and cross-linking task, not a design decision. T-010 (#164) already merged via PR #188; invariant #1 check applies to the merged form. The four invariants were specified by the opus-architect during C_LightSource/C_LightBlocker review (PR #187). Escalate to [opus] only if invariant #1 is found violated in T-010 and structural fixes are needed.
   - **Links:**
 
+- [ ] **Render debug: false-color lighting-data overlay** — add a Lua-configurable debug mode that replaces the artistic lighting output with a false-color visualization of a selected lighting buffer (AO, light level, shadow)
+  - **ID:** T-025
+  - **Area:** engine/render, shaders/glsl, shaders/metal, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `ir.render.setDebugOverlay("ao"|"light_level"|"shadow"|"none")` Lua setter exposed; (2) at least three modes implemented: `ao`, `light_level`, `shadow`; (3) switching modes at runtime works on both backends (GLSL + MSL parity); (4) `IRShapeDebug` demonstrates each mode via Lua config or CLI flag; (5) documented in `engine/render/CLAUDE.md` as recommended sanity-check for lighting work; (6) builds clean on `linux-debug` and `macos-debug`
+  - **Issue:** #218
+  - **Notes:** AO texture already available from T-012 (PR #197). Extends stub `f_debug_overlay.glsl` and `engine/render/src/shaders/metal/debug_overlay.metal`. Debug overlay pass runs after lighting passes but replaces final composited output in debug mode — artistic LIGHTING_TO_TRIXEL result still computed but discarded. AO viz: `vec3(1-ao, ao, 0)` (red=occluded, green=clear). Light level: `vec3(level, level, 1.0)` (blue→white). Shadow: black/magenta. Soft suggestion: pair shadow debug mode with T-013 landing. Mirror pattern of `setSubdivisionMode` in render API.
+  - **Links:**
+
+- [ ] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
+  - **ID:** T-026
+  - **Area:** tooling, .claude/skills, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) reference library structure decided and documented (path, naming, per-shot layout); (2) `scripts/render-compare.py` (or equivalent) exists and produces pass/fail + diff image on mismatches; (3) `.claude/skills/render-verify/SKILL.md` wraps build → run → capture → compare → report flow; (4) `IRShapeDebug` reference set committed; skill produces all-pass on clean master; (5) builds + skill run cleanly on `linux-debug`
+  - **Issue:** #217
+  - **Notes:** soft dependency on #189 ("Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
+  - **Links:**
+
 ---
 
 ## In progress
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
