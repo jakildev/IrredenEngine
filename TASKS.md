@@ -284,17 +284,6 @@ Avoid:
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
   - **Links:**
 
-- [~] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
-  - **ID:** T-015
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** sonnet
-  - **Owner:** render-lut-palette-shading
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
-  - **Issue:** #169
-  - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
-  - **Links:**
-
 - [ ] **Lighting: fog of war render pass (Phase 5 engine side)** — render fog-of-war overlay from a 2D visibility texture with LOS ray casting against the occupancy grid, exploiting the fixed iso camera angle for efficient depth calculation
   - **ID:** T-016
   - **Area:** engine/render, shaders/glsl
@@ -379,13 +368,23 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
-- [~] **T-015** — Lighting: LUT palette shading Phase 4 · Owner: render-lut-palette-shading · PR: https://github.com/jakildev/IrredenEngine/pull/198
 
 ---
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
+  - **ID:** T-015
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** sonnet
+  - **Owner:** render-lut-palette-shading
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
+  - **Issue:** #169
+  - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/198
 
 - [x] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
   - **ID:** T-012
