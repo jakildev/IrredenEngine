@@ -64,6 +64,7 @@ bool g_autoMode = false;
 bool g_depthColor = false;
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
+float g_initialZoom = 0.0f;  // 0 = use engine default
 
 } // namespace
 
@@ -94,6 +95,14 @@ int main(int argc, char **argv) {
             }
         } else if (std::strcmp(argv[i], "--depth-color") == 0) {
             g_depthColor = true;
+        } else if (std::strcmp(argv[i], "--zoom") == 0) {
+            if (i + 1 < argc) {
+                float z = static_cast<float>(std::atof(argv[i + 1]));
+                if (z > 0.0f) {
+                    g_initialZoom = z;
+                    ++i;
+                }
+            }
         }
     }
 
@@ -105,6 +114,9 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    if (g_initialZoom > 0.0f) {
+        IRRender::setCameraZoom(g_initialZoom);
+    }
     IREngine::gameLoop();
     return 0;
 }
