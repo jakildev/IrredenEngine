@@ -56,6 +56,8 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    VOXEL_TO_TRIXEL_STAGE_2                                       │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
+│    LIGHTING_TO_TRIXEL  (T-011+; skeleton today)                  │
+│      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │    TRIXEL_TO_TRIXEL  (compositing/post)                          │
 │    TRIXEL_TO_FRAMEBUFFER                                         │
 │      • v_/f_trixel_to_framebuffer.glsl                           │
@@ -104,6 +106,32 @@ header when you add or rename a shader.
 `render/opengl/` and `render/metal/` each implement the `RenderImpl` /
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
+
+## Verifying render changes
+
+Rendering bugs rarely show up in the type checker or the test suite. Any
+PR that touches:
+
+- `engine/render/src/shaders/` (GLSL or MSL)
+- `engine/prefabs/irreden/render/systems/` (pipeline systems)
+- anything affecting pipeline ordering, canvas textures, or the voxel pool
+
+must run the **`render-debug-loop`** skill after the change and attach at
+least one before/after screenshot pair to the PR body. The skill drives
+any creation that supports `--auto-screenshot` (today: `shape_debug`;
+reference implementation is `creations/demos/shape_debug/main.cpp`) and
+carries topic-indexed diagnosis tables for trixel / SDF shapes, lighting
+phases, and backend-parity symptoms.
+
+For changes that touch only one graphics backend (GLSL without MSL
+counterpart, or vice versa), follow up with the **`backend-parity`**
+skill on the lagging-side host — the rule is in the top-level CLAUDE.md
+under "Cross-platform parity". `render-debug-loop` captures the
+evidence; `backend-parity` drives the port.
+
+Exceptions: pure header-doc edits, string-literal fixes, and internal
+refactors with provably no runtime effect can skip the loop. When in
+doubt, run it — a missing screenshot pair is a fast reviewer-rejection.
 
 ## Gotchas
 

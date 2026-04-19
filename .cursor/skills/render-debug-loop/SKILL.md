@@ -2,87 +2,139 @@
 name: render-debug-loop
 description: >-
   Build, run, and visually evaluate a rendering demo in an automated loop.
-  Captures screenshots at multiple zoom levels and camera offsets, reads each
-  image, diagnoses trixel rendering issues, applies fixes, and repeats. Use
-  when iterating on render pipeline bugs, SDF shape alignment, trixel parity,
-  or any visual regression in the engine.
+  Captures screenshots across a demo's configured shot list (zoom, camera
+  offset, render-mode combinations), reads each image, diagnoses rendering
+  issues against a topic-indexed reference (trixel / SDF shapes, lighting,
+  backend parity), applies fixes, and repeats. Use whenever iterating on
+  render pipeline bugs, shape alignment, lighting, parity drift, or any
+  visual regression in the engine.
 ---
 
 # Render Debug Loop
 
-Automated build-run-screenshot-evaluate cycle for any Irreden Engine creation
-that supports the `--auto-screenshot` flag.
+Automated build → run → screenshot → evaluate cycle for any Irreden Engine
+creation that opts into the `--auto-screenshot` flag.
 
 ## Prerequisites
 
-- Windows build with MinGW (preset `windows-debug`)
-- Build directory at `build/` in the repo root
-- DLLs live in `build/`; the run step prepends this to PATH
+### Platform
+
+Works on all three presets. Use the fleet wrappers so the loop runs
+unattended (no command-substitution or compound-command gates).
+
+| Host          | Preset          | Build command                     | Run command              |
+|---------------|-----------------|-----------------------------------|--------------------------|
+| WSL2 Ubuntu   | `linux-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
+| macOS         | `macos-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
+| Windows-native| `windows-debug` | see `CLAUDE.md` PATH-fix section  | see `CLAUDE.md`          |
+
+`fleet-build` auto-detects the worktree root and the corresponding
+`<worktree>/build/` tree, and configures the preset on first use.
+`fleet-run` finds the executable in the build tree and `cd`'s into its
+directory before launching, so the demo picks up its sibling `data/`,
+`shaders/`, and `scripts/` paths.
+
+### Demo requirement: `--auto-screenshot`
+
+This skill drives a demo that implements the `--auto-screenshot` flag. A
+conforming demo:
+
+1. Parses `--auto-screenshot [warmup-frames]` in `main()`.
+2. Defines a shot table (zoom, camera offset, optional render mode) and
+   cycles through it one shot per screenshot, with settle frames between
+   shots.
+3. Calls `IRVideo::requestScreenshot()` to capture each shot.
+4. Closes the window after the last shot.
+
+**Reference implementation:** `creations/demos/shape_debug/main.cpp`. Look
+at `ShotConfig`, `g_shots[]`, and the `AutoScreenshot` system for the
+pattern. If your target demo does not yet support `--auto-screenshot`, you
+have three options: (a) add it to that demo following the shape_debug
+pattern; (b) use `shape_debug` if it exercises the code path you care
+about; (c) wait on the auto-screenshot engine helper (GitHub issue
+tracked under the `fleet:task` label — search for "auto-screenshot
+helper" if promoting shot config into a reusable system).
 
 ## Loop Steps
 
-Run these steps sequentially. **Stop after 5 iterations** or when the
-screenshot evaluation passes.
+Run sequentially. **Stop after 5 iterations** or when evaluation passes.
 
 ### 1. Build
 
 ```
-cmake --build build --target <TARGET>
+fleet-build --target <TARGET>
 ```
 
 If the build fails, fix compile errors before continuing.
 
 ### 2. Clear old screenshots
 
-```powershell
-Remove-Item -Recurse -Force "<BUILD_OUTPUT_DIR>/save_files" -ErrorAction SilentlyContinue
+Screenshots accumulate across runs (the counter does not reset). Before a
+new run, remove the previous batch so the Glob in step 4 picks up only
+the current iteration. Locate the demo's `save_files/screenshots/`
+directory via either:
+
+- **Glob** `build/**/<EXE_NAME>` (or `build/**/<EXE_NAME>.exe` on
+  Windows) to find the executable; screenshots live at
+  `<dirname of EXE_PATH>/save_files/screenshots/`.
+- Read the `fleet-run: <EXE_PATH>` line printed to stdout by the
+  previous run's `fleet-run` invocation.
+
+Then `rm -rf` that directory.
+
+### 3. Run with `--auto-screenshot`
+
+```
+fleet-run <EXE_NAME> --auto-screenshot 10
 ```
 
-### 3. Run with auto-screenshot
-
-```powershell
-$env:PATH = "<REPO_ROOT>/build;$env:PATH"
-& "<BUILD_OUTPUT_DIR>/<EXE_NAME>.exe" --auto-screenshot 10
-```
-
-The demo renders warmup frames, then cycles through its shot configurations
-(varying zoom and camera offset), capturing one screenshot per shot with
-settle frames between changes. Working directory must be the demo's build
-output folder.
+The demo renders warmup frames, cycles through its configured shots,
+captures one screenshot per shot, and closes the window. `fleet-run`
+handles the working-directory requirement automatically.
 
 ### 4. Read the screenshots
 
-Screenshots are numbered sequentially in `<BUILD_OUTPUT_DIR>/save_files/screenshots/`.
-Use Glob to find them (the counter does not reset between runs):
-
-```
-<BUILD_OUTPUT_DIR>/save_files/screenshots/screenshot_*.png
-```
-
-Read the latest batch of `.png` files from this directory.
+Use the **Glob** tool against
+`<demo-cwd>/save_files/screenshots/screenshot_*.png` (or the subdirectory
+your demo configures via `IRVideo::configureScreenshotOutputDir`). Sort
+by mtime and read the latest batch with the Read tool.
 
 ### 5. Evaluate
 
-Check these criteria across **all screenshots**. A bug may appear at only
-one zoom level or camera offset.
+Check these **always-on** criteria across every screenshot — a bug may
+surface at only one zoom, one camera offset, or one render mode.
 
-| Criterion | What to look for |
-|-----------|-----------------|
-| All entities visible | Expected shapes present, nothing missing |
-| Size match | Compared entities have identical pixel footprint at every zoom |
-| Correct silhouettes | Shape outlines match their type (cube, sphere, cylinder, etc.) |
-| 3-face shading | Top face bright, left face dark, right face mid-tone |
-| No gaps or overlaps | Solid faces, no missing pixels or stray dots |
-| Clean edges | No sawtooth, bowtie, or zigzag along silhouettes |
-| Parity stable | Edges consistent across different camera offsets |
-| Zoom stable | No artifacts that appear only at higher zoom levels |
+| Criterion              | What to look for                                         |
+|------------------------|----------------------------------------------------------|
+| All entities visible   | Expected shapes present, nothing missing                 |
+| Correct silhouettes    | Shape outlines match their type                          |
+| Consistent shading     | Face shades match expected lighting model                |
+| No gaps or overlaps    | Solid faces, no missing pixels or stray dots             |
+| Clean edges            | No sawtooth, bowtie, or zigzag along silhouettes         |
+| Parity stable          | Edges consistent across different camera offsets         |
+| Zoom stable            | No artifacts that appear only at higher zoom levels      |
+| Backend parity         | OpenGL and Metal produce visually matching frames        |
+
+Then open whichever diagnosis section below applies to the surface you're
+changing.
 
 ### 6. Diagnose and fix
 
-If any criterion fails, use the symptom table and trixel rendering reference
-below to locate the root cause.
+Jump to the diagnosis section for your surface. If the symptom doesn't
+match any table, widen to all three — bugs often cross surfaces (e.g. a
+lighting pass reading a stale trixel canvas).
 
-#### Symptom lookup
+After applying fixes, return to **Step 1**.
+
+---
+
+## Diagnosis: Trixel / SDF shapes
+
+The original diagnosis surface — applies to anything in the
+`VOXEL_TO_TRIXEL_STAGE_*`, `SHAPES_TO_TRIXEL`, `TRIXEL_TO_TRIXEL`, and
+`TRIXEL_TO_FRAMEBUFFER` pipeline stages.
+
+### Symptom lookup
 
 | Symptom | Likely location |
 |---------|----------------|
@@ -97,12 +149,6 @@ below to locate the root cause.
 | Edges OK at cam (0,0), broken at (1,0) | Camera offset parity — `canvasOffset` flooring mismatch |
 | Wrong position | `C_PositionGlobal3D` not propagated before RENDER |
 | Curved shape looks boxy | Wrong `shapeType` enum reaching GPU |
-
-After applying fixes, return to **Step 1**.
-
----
-
-## Trixel Rendering Reference
 
 ### The 2x3 trixel diamond
 
@@ -171,6 +217,63 @@ a "bowtie" zigzag along what should be a straight diagonal edge.
 
 ---
 
+## Diagnosis: Lighting (T-011 onward)
+
+The lighting stack is being built out in phases — the
+`LIGHTING_TO_TRIXEL` pipeline stage has landed (T-011, PR #185); AO
+(T-012), directional shadows (T-013), flood-fill propagation (T-014),
+LUT palette (T-015), and fog of war (T-016) are the incoming phases.
+See `engine/render/CLAUDE.md` for pipeline position.
+
+Populate this section as phases land. For now, the evaluation pattern:
+
+1. Capture a **baseline** screenshot set with lighting disabled (no
+   `C_LightSource` in scene, or set `frameData.lightingEnabled_ = 0` in
+   `system_lighting_to_trixel.hpp` — that's the CPU short-circuit that
+   skips the per-canvas dispatch).
+2. Capture the same shots with lighting enabled.
+3. Diff: lighting-on frames should modulate voxel and shape canvas
+   pixels; **GUI-canvas pixels must be untouched** (T-011 invariant).
+
+### Symptom lookup (to be expanded)
+
+| Symptom | Likely location |
+|---------|----------------|
+| Lighting pass modulates GUI text/panels | `LIGHTING_TO_TRIXEL` not respecting GUI-canvas bypass |
+| No visible lighting effect | Lighting textures unbound, or `isoPixelToPos3D` returning wrong world coords |
+| AO missing at voxel junctions (T-012) | `computeAO` neighbor-sampling indices against the 3D occupancy grid |
+| Shadow direction wrong (T-013) | Sun-direction uniform vs. shadow-map sweep axis mismatch |
+| Torch doesn't light neighbors (T-014) | BFS frontier not seeding emissive voxels, or occupancy grid missing analytic shapes |
+| Cel-shade bands smeared (T-015) | LUT sampler filter mode (GL_LINEAR instead of GL_NEAREST) |
+| Fog of war reveals through walls (T-016) | LOS ray casting not consulting columnar span lists |
+
+### Baseline-diff screenshots
+
+For each lighting phase, a "lighting on vs. off" pair is worth keeping in
+`docs/render-baselines/` as a reference. When a regression appears, diff
+new screenshots against the baseline rather than eyeballing.
+
+---
+
+## Diagnosis: Backend parity (OpenGL ↔ Metal)
+
+When a visual defect appears on only one backend, this is a parity
+problem, not a pipeline bug. Hand off to the `backend-parity` skill —
+its GLSL↔MSL cheatsheet and per-port checklist are the right tool. The
+render-debug-loop captures the evidence (before/after screenshots from
+both backends); `backend-parity` drives the port.
+
+Common parity-only symptoms:
+
+| Symptom | Likely surface |
+|---------|----------------|
+| Defect at zoom 1 only on Metal | Dispatch-grid helper returning floor-vs-ceil differently |
+| Atomic writes flicker on Metal | `atomicAdd` → `atomic_fetch_add_explicit` memory-order |
+| Texture sampling off-by-half-pixel | MSL `sample` vs. GLSL `texelFetch` addressing conventions |
+| Buffer binding index wrong on one side | `kBufferIndex_*` constant not mirrored across backends |
+
+---
+
 ## Key Files
 
 | File | Role |
@@ -182,6 +285,7 @@ a "bowtie" zigzag along what should be a straight diagonal edge.
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl` | Voxel pool stage 2 (reference) |
 | `engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp` | CPU-side shape gather and dispatch |
 | `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp` | CPU-side framebuffer draw, zoom, camera |
+| `engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp` | Screen-space lighting application (T-011) |
 | `engine/render/include/irreden/render/ir_render_types.hpp` | GPU struct definitions, ShapeFlags |
 | `engine/math/include/irreden/ir_math.hpp` | `trixelOriginOffsetZ1`, `pos2DIsoToTriangleIndex` |
 
@@ -193,5 +297,9 @@ a "bowtie" zigzag along what should be a straight diagonal edge.
 - All entities under test should target the same canvas. Verify by logging
   `canvasEntity_` from component data.
 - Pipeline order: compute shaders write canvas textures (depth via
-  `imageAtomicMin`, then color) -> fragment shader reads canvas and draws
-  a full-screen quad per canvas into the framebuffer.
+  `imageAtomicMin`, then color) → lighting pass modulates trixel canvas
+  pixels → fragment shader reads canvas and draws a full-screen quad per
+  canvas into the framebuffer.
+- When changing multiple pipeline stages in one PR, capture a screenshot
+  set per stage's branch and diff pairwise — it isolates which stage
+  introduced the regression faster than re-reading shader source.
