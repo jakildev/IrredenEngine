@@ -97,6 +97,9 @@ with a **fresh `claude` process and an empty conversation** — no
 context carries over from the prior iteration. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
+0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
+   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/sonnet-reviewer`
+
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`

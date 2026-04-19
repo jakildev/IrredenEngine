@@ -72,6 +72,8 @@ FLEET_RUN_SRC="$SCRIPT_DIR/fleet-run"
 FLEET_RUN_DEST="$HOME/bin/fleet-run"
 FLEET_BABYSIT_SRC="$SCRIPT_DIR/fleet-babysit"
 FLEET_BABYSIT_DEST="$HOME/bin/fleet-babysit"
+WITNESS_SRC="$SCRIPT_DIR/witness"
+WITNESS_DEST="$HOME/bin/witness"
 
 if [[ ! -f "$FLEET_UP_SRC" ]]; then
     echo "install.sh: $FLEET_UP_SRC does not exist — repo is incomplete" >&2
@@ -81,7 +83,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_BABYSIT_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_BABYSIT_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -118,6 +120,11 @@ fi
 if [[ -f "$FLEET_BABYSIT_SRC" ]]; then
     ln -sf "$FLEET_BABYSIT_SRC" "$FLEET_BABYSIT_DEST"
     echo "symlinked $FLEET_BABYSIT_DEST -> $FLEET_BABYSIT_SRC"
+fi
+
+if [[ -f "$WITNESS_SRC" ]]; then
+    ln -sf "$WITNESS_SRC" "$WITNESS_DEST"
+    echo "symlinked $WITNESS_DEST -> $WITNESS_SRC"
 fi
 
 # ----------------------------------------------------------------------
