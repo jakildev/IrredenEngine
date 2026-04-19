@@ -169,26 +169,37 @@ Each invocation is one iteration — do the work, then exit cleanly:
    d. **Set the PR label** to match your verdict (add `--repo
       <game-repo>` for game PRs). The label is the primary signal
       the human uses. Always remove stale labels first:
-      `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --add-label "fleet:needs-fix"`
+      `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
       (swap the label name for approved or blocker as appropriate).
-      - Verdict approve + "Opus recheck not required" → `fleet:approved`
+      - Verdict approve, no Nits section → `fleet:approved`
+      - Verdict approve WITH a non-empty `### Nits` section → BOTH
+        `fleet:approved` AND `fleet:has-nits` (the latter tells the
+        author worker to address the nits before the human merges)
       - Verdict approve + "Opus recheck required" → **do not label**.
         Leave it unlabeled; Opus will set the final label.
       - Verdict needs-fix → `fleet:needs-fix`
       - Verdict blocker → `fleet:blocker`
 
-   **Nits vs real issues:**
-   - **Approve with nits.** If the only findings are cosmetic (naming
-     style, comment wording, import order, minor formatting), approve
-     the PR and list the nits as suggestions in the review body under
-     a `### Nits (optional)` heading. Do NOT block the PR for these.
-   - **Needs-fix** is for substantive issues only: bugs, logic errors,
+   **Nits vs real issues — the bright line:**
+   - **Approve with nits** is fine for genuinely-optional cosmetic
+     items (naming style, comment wording, import order, minor
+     formatting). Add `fleet:has-nits` so the author cleans them up
+     before the human merges.
+   - **The contradiction "approve, but please fix X before merge" is
+     forbidden.** If a finding is described as "must resolve before
+     merge", "pre-merge ask", "the comment and code must agree", or
+     anything implying the merge depends on it — that is by definition
+     a `needs-fix`, not a Nit. Move it to the Needs-fix section and
+     drop the verdict to `needs-fix`.
+   - **Needs-fix** is for substantive issues: bugs, logic errors,
      missing error handling at system boundaries, convention violations
-     that would confuse future readers, performance regressions, or
-     missing tests for non-trivial logic.
-   - When in doubt, approve. The human can always request a follow-up.
-     Blocking PRs on style nits wastes more fleet time than the nit
-     is worth.
+     that would confuse future readers, performance regressions,
+     missing tests for non-trivial logic, or any nit that is actually
+     a pre-merge requirement.
+   - When in doubt about a finding being a real issue, prefer
+     `fleet:has-nits` over `fleet:needs-fix` — the author worker now
+     addresses nits aggressively, so genuinely-borderline items still
+     get cleaned up without the round-trip cost of a full re-review.
 3. **Reset to scratch branch.** After reviewing all candidates (or if
    none existed), return to the scratch branch so no PR branch is left
    checked out — other agents may need to check out the same branch:
