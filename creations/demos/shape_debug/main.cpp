@@ -513,6 +513,19 @@ void initEntities() {
         );
     }
 
+    // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
+    // downward in this iso convention, so shape bottoms sit at max +z ≈ 4
+    // (sphere r4, cone h8); floor sits just below at z ≈ 5.
+    constexpr float kFloorZ = 5.0f;
+
+    IR_LOG_INFO("--- Floor ---");
+    createSDFShape(
+        vec3((kNumCases - 1) * kSpacingX * 0.5f, kRowSeparationY * 0.5f, kFloorZ),
+        IRRender::ShapeType::BOX,
+        vec4(kNumCases * kSpacingX + 16.0f, kRowSeparationY + 24.0f, 2.0f, 0.0f),
+        Color{150, 150, 160, 255}
+    );
+
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
 
