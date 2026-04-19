@@ -262,17 +262,6 @@ Avoid:
     profiler build flag.
   - **Links:**
 
-- [~] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
-  - **ID:** T-012
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-ao-phase1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
-  - **Issue:** #166
-  - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
-  - **Links:**
-
 - [ ] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
   - **ID:** T-013
   - **Area:** engine/render, shaders/glsl
@@ -389,7 +378,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-012** — Lighting: per-face voxel ambient occlusion Phase 1 · Owner: render-ao-phase1 · PR: https://github.com/jakildev/IrredenEngine/pull/197
 - [~] **T-015** — Lighting: LUT palette shading Phase 4 · Owner: render-lut-palette-shading · PR: https://github.com/jakildev/IrredenEngine/pull/198
 
 ---
@@ -397,6 +385,17 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
+  - **ID:** T-012
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** render-ao-phase1
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
+  - **Issue:** #166
+  - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/197
 
 - [x] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
   - **ID:** T-010
