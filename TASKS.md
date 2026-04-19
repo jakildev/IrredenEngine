@@ -246,12 +246,12 @@ Avoid:
     side effect).
   - **Links:**
 
-- [ ] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
+- [~] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
   timing and file a report.
   - **ID:** T-008
   - **Area:** engine/profile
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** perf-shape-debug-zoom4
   - **Blocked by:** T-001 (if running in the fleet;
     the Windows-native clone can start this immediately)
   - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with
@@ -367,6 +367,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-008** — Example: benchmark IRShapeDebug at zoom 4 · Owner: perf-shape-debug-zoom4 · PR: https://github.com/jakildev/IrredenEngine/pull/220
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
