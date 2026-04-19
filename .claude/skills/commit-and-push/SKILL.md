@@ -80,10 +80,11 @@ git diff --name-only origin/master...HEAD
 ```
 
 If the diff includes any file under `engine/render/`,
-`engine/prefabs/irreden/render/`, any `*.glsl` or `*.metal` file, or
-`creations/demos/*/src/**` — and `docs/pr-screenshots/<current-branch>/`
-does **not** yet exist — stop and prompt the worker to run the
-`attach-screenshots` skill before proceeding. Screenshots must ship in the
+`engine/prefabs/irreden/render/`, any `*.glsl` or `*.metal` file,
+`creations/demos/*/src/**`, or any `creations/demos/*/main*.cpp` —
+and `docs/pr-screenshots/<current-branch>/` does **not** yet exist —
+stop and prompt the worker to run the `attach-screenshots` skill
+before proceeding. Screenshots must ship in the
 same commit as the code change; a separate follow-up commit for screenshots
 is harder to review and misses the "before" baseline.
 
