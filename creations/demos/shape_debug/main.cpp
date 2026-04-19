@@ -36,31 +36,16 @@
 
 namespace {
 
-struct ShotConfig {
-    float zoom_;
-    vec2 cameraIso_;
-    const char *label_;
+constexpr IRVideo::AutoScreenshotShot kShots[] = {
+    {1.0f, vec2(0, 0), "zoom1_origin"},
+    {2.0f, vec2(0, 0), "zoom2_origin"},
+    {4.0f, vec2(0, 0), "zoom4_origin"},
+    {1.0f, vec2(1, 0), "zoom1_odd_offset"},
+    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
 };
 
-// Each entry gets its own screenshot.  The settle frame lets the render
-// pipeline absorb zoom/camera changes before capture.
-constexpr int kSettleFrames = 3;
-
-ShotConfig g_shots[] = {
-    {1.0f, vec2(0, 0),   "zoom1_origin"},
-    {2.0f, vec2(0, 0),   "zoom2_origin"},
-    {4.0f, vec2(0, 0),   "zoom4_origin"},
-    {1.0f, vec2(1, 0),   "zoom1_odd_offset"},
-    {8.0f, vec2(0, 0),   "zoom8_origin"},
-    {4.0f, vec2(3, 5),   "zoom4_offset_3_5"},
-};
-constexpr int kNumShots = sizeof(g_shots) / sizeof(g_shots[0]);
-
-int g_initialWarmup = -1;
-int g_currentShot = 0;
-int g_settleCounter = 0;
-bool g_screenshotPending = false;
-bool g_autoMode = false;
+int g_autoWarmupFrames = 0;  // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
@@ -73,18 +58,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
+    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-screenshot") == 0) {
-            g_autoMode = true;
-            g_initialWarmup = 10;
-            if (i + 1 < argc) {
-                int frames = std::atoi(argv[i + 1]);
-                if (frames > 0) {
-                    g_initialWarmup = frames;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
+        if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_autoProfileFrames = 300;  // default
             if (i + 1 < argc) {
                 int frames = std::atoi(argv[i + 1]);
@@ -164,53 +140,13 @@ void initSystems() {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoMode) {
-        IRSystem::SystemId autoScreenshotId = IRSystem::createSystem<C_VoxelSetNew>(
-            "AutoScreenshot",
-            [](C_VoxelSetNew &) {},
-            []() {
-                if (g_initialWarmup > 0) {
-                    --g_initialWarmup;
-                    return;
-                }
-
-                if (g_currentShot >= kNumShots) {
-                    IRWindow::closeWindow();
-                    return;
-                }
-
-                if (g_settleCounter == 0) {
-                    auto &shot = g_shots[g_currentShot];
-                    IR_LOG_INFO(
-                        "Shot {}/{}: {} (zoom={}, cam=({},{}))",
-                        g_currentShot + 1, kNumShots, shot.label_,
-                        shot.zoom_, shot.cameraIso_.x, shot.cameraIso_.y
-                    );
-                    IRRender::setCameraZoom(shot.zoom_);
-                    IRRender::setCameraPosition2DIso(shot.cameraIso_);
-                    g_settleCounter = kSettleFrames;
-                    g_screenshotPending = false;
-                    return;
-                }
-
-                if (g_settleCounter > 1) {
-                    --g_settleCounter;
-                    return;
-                }
-
-                // settleCounter == 1: capture this frame, then advance
-                if (!g_screenshotPending) {
-                    IRVideo::requestScreenshot();
-                    g_screenshotPending = true;
-                    return;
-                }
-
-                g_settleCounter = 0;
-                g_screenshotPending = false;
-                ++g_currentShot;
-            }
-        );
-        renderPipeline.push_back(autoScreenshotId);
+    if (g_autoWarmupFrames > 0) {
+        IRVideo::AutoScreenshotConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        cfg.settleFrames_ = 3;
+        cfg.shots_ = kShots;
+        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
