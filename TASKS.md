@@ -350,6 +350,28 @@ Avoid:
   - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
   - **Links:**
 
+- [ ] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
+  - **ID:** T-018
+  - **Area:** tooling, .claude/skills
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `.claude/skills/attach-screenshots/SKILL.md` exists with documented API; (2) skill invokes `render-debug-loop` to capture before/after screenshots (stash-run-capture-restore for before, run-capture for after); (3) screenshots committed to `docs/pr-screenshots/<branch>/` as `<scenario>-before.png`, `<scenario>-after.png`, etc.; (4) skill returns a markdown snippet with inline GitHub raw URLs for the PR body; (5) "no obvious demo" case prompts worker or falls back to `IRShapeDebug`; (6) build-broken/crash/no-display failure modes reported cleanly — no partial commit; (7) tested end-to-end on a rendering PR against `IRShapeDebug`; (8) builds clean on active preset
+  - **Issue:** #186
+  - **Notes:** foundation task — T-019 (engine role wiring) and game T-003 both depend on this. Storage approach decided in issue: commit PNGs to repo under `docs/pr-screenshots/<branch>/`, reference via raw GitHub URL. Historical screenshots kept permanently as visual changelog. Naming: `<scenario>-<phase>.png` where phase is before/after/before-zoom2/after-zoom2 etc.
+  - **Links:**
+
+- [ ] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
+  - **ID:** T-019
+  - **Area:** tooling, .claude/skills
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-018
+  - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` invoke `attach-screenshots` before `optimize`/`commit-and-push` when diff touches `engine/render/`, `engine/prefabs/irreden/render/`, any `.glsl`/`.metal` shader file, or `creations/demos/*/src/`; (2) purely mechanical refactors and doc PRs do NOT invoke the skill; (3) `commit-and-push` detects render/visual files in diff and prompts worker to run `attach-screenshots` first if `docs/pr-screenshots/<branch>/` does not yet exist; (4) all engine author role files build/parse cleanly; (5) at least one manually-verified run shows screenshots landing in the PR
+  - **Issue:** #186
+  - **Notes:** conditional trigger logic must be precise — only visual/render diffs trigger it. Mechanical refactors (rename, extract header) must not trigger it. `attach-screenshots` runs BEFORE `optimize` and `commit-and-push` so screenshots are in the same commit batch.
+  - **Links:**
+
 ---
 
 ## In progress
