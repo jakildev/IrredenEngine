@@ -246,22 +246,6 @@ Avoid:
     side effect).
   - **Links:**
 
-- [~] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
-  timing and file a report.
-  - **ID:** T-008
-  - **Area:** engine/profile
-  - **Model:** opus
-  - **Owner:** perf-shape-debug-zoom4
-  - **Blocked by:** T-001 (if running in the fleet;
-    the Windows-native clone can start this immediately)
-  - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with
-    per-system `easy_profiler` screenshots and a 1-paragraph summary of the
-    top 3 hotspots.
-  - **Notes:** use `IRShapeDebug` from `creations/demos/shape_debug/`. See
-    `engine/profile/CLAUDE.md` for the macros and how to enable the
-    profiler build flag.
-  - **Links:**
-
 - [~] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
   - **ID:** T-013
   - **Area:** engine/render, shaders/glsl
@@ -367,7 +351,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-008** — Example: benchmark IRShapeDebug at zoom 4 · Owner: perf-shape-debug-zoom4 · PR: https://github.com/jakildev/IrredenEngine/pull/220
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
@@ -375,6 +358,16 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system timing and file a report.
+  - **ID:** T-008
+  - **Area:** engine/profile
+  - **Model:** opus
+  - **Owner:** perf-shape-debug-zoom4
+  - **Blocked by:** (none)
+  - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with per-system `easy_profiler` screenshots and a 1-paragraph summary of the top 3 hotspots.
+  - **Notes:** use `IRShapeDebug` from `creations/demos/shape_debug/`. See `engine/profile/CLAUDE.md` for the macros and how to enable the profiler build flag.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/220
 
 - [x] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
   - **ID:** T-015
