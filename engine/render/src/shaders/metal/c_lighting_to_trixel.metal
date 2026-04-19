@@ -2,7 +2,8 @@
 using namespace metal;
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
-// application pass — no-op skeleton until T-010/012/013 land.
+// application pass — modulates trixelColors.rgb by the per-pixel AO
+// factor written to canvasAO.r by COMPUTE_VOXEL_AO.
 
 struct FrameDataLightingToTrixel {
     int lightingEnabled;
@@ -15,6 +16,7 @@ kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
+    texture2d<float, access::read> canvasAO [[texture(2)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     if (frameData.lightingEnabled == 0) {
@@ -34,4 +36,9 @@ kernel void c_lighting_to_trixel(
     if (distance >= 65535) {
         return;
     }
+
+    const float ao = canvasAO.read(uint2(pixel)).r;
+    float4 color = trixelColors.read(uint2(pixel));
+    color.rgb *= ao;
+    trixelColors.write(color, uint2(pixel));
 }
