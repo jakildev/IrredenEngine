@@ -56,6 +56,8 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    VOXEL_TO_TRIXEL_STAGE_2                                       │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
+│    LIGHTING_TO_TRIXEL  (T-011+; skeleton today)                  │
+│      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │    TRIXEL_TO_TRIXEL  (compositing/post)                          │
 │    TRIXEL_TO_FRAMEBUFFER                                         │
 │      • v_/f_trixel_to_framebuffer.glsl                           │

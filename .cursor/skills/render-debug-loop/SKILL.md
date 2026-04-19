@@ -71,10 +71,16 @@ If the build fails, fix compile errors before continuing.
 
 Screenshots accumulate across runs (the counter does not reset). Before a
 new run, remove the previous batch so the Glob in step 4 picks up only
-the current iteration. Use the Bash tool with a single `rm -rf` against
-the demo's `save_files/screenshots/` directory under its build-tree
-working directory (use `fleet-run --print-cwd <EXE_NAME>` or read the
-demo's `add_executable` to find the exact path).
+the current iteration. Locate the demo's `save_files/screenshots/`
+directory via either:
+
+- **Glob** `build/**/<EXE_NAME>` (or `build/**/<EXE_NAME>.exe` on
+  Windows) to find the executable; screenshots live at
+  `<dirname of EXE_PATH>/save_files/screenshots/`.
+- Read the `fleet-run: <EXE_PATH>` line printed to stdout by the
+  previous run's `fleet-run` invocation.
+
+Then `rm -rf` that directory.
 
 ### 3. Run with `--auto-screenshot`
 
@@ -222,7 +228,9 @@ See `engine/render/CLAUDE.md` for pipeline position.
 Populate this section as phases land. For now, the evaluation pattern:
 
 1. Capture a **baseline** screenshot set with lighting disabled (no
-   `C_LightSource` in scene, or lighting pass bypassed).
+   `C_LightSource` in scene, or set `frameData.lightingEnabled_ = 0` in
+   `system_lighting_to_trixel.hpp` — that's the CPU short-circuit that
+   skips the per-canvas dispatch).
 2. Capture the same shots with lighting enabled.
 3. Diff: lighting-on frames should modulate voxel and shape canvas
    pixels; **GUI-canvas pixels must be untouched** (T-011 invariant).
