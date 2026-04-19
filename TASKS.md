@@ -312,11 +312,11 @@ Avoid:
   - **Notes:** explicitly [opus] — crash-recovery edge cases (resume vs restart judgment) require real reasoning. Builds on fleet-claim stack from #177. Particularly valuable before lighting batch (T-010…T-016) starts in earnest. Molecule format: yaml with name, agent, created, tasks list (id + state + pr + commit). Inspiration: gas town Molecules concept.
   - **Links:**
 
-- [ ] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
+- [~] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
   - **ID:** T-022
   - **Area:** tooling, .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** fleet-merger-orchestrator
   - **Blocked by:** (none)
   - **Acceptance:** (1) merger pane in `fleet-up`, polls every 10m; (2) two PRs touching same file far apart get auto-rebased and emerge MERGEABLE; (3) TASKS.md conflicts (two PRs adding different tasks) auto-resolved by sort-merge; (4) non-mechanical conflicts (same code lines changed differently) labeled `human:needs-fix` with conflict description — NEVER auto-resolved; (5) merger never force-pushes to master, never calls `gh pr merge`; (6) every action logged to `~/.fleet/logs/merger.log` and posted as PR comment; (7) PRs labeled `human:wip`, `fleet:wip`, or `fleet:blocker` are skipped
   - **Issue:** #192
@@ -395,6 +395,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
 - [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
 - [~] **T-005** — Metal parity: port c_update_voxel_positions.glsl to MSL · Owner: metal-update-voxel-positions-port · PR: https://github.com/jakildev/IrredenEngine/pull/223
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
