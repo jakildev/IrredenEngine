@@ -297,11 +297,11 @@ Avoid:
   - **Notes:** AO texture already available from T-012 (PR #197). Extends stub `f_debug_overlay.glsl` and `engine/render/src/shaders/metal/debug_overlay.metal`. Debug overlay pass runs after lighting passes but replaces final composited output in debug mode — artistic LIGHTING_TO_TRIXEL result still computed but discarded. AO viz: `vec3(1-ao, ao, 0)` (red=occluded, green=clear). Light level: `vec3(level, level, 1.0)` (blue→white). Shadow: black/magenta. Soft suggestion: pair shadow debug mode with T-013 landing. Mirror pattern of `setSubdivisionMode` in render API.
   - **Links:**
 
-- [ ] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
+- [~] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
   - **ID:** T-026
   - **Area:** tooling, .claude/skills, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-verify-harness
   - **Blocked by:** (none)
   - **Acceptance:** (1) reference library structure decided and documented (path, naming, per-shot layout); (2) `scripts/render-compare.py` (or equivalent) exists and produces pass/fail + diff image on mismatches; (3) `.claude/skills/render-verify/SKILL.md` wraps build → run → capture → compare → report flow; (4) `IRShapeDebug` reference set committed; skill produces all-pass on clean master; (5) builds + skill run cleanly on `linux-debug`
   - **Issue:** #217
@@ -341,6 +341,7 @@ Avoid:
 - [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
+- [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 
 ---
