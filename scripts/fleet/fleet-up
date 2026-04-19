@@ -4,7 +4,7 @@
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
 # then builds a single tmux session "fleet" with one window "agents"
-# containing up to 8 tiled panes (7 engine + 1 game architect if the
+# containing up to 9 tiled panes (8 engine + 1 game architect if the
 # game repo is present) — each launching `claude` with the right model
 # and the matching role slash command in dry-run mode.
 #
@@ -75,6 +75,7 @@ ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
+ensure_worktree "$ENGINE" .claude/worktrees/merger            fleet/merger
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
@@ -134,6 +135,7 @@ reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scrat
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
+reset_worktree "$ENGINE/.claude/worktrees/merger"          claude/merger-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
@@ -233,7 +235,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-reviewer opus-reviewer queue-manager; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-reviewer opus-reviewer queue-manager merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
@@ -320,8 +322,8 @@ launch_cmd() {
 #                         sonnet-fleet-1, opus-worker-1, opus-worker-2
 #   Middle (~40% height): architects (2 wide panes)     — interactive design
 #                         opus-architect, [game-architect] — biggest, most-used
-#   Bottom (~28% height): ops (3 panes)                 — small status panes
-#                         sonnet-reviewer, opus-reviewer, queue-manager
+#   Bottom (~28% height): ops (4 panes)                 — small status panes
+#                         sonnet-reviewer, opus-reviewer, queue-manager, merger
 #
 # The architect row is widest+tallest because it's where the human
 # spends interactive time. Workers and ops are autonomous loops you
@@ -377,6 +379,12 @@ tmux split-window -h -t "$BOT2" \
 BOT3=$(active_pane_id)
 label_pane_id "$BOT3" "queue-manager [sonnet]"
 
+tmux split-window -h -t "$BOT3" \
+    -c "$ENGINE/.claude/worktrees/merger" \
+    "$(launch_cmd "$OPUS_MODEL" merger 10m)"
+BOT4=$(active_pane_id)
+label_pane_id "$BOT4" "merger [opus 4.7]"
+
 # --- Row 2 (middle, ~40%): architects ---------------------------------
 # Split off the middle row from TOP1. TOP1 is currently 72% of window
 # (after bottom 28%). Splitting 56% off the bottom of TOP1 gives:
@@ -426,10 +434,10 @@ attach with:  tmux attach -t ${SESSION}
 layout (single window, three rows):
   top (~32%, 3 panes) — sonnet-fleet-1  opus-worker-1  opus-worker-2                  (autonomous workers)
   middle (~40%, 2 panes, taller) — opus-architect  [game-architect]                  (interactive architects — biggest)
-  bottom (~28%, 3 panes) — sonnet-reviewer  opus-reviewer  queue-manager             (ops)
+  bottom (~28%, 4 panes) — sonnet-reviewer  opus-reviewer  queue-manager  merger     (ops)
 
 effort levels:
-  opus agents (architects, opus-workers, opus-reviewer) — max
+  opus agents (architects, opus-workers, opus-reviewer, merger) — max
   sonnet agents (worker, reviewer, queue-manager) — high
   override globally by exporting FLEET_EFFORT=<level> before fleet-up.
   (to change one pane, edit fleet-babysit's case statement — fleet-up
@@ -456,6 +464,7 @@ scheduling (live mode): each worker iteration is a fresh \`claude\` process
   configured interval:
   sonnet-reviewer — every ~3m     opus-reviewer — every ~30m
   opus-worker-1/2 — every ~20m    queue-manager — every ~5m
+  merger          — every ~10m
   sonnet-fleet-1  — back-to-back (60s pause between iterations)
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)

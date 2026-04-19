@@ -359,9 +359,10 @@ A reasonable starting setup with the model split in mind:
 | `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
 | `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
 | `queue-manager`     | engine | Sonnet | Task intake — categorizes and files new tasks       |
+| `merger`            | engine | Opus   | Auto-rebases stale PRs and sort-merges TASKS.md conflicts (polling loop) |
 | `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
 
-The first seven live in `~/src/IrredenEngine/.claude/worktrees/`. The
+The first eight live in `~/src/IrredenEngine/.claude/worktrees/`. The
 last (`game-architect`) lives inside the game repo at
 `~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
 because the game is its own git repo with its own PR namespace.
@@ -392,6 +393,7 @@ git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  orig
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
 git worktree add -b fleet/queue-manager   .claude/worktrees/queue-manager   origin/master
+git worktree add -b fleet/merger          .claude/worktrees/merger          origin/master
 
 cd ~/src/IrredenEngine/creations/game
 git fetch origin master
@@ -404,13 +406,14 @@ Verify:
 git worktree list
 ```
 
-You should see the main clone on `master` plus seven engine worktrees
+You should see the main clone on `master` plus eight engine worktrees
 (`opus-architect`, `opus-worker-1`, `opus-worker-2`, `sonnet-fleet-1`,
-`sonnet-reviewer`, `opus-reviewer`, `queue-manager`) each on their own
-`fleet/*` seed branch, plus an eighth `game-architect` worktree under
-`creations/game/` if the game repo is present. The `fleet/` prefix
-keeps these distinct from `claude/<area>-<topic>` agent branches so
-`gh pr list` and branch-completion never confuse them.
+`sonnet-reviewer`, `opus-reviewer`, `queue-manager`, `merger`) each on
+their own `fleet/*` seed branch, plus a ninth `game-architect`
+worktree under `creations/game/` if the game repo is present. The
+`fleet/` prefix keeps these distinct from `claude/<area>-<topic>`
+agent branches so `gh pr list` and branch-completion never confuse
+them.
 
 These worktrees live forever. Each agent session opens the worktree
 it wants and the `start-next-task` skill creates a fresh
@@ -483,6 +486,7 @@ as its initial prompt. The role files live at:
 - `~/.claude/commands/role-sonnet-reviewer.md`
 - `~/.claude/commands/role-opus-reviewer.md`
 - `~/.claude/commands/role-queue-manager.md`
+- `~/.claude/commands/role-merger.md`
 - `~/.claude/commands/role-game-architect.md`
 
 Each one is a markdown file with frontmatter that Claude Code
@@ -1023,6 +1027,7 @@ to every future fleet-up.
 | `/role-sonnet-reviewer`    | Sonnet | `sonnet-reviewer`  | Polling 10min |
 | `/role-opus-reviewer`      | Opus   | `opus-reviewer`    | Polling 30min |
 | `/role-queue-manager`      | Sonnet | `queue-manager`    | On demand     |
+| `/role-merger`             | Opus   | `merger`           | Polling 10min |
 | `/role-game-architect`     | Opus   | `game-architect`   | Stand-by      |
 
 Each command takes one optional argument: `dry-run` or `live`.
