@@ -252,7 +252,7 @@ Avoid:
   - **Area:** engine/profile
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** Linux build maturation (if running in the fleet;
+  - **Blocked by:** T-001 (if running in the fleet;
     the Windows-native clone can start this immediately)
   - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with
     per-system `easy_profiler` screenshots and a 1-paragraph summary of the
