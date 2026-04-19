@@ -275,11 +275,11 @@ Avoid:
   - **Notes:** explicitly [sonnet] — pure file-polling and timestamp comparison, no judgment calls. Per-agent thresholds: sonnet-author ≤5m, sonnet-reviewer ≤6m, queue-manager ≤10m, opus-worker ≤30m, opus-reviewer ≤45m. v1 alerts only — no auto-interrupt (too risky). Inspiration: gas town Witness role.
   - **Links:**
 
-- [ ] **Lighting: culling invariants — document off-screen-caster, shadow-ring, light-seed expansion, and AO guard band** — add a canonical "Lighting culling invariants" section to `engine/render/CLAUDE.md` covering the four invariants that downstream lighting PRs (AO, shadows, flood-fill, fog-of-war) must respect to handle off-screen geometry correctly
+- [~] **Lighting: culling invariants — document off-screen-caster, shadow-ring, light-seed expansion, and AO guard band** — add a canonical "Lighting culling invariants" section to `engine/render/CLAUDE.md` covering the four invariants that downstream lighting PRs (AO, shadows, flood-fill, fog-of-war) must respect to handle off-screen geometry correctly
   - **ID:** T-024
   - **Area:** docs, engine/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** docs-lighting-culling-invariants
   - **Blocked by:** (none)
   - **Acceptance:** (1) new section "Lighting culling invariants" added to `engine/render/CLAUDE.md` containing all four invariants (grid-build iterates full pool not render-culled subset; shadow-ring extent formula when chunk streaming activates; flood-fill seed from all C_LightSource entities within frustum + max(radius) expansion; 1-chunk AO/shadow guard band around view-chunk set); (2) issues #166 (AO), #167 (shadows), #168 (flood-fill), #170 (fog-of-war) cross-linked to issue #196 via comments; (3) T-010 occupancy-grid-build system (already merged in PR #188) checked against invariant #1 — if violated, a follow-up task is filed; if compliant, that is noted in the PR/issue; (4) builds clean on active preset (doc-only change)
   - **Issue:** #196
@@ -341,6 +341,7 @@ Avoid:
 - [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
+- [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 
