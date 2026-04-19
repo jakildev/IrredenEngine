@@ -10,6 +10,19 @@
 #   fleet-down                  graceful: send Ctrl-C + "exit", wait, kill
 #   fleet-down --force          immediate: kill the session, no grace
 #   fleet-down --keep-claims    don't wipe ~/.fleet/claims (default: wipe)
+#   fleet-down --wait           wait for active fleet-claim locks to drain
+#                               before shutting down (poll every 30s, cap
+#                               at WAIT_MAX_SECONDS)
+#   fleet-down --summary        ask each pane to write a session summary
+#                               to ~/.fleet/summaries/<timestamp>/<role>.md
+#                               before exiting; useful for "what snags did
+#                               we hit today" retros
+#
+# Architect session resume (preserved across down/up cycles): each
+# architect role's session ID is saved in ~/.fleet/sessions/. fleet-down
+# does NOT delete those files, so the next fleet-up can resume the
+# architect conversations. Delete ~/.fleet/sessions/<role>.session-id
+# manually to force a fresh architect session next time.
 #
 # Why not just `tmux kill-session`?
 #   - Each pane runs `fleet-babysit`, which itself runs `claude`. A bare
@@ -29,16 +42,23 @@
 set -euo pipefail
 
 SESSION="fleet"
-GRACE_SECONDS=8       # how long to wait for panes to wind down after Ctrl-C
+GRACE_SECONDS=8           # how long to wait for panes to wind down after Ctrl-C
+WAIT_POLL_SECONDS=30      # how often to check for idle when --wait is set
+WAIT_MAX_SECONDS=1800     # cap --wait at 30 min (humans can re-run with --force)
+SUMMARY_WAIT_SECONDS=60   # how long to give panes to write their summaries
 FORCE=0
 KEEP_CLAIMS=0
+WAIT_FOR_IDLE=0
+WANT_SUMMARY=0
 
 for arg in "$@"; do
     case "$arg" in
         --force)        FORCE=1 ;;
         --keep-claims)  KEEP_CLAIMS=1 ;;
+        --wait)         WAIT_FOR_IDLE=1 ;;
+        --summary)      WANT_SUMMARY=1 ;;
         -h|--help)
-            sed -n '2,30p' "$0"
+            sed -n '2,40p' "$0"
             exit 0
             ;;
         *) echo "fleet-down: unknown argument '$arg'" >&2; exit 2 ;;
@@ -53,6 +73,92 @@ fi
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "fleet-down: no '$SESSION' tmux session is running. Nothing to do."
     exit 0
+fi
+
+# ----------------------------------------------------------------------
+# Step 0a: --wait — block until active fleet-claim locks drain
+# ----------------------------------------------------------------------
+#
+# An active claim means a worker is mid-task (mid-build, mid-edit,
+# mid-PR-create). If we kill it, the local commits and partial work
+# are lost (work is on the worktree's filesystem; only what's pushed
+# survives). Waiting for the worker to release its claim — which
+# happens after `commit-and-push` succeeds and the WIP label is
+# removed — gives in-flight work a chance to land cleanly.
+#
+# We poll fleet-claim list (filtering out _stack_* metadata dirs).
+# When the count drops to zero, all workers are between tasks and
+# safe to shut down.
+
+count_active_claims() {
+    if ! command -v fleet-claim >/dev/null 2>&1; then
+        echo 0
+        return
+    fi
+    local out
+    out=$(fleet-claim list 2>/dev/null || true)
+    if echo "$out" | grep -q "no active claims"; then
+        echo 0
+        return
+    fi
+    # Each non-empty, non-header line is one active claim.
+    echo "$out" | grep -v "^$" | wc -l | tr -d ' '
+}
+
+if [[ "$WAIT_FOR_IDLE" -eq 1 ]]; then
+    deadline=$(( $(date +%s) + WAIT_MAX_SECONDS ))
+    echo "fleet-down --wait: waiting for active claims to drain (max ${WAIT_MAX_SECONDS}s, polling every ${WAIT_POLL_SECONDS}s)"
+    while [[ $(date +%s) -lt $deadline ]]; do
+        n=$(count_active_claims)
+        if [[ "$n" -eq 0 ]]; then
+            echo "fleet-down --wait: all claims released. Proceeding."
+            break
+        fi
+        echo "fleet-down --wait: $n active claim(s); rechecking in ${WAIT_POLL_SECONDS}s..."
+        sleep "$WAIT_POLL_SECONDS"
+    done
+    if [[ $(date +%s) -ge $deadline ]]; then
+        n=$(count_active_claims)
+        echo "fleet-down --wait: deadline reached with $n claim(s) still held. Proceeding to graceful shutdown anyway."
+    fi
+fi
+
+# ----------------------------------------------------------------------
+# Step 0b: --summary — request per-pane session summaries
+# ----------------------------------------------------------------------
+#
+# Send a Write-tool prompt to each pane asking it to record what it
+# worked on, what snags it hit, and what could improve. We collect
+# these in ~/.fleet/summaries/<timestamp>/<role>.md so the human can
+# review them after the fleet is down.
+#
+# The summaries are best-effort — if an agent is mid-iteration and
+# can't acknowledge in time, we skip it and proceed. SUMMARY_WAIT_SECONDS
+# bounds the total wait.
+
+SUMMARY_DIR=""
+if [[ "$WANT_SUMMARY" -eq 1 ]]; then
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    SUMMARY_DIR="$HOME/.fleet/summaries/$timestamp"
+    mkdir -p "$SUMMARY_DIR"
+    echo "fleet-down --summary: requesting per-pane summaries to $SUMMARY_DIR/"
+
+    while IFS= read -r pane_id; do
+        # Read the pane's @role label (set by fleet-up); fall back to
+        # the pane index if @role isn't set.
+        role=$(tmux show-options -t "$pane_id" -p -v @role 2>/dev/null | awk '{print $1}')
+        [[ -z "$role" ]] && role="pane-${pane_id#%}"
+        summary_file="$SUMMARY_DIR/$role.md"
+        prompt="Before exiting: use the Write tool to save a short session summary to $summary_file. Cover (1) what tasks/PRs you worked on this session, (2) any snags, surprises, or ergonomics issues that the human might want to fix in the fleet tooling, (3) anything left blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
+        tmux send-keys -t "$pane_id" "$prompt" Enter
+    done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
+
+    echo "fleet-down --summary: waiting up to ${SUMMARY_WAIT_SECONDS}s for panes to write..."
+    sleep "$SUMMARY_WAIT_SECONDS"
+
+    # Report what landed.
+    written=$(find "$SUMMARY_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    echo "fleet-down --summary: $written summary file(s) written to $SUMMARY_DIR/"
 fi
 
 # ----------------------------------------------------------------------
@@ -122,4 +228,11 @@ else
 fi
 
 echo
+if [[ -n "$SUMMARY_DIR" ]]; then
+    echo "fleet-down: session summaries in $SUMMARY_DIR/"
+fi
+if [[ -d "$HOME/.fleet/sessions" ]] && find "$HOME/.fleet/sessions" -maxdepth 1 -name '*.session-id' | grep -q .; then
+    echo "fleet-down: architect session IDs preserved in ~/.fleet/sessions/."
+    echo "            next fleet-up will resume those conversations automatically."
+fi
 echo "fleet-down: done. Bring the fleet back up with:  fleet-up live"
