@@ -169,43 +169,6 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
-  the GLSL compute for writing 2D shape SDFs into trixel canvases has
-  no Metal counterpart. Invoke the `backend-parity` skill on a macOS
-  host and port it.
-  - **ID:** T-004
-  - **Area:** engine/render/src/shaders/metal
-  - **Model:** opus
-  - **Owner:** metal-shapes-to-trixel-port
-  - **Blocked by:** (none)
-  - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
-    exists and matches the GLSL binding/uniform layout, the
-    `macos-debug` build is clean, and the shapes-rendering demo
-    (whichever creation exercises `SHAPES_TO_TRIXEL`) renders
-    visually identically to the OpenGL version.
-  - **Notes:** read `engine/render/CLAUDE.md` pipeline overview and
-    the GLSL source in full before porting. Use the cheatsheet in
-    `.claude/skills/backend-parity/SKILL.md`.
-  - **Links:**
-
-- [~] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
-  GPU-side voxel-position update compute with no Metal counterpart.
-  Same skill flow as above.
-  - **ID:** T-005
-  - **Area:** engine/render/src/shaders/metal
-  - **Model:** opus
-  - **Owner:** metal-update-voxel-positions-port
-  - **Blocked by:** (none)
-  - **Acceptance:** `engine/render/src/shaders/metal/c_update_voxel_positions.metal`
-    exists and matches the GLSL binding/uniform layout, `macos-debug`
-    build is clean, and a voxel-animation demo (e.g. one of the
-    `creations/demos/*` that exercises moving voxels) animates
-    identically to the OpenGL version.
-  - **Notes:** dispatch size and buffer bindings must match exactly
-    — any mismatch will race or corrupt the voxel pool. This one is
-    higher-stakes than `c_shapes_to_trixel`; be thorough.
-  - **Links:**
-
 - [~] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
   the voxel-visibility compaction pass (reduces visible-voxel indices
   into a dense buffer) has no Metal counterpart. Same skill flow.
@@ -401,8 +364,6 @@ Avoid:
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
-- [~] **T-004** — Metal parity: port c_shapes_to_trixel.glsl to MSL · Owner: metal-shapes-to-trixel-port · PR: https://github.com/jakildev/IrredenEngine/pull/222
-- [~] **T-005** — Metal parity: port c_update_voxel_positions.glsl to MSL · Owner: metal-update-voxel-positions-port · PR: https://github.com/jakildev/IrredenEngine/pull/223
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
@@ -410,6 +371,28 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** — GPU-side voxel-position update compute ported to Metal.
+  - **ID:** T-005
+  - **Area:** engine/render/src/shaders/metal
+  - **Model:** opus
+  - **Owner:** metal-update-voxel-positions-port
+  - **Blocked by:** (none)
+  - **Acceptance:** `.metal` shader exists, `macos-debug` build clean, voxel animation identical to OpenGL.
+  - **Issue:** (none)
+  - **Notes:** (none)
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/223
+
+- [x] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** — GLSL compute for shape SDFs into trixel canvases ported to Metal.
+  - **ID:** T-004
+  - **Area:** engine/render/src/shaders/metal
+  - **Model:** opus
+  - **Owner:** metal-shapes-to-trixel-port
+  - **Blocked by:** (none)
+  - **Acceptance:** `.metal` shader exists, `macos-debug` build clean, shapes render identically to OpenGL.
+  - **Issue:** (none)
+  - **Notes:** (none)
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/222
 
 - [x] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system timing and file a report.
   - **ID:** T-008
