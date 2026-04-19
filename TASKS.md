@@ -372,6 +372,17 @@ Avoid:
   - **Notes:** explicitly [sonnet] — pure file-polling and timestamp comparison, no judgment calls. Per-agent thresholds: sonnet-author ≤5m, sonnet-reviewer ≤6m, queue-manager ≤10m, opus-worker ≤30m, opus-reviewer ≤45m. v1 alerts only — no auto-interrupt (too risky). Inspiration: gas town Witness role.
   - **Links:**
 
+- [ ] **Lighting: culling invariants — document off-screen-caster, shadow-ring, light-seed expansion, and AO guard band** — add a canonical "Lighting culling invariants" section to `engine/render/CLAUDE.md` covering the four invariants that downstream lighting PRs (AO, shadows, flood-fill, fog-of-war) must respect to handle off-screen geometry correctly
+  - **ID:** T-024
+  - **Area:** docs, engine/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new section "Lighting culling invariants" added to `engine/render/CLAUDE.md` containing all four invariants (grid-build iterates full pool not render-culled subset; shadow-ring extent formula when chunk streaming activates; flood-fill seed from all C_LightSource entities within frustum + max(radius) expansion; 1-chunk AO/shadow guard band around view-chunk set); (2) issues #166 (AO), #167 (shadows), #168 (flood-fill), #170 (fog-of-war) cross-linked to issue #196 via comments; (3) T-010 occupancy-grid-build system (already merged in PR #188) checked against invariant #1 — if violated, a follow-up task is filed; if compliant, that is noted in the PR/issue; (4) builds clean on active preset (doc-only change)
+  - **Issue:** #196
+  - **Notes:** explicitly [sonnet] per issue — this is a write-up and cross-linking task, not a design decision. T-010 (#164) already merged via PR #188; invariant #1 check applies to the merged form. The four invariants were specified by the opus-architect during C_LightSource/C_LightBlocker review (PR #187). Escalate to [opus] only if invariant #1 is found violated in T-010 and structural fixes are needed.
+  - **Links:**
+
 ---
 
 ## In progress
