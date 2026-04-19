@@ -82,6 +82,9 @@ kernel void c_compute_voxel_ao(
     if (occupancyGetBit(occupancyBits, baseOut.x + t2.x, baseOut.y + t2.y, baseOut.z + t2.z)) occl++;
     if (occupancyGetBit(occupancyBits, baseOut.x - t2.x, baseOut.y - t2.y, baseOut.z - t2.z)) occl++;
 
-    float ao = 1.0 - float(occl) * 0.15;
+    // Each filled edge-neighbor darkens by 10%; all four caps at 60%
+    // brightness keeps crease darkening visually subtle. Must stay in
+    // lockstep with the 0.10 coefficient in c_compute_voxel_ao.glsl.
+    float ao = 1.0 - float(occl) * 0.10;
     canvasAO.write(float4(ao, 0.0, 0.0, 0.0), uint2(pixel));
 }
