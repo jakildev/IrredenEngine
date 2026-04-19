@@ -17,6 +17,7 @@ const char *const kFileCompUpdateVoxelPositions = "shaders/c_update_voxel_positi
 const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
 
 const char *const kFileVertDebugOverlay = "shaders/v_debug_overlay.glsl";

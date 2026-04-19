@@ -14,6 +14,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 // SYSTEMS
@@ -24,6 +25,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -128,6 +130,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -520,4 +523,9 @@ void initEntities() {
     const ivec2 canvasSize =
         IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+
+    // Default sun direction: high and slightly off-axis so every demo
+    // shape casts a visible shadow without any further setup.
+    IRRender::setSunDirection(vec3(0.35f, 0.85f, 0.4f));
 }

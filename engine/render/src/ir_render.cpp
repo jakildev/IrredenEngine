@@ -181,4 +181,12 @@ bool isHoveredTrixelVisible() {
     return getRenderManager().isHoveredTrixelVisible();
 }
 
+void setSunDirection(vec3 dir) {
+    getRenderManager().setSunDirection(dir);
+}
+
+vec3 getSunDirection() {
+    return getRenderManager().getSunDirection();
+}
+
 } // namespace IRRender

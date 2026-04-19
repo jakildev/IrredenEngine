@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -110,12 +111,14 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         return createSystem<
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
-            C_CanvasAOTexture
+            C_CanvasAOTexture,
+            C_CanvasSunShadow
         >(
             "LightingToTrixel",
             [](const C_TriangleCanvasTextures &canvasTextures,
                const C_TrixelCanvasRenderBehavior &behavior,
-               const C_CanvasAOTexture &ao) {
+               const C_CanvasAOTexture &ao,
+               const C_CanvasSunShadow &shadow) {
                 if (!behavior.useCameraPositionIso_) {
                     return;
                 }
@@ -129,10 +132,15 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 ao.getTexture()->bindAsImage(
                     2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
                 );
-                // Palette LUT on texture unit 3; image unit 2 is AO. GLSL
-                // keeps sampler/image namespaces separate, but Metal does
-                // not — keep LUT at 3 for cross-backend parity.
+                // Palette LUT on texture unit 3; canvasSunShadow on image
+                // unit 4. GLSL keeps sampler and image namespaces separate,
+                // but Metal flattens them into a shared setTexture slot
+                // space — so shadow must skip past unit 3 to avoid the LUT
+                // sampler. Keep the GLSL and MSL unit numbers in lockstep.
                 s_paletteLUT->bind(3);
+                shadow.getTexture()->bindAsImage(
+                    4, TextureAccess::READ_ONLY, TextureFormat::RGBA8
+                );
                 s_frameDataBuf->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel
                 );
