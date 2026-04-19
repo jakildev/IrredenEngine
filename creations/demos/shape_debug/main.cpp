@@ -116,6 +116,9 @@ int main(int argc, char **argv) {
     initEntities();
     if (g_initialZoom > 0.0f) {
         IRRender::setCameraZoom(g_initialZoom);
+        vec2 actualZoom = IRRender::getCameraZoom();
+        IR_LOG_INFO("Initial zoom: requested={}, actual={} (snapped to nearest power of two)",
+                    g_initialZoom, actualZoom.x);
     }
     IREngine::gameLoop();
     return 0;
