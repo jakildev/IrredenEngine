@@ -328,17 +328,6 @@ Avoid:
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
   - **Links:**
 
-- [~] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
-  - **ID:** T-017
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** prefabs-light-source-component
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) LightType enum (DIRECTIONAL, POINT, EMISSIVE, SPOT) in engine/prefabs/irreden/render/components/; (2) C_LightSource with type_, emitColor_, intensity_, radius_, direction_[3] defined; (3) C_LightBlocker with blocksLOS_, castsShadow_, opacity_ defined; (4) Lua bindings expose light source creation and configuration; (5) components registered in ECS and queryable by lighting systems; (6) builds clean on active preset
-  - **Issue:** #171
-  - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
-  - **Links:**
-
 - [~] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
   - **ID:** T-018
   - **Area:** tooling, .claude/skills
@@ -412,7 +401,6 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-010** — Lighting: 3D occupancy grid infrastructure · Owner: render-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/188
-- [~] **T-017** — Lighting: C_LightSource component and light type enum · Owner: prefabs-light-source-component · PR: https://github.com/jakildev/IrredenEngine/pull/187
 - [~] **T-018** — Skill: attach-screenshots foundation — engine demo support · Owner: skill-attach-screenshots · PR: https://github.com/jakildev/IrredenEngine/pull/194
 
 ---
@@ -420,6 +408,17 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
+  - **ID:** T-017
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** prefabs-light-source-component
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) LightType enum (DIRECTIONAL, POINT, EMISSIVE, SPOT) in engine/prefabs/irreden/render/components/; (2) C_LightSource with type_, emitColor_, intensity_, radius_, direction_[3] defined; (3) C_LightBlocker with blocksLOS_, castsShadow_, opacity_ defined; (4) Lua bindings expose light source creation and configuration; (5) components registered in ECS and queryable by lighting systems; (6) builds clean on active preset
+  - **Issue:** #171
+  - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/187
 
 - [x] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
   - **ID:** T-011
