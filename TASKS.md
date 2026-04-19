@@ -220,11 +220,11 @@ Avoid:
   - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
   - **Links:**
 
-- [ ] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
+- [~] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
   - **ID:** T-014
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-flood-fill-lighting
   - **Blocked by:** (none)
   - **Acceptance:** (1) emissive voxels propagate colored light outward, blocked by solid voxels from occupancy grid; (2) skylight propagates top-down via columnar span lists; (3) per-voxel RGB light levels stored in 3D texture accessible from GPU; (4) incremental update on voxel place/remove — no full rebuild per frame; (5) render debug screenshot: torch placement creates visible light pool; (6) performance: initial build < 5ms, incremental < 1ms; (7) builds clean on active preset
   - **Issue:** #168
@@ -364,6 +364,7 @@ Avoid:
 - [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-022** — Fleet: merger orchestrator pane for auto-resolving PR conflicts · Owner: fleet-merger-orchestrator · PR: https://github.com/jakildev/IrredenEngine/pull/224
+- [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 - [~] **T-013** — Lighting: directional sun shadows Phase 2 · Owner: render-shadow-map-phase2 · PR: https://github.com/jakildev/IrredenEngine/pull/210
 
 ---
