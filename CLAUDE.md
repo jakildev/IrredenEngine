@@ -113,6 +113,16 @@ See `.claude/skills/backend-parity/SKILL.md` for the full flow, the
 GLSL↔MSL cheatsheet, and `engine/render/CLAUDE.md` for the pipeline
 overview each port must respect.
 
+### Verifying render changes
+
+Any PR that touches `engine/render/src/shaders/`, `engine/prefabs/irreden/render/systems/`,
+or pipeline ordering must run the **`render-debug-loop`** skill after
+the change and attach a before/after screenshot pair to the PR body.
+The skill drives any creation that supports `--auto-screenshot` (today:
+`shape_debug`) and carries topic-indexed diagnosis tables for trixel /
+SDF shapes, lighting, and backend parity. See `engine/render/CLAUDE.md`
+"Verifying render changes" for the exceptions list.
+
 ---
 
 ## Build
