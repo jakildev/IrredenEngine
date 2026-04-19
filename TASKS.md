@@ -364,7 +364,29 @@ Avoid:
   - **Blocked by:** (none)
   - **Acceptance:** (1) reference library structure decided and documented (path, naming, per-shot layout); (2) `scripts/render-compare.py` (or equivalent) exists and produces pass/fail + diff image on mismatches; (3) `.claude/skills/render-verify/SKILL.md` wraps build → run → capture → compare → report flow; (4) `IRShapeDebug` reference set committed; skill produces all-pass on clean master; (5) builds + skill run cleanly on `linux-debug`
   - **Issue:** #217
-  - **Notes:** soft dependency on #189 ("Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
+  - **Notes:** soft dependency on T-027 (#189, "Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
+  - **Links:**
+
+- [ ] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
+  - **ID:** T-027
+  - **Area:** engine/video, creations/demos/shape_debug
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) engine exposes `AutoScreenshotShot`, `AutoScreenshotConfig`, and `enableAutoScreenshot()` (or equivalent declarative API); (2) `shape_debug/main.cpp` ported to helper — hand-written `ShotConfig`/`g_shots`/`AutoScreenshot` system deleted, net line count goes down; (3) `fleet-run IRShapeDebug --auto-screenshot 10` produces same screenshot set as before; (4) a second creation opts into helper with a 3-shot table and produces 3 screenshots (proof-of-reuse gate); (5) `.claude/skills/render-debug-loop/SKILL.md` updated to point at helper; (6) builds clean on `linux-debug`
+  - **Issue:** #189
+  - **Notes:** reference implementation to be promoted is `creations/demos/shape_debug/main.cpp` (~80 lines: ShotConfig, g_shots[], warmup/settle counters, AutoScreenshot render-pipeline system, CLI arg parsing). Shot struct needs: zoom, cameraIso, subdivisionMode, label. Engine only owns the cycling mechanism — every creation defines its own shot table. Keep the shot struct extensible (possible `std::function<void()> preShot` callback) but start with zoom/camera/mode. Soft dependency: T-026 (render-verify harness) expands cleanly once this lands.
+  - **Links:**
+
+- [ ] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
+  - **ID:** T-028
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) per-pass GPU timer queries (`GL_TIME_ELAPSED` or `GL_TIMESTAMP`) instrument each render pipeline stage; (2) `ir.render.getPassTimings()` Lua API returns per-pass millisecond breakdown; (3) frame-time budget reporting defines 16.6ms (60fps) target and flags passes exceeding allocated share; (4) timer infrastructure is globally enable/disable (default off in release); (5) `optimize` skill's "GPU profiling" section updated to use this API; (6) builds clean on active preset
+  - **Issue:** #173
+  - **Notes:** Part 2 (benchmark harness + render-perf skill, [sonnet]) depends on Part 1's Lua API and should be filed as a separate issue+task once Part 1 merges — do not bundle both into one PR. Metal parity for timer infrastructure is a follow-up. OpenGL bindings (`glQueryCounter`/`GL_TIMESTAMP`) already exist in `engine/render/include/glad/glad.h` — no new GL extension needed. T-013 (sun shadows) and T-014 (flood-fill) are the first lighting phases that will need perf validation.
   - **Links:**
 
 ---
