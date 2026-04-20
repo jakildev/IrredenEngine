@@ -85,6 +85,51 @@ World::~World() {
 }
 
 void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings) {
+    sol::state &lua = m_lua.lua();
+    sol::table ir = lua["ir"].valid()
+        ? lua["ir"].get<sol::table>()
+        : lua.create_named_table("ir");
+    sol::table render = ir["render"].valid()
+        ? ir["render"].get<sol::table>()
+        : lua.create_table();
+    ir["render"] = render;
+
+    render["getFrameTimeBudgetMs"] = []() {
+        return IRRender::kFrameTimeBudgetMs;
+    };
+    render["isGpuTimingEnabled"] = []() {
+        return IRRender::gpuStageTiming().enabled_;
+    };
+    render["setGpuTimingEnabled"] = [](bool enabled) {
+        IRRender::gpuStageTiming().enabled_ = enabled;
+    };
+    render["getPassTimings"] = [&lua]() {
+        sol::table out = lua.create_table();
+        const auto &registry = IRRender::gpuStageRegistry();
+        const auto &timing = IRRender::gpuStageTiming();
+        int index = 1;
+        for (const auto &info : registry) {
+            sol::table row = lua.create_table();
+            row["name"]       = info.name_;
+            const float ms    = timing.*info.field_;
+            const float budget = IRRender::budgetMsFor(info);
+            row["ms"]         = ms;
+            row["budgetMs"]   = budget;
+            row["budgetShare"] = info.budgetShare_;
+            row["overBudget"] = ms > budget;
+            out[index++] = row;
+        }
+        return out;
+    };
+    render["getPassTiming"] = [](std::string_view name) {
+        const auto &registry = IRRender::gpuStageRegistry();
+        const auto &timing = IRRender::gpuStageTiming();
+        for (const auto &info : registry) {
+            if (info.name_ == name) return timing.*info.field_;
+        }
+        return 0.0f;
+    };
+
     for (const auto &bind : bindings) {
         bind(m_lua);
     }
@@ -253,27 +298,17 @@ void World::buildAndWriteProfileReport() {
         }
     }
 
-    // Collect GPU stage timing if enabled
     auto &gpu = IRRender::gpuStageTiming();
     if (gpu.enabled_ && report.totalFrames_ > 0) {
-        auto addGpuStage = [&](const char *name, float perFrameMs) {
+        for (const auto &info : IRRender::gpuStageRegistry()) {
+            const float perFrameMs = gpu.*info.field_;
             IRProfile::GpuStageEntry stage;
-            stage.name_ = name;
+            stage.name_ = std::string(info.name_);
             stage.totalMs_ = perFrameMs * static_cast<float>(report.totalFrames_);
-            stage.maxMs_ = perFrameMs;  // Only per-frame snapshot available
+            stage.maxMs_ = perFrameMs;
             stage.sampleCount_ = report.totalFrames_;
             report.gpuStages_.push_back(std::move(stage));
-        };
-        addGpuStage("canvas_clear", gpu.canvasClearMs_);
-        addGpuStage("voxel_compact", gpu.voxelCompactMs_);
-        addGpuStage("voxel_stage_1", gpu.voxelStage1Ms_);
-        addGpuStage("voxel_stage_2", gpu.voxelStage2Ms_);
-        addGpuStage("shape_compact", gpu.shapeCompactMs_);
-        addGpuStage("shape_pass_0", gpu.shapePass0Ms_);
-        addGpuStage("shape_pass_1", gpu.shapePass1Ms_);
-        addGpuStage("trixel_to_framebuffer", gpu.trixelToFbMs_);
-        addGpuStage("entity_canvas_to_framebuffer", gpu.entityCanvasToFbMs_);
-        addGpuStage("framebuffer_to_screen", gpu.fbToScreenMs_);
+        }
     }
 
     IRProfile::writeProfileReport(report, "save_files/profile_report.txt");

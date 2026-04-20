@@ -136,33 +136,56 @@ re-enable the profiler before re-running.
 
 ### 3. GPU profiling
 
-The engine **does not currently have GPU timer query infrastructure**
-in production. The OpenGL bindings (`engine/render/include/glad/glad.h`)
-expose `glQueryCounter` / `GL_TIMESTAMP`, but no engine code uses
-them. There is no per-pass timing API and no Lua-accessible breakdown.
+The engine has **per-pass GPU stage timing** wired into the render
+pipeline. Every major stage (`voxelCompact`, `voxelStage1`,
+`voxelStage2`, `shapeCompact`, `shapePass0`, `shapePass1`,
+`textToTrixel`, `computeVoxelAO`, `computeSunShadow`,
+`lightingToTrixel`, `trixelToTrixel`, `trixelToFb`, `entityCanvasToFb`,
+`fbToScreen`, `canvasClear`) brackets its GPU work with
+`device()->finish()` + `std::chrono::steady_clock` samples and writes
+the per-frame millisecond cost into `IRRender::gpuStageTiming()`.
 
-This is the work tracked in **jakildev/IrredenEngine#173** ("Skill:
-render performance optimization loop"). Until that lands, GPU
-profiling here is qualitative:
+Enable it by setting `gpu_stage_timing = true` in the creation's
+`.irconf` file, or flip it at runtime from Lua:
 
-- **Use RenderDoc** for a single-frame capture if the human can run
-  it (RenderDoc is GUI; you can't drive it from here). Tell the
-  human what to look at — which pass, which draw call, which compute
-  dispatch.
-- **Use shader-side counters** as a proxy: a debug uniform
-  incremented per work-group, read back via SSBO, gives a coarse
-  cost estimate. Useful for "is the new compute pass even running"
-  but not for ms-level timing.
-- **Compare frame time before/after** with the engine's existing
-  frame counter (`IRTime` / wherever `getDeltaTime()` lives) — log
-  the average delta over 300 frames before the change and after.
-  Coarse but real.
+```lua
+ir.render.setGpuTimingEnabled(true)
+-- ... let the scene render for a few frames ...
+local budget = ir.render.getFrameTimeBudgetMs()   -- 16.667
+for _, row in ipairs(ir.render.getPassTimings()) do
+    print(row.name, row.ms, row.budgetMs, row.overBudget)
+end
+```
 
-**If the change touches a render pipeline stage and the impact isn't
-obvious from inspection alone**, comment on the PR that
-`jakildev/IrredenEngine#173` is required to validate the perf cost,
-and surface the missing infrastructure to the human. Don't merge
-hot-path GPU work blind.
+`getPassTimings()` returns an ordered list of
+`{name, ms, budgetMs, budgetShare, overBudget}` rows; a row whose
+`overBudget` is true has exceeded its allocated slice of the 16.67 ms
+frame budget. `getPassTiming(name)` fetches a single pass by name.
+
+When the flag is on, the end-of-run profile report
+(`save_files/profile_report.txt`) also includes the per-stage sum so
+pre/post A/B comparisons can be read from disk.
+
+Real async `GL_TIMESTAMP` / Metal counter-sample queries are not wired
+yet — the current path uses `glFinish()`-style stalls, which measure
+GPU cost accurately but at a small per-frame throughput cost. Default
+is **off**; leave it off in release runs. Turn it on while optimizing,
+then turn it off.
+
+Complementary tools when you need a finer single-frame view:
+
+- **RenderDoc / Xcode GPU capture** for a single-frame breakdown if
+  the human can run it (GUI tools; you can't drive them from here).
+  Tell the human which pass to focus on based on
+  `getPassTimings()` hot rows.
+- **Shader-side counters** as a proxy: a debug uniform incremented
+  per work-group, read back via SSBO, gives coarse "is this pass even
+  running" data.
+
+**Do not merge hot-path GPU work blind** — if a render PR's
+`getPassTimings()` output shows a pass over its budget share, either
+fix the regression or surface it explicitly in the PR body with
+before/after numbers.
 
 ### 4. Engine-specific optimizations to check
 
@@ -275,23 +298,21 @@ optimize: 3 files profiled (engine/render/, shaders/glsl/)
 
 CPU hotspots: none. The new pass is GPU-bound.
 
-GPU profiling: limited — engine has no timer-query infrastructure
-(see #173). Frame-time A/B with 300-frame averages:
-  - before: 14.2 ms ± 0.3
-  - after:  16.8 ms ± 0.4
-  - delta:  +2.6 ms (16% over budget at 60fps)
+GPU profiling: `ir.render.setGpuTimingEnabled(true)` + 300-frame
+averages from `ir.render.getPassTimings()`:
+  - lightingToTrixel:    0.4 ms → 3.0 ms  (budget 1.7 ms — OVER)
+  - trixelToFb:          2.1 ms → 2.1 ms  (budget 2.5 ms — ok)
+  - fbToScreen:          0.3 ms → 0.3 ms  (budget 0.8 ms — ok)
+  - total frame:        14.2 ms → 16.8 ms (+2.6 ms, 16% over budget)
 
-Hotspot suspect (RenderDoc capture needed, asked human to run):
-  c_lighting_apply.glsl — likely the per-pixel 3x3x3 sample loop.
-  Reading the occupancy grid 27 times per pixel.
+Hotspot confirmed: lightingToTrixel jumped 2.6 ms on its own —
+matches the per-pixel 3x3x3 sample loop I added.
 
 Optimization applied:
   - Switched to a 2D shadow texture lookup once per pixel instead
     of per-sample, then modulated by the precomputed AO texture.
-  - Re-measured: 14.5 ms ± 0.3 (+0.3 ms over original — acceptable).
-
-Reported for human:
-  - GPU timer queries needed before next render PR (issue #173).
+  - Re-measured lightingToTrixel: 0.7 ms (within budget).
+  - Total frame: 14.5 ms ± 0.3 (+0.3 ms over original — acceptable).
 
 ready for simplify pass.
 ```
