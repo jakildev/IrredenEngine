@@ -150,8 +150,44 @@ Each iteration:
 
    Address all flagged PRs before picking new work.
 
-2. **Pick the next task.** Read `TASKS.md` (use the Read tool) and find
-   the first `[ ]` `[sonnet]`-tagged item in `## Open` whose:
+2. **Resume an active molecule first, then pick the next task.**
+
+   Before reading TASKS.md, check whether you have an in-flight
+   stack-claim ("molecule") to finish:
+
+   `fleet-claim molecule resume <your-worktree-name>`
+
+   - **Exit 0** — a task ID was printed. That task is part of a stack
+     you started earlier (possibly in a previous process before a
+     crash). It is now (or remains) marked `in-progress`. Skip the
+     normal pickup flow and jump straight to step 4 ("Read the plan
+     file"), then continue to step 5 ("Work it") to begin working it.
+     The stack PR is already open — find it via the branch name on
+     `gh pr list` and continue committing to it (use the `T-NNN: `
+     commit-subject prefix from the stack PR section).
+
+     **Resume vs restart judgment.** Read the worktree's git status:
+     - No work-in-progress on the branch matching that task ID →
+       **start the task fresh** as if newly claimed.
+     - Coherent partial work-in-progress → **resume from that state**;
+       previous process did real work, reuse it.
+     - Incoherent partial work (random dirty files, half-applied edits
+       to unrelated areas, mid-conflict markers) → discard with
+       `git restore --staged .` + `git checkout -- .` and start fresh.
+
+     After committing each task in the molecule, advance the state:
+     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
+     If you can't complete a task, use `failed` and surface to human.
+
+   - **Exit 1** — molecule has no remaining work. Archive it:
+     `fleet-claim molecule complete <your-worktree-name>`
+     Then proceed with the normal pickup flow.
+
+   - **Exit 2** — no molecule for this agent. Proceed normally.
+
+   **Normal pickup (no active molecule):** Read `TASKS.md` (use the
+   Read tool) and find the first `[ ]` `[sonnet]`-tagged item in
+   `## Open` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
@@ -200,6 +236,13 @@ Each iteration:
    Work them sequentially on a single branch, one commit per task,
    then release with `fleet-claim release-stack <your-worktree-name>`.
    Prefer single claims unless the tasks are genuinely coupled.
+
+   **`stack` also writes a molecule file** (`~/.fleet/molecules/<your-
+   worktree-name>.yml`) so a crash mid-stack won't strand the
+   remaining tasks. Step 2's molecule check picks it back up on the
+   next iteration. As you complete each task, run
+   `fleet-claim molecule advance` so the molecule reflects reality;
+   `release-stack` archives the molecule when you're done.
 
    **Stack PR commit format (REQUIRED):** When working a stack, each
    commit subject MUST start with the task ID prefix `T-NNN: `:
