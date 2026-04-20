@@ -209,7 +209,7 @@ Avoid:
     side effect).
   - **Links:**
 
-- [~] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
+- [x] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
   - **ID:** T-014
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
@@ -218,7 +218,7 @@ Avoid:
   - **Acceptance:** (1) emissive voxels propagate colored light outward, blocked by solid voxels from occupancy grid; (2) skylight propagates top-down via columnar span lists; (3) per-voxel RGB light levels stored in 3D texture accessible from GPU; (4) incremental update on voxel place/remove — no full rebuild per frame; (5) render debug screenshot: torch placement creates visible light pool; (6) performance: initial build < 5ms, incremental < 1ms; (7) builds clean on active preset
   - **Issue:** #168
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/232
 
 - [ ] **Lighting: fog of war render pass (Phase 5 engine side)** — render fog-of-war overlay from a 2D visibility texture with LOS ray casting against the occupancy grid, exploiting the fixed iso camera angle for efficient depth calculation
   - **ID:** T-016
@@ -319,11 +319,11 @@ Avoid:
   - **Notes:** reference implementation to be promoted is `creations/demos/shape_debug/main.cpp` (~80 lines: ShotConfig, g_shots[], warmup/settle counters, AutoScreenshot render-pipeline system, CLI arg parsing). Shot struct needs: zoom, cameraIso, subdivisionMode, label. Engine only owns the cycling mechanism — every creation defines its own shot table. Keep the shot struct extensible (possible `std::function<void()> preShot` callback) but start with zoom/camera/mode. Soft dependency: T-026 (render-verify harness) expands cleanly once this lands.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/228
 
-- [ ] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
+- [~] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
   - **ID:** T-028
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-gpu-timer-queries
   - **Blocked by:** (none)
   - **Acceptance:** (1) per-pass GPU timer queries (`GL_TIME_ELAPSED` or `GL_TIMESTAMP`) instrument each render pipeline stage; (2) `ir.render.getPassTimings()` Lua API returns per-pass millisecond breakdown; (3) frame-time budget reporting defines 16.6ms (60fps) target and flags passes exceeding allocated share; (4) timer infrastructure is globally enable/disable (default off in release); (5) `optimize` skill's "GPU profiling" section updated to use this API; (6) builds clean on active preset
   - **Issue:** #173
@@ -339,7 +339,7 @@ Avoid:
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
-- [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
+- [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 
 ---
 
@@ -347,6 +347,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 - [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
 - [x] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
