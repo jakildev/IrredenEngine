@@ -142,6 +142,84 @@ Exceptions: pure header-doc edits, string-literal fixes, and internal
 refactors with provably no runtime effect can skip the loop. When in
 doubt, run it — a missing screenshot pair is a fast reviewer-rejection.
 
+## Lighting culling invariants
+
+The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
+`system_voxel_to_trixel.hpp`, and the per-shape iso-bounds check in
+`system_shapes_to_trixel.hpp`) is a strict camera-frustum cull on the
+rendering path. It governs which voxels/shapes are written into canvas
+textures — nothing else.
+
+Lighting (occupancy grid, AO, shadows, flood-fill, fog-of-war) operates
+against a **camera-independent world-space occupancy grid**. Shadow sweeps
+march along the world-space sun axis; flood-fill BFS propagates through
+world-space voxels; fog-of-war DDA rays trace through the same grid.
+Off-screen geometry participates in lighting by design — an off-screen
+building that casts a shadow onto on-screen tiles is the common case, not an
+edge case.
+
+The four invariants below exist because these are the places easiest to break
+silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
+fog-of-war #170) reviewer should run this checklist. See #196 for the
+architect review that originated them.
+
+### 1. Grid-build iterates the full voxel pool, not the render-culled subset
+
+`buildChunkVisibilityMask` is a render-pipeline-local mask inside
+`system_voxel_to_trixel`. The occupancy-grid-build system must use its own
+iteration path and must **not** consult that mask. The failure mode is
+sharing a helper that accidentally applies the render cull to the grid build.
+
+**Check:** `system_build_occupancy_grid.hpp` does not include
+`cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
+
+**Status (T-010, PR #188):** compliant — `System<BUILD_OCCUPANCY_GRID>`
+iterates `pool.getLiveVoxelCount()` on the full pool with no viewport filter.
+
+### 2. Shadow-ring extent when chunk streaming activates
+
+T-010's grid is full-world today, so this is not yet triggered. When
+per-chunk streaming is introduced (resident chunk set controlled by camera
+position), the loaded set must extend past the view frustum in the
+sun-projection direction by at least:
+
+```
+shadowRingDistance = maxCasterHeight × cot(sunAltitude)
+```
+
+For a 256-tall world at 45° sun that is one chunk; at a shallow 20° sun it
+is 3+ chunks.
+
+**Check:** whenever chunk streaming lands, the resident-chunk-set calculation
+includes this expansion. Document the formula next to the streaming code.
+
+### 3. Light-seed set — off-screen sources must still seed flood-fill
+
+A torch 10 tiles off-screen with radius 15 should still glow the on-screen
+tiles nearest it. T-014 seeds BFS from all `C_LightSource` entities, which is
+correct as-specced. The failure mode is a later optimizer adding "only seed
+lights within the view frustum" without the radius expansion — that silently
+drops the overflow case.
+
+**Invariant:** seed from all `C_LightSource` entities within
+**view frustum + max(radius) expansion**, not view frustum alone.
+
+**Check:** the flood-fill seed-gather tick does not filter by
+`visibleIsoViewport` without expanding by `C_LightSource::radius_`.
+
+### 4. AO and shadow neighbor-lookup guard band
+
+T-012 AO reads 3-diagonal neighbors per visible face. Once T-010's chunk
+streaming activates, the chunk containing each neighbor must be resident. A
+face at the view edge whose neighbor chunk is unloaded produces wrong AO.
+
+**Invariant:** resident chunk set = view-chunk set ∪ 1-chunk guard band (in
+all six directions) for AO/shadow sampling correctness, in addition to the
+shadow-ring from invariant #2.
+
+**Check:** resident chunk set calculation includes this guard band when chunk
+streaming is introduced.
+
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like
