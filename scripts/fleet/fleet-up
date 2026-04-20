@@ -81,6 +81,12 @@ if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+    # Engine opus-workers also pick up game-side `Model: opus` tasks.
+    # Each opus-worker pane has its own game worktree so it can `cd` over
+    # for game tasks and use commit-and-push there cleanly. The pane's
+    # cwd at launch is the engine worktree; the agent cd's per task.
+    ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
+    ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
@@ -139,6 +145,12 @@ reset_worktree "$ENGINE/.claude/worktrees/merger"          claude/merger-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/opus-worker-1" claude/game-opus-worker-1-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/opus-worker-2" claude/game-opus-worker-2-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -241,6 +253,16 @@ done
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
+fi
+# Game-side opus-worker worktrees (used by engine opus-worker panes when
+# they cd over for game tasks). Allow access to BOTH the game tree (the
+# worktree's own scope) and the engine tree (so engine helper scripts +
+# CLAUDE.md are reachable from a game cd).
+if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-1" "$ENGINE"
+fi
+if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-2" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------

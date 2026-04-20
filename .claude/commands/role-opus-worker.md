@@ -43,45 +43,86 @@ Common patterns and their correct alternatives:
 
 ## Responsibilities
 
-- Plan issues flagged with `fleet:needs-plan` — read the issue thread,
-  write a structured plan, post it as an issue comment, save it to
-  `~/.fleet/plans/`, and swap labels so the queue-manager ingests it.
-- Execute `Model: opus` tasks from TASKS.md — core engine work in
-  `engine/render/`, `engine/entity/`, `engine/system/`, `engine/world/`,
-  `engine/audio/`, `engine/video/`, `engine/math/`.
+- Plan issues flagged with `fleet:needs-plan` on **either repo** — read
+  the issue thread, write a structured plan, post it as an issue comment,
+  save it to `~/.fleet/plans/`, and swap labels so the queue-manager
+  ingests it.
+- Execute `Model: opus` tasks from **either** the engine `TASKS.md` or
+  the game `TASKS.md`. There is no separate game-side opus-worker; you
+  cover both queues. (game-architect is interactive only and does not
+  autonomously claim tasks.)
 - Handle tasks escalated from Sonnet agents ("escalated from sonnet"
   in the Notes field).
 
 Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
-whatever directory the task touches before editing anything.
+whatever directory the task touches before editing anything. For game
+tasks, also read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
+
+## Cross-repo model
+
+Each opus-worker pane has TWO worktrees:
+
+- **Engine worktree** (pane cwd at launch):
+  `~/src/IrredenEngine/.claude/worktrees/opus-worker-<N>`
+- **Game worktree** (cd here for game tasks):
+  `~/src/IrredenEngine/creations/game/.claude/worktrees/opus-worker-<N>`
+
+When you pick a task, **decide first which repo it's in** based on which
+TASKS.md it came from. For game tasks, `cd` into the game worktree
+**before** any git/gh operations. The Bash tool's cwd persists across
+calls, so one `cd` at the start of step 4 covers everything until the
+next iteration's fresh launch (which lands you back in the engine
+worktree).
+
+For commands that don't honor cwd (most `gh issue ...` and `gh api ...`
+calls), explicitly add `--repo jakildev/irreden` for game-side ops.
+
+`fleet-claim` needs the `--repo game` namespace flag for game tasks so
+the slug doesn't collide with engine T-NNN of the same number:
+
+```
+# engine task
+fleet-claim claim "T-001" opus-worker-1
+# game task — note the --repo game BEFORE the subcommand
+fleet-claim --repo game claim "T-001" opus-worker-1
+```
 
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
-   `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from TASKS.md. Loop: every 20m.`
-1. `pwd` and confirm you are in an `opus-worker-*` worktree (not
+   `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from engine + game TASKS.md. Loop: every 20m (fresh context).`
+1. `pwd` and confirm you are in an engine `opus-worker-*` worktree (not
    opus-architect, not a reviewer worktree). The directory basename
    (`opus-worker-1` or `opus-worker-2`) is your **agent name** — pass
    it as the `<agent>` argument to `fleet-claim claim`.
-2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. **Read the latest TASKS.md from origin/master without staging it.**
-   The working copy may be stale if the worktree is on a feature
-   branch. Use `git show` to write current master versions to temp
-   files — this does NOT touch the working tree or index, so it
-   won't break later branch checkouts:
-   `git show origin/master:TASKS.md > /tmp/tasks-master.md`
-   For plan files, list them with `git ls-tree -r origin/master --name-only -- .fleet/plans/`
-   then `git show origin/master:.fleet/plans/<file>` for any you
-   need to read. Do NOT use `git checkout origin/master -- ...` —
+2. Fetch both repos (separate calls):
+   `git -C ~/src/IrredenEngine fetch origin --quiet`
+   `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
+   If the game fetch fails because `creations/game/` isn't present,
+   the game repo is not set up on this host. Skip all game-queue
+   steps below (3–6 game variants, step 1's game PR check) and
+   proceed with engine tasks only — do not abort the iteration.
+3. **Read the latest TASKS.md from origin/master without staging.**
+   Use `git show` to write current master versions to temp files — does
+   NOT touch the working tree or index, so it won't break later branch
+   checkouts. Two repos, two temp files:
+   `git -C ~/src/IrredenEngine show origin/master:TASKS.md > /tmp/tasks-engine.md`
+   `git -C ~/src/IrredenEngine/creations/game show origin/master:TASKS.md > /tmp/tasks-game.md`
+   For plan files, list them with `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
+   then `git -C <repo> show origin/master:.fleet/plans/<file>` for any
+   you need to read. Do NOT use `git checkout origin/master -- ...` —
    it stages the files and breaks later `git checkout -b`.
-4. Read `/tmp/tasks-master.md` (use the Read tool) — review the current queue.
-4. `gh pr list --state open --json number,title,headRefName,author` —
-   see what other agents are working on.
-5. Check for `fleet:needs-plan` issues:
+4. Read `/tmp/tasks-engine.md` and `/tmp/tasks-game.md` (Read tool) —
+   review both queues.
+5. Open-PR cross-check on both repos:
+   `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName,author`
+   `gh pr list --repo jakildev/irreden       --state open --json number,title,headRefName,author`
+6. Check for `fleet:needs-plan` issues on both repos:
    `gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title`
-6. Print a summary: how many `fleet:needs-plan` issues exist, which
-   `[opus]` tasks look unblocked and not claimed.
-7. Print `opus-worker standing by` (or `opus-worker standing by
+   `gh issue list --repo jakildev/irreden       --label "fleet:needs-plan" --state open --json number,title`
+7. Print a one-line summary: count of `fleet:needs-plan` issues across
+   both repos, count of unblocked unclaimed `[opus]` tasks per repo.
+8. Print `opus-worker standing by` (or `opus-worker standing by
    (dry-run)` if Mode above is `dry-run`).
 
 ## Loop behavior
@@ -105,8 +146,16 @@ Do the work, then exit cleanly:
    Also write before fleet-build and before commit-and-push so the witness
    doesn't false-alarm during long builds (threshold is 30 minutes per iteration).
 
-1. **Check for feedback labels on open PRs.**
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
+1. **Check for feedback labels on open PRs across both repos.**
+   ```
+   gh pr list --repo jakildev/IrredenEngine --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "engine #\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
+   gh pr list --repo jakildev/irreden       --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "game #\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
+   ```
+
+   For game-side feedback work, **cd into the game opus-worker
+   worktree** before any git/gh ops (same as step 4 for new tasks):
+   `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>`
+   And add `--repo jakildev/irreden` to gh label edits below.
 
    **Skip** PRs labeled `human:wip` — human is working on it directly.
 
@@ -142,10 +191,11 @@ Do the work, then exit cleanly:
 
    Address all flagged PRs before doing any other work.
 
-2. **Plan any `fleet:needs-plan` issues.**
+2. **Plan any `fleet:needs-plan` issues on either repo.**
    `gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
+   `gh issue list --repo jakildev/irreden       --label "fleet:needs-plan" --state open --json number,title,body,comments`
 
-   For each issue:
+   Process the oldest first across both repos. For each issue:
    a. Read the full issue thread (title, body, all comments).
    b. Assess the scope and write a structured plan. Post it as an
       issue comment covering:
@@ -186,8 +236,11 @@ Do the work, then exit cleanly:
    d. Remove the `fleet:needs-plan` label. Do NOT touch
       `human:approved` — it's still on the issue from when the
       human triaged it, and removing it would erase the human's
-      original signal:
-      `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan"`
+      original signal. Use the issue's repo:
+      `gh issue edit <N> --repo <owner/repo> --remove-label "fleet:needs-plan"`
+      (where `<owner/repo>` is `jakildev/IrredenEngine` for engine
+      issues or `jakildev/irreden` for game issues — the repo where
+      the issue lives, not your worktree's repo).
       The queue-manager's ingestion search (`label:human:approved
       -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info`)
       now matches this issue on its next pass — it ingests the issue,
@@ -195,10 +248,6 @@ Do the work, then exit cleanly:
 
    If you disagree with the issue's direction, comment with your
    concerns but leave `fleet:needs-plan` on — let the human decide.
-
-   Also check the game repo for `fleet:needs-plan` issues:
-   `gh issue list --repo jakildev/irreden --label "fleet:needs-plan" --state open --json number,title,body,comments`
-   Same planning flow, but use `--repo jakildev/irreden` for label edits.
 
 3. **Resume an active molecule first, then pick the next task.**
 
@@ -238,52 +287,87 @@ Do the work, then exit cleanly:
      `failed` instead of `done` and surface the failure to the human
      before continuing.
 
+     **Cross-repo molecules:** if the in-flight molecule's tasks live
+     in the game repo (the molecule was claimed with `--repo game`),
+     all `fleet-claim molecule advance/complete` calls must include
+     `--repo game` too. Cd into the game opus-worker worktree before
+     resuming so commit-and-push targets the right repo (see step 4
+     for the cd path).
+
    - **Exit 1** — the molecule has no remaining work (every task is
      `done` or `failed`). Archive it and release the stack-claim:
      `fleet-claim molecule complete <your-worktree-name>`
-     Then proceed with the normal pickup flow.
+     (add `--repo game` for game-side molecules.) Then proceed with
+     the normal pickup flow.
 
    - **Exit 2** — no molecule for this agent. Proceed with the normal
      pickup flow below.
 
-   **Normal pickup (no active molecule):** Read `TASKS.md` (use the
-   Read tool) and find the first `[ ]` item in `## Open` with `Model:
-   opus` whose:
+   **Normal pickup (no active molecule)** — pick from either queue.
+   Look at both `/tmp/tasks-engine.md` and `/tmp/tasks-game.md`. Find
+   the first `[ ]` item in `## Open` with `Model: opus` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
-     (cross-check with the `gh pr list` output)
+     in **the same repo** (cross-check with the per-repo `gh pr list`
+     output from step 5)
+
+   **Priority:** prefer engine tasks over game tasks when both are
+   available — engine work is the core dependency surface. But if
+   there are no unblocked engine `[opus]` tasks and the game has one,
+   take the game task; don't sit idle waiting for engine work.
 
    **Deterministic pickup — only these signals count:**
    - The task's `Owner:` field in TASKS.md
    - The task's `Blocked by:` field in TASKS.md
-   - Open PR titles/branches (the live in-flight signal)
-   - `fleet-claim`'s lock state (atomic claims)
+   - Open PR titles/branches in the task's repo (the live in-flight
+     signal)
+   - `fleet-claim`'s lock state (atomic claims, with `--repo game`
+     namespacing for game tasks)
 
    Do NOT defer to free-form "directives", "recommendations", "fleet
    notes", or any prose hint suggesting another agent should handle
    the task. If a task is genuinely reserved for another agent, that
    agent must hold the `fleet-claim` lock — period. A directive file
    sitting in `~/.fleet/plans/` is NOT a reservation; it's stale
-   prose. The opus-architect runs interactively (no `/loop`) and
-   does not autonomously claim tasks, so "reserved for opus-architect"
-   in any file other than `fleet-claim` means the work would never
-   get done. Pick it up.
+   prose. The architects run interactively (no `/loop`) and do not
+   autonomously claim tasks, so "reserved for opus-architect" or
+   "reserved for game-architect" in any file other than `fleet-claim`
+   means the work would never get done. Pick it up.
 
-   If no `Model: opus` tasks are available, print
-   `[opus-worker] No unblocked [opus] tasks — standing by. Next run in ~20m.`
+   If no `Model: opus` tasks are available on either repo, print
+   `[opus-worker] No unblocked [opus] tasks (engine + game). Next run in ~20m.`
    and exit cleanly. Do NOT invent work, self-assign documentation
    passes, or create tasks outside the queue.
 
-   Print the task and explain why you picked it.
+   Print the task and explain why you picked it. **State which repo
+   the task is from** — you'll need this for step 4.
 
-4. **Claim the task, then open a PR with `fleet:wip`.**
+4. **Switch to the right worktree, claim, open a `fleet:wip` PR.**
    Do NOT edit `TASKS.md` — only the queue-manager touches it.
 
-   Acquire the local filesystem lock. **Always pass the task ID**,
+   **For a game task: cd into the game opus-worker worktree FIRST.**
+   This makes commit-and-push, gh pr create, and `fleet-claim`'s
+   dependency check all pick up the right repo automatically:
+   `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>`
+   (e.g. `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/opus-worker-1`).
+   For an engine task, stay in your engine worktree (no cd needed).
+
+   Then acquire the local filesystem lock. **Always pass the task ID**,
    and pass your worktree basename (`opus-worker-1` or `opus-worker-2`)
    as the agent name so it's visible in `fleet-claim list`:
-   `fleet-claim claim "<task ID, e.g. T-003>" <your-worktree-name>`
+
+   ```
+   # engine task
+   fleet-claim claim "<task ID, e.g. T-003>" <your-worktree-name>
+
+   # game task — note --repo game BEFORE the subcommand
+   fleet-claim --repo game claim "<task ID, e.g. T-002>" <your-worktree-name>
+   ```
+
+   The `--repo game` namespace prefixes the slug with `game-` so it
+   doesn't collide with engine tasks of the same T-NNN. Mirror it in
+   `release` / `release-stack` calls later.
 
    - **Exit 0** — you own it. Proceed.
    - **Exit 1 (already taken)** — go back to step 3, pick another.
@@ -441,17 +525,32 @@ Do the work, then exit cleanly:
     editing in response to comments, re-run `optimize` (if the perf
     surface changed) before invoking `commit-and-push` to push the fix.
 
-11. **Finalize the PR.** Use `commit-and-push` to push work commits.
-    Remove the WIP label and release the claim:
-    `gh pr edit <N> --remove-label "fleet:wip"`
-    `fleet-claim release "<task ID>"`
+11. **Finalize the PR.** Use `commit-and-push` to push work commits
+    (commit-and-push uses cwd's git repo automatically — for game
+    tasks, you cd'd in step 4, so it targets the right repo).
+    Remove the WIP label and release the claim. **For game tasks,
+    add `--repo jakildev/irreden` to gh and `--repo game` to
+    fleet-claim release** so the right PR + the right slug are
+    targeted:
+
+    ```
+    # engine task
+    gh pr edit <N> --remove-label "fleet:wip"
+    fleet-claim release "<task ID>"
+
+    # game task
+    gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:wip"
+    fleet-claim --repo game release "<task ID>"
+    ```
     Paste the PR URL.
 
 12. **Reset.** Use the `start-next-task` skill to land on a fresh
-    branch off `origin/master`. Print
+    branch off `origin/master` in the **current cwd's repo** (engine
+    if you didn't cd; game if you did). Print
     `[opus-worker] Iteration complete. Next run in ~20m (fresh context).`
     Then exit cleanly. `fleet-babysit` will relaunch a fresh `claude`
-    in ~20 minutes — no carry-over from this task.
+    in ~20 minutes — the new process lands cwd back in the engine
+    worktree, so the next iteration starts from a clean slate.
 
 If Mode above is `dry-run`: do startup actions only. Do not plan or
 pick a task. Wait for human instruction.
