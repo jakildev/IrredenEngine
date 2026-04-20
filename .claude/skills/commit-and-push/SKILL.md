@@ -71,11 +71,30 @@ If you're on `master`:
 
 If you're already on a feature branch, just use it. Do not rename mid-session.
 
-### 3. Run `simplify` on the dirty changes
+### 3. Check for visual changes and run `simplify`
 
-**Before** drafting the commit message, invoke the `simplify` skill to review
-the dirty changes for reuse, quality, and efficiency issues specific to
-Irreden Engine. Call it via the Skill tool:
+**First**, check whether the diff touches visual/render files:
+
+```bash
+git diff --name-only origin/master...HEAD
+```
+
+If the diff includes any file under `engine/render/`,
+`engine/prefabs/irreden/render/`, any `*.glsl` or `*.metal` file,
+`creations/demos/*/src/**`, or any `creations/demos/*/main*.cpp` —
+and `docs/pr-screenshots/<current-branch>/` does **not** yet exist —
+stop and prompt the worker to run the `attach-screenshots` skill
+before proceeding. Screenshots must ship in the
+same commit as the code change; a separate follow-up commit for screenshots
+is harder to review and misses the "before" baseline.
+
+Skip the prompt if:
+- The diff is purely docs, tests, mechanical refactors, or build/CI changes.
+- `docs/pr-screenshots/<branch>/` already contains screenshots from a prior
+  run on this branch.
+
+**Then** invoke the `simplify` skill to review the dirty changes for reuse,
+quality, and efficiency issues specific to Irreden Engine:
 
 ```
 Skill: simplify

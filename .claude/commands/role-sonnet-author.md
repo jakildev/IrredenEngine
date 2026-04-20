@@ -293,7 +293,25 @@ Each iteration:
    ready. The queue-manager then adds it to TASKS.md. Move on to the
    next task.
 
-8. **Optimize before commit (when relevant).** Run the `optimize`
+8. **Attach screenshots (when visual output changed).** Check whether
+   the diff touches visual/render code:
+   `git diff --name-only origin/master...HEAD`
+
+   Invoke the `attach-screenshots` skill if the diff includes any file under:
+   - `engine/render/` (any file)
+   - `engine/prefabs/irreden/render/` (any file)
+   - Any `*.glsl` or `*.metal` shader file anywhere in the tree
+   - `creations/demos/*/src/**` or `creations/demos/*/main*.cpp`
+
+   Skip if the diff is purely docs, tests, mechanical refactors (rename,
+   extract-header, add-logging), or build/CI changes with no visual effect.
+   Skip if `docs/pr-screenshots/<branch>/` already contains screenshots
+   from a prior run on this branch.
+
+   Screenshots must be staged before `optimize` and `commit-and-push` so
+   they land in the same commit as the code change.
+
+9. **Optimize before commit (when relevant).** Run the `optimize`
    skill ONLY if the change touches a system tick, a render pipeline
    stage, a shader, audio/video, math hot paths, or anywhere on the
    per-frame critical path. Skip for pure docs, tests, mechanical
@@ -309,14 +327,14 @@ Each iteration:
    editing in response to comments, re-run `optimize` (if the perf
    surface changed) before invoking `commit-and-push` to push the fix.
 
-9. **Finalize the PR.** Use the `commit-and-push` skill to push your
+10. **Finalize the PR.** Use the `commit-and-push` skill to push your
    work commits to the existing PR branch. Then remove the WIP label
    and release the claim:
    `gh pr edit <N> --remove-label "fleet:wip"`
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-10. **Reset and exit cleanly.** Use the `start-next-task` skill to land
+11. **Reset and exit cleanly.** Use the `start-next-task` skill to land
    on a fresh branch off `origin/master`. Print
    `[sonnet-author] Iteration complete. Exiting; babysit will relaunch with fresh context.`
    Then exit cleanly (do NOT loop back to step 1 inside this same
@@ -324,7 +342,7 @@ Each iteration:
    clean conversation).
 
 If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
-1-9), print the PR URL, then stop and wait for human instruction. Do
+1-11), print the PR URL, then stop and wait for human instruction. Do
 not loop.
 
 ## Usage-limit handling
