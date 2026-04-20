@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -31,6 +32,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -137,6 +139,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
         IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
@@ -370,6 +373,8 @@ EntityId createVoxelPoolShape(
     }
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
+    } else {
+        applyCheckerboard(vs, color);
     }
 
     IR_LOG_INFO(
@@ -389,6 +394,8 @@ EntityId createSDFShape(
     C_ShapeDescriptor desc{type, params, color};
     if (g_depthColor) {
         desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
+    } else {
+        desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
     }
     EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
     auto &sd = IREntity::getComponent<C_ShapeDescriptor>(entity);
@@ -504,6 +511,7 @@ void initEntities() {
     // AO / sun-shadow / light-volume / lighting systems' archetype filter
     // wouldn't otherwise match the main canvas and they'd silently skip it.
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
 
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
@@ -521,4 +529,10 @@ void initEntities() {
             static_cast<uint8_t>(30)
         }
     );
+
+    // Seed a visible-circle at origin so the demo's shapes are rendered
+    // while the surrounding floor fades to "unexplored" black — proves
+    // the fog-of-war pass end-to-end. Radius chosen to cover the shape
+    // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
+    IRRender::revealRadius(0, 0, 48);
 }
