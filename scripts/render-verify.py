@@ -127,6 +127,11 @@ def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
         raise SystemExit(
             f"expected {num_shots} screenshots in {shots_dir}, got {len(shots)}"
         )
+    if len(shots) > num_shots:
+        print(
+            f"[render-verify] warning: captured {len(shots)} shots, "
+            f"manifest expects {num_shots}; ignoring extras"
+        )
     return shots[:num_shots]
 
 
@@ -280,8 +285,15 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _target_to_demo_name(target: str) -> str:
+    """Map a CMake target name to the on-disk demo directory name.
+
+    Strips a leading ``IR`` prefix and splits CamelCase into snake_case.
+    Limitation: consecutive uppercase letters are NOT split — an
+    acronym-prefixed target like ``IRMIDIKeyboard`` becomes
+    ``midikeyboard`` rather than ``midi_keyboard``. When the mapping is
+    wrong, pass ``--demo <name>`` explicitly to override.
+    """
     name = target[2:] if target.startswith("IR") else target
-    # CamelCase → snake_case
     out: list[str] = []
     for i, ch in enumerate(name):
         if ch.isupper() and i > 0 and not name[i - 1].isupper():
