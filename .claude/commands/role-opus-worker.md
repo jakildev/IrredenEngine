@@ -98,6 +98,10 @@ fleet-claim --repo game claim "T-001" opus-worker-1
 2. Fetch both repos (separate calls):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
+   If the game fetch fails because `creations/game/` isn't present,
+   the game repo is not set up on this host. Skip all game-queue
+   steps below (3–6 game variants, step 1's game PR check) and
+   proceed with engine tasks only — do not abort the iteration.
 3. **Read the latest TASKS.md from origin/master without staging.**
    Use `git show` to write current master versions to temp files — does
    NOT touch the working tree or index, so it won't break later branch
