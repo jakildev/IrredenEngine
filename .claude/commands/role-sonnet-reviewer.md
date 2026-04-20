@@ -158,11 +158,8 @@ iteration of polling, reviewing, and exiting cleanly:
       `gh pr review <N> --repo <game-repo> --comment --body-file /tmp/review-body.md`
       **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
       escaping of backticks and special characters causes parse errors.
-   e. Set labels — always remove stale labels first:
-      `gh pr edit <N> --repo <game-repo> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved"`
-      (swap the add-label name for `fleet:needs-fix` or `fleet:blocker` as appropriate).
 
-   For all PRs, the review body MUST end with one of these explicit lines:
+   **For all PRs (engine and game): the review body MUST end with one of:**
       - `Opus recheck not required.`
       - `Opus recheck required: <reason>` — use this if the PR touches
         any of: `engine/render/`, `engine/entity/`, `engine/system/`,
@@ -171,19 +168,46 @@ iteration of polling, reviewing, and exiting cleanly:
         modules, lifetime/ownership decisions, or concurrency. Also
         flag for Opus recheck if you're uncertain — better to escalate
         than to approve something subtle by mistake.
-   d. **Set the PR label** to match your verdict (add `--repo
-      <game-repo>` for game PRs). The label is the primary signal
-      the human uses. Always remove stale labels first:
-      `gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
-      (swap the label name for approved or blocker as appropriate).
-      - Verdict approve, no Nits section → `fleet:approved`
-      - Verdict approve WITH a non-empty `### Nits` section → BOTH
-        `fleet:approved` AND `fleet:has-nits` (the latter tells the
-        author worker to address the nits before the human merges)
-      - Verdict approve + "Opus recheck required" → **do not label**.
-        Leave it unlabeled; Opus will set the final label.
-      - Verdict needs-fix → `fleet:needs-fix`
-      - Verdict blocker → `fleet:blocker`
+
+   **For all PRs: set the verdict label IMMEDIATELY after posting the
+   review.** This is the single most-skipped step in the loop, and it's
+   the primary signal the human uses to decide what to merge — a review
+   without a label is invisible to the human's merge queue. Your VERY
+   NEXT bash call after `gh pr review` MUST be `gh pr edit ... --add-label`.
+   Do not move on to the next PR or exit the iteration without confirming
+   the label is set (`gh pr view <N> --json labels --jq '.labels[].name'`
+   after the edit, if you want to be sure).
+
+   Always remove stale verdict labels before adding the new one. For
+   game PRs, add `--repo <game-repo>` to the gh pr edit call.
+
+   ```
+   # Verdict approve, no Nits section:
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:approved"
+
+   # Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved" --add-label "fleet:has-nits"
+
+   # Verdict needs-fix:
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"
+
+   # Verdict blocker:
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --add-label "fleet:blocker"
+
+   # Re-review of a previously fleet:has-nits PR that's now clean:
+   #   removes the has-nits flag while keeping fleet:approved
+   gh pr edit <N> --remove-label "fleet:has-nits"
+   ```
+
+   Special case: **Verdict approve + "Opus recheck required"** → do NOT
+   set any verdict label. Leave it unlabeled; opus-reviewer will set
+   the final label on its next pass. (You still set `fleet:has-nits`
+   here if there are nits, even without a verdict label.)
+
+   The `review-pr` skill (invoked for engine single-task PRs) writes
+   its own label per the same rules — but if you find a PR you reviewed
+   without a label after the skill returns, run the gh pr edit yourself
+   immediately. Don't assume the skill did it.
 
    **Nits vs real issues — the bright line:**
    - **Approve with nits** is fine for genuinely-optional cosmetic
@@ -243,4 +267,15 @@ for human instruction. Do not loop.
   actions on your own PRs. Always use `--comment` with a clear
   verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
 - Never `git push --force` (you have no reason to push at all).
+- **Never post a review without setting the verdict label.** A review
+  comment without a `fleet:approved` / `fleet:needs-fix` /
+  `fleet:blocker` label is invisible to the human's merge queue —
+  the human filters PRs by label, not by review body. After every
+  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
+  `gh pr edit <N> ... --add-label "fleet:..."`. This is the
+  most-skipped step in the loop; it has been observed in production
+  on PR #230 (re-review approve, no label set, PR sat invisible).
+  If you described the label change in the review body but didn't
+  run the gh command, the label is NOT set — describing isn't
+  doing. Verify with `gh pr view <N> --json labels`.
 - Single-command Bash only (see CRITICAL section above).

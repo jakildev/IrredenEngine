@@ -273,12 +273,25 @@ merge. Merging is always the user's call.
 
 ### 5b. Set the PR label to match the verdict
 
-After posting the review comment, set the label so the human can see
-at a glance which PRs are ready. **Always remove stale verdict labels
-before adding the new one** — a PR should have exactly one verdict
-label (`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at any
-time. The `fleet:has-nits` label is orthogonal — it can ride on top
-of `fleet:approved`.
+**This step is non-negotiable.** A review without a verdict label is
+invisible to the human's merge queue — they filter PRs by label, not
+by review body. Posting a review and then exiting without setting the
+label leaves the PR in limbo (observed in production on PR #230, where
+both first-pass and re-review approved but the agent only described
+the label in the body and never ran the gh command — PR sat unlabeled
+for hours).
+
+Your VERY NEXT bash call after `gh pr review --comment ...` MUST be
+the `gh pr edit ... --add-label` below. Don't move on to the next PR
+or invoke any other skill until you've confirmed the label is set
+(verify with `gh pr view <N> --json labels --jq '.labels[].name'` if
+you need to be sure).
+
+**Always remove stale verdict labels before adding the new one** —
+a PR should have exactly one verdict label (`fleet:approved` /
+`fleet:needs-fix` / `fleet:blocker`) at any time. The
+`fleet:has-nits` label is orthogonal — it can ride on top of
+`fleet:approved`.
 
 ```bash
 # For approve, no nits in body:

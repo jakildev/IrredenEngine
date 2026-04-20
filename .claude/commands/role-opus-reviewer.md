@@ -201,6 +201,13 @@ end-to-end, then stop and wait for human instruction. Do not loop.
   actions on your own PRs. Always use `--comment` with a clear verdict.
 - Never commit, push, or open PRs from this worktree.
 - Never `git push --force`.
+- **Never post a review without setting the verdict label.** A review
+  without a `fleet:approved` / `fleet:needs-fix` / `fleet:blocker`
+  label is invisible to the human's merge queue. After every
+  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
+  `gh pr edit <N> ... --add-label "fleet:..."`. Describing the label
+  change in the review body does NOT set the label — only the gh
+  command does. Verify with `gh pr view <N> --json labels` if unsure.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
