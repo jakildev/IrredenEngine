@@ -95,7 +95,19 @@ if [[ "$ONCE" -eq 1 ]]; then
     exit 0
 fi
 
-trap 'echo "[witness] shutting down"; exit 0' INT TERM
+on_exit() {
+    local rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ) witness] unexpected exit (rc=$rc)" >> "$LOG"
+    fi
+}
+on_signal() {
+    trap - EXIT
+    echo "[witness] shutting down"
+    exit 0
+}
+trap on_exit EXIT
+trap on_signal INT TERM
 
 while true; do
     run_one_pass
