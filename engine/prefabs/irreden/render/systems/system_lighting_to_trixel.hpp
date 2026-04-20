@@ -39,11 +39,18 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // `debugLightLevel_` is reserved for future shadow-preview use; it is
 // kept in the UBO for std140 layout stability but the shader currently
 // uses AO.r as the LUT X-axis input.
+// `debugOverlayMode_` mirrors `IRRender::DebugOverlayMode`. Non-zero
+// values short-circuit the artistic path and write false-color into
+// `trixelColors` instead — see ir_render_enums.hpp for the encoding.
+// std140 note: five scalars pack tightly at offsets 0,4,8,12,16 for a
+// 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
+// no explicit padding is needed.
 struct FrameDataLightingToTrixel {
     int   lightingEnabled_     = 0;
     int   lutEnabled_          = 0;
     int   lightVolumeEnabled_  = 0;
     float debugLightLevel_     = 0.0f;
+    int   debugOverlayMode_    = 0;
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -177,6 +184,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 s_program->use();
                 frameData.lightingEnabled_ = 1;
                 frameData.lightVolumeEnabled_ = 1;
+                frameData.debugOverlayMode_ =
+                    static_cast<int>(IRRender::getDebugOverlay());
                 s_frameDataBuf->subData(
                     0, sizeof(FrameDataLightingToTrixel), &frameData
                 );

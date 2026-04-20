@@ -476,4 +476,12 @@ vec3 RenderManager::getSunDirection() const {
     return m_sunDirection;
 }
 
+void RenderManager::setDebugOverlay(DebugOverlayMode mode) {
+    m_debugOverlayMode = mode;
+}
+
+DebugOverlayMode RenderManager::getDebugOverlay() const {
+    return m_debugOverlayMode;
+}
+
 } // namespace IRRender

@@ -128,6 +128,25 @@ enum class DrawMode : std::uint8_t {
     LINES
 };
 
+/// False-color visualization of lighting buffers, applied during the
+/// @c LIGHTING_TO_TRIXEL pass. When set to anything other than @c NONE the
+/// final composite color is replaced by the selected debug visualization;
+/// upstream lighting passes (AO, sun shadow) still run unchanged so the
+/// values being visualized are exactly what the artistic path consumes.
+/// - @c NONE        — no overlay; normal artistic lighting/composite.
+/// - @c AO          — ambient-occlusion factor as red→green
+///                    (red = fully occluded, green = fully unoccluded).
+/// - @c LIGHT_LEVEL — combined AO × sun-shadow scalar painted as
+///                    blue→white (blue = dark, white = bright).
+/// - @c SHADOW      — directional sun-shadow occupancy (black = lit,
+///                    magenta = shadowed).
+enum class DebugOverlayMode : std::uint8_t {
+    NONE = 0,
+    AO = 1,
+    LIGHT_LEVEL = 2,
+    SHADOW = 3
+};
+
 /// Index buffer element size. Only @c UNSIGNED_SHORT (uint16) is used.
 enum class IndexType : std::uint8_t {
     UNSIGNED_SHORT

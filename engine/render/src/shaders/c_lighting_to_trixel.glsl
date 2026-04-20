@@ -23,6 +23,9 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     // bound 3D light volume, and additively combined with the AO base.
     uniform int   lightVolumeEnabled;
     uniform float debugLightLevel;
+    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
+    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
+    uniform int   debugOverlayMode;
 };
 
 // Mirrors the FrameDataVoxelToTrixel UBO used by VOXEL_TO_TRIXEL stages
@@ -83,6 +86,22 @@ void main() {
     // pixels whose sun ray hit an occluder in COMPUTE_SUN_SHADOW.
     const float shadow = imageLoad(canvasSunShadow, pixel).r;
     const vec4  src    = imageLoad(trixelColors, pixel);
+
+    // Debug overlay short-circuits artistic shading and paints a false-
+    // color representation of the selected lighting buffer.
+    if (debugOverlayMode != 0) {
+        vec3 debugColor = vec3(0.0);
+        if (debugOverlayMode == 1) {
+            debugColor = vec3(1.0 - ao, ao, 0.0);
+        } else if (debugOverlayMode == 2) {
+            const float level = ao * shadow;
+            debugColor = vec3(level, level, 1.0);
+        } else {
+            debugColor = shadow >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
+        }
+        imageStore(trixelColors, pixel, vec4(debugColor, src.a));
+        return;
+    }
 
     vec3 baseRgb;
     if (lutEnabled == 0) {
