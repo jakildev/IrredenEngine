@@ -264,7 +264,7 @@ Avoid:
   - **Notes:** explicitly [opus] — crash-recovery edge cases (resume vs restart judgment) require real reasoning. Builds on fleet-claim stack from #177. Particularly valuable before lighting batch (T-010…T-016) starts in earnest. Molecule format: yaml with name, agent, created, tasks list (id + state + pr + commit). Inspiration: gas town Molecules concept.
   - **Links:**
 
-- [~] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
+- [x] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
   - **ID:** T-023
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
@@ -273,7 +273,7 @@ Avoid:
   - **Acceptance:** (1) each agent role file writes `date -u` to `~/.fleet/heartbeats/<agent-name>` every loop iteration (and at major checkpoints for long tasks); (2) `~/.fleet/heartbeats/` populates during normal operation; (3) witness pane in `fleet-up`, polls every 60s; (4) killing an agent with `kill -STOP` triggers a stale-heartbeat log entry within 60s of crossing the per-agent threshold; (5) healthy fleet shows "all healthy (N agents tracked)" with no false positives during normal long-running work; (6) opus-architect (interactive, no loop) is excluded from monitoring; (7) stale alerts written to `~/.fleet/alerts/<agent>.stuck`
   - **Issue:** #193
   - **Notes:** explicitly [sonnet] — pure file-polling and timestamp comparison, no judgment calls. Per-agent thresholds: sonnet-author ≤5m, sonnet-reviewer ≤6m, queue-manager ≤10m, opus-worker ≤30m, opus-reviewer ≤45m. v1 alerts only — no auto-interrupt (too risky). Inspiration: gas town Witness role.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/229
 
 - [~] **Lighting: culling invariants — document off-screen-caster, shadow-ring, light-seed expansion, and AO guard band** — add a canonical "Lighting culling invariants" section to `engine/render/CLAUDE.md` covering the four invariants that downstream lighting PRs (AO, shadows, flood-fill, fog-of-war) must respect to handle off-screen geometry correctly
   - **ID:** T-024
@@ -337,7 +337,6 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
-- [~] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
@@ -348,6 +347,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [x] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [x] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
