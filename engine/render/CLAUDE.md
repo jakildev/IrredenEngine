@@ -163,8 +163,8 @@ architect review that originated them.
 
 `buildChunkVisibilityMask` is a render-pipeline-local mask inside
 `system_voxel_to_trixel`. The occupancy-grid-build system must use its own
-iteration path and must **not** consult that mask. The failure mode is sharing a helper that accidentally applies the render cull
-to the grid build.
+iteration path and must **not** consult that mask. The failure mode is
+sharing a helper that accidentally applies the render cull to the grid build.
 
 **Check:** `system_build_occupancy_grid.hpp` does not include
 `cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
