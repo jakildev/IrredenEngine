@@ -60,9 +60,13 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │      • c_compute_voxel_ao.glsl → per-pixel AO factor             │
 │    COMPUTE_SUN_SHADOW                                            │
 │      • c_compute_sun_shadow.glsl → per-pixel directional shadow  │
+│    COMPUTE_LIGHT_VOLUME                                          │
+│      • CPU flood-fill BFS from C_LightSource emitters into the   │
+│        canvas's C_CanvasLightVolume 3D texture (8 MiB upload)    │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
-│        by (AO × sun-shadow)                                      │
+│        by (AO × sun-shadow), then adds the light-volume          │
+│        contribution sampled at the trixel's recovered pos3D      │
 │    TRIXEL_TO_TRIXEL  (compositing/post)                          │
 │    TRIXEL_TO_FRAMEBUFFER                                         │
 │      • v_/f_trixel_to_framebuffer.glsl                           │

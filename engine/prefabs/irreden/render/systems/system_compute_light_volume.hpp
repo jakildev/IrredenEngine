@@ -75,6 +75,8 @@ inline void writeLightTexel(
     buffer[idx + 0] = std::max(buffer[idx + 0], clamp8(r));
     buffer[idx + 1] = std::max(buffer[idx + 1], clamp8(g));
     buffer[idx + 2] = std::max(buffer[idx + 2], clamp8(b));
+    // Alpha unused by the shader (samples .rgb only). Force 255 so the
+    // RGBA8 upload doesn't ship uninitialised bytes through the driver.
     buffer[idx + 3] = 255u;
 }
 

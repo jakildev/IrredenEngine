@@ -2,9 +2,14 @@
 #define COMPONENT_CANVAS_LIGHT_VOLUME_H
 
 // World-space 3D light volume populated by COMPUTE_LIGHT_VOLUME (CPU
-// flood-fill BFS) and consumed by LIGHTING_TO_TRIXEL. Opt-in: attach
-// alongside C_TriangleCanvasTextures + C_OccupancyGrid to enable
-// emissive flood-fill lighting for a canvas.
+// flood-fill BFS) and consumed by LIGHTING_TO_TRIXEL. Required on
+// every canvas that participates in LIGHTING_TO_TRIXEL — the system's
+// archetype filter lists it alongside C_CanvasAOTexture and
+// C_CanvasSunShadow, so a canvas missing it silently skips the entire
+// lighting pass (including AO × shadow). Pair with
+// C_TriangleCanvasTextures + C_OccupancyGrid; if no emitters exist,
+// the volume stays zero-filled and the additive contribution is a
+// no-op.
 //
 // The volume is centered at world origin and covers
 // `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)` voxels per axis
