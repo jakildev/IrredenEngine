@@ -93,6 +93,13 @@ The `/loop` driver re-invokes this role every 10 minutes in live
 mode. Each invocation is one iteration — handle ready PRs, then
 exit cleanly:
 
+0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
+   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/merger`
+   Witness's staleness threshold for `merger` is 20 minutes (10m loop +
+   10m budget for rebases / pushes). Re-write the heartbeat before any
+   long-running git fetch / push / rebase loop so a slow conflict
+   resolution doesn't trigger a false alert.
+
 1. **Clear all `fleet:merger-cooldown` labels.** The 10-minute loop
    interval is the cooldown — clearing at iteration start (rather
    than gating on `updatedAt`, which other agents' comments refresh)

@@ -46,6 +46,7 @@ threshold_for_agent() {
         opus-worker-1)   echo 1800 ;;   # 30m — 20m loop + 10m budget
         opus-worker-2)   echo 1800 ;;   # 30m
         opus-reviewer)   echo 2700 ;;   # 45m — 30m loop + 15m budget
+        merger)          echo 1200 ;;   # 20m — 10m loop + 10m budget
         *)               echo 0    ;;   # unknown — not monitored
     esac
 }

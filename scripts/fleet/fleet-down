@@ -155,8 +155,12 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         # the pane index if @role isn't set.
         role=$(tmux show-options -t "$pane_id" -p -v @role 2>/dev/null | awk '{print $1}')
         [[ -z "$role" ]] && role="pane-${pane_id#%}"
+        # witness is a bash daemon, not Claude — can't write a summary.
+        if [[ "$role" == "witness" ]]; then
+            continue
+        fi
         summary_file="$SUMMARY_DIR/$role.md"
-        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — for workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer, queue-manager) that's just the current iteration's task; for architects it's the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
+        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — looping agents (sonnet-author, opus-worker-*, sonnet-reviewer, opus-reviewer, queue-manager, merger) cover just the current iteration's task / PRs; architects (opus-architect, game-architect) cover the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
         tmux send-keys -t "$pane_id" "$prompt" Enter
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 
