@@ -36,24 +36,25 @@ directory before launching, so the demo picks up its sibling `data/`,
 
 ### Demo requirement: `--auto-screenshot`
 
-This skill drives a demo that implements the `--auto-screenshot` flag. A
-conforming demo:
+This skill drives a demo that opts into the reusable auto-screenshot
+helper in `engine/video/`. Conforming demos do three things in `main.cpp`:
 
-1. Parses `--auto-screenshot [warmup-frames]` in `main()`.
-2. Defines a shot table (zoom, camera offset, optional render mode) and
-   cycles through it one shot per screenshot, with settle frames between
-   shots.
-3. Calls `IRVideo::requestScreenshot()` to capture each shot.
-4. Closes the window after the last shot.
+1. Call `IRVideo::parseAutoScreenshotArgv(argc, argv, &warmupFrames)` to
+   detect the flag and read its optional warmup-frames count.
+2. Declare an `IRVideo::AutoScreenshotShot` table (zoom + iso camera
+   position + label per shot).
+3. When `warmupFrames > 0`, append `IRVideo::createAutoScreenshotSystem(
+   cfg)`'s returned `SystemId` to the RENDER pipeline list before
+   `registerPipeline` fires.
 
-**Reference implementation:** `creations/demos/shape_debug/main.cpp`. Look
-at `ShotConfig`, `g_shots[]`, and the `AutoScreenshot` system for the
-pattern. If your target demo does not yet support `--auto-screenshot`, you
-have three options: (a) add it to that demo following the shape_debug
-pattern; (b) use `shape_debug` if it exercises the code path you care
-about; (c) wait on the auto-screenshot engine helper (GitHub issue
-tracked under the `fleet:task` label — search for "auto-screenshot
-helper" if promoting shot config into a reusable system).
+The helper handles warmup, settle frames, zoom / camera application,
+the screenshot request, and window close after the last shot.
+
+**Reference implementations:** `creations/demos/shape_debug/main.cpp` and
+`creations/demos/metal_clear_test/main.cpp` — both wire up the helper in
+under a dozen lines. If your target demo does not yet opt in, either
+(a) add the six-line wire-up shown there, or (b) use `shape_debug` if
+it exercises the code path you care about.
 
 ## Loop Steps
 
