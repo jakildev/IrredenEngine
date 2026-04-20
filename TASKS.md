@@ -169,7 +169,7 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
+- [x] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
   the voxel-visibility compaction pass (reduces visible-voxel indices
   into a dense buffer) has no Metal counterpart. Same skill flow.
   - **ID:** T-006
@@ -186,7 +186,7 @@ Avoid:
     translation and the memory-order argument (use `relaxed` unless
     the GLSL source implies otherwise). See the cheatsheet in the
     `backend-parity` skill.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/227
 
 - [ ] **Wire up a `backend-parity` dry run** — use the new
   `backend-parity` skill end-to-end on a known-small parity gap
@@ -231,7 +231,7 @@ Avoid:
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
   - **Links:**
 
-- [~] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
+- [x] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
   - **ID:** T-019
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
@@ -240,7 +240,7 @@ Avoid:
   - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` invoke `attach-screenshots` before `optimize`/`commit-and-push` when diff touches `engine/render/`, `engine/prefabs/irreden/render/`, any `.glsl`/`.metal` shader file, or `creations/demos/*/src/`; (2) purely mechanical refactors and doc PRs do NOT invoke the skill; (3) `commit-and-push` detects render/visual files in diff and prompts worker to run `attach-screenshots` first if `docs/pr-screenshots/<branch>/` does not yet exist; (4) all engine author role files build/parse cleanly; (5) at least one manually-verified run shows screenshots landing in the PR
   - **Issue:** #186
   - **Notes:** conditional trigger logic must be precise — only visual/render diffs trigger it. Mechanical refactors (rename, extract header) must not trigger it. `attach-screenshots` runs BEFORE `optimize` and `commit-and-push` so screenshots are in the same commit batch.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/225
 
 - [ ] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
   - **ID:** T-020
@@ -339,8 +339,6 @@ Avoid:
 - [~] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
 - [~] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
-- [~] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
-- [~] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 - [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
@@ -350,6 +348,9 @@ Avoid:
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
+
+- [x] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
+- [x] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 
 - [x] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
   - **ID:** T-022
