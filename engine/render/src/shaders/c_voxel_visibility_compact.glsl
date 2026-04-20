@@ -1,7 +1,5 @@
 #version 460 core
 
-// TODO: Needs review
-
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
