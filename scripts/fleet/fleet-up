@@ -262,6 +262,10 @@ fi
 # Ensure the plans directory exists for opus-worker and architect to write to.
 mkdir -p "$HOME/.fleet/plans"
 
+# Ensure witness directories exist before the witness pane starts.
+mkdir -p "$HOME/.fleet/heartbeats"
+mkdir -p "$HOME/.fleet/alerts"
+
 # ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
@@ -271,7 +275,7 @@ mkdir -p "$HOME/.fleet/plans"
 # Summary:
 #   top    (~32%, 4 panes) — autonomous workers
 #   middle (~40%, 2 panes) — interactive architects (biggest)
-#   bottom (~28%, 3 panes) — ops
+#   bottom (~28%, 4 panes) — ops
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -322,8 +326,8 @@ launch_cmd() {
 #                         sonnet-fleet-1, opus-worker-1, opus-worker-2
 #   Middle (~40% height): architects (2 wide panes)     — interactive design
 #                         opus-architect, [game-architect] — biggest, most-used
-#   Bottom (~28% height): ops (4 panes)                 — small status panes
-#                         sonnet-reviewer, opus-reviewer, queue-manager, merger
+#   Bottom (~28% height): ops (5 panes)                 — small status panes
+#                         sonnet-reviewer, opus-reviewer, queue-manager, merger, witness
 #
 # The architect row is widest+tallest because it's where the human
 # spends interactive time. Workers and ops are autonomous loops you
@@ -385,6 +389,12 @@ tmux split-window -h -t "$BOT3" \
 BOT4=$(active_pane_id)
 label_pane_id "$BOT4" "merger [opus 4.7]"
 
+tmux split-window -h -t "$BOT4" \
+    -c "$HOME/.fleet" \
+    "witness; exec $SHELL"
+BOT5=$(active_pane_id)
+label_pane_id "$BOT5" "witness"
+
 # --- Row 2 (middle, ~40%): architects ---------------------------------
 # Split off the middle row from TOP1. TOP1 is currently 72% of window
 # (after bottom 28%). Splitting 56% off the bottom of TOP1 gives:
@@ -434,7 +444,7 @@ attach with:  tmux attach -t ${SESSION}
 layout (single window, three rows):
   top (~32%, 3 panes) — sonnet-fleet-1  opus-worker-1  opus-worker-2                  (autonomous workers)
   middle (~40%, 2 panes, taller) — opus-architect  [game-architect]                  (interactive architects — biggest)
-  bottom (~28%, 4 panes) — sonnet-reviewer  opus-reviewer  queue-manager  merger     (ops)
+  bottom (~28%, 5 panes) — sonnet-reviewer  opus-reviewer  queue-manager  merger  witness   (ops)
 
 effort levels:
   opus agents (architects, opus-workers, opus-reviewer, merger) — max

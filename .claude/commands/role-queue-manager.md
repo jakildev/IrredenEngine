@@ -207,17 +207,20 @@ auto-relaunch in dry-run mode.
 
 You are the sole TASKS.md editor. Each maintenance pass:
 
-0. **Clean stale claims:**
+0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
+   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/queue-manager`
+
+1. **Clean stale claims:**
    `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
 
-0b. **Release timed-out claims:**
+1b. **Release timed-out claims:**
     `fleet-claim check-stale 7200`
     Claims older than 2 hours with no corresponding PR are likely
     orphaned (agent crashed without releasing). This supplements
     the `cleanup` step above, which only catches claims whose PRs
     have already merged or closed.
 
-1. **Ingest triaged issues (engine repo):**
+2. **Ingest triaged issues (engine repo):**
    `gh issue list --repo <engine-repo> --search "is:open is:issue label:human:approved -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info" --json number,title,body,comments,labels`
 
    Only issues with `human:approved` (and not yet handled) are
@@ -227,7 +230,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    - `fleet:queued` — already ingested into TASKS.md
    - `fleet:needs-plan` — waiting on architect planning
    - `fleet:needs-info` — waiting on human clarification
-   - `fleet:in-progress` — agent has opened a PR (set in step 4 below)
+   - `fleet:in-progress` — agent has opened a PR (set in step 5 below)
 
    The search excludes issues that already have any of the first
    three, so each issue is processed exactly once per state transition.
@@ -314,7 +317,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
       `gh issue comment <N> --repo <engine-repo> --body "Need more info before scheduling: <specific questions>"`
    c. Do NOT add it to TASKS.md.
 
-2. **Ingest triaged issues (game repo):**
+3. **Ingest triaged issues (game repo):**
    `gh issue list --repo <game-repo> --search "is:open is:issue label:human:approved -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info" --json number,title,body,comments,labels`
    Same full-context assessment as above. Apply the same ready /
    needs-plan / needs-info logic, using `--repo <game-repo>`
@@ -322,7 +325,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `~/src/IrredenEngine/creations/game/TASKS.md`. The
    `human:approved` label is preserved on game-repo issues too.
 
-3. **Sync merged PRs → Done (both repos):**
+4. **Sync merged PRs → Done (both repos):**
    Engine:
    `gh pr list --repo <engine-repo> --state merged --json number,title,mergedAt,commits --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    Game:
@@ -348,7 +351,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `rm -f ~/.fleet/plans/<task-ID>.md`
    `rm -f .fleet/plans/<task-ID>.md`
 
-4. **Sync open PRs → In-progress (both repos):**
+5. **Sync open PRs → In-progress (both repos):**
    Engine:
    `gh pr list --repo <engine-repo> --state open --json number,title,headRefName,body`
    Game:
@@ -362,7 +365,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
       is a no-op):
       `gh issue edit <N> --repo <repo> --add-label "fleet:in-progress"`
 
-4b. **Clean up stale `fleet:in-progress` labels.** For each issue
+5b. **Clean up stale `fleet:in-progress` labels.** For each issue
    currently labeled `fleet:in-progress` (both repos), check whether
    any open PR still references it via `Closes #N` (or via the matching
    TASKS.md entry's PR link). If no open PR matches, the PR closed
@@ -373,7 +376,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    For each in-progress issue not referenced by any open PR:
    `gh issue edit <N> --repo <repo> --remove-label "fleet:in-progress"`
 
-5. **Resolve stale blocker references.** Scan all `## Open` entries in
+6. **Resolve stale blocker references.** Scan all `## Open` entries in
    each TASKS.md. For any `Blocked by:` field that contains:
    - A free-text title that now matches an existing task → replace
      with the canonical `T-NNN` task ID.
@@ -387,9 +390,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
    issues arrives, some may reference blockers that weren't ingested
    yet. This pass resolves those once everything is in the queue.
 
-6. **Prune Done:** keep only the last 20 entries in each TASKS.md.
+7. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
-7. **Push changes (if any).**
+8. **Push changes (if any).**
    Engine TASKS.md + plan files — commit and push directly to master
    (bare `git` is correct here — your CWD is an engine worktree):
    - `git fetch origin`
@@ -408,7 +411,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
    If either push is rejected, rebase and retry. Only push TASKS.md
    and `.fleet/plans/` — never push other files to master.
 
-8. Print the maintenance summary, queue summary, and next-run timing:
+9. Print the maintenance summary, queue summary, and next-run timing:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
    `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
    `[queue-manager] Iteration complete. Next run in ~5m.`

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# witness — fleet health monitor: polls agent heartbeats every 60 seconds
+# and alerts when an agent's heartbeat goes stale.
+#
+# Each agent role writes a heartbeat to ~/.fleet/heartbeats/<agent-name>
+# every loop iteration. Witness detects hung agents (alive process but
+# stuck) by comparing the heartbeat file's mtime against a per-role
+# staleness threshold.
+#
+# On staleness: logs to ~/.fleet/logs/witness.log and writes
+# ~/.fleet/alerts/<agent>.stuck. Healthy agents have their alert files
+# cleared automatically.
+#
+# Usage:
+#   witness          run continuously (normal fleet pane mode)
+#   witness --once   run one pass and exit (for testing/CI)
+#
+# Source of truth: scripts/fleet/witness in the engine repo.
+# Installed to ~/bin/witness by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+HEARTBEAT_DIR="$HOME/.fleet/heartbeats"
+ALERT_DIR="$HOME/.fleet/alerts"
+LOG_DIR="$HOME/.fleet/logs"
+LOG="$LOG_DIR/witness.log"
+
+mkdir -p "$HEARTBEAT_DIR" "$ALERT_DIR" "$LOG_DIR"
+
+ONCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --once)      ONCE=1 ;;
+        -h|--help)   sed -n '2,20p' "$0"; exit 0 ;;
+        *) echo "witness: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
+
+# Per-role staleness thresholds in seconds.
+# = loop interval + overrun budget (build/API/usage-limit wait).
+threshold_for_agent() {
+    case "$1" in
+        sonnet-fleet-1)  echo 300  ;;   # 5m  — continuous loop, back-to-back
+        sonnet-reviewer) echo 360  ;;   # 6m  — 3m loop + 3m budget
+        queue-manager)   echo 600  ;;   # 10m — 5m loop + 5m budget
+        opus-worker-1)   echo 1800 ;;   # 30m — 20m loop + 10m budget
+        opus-worker-2)   echo 1800 ;;   # 30m
+        opus-reviewer)   echo 2700 ;;   # 45m — 30m loop + 15m budget
+        *)               echo 0    ;;   # unknown — not monitored
+    esac
+}
+
+# Portable file mtime in Unix seconds (macOS + Linux).
+file_mtime() {
+    python3 -c "import os, sys; print(int(os.path.getmtime(sys.argv[1])))" "$1"
+}
+
+run_one_pass() {
+    local now_str now stale_count tracked
+    now_str=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    now=$(date +%s)
+    stale_count=0
+    tracked=0
+
+    for hb_file in "$HEARTBEAT_DIR"/*; do
+        [[ -f "$hb_file" ]] || continue
+        local agent threshold mtime age age_min thr_min msg
+        agent=$(basename "$hb_file")
+        threshold=$(threshold_for_agent "$agent")
+        [[ "$threshold" -eq 0 ]] && continue
+        tracked=$((tracked + 1))
+
+        mtime=$(file_mtime "$hb_file")
+        age=$((now - mtime))
+
+        if [[ "$age" -gt "$threshold" ]]; then
+            age_min=$((age / 60))
+            thr_min=$((threshold / 60))
+            stale_count=$((stale_count + 1))
+            msg="STALE: $agent (last hb ${age_min}m ago, threshold ${thr_min}m)"
+            echo "[$now_str witness] $msg" | tee -a "$LOG"
+            echo "$now_str $agent age=${age_min}m threshold=${thr_min}m" > "$ALERT_DIR/$agent.stuck"
+        else
+            rm -f "$ALERT_DIR/$agent.stuck"
+        fi
+    done
+
+    if [[ "$stale_count" -eq 0 ]]; then
+        echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
+    fi
+}
+
+if [[ "$ONCE" -eq 1 ]]; then
+    run_one_pass
+    exit 0
+fi
+
+on_exit() {
+    local rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ) witness] unexpected exit (rc=$rc)" >> "$LOG"
+    fi
+}
+on_signal() {
+    trap - EXIT
+    echo "[witness] shutting down"
+    exit 0
+}
+trap on_exit EXIT
+trap on_signal INT TERM
+
+while true; do
+    run_one_pass
+    sleep 60
+done

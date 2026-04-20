@@ -83,6 +83,11 @@ earlier work.
 
 Each iteration:
 
+0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
+   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/sonnet-fleet-1`
+   Also write before long-running steps (fleet-build, fleet-run, commit-and-push)
+   to prevent false staleness alerts during builds or PR actions.
+
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
 
