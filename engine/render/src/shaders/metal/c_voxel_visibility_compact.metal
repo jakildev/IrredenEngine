@@ -17,6 +17,16 @@
 // All five fields are accessed through a single `device atomic_uint*` so
 // that we can mix atomic_fetch_add (3, 4) with atomic_store (0, 1, 2)
 // without rebinding the buffer.
+//
+// memory_order_relaxed is intentional. The happens-before edge that makes
+// the indirect-dispatch params visible to the following pipeline stage
+// comes from the encoder boundary between this kernel and stage 1 — Metal
+// orders device-memory operations between command-buffer encoders for us.
+// Within this kernel, threadgroup_barrier(mem_device) handles intra-group
+// ordering; the last-group pattern relies on atomic_fetch_add being a
+// coherent RMW across threadgroups, not on C++ memory-order semantics.
+// Don't "fix" these to acquire/release — it adds barrier cost on Apple
+// GPUs without changing observed behavior.
 
 constant uint kSlotNumGroupsX     = 0;
 constant uint kSlotNumGroupsY     = 1;
