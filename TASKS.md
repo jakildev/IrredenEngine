@@ -253,7 +253,7 @@ Avoid:
   - **Notes:** explicitly [opus] — touches fleet-claim, role files, requires reasoning about edge cases (rebase failures, mid-chain rejections, partial approvals). Current one-PR-multi-commit approach (PR #182) stays in place until this lands. Subcomponents: worker creates chained branches + PRs; queue-manager detects chained PRs and handles cascade; fleet-claim tracks chain state in `~/.fleet/claims/_stack_<agent>/prs`; reviewer notes parent PRs in review. Filed from PR #182; related: jakildev/IrredenEngine#175.
   - **Links:**
 
-- [~] **Fleet: resumable workflows (molecules) for stacked task chains** — extend `fleet-claim stack` to write a molecule YAML that survives agent crashes, allowing the next worker startup to auto-resume the in-progress step
+- [x] **Fleet: resumable workflows (molecules) for stacked task chains** — extend `fleet-claim stack` to write a molecule YAML that survives agent crashes, allowing the next worker startup to auto-resume the in-progress step
   - **ID:** T-021
   - **Area:** tooling, .claude/skills
   - **Model:** opus
@@ -262,7 +262,7 @@ Avoid:
   - **Acceptance:** (1) `fleet-claim stack` creates `~/.fleet/molecules/<name>.yml` with per-task state (pending/in-progress/done/failed); (2) worker crashes mid-stack (kill process during T-002) — on restart, worker reads molecule, resumes or restarts T-002, then completes T-003 without human intervention; (3) `fleet-claim molecule list/resume/advance/complete` commands work correctly; (4) molecule files survive `fleet-up` restarts and are NOT wiped by `fleet-claim clear-all`; (5) worker role files document "check molecule on startup before picking new work" as highest-priority step; (6) at least one real stack crashed-and-resumed in testing
   - **Issue:** #191
   - **Notes:** explicitly [opus] — crash-recovery edge cases (resume vs restart judgment) require real reasoning. Builds on fleet-claim stack from #177. Particularly valuable before lighting batch (T-010…T-016) starts in earnest. Molecule format: yaml with name, agent, created, tasks list (id + state + pr + commit). Inspiration: gas town Molecules concept.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/230
 
 - [x] **Fleet: witness health monitoring with heartbeat detection** — add a `witness` role and per-agent heartbeat writes so hung agents (alive but stuck) are detected within 60s and surfaced as alerts
   - **ID:** T-023
@@ -286,11 +286,11 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — this is a write-up and cross-linking task, not a design decision. T-010 (#164) already merged via PR #188; invariant #1 check applies to the merged form. The four invariants were specified by the opus-architect during C_LightSource/C_LightBlocker review (PR #187). Escalate to [opus] only if invariant #1 is found violated in T-010 and structural fixes are needed.
   - **Links:**
 
-- [ ] **Render debug: false-color lighting-data overlay** — add a Lua-configurable debug mode that replaces the artistic lighting output with a false-color visualization of a selected lighting buffer (AO, light level, shadow)
+- [~] **Render debug: false-color lighting-data overlay** — add a Lua-configurable debug mode that replaces the artistic lighting output with a false-color visualization of a selected lighting buffer (AO, light level, shadow)
   - **ID:** T-025
   - **Area:** engine/render, shaders/glsl, shaders/metal, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** render-debug-overlay
   - **Blocked by:** (none)
   - **Acceptance:** (1) `ir.render.setDebugOverlay("ao"|"light_level"|"shadow"|"none")` Lua setter exposed; (2) at least three modes implemented: `ao`, `light_level`, `shadow`; (3) switching modes at runtime works on both backends (GLSL + MSL parity); (4) `IRShapeDebug` demonstrates each mode via Lua config or CLI flag; (5) documented in `engine/render/CLAUDE.md` as recommended sanity-check for lighting work; (6) builds clean on `linux-debug` and `macos-debug`
   - **Issue:** #218
@@ -336,7 +336,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
+- [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
@@ -347,6 +347,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
 - [x] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [x] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
