@@ -308,7 +308,7 @@ Avoid:
   - **Notes:** soft dependency on T-027 (#189, "Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
   - **Links:**
 
-- [~] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
+- [x] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
   - **ID:** T-027
   - **Area:** engine/video, creations/demos/shape_debug
   - **Model:** opus
@@ -317,7 +317,7 @@ Avoid:
   - **Acceptance:** (1) engine exposes `AutoScreenshotShot`, `AutoScreenshotConfig`, and `enableAutoScreenshot()` (or equivalent declarative API); (2) `shape_debug/main.cpp` ported to helper — hand-written `ShotConfig`/`g_shots`/`AutoScreenshot` system deleted, net line count goes down; (3) `fleet-run IRShapeDebug --auto-screenshot 10` produces same screenshot set as before; (4) a second creation opts into helper with a 3-shot table and produces 3 screenshots (proof-of-reuse gate); (5) `.claude/skills/render-debug-loop/SKILL.md` updated to point at helper; (6) builds clean on `linux-debug`
   - **Issue:** #189
   - **Notes:** reference implementation to be promoted is `creations/demos/shape_debug/main.cpp` (~80 lines: ShotConfig, g_shots[], warmup/settle counters, AutoScreenshot render-pipeline system, CLI arg parsing). Shot struct needs: zoom, cameraIso, subdivisionMode, label. Engine only owns the cycling mechanism — every creation defines its own shot table. Keep the shot struct extensible (possible `std::function<void()> preShot` callback) but start with zoom/camera/mode. Soft dependency: T-026 (render-verify harness) expands cleanly once this lands.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/228
 
 - [ ] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
   - **ID:** T-028
@@ -338,7 +338,6 @@ Avoid:
 
 - [~] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
 - [~] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
-- [~] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [~] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
@@ -349,6 +348,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [x] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [x] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
 
