@@ -12,10 +12,13 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_light_source.hpp>
+#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -26,6 +29,7 @@
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
+#include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -146,6 +150,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
         IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -420,8 +425,6 @@ EntityId createVoxelPoolShape(
     }
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
-    } else {
-        applyCheckerboard(vs, color);
     }
 
     IR_LOG_INFO(
@@ -441,8 +444,6 @@ EntityId createSDFShape(
     C_ShapeDescriptor desc{type, params, color};
     if (g_depthColor) {
         desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
-    } else {
-        desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
     }
     EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
     auto &sd = IREntity::getComponent<C_ShapeDescriptor>(entity);
@@ -552,8 +553,27 @@ void initEntities() {
         IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
+
+    // The voxel-pool canvas prefab doesn't include this component, so the
+    // AO / sun-shadow / light-volume / lighting systems' archetype filter
+    // wouldn't otherwise match the main canvas and they'd silently skip it.
+    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
 
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, 0.4f));
+
+    // Emissive point light placed between the shape rows so its colored
+    // falloff is visible across both the voxel-pool and SDF copies of the
+    // nearby shapes. Cyan reads cleanly against the warm shape palette.
+    IREntity::createEntity(
+        C_Position3D{vec3(40.0f, 6.0f, -2.0f)},
+        C_LightSource{
+            LightType::EMISSIVE,
+            Color{80, 200, 255, 255},
+            2.0f,
+            static_cast<uint8_t>(30)
+        }
+    );
 }

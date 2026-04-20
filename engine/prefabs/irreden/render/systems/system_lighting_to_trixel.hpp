@@ -8,10 +8,11 @@
 #include <array>
 #include <cstdint>
 
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_canvas_ao_texture.hpp>
-#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -31,14 +32,18 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // `lutEnabled_` activates palette LUT shading, which replaces the plain
 // grayscale AO multiplication with a luminance-indexed palette lookup
 // whose X-axis is driven by the per-pixel AO value.
+// `lightVolumeEnabled_` activates flood-fill light-volume sampling: the
+// per-pixel world voxel is recovered from the distance texture and the
+// bound 3D light volume is sampled and additively combined with the AO
+// base.
 // `debugLightLevel_` is reserved for future shadow-preview use; it is
 // kept in the UBO for std140 layout stability but the shader currently
 // uses AO.r as the LUT X-axis input.
 struct FrameDataLightingToTrixel {
-    int   lightingEnabled_  = 0;
-    int   lutEnabled_       = 0;
-    float debugLightLevel_  = 0.0f;
-    int   padding2_         = 0;  // std140 alignment
+    int   lightingEnabled_     = 0;
+    int   lutEnabled_          = 0;
+    int   lightVolumeEnabled_  = 0;
+    float debugLightLevel_     = 0.0f;
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -82,6 +87,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
         static Buffer *s_frameDataBuf =
             IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
+        // Reuse the voxel pipeline's per-frame UBO so we can recover the
+        // world voxel position of each pixel via the same iso math the AO
+        // pass uses. Created by VOXEL_TO_TRIXEL_STAGE_1; this system runs
+        // later in the pipeline so the buffer is always populated.
+        static Buffer *s_voxelFrameDataBuf =
+            IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         static Texture2D *s_paletteLUT =
             IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
@@ -112,13 +123,15 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
             C_CanvasAOTexture,
-            C_CanvasSunShadow
+            C_CanvasSunShadow,
+            C_CanvasLightVolume
         >(
             "LightingToTrixel",
             [](const C_TriangleCanvasTextures &canvasTextures,
                const C_TrixelCanvasRenderBehavior &behavior,
                const C_CanvasAOTexture &ao,
-               const C_CanvasSunShadow &shadow) {
+               const C_CanvasSunShadow &shadow,
+               const C_CanvasLightVolume &lightVolume) {
                 if (!behavior.useCameraPositionIso_) {
                     return;
                 }
@@ -132,17 +145,23 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 ao.getTexture()->bindAsImage(
                     2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
                 );
-                // Palette LUT on texture unit 3; canvasSunShadow on image
-                // unit 4. GLSL keeps sampler and image namespaces separate,
-                // but Metal flattens them into a shared setTexture slot
-                // space — so shadow must skip past unit 3 to avoid the LUT
-                // sampler. Keep the GLSL and MSL unit numbers in lockstep.
+                // Texture/image unit layout (must match GLSL + MSL):
+                //   3: paletteLUT (sampler2D)
+                //   4: canvasSunShadow (image2D, R/O)
+                //   5: lightVolume (sampler3D)
+                // Metal flattens the sampler and image namespaces into a
+                // shared setTexture slot space, so all three slots must be
+                // unique across both kinds.
                 s_paletteLUT->bind(3);
                 shadow.getTexture()->bindAsImage(
                     4, TextureAccess::READ_ONLY, TextureFormat::RGBA8
                 );
+                lightVolume.getTexture()->bind(5);
                 s_frameDataBuf->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel
+                );
+                s_voxelFrameDataBuf->bindBase(
+                    BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
                 );
 
                 const int groupsX = IRMath::divCeil(
@@ -157,6 +176,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             []() {
                 s_program->use();
                 frameData.lightingEnabled_ = 1;
+                frameData.lightVolumeEnabled_ = 1;
                 s_frameDataBuf->subData(
                     0, sizeof(FrameDataLightingToTrixel), &frameData
                 );
