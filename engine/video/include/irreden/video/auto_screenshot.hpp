@@ -33,6 +33,12 @@ struct AutoScreenshotConfig {
 /// the flag is present. When present and followed by a positive integer,
 /// @c *warmupFramesOut is set to that value; otherwise the default of 10 is
 /// written. @c warmupFramesOut may be @c nullptr.
+///
+/// This helper peeks at the token after @c --auto-screenshot but does not
+/// tell the caller whether it consumed one or two argv slots. Callers with
+/// subsequent argv loops must be aware that a bare positive integer may
+/// appear at the slot immediately after @c --auto-screenshot — if their
+/// own loop could interpret that token, skip past it explicitly.
 bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut);
 
 /// Create a system that cycles through @c config.shots_ — one screenshot per
