@@ -1,0 +1,20 @@
+{
+  "demo": "shape_debug",
+  "target": "IRShapeDebug",
+  "screenshot_subdir": "save_files/screenshots",
+  "shots": [
+    "zoom1_origin",
+    "zoom2_origin",
+    "zoom4_origin",
+    "zoom1_odd_offset",
+    "zoom8_origin",
+    "zoom4_offset_3_5"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "Shot order mirrors the g_shots[] table in main.cpp. Each shot produces one screenshot_NNNNNN.png in order — the Nth entry here maps to the Nth screenshot by numeric index. Reference PNGs live in sibling subdirs named after the CMake preset (e.g. macos-debug/, linux-debug/) since GL and Metal produce pixel-different output."
+}
