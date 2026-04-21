@@ -109,8 +109,15 @@ overwritten by checkout."
 ### 6. Check out the new branch off fresh origin/master
 
 ```bash
-git checkout -b claude/<new-area>-<new-topic> origin/master
+git checkout -B claude/<new-area>-<new-topic> origin/master
 ```
+
+`-B` (uppercase) creates the branch if it doesn't exist AND resets it
+to the named commit if it does. Lowercase `-b` errors out with "branch
+already exists" — surprisingly common because the worktree's previous
+scratch branches accumulate over many iterations. With `-B`, we don't
+care; the branch always lands on a clean `origin/master` regardless of
+its prior state.
 
 This creates the new branch starting from the tip of `origin/master`, not
 from wherever your previous branch was. Critical: without `origin/master`,

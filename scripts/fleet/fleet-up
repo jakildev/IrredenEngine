@@ -215,6 +215,11 @@ baseline = [
     "Bash(fleet-claim:*)",
     "Bash(fleet-build:*)",
     "Bash(fleet-run:*)",
+    # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
+    # in the user-level allowlist matches commands STARTING with `git`,
+    # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an
+    # explicit entry so `git rebase --continue` works without a prompt.
+    "Bash(GIT_EDITOR=true git:*)",
     # Temp-dir lifecycle for agents that need isolated scratch space
     # (e.g. testing fleet-claim with FLEET_CLAIMS_DIR=/tmp/fleet-...).
     # The `rm -rf` pattern is intentionally narrowed to the `/tmp/fleet-`
@@ -242,9 +247,21 @@ if os.path.isfile(settings_file):
 
 all_allows = baseline + existing_extra
 
+# additionalDirectories scopes file-system access. The worktree path
+# is automatic; we add:
+#   - repo_root: the main clone, so the agent can read engine/ build/
+#     etc. from inside a worktree without triggering path-scope
+#     prompts on every cross-reference.
+#   - ~/.fleet/: heartbeats, plans, claims, logs, sessions, summaries,
+#     molecules, alerts. Every fleet role writes into one of these
+#     subdirs; without this entry every heartbeat write prompts.
+#   - /tmp/: fleet-claim test patterns, mktemp scratch dirs, generic
+#     scratch usage. Already partially allowlisted via Bash entries
+#     for mktemp/rm; adding the directory closes the path-scope side.
+home = os.path.expanduser("~")
 out = {
     "permissions": {
-        "additionalDirectories": [repo_root],
+        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp"],
         "allow": all_allows,
         "defaultMode": "auto",
     }
