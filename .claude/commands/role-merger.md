@@ -150,12 +150,19 @@ exit cleanly:
       `git fetch origin <headRefName>`
       `git checkout -B <headRefName> origin/<headRefName>`
 
-   **b. Try rebase.** `git rebase origin/master`
+   **b. Rebase guard pre-capture.** Before rebasing, snapshot the current
+      diff so silently-dropped hunks can be detected afterward:
+      `git diff origin/master > /tmp/fleet-prerebase.diff`
+      (Git's 3-way merge can drop additions from non-conflicting regions
+      without any conflict marker; this capture enables a post-check.)
 
-   **c. Branch on the result:**
+   **c. Try rebase.** `git rebase origin/master`
+
+   **d. Branch on the result:**
 
       **Clean rebase (exit 0).** No conflicts at all — the PR's
-      commits replayed without intervention.
+      commits replayed without intervention. Proceed to **step e**
+      (post-rebase hunk check) before pushing.
       - `git push --force-with-lease`
       - Write `.merger-body.md` with:
         ```
@@ -194,6 +201,8 @@ exit cleanly:
            `git rebase --continue`
          - If `git rebase --continue` succeeds and the rebase
            completes (no further conflicts):
+           Proceed to **step e** (post-rebase hunk check) before
+           pushing.
            - `git push --force-with-lease`
            - Comment + cooldown label as in the clean-rebase case,
              with body noting "Merger: TASKS.md sort-merged
@@ -225,6 +234,8 @@ exit cleanly:
          - If every conflicted file passes the whitespace check:
            `git add <files>`
            `git rebase --continue`
+         - Proceed to **step e** (post-rebase hunk check) before
+           pushing.
          - Push, comment, cooldown label, log as above with body
            "Merger: whitespace-only conflicts auto-resolved by
            preferring master's formatting."
@@ -264,7 +275,18 @@ exit cleanly:
            `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
          - Log: `... semantic conflict, labeled human:needs-fix`
 
-   **d. Reset to scratch.** After processing each PR (success OR
+   **e. Post-rebase hunk check.** Runs on ALL paths that reach a push
+      (clean rebase, case i, case ii). Captures the post-rebase diff
+      and compares it to the pre-capture from step b:
+      `git diff origin/master > /tmp/fleet-postrebase.diff`
+      Then use the **Read** tool to read both `/tmp/fleet-prerebase.diff`
+      and `/tmp/fleet-postrebase.diff`, and compare them. Look for
+      lines beginning with `< +` — additions present in the pre-capture
+      that are absent in the post-capture. Each such line is a silently
+      dropped hunk. If any are found, do NOT push: restore the missing
+      lines and re-run this check before proceeding to the push.
+
+   **f. Reset to scratch.** After processing each PR (success OR
       fail), return to the scratch branch so the next iteration
       starts clean and so other agents are not blocked from
       checking out the same branch:
