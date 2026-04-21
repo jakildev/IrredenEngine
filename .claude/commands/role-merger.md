@@ -99,6 +99,12 @@ exit cleanly:
    10m budget for rebases / pushes). Re-write the heartbeat before any
    long-running git fetch / push / rebase loop so a slow conflict
    resolution doesn't trigger a false alert.
+   The single `>` redirect is **fine** — it's a single command, not a
+   compound chain. The "single-command Bash" rule above bans `&&`, `||`,
+   `;`, `|` between commands, not file redirects. Same goes for the audit
+   log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is one command,
+   one file write — use it directly. Don't fall back to Read+Write for
+   either of these.
 
 1. **Clear all `fleet:merger-cooldown` labels.** The 10-minute loop
    interval is the cooldown — clearing at iteration start (rather

@@ -289,6 +289,37 @@ mkdir -p "$HOME/.fleet/heartbeats"
 mkdir -p "$HOME/.fleet/alerts"
 
 # ----------------------------------------------------------------------
+# Step 3c: ensure GitHub labels referenced by agents exist
+# ----------------------------------------------------------------------
+#
+# The merger surfaced this in a session summary: its first attempt to
+# add `fleet:merger-cooldown` failed because the label didn't exist on
+# the engine repo, and it had to side-trip into `gh label create` mid-
+# loop. Pre-create here so no agent ever has to lazily create labels.
+#
+# Best-effort: if `gh` isn't authenticated, or the user is offline,
+# skip with a warning rather than failing the entire fleet-up.
+
+# Resolve which fleet-labels command we'll use (PATH first, repo
+# fallback for fleets brought up before install.sh has run).
+labels_cmd=""
+if command -v fleet-labels >/dev/null 2>&1; then
+    labels_cmd="fleet-labels"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-labels" ]]; then
+    labels_cmd="$ENGINE/scripts/fleet/fleet-labels"
+fi
+
+if [[ -z "$labels_cmd" ]]; then
+    echo "fleet-up: fleet-labels not found — skipping label sync"
+    echo "          (run scripts/fleet/install.sh to install it)"
+elif ! gh auth status >/dev/null 2>&1; then
+    echo "fleet-up: gh not authenticated — skipping label sync"
+    echo "          (run 'gh auth login' then '$labels_cmd' to backfill)"
+else
+    "$labels_cmd" || echo "fleet-up: fleet-labels exited non-zero — continuing anyway"
+fi
+
+# ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #

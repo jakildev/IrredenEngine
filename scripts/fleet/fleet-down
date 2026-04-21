@@ -18,6 +18,15 @@
 #                               before exiting; useful for "what snags did
 #                               we hit today" retros
 #
+# --summary timing knobs (env overrides):
+#   SUMMARY_IDLE_WAIT_SECONDS   max wait per pane to become idle  (default 1800)
+#   SUMMARY_WRITE_WAIT_SECONDS  max wait per pane for the file    (default 600)
+#   SUMMARY_IDLE_POLL_SECONDS   idle-check poll interval          (default 10)
+#   SUMMARY_WRITE_POLL_SECONDS  file-check poll interval          (default 5)
+# fleet-down processes panes sequentially: a busy pane stalls the rest
+# until idle or its idle deadline expires. Worst-case run time is roughly
+# (panes × (idle_wait + write_wait)).
+#
 # Note on --summary scope: workers run one task per fresh `claude`
 # process (see fleet-babysit), so an end-of-day worker summary covers
 # only the *current* iteration's task — not everything that pane has
@@ -50,10 +59,14 @@
 set -euo pipefail
 
 SESSION="fleet"
-GRACE_SECONDS=8           # how long to wait for panes to wind down after Ctrl-C
-WAIT_POLL_SECONDS=30      # how often to check for idle when --wait is set
-WAIT_MAX_SECONDS=1800     # cap --wait at 30 min (humans can re-run with --force)
-SUMMARY_WAIT_SECONDS=60   # how long to give panes to write their summaries
+GRACE_SECONDS=8                     # how long to wait for panes to wind down after Ctrl-C
+WAIT_POLL_SECONDS=30                # how often to check for idle when --wait is set
+WAIT_MAX_SECONDS=1800               # cap --wait at 30 min (humans can re-run with --force)
+# --- per-pane summary timings (override via env to tune for your fleet) ---
+SUMMARY_IDLE_WAIT_SECONDS=${SUMMARY_IDLE_WAIT_SECONDS:-1800}   # max wait for a busy pane to become idle (30m)
+SUMMARY_IDLE_POLL_SECONDS=${SUMMARY_IDLE_POLL_SECONDS:-10}     # poll interval while waiting for idle
+SUMMARY_WRITE_WAIT_SECONDS=${SUMMARY_WRITE_WAIT_SECONDS:-600}  # max wait per pane for the .md file to land (10m)
+SUMMARY_WRITE_POLL_SECONDS=${SUMMARY_WRITE_POLL_SECONDS:-5}    # poll interval while waiting for the file
 FORCE=0
 KEEP_CLAIMS=0
 WAIT_FOR_IDLE=0
@@ -66,7 +79,7 @@ for arg in "$@"; do
         --wait)         WAIT_FOR_IDLE=1 ;;
         --summary)      WANT_SUMMARY=1 ;;
         -h|--help)
-            sed -n '2,50p' "$0"
+            sed -n '2,57p' "$0"
             exit 0
             ;;
         *) echo "fleet-down: unknown argument '$arg'" >&2; exit 2 ;;
@@ -134,14 +147,72 @@ fi
 # Step 0b: --summary — request per-pane session summaries
 # ----------------------------------------------------------------------
 #
-# Send a Write-tool prompt to each pane asking it to record what it
-# worked on, what snags it hit, and what could improve. We collect
-# these in ~/.fleet/summaries/<timestamp>/<role>.md so the human can
-# review them after the fleet is down.
+# For each pane:
+#   1. Wait for the pane to become idle (no spinner / tool execution
+#      visible). A busy pane will swallow the prompt into its scrollback
+#      or worse, treat it as terminal noise. Cap at SUMMARY_IDLE_WAIT_SECONDS.
+#   2. Send the prompt text first, sleep briefly, THEN send Enter as a
+#      separate keystroke. tmux's bracketed-paste handling can otherwise
+#      consume the trailing Enter as part of the paste, leaving the text
+#      in the input field unsubmitted (the human had to manually press
+#      Enter on every pane in past runs — this fixes that).
+#   3. Wait for the .md file to actually appear before moving to the
+#      next pane. Opus agents need real time to think — 60s default was
+#      too short.
 #
-# The summaries are best-effort — if an agent is mid-iteration and
-# can't acknowledge in time, we skip it and proceed. SUMMARY_WAIT_SECONDS
-# bounds the total wait.
+# The witness pane runs a bash daemon, not Claude; skip it.
+
+# Return 0 if the pane appears to be at an interactive prompt with no
+# active tool execution. Return 1 otherwise.
+#
+# Heuristic: capture only the bottom ~5 rows. The prompt indicator `❯`
+# must appear in the bottom 3 of those rows AND no spinner / tool-UI
+# marker may appear anywhere in the captured rows. Restricting to the
+# bottom is essential — a pane that ran a tool a minute ago still has
+# ⏺/⎿ symbols up in scrollback, but if the prompt is at the bottom the
+# pane is ready for input. Searching the full visible area would false-
+# positive busy and stall --summary for the entire idle-wait budget.
+#
+# Note on the tmux flags: we use plain `capture-pane -p` (visible only)
+# piped through `tail -5`. `capture-pane -p -S -5` does NOT capture
+# only 5 rows — it widens the capture by 5 rows of scrollback, leaving
+# the visible area's full pane_height intact. Verified empirically on
+# tmux 3.6a — what we want is the literal bottom 5 lines of output.
+# Regexes are tied to the English Claude Code TUI; if Claude Code ever
+# localizes, this list of spinner / tool tells will need updating.
+pane_is_idle() {
+    local pane_id="$1"
+    local tail_text
+    # `|| true` defends `set -euo pipefail` against the rare case where
+    # `pane_is_idle` is invoked outside an `if`/`||`/`&&` context — the
+    # tmux capture failing then would otherwise abort the whole script.
+    # Empty tail_text below already routes to "busy" (the safe default).
+    tail_text=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -5) || true
+    [[ -z "$tail_text" ]] && return 1
+    # Active-work tells in the visible bottom rows: spinners, in-flight
+    # tool UI, permission prompts. Any of these means "not ready".
+    if printf '%s' "$tail_text" | grep -qE 'Caramelizing|Thinking|✻|✶|⏺|⎿|tool use|Allowed by|Permission required|Running…'; then
+        return 1
+    fi
+    # Idle tell: prompt indicator in the bottom 3 rows.
+    if printf '%s' "$tail_text" | tail -3 | grep -q '❯'; then
+        return 0
+    fi
+    # Unknown state — assume busy.
+    return 1
+}
+
+# Send a multi-line prompt into a pane and submit it. Splits the text
+# send and the Enter into separate calls because Claude Code's TUI
+# treats long pastes (via tmux's bracketed-paste mode) as block inserts
+# that swallow the trailing Enter.
+send_prompt_to_pane() {
+    local pane_id="$1"
+    local text="$2"
+    tmux send-keys -t "$pane_id" -- "$text"
+    sleep 0.5
+    tmux send-keys -t "$pane_id" Enter
+}
 
 SUMMARY_DIR=""
 if [[ "$WANT_SUMMARY" -eq 1 ]]; then
@@ -149,27 +220,70 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
     SUMMARY_DIR="$HOME/.fleet/summaries/$timestamp"
     mkdir -p "$SUMMARY_DIR"
     echo "fleet-down --summary: requesting per-pane summaries to $SUMMARY_DIR/"
+    echo "  (per-pane budget: idle wait ${SUMMARY_IDLE_WAIT_SECONDS}s, write wait ${SUMMARY_WRITE_WAIT_SECONDS}s)"
 
+    # Build a worklist first so we know how many panes to expect.
+    declare -a SUMMARY_PANES=()
+    declare -a SUMMARY_ROLES=()
     while IFS= read -r pane_id; do
-        # Read the pane's @role label (set by fleet-up); fall back to
-        # the pane index if @role isn't set.
         role=$(tmux show-options -t "$pane_id" -p -v @role 2>/dev/null | awk '{print $1}')
         [[ -z "$role" ]] && role="pane-${pane_id#%}"
-        # witness is a bash daemon, not Claude — can't write a summary.
         if [[ "$role" == "witness" ]]; then
             continue
         fi
-        summary_file="$SUMMARY_DIR/$role.md"
-        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — looping agents (sonnet-author, opus-worker-*, sonnet-reviewer, opus-reviewer, queue-manager, merger) cover just the current iteration's task / PRs; architects (opus-architect, game-architect) cover the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
-        tmux send-keys -t "$pane_id" "$prompt" Enter
+        SUMMARY_PANES+=("$pane_id")
+        SUMMARY_ROLES+=("$role")
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 
-    echo "fleet-down --summary: waiting up to ${SUMMARY_WAIT_SECONDS}s for panes to write..."
-    sleep "$SUMMARY_WAIT_SECONDS"
+    total_panes=${#SUMMARY_PANES[@]}
+    pane_idx=0
+    for pane_id in "${SUMMARY_PANES[@]}"; do
+        role="${SUMMARY_ROLES[$pane_idx]}"
+        pane_idx=$((pane_idx + 1))
+        summary_file="$SUMMARY_DIR/$role.md"
+        echo "[$pane_idx/$total_panes] $role:"
 
-    # Report what landed.
+        # 1. Wait for idle.
+        idle_deadline=$(( $(date +%s) + SUMMARY_IDLE_WAIT_SECONDS ))
+        first_busy_report=1
+        while [[ $(date +%s) -lt $idle_deadline ]]; do
+            if pane_is_idle "$pane_id"; then
+                break
+            fi
+            if [[ "$first_busy_report" -eq 1 ]]; then
+                echo "  pane is busy — waiting up to ${SUMMARY_IDLE_WAIT_SECONDS}s for idle..."
+                first_busy_report=0
+            fi
+            sleep "$SUMMARY_IDLE_POLL_SECONDS"
+        done
+        if ! pane_is_idle "$pane_id"; then
+            echo "  pane still busy at deadline — sending prompt anyway (may not land cleanly)"
+        fi
+
+        # 2. Send the prompt.
+        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — looping agents (sonnet-author, opus-worker-*, sonnet-reviewer, opus-reviewer, queue-manager, merger) cover just the current iteration's task / PRs; architects (opus-architect, game-architect) cover the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
+        send_prompt_to_pane "$pane_id" "$prompt"
+
+        # 3. Wait for the file to appear.
+        write_deadline=$(( $(date +%s) + SUMMARY_WRITE_WAIT_SECONDS ))
+        wrote=0
+        while [[ $(date +%s) -lt $write_deadline ]]; do
+            if [[ -f "$summary_file" ]]; then
+                wrote=1
+                break
+            fi
+            sleep "$SUMMARY_WRITE_POLL_SECONDS"
+        done
+        if [[ "$wrote" -eq 1 ]]; then
+            echo "  ✓ $(basename "$summary_file") landed ($(wc -c < "$summary_file" | tr -d ' ') bytes)"
+        else
+            echo "  ✗ $(basename "$summary_file") did not appear within ${SUMMARY_WRITE_WAIT_SECONDS}s"
+        fi
+    done
+
     written=$(find "$SUMMARY_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
-    echo "fleet-down --summary: $written summary file(s) written to $SUMMARY_DIR/"
+    echo
+    echo "fleet-down --summary: $written/$total_panes summary file(s) written to $SUMMARY_DIR/"
 fi
 
 # ----------------------------------------------------------------------
