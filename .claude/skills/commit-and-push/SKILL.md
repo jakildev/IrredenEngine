@@ -113,9 +113,20 @@ of the following game-leakage tokens:
   "ant pheromone trails" or "fungus sporulation" instead of the
   underlying engine capability, rewrite in pure engine terms.
 
+Check for staged game-repo paths with a single git command using a
+pathspec filter — no pipe, no compound operator:
+
 ```bash
-git diff --cached --name-only | grep -E '^creations/game/' && echo "WARNING: engine PR includes creations/game/ paths"
+git diff --cached --name-only -- 'creations/game/'
 ```
+
+If the output is non-empty, the commit includes `creations/game/`
+paths and you must stop and warn the user. (If the output is empty,
+git prints nothing and you proceed.)
+
+For the PR body / commit message scan (looking for `jakildev/irreden`
+references or game task IDs), use the **Grep tool** on the draft text
+rather than a shell pipe.
 
 If any leakage is found, surface it to the user before committing.
 The fix is usually a 30-second rewrite of the commit message and PR
