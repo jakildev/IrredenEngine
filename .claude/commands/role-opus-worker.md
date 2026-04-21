@@ -453,7 +453,8 @@ Do the work, then exit cleanly:
    **When an earlier PR in the stack merges:** GitHub auto-rebases
    the next PR's base to master. Pull the latest master into the
    next branch before continuing work on it:
-   `git fetch origin master && git rebase origin/master`
+   `git fetch origin master`
+   `git rebase origin/master`
    Force-push with `--force-with-lease` (never `--force`). The
    reviewer's approval on the unchanged commits carries over unless
    a conflict actually modified them.
