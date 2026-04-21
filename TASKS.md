@@ -341,11 +341,11 @@ Avoid:
   - **Notes:** explicitly [opus] per issue — involves reviewer label-application logic, fleet startup scanning, and render-verify integration. v1: manual tag by reviewer is acceptable; auto-detection from diff can come later. Related: `backend-parity` skill covers structural GLSL↔MSL porting; this covers runtime-smoke validation after a port lands.
   - **Links:**
 
-- [ ] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
+- [~] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
   - **ID:** T-030
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** skills-review-pr-hunk-verify
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md` re-review path fetches the prior review body and parses flagged file:line references from Blockers/Needs-fix/Nits sections; (2) for each flagged hunk, reads the file at HEAD and confirms whether the issue is still present; (3) new review explicitly states "verified fixed at <SHA>" for each resolved nit; (4) full fresh-eyes checklist runs only after prior-review verification step; (5) no false-positive re-flags of already-fixed issues in a manually-triggered re-review
   - **Issue:** #251
@@ -384,6 +384,7 @@ Avoid:
 - [~] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
+- [~] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
 
 ---
 
