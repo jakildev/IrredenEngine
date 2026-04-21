@@ -90,8 +90,9 @@ void main() {
     if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
         fogCell.y < 0 || fogCell.y >= fogSize.y) {
         // Out-of-range columns are treated as visible. Matches the
-        // CLAMP_TO_EDGE expectation in the component header without
-        // depending on a sampler — imageLoad has no wrap-mode behavior.
+        // image-binding wrap-mode invariant documented in the component
+        // header — imageLoad has no sampler wrap-mode behavior, so the
+        // bounds check is load-bearing.
         return;
     }
 

@@ -57,9 +57,9 @@ kernel void c_fog_to_trixel(
     if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
         fogCell.y < 0 || fogCell.y >= fogSize.y) {
         // Out-of-range columns are treated as visible. Matches the
-        // CLAMP_TO_EDGE expectation in the component header without
-        // depending on a sampler — texture2d<...>::read has no
-        // wrap-mode behavior.
+        // image-binding wrap-mode invariant documented in the component
+        // header — texture2d<...>::read has no sampler wrap-mode
+        // behavior, so the bounds check is load-bearing.
         return;
     }
 

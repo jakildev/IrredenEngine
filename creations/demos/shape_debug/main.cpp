@@ -371,6 +371,9 @@ EntityId createVoxelPoolShape(
             ++activeCount;
         }
     }
+    // g_depthColor toggles the debug tint: depth-colored voxels
+    // visualize z-bands; checkerboard makes adjacent same-color
+    // voxels visually distinguishable.
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
     } else {
@@ -392,6 +395,8 @@ EntityId createSDFShape(
     Color color
 ) {
     C_ShapeDescriptor desc{type, params, color};
+    // Same debug-tint toggle as createVoxelPoolShape — depth bands or
+    // checkerboard, applied GPU-side via shader flags for SDF shapes.
     if (g_depthColor) {
         desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
     } else {
