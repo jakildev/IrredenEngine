@@ -26,20 +26,33 @@ set -euo pipefail
 DRY_RUN=0
 TARGET_REPO=""
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1 ;;
-        --repo)    : ;;  # consumed below
-        --repo=*)  TARGET_REPO="${arg#--repo=}" ;;
+# Use a while-loop so `--repo <ns>` consumes its value with `shift 2`
+# rather than relying on the value falling through to the wildcard
+# branch on the next iteration (which would silently swallow a real
+# flag if you typed `--repo --dry-run`).
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1; shift ;;
+        --repo)
+            # Reject if next arg is missing OR looks like another flag.
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo "fleet-labels: --repo requires a value (e.g. owner/repo)" >&2
+                exit 2
+            fi
+            TARGET_REPO="$2"
+            shift 2
+            ;;
+        --repo=*) TARGET_REPO="${1#--repo=}"; shift ;;
         -h|--help)
             sed -n '2,22p' "$0"
             exit 0
             ;;
         *)
-            if [[ -z "$TARGET_REPO" && "$arg" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-                TARGET_REPO="$arg"
+            if [[ -z "$TARGET_REPO" && "$1" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+                TARGET_REPO="$1"
+                shift
             else
-                echo "fleet-labels: unknown argument '$arg'" >&2
+                echo "fleet-labels: unknown argument '$1'" >&2
                 exit 2
             fi
             ;;
@@ -133,23 +146,61 @@ ensure_label_for_repo() {
 # Determine which repos to sync
 # ----------------------------------------------------------------------
 
+# Resolve a symlink chain manually. `readlink -f` works on Linux
+# (coreutils) but not on macOS BSD readlink, and `realpath` isn't on
+# every old distro. The loop below works on every POSIX shell — it's
+# what we need because fleet-up calls this script via the
+# `~/bin/fleet-labels` symlink, and `cd "$(dirname "${BASH_SOURCE[0]}")"`
+# returns the symlink's parent (e.g. `~/bin`) rather than the real
+# script's location (e.g. `~/src/.../scripts/fleet`).
+resolve_symlink_chain() {
+    local path="$1"
+    while [[ -L "$path" ]]; do
+        local target
+        target=$(readlink "$path")
+        if [[ "$target" = /* ]]; then
+            path="$target"
+        else
+            path="$(cd "$(dirname "$path")" && pwd)/$target"
+        fi
+    done
+    echo "$path"
+}
+
+# Parse `owner/repo` from a git remote URL. Handles both SSH
+# (git@github.com:owner/repo[.git]) and HTTPS
+# (https://github.com/owner/repo[.git]) forms via bash parameter
+# expansion — no sed dependency.
+slug_from_remote() {
+    local url="$1"
+    local slug="${url#*github.com[:/]}"
+    slug="${slug%.git}"
+    echo "$slug"
+}
+
 REPOS=()
 if [[ -n "$TARGET_REPO" ]]; then
     REPOS=("$TARGET_REPO")
 else
-    # Engine repo: discover from the script's own location
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # Engine repo: discover from the script's own location, after
+    # following any symlink chain (production invocation is always
+    # via the ~/bin/fleet-labels symlink installed by install.sh).
+    SCRIPT_PATH=$(resolve_symlink_chain "${BASH_SOURCE[0]}")
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
     ENGINE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-    if engine_slug=$(gh -R "$ENGINE_ROOT" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
-        REPOS+=("$engine_slug")
+    # `gh -R <path>` is NOT valid for `gh repo view` (only `gh pr` /
+    # `gh issue` accept it). Parse `origin` from git instead — works
+    # against any directory and doesn't require gh to know about it.
+    if engine_url=$(git -C "$ENGINE_ROOT" remote get-url origin 2>/dev/null); then
+        REPOS+=("$(slug_from_remote "$engine_url")")
     else
-        echo "fleet-labels: could not resolve engine repo slug from $ENGINE_ROOT" >&2
+        echo "fleet-labels: could not resolve engine repo from $ENGINE_ROOT" >&2
     fi
     # Game repo: optional
     GAME_ROOT="$ENGINE_ROOT/creations/game"
     if [[ -d "$GAME_ROOT/.git" ]] || [[ -f "$GAME_ROOT/.git" ]]; then
-        if game_slug=$(gh -R "$GAME_ROOT" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
-            REPOS+=("$game_slug")
+        if game_url=$(git -C "$GAME_ROOT" remote get-url origin 2>/dev/null); then
+            REPOS+=("$(slug_from_remote "$game_url")")
         fi
     fi
 fi
