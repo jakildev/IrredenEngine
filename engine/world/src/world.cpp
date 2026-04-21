@@ -121,6 +121,9 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         }
         return out;
     };
+    // Unknown names return 0.0f — indistinguishable from a pass that
+    // legitimately took 0ms. Callers that need to detect typos should
+    // enumerate names via `getPassTimings` first. 15 stages, linear is fine.
     render["getPassTiming"] = [](std::string_view name) {
         const auto &registry = IRRender::gpuStageRegistry();
         const auto &timing = IRRender::gpuStageTiming();
@@ -304,6 +307,11 @@ void World::buildAndWriteProfileReport() {
             const float perFrameMs = gpu.*info.field_;
             IRProfile::GpuStageEntry stage;
             stage.name_ = std::string(info.name_);
+            // totalMs_ is an approximation: the GpuStageTiming struct only
+            // keeps the last frame's sample, not a running sum across all
+            // frames. Multiplying by totalFrames_ estimates total GPU cost
+            // assuming steady-state — good enough for a summary report,
+            // not a true accumulator. Same snapshot is used for maxMs_.
             stage.totalMs_ = perFrameMs * static_cast<float>(report.totalFrames_);
             stage.maxMs_ = perFrameMs;
             stage.sampleCount_ = report.totalFrames_;

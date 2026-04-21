@@ -28,6 +28,9 @@ struct GpuStageTiming {
     float fbToScreenMs_        = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
+    // Only flipped between frames by Lua on the main thread (Lua runs in
+    // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
+    // probes can read `enabled_` twice and rely on both values matching.
     bool enabled_ = false;
 };
 

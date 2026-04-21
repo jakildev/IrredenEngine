@@ -108,6 +108,9 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
+                // Assumes a single matching canvas per frame. Switch to `+=`
+                // with a `beginTick` reset if the filter ever matches
+                // multiple entities — otherwise later entities overwrite.
                 if (timing.enabled_) { IRRender::device()->finish(); timing.computeSunShadowMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
             []() {
