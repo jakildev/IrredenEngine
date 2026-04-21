@@ -81,10 +81,14 @@ treat it as a hard rule for this role.
      this text after your last review).
 
    When picking up a `human:re-review` or `fleet:changes-made` PR,
-   **immediately remove the label** so another reviewer doesn't also
-   grab it (run as separate calls):
-   `gh pr edit <N> --remove-label "human:re-review"`
-   `gh pr edit <N> --remove-label "fleet:changes-made"`
+   **immediately remove the label that triggered pickup** so another
+   reviewer doesn't also grab it. Run only the command matching the
+   label you picked up on — removing the other is a no-op on GitHub's
+   side but reads as unclear intent. If the PR has *both* labels
+   (rare — possible if a human re-requested review and the author
+   separately pushed fixes), remove both:
+   `gh pr edit <N> --remove-label "human:re-review"`  (if picked up via `human:re-review`)
+   `gh pr edit <N> --remove-label "fleet:changes-made"`  (if picked up via `fleet:changes-made`)
 
    **Skip** PRs with any of these labels:
    - `fleet:wip` — work-in-progress claim, not ready for review.
