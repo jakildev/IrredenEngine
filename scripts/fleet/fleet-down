@@ -183,7 +183,11 @@ fi
 pane_is_idle() {
     local pane_id="$1"
     local tail_text
-    tail_text=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -5)
+    # `|| true` defends `set -euo pipefail` against the rare case where
+    # `pane_is_idle` is invoked outside an `if`/`||`/`&&` context — the
+    # tmux capture failing then would otherwise abort the whole script.
+    # Empty tail_text below already routes to "busy" (the safe default).
+    tail_text=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -5) || true
     [[ -z "$tail_text" ]] && return 1
     # Active-work tells in the visible bottom rows: spinners, in-flight
     # tool UI, permission prompts. Any of these means "not ready".

@@ -42,7 +42,14 @@ while [[ $# -gt 0 ]]; do
             TARGET_REPO="$2"
             shift 2
             ;;
-        --repo=*) TARGET_REPO="${1#--repo=}"; shift ;;
+        --repo=*)
+            TARGET_REPO="${1#--repo=}"
+            if [[ -z "$TARGET_REPO" ]]; then
+                echo "fleet-labels: --repo= requires a value (e.g. --repo=owner/repo)" >&2
+                exit 2
+            fi
+            shift
+            ;;
         -h|--help)
             sed -n '2,22p' "$0"
             exit 0
