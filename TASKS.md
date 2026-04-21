@@ -242,11 +242,11 @@ Avoid:
   - **Notes:** conditional trigger logic must be precise — only visual/render diffs trigger it. Mechanical refactors (rename, extract header) must not trigger it. `attach-screenshots` runs BEFORE `optimize` and `commit-and-push` so screenshots are in the same commit batch.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/225
 
-- [ ] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
+- [~] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
   - **ID:** T-020
   - **Area:** tooling, .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** stacked-prs-reviewer-alignment
   - **Blocked by:** (none)
   - **Acceptance:** (1) worker can run `fleet-claim stack "T-A T-B T-C"` and the result is 3 chained PRs (PR-A base=master, PR-B base=PR-A, PR-C base=PR-B); (2) reviewers see and review each PR independently with its own `fleet:approved`/`fleet:needs-fix` label; (3) when PR-A merges, PR-B's base auto-rebases to master without manual intervention (or worker is instructed to rebase as a follow-up); (4) queue-manager correctly handles the cascade: PR-A merge → T-A done, PR-B merge → T-B done, etc.; (5) at least one stack of 3 tasks shipped end-to-end via this flow with no manual intervention
   - **Issue:** #183
@@ -363,6 +363,17 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit. Root cause: git's 3-way merge silently dropped two `else { applyCheckerboard(...) }` branches from a non-conflicting section of a file that had a conflict elsewhere during the PR #238 rebase. Silent hunk loss is the most insidious rebase failure mode — the check is a commit-time safety net. Pre-capture must happen BEFORE the rebase or the guard cannot function retroactively.
   - **Links:**
 
+- [ ] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
+  - **ID:** T-032
+  - **Area:** build, creations/demos
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `creations/demos/midi_polyrhythm/` directory completely removed from engine repo; (2) `add_subdirectory` for midi_polyrhythm removed from `creations/CMakeLists.txt`; (3) engine build (`fleet-build --target IRShapeDebug` or any non-midi target) compiles clean with no broken references; (4) no dangling references to midi_polyrhythm in any remaining CMake files
+  - **Issue:** #255
+  - **Notes:** [sonnet] per issue — mechanical deletion plus smoke-test build. Must NOT be merged before the game-side midi port PR has merged (the port moves the creation to the game repo; if the engine copy disappears first, the IRMidiPolyrhythm target vanishes entirely until the game PR lands). Worker should verify the game port is live before opening this PR.
+  - **Links:**
+
 ---
 
 ## In progress
@@ -370,6 +381,7 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
+- [~] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 
