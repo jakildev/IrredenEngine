@@ -264,11 +264,13 @@ Do the work, then exit cleanly:
      normal pickup flow below and jump straight to step 6 ("Work it",
      the implementation step) to begin working it.
      If the task's PR is already open, `fleet-claim stack-pr-state
-     <your-worktree-name>` (add `--repo game` for game-side molecules)
-     shows its URL and branch. Check out the task's branch and
-     continue committing normally — one task per branch means the
-     branch itself is the per-task anchor, so no special
-     commit-subject prefix is required.
+     <your-worktree-name>` (use `fleet-claim --repo game
+     stack-pr-state <your-worktree-name>` for game-side molecules —
+     `--repo` is a global flag parsed before the subcommand) shows
+     its URL and branch. Check out the task's branch and continue
+     committing normally — one task per branch means the branch
+     itself is the per-task anchor, so no special commit-subject
+     prefix is required.
 
      **Resume vs restart judgment.** Read the worktree's git status:
      - If there is no work-in-progress on the branch matching that
