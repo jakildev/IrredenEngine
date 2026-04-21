@@ -101,6 +101,15 @@ Decide which repo the task belongs to:
   change), and a game-side task in the game queue with `Blocked by:`
   pointing at the engine task title or PR URL.
 
+  **Information isolation:** the engine task MUST be described in
+  pure engine terms — generic capabilities, no game-specific
+  motivation. Strip game task IDs, game PR URLs, game design
+  language, game feature names, and `creations/game/` paths from
+  the engine task entry, its title, its acceptance criteria, and
+  its notes. The engine repo is public; the game repo is private.
+  Only the game-side task may reference the engine. See engine
+  `CLAUDE.md` "Cross-repo information isolation" for the full rule.
+
 If you can't decide, ask the human.
 
 ### Step 2 — Categorize the model (`[opus]` vs `[sonnet]`)
