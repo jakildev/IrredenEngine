@@ -38,6 +38,54 @@ Do **not** invoke proactively — only when the user explicitly asks.
 3. **The working tree must have something to commit.** If `git status` is
    clean, tell the user and stop.
 
+## Stack-aware mode
+
+If the current task is part of an `fleet-claim stack` chain (i.e. the
+caller's worktree name has a stack claim under
+`~/.fleet/claims/_stack_<agent>/`), this skill opens **one PR per task,
+chained by `--base`** instead of a single PR with multiple commits.
+
+Detect stack mode at the start of the flow:
+
+```bash
+fleet-claim stack-pr-state <your-worktree-name>
+```
+
+- Output `no stack claim for agent: <name>` → not stacked, proceed with
+  the normal single-PR flow below.
+- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR
+  column is `(pending)` and whose earlier rows (if any) are all filled
+  is the current task. Note its `<task-id>`; you will need it in steps
+  2 and 8.
+
+The deltas versus the single-PR flow:
+
+- **Step 2 branch name** is `claude/<task-id>-<short-topic>` (e.g.
+  `claude/T-005-occupancy-grid`). The task ID prefix lets the
+  queue-manager, reviewers, and `stack-base` resolve the chain.
+- **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>`
+  instead of `master`. For the first task this still returns `master`;
+  for subsequent tasks it returns the previous task's branch.
+- **After `gh pr create`** record the PR in the stack so the next task
+  can chain off it:
+  ```bash
+  fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
+  ```
+- **PR body** includes a "Stacked on: <prev PR URL>" line for all but
+  the first PR and names the whole chain so reviewers see the context.
+- **Title** starts with `T-NNN: ` so the queue-manager's per-task
+  matching works and reviewers can tell which task in the chain this
+  PR belongs to.
+
+After the PR opens, do NOT start the next task in the same branch.
+Invoke `start-next-task` the same way as single-PR work; when it comes
+back, the next stacked-PR iteration computes its own `--base` via
+`stack-base` and branches off that (not `origin/master`).
+
+When **the final task's PR is merged**, run
+`fleet-claim release-stack <agent>` to clean up both the per-task
+claims and the stack metadata.
+
 ## Flow
 
 ### 1. Gather state (parallel)
@@ -68,6 +116,16 @@ If you're on `master`:
   ```bash
   git checkout -b claude/<area>-<topic>
   ```
+- **In stack-aware mode** (see section above): use
+  `claude/<task-id>-<short-topic>` instead, and branch off the base
+  returned by `fleet-claim stack-base <agent> <task-id>` (which is
+  `master` for the first task in the chain, or the previous task's
+  branch for subsequent tasks):
+  ```bash
+  base=$(fleet-claim stack-base <agent> <task-id>)
+  git fetch origin "$base"
+  git checkout -b claude/<task-id>-<short-topic> "origin/$base"
+  ```
 
 If you're already on a feature branch, just use it. Do not rename mid-session.
 
@@ -92,6 +150,46 @@ Skip the prompt if:
 - The diff is purely docs, tests, mechanical refactors, or build/CI changes.
 - `docs/pr-screenshots/<branch>/` already contains screenshots from a prior
   run on this branch.
+
+**Then**, run the cross-repo information-isolation check (see engine
+`CLAUDE.md` "Cross-repo information isolation"). The engine repo is
+public; the game repo is private. Engine PRs MUST NOT leak game
+content. Scan the staged diff and the to-be-written PR body for any
+of the following game-leakage tokens:
+
+- `creations/game/` — engine PRs should never touch game files. If
+  the diff includes a path under `creations/game/`, this almost
+  certainly means the worker is in the wrong worktree (the engine
+  PR shouldn't be modifying the game tree). Stop and warn.
+- `jakildev/irreden` — the game repo slug. If a draft PR body or
+  commit message references it, scrub before continuing.
+- A `T-NNN` task ID that came from the game queue (cross-check
+  against `~/src/IrredenEngine/creations/game/TASKS.md` if present).
+  Engine PR bodies should reference engine task IDs only.
+- Game-specific feature names or design language. This one needs
+  human judgment — if the commit message you've drafted talks about
+  "ant pheromone trails" or "fungus sporulation" instead of the
+  underlying engine capability, rewrite in pure engine terms.
+
+Check for staged game-repo paths with a single git command using a
+pathspec filter — no pipe, no compound operator:
+
+```bash
+git diff --cached --name-only -- 'creations/game/'
+```
+
+If the output is non-empty, the commit includes `creations/game/`
+paths and you must stop and warn the user. (If the output is empty,
+git prints nothing and you proceed.)
+
+For the PR body / commit message scan (looking for `jakildev/irreden`
+references or game task IDs), use the **Grep tool** on the draft text
+rather than a shell pipe.
+
+If any leakage is found, surface it to the user before committing.
+The fix is usually a 30-second rewrite of the commit message and PR
+body in engine-level terms; rarely is a code change actually needed
+(if it is, the worker is in the wrong repo entirely).
 
 **Then** invoke the `simplify` skill to review the dirty changes for reuse,
 quality, and efficiency issues specific to Irreden Engine:
@@ -192,8 +290,8 @@ plain `git push` works.
 
 ### 8. Open the PR
 
-Use `gh pr create`. Target is always `master`. Pass the body via HEREDOC so
-the Markdown renders correctly:
+Use `gh pr create`. For the single-PR flow, target is `master`. Pass the
+body via HEREDOC so the Markdown renders correctly:
 
 ```bash
 gh pr create --base master --title "render: match cpu/gpu iso culling bounds" --body "$(cat <<'EOF'
@@ -216,6 +314,40 @@ EOF
 
 Title should match the commit title when the PR is a single commit. For
 multi-commit PRs, use a broader title that covers the series.
+
+**Stack-aware override:** when the current task is part of a
+`fleet-claim stack`, compute the base via `stack-base` and record the
+resulting PR via `stack-set-pr`:
+
+```bash
+base=$(fleet-claim stack-base <agent> <task-id>)
+pr_url=$(gh pr create --base "$base" \
+    --title "T-<NNN>: <short title>" \
+    --body "$(cat <<'EOF'
+## Summary
+- <what this task does>
+
+## Stack context
+This PR is part of a stack. Reviewers: review this PR on its own; the
+chain is coordinated in the PR body's "Stacked on" line.
+
+Stacked on: <previous PR URL, or "master" for the first PR>
+Full chain: T-<A>, T-<B>, T-<C>
+
+## Test plan
+- [ ] <task-specific checks>
+
+Closes #<issue-N>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)" --label "fleet:wip")
+fleet-claim stack-set-pr <agent> <task-id> "$(git branch --show-current)" "$pr_url"
+```
+
+The `Stacked on:` line is the reviewer's primary signal that earlier
+PRs are prerequisites. The `Full chain:` line helps them find the
+siblings if they want cross-context.
 
 ### 9. Report the result
 
@@ -245,6 +377,10 @@ if the user already asked for the next task).
 - ❌ Opening a PR without running `simplify` first.
 - ❌ Continuing to commit on the same feature branch after opening its PR
   unless the user explicitly asks for it — otherwise use `start-next-task`.
+- ❌ Leaking game references into an engine PR (file paths under
+  `creations/game/`, `jakildev/irreden`, game task IDs, game design
+  language). Engine repo is public; game repo is private. See engine
+  `CLAUDE.md` "Cross-repo information isolation".
 
 ## Recovery
 

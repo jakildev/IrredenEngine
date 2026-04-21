@@ -452,6 +452,56 @@ is an additional hardcoded gate on top of that.
 
 ---
 
+## Cross-repo information isolation (applies everywhere, all agents)
+
+**The engine repo (`jakildev/IrredenEngine`) is public. The game repo
+(`jakildev/irreden`) is private.** Information flows one way only:
+
+- **Game-side artifacts MAY reference engine.** The engine is public,
+  so a game PR description, commit message, issue, review comment,
+  or `TASKS.md` blocker can freely cite engine PRs/issues/files. Game
+  agents already do this when filing engine issues for cross-repo
+  dependencies.
+- **Engine-side artifacts MUST NOT reference game.** Anything the
+  engine repo publishes — PR titles, PR descriptions, commit
+  messages, review comments, `TASKS.md` entries, GitHub issue bodies
+  filed on the engine — is world-readable. Leaking the game's task
+  IDs, feature names, design language, file paths, or repo slug
+  exposes private game work.
+
+**Concretely, when filing or writing anything that lands in the
+engine repo, never include:**
+
+- Game task IDs (`game T-005`, or unqualified `T-NNN` IDs that came
+  from the game queue).
+- Game PR or issue URLs (`jakildev/irreden#41`, etc.).
+- The game repo slug `jakildev/irreden`.
+- File paths under `creations/game/` (or any other gitignored
+  creation that lives in its own repo — `creations/<name>/`).
+- Game-specific design language, feature names, mechanics, or
+  systems by their game-side names. Talk in engine-level terms only:
+  "the prefab system needs a relation cache" rather than "the ant
+  pheromone trails need a relation cache for diffusion".
+
+**Cross-repo dependencies — the right pattern:**
+
+1. The work that lands in the engine PR is described in **pure
+   engine terms** — generic capabilities, no game-specific
+   motivation. The engine task in `TASKS.md` is self-contained.
+2. The game-side PR's description / TASKS.md entry references the
+   engine task by ID or PR URL as a `Blocked by:` dependency.
+
+This is the existing convention for `Blocked by:` (see queue-manager
+role, "Cross-repo work" section). The information-isolation rule
+generalizes that direction: engine talks engine, game talks both.
+
+**`commit-and-push` checks for this** before opening an engine PR
+— it greps the staged diff and the PR body for game-leakage tokens
+and warns. Treat the warning as blocking unless the leakage is
+intentional and the user explicitly approves.
+
+---
+
 ## Project layout (pointers to deeper CLAUDE.md files)
 
 ```

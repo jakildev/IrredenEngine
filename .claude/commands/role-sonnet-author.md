@@ -84,9 +84,11 @@ earlier work.
 Each iteration:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/sonnet-fleet-1`
-   Also write before long-running steps (fleet-build, fleet-run, commit-and-push)
-   to prevent false staleness alerts during builds or PR actions.
+   `touch ~/.fleet/heartbeats/sonnet-fleet-1`
+   (Witness reads file mtime; `touch` updates it. No content needed.)
+   Also touch the file again before long-running steps (fleet-build,
+   fleet-run, commit-and-push) to prevent false staleness alerts
+   during builds or PR actions.
 
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
@@ -122,7 +124,8 @@ Each iteration:
    d. Push fixes using `commit-and-push`.
    e. Add the appropriate response label and post a summary:
       - If it was `human:needs-fix` or `human:blocker` → add
-        `fleet:changes-made` (signals human to re-review):
+        `fleet:changes-made` (signals BOTH the human AND the fleet
+        reviewer to re-verify; whichever picks it up first wins):
         `gh pr edit <N> --add-label "fleet:changes-made"`
       - If it was `fleet:needs-fix` → no response label needed
         (fleet reviewer will re-review automatically on next poll)
@@ -139,10 +142,18 @@ Each iteration:
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
    comments) → agent removes it, works, adds `fleet:changes-made` →
-   human reviews again. Human can add multiple comments before
-   re-tagging; ALL are picked up when the tag appears. If the human
-   wants more changes, they remove `fleet:changes-made`, add
-   `human:needs-fix` again.
+   either the human or the next-poll fleet reviewer re-verifies
+   (whichever happens first; the reviewer removes the label on
+   pickup so they don't double-process). Human can add multiple
+   comments before re-tagging; ALL are picked up when the tag
+   appears. If the human wants more changes after a review pass,
+   they re-add `human:needs-fix`.
+
+   The merger uses the same path: when it labels a PR
+   `human:needs-fix` for an unresolvable conflict, an opus-worker
+   that picks up the conflict resolution should follow this same
+   cycle (remove `human:needs-fix`, fix, add `fleet:changes-made`).
+   The fleet reviewer will re-verify the resolution.
 
    **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
    author removes it, fixes, pushes → fleet reviewer sees the new
@@ -233,9 +244,15 @@ Each iteration:
    independent): If you find two tightly coupled `[sonnet]` tasks in
    a dependency chain, you can claim them atomically:
    `fleet-claim stack "T-002 T-004" <your-worktree-name>`
-   Work them sequentially on a single branch, one commit per task,
-   then release with `fleet-claim release-stack <your-worktree-name>`.
-   Prefer single claims unless the tasks are genuinely coupled.
+
+   Stack claim is all-or-nothing — if any task is already claimed or
+   has unresolved external blockers, all are rolled back. Within the
+   stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
+   Work the stack **sequentially, one PR per task**, with each PR's
+   base set to the previous task's branch (true stacked PRs). Release
+   the chain with `fleet-claim release-stack <your-worktree-name>`
+   after the last PR merges. Prefer single claims unless the tasks
+   are genuinely coupled.
 
    **`stack` also writes a molecule file** (`~/.fleet/molecules/<your-
    worktree-name>.yml`) so a crash mid-stack won't strand the
@@ -244,48 +261,65 @@ Each iteration:
    `fleet-claim molecule advance` so the molecule reflects reality;
    `release-stack` archives the molecule when you're done.
 
-   **Stack PR commit format (REQUIRED):** When working a stack, each
-   commit subject MUST start with the task ID prefix `T-NNN: `:
+   **Stacked PR flow (REQUIRED):** each task in the chain gets its
+   own branch and its own PR, with each PR's `--base` pointing at the
+   previous task's branch. GitHub treats these as "stacked PRs":
+   reviewers approve each one independently, and when an earlier PR
+   merges, the next PR's base auto-rebases to master.
 
-   ```
-   T-002: <short description of T-002 work>
-   T-004: <short description of T-004 work>
-   ```
+   For the current task in the stack (first `(pending)` row in
+   `fleet-claim stack-pr-state <your-worktree-name>`):
 
-   This is the load-bearing anchor that lets reviewers segment the
-   PR into per-task review passes. **Never edit the subject line
-   when amending a stack commit** — only touch the body. `git commit
-   --amend --no-edit` (to add staged files) and body-only amends are
-   safe; `--amend -m "..."` rewrites the subject and breaks reviewer
-   detection for that task. Commit SHAs change on any amend, which is
-   why we use the subject prefix as the anchor instead.
+   1. **Compute the base branch** for this PR:
+      `base=$(fleet-claim stack-base <your-worktree-name> <task-id>)`
+      — returns `master` for the first task, or the previous task's
+      branch (e.g. `claude/T-002-lua-bindings`) for subsequent tasks.
+   2. **Branch off that base:**
+      `git fetch origin "$base"`
+      `git checkout -b claude/<task-id>-<short-topic> "origin/$base"`
+      (e.g. `claude/T-002-lua-bindings`, `claude/T-004-lua-tests`).
+   3. Do the task's work in that branch. Commit as normal — no
+      special commit-subject prefix is required anymore; one task per
+      branch means the branch name IS the per-task anchor.
+   4. Open the PR with `--base "$base"` and record it in the stack:
+      `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip"`
+      `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
 
-   **Stack PR description format:** When opening a stack PR, write
-   the body with one section per task:
+   **Stacked PR title + body format:** start the PR title with the
+   task ID so reviewers can tell which task in the chain this PR
+   covers. The body includes a `Stacked on:` line pointing at the
+   previous PR (or `master` for the first) so reviewers see the
+   stack context immediately.
 
    ```markdown
-   This PR implements a chain of dependent tasks. Reviewers: please
-   review each task's commit(s) independently — verdict is one
-   overall approval, but findings should be grouped per task.
+   ## Summary
+   - <what this task does>
 
-   ## T-002 — <task title>
-   What this implements, key files touched, what to focus on.
-   Commits prefixed `T-002:` belong to this task.
+   ## Stack context
+   Stacked on: <previous PR URL, or "master" for the first>
+   Full chain: T-002 → T-004
 
-   ## T-004 — <task title>
-   What this implements, key files touched, what to focus on.
-   Commits prefixed `T-004:` belong to this task.
+   ## Test plan
+   - [ ] <task-specific checks>
 
-   Closes #N1
-   Closes #N2
+   Closes #<issue-N>
    ```
 
-   When **amending** a stack commit (e.g. addressing review feedback
-   for one task), keep the `T-NNN: ` subject prefix intact — only
-   amend the body. If you need to add a follow-up commit for one
-   task, use the same prefix: `T-002: address review feedback`.
+   The `commit-and-push` skill's "Stack-aware mode" section walks
+   through the branch + PR creation; let it drive — it already knows
+   to call `stack-base` and `stack-set-pr`.
 
-   Then create the branch, commit, and open a `fleet:wip` PR:
+   **When an earlier PR in the stack merges:** GitHub auto-rebases
+   the next PR's base to master. Pull the latest master into the
+   next branch before continuing work on it:
+   `git fetch origin master`
+   `git rebase origin/master`
+   Force-push with `--force-with-lease` (never `--force`). The
+   reviewer's approval on the unchanged commits carries over unless
+   a conflict actually modified them.
+
+   **For single-task claims**, create the branch, commit, and open a
+   `fleet:wip` PR normally:
    `git checkout -b claude/<area>-<topic>`
    `git commit --allow-empty -m "claim: <task title>"`
 

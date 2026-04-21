@@ -197,6 +197,7 @@ baseline = [
     "Bash(cp:*)",
     "Bash(mv:*)",
     "Bash(chmod:*)",
+    "Bash(touch:*)",   # heartbeat updates (witness reads file mtime)
     "Bash(sort:*)",
     "Bash(uniq:*)",
     "Bash(tr:*)",
@@ -219,6 +220,14 @@ baseline = [
     # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an
     # explicit entry so `git rebase --continue` works without a prompt.
     "Bash(GIT_EDITOR=true git:*)",
+    # Temp-dir lifecycle for agents that need isolated scratch space
+    # (e.g. testing fleet-claim with FLEET_CLAIMS_DIR=/tmp/fleet-...).
+    # The `rm -rf` pattern is intentionally narrowed to the `/tmp/fleet-`
+    # prefix — covers `mktemp -d -t fleet-...` outputs without giving
+    # blanket rm rights. Convention: fleet-owned temp dirs MUST live
+    # under `/tmp/fleet-<purpose>.<suffix>` so this allowlist works.
+    "Bash(mktemp:*)",
+    "Bash(rm -rf /tmp/fleet-:*)",
 ]
 
 # Preserve any user-granted "always allow" entries from previous sessions,

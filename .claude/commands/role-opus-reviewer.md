@@ -82,12 +82,17 @@ conditions, allocator behavior, hot-path costs.
    - The PR has the `human:re-review` label (human made changes and
      requested re-review — remove the label when you pick it up:
      `gh pr edit <N> --remove-label "human:re-review"`), OR
+   - The PR has the `fleet:changes-made` label AND it touches core
+     engine/game invariants (remove the label on pickup:
+     `gh pr edit <N> --remove-label "fleet:changes-made"`). For
+     non-core PRs, leave `fleet:changes-made` for sonnet-reviewer to
+     handle — Opus budget is expensive, don't burn it on docs/tooling
+     fixups, OR
    - The author pushed fixes and commented "re-review please" after
      a previous Opus review (check comments after your last review).
 
-   **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
-   or `fleet:changes-made` — those are either in-progress, human-owned,
-   or in the feedback loop.
+   **Skip** PRs labeled `fleet:wip`, `human:wip`, or `human:needs-fix`
+   — those are either in-progress or human-owned.
 
 ## Loop behavior
 
@@ -97,7 +102,8 @@ context carries over from prior reviews. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/opus-reviewer`
+   `touch ~/.fleet/heartbeats/opus-reviewer`
+   (Witness reads file mtime; `touch` updates it. No content needed.)
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`

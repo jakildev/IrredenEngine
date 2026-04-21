@@ -101,6 +101,15 @@ Decide which repo the task belongs to:
   change), and a game-side task in the game queue with `Blocked by:`
   pointing at the engine task title or PR URL.
 
+  **Information isolation:** the engine task MUST be described in
+  pure engine terms — generic capabilities, no game-specific
+  motivation. Strip game task IDs, game PR URLs, game design
+  language, game feature names, and `creations/game/` paths from
+  the engine task entry, its title, its acceptance criteria, and
+  its notes. The engine repo is public; the game repo is private.
+  Only the game-side task may reference the engine. See engine
+  `CLAUDE.md` "Cross-repo information isolation" for the full rule.
+
 If you can't decide, ask the human.
 
 ### Step 2 — Categorize the model (`[opus]` vs `[sonnet]`)
@@ -208,7 +217,8 @@ auto-relaunch in dry-run mode.
 You are the sole TASKS.md editor. Each maintenance pass:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/queue-manager`
+   `touch ~/.fleet/heartbeats/queue-manager`
+   (Witness reads file mtime; `touch` updates it. No content needed.)
 
 1. **Clean stale claims:**
    `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
@@ -332,18 +342,20 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `gh pr list --repo <game-repo> --state merged --json number,title,mergedAt,commits --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
 
-   **For each merged PR**, find which TASKS.md tasks it completes:
-   - **Single-task PR (most common):** match the PR title or branch
-     name against `[~]` or `[ ]` task entries.
-   - **Stack PR (multi-task chain):** extract the task IDs from the
-     merged PR's commit subjects. The canonical query (extracts every
-     `T-NNN` referenced as a commit subject prefix, deduplicated):
+   **For each merged PR**, find which TASKS.md task it completes:
+   - **Single-task PR (the norm):** match the PR title (`T-NNN: ...`
+     prefix) or branch name (`claude/T-NNN-...`) against a `[~]` or
+     `[ ]` task entry. Every PR today is single-task — stacked PR
+     chains produce N individual PRs, each covering exactly one task,
+     that merge independently as GitHub rebases their bases forward.
+   - **Legacy multi-task PR (pre-stacked-PRs):** older merged PRs may
+     bundle multiple tasks in one PR via `T-NNN: ` commit subject
+     prefixes. Fallback query:
      ```
      gh pr view <N> --repo <repo> --json commits \
        --jq '[.commits[].messageHeadline | capture("^(?<id>T-[0-9]+):") | .id] | unique'
      ```
-     Each unique task ID is one completed task. A stack PR can complete
-     2+ tasks in one merge — flip ALL of them.
+     Each unique task ID there is one completed task — flip ALL.
 
    For every task completed by the merge: flip to `[x]`, add the PR
    URL to **Links**, move to `## Done — last 20`. Clean up plan
@@ -393,23 +405,37 @@ You are the sole TASKS.md editor. Each maintenance pass:
 7. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
 8. **Push changes (if any).**
-   Engine TASKS.md + plan files — commit and push directly to master
-   (bare `git` is correct here — your CWD is an engine worktree):
-   - `git fetch origin`
-   - `git rebase origin/master`
+   **Order matters:** stage and commit FIRST, then fetch and rebase.
+   `git rebase` refuses to run with unstaged changes ("You have
+   unstaged changes") AND with staged-but-uncommitted changes ("Your
+   index contains uncommitted changes"). The maintenance pass always
+   leaves dirty TASKS.md edits in the worktree, so rebase before
+   commit always errors out.
+
+   Engine TASKS.md + plan files — commit then rebase then push (bare
+   `git` is correct here — your CWD is an engine worktree):
    - `git add TASKS.md`
    - `git add .fleet/plans/`
    - `git commit -m "queue: maintenance sync"`
+   - `git fetch origin`
+   - `git rebase origin/master`
    - `git push origin HEAD:master`
-   Game TASKS.md + plan files — separate commit and push:
-   - `git -C ~/src/IrredenEngine/creations/game fetch origin`
-   - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
+   Game TASKS.md + plan files — same order, same dirs:
    - `git -C ~/src/IrredenEngine/creations/game add TASKS.md`
    - `git -C ~/src/IrredenEngine/creations/game add .fleet/plans/`
    - `git -C ~/src/IrredenEngine/creations/game commit -m "queue: maintenance sync"`
+   - `git -C ~/src/IrredenEngine/creations/game fetch origin`
+   - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
    - `git -C ~/src/IrredenEngine/creations/game push origin HEAD:master`
-   If either push is rejected, rebase and retry. Only push TASKS.md
-   and `.fleet/plans/` — never push other files to master.
+   If either push is rejected (race with another commit hitting master
+   in the same window), re-fetch + re-rebase + re-push. Only push
+   TASKS.md and `.fleet/plans/` — never push other files to master.
+
+   **Expect a "Bypassed rule violations" warning on each push.** The
+   engine repo has branch protection requiring PRs for master, but
+   this account has admin bypass for these bookkeeping files. The
+   warning is informational — the push still succeeded if you don't
+   see "rejected" or "failed". Don't try to "fix" it by opening a PR.
 
 9. Print the maintenance summary, queue summary, and next-run timing:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`

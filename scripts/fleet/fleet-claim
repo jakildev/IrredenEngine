@@ -19,6 +19,11 @@
 #   fleet-claim list
 #   fleet-claim cleanup [--repo <owner/repo>] ...
 #   fleet-claim clear-all
+#   fleet-claim stack "T-1 T-2 ..." <agent>
+#   fleet-claim release-stack <agent>
+#   fleet-claim stack-base <agent> <task-id>
+#   fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
+#   fleet-claim stack-pr-state <agent>
 #   fleet-claim molecule list
 #   fleet-claim molecule show <agent>
 #   fleet-claim molecule resume <agent>
@@ -506,6 +511,134 @@ cmd_release_stack() {
     echo "released stack ($released tasks) for agent: $agent"
 }
 
+# --- stacked-PR chain state ------------------------------------------------
+#
+# True stacked PRs need each task in a chain to open its own PR whose --base
+# is the previous task's branch. The per-task branch + PR URL is recorded
+# inside the existing _stack_<agent>/ directory so the next task in the
+# chain can resolve its base.
+#
+# Storage layout inside $CLAIMS_DIR/_stack_<agent>/:
+#   tasks                       task list written by cmd_stack (unchanged)
+#   created                     timestamp written by cmd_stack (unchanged)
+#   <task-id>.branch            branch name once that task's PR is opened
+#   <task-id>.pr                PR URL once that task's PR is opened
+#
+# Lifecycle:
+#   stack                    → writes tasks + created; branch/pr files empty
+#   stack-base <agent> <id>  → returns base for <id> (master or previous
+#                              task's branch)
+#   stack-set-pr             → writes <id>.branch and <id>.pr (called by
+#                              commit-and-push after gh pr create)
+#   stack-pr-state           → prints task / branch / pr table
+#   release-stack            → rm -rf the whole stack dir (cleans up
+#                              branch/pr files too)
+
+cmd_stack_base() {
+    # Return the base branch for a task's PR inside an agent's stack.
+    # First task in the chain  → "master"
+    # Any subsequent task      → previous task's branch (from stack-set-pr)
+    #
+    # Usage: fleet-claim stack-base <agent> <task-id>
+    # Exit 0: branch written to stdout.
+    # Exit 1: no stack for agent, task not in stack, or previous task's
+    #         branch has not been recorded yet (caller must open the
+    #         previous task's PR before asking for this one's base).
+    local agent="$1"
+    local task_id="$2"
+    local stack_dir="$CLAIMS_DIR/_stack_${agent}"
+
+    if [[ ! -f "$stack_dir/tasks" ]]; then
+        echo "fleet-claim stack-base: no stack claim for agent: $agent" >&2
+        return 1
+    fi
+
+    local prev=""
+    local found=0
+    while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+        if [[ "$t" == "$task_id" ]]; then
+            found=1
+            break
+        fi
+        prev="$t"
+    done < "$stack_dir/tasks"
+
+    if [[ $found -eq 0 ]]; then
+        echo "fleet-claim stack-base: $task_id not in agent $agent's stack" >&2
+        return 1
+    fi
+
+    if [[ -z "$prev" ]]; then
+        echo "master"
+        return 0
+    fi
+
+    local prev_branch_file="$stack_dir/${prev}.branch"
+    if [[ ! -f "$prev_branch_file" ]]; then
+        echo "fleet-claim stack-base: previous task $prev has no branch recorded; open its PR (stack-set-pr) first" >&2
+        return 1
+    fi
+    cat "$prev_branch_file"
+}
+
+cmd_stack_set_pr() {
+    # Record the branch + PR URL for a task in an agent's stack.
+    # Subsequent stack-base lookups resolve the chain via these files.
+    #
+    # Usage: fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
+    local agent="$1"
+    local task_id="$2"
+    local branch="$3"
+    local pr_url="$4"
+    local stack_dir="$CLAIMS_DIR/_stack_${agent}"
+
+    if [[ ! -f "$stack_dir/tasks" ]]; then
+        echo "fleet-claim stack-set-pr: no stack claim for agent: $agent" >&2
+        return 1
+    fi
+
+    if ! grep -Fxq "$task_id" "$stack_dir/tasks"; then
+        echo "fleet-claim stack-set-pr: $task_id not in agent $agent's stack" >&2
+        return 1
+    fi
+
+    echo "$branch" > "$stack_dir/${task_id}.branch"
+    echo "$pr_url" > "$stack_dir/${task_id}.pr"
+    echo "recorded: $task_id → branch=$branch pr=$pr_url"
+}
+
+cmd_stack_pr_state() {
+    # Print the stack's per-task PR state (task / branch / pr), one row
+    # each. Tasks with no branch or PR yet show (pending).
+    #
+    # Usage: fleet-claim stack-pr-state <agent>
+    # Always exits 0 so `set -euo pipefail` callers can detect the
+    # no-stack case via the output string ("no stack claim for …")
+    # without wrapping the call in `|| true`.
+    local agent="$1"
+    local stack_dir="$CLAIMS_DIR/_stack_${agent}"
+
+    if [[ ! -f "$stack_dir/tasks" ]]; then
+        echo "no stack claim for agent: $agent"
+        return 0
+    fi
+
+    printf '%-10s %-50s %s\n' "task" "branch" "pr"
+    while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+        local branch="(pending)"
+        local pr="(pending)"
+        if [[ -f "$stack_dir/${t}.branch" ]]; then
+            branch=$(cat "$stack_dir/${t}.branch")
+        fi
+        if [[ -f "$stack_dir/${t}.pr" ]]; then
+            pr=$(cat "$stack_dir/${t}.pr")
+        fi
+        printf '%-10s %-50s %s\n' "$t" "$branch" "$pr"
+    done < "$stack_dir/tasks"
+}
+
 cmd_clear_all() {
     # Wipe all claims (used by fleet-up on restart) but PRESERVE the
     # molecule directory — molecules are crash-recovery state and must
@@ -916,6 +1049,27 @@ case "${1:-}" in
         fi
         cmd_release_stack "$2"
         ;;
+    stack-base)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim stack-base <agent-name> <task-id>" >&2
+            exit 2
+        fi
+        cmd_stack_base "$2" "$3"
+        ;;
+    stack-set-pr)
+        if [[ -z "${5:-}" ]]; then
+            echo "usage: fleet-claim stack-set-pr <agent-name> <task-id> <branch> <pr-url>" >&2
+            exit 2
+        fi
+        cmd_stack_set_pr "$2" "$3" "$4" "$5"
+        ;;
+    stack-pr-state)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim stack-pr-state <agent-name>" >&2
+            exit 2
+        fi
+        cmd_stack_pr_state "$2"
+        ;;
     cleanup)
         shift
         cmd_cleanup "$@"
@@ -985,6 +1139,12 @@ commands:
   list                          list all active claims
   stack "T-1 T-2 ..." [agent]  atomically claim a dependency chain (all-or-nothing)
   release-stack <agent>         release all tasks in an agent's stack claim
+  stack-base <agent> <task-id>  print base branch for this task's PR (master
+                                for the first task, previous task's branch
+                                for subsequent tasks)
+  stack-set-pr <agent> <task-id> <branch> <pr-url>
+                                record branch+PR for a stacked task
+  stack-pr-state <agent>        print task/branch/pr table for agent's stack
   check-stale [max-secs]        release claims older than max-secs (default: 7200)
   cleanup [--repo o/r] ...      remove claims for merged/closed PRs.
                                 NOTE: cleanup's --repo takes a full owner/repo
