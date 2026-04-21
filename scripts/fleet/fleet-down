@@ -166,12 +166,26 @@ fi
 # active tool execution. Return 1 otherwise.
 #
 # Heuristic: capture only the bottom ~5 rows. The prompt indicator `❯`
-# must appear in the bottom 3 of those rows AND no spinner / tool-UI
-# marker may appear anywhere in the captured rows. Restricting to the
-# bottom is essential — a pane that ran a tool a minute ago still has
-# ⏺/⎿ symbols up in scrollback, but if the prompt is at the bottom the
-# pane is ready for input. Searching the full visible area would false-
-# positive busy and stall --summary for the entire idle-wait budget.
+# must appear in the bottom 3 of those rows AND no active-work marker
+# may appear anywhere in the captured rows. Restricting to the bottom
+# is essential — a pane that ran a tool a minute ago still has ⏺/⎿
+# symbols up in scrollback, but if the prompt is at the bottom the
+# pane is ready for input.
+#
+# **The active-work signal is the unicode ellipsis `…`.** Claude Code's
+# spinner lines ALL suffix their verb with `…` while the agent is
+# working: `✻ Thinking…`, `✻ Caramelizing…`, `✽ Inferring…`,
+# `Running…`. Once idle, the same spinner glyph switches to a past-
+# tense cooldown line without an ellipsis: `✻ Baked for 16m 52s`,
+# `✻ Cooked for 3m`, `✻ Churned for 7m`. So matching on `…` alone is
+# the right discriminator; matching on the `✻` glyph alone false-
+# positives cooldown lines as busy (observed in production: opus-
+# architect idle for 17 min showing `✻ Baked for 16m 52s`, held up
+# the entire fleet-down --summary pass).
+#
+# We also match `⏺`/`⎿` (tool-execution UI) and permission-prompt text
+# as belt-and-suspenders for cases where a tool is mid-dispatch without
+# a visible spinner line.
 #
 # Note on the tmux flags: we use plain `capture-pane -p` (visible only)
 # piped through `tail -5`. `capture-pane -p -S -5` does NOT capture
@@ -179,7 +193,7 @@ fi
 # the visible area's full pane_height intact. Verified empirically on
 # tmux 3.6a — what we want is the literal bottom 5 lines of output.
 # Regexes are tied to the English Claude Code TUI; if Claude Code ever
-# localizes, this list of spinner / tool tells will need updating.
+# localizes, this list will need updating.
 pane_is_idle() {
     local pane_id="$1"
     local tail_text
@@ -187,11 +201,20 @@ pane_is_idle() {
     # `pane_is_idle` is invoked outside an `if`/`||`/`&&` context — the
     # tmux capture failing then would otherwise abort the whole script.
     # Empty tail_text below already routes to "busy" (the safe default).
-    tail_text=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -5) || true
+    #
+    # Window size: 7 rows. The prompt block itself is 5 rows (blank +
+    # divider + ❯ + divider + status). The spinner / cooldown line sits
+    # one blank line ABOVE that block, i.e. row 6 from the bottom. A
+    # 5-row window would miss `✻ Thinking…` entirely and false-positive
+    # the pane as idle. 7 rows catches the spinner while still not
+    # reaching far enough up to trip on scrollback tool output.
+    tail_text=$(tmux capture-pane -t "$pane_id" -p 2>/dev/null | tail -7) || true
     [[ -z "$tail_text" ]] && return 1
-    # Active-work tells in the visible bottom rows: spinners, in-flight
-    # tool UI, permission prompts. Any of these means "not ready".
-    if printf '%s' "$tail_text" | grep -qE 'Caramelizing|Thinking|✻|✶|⏺|⎿|tool use|Allowed by|Permission required|Running…'; then
+    # Active-work tells in the visible bottom rows:
+    #   `…` — spinner in progress (any of Claude Code's rotating verbs)
+    #   `⏺` / `⎿` — tool dispatch / tool result UI
+    #   `Allowed by` / `Permission required` — permission prompt
+    if printf '%s' "$tail_text" | grep -qE '…|⏺|⎿|Allowed by|Permission required'; then
         return 1
     fi
     # Idle tell: prompt indicator in the bottom 3 rows.
