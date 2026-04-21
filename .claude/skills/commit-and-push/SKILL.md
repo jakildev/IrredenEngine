@@ -129,9 +129,16 @@ If you're on `master`:
 
 If you're already on a feature branch, just use it. Do not rename mid-session.
 
-### 3. Check for visual changes and run `simplify`
+### 3. Pre-commit checks and `simplify`
 
-**First**, check whether the diff touches visual/render files:
+**First**, run the **Rebase guard** check (see section below): use the
+**Read** tool on `/tmp/fleet-prerebase.diff`. If the file exists, a
+pre-capture was taken before a recent rebase — run the post-capture and
+comparison as described in the Rebase guard section. If missing, check
+`git reflog --since=2.hours.ago` for a recent rebase entry; if found,
+warn and inspect manually before proceeding.
+
+**Second**, check whether the diff touches visual/render files:
 
 ```bash
 git diff --name-only origin/master...HEAD
@@ -363,6 +370,45 @@ Reply with a compact summary:
 `start-next-task` skill handles resetting the worktree to a fresh branch off
 master for the next chunk — tell the user to invoke it (or invoke it yourself
 if the user already asked for the next task).
+
+## Rebase guard
+
+**Before rebasing this PR branch onto origin/master**, always capture the
+current diff first. Git's 3-way merge can silently drop hunks from non-
+conflicting regions of a file when a different region of the same file has
+a conflict — no conflict markers, no warning in the rebase output.
+
+### Pre-capture (do this BEFORE `git rebase origin/master`)
+
+```bash
+git diff origin/master > /tmp/fleet-prerebase.diff
+```
+
+### Rebase and resolve conflicts
+
+Run `git rebase origin/master`. Resolve any conflict markers normally.
+
+### Post-capture and comparison
+
+```bash
+git diff origin/master > /tmp/fleet-postrebase.diff
+diff /tmp/fleet-prerebase.diff /tmp/fleet-postrebase.diff
+```
+
+Scan the `diff` output for lines beginning with `< +` — additions that were
+present in the pre-rebase state but are absent after. Each is a dropped hunk
+that must be manually re-applied before committing.
+
+If every line of `diff` output is a metadata change (index hashes, commit
+SHAs, `@@` hunk header offset shifts), no content was lost.
+
+### If the pre-capture was skipped
+
+1. Run `git reflog --since=2.hours.ago` to confirm a rebase happened.
+2. Compare `git diff origin/master` against the branch's last pushed state:
+   `git diff origin/<branch-name>` shows what changed since the last push.
+3. Look for missing code blocks based on the PR's commit messages and
+   description. Re-apply any that are absent.
 
 ## Anti-patterns
 

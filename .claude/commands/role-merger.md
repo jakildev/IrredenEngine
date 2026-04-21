@@ -148,12 +148,28 @@ exit cleanly:
       `git fetch origin <headRefName>`
       `git checkout -B <headRefName> origin/<headRefName>`
 
-   **b. Try rebase.** `git rebase origin/master`
+   **b. Rebase guard pre-capture.** Before rebasing, snapshot the current
+      diff so silently-dropped hunks can be detected afterward:
+      `git diff origin/master > /tmp/fleet-prerebase.diff`
+      (Git's 3-way merge can drop additions from non-conflicting regions
+      without any conflict marker; this capture enables a post-check.)
 
-   **c. Branch on the result:**
+   **c. Try rebase.** `git rebase origin/master`
+
+   **d. Branch on the result:**
 
       **Clean rebase (exit 0).** No conflicts at all — the PR's
       commits replayed without intervention.
+
+      **Post-rebase hunk check (run on ALL successful rebases before push):**
+      Capture the post-rebase state and diff against the pre-capture:
+      `git diff origin/master > /tmp/fleet-postrebase.diff`
+      Then use the **Read** tool to read both `/tmp/fleet-prerebase.diff`
+      and `/tmp/fleet-postrebase.diff`, and compare them. Look for
+      additions (`+` lines) present in the pre-capture that are absent in
+      the post-capture — these are silently dropped hunks. If any are
+      found, do NOT push: restore the missing lines, then re-run the
+      post-rebase check before pushing.
       - `git push --force-with-lease`
       - Write `.merger-body.md` with:
         ```
