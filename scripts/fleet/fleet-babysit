@@ -175,19 +175,33 @@ launch_architect_first() {
 launch_worker_fresh() {
     # No --continue, no --resume — fresh conversation for each task
     # iteration. Used both on first launch and between task iterations.
-    claude --model "$MODEL" --effort "$EFFORT" "/role-$ROLE $MODE"
+    #
+    # `--print` is CRITICAL here. Without it, `claude "prompt"` starts
+    # INTERACTIVE mode and never exits — the agent finishes its work,
+    # emits a "standing by" message, then sits at the prompt forever
+    # waiting for more user input. Babysit only relaunches on process
+    # exit, so no-exit = no-relaunch = agent goes stale. Observed in
+    # production with sonnet-fleet-1 / sonnet-reviewer running once
+    # then stuck forever.
+    #
+    # `--print` means one-shot: run the prompt (including all tool use
+    # within it), emit the response, exit 0. That's exactly the
+    # "one iteration = one claude process" model the babysit header
+    # comment describes. Tool use still works under --print; the only
+    # difference is no interactive prompt after the response completes.
+    claude --model "$MODEL" --effort "$EFFORT" --print "/role-$ROLE $MODE"
 }
 
 resume_mid_task() {
     # Mid-task crash recovery. Architects always --resume their persisted
-    # session. Workers --continue the most recent session in this cwd
-    # (that's whatever crashed mid-task — we want to pick up where it
-    # left off so partial work isn't lost).
+    # session (interactive — they need the human's next input).
+    # Workers --continue + --print the most recent session in this cwd
+    # (one-shot — resume, finish what was interrupted, exit).
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
         claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
             "resume your work from where you left off"
     else
-        claude --model "$MODEL" --effort "$EFFORT" --continue "resume your work from where you left off"
+        claude --model "$MODEL" --effort "$EFFORT" --print --continue "resume your work from where you left off"
     fi
 }
 
