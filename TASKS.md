@@ -352,11 +352,11 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit, no judgment calls on review substance. Root cause: re-reviewer re-ran full checklist without cross-checking author's fix commit, resulting in a hallucinated "still present" finding. Related skill: `request-re-review/SKILL.md`, `review-pr/SKILL.md` re-review section (~lines 246-258).
   - **Links:**
 
-- [ ] **Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks** — capture a pre-rebase diff snapshot and compare it against the post-rebase state to surface any hunks git silently dropped during 3-way merge resolution
+- [~] **Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks** — capture a pre-rebase diff snapshot and compare it against the post-rebase state to surface any hunks git silently dropped during 3-way merge resolution
   - **ID:** T-031
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** skills-commit-push-prerebase-diff
   - **Blocked by:** (none)
   - **Acceptance:** (1) `commit-and-push/SKILL.md` captures `git diff origin/master` to `/tmp/fleet-prerebase.diff` before the rebase starts; (2) after rebase + conflict resolution, captures post-rebase diff and diffs the two; (3) any line present in pre-rebase but absent in post-rebase is surfaced to the agent before commit; (4) if the rebase was done without pre-capture, `commit-and-push` checks `git reflog` for a recent rebase and warns; (5) same pre/post check added to `merger` skill's conflict-resolution path
   - **Issue:** #252
@@ -385,6 +385,7 @@ Avoid:
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 - [~] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
+- [~] **T-031** — Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 
 ---
 
