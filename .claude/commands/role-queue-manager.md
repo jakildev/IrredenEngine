@@ -217,8 +217,10 @@ auto-relaunch in dry-run mode.
 You are the sole TASKS.md editor. Each maintenance pass:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `touch ~/.fleet/heartbeats/queue-manager`
-   (Witness reads file mtime; `touch` updates it. No content needed.)
+   `fleet-heartbeat queue-manager`
+   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
+   the helper instead of a direct `touch` avoids the `~`-expansion
+   path-scope prompt that fires on the raw form.)
 
 1. **Clean stale claims:**
    `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`

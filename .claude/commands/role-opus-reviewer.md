@@ -102,8 +102,10 @@ context carries over from prior reviews. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `touch ~/.fleet/heartbeats/opus-reviewer`
-   (Witness reads file mtime; `touch` updates it. No content needed.)
+   `fleet-heartbeat opus-reviewer`
+   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
+   the helper instead of a direct `touch` avoids the `~`-expansion
+   path-scope prompt that fires on the raw form.)
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,reviews,labels`
