@@ -393,23 +393,37 @@ You are the sole TASKS.md editor. Each maintenance pass:
 7. **Prune Done:** keep only the last 20 entries in each TASKS.md.
 
 8. **Push changes (if any).**
-   Engine TASKS.md + plan files — commit and push directly to master
-   (bare `git` is correct here — your CWD is an engine worktree):
-   - `git fetch origin`
-   - `git rebase origin/master`
+   **Order matters:** stage and commit FIRST, then fetch and rebase.
+   `git rebase` refuses to run with unstaged changes ("You have
+   unstaged changes") AND with staged-but-uncommitted changes ("Your
+   index contains uncommitted changes"). The maintenance pass always
+   leaves dirty TASKS.md edits in the worktree, so rebase before
+   commit always errors out.
+
+   Engine TASKS.md + plan files — commit then rebase then push (bare
+   `git` is correct here — your CWD is an engine worktree):
    - `git add TASKS.md`
    - `git add .fleet/plans/`
    - `git commit -m "queue: maintenance sync"`
+   - `git fetch origin`
+   - `git rebase origin/master`
    - `git push origin HEAD:master`
-   Game TASKS.md + plan files — separate commit and push:
-   - `git -C ~/src/IrredenEngine/creations/game fetch origin`
-   - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
+   Game TASKS.md + plan files — same order, same dirs:
    - `git -C ~/src/IrredenEngine/creations/game add TASKS.md`
    - `git -C ~/src/IrredenEngine/creations/game add .fleet/plans/`
    - `git -C ~/src/IrredenEngine/creations/game commit -m "queue: maintenance sync"`
+   - `git -C ~/src/IrredenEngine/creations/game fetch origin`
+   - `git -C ~/src/IrredenEngine/creations/game rebase origin/master`
    - `git -C ~/src/IrredenEngine/creations/game push origin HEAD:master`
-   If either push is rejected, rebase and retry. Only push TASKS.md
-   and `.fleet/plans/` — never push other files to master.
+   If either push is rejected (race with another commit hitting master
+   in the same window), re-fetch + re-rebase + re-push. Only push
+   TASKS.md and `.fleet/plans/` — never push other files to master.
+
+   **Expect a "Bypassed rule violations" warning on each push.** The
+   engine repo has branch protection requiring PRs for master, but
+   this account has admin bypass for these bookkeeping files. The
+   warning is informational — the push still succeeded if you don't
+   see "rejected" or "failed". Don't try to "fix" it by opening a PR.
 
 9. Print the maintenance summary, queue summary, and next-run timing:
    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
