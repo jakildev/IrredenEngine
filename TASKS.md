@@ -297,7 +297,7 @@ Avoid:
   - **Notes:** AO texture already available from T-012 (PR #197). Extends stub `f_debug_overlay.glsl` and `engine/render/src/shaders/metal/debug_overlay.metal`. Debug overlay pass runs after lighting passes but replaces final composited output in debug mode — artistic LIGHTING_TO_TRIXEL result still computed but discarded. AO viz: `vec3(1-ao, ao, 0)` (red=occluded, green=clear). Light level: `vec3(level, level, 1.0)` (blue→white). Shadow: black/magenta. Soft suggestion: pair shadow debug mode with T-013 landing. Mirror pattern of `setSubdivisionMode` in render API.
   - **Links:**
 
-- [~] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
+- [x] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
   - **ID:** T-026
   - **Area:** tooling, .claude/skills, docs
   - **Model:** opus
@@ -306,7 +306,7 @@ Avoid:
   - **Acceptance:** (1) reference library structure decided and documented (path, naming, per-shot layout); (2) `scripts/render-compare.py` (or equivalent) exists and produces pass/fail + diff image on mismatches; (3) `.claude/skills/render-verify/SKILL.md` wraps build → run → capture → compare → report flow; (4) `IRShapeDebug` reference set committed; skill produces all-pass on clean master; (5) builds + skill run cleanly on `linux-debug`
   - **Issue:** #217
   - **Notes:** soft dependency on T-027 (#189, "Promote --auto-screenshot shot config into reusable engine helper") — without it, harness only verifies IRShapeDebug; with it, any demo that opts in works. Can ship for IRShapeDebug first. Comparison algorithm choice (pixel diff / PSNR / perceptual hash) is the key design decision — threshold knob matters more than algorithm. Related: PR #190 (merged) provides render-debug-loop that this wraps. Companion to #218 (debug overlay, different concern: in-flight debugging vs post-hoc regression).
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/233
 
 - [x] **Promote --auto-screenshot into a reusable engine helper** — extract the hand-written shot-cycling machinery from `shape_debug` into a declarative `IRVideo::enableAutoScreenshot()` API so any creation can opt in with a shot list
   - **ID:** T-027
@@ -338,7 +338,6 @@ Avoid:
 
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
-- [~] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 
 ---
@@ -347,6 +346,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [x] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [x] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 - [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
