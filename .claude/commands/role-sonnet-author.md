@@ -122,7 +122,8 @@ Each iteration:
    d. Push fixes using `commit-and-push`.
    e. Add the appropriate response label and post a summary:
       - If it was `human:needs-fix` or `human:blocker` → add
-        `fleet:changes-made` (signals human to re-review):
+        `fleet:changes-made` (signals BOTH the human AND the fleet
+        reviewer to re-verify; whichever picks it up first wins):
         `gh pr edit <N> --add-label "fleet:changes-made"`
       - If it was `fleet:needs-fix` → no response label needed
         (fleet reviewer will re-review automatically on next poll)
@@ -139,10 +140,18 @@ Each iteration:
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
    comments) → agent removes it, works, adds `fleet:changes-made` →
-   human reviews again. Human can add multiple comments before
-   re-tagging; ALL are picked up when the tag appears. If the human
-   wants more changes, they remove `fleet:changes-made`, add
-   `human:needs-fix` again.
+   either the human or the next-poll fleet reviewer re-verifies
+   (whichever happens first; the reviewer removes the label on
+   pickup so they don't double-process). Human can add multiple
+   comments before re-tagging; ALL are picked up when the tag
+   appears. If the human wants more changes after a review pass,
+   they re-add `human:needs-fix`.
+
+   The merger uses the same path: when it labels a PR
+   `human:needs-fix` for an unresolvable conflict, an opus-worker
+   that picks up the conflict resolution should follow this same
+   cycle (remove `human:needs-fix`, fix, add `fleet:changes-made`).
+   The fleet reviewer will re-verify the resolution.
 
    **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
    author removes it, fixes, pushes → fleet reviewer sees the new
