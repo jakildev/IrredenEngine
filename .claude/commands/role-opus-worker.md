@@ -137,14 +137,16 @@ reading right now.
 
 Do the work, then exit cleanly:
 
-0. **Write heartbeat** — signal to the witness monitor that this agent is alive.
+0. **Touch heartbeat** — signal to the witness monitor that this agent is alive.
    Your agent name is your worktree basename (`opus-worker-1` or `opus-worker-2`,
    from `pwd` output at startup). Substitute it into the path:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/<your-worktree-basename>`
+   `touch ~/.fleet/heartbeats/<your-worktree-basename>`
    (Replace `<your-worktree-basename>` with your actual basename — e.g.
-   `opus-worker-2` if that is your worktree. Do not hardcode `opus-worker-1`.)
-   Also write before fleet-build and before commit-and-push so the witness
-   doesn't false-alarm during long builds (threshold is 30 minutes per iteration).
+   `opus-worker-2` if that is your worktree. Do not hardcode `opus-worker-1`.
+   Witness reads file mtime; `touch` updates it. No content needed.)
+   Also re-touch before fleet-build, optimize, simplify, and commit-and-push
+   so the witness doesn't false-alarm during long builds or PR flows
+   (threshold is 30 minutes per iteration).
 
 1. **Check for feedback labels on open PRs across both repos.**
    ```

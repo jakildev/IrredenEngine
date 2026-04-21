@@ -197,6 +197,7 @@ baseline = [
     "Bash(cp:*)",
     "Bash(mv:*)",
     "Bash(chmod:*)",
+    "Bash(touch:*)",   # heartbeat updates (witness reads file mtime)
     "Bash(sort:*)",
     "Bash(uniq:*)",
     "Bash(tr:*)",
