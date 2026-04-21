@@ -73,13 +73,18 @@ treat it as a hard rule for this role.
    - It has **no fleet review yet** (no review from your GitHub user), OR
    - It has the `human:re-review` label (human made changes and
      explicitly requested re-review via the `request-re-review` skill), OR
+   - It has the `fleet:changes-made` label (author addressed feedback;
+     either the human or the fleet should re-verify — whichever gets
+     to it first), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" (check the comments array for
      this text after your last review).
 
-   When picking up a `human:re-review` PR, **immediately remove the
-   label** so another reviewer doesn't also grab it:
+   When picking up a `human:re-review` or `fleet:changes-made` PR,
+   **immediately remove the label** so another reviewer doesn't also
+   grab it (run as separate calls):
    `gh pr edit <N> --remove-label "human:re-review"`
+   `gh pr edit <N> --remove-label "fleet:changes-made"`
 
    **Skip** PRs with any of these labels:
    - `fleet:wip` — work-in-progress claim, not ready for review.
@@ -87,8 +92,6 @@ treat it as a hard rule for this role.
    - `human:needs-fix` — human requested changes, author agent is
      handling it. Don't pile on a fleet review while the human's
      feedback is being addressed.
-   - `fleet:changes-made` — agent addressed human feedback, waiting
-     for human re-review. Not your turn.
 
 ## Loop behavior
 
@@ -103,10 +106,11 @@ iteration of polling, reviewing, and exiting cleanly:
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
    `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
-2. Re-apply the same skip criteria from startup step 5: skip PRs that
-   already have a fleet review, or carry any of `fleet:wip`,
-   `human:wip`, `human:needs-fix`, or `fleet:changes-made`. For each
-   remaining
+2. Re-apply the same candidate criteria from startup step 5: pick up
+   PRs with no fleet review, with `human:re-review`, with
+   `fleet:changes-made` (remove the label on pickup), or with a "re-review please"
+   comment after the last fleet review. Skip PRs carrying any of
+   `fleet:wip`, `human:wip`, or `human:needs-fix`. For each remaining
    candidate, in oldest-first order:
 
    **Engine PRs** (default repo):
