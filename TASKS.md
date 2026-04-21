@@ -330,6 +330,39 @@ Avoid:
   - **Notes:** Part 2 (benchmark harness + render-perf skill, [sonnet]) depends on Part 1's Lua API and should be filed as a separate issue+task once Part 1 merges — do not bundle both into one PR. Metal parity for timer infrastructure is a follow-up. OpenGL bindings (`glQueryCounter`/`GL_TIMESTAMP`) already exist in `engine/render/include/glad/glad.h` — no new GL extension needed. T-013 (sun shadows) and T-014 (flood-fill) are the first lighting phases that will need perf validation.
   - **Links:**
 
+- [ ] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
+  - **ID:** T-029
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) labels `fleet:needs-linux-smoke` and `fleet:needs-macos-smoke` are auto-applied (by reviewer or queue-manager) to engine PRs touching `engine/render/`, `shaders/`, or `engine/prefabs/irreden/render/` that were authored on only one host; (2) when a fleet starts on the lagging host, agents pick up tagged PRs and run build + `render-verify` (or a targeted smoke test); (3) after validation, agent removes the label and posts a confirmation comment; (4) no open render PRs slip through without both-host validation before merge; (5) skill or role doc updated to document the tagging trigger and resolution flow
+  - **Issue:** #250
+  - **Notes:** explicitly [opus] per issue — involves reviewer label-application logic, fleet startup scanning, and render-verify integration. v1: manual tag by reviewer is acceptable; auto-detection from diff can come later. Related: `backend-parity` skill covers structural GLSL↔MSL porting; this covers runtime-smoke validation after a port lands.
+  - **Links:**
+
+- [ ] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
+  - **ID:** T-030
+  - **Area:** tooling, .claude/skills
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `review-pr/SKILL.md` re-review path fetches the prior review body and parses flagged file:line references from Blockers/Needs-fix/Nits sections; (2) for each flagged hunk, reads the file at HEAD and confirms whether the issue is still present; (3) new review explicitly states "verified fixed at <SHA>" for each resolved nit; (4) full fresh-eyes checklist runs only after prior-review verification step; (5) no false-positive re-flags of already-fixed issues in a manually-triggered re-review
+  - **Issue:** #251
+  - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit, no judgment calls on review substance. Root cause: re-reviewer re-ran full checklist without cross-checking author's fix commit, resulting in a hallucinated "still present" finding. Related skill: `request-re-review/SKILL.md`, `review-pr/SKILL.md` re-review section (~lines 246-258).
+  - **Links:**
+
+- [ ] **Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks** — capture a pre-rebase diff snapshot and compare it against the post-rebase state to surface any hunks git silently dropped during 3-way merge resolution
+  - **ID:** T-031
+  - **Area:** tooling, .claude/skills
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `commit-and-push/SKILL.md` captures `git diff origin/master` to `/tmp/fleet-prerebase.diff` before the rebase starts; (2) after rebase + conflict resolution, captures post-rebase diff and diffs the two; (3) any line present in pre-rebase but absent in post-rebase is surfaced to the agent before commit; (4) if the rebase was done without pre-capture, `commit-and-push` checks `git reflog` for a recent rebase and warns; (5) same pre/post check added to `merger` skill's conflict-resolution path
+  - **Issue:** #252
+  - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit. Root cause: git's 3-way merge silently dropped two `else { applyCheckerboard(...) }` branches from a non-conflicting section of a file that had a conflict elsewhere during the PR #238 rebase. Silent hunk loss is the most insidious rebase failure mode — the check is a commit-time safety net. Pre-capture must happen BEFORE the rebase or the guard cannot function retroactively.
+  - **Links:**
+
 ---
 
 ## In progress
