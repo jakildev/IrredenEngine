@@ -93,6 +93,35 @@ Skip the prompt if:
 - `docs/pr-screenshots/<branch>/` already contains screenshots from a prior
   run on this branch.
 
+**Then**, run the cross-repo information-isolation check (see engine
+`CLAUDE.md` "Cross-repo information isolation"). The engine repo is
+public; the game repo is private. Engine PRs MUST NOT leak game
+content. Scan the staged diff and the to-be-written PR body for any
+of the following game-leakage tokens:
+
+- `creations/game/` — engine PRs should never touch game files. If
+  the diff includes a path under `creations/game/`, this almost
+  certainly means the worker is in the wrong worktree (the engine
+  PR shouldn't be modifying the game tree). Stop and warn.
+- `jakildev/irreden` — the game repo slug. If a draft PR body or
+  commit message references it, scrub before continuing.
+- A `T-NNN` task ID that came from the game queue (cross-check
+  against `~/src/IrredenEngine/creations/game/TASKS.md` if present).
+  Engine PR bodies should reference engine task IDs only.
+- Game-specific feature names or design language. This one needs
+  human judgment — if the commit message you've drafted talks about
+  "ant pheromone trails" or "fungus sporulation" instead of the
+  underlying engine capability, rewrite in pure engine terms.
+
+```bash
+git diff --cached --name-only | grep -E '^creations/game/' && echo "WARNING: engine PR includes creations/game/ paths"
+```
+
+If any leakage is found, surface it to the user before committing.
+The fix is usually a 30-second rewrite of the commit message and PR
+body in engine-level terms; rarely is a code change actually needed
+(if it is, the worker is in the wrong repo entirely).
+
 **Then** invoke the `simplify` skill to review the dirty changes for reuse,
 quality, and efficiency issues specific to Irreden Engine:
 
@@ -245,6 +274,10 @@ if the user already asked for the next task).
 - ❌ Opening a PR without running `simplify` first.
 - ❌ Continuing to commit on the same feature branch after opening its PR
   unless the user explicitly asks for it — otherwise use `start-next-task`.
+- ❌ Leaking game references into an engine PR (file paths under
+  `creations/game/`, `jakildev/irreden`, game task IDs, game design
+  language). Engine repo is public; game repo is private. See engine
+  `CLAUDE.md` "Cross-repo information isolation".
 
 ## Recovery
 
