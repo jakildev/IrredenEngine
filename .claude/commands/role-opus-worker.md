@@ -263,10 +263,12 @@ Do the work, then exit cleanly:
      a crash). It is now (or remains) marked `in-progress`. Skip the
      normal pickup flow below and jump straight to step 6 ("Work it",
      the implementation step) to begin working it.
-     The PR for the stack is also already open — find it via the
-     branch name on `gh pr list` and continue committing to it
-     (use the `T-NNN: ` commit-subject prefix described in the stack
-     PR section).
+     If the task's PR is already open, `fleet-claim stack-pr-state
+     <your-worktree-name>` (add `--repo game` for game-side molecules)
+     shows its URL and branch. Check out the task's branch and
+     continue committing normally — one task per branch means the
+     branch itself is the per-task anchor, so no special
+     commit-subject prefix is required.
 
      **Resume vs restart judgment.** Read the worktree's git status:
      - If there is no work-in-progress on the branch matching that

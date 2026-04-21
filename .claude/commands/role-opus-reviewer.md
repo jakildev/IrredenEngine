@@ -112,14 +112,16 @@ iteration of polling, reviewing, and exiting cleanly:
    a. Read the existing Sonnet review in full first
       (`gh pr view <N> --comments`, add `--repo <game-repo>` for
       game PRs). Note what Sonnet flagged.
-   b. **Detect stack PRs.** Check the commit list:
-      `gh pr view <N> --json commits --jq '.commits[].messageHeadline'`
-      If multiple commit subjects start with `T-NNN: ` prefixes
-      (different task IDs), this is a stack PR. The Sonnet review
-      should already have per-task `## T-NNN` sections — your
-      Opus pass should mirror that structure, reviewing each
-      task's commits independently for the deeper invariants
-      (ECS, lifetime, GPU buffers) that Opus focuses on.
+   b. **Check whether the PR is stacked.** Every fleet PR today is
+      single-task, but stacked PRs (chains of dependent tasks) base off
+      a parent PR's branch rather than `master`. Detect with:
+      `gh pr view <N> --json baseRefName,body --jq '"\(.baseRefName)\n---\n\(.body)"'`
+      If the base is not `master` or the body carries a `Stacked on:`
+      line, this PR depends on the parent landing first. Review only
+      this PR's own diff (as always — `gh pr diff <N>` scopes to it).
+      Do not re-review the parent; it has its own PR, its own Sonnet
+      first pass, and possibly its own Opus pass. Note the stack
+      context in your review body.
    c. **Engine PRs:** Invoke the `review-pr` skill on the PR.
       **Game PRs:** Read the diff with `gh pr diff <N> --repo
       <game-repo>` and review manually (you cannot check out game
@@ -128,8 +130,7 @@ iteration of polling, reviewing, and exiting cleanly:
    d. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
-      X; on closer read I confirm/disagree because Y". For stack
-      PRs, do this per-task under matching `## T-NNN` headings.
+      X; on closer read I confirm/disagree because Y".
    e. Post the review: write the review body to `/tmp/review-body.md`
       using the **Write tool**, then:
       `gh pr review <N> --comment --body-file /tmp/review-body.md`
