@@ -386,9 +386,13 @@ comments:
       don't require tracking.) Do NOT silently re-flag an item without first
       checking whether it was fixed.
 
-3. **Read the new commits only.** `git log origin/master..HEAD --oneline`, then
-   diff only the commits that arrived after the prior review timestamp. Avoid
-   re-examining already-reviewed code — focus the checklist on what changed.
+3. **Read the new commits only.** `git log origin/master..HEAD --oneline` lists
+   all commits on the PR branch since it diverged from master. Scope to the
+   subset that arrived **after the prior review's timestamp** — the prior review
+   comment's `created_at` (visible in the `gh pr view --comments` output from
+   step 2a) is the cutoff. Commits older than that were already reviewed; commits
+   newer than that are the delta to inspect. Avoid re-examining already-reviewed
+   code — focus the checklist on what changed.
 
 4. **Run the full fresh-eyes checklist** (Step 4 of the main flow) against the
    new commits. Carry forward any "Still open" or "Location changed" items from
