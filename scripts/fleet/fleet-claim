@@ -955,14 +955,21 @@ cmd_molecule_show() {
 cmd_molecule_resume() {
     # Mark the next pending task as in-progress and print its ID.
     # Exit 0 if a task was returned (worker should pick it up).
-    # Exit 1 if molecule has no remaining work — worker should run
-    # `fleet-claim molecule complete <agent>` to archive it.
+    # Exit 1 if there is nothing to resume — either no molecule exists
+    # at all, or the molecule has no remaining work. In both cases the
+    # worker should just move on to normal task pickup; "no molecule"
+    # is the overwhelming common case for opus-worker startup and is
+    # NOT an error.
+    # Exit 2 is reserved for usage errors (bad args, etc.).
     local agent="$1"
     local file
     file=$(molecule_file "$agent")
     if [[ ! -f "$file" ]]; then
-        echo "no molecule for agent: $agent" >&2
-        return 2
+        # Print to stdout (informational), not stderr (error). Keep the
+        # message so a human running it interactively still sees the
+        # signal, but don't make it look like a failure.
+        echo "no molecule for agent: $agent (nothing to resume)"
+        return 1
     fi
     if molecule_python resume "$file"; then
         return 0
@@ -1123,7 +1130,11 @@ case "${1:-}" in
                 ;;
         esac
         ;;
-    *)
+    help|--help|-h|"")
+        # Explicit help / no-subcommand case: print usage and exit 0.
+        # Exit 0 is important — agents tend to run `fleet-claim help`
+        # expecting docs, and a non-zero exit reads as a failure.
+        # The real "unknown command" case falls through to `*)` below.
         cat <<'USAGE'
 usage: fleet-claim [--repo <ns>] <command> [args]
 
@@ -1157,8 +1168,9 @@ molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules + per-task state
   molecule show <agent>                  print one molecule yaml verbatim
   molecule resume <agent>                mark next pending → in-progress, print task ID
-                                         exit 0 = task ID printed, 1 = molecule fully done,
-                                         2 = no molecule for this agent
+                                         exit 0 = task ID printed, 1 = nothing to resume
+                                         (no molecule OR molecule already done — just move
+                                         on to normal TASKS.md pickup)
   molecule advance <agent> <task-id> <new-state> [pr=URL] [commit=SHA]
                                          transition one task's state. New state is one of
                                          pending|in-progress|done|failed.
@@ -1193,6 +1205,11 @@ Examples:
                                                            #  prefixed slugs
                                                            #  visible in list)
 USAGE
+        exit 0
+        ;;
+    *)
+        echo "fleet-claim: unknown command '$1'" >&2
+        echo "run 'fleet-claim help' for usage." >&2
         exit 2
         ;;
 esac
