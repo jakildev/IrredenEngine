@@ -163,23 +163,26 @@ fi
 # The witness pane runs a bash daemon, not Claude; skip it.
 
 # Return 0 if the pane appears to be at an interactive prompt with no
-# active tool execution. Return 1 otherwise. Heuristic — captures the
-# last ~15 rows and looks for either "we're idle" or "we're busy" tells.
+# active tool execution. Return 1 otherwise.
+#
+# Heuristic: capture only the bottom ~5 rows. The prompt indicator `❯`
+# must appear in the bottom 3 of those rows AND no spinner / tool-UI
+# marker may appear anywhere in the captured rows. Restricting to the
+# bottom is essential — a pane that ran a tool a minute ago still has
+# ⏺/⎿ symbols up in scrollback, but if the prompt is at the bottom the
+# pane is ready for input. Searching the full scrollback would false-
+# positive busy and stall --summary for the entire idle-wait budget.
 pane_is_idle() {
     local pane_id="$1"
-    local capture
-    capture=$(tmux capture-pane -t "$pane_id" -p -S -15 2>/dev/null) || return 1
-    # Busy tells: thinking spinners, in-flight tool execution markers,
-    # any UI element that means "I'm not waiting for input right now".
-    # The exact glyphs Claude Code renders can shift between releases —
-    # this list is broad on purpose; false-positive busy means we just
-    # wait a bit longer (acceptable) vs false-positive idle which would
-    # send the prompt into garbage.
-    if printf '%s' "$capture" | grep -qE 'Caramelizing|Thinking|✻|✶|⏺|⎿|tool use|Allowed by|Permission required|Running…'; then
+    local tail
+    tail=$(tmux capture-pane -t "$pane_id" -p -S -5 2>/dev/null) || return 1
+    # Active-work tells in the visible bottom rows: spinners, in-flight
+    # tool UI, permission prompts. Any of these means "not ready".
+    if printf '%s' "$tail" | grep -qE 'Caramelizing|Thinking|✻|✶|⏺|⎿|tool use|Allowed by|Permission required|Running…'; then
         return 1
     fi
-    # Idle tells: prompt indicator on or near the last line.
-    if printf '%s' "$capture" | tail -3 | grep -q '❯'; then
+    # Idle tell: prompt indicator in the bottom 3 rows.
+    if printf '%s' "$tail" | tail -3 | grep -q '❯'; then
         return 0
     fi
     # Unknown state — assume busy.
