@@ -98,7 +98,8 @@ context carries over from the prior iteration. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/sonnet-reviewer`
+   `touch ~/.fleet/heartbeats/sonnet-reviewer`
+   (Witness reads file mtime; `touch` updates it. No content needed.)
 
 1. Re-fetch PR lists from both repos (separate commands):
    `gh pr list --state open --json number,title,headRefName,author,reviews,labels`

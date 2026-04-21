@@ -93,18 +93,18 @@ The `/loop` driver re-invokes this role every 10 minutes in live
 mode. Each invocation is one iteration — handle ready PRs, then
 exit cleanly:
 
-0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `date -u +%Y-%m-%dT%H:%M:%SZ > ~/.fleet/heartbeats/merger`
+0. **Touch heartbeat** — signal to the witness monitor that this agent is alive:
+   `touch ~/.fleet/heartbeats/merger`
+   (Witness reads file mtime; `touch` updates it. No content needed.)
    Witness's staleness threshold for `merger` is 20 minutes (10m loop +
-   10m budget for rebases / pushes). Re-write the heartbeat before any
+   10m budget for rebases / pushes). Re-touch the file before any
    long-running git fetch / push / rebase loop so a slow conflict
    resolution doesn't trigger a false alert.
-   The single `>` redirect is **fine** — it's a single command, not a
-   compound chain. The "single-command Bash" rule above bans `&&`, `||`,
-   `;`, `|` between commands, not file redirects. Same goes for the audit
-   log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is one command,
-   one file write — use it directly. Don't fall back to Read+Write for
-   either of these.
+   For the audit log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is
+   one command, one file write — the single `>>` redirect is fine
+   (the "single-command Bash" rule above bans `&&`, `||`, `;`, `|`
+   between commands, not file redirects). Use it directly; don't fall
+   back to Read+Write.
 
 1. **Clear all `fleet:merger-cooldown` labels.** The 10-minute loop
    interval is the cooldown — clearing at iteration start (rather
