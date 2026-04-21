@@ -302,10 +302,12 @@ Do the work, then exit cleanly:
        didn't leave a stack claim open last iteration).
      - A molecule exists but every task is already `done` or
        `failed`. If you see the latter, also run
-       `fleet-claim molecule complete <your-worktree-name>` (add
-       `--repo game` for game-side) to archive it. For the former,
-       you can tell by looking at whether stdout had the "no
-       molecule" message.
+       `fleet-claim molecule complete <your-worktree-name>` (use
+       `fleet-claim --repo game molecule complete
+       <your-worktree-name>` for game-side — `--repo` is a global
+       flag parsed before the subcommand) to archive it. For the
+       former, you can tell by looking at whether stdout had the
+       "no molecule" message.
      Either way, proceed with the normal pickup flow below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
