@@ -188,10 +188,10 @@ fi
 # a visible spinner line.
 #
 # Note on the tmux flags: we use plain `capture-pane -p` (visible only)
-# piped through `tail -5`. `capture-pane -p -S -5` does NOT capture
-# only 5 rows — it widens the capture by 5 rows of scrollback, leaving
+# piped through `tail -7`. `capture-pane -p -S -7` does NOT capture
+# only 7 rows — it widens the capture by 7 rows of scrollback, leaving
 # the visible area's full pane_height intact. Verified empirically on
-# tmux 3.6a — what we want is the literal bottom 5 lines of output.
+# tmux 3.6a — what we want is the literal bottom 7 lines of output.
 # Regexes are tied to the English Claude Code TUI; if Claude Code ever
 # localizes, this list will need updating.
 pane_is_idle() {
