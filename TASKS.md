@@ -242,7 +242,7 @@ Avoid:
   - **Notes:** conditional trigger logic must be precise — only visual/render diffs trigger it. Mechanical refactors (rename, extract header) must not trigger it. `attach-screenshots` runs BEFORE `optimize` and `commit-and-push` so screenshots are in the same commit batch.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/225
 
-- [~] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
+- [x] **Migrate from one-PR-multi-commit stacks to true stacked PRs** — redesign the `fleet-claim stack` flow so each task in a chain becomes its own PR with a chained `--base`, enabling independent per-task review and merge
   - **ID:** T-020
   - **Area:** tooling, .claude/skills
   - **Model:** opus
@@ -251,7 +251,7 @@ Avoid:
   - **Acceptance:** (1) worker can run `fleet-claim stack "T-A T-B T-C"` and the result is 3 chained PRs (PR-A base=master, PR-B base=PR-A, PR-C base=PR-B); (2) reviewers see and review each PR independently with its own `fleet:approved`/`fleet:needs-fix` label; (3) when PR-A merges, PR-B's base auto-rebases to master without manual intervention (or worker is instructed to rebase as a follow-up); (4) queue-manager correctly handles the cascade: PR-A merge → T-A done, PR-B merge → T-B done, etc.; (5) at least one stack of 3 tasks shipped end-to-end via this flow with no manual intervention
   - **Issue:** #183
   - **Notes:** explicitly [opus] — touches fleet-claim, role files, requires reasoning about edge cases (rebase failures, mid-chain rejections, partial approvals). Current one-PR-multi-commit approach (PR #182) stays in place until this lands. Subcomponents: worker creates chained branches + PRs; queue-manager detects chained PRs and handles cascade; fleet-claim tracks chain state in `~/.fleet/claims/_stack_<agent>/prs`; reviewer notes parent PRs in review. Filed from PR #182; related: jakildev/IrredenEngine#175.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/254
 
 - [x] **Fleet: resumable workflows (molecules) for stacked task chains** — extend `fleet-claim stack` to write a molecule YAML that survives agent crashes, allowing the next worker startup to auto-resume the in-progress step
   - **ID:** T-021
@@ -381,7 +381,6 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
-- [~] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 - [~] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
@@ -393,6 +392,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [x] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [x] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [x] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
@@ -522,13 +522,3 @@ Avoid:
   - **Notes:** ships as no-op skeleton; later phases activate it by binding AO/shadow/flood-fill data.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/185
 
-- [x] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
-  - **ID:** T-009
-  - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
-  - **Model:** opus
-  - **Owner:** render-subdivision-mode
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `SubdivisionMode` enum with NONE/POSITION_ONLY/FULL replaces `VoxelRenderMode`; (2) Lua key `"subdivision_mode"` accepts `"none"` / `"position"` / `"full"`, default `"full"`; (3) all three modes build clean on active preset; (4) visual: NONE snaps to grid, POSITION_ONLY at zoom 2 shows identical silhouette to 2×-radius-at-zoom-1, FULL at zoom 2 is visibly smoother; (5) FULL mode (current SMOOTH behavior) has not regressed
-  - **Issue:** #156
-  - **Notes:** `POSITION_ONLY` is the new mode — subdivisions apply to positioning only; SDF evaluates at base-zoom coarse grid. Key files: `VoxelRenderMode` enum definition, RenderManager getters/setters, `system_shapes_to_trixel.hpp` ~line 284 (third branch for POSITION_ONLY), WorldConfig Lua wiring. Per-entity subdivision modes are future work — note in code but do not implement.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/160
