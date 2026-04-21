@@ -84,11 +84,13 @@ earlier work.
 Each iteration:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `touch ~/.fleet/heartbeats/sonnet-fleet-1`
-   (Witness reads file mtime; `touch` updates it. No content needed.)
-   Also touch the file again before long-running steps (fleet-build,
-   fleet-run, commit-and-push) to prevent false staleness alerts
-   during builds or PR actions.
+   `fleet-heartbeat sonnet-fleet-1`
+   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
+   the helper instead of a direct `touch` avoids the `~`-expansion
+   path-scope prompt that fires on the raw form.)
+   Also re-run `fleet-heartbeat sonnet-fleet-1` before long-running
+   steps (fleet-build, fleet-run, commit-and-push) to prevent false
+   staleness alerts during builds or PR actions.
 
 1. **Check for feedback labels on open PRs.**
    `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`

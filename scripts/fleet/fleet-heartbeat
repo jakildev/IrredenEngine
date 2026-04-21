@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# fleet-heartbeat — update an agent's witness heartbeat file.
+#
+# Called by every looping fleet role at iteration step 0 (and before
+# long-running steps like fleet-build / commit-and-push). The witness
+# daemon polls file mtimes under ~/.fleet/heartbeats/ to detect stalled
+# agents — this script just bumps that mtime.
+#
+# Why a helper script instead of `touch ~/.fleet/heartbeats/<role>`
+# inline in the role docs:
+#
+#   - Claude Code's per-worktree path-scope prompt fires on writes to
+#     paths that aren't in `additionalDirectories`. Even after adding
+#     ~/.fleet to additionalDirectories, agents kept seeing "always
+#     allow access to heartbeats/" prompts every iteration. The
+#     hypothesized cause: Claude Code doesn't expand `~` before the
+#     scope check, so `touch ~/.fleet/...` is compared literally
+#     against `/Users/<user>/.fleet/...` and fails to match.
+#
+#   - Wrapping the write in a subprocess sidesteps the issue. Claude
+#     Code tracks approval on the COMMAND it invokes (`fleet-heartbeat
+#     sonnet-fleet-1`), not on what that subprocess writes internally.
+#     Allowlist `Bash(fleet-heartbeat:*)` and the prompts stop.
+#
+#   - Centralization: if we later want to bump a /status snapshot file
+#     or emit a desktop notification, one script to extend.
+#
+# Usage:
+#   fleet-heartbeat <role-name>
+#
+# Examples:
+#   fleet-heartbeat sonnet-fleet-1
+#   fleet-heartbeat opus-worker-1
+#   fleet-heartbeat merger
+#
+# Source of truth: scripts/fleet/fleet-heartbeat in the engine repo.
+# Installed to ~/bin/fleet-heartbeat by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+if [[ -z "${1:-}" ]]; then
+    echo "usage: fleet-heartbeat <role-name>" >&2
+    exit 2
+fi
+
+role="$1"
+
+# Sanity-check the role name: alphanumeric, dash, underscore only. No
+# slashes (which would escape the heartbeats dir) or shell metachars.
+if ! [[ "$role" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "fleet-heartbeat: invalid role name '$role' — must match [A-Za-z0-9_-]+" >&2
+    exit 2
+fi
+
+heartbeats_dir="$HOME/.fleet/heartbeats"
+mkdir -p "$heartbeats_dir"
+touch "$heartbeats_dir/$role"

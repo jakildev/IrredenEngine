@@ -93,13 +93,15 @@ The `/loop` driver re-invokes this role every 10 minutes in live
 mode. Each invocation is one iteration — handle ready PRs, then
 exit cleanly:
 
-0. **Touch heartbeat** — signal to the witness monitor that this agent is alive:
-   `touch ~/.fleet/heartbeats/merger`
-   (Witness reads file mtime; `touch` updates it. No content needed.)
+0. **Heartbeat** — signal to the witness monitor that this agent is alive:
+   `fleet-heartbeat merger`
+   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
+   the helper instead of a direct `touch` avoids the `~`-expansion
+   path-scope prompt that fires on the raw form.)
    Witness's staleness threshold for `merger` is 20 minutes (10m loop +
-   10m budget for rebases / pushes). Re-touch the file before any
-   long-running git fetch / push / rebase loop so a slow conflict
-   resolution doesn't trigger a false alert.
+   10m budget for rebases / pushes). Re-run `fleet-heartbeat merger`
+   before any long-running git fetch / push / rebase loop so a slow
+   conflict resolution doesn't trigger a false alert.
    For the audit log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is
    one command, one file write — the single `>>` redirect is fine
    (the "single-command Bash" rule above bans `&&`, `||`, `;`, `|`
