@@ -332,18 +332,20 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `gh pr list --repo <game-repo> --state merged --json number,title,mergedAt,commits --jq '.[] | select(.mergedAt > "YYYY-MM-DDT00:00:00Z")'`
    (use yesterday's date to catch recent merges)
 
-   **For each merged PR**, find which TASKS.md tasks it completes:
-   - **Single-task PR (most common):** match the PR title or branch
-     name against `[~]` or `[ ]` task entries.
-   - **Stack PR (multi-task chain):** extract the task IDs from the
-     merged PR's commit subjects. The canonical query (extracts every
-     `T-NNN` referenced as a commit subject prefix, deduplicated):
+   **For each merged PR**, find which TASKS.md task it completes:
+   - **Single-task PR (the norm):** match the PR title (`T-NNN: ...`
+     prefix) or branch name (`claude/T-NNN-...`) against a `[~]` or
+     `[ ]` task entry. Every PR today is single-task — stacked PR
+     chains produce N individual PRs, each covering exactly one task,
+     that merge independently as GitHub rebases their bases forward.
+   - **Legacy multi-task PR (pre-stacked-PRs):** older merged PRs may
+     bundle multiple tasks in one PR via `T-NNN: ` commit subject
+     prefixes. Fallback query:
      ```
      gh pr view <N> --repo <repo> --json commits \
        --jq '[.commits[].messageHeadline | capture("^(?<id>T-[0-9]+):") | .id] | unique'
      ```
-     Each unique task ID is one completed task. A stack PR can complete
-     2+ tasks in one merge — flip ALL of them.
+     Each unique task ID there is one completed task — flip ALL.
 
    For every task completed by the merge: flip to `[x]`, add the PR
    URL to **Links**, move to `## Done — last 20`. Clean up plan
