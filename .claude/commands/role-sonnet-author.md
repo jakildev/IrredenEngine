@@ -175,9 +175,11 @@ Each iteration:
      crash). It is now (or remains) marked `in-progress`. Skip the
      normal pickup flow and jump straight to step 4 ("Read the plan
      file"), then continue to step 5 ("Work it") to begin working it.
-     The stack PR is already open — find it via the branch name on
-     `gh pr list` and continue committing to it (use the `T-NNN: `
-     commit-subject prefix from the stack PR section).
+     If the task's PR is already open, `fleet-claim stack-pr-state
+     <your-worktree-name>` shows its URL and branch. Check out the
+     task's branch and continue committing normally — one task per
+     branch means the branch itself is the per-task anchor, so no
+     special commit-subject prefix is required.
 
      **Resume vs restart judgment.** Read the worktree's git status:
      - No work-in-progress on the branch matching that task ID →
