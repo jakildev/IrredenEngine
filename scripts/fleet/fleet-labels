@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# fleet-labels — ensure every fleet/human label the agents reference
+# exists on a target GitHub repo. Idempotent: missing labels get
+# created; existing labels are left alone (color/description not
+# overwritten, so humans can re-skin).
+#
+# Why this exists:
+#   The merger surfaced this in a session summary — its first attempt
+#   to add `fleet:merger-cooldown` failed because the label didn't
+#   exist on the engine repo, and it had to side-trip into
+#   `gh label create`. New labels added by future fleet PRs would hit
+#   the same gap. Rather than each agent trying to lazily create its
+#   own labels mid-loop, we sync them up-front.
+#
+# Usage:
+#   fleet-labels                  sync engine + game (auto-detected)
+#   fleet-labels --repo <ns>      sync only the named repo
+#                                 (e.g. --repo jakildev/IrredenEngine)
+#   fleet-labels --dry-run        print what would be created, don't act
+#
+# Source of truth: scripts/fleet/fleet-labels in the engine repo.
+# Installed to ~/bin/fleet-labels by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+DRY_RUN=0
+TARGET_REPO=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        --repo)    : ;;  # consumed below
+        --repo=*)  TARGET_REPO="${arg#--repo=}" ;;
+        -h|--help)
+            sed -n '2,22p' "$0"
+            exit 0
+            ;;
+        *)
+            if [[ -z "$TARGET_REPO" && "$arg" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+                TARGET_REPO="$arg"
+            else
+                echo "fleet-labels: unknown argument '$arg'" >&2
+                exit 2
+            fi
+            ;;
+    esac
+done
+
+if ! command -v gh >/dev/null 2>&1; then
+    echo "fleet-labels: gh not found." >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------
+# The label catalog
+# ----------------------------------------------------------------------
+#
+# Format: "name|color|description"
+# Color is a 6-char hex without leading #. Description is one-line,
+# wraps gracefully in GitHub's UI.
+#
+# When you add a label here:
+#   1. Make sure it's actually used by a role/skill (grep first).
+#   2. Pick a color that matches its semantic class:
+#      - fleet:* (blueish 0e8a16/1d76db) — process state
+#      - fleet:approved (green 0e8a16) — positive verdict
+#      - fleet:needs-fix / blocker (red d73a4a / 800010) — negative verdict
+#      - fleet:has-nits (yellow fbca04) — approved-with-followups
+#      - fleet:wip / changes-made (light blue c5def5) — in-flight
+#      - fleet:merger-cooldown (gray bfdadc) — fleet-internal back-pressure
+#      - human:* (purple 5319e7 / d4c5f9) — handoff to the human
+
+LABELS=(
+    "fleet:task|0366d6|Task tracked in TASKS.md"
+    "fleet:queued|c5def5|Queued for ingestion into TASKS.md"
+    "fleet:needs-info|fbca04|Needs more info from the author before triage"
+    "fleet:needs-plan|fbca04|Needs an architect plan before a worker can pick it up"
+    "fleet:in-progress|c5def5|A fleet worker has claimed this task"
+    "fleet:wip|c5def5|Fleet worker is mid-task on the corresponding PR"
+    "fleet:changes-made|c5def5|Worker addressed feedback; awaiting re-review"
+    "fleet:approved|0e8a16|Reviewer agent approved; safe for human merge"
+    "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
+    "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
+    "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
+    "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
+    "human:wip|5319e7|Human is editing the PR directly; agents stand off"
+    "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"
+    "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"
+    "human:blocker|d4c5f9|Human flagged a blocker; do not merge"
+    "human:re-review|5319e7|Human pushed changes; reviewer agent should re-review"
+)
+
+ensure_label_for_repo() {
+    local repo="$1"
+    local existing
+    if ! existing=$(gh label list --repo "$repo" --json name --jq '.[].name' 2>&1); then
+        echo "fleet-labels: failed to list labels on $repo: $existing" >&2
+        return 1
+    fi
+    local created=0
+    local existed=0
+    for entry in "${LABELS[@]}"; do
+        local name="${entry%%|*}"
+        local rest="${entry#*|}"
+        local color="${rest%%|*}"
+        local desc="${rest#*|}"
+        if echo "$existing" | grep -qx "$name"; then
+            existed=$((existed + 1))
+            continue
+        fi
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "  would create: $name (#$color) — $desc"
+            created=$((created + 1))
+            continue
+        fi
+        if gh label create "$name" --repo "$repo" --color "$color" --description "$desc" >/dev/null 2>&1; then
+            echo "  created: $name (#$color)"
+            created=$((created + 1))
+        else
+            # Label may have been created by a parallel run between our list
+            # and create — re-check rather than treating as failure.
+            if gh label list --repo "$repo" --json name --jq '.[].name' | grep -qx "$name"; then
+                existed=$((existed + 1))
+            else
+                echo "  failed to create: $name" >&2
+            fi
+        fi
+    done
+    echo "fleet-labels: $repo — $created created, $existed already existed"
+}
+
+# ----------------------------------------------------------------------
+# Determine which repos to sync
+# ----------------------------------------------------------------------
+
+REPOS=()
+if [[ -n "$TARGET_REPO" ]]; then
+    REPOS=("$TARGET_REPO")
+else
+    # Engine repo: discover from the script's own location
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    ENGINE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    if engine_slug=$(gh -R "$ENGINE_ROOT" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
+        REPOS+=("$engine_slug")
+    else
+        echo "fleet-labels: could not resolve engine repo slug from $ENGINE_ROOT" >&2
+    fi
+    # Game repo: optional
+    GAME_ROOT="$ENGINE_ROOT/creations/game"
+    if [[ -d "$GAME_ROOT/.git" ]] || [[ -f "$GAME_ROOT/.git" ]]; then
+        if game_slug=$(gh -R "$GAME_ROOT" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
+            REPOS+=("$game_slug")
+        fi
+    fi
+fi
+
+if [[ ${#REPOS[@]} -eq 0 ]]; then
+    echo "fleet-labels: no repos to sync." >&2
+    exit 1
+fi
+
+echo "fleet-labels: syncing ${#LABELS[@]} labels across ${#REPOS[@]} repo(s)..."
+[[ "$DRY_RUN" -eq 1 ]] && echo "  (dry run — no changes will be made)"
+echo
+
+for repo in "${REPOS[@]}"; do
+    echo "→ $repo"
+    ensure_label_for_repo "$repo"
+    echo
+done
+
+echo "fleet-labels: done."

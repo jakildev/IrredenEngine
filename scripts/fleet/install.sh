@@ -72,6 +72,8 @@ FLEET_RUN_SRC="$SCRIPT_DIR/fleet-run"
 FLEET_RUN_DEST="$HOME/bin/fleet-run"
 FLEET_BABYSIT_SRC="$SCRIPT_DIR/fleet-babysit"
 FLEET_BABYSIT_DEST="$HOME/bin/fleet-babysit"
+FLEET_LABELS_SRC="$SCRIPT_DIR/fleet-labels"
+FLEET_LABELS_DEST="$HOME/bin/fleet-labels"
 WITNESS_SRC="$SCRIPT_DIR/witness"
 WITNESS_DEST="$HOME/bin/witness"
 
@@ -83,7 +85,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_BABYSIT_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -120,6 +122,11 @@ fi
 if [[ -f "$FLEET_BABYSIT_SRC" ]]; then
     ln -sf "$FLEET_BABYSIT_SRC" "$FLEET_BABYSIT_DEST"
     echo "symlinked $FLEET_BABYSIT_DEST -> $FLEET_BABYSIT_SRC"
+fi
+
+if [[ -f "$FLEET_LABELS_SRC" ]]; then
+    ln -sf "$FLEET_LABELS_SRC" "$FLEET_LABELS_DEST"
+    echo "symlinked $FLEET_LABELS_DEST -> $FLEET_LABELS_SRC"
 fi
 
 if [[ -f "$WITNESS_SRC" ]]; then
