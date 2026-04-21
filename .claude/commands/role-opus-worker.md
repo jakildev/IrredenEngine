@@ -303,14 +303,19 @@ Do the work, then exit cleanly:
      resuming so commit-and-push targets the right repo (see step 4
      for the cd path).
 
-   - **Exit 1** — the molecule has no remaining work (every task is
-     `done` or `failed`). Archive it and release the stack-claim:
-     `fleet-claim molecule complete <your-worktree-name>`
-     (add `--repo game` for game-side molecules.) Then proceed with
-     the normal pickup flow.
-
-   - **Exit 2** — no molecule for this agent. Proceed with the normal
-     pickup flow below.
+   - **Exit 1** — nothing to resume. Two sub-cases collapse to this
+     exit code because they're handled the same way:
+     - No molecule exists for this agent (the common case — you
+       didn't leave a stack claim open last iteration).
+     - A molecule exists but every task is already `done` or
+       `failed`. If you see the latter, also run
+       `fleet-claim molecule complete <your-worktree-name>` (use
+       `fleet-claim --repo game molecule complete
+       <your-worktree-name>` for game-side — `--repo` is a global
+       flag parsed before the subcommand) to archive it. For the
+       former, you can tell by looking at whether stdout had the
+       "no molecule" message.
+     Either way, proceed with the normal pickup flow below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
    Look at both `/tmp/tasks-engine.md` and `/tmp/tasks-game.md`. Find
