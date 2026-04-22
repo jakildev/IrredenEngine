@@ -133,6 +133,75 @@ case "$ROLE" in
     *architect*) ARCHITECT_RESUME=1 ;;
 esac
 
+# --- Stream-formatted claude wrapper ---------------------------------------
+#
+# Workers run claude with `--print` so each iteration exits cleanly
+# (PR #257). The downside: `--print` with the default text output
+# buffers EVERYTHING and only emits at the very end — the pane looks
+# dead the whole time the agent is thinking, reading files, calling
+# tools, etc. Humans watching the fleet can't tell "agent is working"
+# from "agent is wedged" until the final dump lands.
+#
+# Fix: pair `--print` with `--output-format stream-json
+# --include-partial-messages --verbose`, then pipe through
+# fleet-claude-stream which renders the JSON event stream as readable
+# terminal text. `set -o pipefail` (set at the top of this script)
+# preserves claude's exit code through the pipe so the babysit
+# `last_exit` dispatch still works.
+#
+# Resolve fleet-claude-stream from PATH (post-install.sh) or fall back
+# to a sibling next to this script (pre-install.sh, or a worktree
+# running an unreleased version). If neither is present, fall through
+# to plain text output — the live-pane visibility regresses but the
+# fleet still functions.
+#
+# We can't use `readlink -f` for the sibling lookup: BSD readlink on
+# macOS doesn't support `-f`, so it would silently return the
+# unresolved symlink path (e.g. ~/bin/fleet-babysit) and dirname would
+# point at ~/bin, not the real scripts/fleet/. Walk the symlink chain
+# manually — same pattern as fleet-labels' resolve_symlink_chain.
+__resolve_real_path() {
+    local path="$1"
+    while [[ -L "$path" ]]; do
+        local target
+        target=$(readlink "$path")
+        if [[ "$target" = /* ]]; then
+            path="$target"
+        else
+            path="$(cd "$(dirname "$path")" && pwd)/$target"
+        fi
+    done
+    echo "$path"
+}
+__BABYSIT_DIR="$(dirname "$(__resolve_real_path "${BASH_SOURCE[0]}")")"
+
+if command -v fleet-claude-stream >/dev/null 2>&1; then
+    STREAM_FORMATTER="fleet-claude-stream"
+elif [[ -x "$__BABYSIT_DIR/fleet-claude-stream" ]]; then
+    STREAM_FORMATTER="$__BABYSIT_DIR/fleet-claude-stream"
+else
+    STREAM_FORMATTER=""
+fi
+
+stream_claude() {
+    # Both callers pass --print themselves (workers must one-shot exit
+    # so babysit can relaunch — see launch_worker_fresh comment block).
+    # If a future caller forgets --print, the formatter branch will
+    # error out (`--include-partial-messages` requires `--print`),
+    # which is the right failure mode — better than silently entering
+    # interactive limbo like the pre-PR-#257 bug.
+    if [[ -n "$STREAM_FORMATTER" ]]; then
+        claude --model "$MODEL" --effort "$EFFORT" \
+            --output-format stream-json --include-partial-messages --verbose \
+            "$@" | "$STREAM_FORMATTER"
+    else
+        # Fallback: plain claude with whatever the caller passed.
+        # `--print` from the caller stays put, so worker exit semantics
+        # are unchanged; only the live-pane visibility regresses.
+        claude --model "$MODEL" --effort "$EFFORT" "$@"
+    fi
+}
+
 # --- Launch helpers --------------------------------------------------------
 #
 # Two distinct lifecycles:
@@ -189,7 +258,14 @@ launch_worker_fresh() {
     # "one iteration = one claude process" model the babysit header
     # comment describes. Tool use still works under --print; the only
     # difference is no interactive prompt after the response completes.
-    claude --model "$MODEL" --effort "$EFFORT" --print "/role-$ROLE $MODE"
+    #
+    # The downside of `--print` alone is that text output is buffered
+    # to the very end — the pane looks dead the whole time the agent
+    # is thinking, calling tools, etc. We pipe through fleet-claude-stream
+    # to render the live event stream as readable text. `set -o pipefail`
+    # at the top of this script preserves claude's exit code through
+    # the pipe, so the babysit `last_exit` dispatch still works.
+    stream_claude --print "/role-$ROLE $MODE"
 }
 
 resume_mid_task() {
@@ -201,7 +277,7 @@ resume_mid_task() {
         claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
             "resume your work from where you left off"
     else
-        claude --model "$MODEL" --effort "$EFFORT" --print --continue "resume your work from where you left off"
+        stream_claude --print --continue "resume your work from where you left off"
     fi
 }
 
