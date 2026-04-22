@@ -105,6 +105,36 @@ if ! tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 # ----------------------------------------------------------------------
+# Shutdown sentinel — tell babysit loops to stop relaunching
+# ----------------------------------------------------------------------
+#
+# Every pane runs `fleet-babysit`, which has a relaunch loop: when
+# claude exits (clean or crash), babysit logs and sleeps then
+# relaunches. Without this sentinel, fleet-down's --wait/--summary
+# phase races against that relaunch cycle — agents that exited a few
+# seconds before fleet-down ran will have their LOOP_INTERVAL sleep
+# expire mid-shutdown, launching a fresh claude that then gets killed
+# mid-startup by kill-session. Wasteful (cost), confusing in
+# scrollback ("started up again, then got cut off"), and the partial
+# claude can leave orphaned `gh pr checkout` worktree adds, half-
+# initialized session caches, etc.
+#
+# Fix: create a sentinel file BEFORE --wait/--summary. babysit's loop
+# polls for it before each relaunch and exits cleanly when it
+# appears. By the time we reach kill-session, every babysit has
+# already exited and the panes are sitting at their bash prompts
+# waiting on the buffered `exit`.
+#
+# Cleanup happens via trap on EXIT — even if the script crashes or
+# the user double-Ctrl-Cs, the next fleet-up won't see a stale
+# sentinel that would prevent agents from ever launching. fleet-up
+# also clears it defensively at startup (belt-and-suspenders).
+SHUTDOWN_FLAG="${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
+mkdir -p "$(dirname "$SHUTDOWN_FLAG")"
+echo "$$ $(date '+%Y-%m-%dT%H:%M:%S%z')" > "$SHUTDOWN_FLAG"
+trap 'rm -f "$SHUTDOWN_FLAG"' EXIT
+
+# ----------------------------------------------------------------------
 # Ctrl-C trap: continue to graceful shutdown instead of bailing
 # ----------------------------------------------------------------------
 #

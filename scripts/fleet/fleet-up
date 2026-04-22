@@ -326,6 +326,15 @@ mkdir -p "$HOME/.fleet/plans"
 mkdir -p "$HOME/.fleet/heartbeats"
 mkdir -p "$HOME/.fleet/alerts"
 
+# Clear any stale shutdown sentinel left behind by a crashed fleet-down
+# (or one that was kill -9'd). fleet-down normally cleans this up via
+# its EXIT trap, but if the process died abnormally the file persists,
+# and every babysit launched below would see it and exit immediately
+# without ever running an iteration. Clearing here is belt-and-
+# suspenders against that "fleet appears up but no agent ever runs"
+# failure mode.
+rm -f "${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
+
 # ----------------------------------------------------------------------
 # Step 3c: ensure GitHub labels referenced by agents exist
 # ----------------------------------------------------------------------
