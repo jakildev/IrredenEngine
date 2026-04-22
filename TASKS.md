@@ -319,7 +319,7 @@ Avoid:
   - **Notes:** reference implementation to be promoted is `creations/demos/shape_debug/main.cpp` (~80 lines: ShotConfig, g_shots[], warmup/settle counters, AutoScreenshot render-pipeline system, CLI arg parsing). Shot struct needs: zoom, cameraIso, subdivisionMode, label. Engine only owns the cycling mechanism — every creation defines its own shot table. Keep the shot struct extensible (possible `std::function<void()> preShot` callback) but start with zoom/camera/mode. Soft dependency: T-026 (render-verify harness) expands cleanly once this lands.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/228
 
-- [~] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
+- [x] **GPU timer query infrastructure (Part 1)** — add per-pass GPU timer queries to the render pipeline and expose pass timings via a Lua API; foundation for the `optimize` skill and lighting-phase perf validation
   - **ID:** T-028
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
@@ -328,7 +328,7 @@ Avoid:
   - **Acceptance:** (1) per-pass GPU timer queries (`GL_TIME_ELAPSED` or `GL_TIMESTAMP`) instrument each render pipeline stage; (2) `ir.render.getPassTimings()` Lua API returns per-pass millisecond breakdown; (3) frame-time budget reporting defines 16.6ms (60fps) target and flags passes exceeding allocated share; (4) timer infrastructure is globally enable/disable (default off in release); (5) `optimize` skill's "GPU profiling" section updated to use this API; (6) builds clean on active preset
   - **Issue:** #173
   - **Notes:** Part 2 (benchmark harness + render-perf skill, [sonnet]) depends on Part 1's Lua API and should be filed as a separate issue+task once Part 1 merges — do not bundle both into one PR. Metal parity for timer infrastructure is a follow-up. OpenGL bindings (`glQueryCounter`/`GL_TIMESTAMP`) already exist in `engine/render/include/glad/glad.h` — no new GL extension needed. T-013 (sun shadows) and T-014 (flood-fill) are the first lighting phases that will need perf validation.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/237
 
 - [ ] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
   - **ID:** T-029
@@ -341,7 +341,7 @@ Avoid:
   - **Notes:** explicitly [opus] per issue — involves reviewer label-application logic, fleet startup scanning, and render-verify integration. v1: manual tag by reviewer is acceptable; auto-detection from diff can come later. Related: `backend-parity` skill covers structural GLSL↔MSL porting; this covers runtime-smoke validation after a port lands.
   - **Links:**
 
-- [~] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
+- [x] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
   - **ID:** T-030
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
@@ -350,9 +350,9 @@ Avoid:
   - **Acceptance:** (1) `review-pr/SKILL.md` re-review path fetches the prior review body and parses flagged file:line references from Blockers/Needs-fix/Nits sections; (2) for each flagged hunk, reads the file at HEAD and confirms whether the issue is still present; (3) new review explicitly states "verified fixed at <SHA>" for each resolved nit; (4) full fresh-eyes checklist runs only after prior-review verification step; (5) no false-positive re-flags of already-fixed issues in a manually-triggered re-review
   - **Issue:** #251
   - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit, no judgment calls on review substance. Root cause: re-reviewer re-ran full checklist without cross-checking author's fix commit, resulting in a hallucinated "still present" finding. Related skill: `request-re-review/SKILL.md`, `review-pr/SKILL.md` re-review section (~lines 246-258).
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/258
 
-- [~] **Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks** — capture a pre-rebase diff snapshot and compare it against the post-rebase state to surface any hunks git silently dropped during 3-way merge resolution
+- [x] **Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks** — capture a pre-rebase diff snapshot and compare it against the post-rebase state to surface any hunks git silently dropped during 3-way merge resolution
   - **ID:** T-031
   - **Area:** tooling, .claude/skills
   - **Model:** sonnet
@@ -361,7 +361,7 @@ Avoid:
   - **Acceptance:** (1) `commit-and-push/SKILL.md` captures `git diff origin/master` to `/tmp/fleet-prerebase.diff` before the rebase starts; (2) after rebase + conflict resolution, captures post-rebase diff and diffs the two; (3) any line present in pre-rebase but absent in post-rebase is surfaced to the agent before commit; (4) if the rebase was done without pre-capture, `commit-and-push` checks `git reflog` for a recent rebase and warns; (5) same pre/post check added to `merger` skill's conflict-resolution path
   - **Issue:** #252
   - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit. Root cause: git's 3-way merge silently dropped two `else { applyCheckerboard(...) }` branches from a non-conflicting section of a file that had a conflict elsewhere during the PR #238 rebase. Silent hunk loss is the most insidious rebase failure mode — the check is a commit-time safety net. Pre-capture must happen BEFORE the rebase or the guard cannot function retroactively.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/259
 
 - [ ] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
   - **ID:** T-032
@@ -382,9 +382,6 @@ Avoid:
 
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
-- [~] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
-- [~] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
-- [~] **T-031** — Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 
 ---
 
@@ -392,6 +389,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-031** — Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
+- [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
+- [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 - [x] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [x] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
 - [x] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
@@ -489,36 +489,4 @@ Avoid:
   - **Notes:** foundational data structure for all lighting — unblocked T-012, T-013, T-014, T-016 on merge.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/188
 
-- [x] **Skill: attach-screenshots foundation — engine demo support** — create `.claude/skills/attach-screenshots/SKILL.md` with capture flow for engine rendering PRs, committing before/after screenshots to `docs/pr-screenshots/<branch>/`
-  - **ID:** T-018
-  - **Area:** tooling, .claude/skills
-  - **Model:** opus
-  - **Owner:** skill-attach-screenshots
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `.claude/skills/attach-screenshots/SKILL.md` exists with documented API; (2) skill invokes `render-debug-loop` to capture before/after screenshots; (3) screenshots committed to `docs/pr-screenshots/<branch>/`; (4) skill returns markdown snippet with inline GitHub raw URLs; (5) fallback to `IRShapeDebug`; (6) failure modes reported cleanly; (7) tested end-to-end; (8) builds clean on active preset
-  - **Issue:** #186
-  - **Notes:** foundation task — T-019 and game T-003 were blocked on this; both unblocked now.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/194
-
-- [x] **Lighting: C_LightSource component and light type enum** — define LightType enum, C_LightSource and C_LightBlocker components in engine prefabs, with Lua bindings for creating and querying light source entities
-  - **ID:** T-017
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** prefabs-light-source-component
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) LightType enum (DIRECTIONAL, POINT, EMISSIVE, SPOT) in engine/prefabs/irreden/render/components/; (2) C_LightSource with type_, emitColor_, intensity_, radius_, direction_[3] defined; (3) C_LightBlocker with blocksLOS_, castsShadow_, opacity_ defined; (4) Lua bindings expose light source creation and configuration; (5) components registered in ECS and queryable by lighting systems; (6) builds clean on active preset
-  - **Issue:** #171
-  - **Notes:** explicitly [sonnet] in issue — component and enum definitions plus Lua binding boilerplate. No dependencies; lighting phases consume these components when ready.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/187
-
-- [x] **Lighting: screen-space lighting application pass** — insert a new `LIGHTING_TO_TRIXEL` pipeline stage that reads world-space lighting data (AO, shadows, flood-fill) and modulates the trixel canvas in screen-space, applying uniformly to voxels and shapes
-  - **ID:** T-011
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-lighting-to-trixel-stage
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) new pipeline stage `LIGHTING_TO_TRIXEL` inserted between last geometry stage and TRIXEL_TO_TRIXEL; (2) with no lighting data bound, pass is a no-op — existing rendering unchanged; (3) when lighting data is available, all voxel and shape canvas pixels are modulated; (4) GUI/UI elements are NOT modulated; (5) verified via render debug screenshot with/without pass; (6) builds clean on active preset
-  - **Issue:** #165
-  - **Notes:** ships as no-op skeleton; later phases activate it by binding AO/shadow/flood-fill data.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/185
 
