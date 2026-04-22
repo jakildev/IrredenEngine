@@ -56,6 +56,7 @@ bool g_depthColor = false;
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f;  // 0 = use engine default
+IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 
 } // namespace
 
@@ -85,6 +86,11 @@ int main(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--debug-overlay") == 0) {
+            if (i + 1 < argc) {
+                g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
+                ++i;
+            }
         }
     }
 
@@ -101,6 +107,9 @@ int main(int argc, char **argv) {
         vec2 actualZoom = IRRender::getCameraZoom();
         IR_LOG_INFO("Initial zoom: requested={}, actual={} (snapped to nearest power of two)",
                     g_initialZoom, actualZoom.x);
+    }
+    if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
+        IRRender::setDebugOverlay(g_debugOverlay);
     }
     IREngine::gameLoop();
     return 0;

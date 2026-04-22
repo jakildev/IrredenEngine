@@ -14,6 +14,9 @@ struct FrameDataLightingToTrixel {
     int   lutEnabled;
     int   lightVolumeEnabled;
     float debugLightLevel;
+    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
+    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
+    int   debugOverlayMode;
 };
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
@@ -55,6 +58,22 @@ kernel void c_lighting_to_trixel(
     const float  ao     = canvasAO.read(uint2(pixel)).r;
     const float  shadow = canvasSunShadow.read(uint2(pixel)).r;
     const float4 src    = trixelColors.read(uint2(pixel));
+
+    // Debug overlay short-circuits artistic shading and paints a false-
+    // color representation of the selected lighting buffer.
+    if (frameData.debugOverlayMode != 0) {
+        float3 debugColor = float3(0.0f);
+        if (frameData.debugOverlayMode == 1) {
+            debugColor = float3(1.0f - ao, ao, 0.0f);
+        } else if (frameData.debugOverlayMode == 2) {
+            const float level = ao * shadow;
+            debugColor = float3(level, level, 1.0f);
+        } else {
+            debugColor = shadow >= 0.999f ? float3(0.0f) : float3(1.0f, 0.0f, 1.0f);
+        }
+        trixelColors.write(float4(debugColor, src.a), uint2(pixel));
+        return;
+    }
 
     float3 baseRgb;
     if (frameData.lutEnabled == 0) {

@@ -218,6 +218,17 @@ void setSunDirection(vec3 dir);
 vec3 getSunDirection();
 /// @}
 
+/// @{
+/// @name Lighting debug overlay
+/// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
+/// color visualization of the underlying lighting buffers. See
+/// @c DebugOverlayMode for the per-mode color encoding. Upstream lighting
+/// passes (@c COMPUTE_VOXEL_AO, @c COMPUTE_SUN_SHADOW) keep running so the
+/// values rendered are exactly what the artistic path would consume.
+void setDebugOverlay(DebugOverlayMode mode);
+DebugOverlayMode getDebugOverlay();
+/// @}
+
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */

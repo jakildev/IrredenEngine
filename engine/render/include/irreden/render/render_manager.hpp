@@ -70,6 +70,9 @@ class RenderManager {
     void setSunDirection(vec3 dir);
     vec3 getSunDirection() const;
 
+    void setDebugOverlay(DebugOverlayMode mode);
+    DebugOverlayMode getDebugOverlay() const;
+
     void beginFrame();
     void renderFrame();
     void presentFrame();
@@ -131,6 +134,7 @@ class RenderManager {
     // overhead-lit; creations override via setSunDirection() per frame or
     // at init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
     vec3 m_sunDirection = vec3(0.0f, 1.0f, 0.0f);
+    DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 
     void initRenderingSystems();
     void initRenderingResources();

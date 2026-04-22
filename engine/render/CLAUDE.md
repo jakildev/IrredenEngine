@@ -220,6 +220,31 @@ shadow-ring from invariant #2.
 **Check:** resident chunk set calculation includes this guard band when chunk
 streaming is introduced.
 
+## Lighting debug overlay
+
+`IRRender::setDebugOverlay(DebugOverlayMode)` swaps the artistic
+composite in `LIGHTING_TO_TRIXEL` for a false-color visualization of
+the underlying lighting buffer. Use it when triaging a lighting bug
+where the per-pixel input value is suspect — the overlay exposes the
+exact scalar that the artistic path would multiply, so you can tell
+whether the issue is in the buffer producer (`COMPUTE_VOXEL_AO`,
+`COMPUTE_SUN_SHADOW`) or in the composite itself.
+
+Modes:
+
+- `AO` — red→green gradient of the AO factor (red = fully occluded,
+  green = fully unoccluded).
+- `LIGHT_LEVEL` — combined `ao × shadow` scalar painted blue→white
+  (blue = dark, white = bright).
+- `SHADOW` — directional sun-shadow occupancy (black = lit, magenta
+  = shadowed).
+
+Upstream passes keep running; only the final composite is replaced.
+GUI pixels are unaffected because the GUI canvas early-returns out
+of the lighting pass. Invoke from a creation via the engine API
+(`IRRender::setDebugOverlay`) or in `shape_debug` via
+`--debug-overlay <none|ao|light_level|shadow>`.
+
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like
