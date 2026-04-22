@@ -155,6 +155,8 @@ relocated in the T-034 / T-035 / T-036 refactor stack:
 | Debug overlay | `IRRender::setDebugOverlay` / `getDebugOverlay` | T-035 (PR #235) |
 | Fog-of-war | `IRRender::setFogCell` / `getFogCell` / `revealRadius` / `clearFogOfWar` | T-034 (PR #238) |
 
+When a tracking task's PR merges, remove the corresponding row from this table.
+
 ## Verifying render changes
 
 Rendering bugs rarely show up in the type checker or the test suite. Any

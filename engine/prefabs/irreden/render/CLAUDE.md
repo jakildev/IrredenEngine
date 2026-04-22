@@ -53,9 +53,10 @@ fog.setState(worldX, worldY, kFogStateVisible);
 
 **Pattern B — prefab-scoped free-function namespace.** A header in this
 directory (e.g. `fog_of_war.hpp`) exposes a namespace such as `IRPrefab::Fog::`
-that internally performs the entity-lookup logic. Keeps an ergonomic
-free-function shape without putting the feature into `IRRender::` or adding
-fields to `RenderManager`.
+(declared in the feature's own header; name it anything that doesn't collide
+with `IRRender::`) that internally performs the entity-lookup logic. Keeps an
+ergonomic free-function shape without putting the feature into `IRRender::` or
+adding fields to `RenderManager`.
 
 ```cpp
 // Header exposes a namespace; callers do not need to hold the entity.
