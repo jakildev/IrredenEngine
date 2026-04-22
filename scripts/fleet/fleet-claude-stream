@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+# fleet-claude-stream — render `claude --print --output-format stream-json
+# --include-partial-messages --verbose` into readable terminal text for
+# tmux panes.
+#
+# Why this exists:
+#   Workers run with `--print` so each task iteration is a fresh,
+#   one-shot `claude` process that exits when done (PR #257). But
+#   `--print` with the default text output buffers EVERYTHING and
+#   only emits at the very end — the pane looks dead the whole time
+#   the agent is thinking, reading files, calling tools, etc. Humans
+#   watching the fleet can't tell "agent is working" from "agent is
+#   wedged" until the final dump lands several minutes later.
+#
+#   `stream-json` gives us live events but is a wall of JSON lines,
+#   useless for human eyeballs. This formatter sits between them and
+#   renders only what's actually informative: the model's text deltas
+#   inline, tool calls with truncated args, tool results with truncated
+#   previews, and a one-line cost/duration summary at the end.
+#
+# Usage (in fleet-babysit):
+#   claude --print --output-format stream-json \
+#          --include-partial-messages --verbose ... | fleet-claude-stream
+#
+# `set -o pipefail` in the caller preserves claude's exit code through
+# the pipe so babysit's last_exit-driven relaunch logic still works.
+#
+# Source of truth: scripts/fleet/fleet-claude-stream in the engine repo.
+# Installed to ~/bin/fleet-claude-stream by scripts/fleet/install.sh.
+
+import json
+import sys
+
+# ANSI: dim/colors gracefully no-op in non-tty (we still keep them — tmux
+# panes always have a tty, and a plain `tee` of the pipe will show the
+# escape codes raw, which is acceptable since this is a tmux-pane tool).
+DIM, RESET = "\033[2m", "\033[0m"
+RED, GREEN, YELLOW = "\033[31m", "\033[32m", "\033[33m"
+BLUE, CYAN = "\033[34m", "\033[36m"
+
+INPUT_PREVIEW_LEN = 100   # truncate tool inputs to this many chars
+RESULT_PREVIEW_LEN = 200  # truncate tool results to this many chars
+
+
+def emit(s):
+    sys.stdout.write(s)
+    sys.stdout.flush()
+
+
+def short(value, n):
+    """Stringify and truncate a value for inline display."""
+    if isinstance(value, (dict, list)):
+        s = json.dumps(value, separators=(",", ":"))
+    else:
+        s = str(value)
+    s = s.replace("\n", "\\n")
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def handle_assistant(event):
+    """Tool calls (text blocks are already streamed via deltas)."""
+    msg = event.get("message", {})
+    for block in msg.get("content", []):
+        if block.get("type") == "tool_use":
+            name = block.get("name", "?")
+            inp = short(block.get("input", {}), INPUT_PREVIEW_LEN)
+            emit(f"\n{BLUE}▸ {name}({inp}){RESET}\n")
+
+
+def handle_user(event):
+    """Tool results from the previous turn (between assistant turns)."""
+    msg = event.get("message", {})
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return
+    for block in content:
+        if block.get("type") == "tool_result":
+            inner = block.get("content")
+            if isinstance(inner, list):
+                # Anthropic returns tool_result.content as a list of blocks
+                text = "".join(b.get("text", "") for b in inner if isinstance(b, dict))
+            elif isinstance(inner, str):
+                text = inner
+            else:
+                text = ""
+            preview = short(text, RESULT_PREVIEW_LEN) if text else "(no output)"
+            color = RED if block.get("is_error") else DIM
+            emit(f"{color}  ⎿ {preview}{RESET}\n")
+
+
+def handle_stream_event(event):
+    """Inline text/thinking deltas (the live-typing visibility)."""
+    evt = event.get("event", {})
+    et = evt.get("type")
+    if et == "content_block_delta":
+        delta = evt.get("delta", {})
+        dt = delta.get("type")
+        if dt == "text_delta":
+            emit(delta.get("text", ""))
+        elif dt == "thinking_delta":
+            # Render thinking as dimmed inline text so it visually folds
+            # into the response stream rather than dominating the pane.
+            emit(f"{DIM}{delta.get('thinking', '')}{RESET}")
+
+
+def handle_result(event):
+    cost = event.get("total_cost_usd", 0) or 0
+    dur_s = (event.get("duration_ms", 0) or 0) / 1000
+    turns = event.get("num_turns", 0)
+    is_err = event.get("is_error", False)
+    subtype = event.get("subtype", "?")
+    color = RED if is_err else GREEN
+    emit(f"\n{color}[done {subtype} turns={turns} ${cost:.4f} {dur_s:.1f}s]{RESET}\n")
+    if is_err and event.get("result"):
+        emit(f"{RED}{event['result']}{RESET}\n")
+
+
+def main():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            # Pass through anything that isn't JSON (e.g. claude wrapper
+            # warnings). Better to over-show than swallow useful errors.
+            emit(line + "\n")
+            continue
+
+        t = event.get("type")
+        if t == "system":
+            sub = event.get("subtype")
+            if sub == "init":
+                model = event.get("model", "?")
+                cwd = event.get("cwd", "?").rsplit("/", 1)[-1]
+                sess = (event.get("session_id") or "?")[:8]
+                emit(f"{DIM}[claude {model} sess={sess} cwd={cwd}]{RESET}\n")
+        elif t == "rate_limit_event":
+            info = event.get("rate_limit_info", {})
+            util = info.get("utilization", 0)
+            rl_type = info.get("rateLimitType", "?")
+            emit(f"\n{YELLOW}[rate-limit {rl_type} util={util:.0%}]{RESET}\n")
+        elif t == "stream_event":
+            handle_stream_event(event)
+        elif t == "assistant":
+            handle_assistant(event)
+        elif t == "user":
+            handle_user(event)
+        elif t == "result":
+            handle_result(event)
+        # else: silently drop status pings, message envelopes, etc.
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (BrokenPipeError, KeyboardInterrupt):
+        # Pane closed or ctrl-c'd mid-stream. Exit cleanly so the upstream
+        # claude process's exit code is what `set -o pipefail` reports.
+        sys.exit(0)
