@@ -201,6 +201,23 @@ iteration of polling, reviewing, and exiting cleanly:
    without a label after the skill returns, run the gh pr edit yourself
    immediately. Don't assume the skill did it.
 
+   **Cross-host smoke tagging (engine PRs only).** After the verdict
+   label is set, check whether the PR's diff touches any render path:
+   `engine/render/`, `engine/prefabs/irreden/render/`, any `*.glsl`,
+   any `*.metal`, or any file under `engine/render/src/shaders/`. Use
+   `gh pr diff <N> --name-only` to read the changed paths. If any path
+   matches, add BOTH smoke labels so both hosts pick the PR up for
+   validation:
+   `gh pr edit <N> --add-label "fleet:needs-linux-smoke" --add-label "fleet:needs-macos-smoke"`
+   Each host's author agents (opus-worker, sonnet-author) poll for the
+   label matching their host, run a clean-checkout build + `IRShapeDebug`
+   smoke, and remove the label on success. The PR cannot be safely
+   merged until both labels are gone. Skip this step for game-repo PRs
+   — cross-host smoke applies to engine backends only. Skip for
+   non-render engine PRs (tooling, docs, non-render modules) — the
+   labels exist to narrow the "did this port build on the other
+   backend" question, not as general CI.
+
    **Nits vs real issues — the bright line:**
    - **Approve with nits** is fine for genuinely-optional cosmetic
      items (naming style, comment wording, import order, minor

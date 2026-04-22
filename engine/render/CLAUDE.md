@@ -183,6 +183,39 @@ Exceptions: pure header-doc edits, string-literal fixes, and internal
 refactors with provably no runtime effect can skip the loop. When in
 doubt, run it — a missing screenshot pair is a fast reviewer-rejection.
 
+### Cross-host smoke validation
+
+Render PRs are almost always authored on only one host (Linux/OpenGL
+via the fleet, or macOS/Metal). The other backend's build and smoke
+are not exercised until a fleet agent on that host picks the PR up.
+The `fleet:needs-linux-smoke` and `fleet:needs-macos-smoke` labels
+tally outstanding cross-host validation so no render PR merges
+unvalidated on either backend.
+
+**Tagging.** When a fleet reviewer (sonnet-reviewer or opus-reviewer)
+approves an engine PR whose diff touches `engine/render/`,
+`engine/prefabs/irreden/render/`, `engine/render/src/shaders/`, or
+any `*.glsl` / `*.metal` file, it adds BOTH labels alongside the
+verdict label. The reviewer cannot tell which host the PR was
+authored on, so it tags both and lets each host's agents clear
+their own.
+
+**Validation.** Each host's author agents (opus-worker, sonnet-author)
+poll for the label matching their host at the start of each loop
+iteration, before picking new work. They check out the PR, run
+`fleet-build --target IRShapeDebug`, run
+`fleet-run IRShapeDebug --auto-screenshot 10`, and on success remove
+their label and post a confirmation comment. On failure they add
+`fleet:needs-fix` and leave the smoke label in place.
+
+**Merge gating.** The human holds the merge while either label
+persists. Both labels must be gone for the PR to be safe to merge.
+
+Skip the smoke flow for game-repo PRs (the game's render pipeline
+uses the engine's backend — cross-host applies at engine level) and
+for non-render engine PRs (tooling, docs, non-render modules — these
+don't exercise backends and don't benefit from cross-host smoke).
+
 ## Lighting culling invariants
 
 The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in

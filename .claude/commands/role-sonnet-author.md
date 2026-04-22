@@ -163,6 +163,56 @@ Each iteration:
 
    Address all flagged PRs before picking new work.
 
+1b. **Smoke-validate one cross-host render PR (engine only).** After
+    feedback PRs are clear, check whether any open engine PR is waiting
+    on a smoke validation from this host. Derive the host key from
+    `uname -s`:
+    - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
+    - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
+
+    ```
+    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown" and . != "human:needs-fix")) | "#\(.number) \(.title) (\(.headRefName))"'
+    ```
+
+    The filter keeps only PRs that are approved, not flagged for
+    fixes, and not claimed by the human. If the list is empty, skip
+    to step 2. Otherwise, pick the oldest (smallest number), then:
+    a. Re-touch heartbeat (`fleet-heartbeat sonnet-fleet-1`) — the
+       build can take minutes and you don't want the witness to alarm.
+    b. Check out the PR: `gh pr checkout <N> --repo jakildev/IrredenEngine`
+    c. Build the demo smoke target: `fleet-build --target IRShapeDebug`.
+       If the PR breaks that build, the smoke has failed — jump to
+       step f with the build log.
+    d. Run the smoke: `fleet-run IRShapeDebug --auto-screenshot 10`.
+       The `10` is warmup-frame count; the creation's shot table
+       decides how many screenshots are taken, and `IRWindow::closeWindow()`
+       fires once they're done. Usually completes in 10–20 seconds.
+       Don't add `--timeout` — `fleet-run --timeout` reports "alive at
+       deadline" as success, which would mask an `--auto-screenshot`
+       hang.
+    e. If build + run both succeeded (no nonzero exit, no crash):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-<host>-smoke"`
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke OK on <host> (fresh checkout build + IRShapeDebug --auto-screenshot 10)."`
+    f. If build or run failed: leave the smoke label on, post a
+       comment describing the failure, and add `fleet:needs-fix`:
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
+    g. Reset to scratch branch before continuing:
+       `git checkout -B claude/sonnet-fleet-1-scratch origin/master`
+
+    Validate ONE PR per iteration. Multiple outstanding render PRs
+    are handled across successive iterations so task pickup isn't
+    starved by back-to-back smoke runs.
+
+    A Sonnet agent's host-smoke pass catches build breakage, nonzero
+    exit, crashes, and shader-compile errors in the run's stdout/stderr.
+    It does NOT inspect the generated screenshots — visual regressions
+    (missing voxels, inverted colors, black-but-exiting-clean) need
+    human or opus-worker eyes. If the run log mentions shader-compile
+    warnings/errors but still exits zero, escalate: comment "smoke run
+    exited clean but log flagged compile warnings; flagging for Opus
+    recheck" and leave the smoke label on so opus-worker re-validates.
+
 2. **Resume an active molecule first, then pick the next task.**
 
    Before reading TASKS.md, check whether you have an in-flight

@@ -103,6 +103,8 @@ LABELS=(
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
+    "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
+    "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"
     "human:wip|5319e7|Human is editing the PR directly; agents stand off"
     "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"

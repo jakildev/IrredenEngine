@@ -347,6 +347,51 @@ label tells the author "you've been approved, and there are nits to
 clean up before this lands" — author roles poll for it and address
 the nits without losing the approval.
 
+### 5c. Tag render PRs for cross-host smoke validation
+
+Engine render PRs get built and run on whichever backend the author
+happened to be using (OpenGL on Linux, or Metal on macOS). The other
+backend's build + smoke path is not exercised until a fleet agent on
+that host picks the PR up. The `fleet:needs-<host>-smoke` labels
+surface that outstanding work so no render PR merges unvalidated on
+either backend.
+
+After setting the verdict label in 5b, check the diff's file paths:
+
+```bash
+gh pr diff <N> --name-only
+```
+
+If any path matches **any** of these, add both smoke labels:
+
+- `engine/render/`
+- `engine/prefabs/irreden/render/`
+- `engine/render/src/shaders/`
+- any `*.glsl` file
+- any `*.metal` file
+
+```bash
+gh pr edit <N> --add-label "fleet:needs-linux-smoke" --add-label "fleet:needs-macos-smoke"
+```
+
+Each host's author agents (opus-worker, sonnet-author) poll for the
+label matching their host, run a clean-checkout build + `IRShapeDebug`
+smoke, and remove the label on success. While either label persists,
+the human should hold the merge — that's the whole point of the
+tally.
+
+**Skip the tagging step for:**
+
+- Game-repo PRs — the game's render pipeline uses the engine's
+  backend, so cross-host applies at engine level only.
+- Non-render engine PRs (tooling, docs, `.claude/`, non-render
+  modules like `engine/system/`) — these don't exercise backends and
+  don't benefit from cross-host smoke.
+
+If both labels are already present from a prior reviewer pass, no
+action needed — the `--add-label` call is a no-op when the label is
+already set.
+
 ### 6. Report back
 
 Reply with a compact summary to the calling session:
