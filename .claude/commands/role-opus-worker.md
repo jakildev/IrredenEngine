@@ -196,6 +196,49 @@ Do the work, then exit cleanly:
 
    Address all flagged PRs before doing any other work.
 
+1b. **Smoke-validate one cross-host render PR (engine only).** After
+    feedback PRs are clear, check whether any open engine PR is waiting
+    on a smoke validation from this host. Derive the host key from
+    `uname -s`:
+    - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
+    - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
+
+    ```
+    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown")) | "#\(.number) \(.title) (\(.headRefName))"'
+    ```
+
+    The filter keeps only PRs that are approved, not flagged for
+    fixes, and not claimed by the human. If the list is empty, skip
+    to step 2. Otherwise, pick the oldest (smallest number), then:
+    a. Re-touch heartbeat (`fleet-heartbeat <your-worktree-basename>`)
+       — the build can take minutes and you don't want the witness to
+       alarm.
+    b. Check out the PR: `gh pr checkout <N> --repo jakildev/IrredenEngine`
+    c. Build the demo smoke target: `fleet-build --target IRShapeDebug`.
+       If the PR breaks that build, the smoke has failed — jump to
+       step f with the build log.
+    d. Run the smoke: `fleet-run IRShapeDebug --auto-screenshot 10`.
+       The `10` is warmup-frame count; the creation's shot table
+       decides how many screenshots are taken, and `IRWindow::closeWindow()`
+       fires once they're done. Usually completes in 10–20 seconds.
+       Don't add `--timeout` — `fleet-run --timeout` reports "alive at
+       deadline" as success, which would mask an `--auto-screenshot`
+       hang.
+    e. If build + run both succeeded (no nonzero exit, no crash):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-<host>-smoke"`
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke OK on <host> (fresh checkout build + IRShapeDebug --auto-screenshot 10)."`
+    f. If build or run failed: leave the smoke label on (human/author
+       needs to fix the backend issue), post a comment describing the
+       failure, and add `fleet:needs-fix`:
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --add-label "fleet:needs-fix"`
+    g. Reset to scratch branch before continuing:
+       `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
+
+    Validate ONE PR per iteration. Multiple outstanding render PRs
+    are handled across successive iterations so task pickup isn't
+    starved by back-to-back smoke runs.
+
 2. **Plan any `fleet:needs-plan` issues on either repo.**
    `gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
    `gh issue list --repo jakildev/irreden       --label "fleet:needs-plan" --state open --json number,title,body,comments`

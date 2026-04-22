@@ -154,6 +154,22 @@ iteration of polling, reviewing, and exiting cleanly:
       - Verdict needs-fix → `fleet:needs-fix`
       - Verdict blocker → `fleet:blocker`
 
+   **Cross-host smoke tagging (engine PRs only).** After the verdict
+   label is set, check whether the PR's diff touches any render path:
+   `engine/render/`, `engine/prefabs/irreden/render/`, any `*.glsl`,
+   any `*.metal`, or any file under `engine/render/src/shaders/`. Use
+   `gh pr diff <N> --name-only` to read the changed paths. If any path
+   matches, add BOTH smoke labels so both hosts pick the PR up for
+   validation:
+   `gh pr edit <N> --add-label "fleet:needs-linux-smoke" --add-label "fleet:needs-macos-smoke"`
+   Each host's author agents poll for the label matching their host,
+   run a clean-checkout build + `IRShapeDebug` smoke, and remove the
+   label on success. The PR cannot be safely merged until both labels
+   are gone. Skip for game-repo PRs and non-render engine PRs — the
+   labels narrow the "did this port build on the other backend"
+   question, not general CI. If Sonnet already added the labels on
+   first pass, no action needed.
+
    **Nits vs real issues — the bright line:**
    - **Approve with nits** is fine for genuinely-optional improvements
      (naming, wording, formatting, optional asserts, follow-up
