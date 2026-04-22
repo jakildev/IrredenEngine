@@ -220,7 +220,7 @@ Avoid:
   - **Notes:** BFS on 6-connected voxel grid; take component-wise max from all incoming light. Skylight: O(height) sweep per column using columnar span lists from occupancy grid. Start with CPU BFS; profile and move to GPU wavefront BFS (ping-pong SSBOs) if needed. C_LightSource { Color emitColor; uint8_t radius; LightType type; } — emissive entities are seeds. Taxicab (L1) distance falloff is intentional aesthetic.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/232
 
-- [~] **Lighting: fog of war render pass (Phase 5 engine side)** — render fog-of-war overlay from a 2D visibility texture with LOS ray casting against the occupancy grid, exploiting the fixed iso camera angle for efficient depth calculation
+- [x] **Lighting: fog of war render pass (Phase 5 engine side)** — render fog-of-war overlay from a 2D visibility texture with LOS ray casting against the occupancy grid, exploiting the fixed iso camera angle for efficient depth calculation
   - **ID:** T-016
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
@@ -229,7 +229,7 @@ Avoid:
   - **Acceptance:** (1) fog texture renders over scene, darkening fogged/unexplored areas; (2) LOS ray casting returns correct results against occupancy grid; (3) heightmap-aware: units cannot see over hills; (4) solid voxels block LOS, characters and small objects don't; (5) smooth fog edges via blur; (6) Lua API: setFogCell, getFogCell, castLOS, revealRadius, fadeExplored callable; (7) render debug screenshot: fog visible, LOS blocking correct; (8) fog update + render < 1ms for typical map sizes; (9) builds clean on active preset
   - **Issue:** #170
   - **Notes:** fixed isometric camera enables O(1)-per-ray LOS — exploit winning depth at the iso-projected angle, not naive 3D ray march. Fog texture: 2D R8 (unexplored=0, explored-fogged=128, visible=255). Heightmap-aware LOS via columnar span lists from occupancy grid. Fog in TRIXEL_TO_TRIXEL or dedicated FOG_TO_TRIXEL pass. Visible=no-op, explored=desaturate+darken, unexplored=black. Game-side integration: jakildev/irreden#21.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/238
 
 - [x] **Skill: wire attach-screenshots into engine author roles and commit-and-push** — update `role-sonnet-author.md`, `role-opus-worker.md`, and `commit-and-push` skill to conditionally invoke `attach-screenshots` before committing visual changes
   - **ID:** T-019
@@ -381,7 +381,6 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
-- [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [~] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
 
 ---
@@ -390,6 +389,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 - [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
@@ -468,16 +468,5 @@ Avoid:
   - **Issue:** #169
   - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/198
-
-- [x] **Lighting: per-face voxel ambient occlusion (Phase 1)** — compute per-pixel AO values from the 3D occupancy grid for all visible voxel faces and write to an AO texture consumed by the lighting application pass
-  - **ID:** T-012
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-ao-phase1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) AO values computed from occupancy grid for all visible voxel faces; (2) darkened creases visible between adjacent voxels at voxel junctions; (3) shapes in occupancy grid also receive AO; (4) render debug screenshot: with/without AO shows visible darkening; (5) performance < 0.5ms added per frame at typical voxel counts; (6) builds clean on active preset
-  - **Issue:** #166
-  - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/197
 
 
