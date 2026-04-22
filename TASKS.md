@@ -374,6 +374,50 @@ Avoid:
   - **Notes:** [sonnet] per issue — mechanical deletion plus smoke-test build. Must NOT be merged before the game-side midi port PR has merged (the port moves the creation to the game repo; if the engine copy disappears first, the IRMidiPolyrhythm target vanishes entirely until the game PR lands). Worker should verify the game port is live before opening this PR.
   - **Links:**
 
+- [ ] **engine/render CLAUDE.md: install layering principle between render and prefabs** — add "What belongs in engine/render/ vs engine/prefabs/irreden/render/" and "Exposing system public API from the prefab layer" sections, cross-referenced, listing the three current violations
+  - **ID:** T-033
+  - **Area:** docs, engine/render, engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/render/CLAUDE.md` gains "What belongs in engine/render/ vs engine/prefabs/irreden/render/" section; (2) `engine/prefabs/irreden/render/CLAUDE.md` gains "Exposing system public API from the prefab layer" with Pattern A and Pattern B code sketches; (3) sections cross-reference each other; (4) "Current deviations" subsection lists sun, debug overlay, fog-of-war violations; (5) build clean on active preset
+  - **Issue:** (none)
+  - **Notes:** doc-only PR, first in a 4-task stack from issue #266. Principle: `engine/render/` owns graphics primitives; feature state/API (fog, overlay, lighting) belongs in `engine/prefabs/irreden/render/`. Violations to list: `setSunDirection`/`getSunDirection` (T-013, PR #210), `setDebugOverlay`/`getDebugOverlay` (T-025, PR #235), `setFogCell`/`clearFogOfWar` etc. (T-016, PR #238).
+  - **Links:**
+
+- [ ] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
+  - **ID:** T-034
+  - **Area:** engine/render, engine/prefabs/irreden/render, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-033
+  - **Acceptance:** (1) fog API free functions removed from `IRRender::` and `ir_render.cpp` no longer references fog state; (2) fog API exposed from prefab-scoped surface; (3) all callers updated (Lua bindings, `shape_debug/main.cpp`); (4) build clean on `linux-debug` and `macos-debug`; (5) `render-debug-loop` on `shape_debug` shows visually identical fog behavior
+  - **Issue:** (none)
+  - **Notes:** second in 4-task stack from issue #266. Known caller: `creations/demos/shape_debug/main.cpp:542`. Lua bindings forward fog calls to `IRRender::` — both must be updated together. Check existing prefab namespaces before picking `IRPrefab::Fog::` — use whatever convention is already established.
+  - **Links:**
+
+- [ ] **Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace** — remove `setDebugOverlay`/`getDebugOverlay` from `IRRender::`, delete `m_debugOverlayMode` from `RenderManager`; expose from a prefab-scoped surface
+  - **ID:** T-035
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-034
+  - **Acceptance:** (1) `setDebugOverlay`/`getDebugOverlay` removed from `IRRender::` and `RenderManager`; `m_debugOverlayMode` deleted; (2) API exposed from prefab-scoped surface or singleton component; (3) all callers updated (Lua bindings, C++ call sites); (4) build clean on both backends; (5) `render-debug-loop` shows identical debug overlay behavior
+  - **Issue:** (none)
+  - **Notes:** third in 4-task stack from issue #266. Overlay mode introduced in T-025 (PR #235). Use the prefab pattern established by T-034.
+  - **Links:**
+
+- [ ] **Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace** — remove `setSunDirection`/`getSunDirection` from `IRRender::`, delete `m_sunDirection` from `RenderManager`; relocate to prefab-scoped surface tied to the directional-light entity
+  - **ID:** T-036
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-035
+  - **Acceptance:** (1) `setSunDirection`/`getSunDirection` removed from `IRRender::` and `RenderManager`; `m_sunDirection` deleted; (2) pipeline reads sun direction from new prefab home; (3) all callers updated; (4) build clean on both backends; (5) `render-debug-loop` shows identical sun lighting/shadow behavior at multiple sun angles
+  - **Issue:** #266
+  - **Notes:** fourth (final) in 4-task stack from issue #266. New home likely tied to `C_LightSource` entities or a sibling prefab header. This PR's body should include `Closes #266`. Sun state is most shader-adjacent — do last so T-034/T-035 have established the prefab pattern.
+  - **Links:**
+
 ---
 
 ## In progress
