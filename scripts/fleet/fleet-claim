@@ -917,7 +917,8 @@ if action == 'advance':
 if action == 'resume':
     # Find the first task that is in-progress (resume in place) or
     # the first pending (start it). Print the task ID on stdout.
-    # Exit 0 if a task was returned, exit 1 if molecule is fully done.
+    # Always exits 0 — see cmd_molecule_resume in the bash wrapper for
+    # the contract rationale (stdout-as-task-id, empty=no-work).
     in_prog = next((t for t in tasks if t.get('state') == 'in-progress'), None)
     if in_prog is not None:
         print(in_prog['id'])
@@ -929,9 +930,10 @@ if action == 'resume':
         emit(path, meta, tasks, notes)
         print(pending['id'])
         sys.exit(0)
-    # Nothing left to do — every task is done or failed.
-    print("", end='')
-    sys.exit(1)
+    # Nothing left to do — every task is done or failed. Empty stdout
+    # signals "no work to resume"; the human-visible note goes to stderr.
+    print("molecule fully complete (no remaining tasks)", file=sys.stderr)
+    sys.exit(0)
 
 print(f"unknown action: {action}", file=sys.stderr)
 sys.exit(2)
@@ -993,29 +995,33 @@ cmd_molecule_show() {
 }
 
 cmd_molecule_resume() {
-    # Mark the next pending task as in-progress and print its ID.
-    # Exit 0 if a task was returned (worker should pick it up).
-    # Exit 1 if there is nothing to resume — either no molecule exists
-    # at all, or the molecule has no remaining work. In both cases the
-    # worker should just move on to normal task pickup; "no molecule"
-    # is the overwhelming common case for opus-worker startup and is
-    # NOT an error.
-    # Exit 2 is reserved for usage errors (bad args, etc.).
+    # Print the next task ID to resume on stdout, or print nothing if
+    # there's no work. Always exits 0 unless the molecule yaml itself
+    # is malformed (in which case molecule_python prints to stderr and
+    # exits 2 — that bubbles up here and is a real error worth seeing).
+    #
+    # Contract for callers (agents reading role docs, shell scripts):
+    #   stdout=T-NNN, exit 0    → resume that task
+    #   stdout="",     exit 0    → no molecule, or molecule fully done; move on
+    #   exit non-zero            → real error (malformed yaml, etc.)
+    #
+    # History: previously returned exit 1 for the "no molecule" + "all
+    # done" cases to let shell `if` chains discriminate. Switched to
+    # the empty-stdout idiom because Claude Code's parallel tool batch
+    # cancels subsequent tools in the same message when ANY tool exits
+    # non-zero — agents calling this in a startup batch alongside
+    # `git fetch`, `gh pr list`, etc. were getting their parallel
+    # batches cancelled mid-startup. The informational "no molecule"
+    # message moved to stderr so it stays visible to humans without
+    # corrupting the stdout-as-task-id channel.
     local agent="$1"
     local file
     file=$(molecule_file "$agent")
     if [[ ! -f "$file" ]]; then
-        # Print to stdout (informational), not stderr (error). Keep the
-        # message so a human running it interactively still sees the
-        # signal, but don't make it look like a failure.
-        echo "no molecule for agent: $agent (nothing to resume)"
-        return 1
-    fi
-    if molecule_python resume "$file"; then
+        echo "no molecule for agent: $agent (nothing to resume)" >&2
         return 0
-    else
-        return 1
     fi
+    molecule_python resume "$file"
 }
 
 cmd_molecule_advance() {
@@ -1038,12 +1044,18 @@ cmd_molecule_complete() {
     # Archive the molecule and release the stack claim. Use this when
     # every task in the molecule is done and the worker has nothing
     # left to resume.
+    #
+    # Idempotent: if there's no molecule for this agent, exit 0 with a
+    # stderr note rather than failing. Same parallel-tool-batch
+    # rationale as cmd_molecule_resume — agents calling this in a
+    # cleanup batch alongside other tools shouldn't have the whole
+    # batch cancelled because there happened to be no molecule.
     local agent="$1"
     local file
     file=$(molecule_file "$agent")
     if [[ ! -f "$file" ]]; then
-        echo "no molecule for agent: $agent" >&2
-        return 1
+        echo "no molecule for agent: $agent (nothing to archive)" >&2
+        return 0
     fi
     # molecule complete = release-stack; archives the molecule as a
     # side-effect. This function exists as a transparent alias so the
@@ -1208,9 +1220,11 @@ molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules + per-task state
   molecule show <agent>                  print one molecule yaml verbatim
   molecule resume <agent>                mark next pending → in-progress, print task ID
-                                         exit 0 = task ID printed, 1 = nothing to resume
-                                         (no molecule OR molecule already done — just move
-                                         on to normal TASKS.md pickup)
+                                         stdout=T-NNN → resume that task; stdout="" → no
+                                         work to resume (no molecule, or molecule fully
+                                         done) → fall through to normal TASKS.md pickup.
+                                         Always exits 0 unless the molecule yaml is
+                                         malformed; safe to call in a parallel tool batch.
   molecule advance <agent> <task-id> <new-state> [pr=URL] [commit=SHA]
                                          transition one task's state. New state is one of
                                          pending|in-progress|done|failed.

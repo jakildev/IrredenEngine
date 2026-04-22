@@ -170,7 +170,11 @@ Each iteration:
 
    `fleet-claim molecule resume <your-worktree-name>`
 
-   - **Exit 0** — a task ID was printed. That task is part of a stack
+   This command always exits 0 (so it's safe to include in a parallel
+   tool batch with `git fetch`, `gh pr list`, etc.). Discriminate via
+   stdout:
+
+   - **Stdout has a `T-NNN` task ID** — that task is part of a stack
      you started earlier (possibly in a previous process before a
      crash). It is now (or remains) marked `in-progress`. Skip the
      normal pickup flow and jump straight to step 4 ("Read the plan
@@ -194,11 +198,13 @@ Each iteration:
      `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
      If you can't complete a task, use `failed` and surface to human.
 
-   - **Exit 1** — molecule has no remaining work. Archive it:
-     `fleet-claim molecule complete <your-worktree-name>`
-     Then proceed with the normal pickup flow.
-
-   - **Exit 2** — no molecule for this agent. Proceed normally.
+   - **Stdout is empty** — no work to resume. Either there's no
+     molecule for this agent (overwhelming common case) or the
+     molecule is fully done. Optionally call
+     `fleet-claim molecule complete <your-worktree-name>` to archive
+     a finished molecule (idempotent — exits 0 with a stderr note if
+     there's nothing to archive, so it's safe in any batch). Then
+     proceed with the normal pickup flow.
 
    **Normal pickup (no active molecule):** Read `TASKS.md` (use the
    Read tool) and find the first `[ ]` `[sonnet]`-tagged item in
