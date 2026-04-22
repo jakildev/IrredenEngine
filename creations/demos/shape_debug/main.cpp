@@ -88,16 +88,7 @@ int main(int argc, char **argv) {
             }
         } else if (std::strcmp(argv[i], "--debug-overlay") == 0) {
             if (i + 1 < argc) {
-                const char *mode = argv[i + 1];
-                if (std::strcmp(mode, "none") == 0) {
-                    g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-                } else if (std::strcmp(mode, "ao") == 0) {
-                    g_debugOverlay = IRRender::DebugOverlayMode::AO;
-                } else if (std::strcmp(mode, "light_level") == 0) {
-                    g_debugOverlay = IRRender::DebugOverlayMode::LIGHT_LEVEL;
-                } else if (std::strcmp(mode, "shadow") == 0) {
-                    g_debugOverlay = IRRender::DebugOverlayMode::SHADOW;
-                }
+                g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
                 ++i;
             }
         }

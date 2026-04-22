@@ -2,6 +2,7 @@
 #define IR_RENDER_ENUMS_H
 
 #include <cstdint>
+#include <cstring>
 
 namespace IRRender {
 
@@ -146,6 +147,15 @@ enum class DebugOverlayMode : std::uint8_t {
     LIGHT_LEVEL = 2,
     SHADOW = 3
 };
+
+/// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
+/// "light_level", "shadow". Returns @c NONE for unrecognized input.
+inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
+    if (std::strcmp(s, "ao") == 0)          return DebugOverlayMode::AO;
+    if (std::strcmp(s, "light_level") == 0) return DebugOverlayMode::LIGHT_LEVEL;
+    if (std::strcmp(s, "shadow") == 0)      return DebugOverlayMode::SHADOW;
+    return DebugOverlayMode::NONE;  // covers "none" and unrecognized input
+}
 
 /// Index buffer element size. Only @c UNSIGNED_SHORT (uint16) is used.
 enum class IndexType : std::uint8_t {
