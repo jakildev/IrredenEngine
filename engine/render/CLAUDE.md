@@ -67,6 +67,9 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │
 │        contribution sampled at the trixel's recovered pos3D      │
+│    FOG_TO_TRIXEL                                                 │
+│      • c_fog_to_trixel.glsl → masks per-pixel by fog state       │
+│        (visible/explored/unexplored) from C_CanvasFogOfWar       │
 │    TRIXEL_TO_TRIXEL  (compositing/post)                          │
 │    TRIXEL_TO_FRAMEBUFFER                                         │
 │      • v_/f_trixel_to_framebuffer.glsl                           │
