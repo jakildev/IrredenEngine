@@ -374,11 +374,11 @@ Avoid:
   - **Notes:** [sonnet] per issue — mechanical deletion plus smoke-test build. Must NOT be merged before the game-side midi port PR has merged (the port moves the creation to the game repo; if the engine copy disappears first, the IRMidiPolyrhythm target vanishes entirely until the game PR lands). Worker should verify the game port is live before opening this PR.
   - **Links:**
 
-- [ ] **engine/render CLAUDE.md: install layering principle between render and prefabs** — add "What belongs in engine/render/ vs engine/prefabs/irreden/render/" and "Exposing system public API from the prefab layer" sections, cross-referenced, listing the three current violations
+- [~] **engine/render CLAUDE.md: install layering principle between render and prefabs** — add "What belongs in engine/render/ vs engine/prefabs/irreden/render/" and "Exposing system public API from the prefab layer" sections, cross-referenced, listing the three current violations
   - **ID:** T-033
   - **Area:** docs, engine/render, engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** T-033-render-prefab-layering-doc
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/render/CLAUDE.md` gains "What belongs in engine/render/ vs engine/prefabs/irreden/render/" section; (2) `engine/prefabs/irreden/render/CLAUDE.md` gains "Exposing system public API from the prefab layer" with Pattern A and Pattern B code sketches; (3) sections cross-reference each other; (4) "Current deviations" subsection lists sun, debug overlay, fog-of-war violations; (5) build clean on active preset
   - **Issue:** (none)
@@ -426,6 +426,7 @@ Avoid:
 
 - [~] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [~] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
+- [~] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 
 ---
 
