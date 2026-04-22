@@ -204,7 +204,7 @@ Do the work, then exit cleanly:
     - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
 
     ```
-    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown")) | "#\(.number) \(.title) (\(.headRefName))"'
+    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown" and . != "human:needs-fix")) | "#\(.number) \(.title) (\(.headRefName))"'
     ```
 
     The filter keeps only PRs that are approved, not flagged for
@@ -231,7 +231,7 @@ Do the work, then exit cleanly:
        needs to fix the backend issue), post a comment describing the
        failure, and add `fleet:needs-fix`:
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
-       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --add-label "fleet:needs-fix"`
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
     g. Reset to scratch branch before continuing:
        `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
 
