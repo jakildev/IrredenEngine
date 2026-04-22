@@ -188,7 +188,7 @@ Avoid:
     `backend-parity` skill.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/227
 
-- [ ] **Wire up a `backend-parity` dry run** — use the new
+- [~] **Wire up a `backend-parity` dry run** — use the new
   `backend-parity` skill end-to-end on a known-small parity gap
   (pick one of the three MSL port tasks above, ideally
   `c_shapes_to_trixel` as the least invasive). This is the equivalent
@@ -198,7 +198,7 @@ Avoid:
   - **ID:** T-007
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** metal-finish-parity
   - **Blocked by:** (none)
   - **Acceptance:** one parity PR opened, reviewed by `review-pr`,
     merged. Any workflow bugs in the `backend-parity` skill itself
@@ -380,6 +380,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 
@@ -389,8 +390,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-- [x] **T-031** — Fleet: commit-and-push post-rebase self-diff to catch silently-dropped hunks · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
-- [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks before re-checklist · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
+- [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
+- [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
 - [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 - [x] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [x] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
@@ -488,5 +489,4 @@ Avoid:
   - **Issue:** #164
   - **Notes:** foundational data structure for all lighting — unblocked T-012, T-013, T-014, T-016 on merge.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/188
-
 
