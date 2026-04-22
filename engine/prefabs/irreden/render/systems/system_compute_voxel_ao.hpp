@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -59,6 +60,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 if (!behavior.useCameraPositionIso_) return;
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
+                auto &timing = IRRender::gpuStageTiming();
+                IRRender::TimePoint t0;
+                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
+
                 canvasTextures.getTextureDistances()->bindAsImage(
                     0, TextureAccess::READ_ONLY, TextureFormat::R32I
                 );
@@ -80,6 +85,11 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 );
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+                // Assumes a single matching canvas per frame. Switch to `+=`
+                // with a `beginTick` reset if the filter ever matches
+                // multiple entities — otherwise later entities overwrite.
+                if (timing.enabled_) { IRRender::device()->finish(); timing.computeVoxelAoMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
             []() { s_program->use(); }
         );

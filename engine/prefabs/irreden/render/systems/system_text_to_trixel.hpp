@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 #include <vector>
 
@@ -259,12 +260,17 @@ expandTextToCommands(
                 }
             },
             []() {
+                auto &timing = IRRender::gpuStageTiming();
+                timing.textToTrixelMs_ = 0.0f;
                 if (drawCommands.empty()) return;
 
                 int count = static_cast<int>(drawCommands.size());
                 if (count > kMaxGlyphCommands) {
                     count = kMaxGlyphCommands;
                 }
+
+                IRRender::TimePoint t0;
+                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
 
                 IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer")
                     ->subData(0, count * sizeof(GlyphDrawCommand), drawCommands.data());
@@ -282,6 +288,8 @@ expandTextToCommands(
                 IRRender::device()->dispatchCompute(count, 1, 1);
                 // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
                 IRRender::device()->memoryBarrier(BarrierType::ALL);
+
+                if (timing.enabled_) { IRRender::device()->finish(); timing.textToTrixelMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             }
         );
     }
