@@ -261,7 +261,11 @@ Do the work, then exit cleanly:
 
    `fleet-claim molecule resume <your-worktree-name>`
 
-   - **Exit 0** — a task ID was printed. That task is already part of
+   This command always exits 0 (so it's safe to include in a parallel
+   tool batch with `git fetch`, `gh pr list`, etc.). Discriminate via
+   stdout:
+
+   - **Stdout has a `T-NNN` task ID** — that task is already part of
      a stack you started earlier (possibly in a previous process before
      a crash). It is now (or remains) marked `in-progress`. Skip the
      normal pickup flow below and jump straight to step 6 ("Work it",
@@ -303,19 +307,21 @@ Do the work, then exit cleanly:
      resuming so commit-and-push targets the right repo (see step 4
      for the cd path).
 
-   - **Exit 1** — nothing to resume. Two sub-cases collapse to this
-     exit code because they're handled the same way:
-     - No molecule exists for this agent (the common case — you
-       didn't leave a stack claim open last iteration).
-     - A molecule exists but every task is already `done` or
-       `failed`. If you see the latter, also run
-       `fleet-claim molecule complete <your-worktree-name>` (use
-       `fleet-claim --repo game molecule complete
-       <your-worktree-name>` for game-side — `--repo` is a global
-       flag parsed before the subcommand) to archive it. For the
-       former, you can tell by looking at whether stdout had the
-       "no molecule" message.
-     Either way, proceed with the normal pickup flow below.
+   - **Stdout is empty** — nothing to resume. Either no molecule
+     exists for this agent (overwhelming common case — you didn't
+     leave a stack claim open last iteration), or a molecule exists
+     but every task is already `done` or `failed`. The stderr message
+     tells you which: `"no molecule for agent: ..."` for the former,
+     or `"molecule fully complete (no remaining tasks)"` for the
+     latter. If the latter, also run
+     `fleet-claim molecule complete <your-worktree-name>` (use
+     `fleet-claim --repo game molecule complete <your-worktree-name>`
+     for game-side — `--repo` is a global flag parsed before the
+     subcommand) to archive it. The complete command is itself
+     idempotent (exits 0 with a stderr note if there's nothing to
+     archive), so calling it speculatively after every empty resume
+     is also safe. Either way, proceed with the normal pickup flow
+     below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
    Look at both `/tmp/tasks-engine.md` and `/tmp/tasks-game.md`. Find

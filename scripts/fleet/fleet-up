@@ -259,10 +259,21 @@ all_allows = baseline + existing_extra
 #   - /tmp/: fleet-claim test patterns, mktemp scratch dirs, generic
 #     scratch usage. Already partially allowlisted via Bash entries
 #     for mktemp/rm; adding the directory closes the path-scope side.
+#   - /private/tmp/: macOS canonical form of /tmp (it's a symlink to
+#     /private/tmp). Shell redirects like `cmd > /tmp/foo` and bash
+#     `mktemp` invocations get path-resolved by the kernel before
+#     Claude Code sees them, so the permission check sees the
+#     canonical /private/tmp/... and rejects unless that path is
+#     also in the allowlist. Observed in production: workers' attempts
+#     to redirect `git show > /tmp/tasks-master.md` were blocked with
+#     "may only write to files in the allowed working directories"
+#     even though /tmp was listed. Adding both forms is the simplest
+#     cross-platform fix (Linux ignores the /private/tmp entry since
+#     no such path exists there).
 home = os.path.expanduser("~")
 out = {
     "permissions": {
-        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp"],
+        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp", "/private/tmp"],
         "allow": all_allows,
         "defaultMode": "auto",
     }
