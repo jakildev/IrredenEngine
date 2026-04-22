@@ -16,7 +16,7 @@
 #   fleet-claim claim "<task title>" <agent-name>
 #   fleet-claim release "<task title>"
 #   fleet-claim check "<task title>"
-#   fleet-claim list
+#   fleet-claim list [--with-age]
 #   fleet-claim cleanup [--repo <owner/repo>] ...
 #   fleet-claim clear-all
 #   fleet-claim stack "T-1 T-2 ..." <agent>
@@ -293,9 +293,42 @@ cmd_check() {
     fi
 }
 
+# Format a duration in seconds as a short human-readable string.
+# Used by cmd_list --with-age and by callers that surface claim age
+# (notably fleet-down --wait, which needs to show what's holding it
+# up so the human can decide whether to keep waiting or Ctrl-C out).
+format_duration_short() {
+    local s="$1"
+    if [[ "$s" -lt 60 ]]; then
+        echo "${s}s"
+    elif [[ "$s" -lt 3600 ]]; then
+        echo "$((s / 60))m"
+    elif [[ "$s" -lt 86400 ]]; then
+        printf '%dh %dm' $((s / 3600)) $(((s % 3600) / 60))
+    else
+        printf '%dd %dh' $((s / 86400)) $(((s % 86400) / 3600))
+    fi
+}
+
 cmd_list() {
+    # `--with-age` appends a `(held <duration>)` annotation to each row,
+    # computed from each claim's `created` epoch file. Stale claims (held
+    # for hours) are usually a sign that an agent crashed without
+    # releasing — the age makes that visually obvious.
+    local with_age=0
+    case "${1:-}" in
+        "")           ;;
+        --with-age)   with_age=1 ;;
+        *)
+            echo "fleet-claim list: unknown flag '$1' (try --with-age)" >&2
+            return 2
+            ;;
+    esac
+
     mkdir -p "$CLAIMS_DIR"
     local found=0
+    local now
+    now=$(date +%s)
 
     for dir in "$CLAIMS_DIR"/*/; do
         # Guard against the glob not matching (no claims).
@@ -307,7 +340,14 @@ cmd_list() {
         local title="$slug"
         if [[ -f "$dir/owner" ]]; then owner=$(cat "$dir/owner"); fi
         if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
-        printf "  %-20s  %s\n" "$owner" "$title"
+        if [[ "$with_age" -eq 1 && -f "$dir/created" ]]; then
+            local created age
+            created=$(cat "$dir/created")
+            age=$((now - created))
+            printf "  %-20s  %-30s  (held %s)\n" "$owner" "$title" "$(format_duration_short "$age")"
+        else
+            printf "  %-20s  %s\n" "$owner" "$title"
+        fi
     done
 
     if [[ $found -eq 0 ]]; then
@@ -1036,7 +1076,7 @@ case "${1:-}" in
         cmd_check "$2"
         ;;
     list)
-        cmd_list
+        cmd_list "${2:-}"
         ;;
     check-stale)
         shift

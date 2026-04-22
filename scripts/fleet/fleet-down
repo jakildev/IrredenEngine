@@ -27,13 +27,21 @@
 # until idle or its idle deadline expires. Worst-case run time is roughly
 # (panes × (idle_wait + write_wait)).
 #
-# Note on --summary scope: workers run one task per fresh `claude`
-# process (see fleet-babysit), so an end-of-day worker summary covers
-# only the *current* iteration's task — not everything that pane has
-# done since fleet-up. Architects retain full session context across
-# their day and can write a true session summary. For per-task
-# worker history, scrape ~/.fleet/logs/<role>.log (babysit logs every
-# launch + exit) or each PR's own commit + comment trail.
+# Note on --summary scope: workers run one task per fresh `claude --print`
+# process (see fleet-babysit), and between iterations each pane is in
+# babysit's `sleep <interval>` — there's no live agent to ask for a
+# summary. fleet-down detects this via tmux's pane_current_command and
+# skips workers that aren't currently running claude, rather than
+# wasting the SUMMARY_IDLE_WAIT_SECONDS budget on an idle that never
+# comes. Workers caught mid-iteration DO get summarized (covering just
+# that iteration's task); architects always run claude interactively
+# and write true full-session summaries. For complete per-worker
+# history, scrape ~/.fleet/logs/<role>.log or the PR + commit trail.
+#
+# Ctrl-C handling: a Ctrl-C during --wait or --summary is caught and
+# skips the rest of the wait/summary work, then continues with the
+# normal graceful shutdown + claim clear. No need to re-run with
+# --force after aborting.
 #
 # Architect session resume (preserved across down/up cycles): each
 # architect role's session ID is saved in ~/.fleet/sessions/. fleet-down
@@ -59,9 +67,9 @@
 set -euo pipefail
 
 SESSION="fleet"
-GRACE_SECONDS=8                     # how long to wait for panes to wind down after Ctrl-C
-WAIT_POLL_SECONDS=30                # how often to check for idle when --wait is set
-WAIT_MAX_SECONDS=1800               # cap --wait at 30 min (humans can re-run with --force)
+GRACE_SECONDS=8                                                # how long to wait for panes to wind down after Ctrl-C
+WAIT_POLL_SECONDS=${FLEET_DOWN_WAIT_POLL_SECONDS:-30}          # how often to check for idle when --wait is set
+WAIT_MAX_SECONDS=${FLEET_DOWN_WAIT_MAX_SECONDS:-1800}          # cap --wait at 30 min (humans can re-run with --force)
 # --- per-pane summary timings (override via env to tune for your fleet) ---
 SUMMARY_IDLE_WAIT_SECONDS=${SUMMARY_IDLE_WAIT_SECONDS:-1800}   # max wait for a busy pane to become idle (30m)
 SUMMARY_IDLE_POLL_SECONDS=${SUMMARY_IDLE_POLL_SECONDS:-10}     # poll interval while waiting for idle
@@ -97,6 +105,29 @@ if ! tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 # ----------------------------------------------------------------------
+# Ctrl-C trap: continue to graceful shutdown instead of bailing
+# ----------------------------------------------------------------------
+#
+# Without this trap, hitting Ctrl-C during --wait or --summary would
+# kill fleet-down outright (bash propagates SIGINT under `set -e`).
+# The user then has to run `fleet-down --force` separately to actually
+# bring the fleet down — which observed in production after the user
+# Ctrl-C'd a stuck --summary pass.
+#
+# With the trap: Ctrl-C sets a flag, the long-running loops below
+# notice the flag and break out of their wait, and the rest of
+# fleet-down (graceful shutdown + kill-session + claim-clear) runs
+# normally. One Ctrl-C and the whole shutdown completes.
+USER_ABORTED=0
+on_sigint() {
+    USER_ABORTED=1
+    echo
+    echo "fleet-down: Ctrl-C received — skipping remaining wait/summary work"
+    echo "            and proceeding to graceful shutdown."
+}
+trap on_sigint INT TERM
+
+# ----------------------------------------------------------------------
 # Step 0a: --wait — block until active fleet-claim locks drain
 # ----------------------------------------------------------------------
 #
@@ -128,16 +159,27 @@ count_active_claims() {
 if [[ "$WAIT_FOR_IDLE" -eq 1 ]]; then
     deadline=$(( $(date +%s) + WAIT_MAX_SECONDS ))
     echo "fleet-down --wait: waiting for active claims to drain (max ${WAIT_MAX_SECONDS}s, polling every ${WAIT_POLL_SECONDS}s)"
-    while [[ $(date +%s) -lt $deadline ]]; do
+    echo "                   (Ctrl-C to skip the wait and proceed to shutdown)"
+    while [[ $(date +%s) -lt $deadline && "$USER_ABORTED" -eq 0 ]]; do
         n=$(count_active_claims)
         if [[ "$n" -eq 0 ]]; then
             echo "fleet-down --wait: all claims released. Proceeding."
             break
         fi
         echo "fleet-down --wait: $n active claim(s); rechecking in ${WAIT_POLL_SECONDS}s..."
-        sleep "$WAIT_POLL_SECONDS"
+        # Show what's holding us up — claim age makes it obvious whether to
+        # keep waiting (held 30s = build in progress) or Ctrl-C out (held
+        # 4h = agent crashed without releasing). Drop into the body
+        # indented under the recheck line so it visually groups.
+        if command -v fleet-claim >/dev/null 2>&1; then
+            fleet-claim list --with-age 2>/dev/null | sed 's/^/    /' || true
+        fi
+        # `|| true` defends against `set -e` when sleep is interrupted by
+        # SIGINT — without it, bash sees sleep's 130 exit and kills the
+        # script before the next loop iteration can check USER_ABORTED.
+        sleep "$WAIT_POLL_SECONDS" || true
     done
-    if [[ $(date +%s) -ge $deadline ]]; then
+    if [[ "$USER_ABORTED" -eq 0 && $(date +%s) -ge $deadline ]]; then
         n=$(count_active_claims)
         echo "fleet-down --wait: deadline reached with $n claim(s) still held. Proceeding to graceful shutdown anyway."
     fi
@@ -266,19 +308,62 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         summary_file="$SUMMARY_DIR/$role.md"
         echo "[$pane_idx/$total_panes] $role:"
 
+        # User Ctrl-C'd — bail out of the loop, print what we got, then
+        # let the rest of fleet-down (graceful shutdown + claim clear) run.
+        if [[ "$USER_ABORTED" -eq 1 ]]; then
+            echo "  skipped — fleet-down aborted by user"
+            continue
+        fi
+
+        # Workers (everyone except *architect*) run claude with --print:
+        # each iteration is a separate process, and between iterations
+        # the pane is in babysit's `sleep <interval>`, NOT at a Claude
+        # prompt. There's no live agent to send the summary prompt to,
+        # and pane_is_idle correctly returns busy for the bash sleep.
+        # Skip with a clear message rather than waiting the full
+        # SUMMARY_IDLE_WAIT_SECONDS for an idle that never comes.
+        #
+        # Detection: tmux's pane_current_command names the foreground
+        # process. We use the inverted check ("is the foreground a
+        # known between-iterations process?") rather than asking "is
+        # claude in the foreground?" — claude itself can show up under
+        # different names depending on platform / packaging (literal
+        # `claude` on macOS native, `node` on Linux package builds,
+        # potentially others), and any tool the agent calls (git, gh,
+        # cmake) replaces claude in the foreground while the tool runs.
+        # The set of between-iterations process names is much smaller
+        # and more stable: bash/sh/zsh (the babysit shell itself) or
+        # the literal `sleep` command bash spawned for the interval.
+        #
+        # Architects run claude interactively (no --print) — they're
+        # always reachable, so the existing wait-for-idle flow applies.
+        if [[ "$role" != *architect* ]]; then
+            pane_cmd=$(tmux display-message -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null || echo "?")
+            case "$pane_cmd" in
+                bash|sh|zsh|sleep|fleet-babysit)
+                    echo "  skipped — worker between iterations (pane_current_command=$pane_cmd, no live claude session)"
+                    continue
+                    ;;
+            esac
+        fi
+
         # 1. Wait for idle.
         idle_deadline=$(( $(date +%s) + SUMMARY_IDLE_WAIT_SECONDS ))
         first_busy_report=1
-        while [[ $(date +%s) -lt $idle_deadline ]]; do
+        while [[ $(date +%s) -lt $idle_deadline && "$USER_ABORTED" -eq 0 ]]; do
             if pane_is_idle "$pane_id"; then
                 break
             fi
             if [[ "$first_busy_report" -eq 1 ]]; then
-                echo "  pane is busy — waiting up to ${SUMMARY_IDLE_WAIT_SECONDS}s for idle..."
+                echo "  pane is busy — waiting up to ${SUMMARY_IDLE_WAIT_SECONDS}s for idle (Ctrl-C to skip)..."
                 first_busy_report=0
             fi
-            sleep "$SUMMARY_IDLE_POLL_SECONDS"
+            sleep "$SUMMARY_IDLE_POLL_SECONDS" || true
         done
+        if [[ "$USER_ABORTED" -eq 1 ]]; then
+            echo "  aborted while waiting for idle"
+            continue
+        fi
         if ! pane_is_idle "$pane_id"; then
             echo "  pane still busy at deadline — sending prompt anyway (may not land cleanly)"
         fi
@@ -290,15 +375,17 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         # 3. Wait for the file to appear.
         write_deadline=$(( $(date +%s) + SUMMARY_WRITE_WAIT_SECONDS ))
         wrote=0
-        while [[ $(date +%s) -lt $write_deadline ]]; do
+        while [[ $(date +%s) -lt $write_deadline && "$USER_ABORTED" -eq 0 ]]; do
             if [[ -f "$summary_file" ]]; then
                 wrote=1
                 break
             fi
-            sleep "$SUMMARY_WRITE_POLL_SECONDS"
+            sleep "$SUMMARY_WRITE_POLL_SECONDS" || true
         done
         if [[ "$wrote" -eq 1 ]]; then
             echo "  ✓ $(basename "$summary_file") landed ($(wc -c < "$summary_file" | tr -d ' ') bytes)"
+        elif [[ "$USER_ABORTED" -eq 1 ]]; then
+            echo "  aborted while waiting for $(basename "$summary_file")"
         else
             echo "  ✗ $(basename "$summary_file") did not appear within ${SUMMARY_WRITE_WAIT_SECONDS}s"
         fi
@@ -338,8 +425,12 @@ if [[ "$FORCE" -eq 0 ]]; then
         tmux send-keys -t "$pane_id" "exit" Enter
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 
-    echo "fleet-down: waiting ${GRACE_SECONDS}s for panes to wind down..."
-    sleep "$GRACE_SECONDS"
+    if [[ "$USER_ABORTED" -eq 1 ]]; then
+        echo "fleet-down: skipping ${GRACE_SECONDS}s grace pause (user aborted)."
+    else
+        echo "fleet-down: waiting ${GRACE_SECONDS}s for panes to wind down..."
+        sleep "$GRACE_SECONDS" || true
+    fi
 else
     echo "fleet-down: --force — skipping graceful shutdown."
 fi
