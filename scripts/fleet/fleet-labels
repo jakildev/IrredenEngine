@@ -110,10 +110,20 @@ LABELS=(
     "human:re-review|5319e7|Human pushed changes; reviewer agent should re-review"
 )
 
+# `gh label list` defaults to --limit 30. The engine repo already has
+# more than 30 labels (10 fleet/human + 10 IR* component + ~10 stock +
+# growing), and the game repo will too once it ages. Without an
+# explicit limit, labels past the alphabetical cutoff are invisible
+# to this script — it tries to create them, gh rejects with "already
+# exists", and the recheck (also paginated) still doesn't see them,
+# so they get logged as "failed to create" on every fleet-up. 1000 is
+# well above any plausible label count.
+LABEL_LIST_LIMIT=1000
+
 ensure_label_for_repo() {
     local repo="$1"
     local existing
-    if ! existing=$(gh label list --repo "$repo" --json name --jq '.[].name' 2>&1); then
+    if ! existing=$(gh label list --repo "$repo" --limit "$LABEL_LIST_LIMIT" --json name --jq '.[].name' 2>&1); then
         echo "fleet-labels: failed to list labels on $repo: $existing" >&2
         return 1
     fi
@@ -139,7 +149,7 @@ ensure_label_for_repo() {
         else
             # Label may have been created by a parallel run between our list
             # and create — re-check rather than treating as failure.
-            if gh label list --repo "$repo" --json name --jq '.[].name' | grep -qx "$name"; then
+            if gh label list --repo "$repo" --limit "$LABEL_LIST_LIMIT" --json name --jq '.[].name' | grep -qx "$name"; then
                 existed=$((existed + 1))
             else
                 echo "  failed to create: $name" >&2
