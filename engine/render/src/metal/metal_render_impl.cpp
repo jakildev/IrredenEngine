@@ -476,12 +476,20 @@ setMetalDepthWriteEnabled(enabled);
     }
 
     void finish() override {
-        // The Metal render impl already commits-and-waits each frame at
-        // present(), so finish() is only used by GPU stage timing. Spinning
-        // up a no-op command buffer here would force a flush, but stage
-        // timing is OFF by default and the per-command-buffer cost is
-        // dominated by the present-time wait. Leaving as a no-op until we
-        // need precise per-stage timings on Metal.
+        // Block until prior GPU work completes, then start a fresh command
+        // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The
+        // fresh-buffer step is required because Metal encoders cannot
+        // record into a committed buffer; without it, the next dispatch
+        // or draw silently no-ops. Same pattern as readDefaultFramebuffer()
+        // above.
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer == nullptr) {
+            return;
+        }
+        commandBuffer->commit();
+        commandBuffer->waitUntilCompleted();
+        releaseDeferredMetalBuffers();
+        setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }
 };
 
