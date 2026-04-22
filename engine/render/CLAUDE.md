@@ -119,6 +119,44 @@ header when you add or rename a shader.
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
 
+## What belongs in engine/render/ vs engine/prefabs/irreden/render/
+
+`engine/render/` is a graphics primitive library. It owns what the pipeline
+itself needs regardless of which features a creation enables:
+
+- Device abstraction and context (`RenderManager`, `RenderImpl`, `RenderDevice`).
+- GPU resource CRUD (`RenderingResourceManager`).
+- Pipeline execution (frame loop, canvas dispatch, framebuffer flip).
+- Camera, viewport, subdivision mode — the pipeline reads these every frame.
+- Voxel pool allocation (the pool is a device-level concept).
+
+Feature state — anything a creation opts into — belongs in
+`engine/prefabs/irreden/render/`. If the renderer can ship without the feature
+(fog-of-war is optional per-creation; debug overlay is dev-only), that feature
+does not belong in `engine/render/`.
+
+**Rule of thumb.** If you are about to add a field to `RenderManager`, ask:
+is this a per-feature concern? If so, it belongs on a component owned by the
+feature's system, exposed from a prefab-scoped surface. `RenderManager` should
+not grow fields for features that individual creations may not use.
+
+For the two viable patterns for exposing feature API from the prefab layer, see
+`engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API from
+the prefab layer".
+
+### Current deviations
+
+Three features landed before this principle was established. Each will be
+relocated in the T-034 / T-035 / T-036 refactor stack:
+
+| Feature | Current (wrong) surface | Tracking task |
+|---|---|---|
+| Sun lighting | `IRRender::setSunDirection` / `getSunDirection` | T-036 (PR #210) |
+| Debug overlay | `IRRender::setDebugOverlay` / `getDebugOverlay` | T-035 (PR #235) |
+| Fog-of-war | `IRRender::setFogCell` / `getFogCell` / `revealRadius` / `clearFogOfWar` | T-034 (PR #238) |
+
+When a tracking task's PR merges, remove the corresponding row from this table.
+
 ## Verifying render changes
 
 Rendering bugs rarely show up in the type checker or the test suite. Any

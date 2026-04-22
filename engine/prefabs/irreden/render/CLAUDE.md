@@ -36,6 +36,43 @@ the ECS surface.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 
+## Exposing system public API from the prefab layer
+
+Feature systems in this directory may need a public API surface so creations
+and Lua bindings can drive their behavior. Two patterns:
+
+**Pattern A — direct component access.** Caller grabs the relevant entity via
+an ECS query and reads or writes the component directly. Best when the API
+surface is small and callers already hold the entity id.
+
+```cpp
+// Caller holds the canvas entity and writes the fog component directly.
+auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(canvasEntity);
+fog.setState(worldX, worldY, kFogStateVisible);
+```
+
+**Pattern B — prefab-scoped free-function namespace.** A header in this
+directory (e.g. `fog_of_war.hpp`) exposes a namespace such as `IRPrefab::Fog::`
+(declared in the feature's own header; name it anything that doesn't collide
+with `IRRender::`) that internally performs the entity-lookup logic. Keeps an
+ergonomic free-function shape without putting the feature into `IRRender::` or
+adding fields to `RenderManager`.
+
+```cpp
+// Header exposes a namespace; callers do not need to hold the entity.
+namespace IRPrefab::Fog {
+    void setCell(int worldX, int worldY, std::uint8_t state);
+    void revealRadius(int cx, int cy, int radius);
+    void clear();
+}
+```
+
+**What not to do.** Do not add a feature setter/getter to `IRRender::` or a
+backing field to `RenderManager`. See `engine/render/CLAUDE.md`
+§"What belongs in engine/render/ vs engine/prefabs/irreden/render/" for the
+full principle, the rule of thumb, and the list of existing violations being
+cleaned up.
+
 ## Gotchas
 
 - **Canvas texture lifetime.** The 3 GPU textures owned by
