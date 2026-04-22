@@ -286,7 +286,7 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — this is a write-up and cross-linking task, not a design decision. T-010 (#164) already merged via PR #188; invariant #1 check applies to the merged form. The four invariants were specified by the opus-architect during C_LightSource/C_LightBlocker review (PR #187). Escalate to [opus] only if invariant #1 is found violated in T-010 and structural fixes are needed.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/234
 
-- [~] **Render debug: false-color lighting-data overlay** — add a Lua-configurable debug mode that replaces the artistic lighting output with a false-color visualization of a selected lighting buffer (AO, light level, shadow)
+- [x] **Render debug: false-color lighting-data overlay** — add a Lua-configurable debug mode that replaces the artistic lighting output with a false-color visualization of a selected lighting buffer (AO, light level, shadow)
   - **ID:** T-025
   - **Area:** engine/render, shaders/glsl, shaders/metal, engine/script
   - **Model:** opus
@@ -295,7 +295,7 @@ Avoid:
   - **Acceptance:** (1) `ir.render.setDebugOverlay("ao"|"light_level"|"shadow"|"none")` Lua setter exposed; (2) at least three modes implemented: `ao`, `light_level`, `shadow`; (3) switching modes at runtime works on both backends (GLSL + MSL parity); (4) `IRShapeDebug` demonstrates each mode via Lua config or CLI flag; (5) documented in `engine/render/CLAUDE.md` as recommended sanity-check for lighting work; (6) builds clean on `linux-debug` and `macos-debug`
   - **Issue:** #218
   - **Notes:** AO texture already available from T-012 (PR #197). Extends stub `f_debug_overlay.glsl` and `engine/render/src/shaders/metal/debug_overlay.metal`. Debug overlay pass runs after lighting passes but replaces final composited output in debug mode — artistic LIGHTING_TO_TRIXEL result still computed but discarded. AO viz: `vec3(1-ao, ao, 0)` (red=occluded, green=clear). Light level: `vec3(level, level, 1.0)` (blue→white). Shadow: black/magenta. Soft suggestion: pair shadow debug mode with T-013 landing. Mirror pattern of `setSubdivisionMode` in render API.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/235
 
 - [x] **Render verification: reference-image comparison harness** — build a `/render-verify` skill that captures screenshots via `--auto-screenshot`, compares them against committed reference PNGs, and reports pass/fail with diff images
   - **ID:** T-026
@@ -330,11 +330,11 @@ Avoid:
   - **Notes:** Part 2 (benchmark harness + render-perf skill, [sonnet]) depends on Part 1's Lua API and should be filed as a separate issue+task once Part 1 merges — do not bundle both into one PR. Metal parity for timer infrastructure is a follow-up. OpenGL bindings (`glQueryCounter`/`GL_TIMESTAMP`) already exist in `engine/render/include/glad/glad.h` — no new GL extension needed. T-013 (sun shadows) and T-014 (flood-fill) are the first lighting phases that will need perf validation.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/237
 
-- [ ] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
+- [~] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
   - **ID:** T-029
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** T-029-cross-host-smoke-tally
   - **Blocked by:** (none)
   - **Acceptance:** (1) labels `fleet:needs-linux-smoke` and `fleet:needs-macos-smoke` are auto-applied (by reviewer or queue-manager) to engine PRs touching `engine/render/`, `shaders/`, or `engine/prefabs/irreden/render/` that were authored on only one host; (2) when a fleet starts on the lagging host, agents pick up tagged PRs and run build + `render-verify` (or a targeted smoke test); (3) after validation, agent removes the label and posts a confirmation comment; (4) no open render PRs slip through without both-host validation before merge; (5) skill or role doc updated to document the tagging trigger and resolution flow
   - **Issue:** #250
@@ -382,7 +382,7 @@ Avoid:
 
 - [~] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [~] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
-- [~] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
+- [~] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
 
 ---
 
@@ -390,6 +390,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 - [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
 - [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
@@ -479,14 +480,4 @@ Avoid:
   - **Notes:** AO formula: `if (side1 && side2) ao = 0; else ao = 3 - (side1 + side2 + corner)`. Fixed iso camera means only 3 faces visible per voxel — halves work vs. free-camera. Prefer Option B (separate AO compute pass writing to AO texture) over inline sampling in Stage 2 — cleaner separation and enables shape AO too. Per-sub-pixel approach: 2 sub-pixels per trixel face (2×3 workgroup), sample 3 neighbors directly in compute shader.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/197
 
-- [x] **Lighting: 3D occupancy grid infrastructure** — build the foundational camera-independent 3D data structure representing voxel occupancy that all lighting phases (AO, shadows, flood-fill, fog-of-war LOS) depend on
-  - **ID:** T-010
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-occupancy-grid
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 3D occupancy bitfield populated from voxel pool data; (2) per-axis columnar span lists buildable from the grid; (3) occupancy data accessible from GPU compute shaders; (4) dirty-chunk tracking avoids full rebuild each frame; (5) builds clean on active preset; (6) performance measured and reported
-  - **Issue:** #164
-  - **Notes:** foundational data structure for all lighting — unblocked T-012, T-013, T-014, T-016 on merge.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/188
 
