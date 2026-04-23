@@ -86,6 +86,41 @@ LOG_DIR="${FLEET_LOG_DIR:-$HOME/.fleet/logs}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$ROLE.log"
 
+# Shutdown sentinel — fleet-down creates this file at the start of its
+# wait/summary phase to signal that no agent should be relaunched.
+# Without it, an agent that exits cleanly DURING fleet-down (worker
+# finishing its iteration, architect responding to the summary prompt
+# and exiting) gets immediately relaunched into a fresh claude — which
+# then gets killed mid-startup when tmux kill-session lands. Wasteful,
+# confusing in scrollback, and observed in production.
+#
+# With the sentinel: any sleep-then-relaunch in the loop below polls
+# for the file and bails out immediately if it appears. The pane's
+# bash shell then sees the buffered "exit" command from fleet-down's
+# graceful shutdown, exits, and kill-session has nothing to do.
+SHUTDOWN_FLAG="${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
+
+# Sleep that exits early if the shutdown sentinel appears. Returns 0 if
+# the full duration elapsed (relaunch as planned), 1 if shutdown was
+# signaled (caller should break out of the loop). Polls every 5s, so
+# worst-case observed-shutdown-to-pane-exit latency is ~5s.
+shutdown_aware_sleep() {
+    local seconds="$1"
+    local end=$(( $(date +%s) + seconds ))
+    while [[ $(date +%s) -lt $end ]]; do
+        if [[ -f "$SHUTDOWN_FLAG" ]]; then
+            return 1
+        fi
+        # Sleep at most 5s at a time, but never longer than what's left.
+        local remaining=$(( end - $(date +%s) ))
+        local chunk=5
+        [[ "$remaining" -lt "$chunk" ]] && chunk="$remaining"
+        [[ "$chunk" -lt 1 ]] && chunk=1  # Minimum 1s to avoid zero-sleep busyloop on sub-second remaining time.
+        sleep "$chunk" || true
+    done
+    return 0
+}
+
 attempt=0
 
 log() {
@@ -310,6 +345,15 @@ while true; do
         break
     fi
 
+    # Shutdown signaled while claude was running (fleet-down created the
+    # sentinel). Don't even enter the sleep — exit straight away so the
+    # pane's bash can pick up the buffered `exit` from fleet-down's
+    # graceful shutdown.
+    if [[ -f "$SHUTDOWN_FLAG" ]]; then
+        log "shutdown sentinel detected — exiting babysit loop without relaunching"
+        break
+    fi
+
     case $last_exit in
         0)
             # Clean exit = task complete. Workers get a between-task
@@ -318,19 +362,28 @@ while true; do
             # Architects re-resume their preserved session immediately.
             if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
                 log "architect clean exit (attempt $attempt) — re-resuming preserved session in ${CLEAN_DELAY}s..."
-                sleep "$CLEAN_DELAY"
+                if ! shutdown_aware_sleep "$CLEAN_DELAY"; then
+                    log "shutdown signaled during between-iteration wait — exiting"
+                    break
+                fi
                 launch_architect_first
             else
                 between_task_delay=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
                 log "worker clean exit (attempt $attempt) — fresh launch in ${between_task_delay}s (clears context for next task)"
-                sleep "$between_task_delay"
+                if ! shutdown_aware_sleep "$between_task_delay"; then
+                    log "shutdown signaled during between-iteration wait — exiting"
+                    break
+                fi
                 launch_worker_fresh
             fi
             ;;
         2)
             # Exit code 2 often indicates usage limit
             log "exit_code=2 attempt=$attempt (suspected usage limit), waiting ${LIMIT_DELAY}s..."
-            sleep "$LIMIT_DELAY"
+            if ! shutdown_aware_sleep "$LIMIT_DELAY"; then
+                log "shutdown signaled during limit wait — exiting"
+                break
+            fi
             log "resuming session (attempt $attempt)..."
             resume_mid_task
             ;;
@@ -338,7 +391,10 @@ while true; do
             # Crash mid-task. --continue (workers) / --resume (architects)
             # so partial work isn't lost.
             log "exit_code=$last_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
-            sleep "$CRASH_DELAY"
+            if ! shutdown_aware_sleep "$CRASH_DELAY"; then
+                log "shutdown signaled during crash recovery wait — exiting"
+                break
+            fi
             resume_mid_task
             ;;
     esac
