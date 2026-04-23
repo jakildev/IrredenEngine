@@ -34,6 +34,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/debug_overlay.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -59,7 +60,7 @@ bool g_depthColor = false;
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f;  // 0 = use engine default
-IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
+IRPrefab::DebugOverlay::Mode g_debugOverlay = IRPrefab::DebugOverlay::Mode::NONE;
 
 } // namespace
 
@@ -91,7 +92,7 @@ int main(int argc, char **argv) {
             }
         } else if (std::strcmp(argv[i], "--debug-overlay") == 0) {
             if (i + 1 < argc) {
-                g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
+                g_debugOverlay = IRPrefab::DebugOverlay::modeFromString(argv[i + 1]);
                 ++i;
             }
         }
@@ -111,8 +112,8 @@ int main(int argc, char **argv) {
         IR_LOG_INFO("Initial zoom: requested={}, actual={} (snapped to nearest power of two)",
                     g_initialZoom, actualZoom.x);
     }
-    if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
-        IRRender::setDebugOverlay(g_debugOverlay);
+    if (g_debugOverlay != IRPrefab::DebugOverlay::Mode::NONE) {
+        IRPrefab::DebugOverlay::set(g_debugOverlay);
     }
     IREngine::gameLoop();
     return 0;

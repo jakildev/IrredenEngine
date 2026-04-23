@@ -14,8 +14,9 @@ struct FrameDataLightingToTrixel {
     int   lutEnabled;
     int   lightVolumeEnabled;
     float debugLightLevel;
-    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
-    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
+    // Mirrors IRPrefab::DebugOverlay::Mode. 0 = NONE (artistic path);
+    // 1 = AO, 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write
+    // false-color.
     int   debugOverlayMode;
 };
 

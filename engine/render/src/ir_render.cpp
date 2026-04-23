@@ -189,12 +189,4 @@ vec3 getSunDirection() {
     return getRenderManager().getSunDirection();
 }
 
-void setDebugOverlay(DebugOverlayMode mode) {
-    getRenderManager().setDebugOverlay(mode);
-}
-
-DebugOverlayMode getDebugOverlay() {
-    return getRenderManager().getDebugOverlay();
-}
-
 } // namespace IRRender

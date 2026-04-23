@@ -13,6 +13,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/debug_overlay.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 
 using namespace IRComponents;
@@ -40,9 +41,9 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // `debugLightLevel_` is reserved for future shadow-preview use; it is
 // kept in the UBO for std140 layout stability but the shader currently
 // uses AO.r as the LUT X-axis input.
-// `debugOverlayMode_` mirrors `IRRender::DebugOverlayMode`. Non-zero
+// `debugOverlayMode_` mirrors `IRPrefab::DebugOverlay::Mode`. Non-zero
 // values short-circuit the artistic path and write false-color into
-// `trixelColors` instead — see ir_render_enums.hpp for the encoding.
+// `trixelColors` instead — see `debug_overlay_state.hpp` for the encoding.
 // std140 note: five scalars pack tightly at offsets 0,4,8,12,16 for a
 // 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
 // no explicit padding is needed.
@@ -195,7 +196,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 frameData.lightingEnabled_ = 1;
                 frameData.lightVolumeEnabled_ = 1;
                 frameData.debugOverlayMode_ =
-                    static_cast<int>(IRRender::getDebugOverlay());
+                    static_cast<int>(IRPrefab::DebugOverlay::get());
                 s_frameDataBuf->subData(
                     0, sizeof(FrameDataLightingToTrixel), &frameData
                 );

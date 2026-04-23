@@ -146,12 +146,11 @@ the prefab layer".
 
 ### Current deviations
 
-Two features still need relocating in the T-035 / T-036 refactor stack:
+One feature still needs relocating in the T-036 refactor:
 
 | Feature | Current (wrong) surface | Tracking task |
 |---|---|---|
 | Sun lighting | `IRRender::setSunDirection` / `getSunDirection` | T-036 (PR #210) |
-| Debug overlay | `IRRender::setDebugOverlay` / `getDebugOverlay` | T-035 (PR #235) |
 
 When a tracking task's PR merges, remove the corresponding row from this table.
 
@@ -294,13 +293,14 @@ streaming is introduced.
 
 ## Lighting debug overlay
 
-`IRRender::setDebugOverlay(DebugOverlayMode)` swaps the artistic
-composite in `LIGHTING_TO_TRIXEL` for a false-color visualization of
-the underlying lighting buffer. Use it when triaging a lighting bug
-where the per-pixel input value is suspect — the overlay exposes the
-exact scalar that the artistic path would multiply, so you can tell
-whether the issue is in the buffer producer (`COMPUTE_VOXEL_AO`,
-`COMPUTE_SUN_SHADOW`) or in the composite itself.
+`IRPrefab::DebugOverlay::set(Mode)` (declared in
+`engine/prefabs/irreden/render/debug_overlay_state.hpp`) swaps the
+artistic composite in `LIGHTING_TO_TRIXEL` for a false-color
+visualization of the underlying lighting buffer. Use it when triaging
+a lighting bug where the per-pixel input value is suspect — the
+overlay exposes the exact scalar that the artistic path would
+multiply, so you can tell whether the issue is in the buffer producer
+(`COMPUTE_VOXEL_AO`, `COMPUTE_SUN_SHADOW`) or in the composite itself.
 
 Modes:
 
@@ -313,8 +313,8 @@ Modes:
 
 Upstream passes keep running; only the final composite is replaced.
 GUI pixels are unaffected because the GUI canvas early-returns out
-of the lighting pass. Invoke from a creation via the engine API
-(`IRRender::setDebugOverlay`) or in `shape_debug` via
+of the lighting pass. Invoke from a creation via
+`IRPrefab::DebugOverlay::set(...)` or in `shape_debug` via
 `--debug-overlay <none|ao|light_level|shadow>`.
 
 ## Gotchas
