@@ -188,7 +188,7 @@ Avoid:
     `backend-parity` skill.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/227
 
-- [~] **Wire up a `backend-parity` dry run** — use the new
+- [x] **Wire up a `backend-parity` dry run** — use the new
   `backend-parity` skill end-to-end on a known-small parity gap
   (pick one of the three MSL port tasks above, ideally
   `c_shapes_to_trixel` as the least invasive). This is the equivalent
@@ -207,7 +207,7 @@ Avoid:
     failure. The point of this dry run is to uncover workflow
     issues, not to ship the parity port (that happens as a natural
     side effect).
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/260
 
 - [x] **Lighting: flood-fill light propagation with colored light (Phase 3)** — BFS-propagate colored emissive-voxel light and skylight through the occupancy grid, outputting per-voxel RGB light levels to a 3D texture consumed by the lighting application pass
   - **ID:** T-014
@@ -330,7 +330,7 @@ Avoid:
   - **Notes:** Part 2 (benchmark harness + render-perf skill, [sonnet]) depends on Part 1's Lua API and should be filed as a separate issue+task once Part 1 merges — do not bundle both into one PR. Metal parity for timer infrastructure is a follow-up. OpenGL bindings (`glQueryCounter`/`GL_TIMESTAMP`) already exist in `engine/render/include/glad/glad.h` — no new GL extension needed. T-013 (sun shadows) and T-014 (flood-fill) are the first lighting phases that will need perf validation.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/237
 
-- [~] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
+- [x] **Fleet: cross-host smoke-test running-tally for render changes** — add host-validation labels so render/shader PRs that land on one backend are automatically tracked until validated on the lagging host
   - **ID:** T-029
   - **Area:** tooling
   - **Model:** opus
@@ -339,7 +339,7 @@ Avoid:
   - **Acceptance:** (1) labels `fleet:needs-linux-smoke` and `fleet:needs-macos-smoke` are auto-applied (by reviewer or queue-manager) to engine PRs touching `engine/render/`, `shaders/`, or `engine/prefabs/irreden/render/` that were authored on only one host; (2) when a fleet starts on the lagging host, agents pick up tagged PRs and run build + `render-verify` (or a targeted smoke test); (3) after validation, agent removes the label and posts a confirmation comment; (4) no open render PRs slip through without both-host validation before merge; (5) skill or role doc updated to document the tagging trigger and resolution flow
   - **Issue:** #250
   - **Notes:** explicitly [opus] per issue — involves reviewer label-application logic, fleet startup scanning, and render-verify integration. v1: manual tag by reviewer is acceptable; auto-detection from diff can come later. Related: `backend-parity` skill covers structural GLSL↔MSL porting; this covers runtime-smoke validation after a port lands.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/262
 
 - [x] **Fleet: review-pr verifies previously-flagged hunks before re-checklist** — add a re-review sub-step that reads prior review comments and confirms each flagged hunk is actually still present at HEAD before re-running the full checklist
   - **ID:** T-030
@@ -374,7 +374,7 @@ Avoid:
   - **Notes:** [sonnet] per issue — mechanical deletion plus smoke-test build. Must NOT be merged before the game-side midi port PR has merged (the port moves the creation to the game repo; if the engine copy disappears first, the IRMidiPolyrhythm target vanishes entirely until the game PR lands). Worker should verify the game port is live before opening this PR.
   - **Links:**
 
-- [~] **engine/render CLAUDE.md: install layering principle between render and prefabs** — add "What belongs in engine/render/ vs engine/prefabs/irreden/render/" and "Exposing system public API from the prefab layer" sections, cross-referenced, listing the three current violations
+- [x] **engine/render CLAUDE.md: install layering principle between render and prefabs** — add "What belongs in engine/render/ vs engine/prefabs/irreden/render/" and "Exposing system public API from the prefab layer" sections, cross-referenced, listing the three current violations
   - **ID:** T-033
   - **Area:** docs, engine/render, engine/prefabs/irreden/render
   - **Model:** sonnet
@@ -383,14 +383,14 @@ Avoid:
   - **Acceptance:** (1) `engine/render/CLAUDE.md` gains "What belongs in engine/render/ vs engine/prefabs/irreden/render/" section; (2) `engine/prefabs/irreden/render/CLAUDE.md` gains "Exposing system public API from the prefab layer" with Pattern A and Pattern B code sketches; (3) sections cross-reference each other; (4) "Current deviations" subsection lists sun, debug overlay, fog-of-war violations; (5) build clean on active preset
   - **Issue:** (none)
   - **Notes:** doc-only PR, first in a 4-task stack from issue #266. Principle: `engine/render/` owns graphics primitives; feature state/API (fog, overlay, lighting) belongs in `engine/prefabs/irreden/render/`. Violations to list: `setSunDirection`/`getSunDirection` (T-013, PR #210), `setDebugOverlay`/`getDebugOverlay` (T-025, PR #235), `setFogCell`/`clearFogOfWar` etc. (T-016, PR #238).
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/267
 
 - [ ] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
   - **ID:** T-034
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/script
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-033
+  - **Blocked by:** (none)
   - **Acceptance:** (1) fog API free functions removed from `IRRender::` and `ir_render.cpp` no longer references fog state; (2) fog API exposed from prefab-scoped surface; (3) all callers updated (Lua bindings, `shape_debug/main.cpp`); (4) build clean on `linux-debug` and `macos-debug`; (5) `render-debug-loop` on `shape_debug` shows visually identical fog behavior
   - **Issue:** (none)
   - **Notes:** second in 4-task stack from issue #266. Known caller: `creations/demos/shape_debug/main.cpp:542`. Lua bindings forward fog calls to `IRRender::` — both must be updated together. Check existing prefab namespaces before picking `IRPrefab::Fog::` — use whatever convention is already established.
@@ -424,9 +424,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
-- [~] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
-- [~] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 
 ---
 
@@ -434,6 +431,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
+- [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
+- [x] **T-007** — Wire up a backend-parity dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
@@ -482,36 +482,5 @@ Avoid:
   - **Notes:** (none)
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/223
 
-- [x] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** — GLSL compute for shape SDFs into trixel canvases ported to Metal.
-  - **ID:** T-004
-  - **Area:** engine/render/src/shaders/metal
-  - **Model:** opus
-  - **Owner:** metal-shapes-to-trixel-port
-  - **Blocked by:** (none)
-  - **Acceptance:** `.metal` shader exists, `macos-debug` build clean, shapes render identically to OpenGL.
-  - **Issue:** (none)
-  - **Notes:** (none)
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/222
-
-- [x] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system timing and file a report.
-  - **ID:** T-008
-  - **Area:** engine/profile
-  - **Model:** opus
-  - **Owner:** perf-shape-debug-zoom4
-  - **Blocked by:** (none)
-  - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with per-system `easy_profiler` screenshots and a 1-paragraph summary of the top 3 hotspots.
-  - **Notes:** use `IRShapeDebug` from `creations/demos/shape_debug/`. See `engine/profile/CLAUDE.md` for the macros and how to enable the profiler build flag.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/220
-
-- [x] **Lighting: LUT palette shading (Phase 4)** — replace linear brightness multiplication with an artist-authored palette LUT texture that maps (light level, hue) to final RGB, enabling cel-shading and stylized lighting
-  - **ID:** T-015
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** sonnet
-  - **Owner:** render-lut-palette-shading
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) palette LUT texture loaded and bound to lighting application pass; (2) different base hues produce distinct shadow/highlight colors; (3) GL_NEAREST mode produces clean cel-shading bands; (4) GL_LINEAR mode produces smooth gradients; (5) without LUT, falls back to linear multiply — no regression; (6) render debug screenshot: side-by-side linear vs LUT; (7) builds clean on active preset
-  - **Issue:** #169
-  - **Notes:** LUT is 2D PNG (256×16): X = light level 0–1, Y = palette row by hue/material. Total ~16KB. Default LUT ships with engine; games override. Also requires at least one of T-012, T-013, or T-014 producing light level data to see the effect; the LUT mechanism itself only requires T-011.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/198
 
 
