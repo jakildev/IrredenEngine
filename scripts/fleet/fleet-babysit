@@ -115,7 +115,7 @@ shutdown_aware_sleep() {
         local remaining=$(( end - $(date +%s) ))
         local chunk=5
         [[ "$remaining" -lt "$chunk" ]] && chunk="$remaining"
-        [[ "$chunk" -lt 1 ]] && chunk=1
+        [[ "$chunk" -lt 1 ]] && chunk=1  # Minimum 1s to avoid zero-sleep busyloop on sub-second remaining time.
         sleep "$chunk" || true
     done
     return 0
