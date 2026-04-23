@@ -385,11 +385,11 @@ Avoid:
   - **Notes:** doc-only PR, first in a 4-task stack from issue #266. Principle: `engine/render/` owns graphics primitives; feature state/API (fog, overlay, lighting) belongs in `engine/prefabs/irreden/render/`. Violations to list: `setSunDirection`/`getSunDirection` (T-013, PR #210), `setDebugOverlay`/`getDebugOverlay` (T-025, PR #235), `setFogCell`/`clearFogOfWar` etc. (T-016, PR #238).
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/267
 
-- [ ] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
+- [~] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
   - **ID:** T-034
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** T-034-fog-prefab-namespace
   - **Blocked by:** (none)
   - **Acceptance:** (1) fog API free functions removed from `IRRender::` and `ir_render.cpp` no longer references fog state; (2) fog API exposed from prefab-scoped surface; (3) all callers updated (Lua bindings, `shape_debug/main.cpp`); (4) build clean on `linux-debug` and `macos-debug`; (5) `render-debug-loop` on `shape_debug` shows visually identical fog behavior
   - **Issue:** (none)
@@ -425,6 +425,7 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
+- [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 
 ---
 
