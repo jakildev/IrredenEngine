@@ -111,6 +111,10 @@ shutdown_aware_sleep() {
         if [[ -f "$SHUTDOWN_FLAG" ]]; then
             return 1
         fi
+        # Re-touch heartbeat so the witness doesn't false-alarm STALE
+        # during a healthy between-iteration wait. Workers only —
+        # HEARTBEAT_FILE is empty for architects.
+        [[ -n "$HEARTBEAT_FILE" ]] && touch "$HEARTBEAT_FILE" 2>/dev/null || true
         # Sleep at most 5s at a time, but never longer than what's left.
         local remaining=$(( end - $(date +%s) ))
         local chunk=5
@@ -167,6 +171,52 @@ ARCHITECT_RESUME=0
 case "$ROLE" in
     *architect*) ARCHITECT_RESUME=1 ;;
 esac
+
+# Heartbeat file (workers/reviewers only — architects aren't witness-
+# tracked). The convention every role file uses is
+# `fleet-heartbeat <worktree-basename>`, which writes to
+# `~/.fleet/heartbeats/<worktree-basename>`. Babysit derives the same
+# name from `pwd` so it can re-touch the file during long sleeps and
+# during long agent iterations — without that, the witness sees a
+# heartbeat go stale during normal between-iteration sleeps (the
+# 1200s opus-worker LOOP_INTERVAL plus a 33-min iteration easily
+# blows past the 30m staleness threshold even when the fleet is
+# functioning correctly — observed in production 2026-04-22).
+HEARTBEAT_FILE=""
+if [[ "$ARCHITECT_RESUME" -eq 0 ]]; then
+    HEARTBEAT_FILE="$HOME/.fleet/heartbeats/$(basename "$(pwd)")"
+    mkdir -p "$(dirname "$HEARTBEAT_FILE")"
+fi
+
+# Background heartbeat-keeper — touches HEARTBEAT_FILE every 60s while
+# the agent (claude) is running. Caller starts it before each launch_*
+# call and stops it after the call returns, so the heartbeat stays
+# fresh even during agent iterations longer than the witness staleness
+# threshold (e.g. an opus refactor that takes 35 min of pure thinking
+# without hitting fleet-build / commit-and-push, the points where
+# role files explicitly re-heartbeat).
+#
+# Uses a global PID variable rather than returning the PID via stdout
+# capture (`hb_pid=$(start_heartbeat_keeper)`) — `$()` running a
+# function that backgrounds a subshell can hang waiting on the
+# subshell to close stdout, which doesn't reliably happen with
+# `( ... ) &` patterns on all bash versions. Side-effect global is
+# uglier but reliable.
+HB_KEEPER_PID=""
+start_heartbeat_keeper() {
+    [[ -z "$HEARTBEAT_FILE" ]] && return 0
+    while true; do touch "$HEARTBEAT_FILE" 2>/dev/null || true; sleep 60; done &
+    HB_KEEPER_PID=$!
+    # Disown the keeper so bash's job-control doesn't print
+    # `Terminated: 15` to stderr when we kill it later — that line
+    # would otherwise land in the pane scrollback every iteration.
+    disown "$HB_KEEPER_PID" 2>/dev/null || true
+}
+stop_heartbeat_keeper() {
+    [[ -z "$HB_KEEPER_PID" ]] && return 0
+    kill "$HB_KEEPER_PID" 2>/dev/null || true
+    HB_KEEPER_PID=""
+}
 
 # --- Stream-formatted claude wrapper ---------------------------------------
 #
@@ -225,16 +275,38 @@ stream_claude() {
     # error out (`--include-partial-messages` requires `--print`),
     # which is the right failure mode — better than silently entering
     # interactive limbo like the pre-PR-#257 bug.
+    #
+    # `2>&1` merges claude's stderr into the same pipe as stdout so the
+    # formatter sees both. Without this, claude's post-result warnings
+    # (e.g. "API Error: Stream idle timeout - partial response received"
+    # printed during HTTP-client cleanup AFTER the result event was
+    # already received) bypass the formatter and land in the pane raw,
+    # reading like a fatal error even though claude actually exited 0.
+    # The formatter recognizes a small allowlist of these and annotates
+    # them as `⚠ [claude-warn]` instead of leaving them as raw red text.
     if [[ -n "$STREAM_FORMATTER" ]]; then
         claude --model "$MODEL" --effort "$EFFORT" \
             --output-format stream-json --include-partial-messages --verbose \
-            "$@" | "$STREAM_FORMATTER"
+            "$@" 2>&1 | "$STREAM_FORMATTER"
     else
         # Fallback: plain claude with whatever the caller passed.
         # `--print` from the caller stays put, so worker exit semantics
         # are unchanged; only the live-pane visibility regresses.
         claude --model "$MODEL" --effort "$EFFORT" "$@"
     fi
+}
+
+# Wrap a launch_*/resume_* call with a backgrounded heartbeat-keeper
+# that touches HEARTBEAT_FILE every 60s while claude runs. Returns the
+# wrapped call's exit code without tripping `set -e` (the `|| rc=$?`
+# pattern). Architects skip the keeper (HEARTBEAT_FILE is empty for
+# them; start_heartbeat_keeper is a no-op).
+run_with_heartbeat() {
+    start_heartbeat_keeper
+    local rc=0
+    "$@" || rc=$?
+    stop_heartbeat_keeper
+    return "$rc"
 }
 
 # --- Launch helpers --------------------------------------------------------
@@ -317,13 +389,21 @@ resume_mid_task() {
 }
 
 # --- First run -------------------------------------------------------------
+#
+# `|| last_exit=$?` is a `set -e` defuse: if the launch helper returns
+# non-zero (claude exited with an error code — observed in production
+# with "API Error: Stream idle timeout"), we want to capture the exit
+# code and let the resume loop dispatch on it, NOT have `set -e` kill
+# babysit before the loop ever runs. Without this, the pane would just
+# drop to bash and never relaunch — there's no log entry, no graceful
+# crash branch, just a silently dead pane until the next fleet-up.
 
+last_exit=0
 if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
-    launch_architect_first
+    run_with_heartbeat launch_architect_first || last_exit=$?
 else
-    launch_worker_fresh
+    run_with_heartbeat launch_worker_fresh || last_exit=$?
 fi
-last_exit=$?
 
 # --- Resume loop -----------------------------------------------------------
 while true; do
@@ -354,7 +434,18 @@ while true; do
         break
     fi
 
-    case $last_exit in
+    # Snapshot the previous attempt's exit code, then reset last_exit
+    # so the `|| last_exit=$?` captures below only see this attempt's
+    # exit. The `|| last_exit=$?` pattern itself defuses `set -e` —
+    # if claude exits non-zero (API timeout, network blip, etc.) and
+    # the launch helper returns that code, set -e would otherwise kill
+    # babysit silently, dropping the pane to bash with no log entry
+    # and no relaunch. Observed in production after Anthropic API
+    # stream-idle-timeout errors.
+    prev_exit="$last_exit"
+    last_exit=0
+
+    case $prev_exit in
         0)
             # Clean exit = task complete. Workers get a between-task
             # delay (LOOP_INTERVAL if set, else CLEAN_DELAY) and then
@@ -366,7 +457,7 @@ while true; do
                     log "shutdown signaled during between-iteration wait — exiting"
                     break
                 fi
-                launch_architect_first
+                run_with_heartbeat launch_architect_first || last_exit=$?
             else
                 between_task_delay=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
                 log "worker clean exit (attempt $attempt) — fresh launch in ${between_task_delay}s (clears context for next task)"
@@ -374,7 +465,7 @@ while true; do
                     log "shutdown signaled during between-iteration wait — exiting"
                     break
                 fi
-                launch_worker_fresh
+                run_with_heartbeat launch_worker_fresh || last_exit=$?
             fi
             ;;
         2)
@@ -385,18 +476,17 @@ while true; do
                 break
             fi
             log "resuming session (attempt $attempt)..."
-            resume_mid_task
+            run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
         *)
             # Crash mid-task. --continue (workers) / --resume (architects)
             # so partial work isn't lost.
-            log "exit_code=$last_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
+            log "exit_code=$prev_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
             if ! shutdown_aware_sleep "$CRASH_DELAY"; then
                 log "shutdown signaled during crash recovery wait — exiting"
                 break
             fi
-            resume_mid_task
+            run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
     esac
-    last_exit=$?
 done

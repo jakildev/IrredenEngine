@@ -115,6 +115,18 @@ def handle_result(event):
         emit(f"{RED}{event['result']}{RESET}\n")
 
 
+# Known-benign claude stderr warnings — claude prints these AFTER the
+# result event has already been received and exits 0. Without
+# annotation they read as fatal errors in the pane scrollback even
+# though the agent succeeded. Match by prefix so we don't have to keep
+# up with exact wording. Add new prefixes here as they show up.
+BENIGN_WARNING_PREFIXES = (
+    "API Error: Stream idle timeout",
+    "API Error: Connection error",
+    "API Error: Request timed out",
+)
+
+
 def main():
     for line in sys.stdin:
         line = line.strip()
@@ -123,9 +135,15 @@ def main():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
-            # Pass through anything that isn't JSON (e.g. claude wrapper
-            # warnings). Better to over-show than swallow useful errors.
-            emit(line + "\n")
+            # Non-JSON line — typically claude's stderr (we route it
+            # into this same pipe via `2>&1` so the formatter sees both
+            # streams in temporal order). Annotate known post-result
+            # warnings as warnings, pass through everything else
+            # untouched so we don't accidentally hide a real error.
+            if any(line.startswith(p) for p in BENIGN_WARNING_PREFIXES):
+                emit(f"{YELLOW}⚠ [claude-warn] {line}{RESET}\n")
+            else:
+                emit(line + "\n")
             continue
 
         t = event.get("type")
