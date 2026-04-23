@@ -33,6 +33,7 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -539,5 +540,5 @@ void initEntities() {
     // while the surrounding floor fades to "unexplored" black — proves
     // the fog-of-war pass end-to-end. Radius chosen to cover the shape
     // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
-    IRRender::revealRadius(0, 0, 48);
+    IRPrefab::Fog::revealRadius(0, 0, 48);
 }

@@ -12,8 +12,6 @@
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
 
-#include <cstdint>
-
 namespace IRRender {
 
 /// @cond INTERNAL
@@ -229,25 +227,6 @@ vec3 getSunDirection();
 /// values rendered are exactly what the artistic path would consume.
 void setDebugOverlay(DebugOverlayMode mode);
 DebugOverlayMode getDebugOverlay();
-/// @}
-
-/// @{
-/// @name Fog of war
-/// Drives the @c FOG_TO_TRIXEL pass, which masks the rendered scene by
-/// per-column visibility state. All operations apply to the active
-/// canvas's @c C_CanvasFogOfWar component (no-op silently if the active
-/// canvas does not own one). Cell coordinates are world-space integer
-/// voxel columns on the X-Y floor plane (see component header for the
-/// half-extent bound). State values: 0 = unexplored, 128 = explored,
-/// 255 = visible.
-void setFogCell(int worldX, int worldY, std::uint8_t state);
-std::uint8_t getFogCell(int worldX, int worldY);
-/// Mark every cell within @p radius (taxicab distance) of @p (cx, cy) as
-/// visible. Does not downgrade previously-visible cells outside the
-/// radius — that lifecycle is the caller's responsibility at v1.
-void revealRadius(int cx, int cy, int radius);
-/// Reset every cell to @c kFogStateUnexplored.
-void clearFogOfWar();
 /// @}
 
 } // namespace IRRender

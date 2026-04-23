@@ -16,13 +16,13 @@
 //
 // v1 scope: the texture and a CPU-side mirror plus a dirty flag the
 // system uses to gate the per-frame `subImage2D` upload. Population is
-// driver-side: gameplay calls `IRRender::setFogCell` /
-// `IRRender::revealRadius` to drive the visibility set directly. LOS
-// ray casting against the occupancy grid (`castLOS`), heightmap-aware
-// LOS, and the visible→explored fade callback (`fadeExplored`) are
-// deferred to follow-up tasks — the fog-of-war foundation here lets
-// the render pass and Lua-side scripts ship before those algorithms
-// land.
+// driver-side: gameplay calls `IRPrefab::Fog::setCell` /
+// `IRPrefab::Fog::revealRadius` (see `render/fog_of_war.hpp`) to drive
+// the visibility set directly. LOS ray casting against the occupancy
+// grid (`castLOS`), heightmap-aware LOS, and the visible→explored fade
+// callback (`fadeExplored`) are deferred to follow-up tasks — the
+// fog-of-war foundation here lets the render pass and Lua-side scripts
+// ship before those algorithms land.
 //
 // Sized to match `C_OccupancyGrid`'s 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`

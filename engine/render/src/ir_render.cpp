@@ -7,7 +7,6 @@
 
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
-#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 
 #include <cstring>
 
@@ -196,45 +195,6 @@ void setDebugOverlay(DebugOverlayMode mode) {
 
 DebugOverlayMode getDebugOverlay() {
     return getRenderManager().getDebugOverlay();
-}
-
-namespace {
-// Active-canvas fog lookup. Returns nullptr if there is no active canvas
-// or if it doesn't own a fog component (e.g. demos that opt out). All
-// fog-of-war setters/getters tolerate this gracefully so script code can
-// run before the canvas is fully wired without crashing.
-IRComponents::C_CanvasFogOfWar *activeFogComponent() {
-    const IREntity::EntityId canvas = getRenderManager().getActiveCanvasEntity();
-    if (canvas == IREntity::kNullEntity) return nullptr;
-    auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas);
-    if (!opt.has_value()) return nullptr;
-    return *opt;
-}
-} // namespace
-
-void setFogCell(int worldX, int worldY, std::uint8_t state) {
-    if (auto *fog = activeFogComponent()) {
-        fog->setCell(worldX, worldY, state);
-    }
-}
-
-std::uint8_t getFogCell(int worldX, int worldY) {
-    if (auto *fog = activeFogComponent()) {
-        return fog->getCell(worldX, worldY);
-    }
-    return IRComponents::kFogStateUnexplored;
-}
-
-void revealRadius(int cx, int cy, int radius) {
-    if (auto *fog = activeFogComponent()) {
-        fog->revealRadius(cx, cy, radius);
-    }
-}
-
-void clearFogOfWar() {
-    if (auto *fog = activeFogComponent()) {
-        fog->clearAll();
-    }
 }
 
 } // namespace IRRender
