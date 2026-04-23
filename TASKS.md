@@ -363,11 +363,11 @@ Avoid:
   - **Notes:** explicitly [sonnet] per issue — bounded skill-file edit. Root cause: git's 3-way merge silently dropped two `else { applyCheckerboard(...) }` branches from a non-conflicting section of a file that had a conflict elsewhere during the PR #238 rebase. Silent hunk loss is the most insidious rebase failure mode — the check is a commit-time safety net. Pre-capture must happen BEFORE the rebase or the guard cannot function retroactively.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/259
 
-- [ ] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
+- [~] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
   - **ID:** T-032
   - **Area:** build, creations/demos
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** T-032-remove-midi-polyrhythm
   - **Blocked by:** (none)
   - **Acceptance:** (1) `creations/demos/midi_polyrhythm/` directory completely removed from engine repo; (2) `add_subdirectory` for midi_polyrhythm removed from `creations/CMakeLists.txt`; (3) engine build (`fleet-build --target IRShapeDebug` or any non-midi target) compiles clean with no broken references; (4) no dangling references to midi_polyrhythm in any remaining CMake files
   - **Issue:** #255
@@ -424,6 +424,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 
 ---
 
@@ -433,7 +434,7 @@ Avoid:
 
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
-- [x] **T-007** — Wire up a backend-parity dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
+- [x] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
