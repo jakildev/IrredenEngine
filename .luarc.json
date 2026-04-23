@@ -1,8 +1,6 @@
 {
     "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-    "workspace.library": [
-        "creations/demos/midi_polyrhythm/lua_defs"
-    ],
+    "workspace.library": [],
     "diagnostics.globals": [
         "dofile",
         "vec2",
