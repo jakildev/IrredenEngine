@@ -428,6 +428,16 @@ Read/Glob/Grep tools instead of Bash when possible.
 - **No `cat file || echo fallback`** — use the Read tool for files.
 - **No `cmd1 | cmd2`** — run `cmd1`, read the output, then run `cmd2`
   if needed.
+- **No `cmd > file`** (the `>` overwrite redirect operator, to any
+  path) — Claude Code's Bash tool blocks shell `>` redirects
+  regardless of destination. The gate is on the redirect operator
+  itself, not the path. (The `>>` append form used for audit logs
+  is distinct and may be fine in specific documented cases.) Run the command alone;
+  the Bash tool returns stdout in its output (and auto-persists
+  large outputs to a side file you can Read on the next iteration
+  via the `<persisted-output>` link). If you need a file on disk,
+  use the **Write** tool with the captured content — that's a
+  different mechanism and does honor `additionalDirectories`.
 - **No `sed -n 'N,Mp' file`** — use the Read tool with `offset` and
   `limit` parameters instead. `sed` triggers its own security gate.
 - **Use `git -C`** for any git operation on a repo other than the

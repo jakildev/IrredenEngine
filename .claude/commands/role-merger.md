@@ -150,11 +150,22 @@ exit cleanly:
       `git fetch origin <headRefName>`
       `git checkout -B <headRefName> origin/<headRefName>`
 
-   **b. Rebase guard pre-capture.** Before rebasing, snapshot the current
-      diff so silently-dropped hunks can be detected afterward:
-      `git diff origin/master > /tmp/fleet-prerebase.diff`
-      (Git's 3-way merge can drop additions from non-conflicting regions
-      without any conflict marker; this capture enables a post-check.)
+   **b. Rebase guard pre-capture.** Before rebasing, snapshot the
+      current diff so silently-dropped hunks can be detected
+      afterward. Run `git diff origin/master` and keep the output
+      in your conversation context — you'll compare it to a
+      post-rebase snapshot in step e.
+
+      Do NOT redirect to `/tmp` or anywhere else with `>`. Claude
+      Code's Bash tool blocks shell redirects regardless of whether
+      the destination is in `additionalDirectories` (the gate is on
+      the `>` operation, not the path). Claude Code auto-persists
+      large outputs to a side file — for huge diffs you'll get a
+      `<persisted-output>` link the next iteration can Read.
+
+      (Git's 3-way merge can drop additions from non-conflicting
+      regions without any conflict marker; the pre/post comparison
+      below is what catches it.)
 
    **c. Try rebase.** `git rebase origin/master`
 
@@ -277,14 +288,20 @@ exit cleanly:
 
    **e. Post-rebase hunk check.** Runs on ALL paths that reach a push
       (clean rebase, case i, case ii). Captures the post-rebase diff
-      and compares it to the pre-capture from step b:
-      `git diff origin/master > /tmp/fleet-postrebase.diff`
-      Then use the **Read** tool to read both `/tmp/fleet-prerebase.diff`
-      and `/tmp/fleet-postrebase.diff`, and compare them. Look for
-      lines beginning with `< +` — additions present in the pre-capture
-      that are absent in the post-capture. Each such line is a silently
-      dropped hunk. If any are found, do NOT push: restore the missing
-      lines and re-run this check before proceeding to the push.
+      and compares it to the pre-capture from step b. Run
+      `git diff origin/master` again — both pre and post snapshots
+      are now in your conversation context. Compare them: for each
+      `+` line in the pre-capture, verify the same line content
+      appears somewhere in the post-capture. Scan for **content**,
+      not position — a hunk that moved to a different file offset
+      (or even a different file) is still intact and should not
+      trigger this check. Only a `+` line from pre that is missing
+      entirely from post is a silently dropped hunk. If any are
+      found, do NOT push: restore the missing lines and re-run this
+      check before proceeding to the push.
+
+      (Same no-`>`-redirect rule as step b. Both diffs live in the
+      conversation, not on disk.)
 
    **f. Reset to scratch.** After processing each PR (success OR
       fail), return to the scratch branch so the next iteration

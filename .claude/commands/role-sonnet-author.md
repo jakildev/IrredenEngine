@@ -55,17 +55,24 @@ whatever directory the task touches before editing anything.
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. **Read the latest TASKS.md from origin/master without staging it.**
    The working copy may be stale if the worktree is on a feature
-   branch. Use `git show` to write the current master version to a
-   temp file — this does NOT touch the working tree or index, so it
-   won't break later branch checkouts:
-   `git show origin/master:TASKS.md > /tmp/tasks-master.md`
-   Then read `/tmp/tasks-master.md` with the Read tool.
+   branch. Use `git show` to dump the current master version
+   directly to stdout:
+   `git show origin/master:TASKS.md`
+   The Bash tool returns the full content as its output (and
+   auto-persists to a `.claude/projects/.../`-side file if the
+   output is large — the persistence is automatic, you don't have
+   to manage it). This does NOT touch the working tree or index,
+   so it won't break later branch checkouts.
 
-   Do NOT use `git checkout origin/master -- TASKS.md` here. That
-   stages the file. When `start-next-task` later tries
+   Do NOT redirect to `/tmp` or anywhere else with `>`. Claude
+   Code's Bash tool blocks shell redirects regardless of whether
+   the destination is in `additionalDirectories` (the gate is on
+   the `>` operation, not the path). Stick with stdout-only.
+
+   Do NOT use `git checkout origin/master -- TASKS.md` either.
+   That stages the file. When `start-next-task` later tries
    `git checkout -b new-branch origin/master` it errors with
    "your local changes would be overwritten by checkout."
-4. Read `/tmp/tasks-master.md` (use the Read tool, not `cat`) — review the current queue.
 4. `gh pr list --state open --json number,title,headRefName,author` —
    see what other agents are working on.
 5. Print a one-line summary: which `[sonnet]` items look unblocked and
