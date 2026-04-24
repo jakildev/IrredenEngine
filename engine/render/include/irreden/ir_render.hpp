@@ -209,15 +209,6 @@ void setHoveredTrixelVisible(bool visible);
 bool isHoveredTrixelVisible();
 /// @}
 
-/// @{
-/// @name Directional sun lighting
-/// Unit vector pointing from surfaces toward the sun. Consumed each frame
-/// by the @c COMPUTE_SUN_SHADOW pass to ray-march the occupancy grid;
-/// setter normalizes on write so callers can pass any non-zero vector.
-void setSunDirection(vec3 dir);
-vec3 getSunDirection();
-/// @}
-
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */

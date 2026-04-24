@@ -35,6 +35,7 @@
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/debug_overlay.hpp>
+#include <irreden/render/sun.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -522,7 +523,7 @@ void initEntities() {
 
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
-    IRRender::setSunDirection(vec3(0.35f, 0.85f, 0.4f));
+    IRPrefab::Sun::setDirection(vec3(0.35f, 0.85f, 0.4f));
 
     // Emissive point light placed between the shape rows so its colored
     // falloff is visible across both the voxel-pool and SDF copies of the
