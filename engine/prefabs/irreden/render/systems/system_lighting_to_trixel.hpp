@@ -43,7 +43,7 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // uses AO.r as the LUT X-axis input.
 // `debugOverlayMode_` mirrors `IRPrefab::DebugOverlay::Mode`. Non-zero
 // values short-circuit the artistic path and write false-color into
-// `trixelColors` instead — see `debug_overlay_state.hpp` for the encoding.
+// `trixelColors` instead — see `debug_overlay.hpp` for the encoding.
 // std140 note: five scalars pack tightly at offsets 0,4,8,12,16 for a
 // 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
 // no explicit padding is needed.

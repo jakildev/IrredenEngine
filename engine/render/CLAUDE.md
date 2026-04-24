@@ -284,7 +284,7 @@ streaming is introduced.
 ## Lighting debug overlay
 
 `IRPrefab::DebugOverlay::set(Mode)` (declared in
-`engine/prefabs/irreden/render/debug_overlay_state.hpp`) swaps the
+`engine/prefabs/irreden/render/debug_overlay.hpp`) swaps the
 artistic composite in `LIGHTING_TO_TRIXEL` for a false-color
 visualization of the underlying lighting buffer. Use it when triaging
 a lighting bug where the per-pixel input value is suspect — the
