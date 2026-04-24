@@ -169,7 +169,7 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
+- [x] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
   - **ID:** T-032
   - **Area:** build, creations/demos
   - **Model:** sonnet
@@ -219,7 +219,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 - [~] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
 - [~] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
@@ -230,6 +229,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
 - [x] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
