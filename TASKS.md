@@ -191,17 +191,6 @@ Avoid:
   - **Notes:** third in 4-task stack from issue #266. Overlay mode introduced in T-025 (PR #235). Use the prefab pattern established by T-034.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/276
 
-- [~] **Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace** — remove `setSunDirection`/`getSunDirection` from `IRRender::`, delete `m_sunDirection` from `RenderManager`; relocate to prefab-scoped surface tied to the directional-light entity
-  - **ID:** T-036
-  - **Area:** engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** T-036-sun-prefab-namespace
-  - **Blocked by:** T-035
-  - **Acceptance:** (1) `setSunDirection`/`getSunDirection` removed from `IRRender::` and `RenderManager`; `m_sunDirection` deleted; (2) pipeline reads sun direction from new prefab home; (3) all callers updated; (4) build clean on both backends; (5) `render-debug-loop` shows identical sun lighting/shadow behavior at multiple sun angles
-  - **Issue:** #266
-  - **Notes:** fourth (final) in 4-task stack from issue #266. New home likely tied to `C_LightSource` entities or a sibling prefab header. This PR's body should include `Closes #266`. Sun state is most shader-adjacent — do last so T-034/T-035 have established the prefab pattern.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/278
-
 ---
 
 ## In progress
@@ -210,7 +199,6 @@ Avoid:
 
 - [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 - [~] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
-- [~] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
 
 ---
 
@@ -218,6 +206,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
 - [x] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
@@ -248,14 +237,4 @@ Avoid:
   - **Notes:** explicitly [opus] — conflict classification (mechanical vs semantic) requires judgment. v1 scope: TASKS.md sort-merge, whitespace-only, clean-rebase only. More heuristics added incrementally. Uses `--force-with-lease` not `--force`. Inspiration: gas town Refinery role.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/224
 
-- [x] **Lighting: directional sun shadows via shadow height map (Phase 2)** — sweep the 3D occupancy grid along the sun direction to build a shadow height map, make shadows visible at runtime as the sun direction changes
-  - **ID:** T-013
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** render-shadow-map-phase2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) directional shadows visible — buildings cast shadows on ground, terrain creates shade; (2) overhangs and caves correctly shadowed (columnar span lists, not just heightmap); (3) sun direction changeable at runtime with shadow map rebuilding within one frame; (4) render debug screenshots at multiple sun angles; (5) shadow map rebuild < 1ms for typical world sizes; (6) builds clean on active preset
-  - **Issue:** #167
-  - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/210
 
