@@ -512,6 +512,41 @@ intentional and the user explicitly approves.
 
 ---
 
+## Issue/PR labeling discipline (applies everywhere, all agents)
+
+When filing a GitHub issue (`gh issue create`) or PR (`gh pr create`)
+on either repo, **do not pre-apply state labels**. Every fleet label
+has an owner that's allowed to set it; agents filing new artifacts
+are not in that owner set.
+
+Specifically, **never pass these via `--label` when filing**:
+
+- `human:approved` — owned by the **human**. The human's "yes, work on
+  this" gate. Queue-manager keys ingestion off it.
+- `fleet:queued` / `fleet:task` — owned by the **queue-manager**, set
+  AFTER it ingests an issue into `TASKS.md`. Adding it at filing time
+  excludes the issue from queue-manager's triage search and strands
+  it (observed on issues #270-#273, #287).
+- `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
+  `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
+- `fleet:wip` — owned by the **author agent** (set at PR creation
+  during a normal `commit-and-push` flow). Don't add to issues.
+- `fleet:in-progress` / `fleet:merger-cooldown` /
+  `fleet:changes-made` — owned by the worker / merger pipeline.
+
+**The right pattern when filing an issue:** create it with NO labels.
+The human will add `human:approved` if and when they want it picked
+up. The queue-manager will add `fleet:queued` (or `fleet:needs-plan`
+/ `fleet:needs-info`) on the next triage pass after that.
+
+**Exception:** if you're operating in a role's own lane (e.g. you
+ARE the queue-manager and you've just ingested an issue, or you ARE
+a reviewer and you've just verdict'd a PR), then setting your role's
+labels is correct. The rule above is about ad-hoc issue/PR filing
+from human conversations.
+
+---
+
 ## Project layout (pointers to deeper CLAUDE.md files)
 
 ```
