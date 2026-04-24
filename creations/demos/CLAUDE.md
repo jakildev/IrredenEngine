@@ -13,14 +13,12 @@ personal editors, experiments) live as gitignored subdirectories under
 - `shape_debug/` — stress test for the shape renderer and voxel pipeline
   at varying subdivisions / zoom. Useful for chasing rendering glitches.
 - `midi_keyboard/` — keyboard-driven MIDI input demo.
-- `midi_polyrhythm/` — Lua-driven polyrhythm sequencer. Reference for
-  how `lua_component_pack.hpp` + `main_lua.cpp` are wired up.
 - `metal_clear_test/` — Metal-backend smoke test (clear-color only).
 
 ## Adding a new demo
 
 1. Copy the closest matching existing demo (Lua-driven →
-   `midi_polyrhythm`, C++-only → `shape_debug`, minimal → `default`).
+   `default`, C++-only → `shape_debug`, minimal → `default`).
 2. Rename the target (`IRShapeDebug` → `IRYourName`) and update
    `CMakeLists.txt`:
    - `set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})`

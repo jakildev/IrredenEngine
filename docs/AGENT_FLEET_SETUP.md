@@ -947,7 +947,7 @@ automatically. No X server setup needed on Windows 11 / recent Windows
 
 - **MIDI devices.** RtMidi on Linux binds ALSA MIDI, which WSLg
   doesn't forward from Windows-side hardware MIDI. If a demo needs a
-  real MIDI controller (`midi_keyboard`, `midi_polyrhythm`), run it
+  real MIDI controller (`midi_keyboard`), run it
   from the **Windows-native** clone or from the **macOS** clone
   (CoreMIDI + `brew install` nothing — it just works) until a WSL
   bridge is set up.

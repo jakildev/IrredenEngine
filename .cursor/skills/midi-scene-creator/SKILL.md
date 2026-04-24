@@ -163,12 +163,10 @@ IREntity.createMidiSequence(seq)
 
 ## Reference Creation
 
-`creations/demos/midi_polyrhythm/` is the canonical MIDI scene example:
-- `settings.lua` configures device, voice MIDI params
-- `voices.lua` maps scale notes to per-voice MIDI (note, velocity, hold, channel)
-- `entities.lua` batch-creates voxel note blocks with `C_MidiNote`
-- `CONTACT_MIDI_TRIGGER` fires on platform collisions
-- Full pipeline: contact -> NOTE_ON -> delayed NOTE_OFF -> hardware
+The engine-side `midi_polyrhythm` demo has been removed from this repo. The canonical full-Lua
+MIDI example now lives in the game repo. For structural reference (Lua bindings layout, CMake
+script-sync pattern, component packs), use `creations/demos/default/` as the closest surviving
+engine-side example.
 
 ## Checklist
 
