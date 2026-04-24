@@ -142,6 +142,17 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **Fleet/merger: stacked-PR awareness via baseRefName** — teach the merger to detect stacked PRs via `baseRefName`, hold off until base merges, then re-target child to master and trigger reviewer re-eval
+  - **ID:** T-037
+  - **Area:** .claude/skills, scripts/fleet
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merger reads `baseRefName` for every candidate PR and routes to correct cascade branch; (2) stacked PR with open base → `fleet:awaiting-base` set, comment posted, merger does not touch PR; (3) stacked PR with merged base → `gh pr edit --base master`, `fleet:stacked-rebase` set, reviewer re-evaluates; (4) three new labels (`fleet:stacked`, `fleet:awaiting-base`, `fleet:stacked-rebase`) added to fleet-labels catalog; (5) author roles add `fleet:stacked` at PR creation when base is a feature branch; (6) real fleet test with 2-PR stack verifies the cascade
+  - **Issue:** #287
+  - **Notes:** detailed design and scope in issue #287. Uses `baseRefName` + base PR `.state` from GitHub API — no body/commit-message parsing anywhere. Out of scope: label state-machine bugs on existing PRs, stacked-PR visualization, auto-rebasing commits onto master after re-target.
+  - **Links:**
+
 - [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
   engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
