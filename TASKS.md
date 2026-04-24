@@ -169,17 +169,6 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [x] **Remove engine-side midi_polyrhythm demo after game port lands** — delete `creations/demos/midi_polyrhythm/` from the engine repo and remove its CMake subdirectory entry to eliminate the duplicate build target
-  - **ID:** T-032
-  - **Area:** build, creations/demos
-  - **Model:** sonnet
-  - **Owner:** T-032-remove-midi-polyrhythm
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `creations/demos/midi_polyrhythm/` directory completely removed from engine repo; (2) `add_subdirectory` for midi_polyrhythm removed from `creations/CMakeLists.txt`; (3) engine build (`fleet-build --target IRShapeDebug` or any non-midi target) compiles clean with no broken references; (4) no dangling references to midi_polyrhythm in any remaining CMake files
-  - **Issue:** #255
-  - **Notes:** [sonnet] per issue — mechanical deletion plus smoke-test build. Must NOT be merged before the game-side midi port PR has merged (the port moves the creation to the game repo; if the engine copy disappears first, the IRMidiPolyrhythm target vanishes entirely until the game PR lands). Worker should verify the game port is live before opening this PR.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/274
-
 - [~] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
   - **ID:** T-034
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/script
@@ -270,13 +259,3 @@ Avoid:
   - **Notes:** shadow height map sweep: `S(x,z) = max(H(x,z), S(x-1,z) - slope)` — O(N) pass over column grid. Fixed iso camera maps shadow direction to constant screen-space offset. Use columnar span lists for overhangs (not just heightmap). Sun direction stored as world-space unit vector; rebuilds triggered on fixed angular steps. Output: 2D shadow texture in iso-space (or 3D shadow volume for overhangs). Soft shadows optional — start with hard, soften later. Blocked by #164 + #165.
   - **Links:** https://github.com/jakildev/IrredenEngine/pull/210
 
-- [x] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** — GPU-side voxel-position update compute ported to Metal.
-  - **ID:** T-005
-  - **Area:** engine/render/src/shaders/metal
-  - **Model:** opus
-  - **Owner:** metal-update-voxel-positions-port
-  - **Blocked by:** (none)
-  - **Acceptance:** `.metal` shader exists, `macos-debug` build clean, voxel animation identical to OpenGL.
-  - **Issue:** (none)
-  - **Notes:** (none)
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/223
