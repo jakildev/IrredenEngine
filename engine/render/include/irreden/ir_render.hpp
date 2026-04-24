@@ -209,26 +209,6 @@ void setHoveredTrixelVisible(bool visible);
 bool isHoveredTrixelVisible();
 /// @}
 
-/// @{
-/// @name Directional sun lighting
-/// Unit vector pointing from surfaces toward the sun. Consumed each frame
-/// by the @c COMPUTE_SUN_SHADOW pass to ray-march the occupancy grid;
-/// setter normalizes on write so callers can pass any non-zero vector.
-void setSunDirection(vec3 dir);
-vec3 getSunDirection();
-/// @}
-
-/// @{
-/// @name Lighting debug overlay
-/// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
-/// color visualization of the underlying lighting buffers. See
-/// @c DebugOverlayMode for the per-mode color encoding. Upstream lighting
-/// passes (@c COMPUTE_VOXEL_AO, @c COMPUTE_SUN_SHADOW) keep running so the
-/// values rendered are exactly what the artistic path would consume.
-void setDebugOverlay(DebugOverlayMode mode);
-DebugOverlayMode getDebugOverlay();
-/// @}
-
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */

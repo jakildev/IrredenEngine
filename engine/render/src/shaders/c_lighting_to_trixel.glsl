@@ -23,8 +23,9 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     // bound 3D light volume, and additively combined with the AO base.
     uniform int   lightVolumeEnabled;
     uniform float debugLightLevel;
-    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
-    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
+    // Mirrors IRPrefab::DebugOverlay::Mode. 0 = NONE (artistic path);
+    // 1 = AO, 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write
+    // false-color.
     uniform int   debugOverlayMode;
 };
 

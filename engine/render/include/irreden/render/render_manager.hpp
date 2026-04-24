@@ -67,12 +67,6 @@ class RenderManager {
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
 
-    void setSunDirection(vec3 dir);
-    vec3 getSunDirection() const;
-
-    void setDebugOverlay(DebugOverlayMode mode);
-    DebugOverlayMode getDebugOverlay() const;
-
     void beginFrame();
     void renderFrame();
     void presentFrame();
@@ -130,11 +124,6 @@ class RenderManager {
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
-    // Unit vector pointing from surfaces toward the sun. Default is
-    // overhead-lit; creations override via setSunDirection() per frame or
-    // at init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
-    vec3 m_sunDirection = vec3(0.0f, 1.0f, 0.0f);
-    DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 
     void initRenderingSystems();
     void initRenderingResources();
