@@ -135,6 +135,7 @@ exit cleanly:
    - `human:needs-fix` — human owes a fix; don't loop on it
    - `human:blocker` — same
    - `human:re-review` — reviewer concern; not the merger's lane
+   - `fleet:awaiting-base` — stacked PR waiting on its base to merge; skip until base merges/closes and sub-case ii/iii removes this label
 
    **Cap UNKNOWN-state refreshes at 2 per iteration.** If the
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
@@ -174,14 +175,14 @@ exit cleanly:
          until the base lands; skip this iteration.
          - Write `.merger-body.md` with:
            ```
-           Merger: waiting on base PR #<base> to merge before this
+           Merger: waiting on base PR #<base-pr-number> to merge before this
            stacked PR can be re-targeted to master and merged.
 
            — fleet merger
            ```
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
          - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:awaiting-base" --add-label "fleet:merger-cooldown"`
-         - Log: `... stacked on open #<base>, labeled fleet:awaiting-base`
+         - Log: `... stacked on open #<base-pr-number>, labeled fleet:awaiting-base`
 
       **ii. Base PR is MERGED.** GitHub auto-re-targets the child to
          master on most merges, but not unconditionally — re-target
@@ -202,7 +203,7 @@ exit cleanly:
            — fleet merger
            ```
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:stacked-rebase" --add-label "fleet:merger-cooldown"`
+         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
          - Log: `... base #<base> merged, re-targeted to master, labeled fleet:stacked-rebase`
 
       **iii. Base PR is CLOSED (not merged).** Orphaned stack — the
