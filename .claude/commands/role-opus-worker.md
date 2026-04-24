@@ -495,9 +495,14 @@ Do the work, then exit cleanly:
    3. Do the task's work in that branch. Commit as normal — no
       special commit-subject prefix is required anymore; one task per
       branch means the branch name IS the per-task anchor.
-   4. Open the PR with `--base "$base"` and record it in the stack:
-      `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip"`
+   4. Open the PR with `--base "$base"` and record it in the stack.
+      When `$base` is a feature branch (i.e. not `master`), add
+      `--label "fleet:stacked"` so the merger and reviewer can filter
+      by label without an extra `gh pr view --json baseRefName` call:
+      `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip" --label "fleet:stacked"`
       `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
+      For the first task in the chain (`$base == master`), omit the
+      `fleet:stacked` label — that PR merges into master normally.
 
    **Stacked PR title + body format:** start the PR title with the
    task ID so reviewers can tell which task in the chain this PR
