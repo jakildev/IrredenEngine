@@ -529,6 +529,9 @@ Specifically, **never pass these via `--label` when filing**:
   it (observed on issues #270-#273, #287).
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
+- `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` — owned by the
+  **reviewer agents**, added after the verdict to request a cross-host
+  build + run validation.
 - `fleet:wip` — owned by the **author agent** (set at PR creation
   during a normal `commit-and-push` flow). Don't add to issues.
 - `fleet:in-progress` / `fleet:merger-cooldown` /
