@@ -290,11 +290,15 @@ exit cleanly:
       (clean rebase, case i, case ii). Captures the post-rebase diff
       and compares it to the pre-capture from step b. Run
       `git diff origin/master` again — both pre and post snapshots
-      are now in your conversation context. Compare them: look for
-      lines beginning with `+` in the pre-capture that are absent
-      from the post-capture. Each such gap is a silently dropped
-      hunk. If any are found, do NOT push: restore the missing
-      lines and re-run this check before proceeding to the push.
+      are now in your conversation context. Compare them: for each
+      `+` line in the pre-capture, verify the same line content
+      appears somewhere in the post-capture. Scan for **content**,
+      not position — a hunk that moved to a different file offset
+      (or even a different file) is still intact and should not
+      trigger this check. Only a `+` line from pre that is missing
+      entirely from post is a silently dropped hunk. If any are
+      found, do NOT push: restore the missing lines and re-run this
+      check before proceeding to the push.
 
       (Same no-`>`-redirect rule as step b. Both diffs live in the
       conversation, not on disk.)
