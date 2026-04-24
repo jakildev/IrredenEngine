@@ -144,16 +144,6 @@ For the two viable patterns for exposing feature API from the prefab layer, see
 `engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API from
 the prefab layer".
 
-### Current deviations
-
-One feature still needs relocating in the T-036 refactor:
-
-| Feature | Current (wrong) surface | Tracking task |
-|---|---|---|
-| Sun lighting | `IRRender::setSunDirection` / `getSunDirection` | T-036 (PR #210) |
-
-When a tracking task's PR merges, remove the corresponding row from this table.
-
 ## Verifying render changes
 
 Rendering bugs rarely show up in the type checker or the test suite. Any

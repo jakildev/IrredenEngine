@@ -22,6 +22,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/sun.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -115,7 +116,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             },
             []() {
                 s_program->use();
-                const vec3 sunDir = IRRender::getSunDirection();
+                const vec3 sunDir = IRPrefab::Sun::getDirection();
                 frameData.sunDirection_ = vec4(sunDir, 0.0f);
                 s_sunShadowFrameDataBuf->subData(
                     0, sizeof(FrameDataSunShadow), &frameData
