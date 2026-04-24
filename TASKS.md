@@ -169,23 +169,12 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace** — remove `setFogCell`, `getFogCell`, `revealRadius`, `clearFogOfWar` from `IRRender::` and `RenderManager`; expose from a prefab-scoped surface (e.g. `IRPrefab::Fog::`)
-  - **ID:** T-034
-  - **Area:** engine/render, engine/prefabs/irreden/render, engine/script
-  - **Model:** opus
-  - **Owner:** T-034-fog-prefab-namespace
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fog API free functions removed from `IRRender::` and `ir_render.cpp` no longer references fog state; (2) fog API exposed from prefab-scoped surface; (3) all callers updated (Lua bindings, `shape_debug/main.cpp`); (4) build clean on `linux-debug` and `macos-debug`; (5) `render-debug-loop` on `shape_debug` shows visually identical fog behavior
-  - **Issue:** (none)
-  - **Notes:** second in 4-task stack from issue #266. Known caller: `creations/demos/shape_debug/main.cpp:542`. Lua bindings forward fog calls to `IRRender::` — both must be updated together. Check existing prefab namespaces before picking `IRPrefab::Fog::` — use whatever convention is already established.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/275
-
 - [~] **Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace** — remove `setDebugOverlay`/`getDebugOverlay` from `IRRender::`, delete `m_debugOverlayMode` from `RenderManager`; expose from a prefab-scoped surface
   - **ID:** T-035
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
   - **Owner:** T-035-debug-overlay-prefab
-  - **Blocked by:** T-034
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `setDebugOverlay`/`getDebugOverlay` removed from `IRRender::` and `RenderManager`; `m_debugOverlayMode` deleted; (2) API exposed from prefab-scoped surface or singleton component; (3) all callers updated (Lua bindings, C++ call sites); (4) build clean on both backends; (5) `render-debug-loop` shows identical debug overlay behavior
   - **Issue:** (none)
   - **Notes:** third in 4-task stack from issue #266. Overlay mode introduced in T-025 (PR #235). Use the prefab pattern established by T-034.
@@ -197,7 +186,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 - [~] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
 
 ---
@@ -206,6 +194,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 - [x] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
 - [x] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
@@ -225,16 +214,5 @@ Avoid:
 - [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
 - [x] **T-006** — Metal parity: port c_voxel_visibility_compact.glsl to MSL · Owner: metal-voxel-visibility-compact-port · PR: https://github.com/jakildev/IrredenEngine/pull/227
 - [x] **T-019** — Skill: wire attach-screenshots into engine author roles and commit-and-push · Owner: skills-attach-screenshots-wiring · PR: https://github.com/jakildev/IrredenEngine/pull/225
-
-- [x] **Fleet: merger orchestrator pane for auto-resolving PR conflicts** — add a `merger` role that polls for conflicting PRs, auto-resolves mechanical conflicts (TASKS.md sort-merge, whitespace, clean-rebase), and labels non-mechanical conflicts for human
-  - **ID:** T-022
-  - **Area:** tooling, .claude/skills
-  - **Model:** opus
-  - **Owner:** fleet-merger-orchestrator
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) merger pane in `fleet-up`, polls every 10m; (2) two PRs touching same file far apart get auto-rebased and emerge MERGEABLE; (3) TASKS.md conflicts (two PRs adding different tasks) auto-resolved by sort-merge; (4) non-mechanical conflicts (same code lines changed differently) labeled `human:needs-fix` with conflict description — NEVER auto-resolved; (5) merger never force-pushes to master, never calls `gh pr merge`; (6) every action logged to `~/.fleet/logs/merger.log` and posted as PR comment; (7) PRs labeled `human:wip`, `fleet:wip`, or `fleet:blocker` are skipped
-  - **Issue:** #192
-  - **Notes:** explicitly [opus] — conflict classification (mechanical vs semantic) requires judgment. v1 scope: TASKS.md sort-merge, whitespace-only, clean-rebase only. More heuristics added incrementally. Uses `--force-with-lease` not `--force`. Inspiration: gas town Refinery role.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/224
 
 
