@@ -59,7 +59,7 @@ add_custom_target(IRYourCreationRun
 )
 ```
 
-For Lua creations, also add script-sync commands. See `creations/demos/default/CMakeLists.txt` or `creations/demos/midi_polyrhythm/CMakeLists.txt` for the full pattern with `copy_if_different` for `.lua` files and `scripts/` directories.
+For Lua creations, also add script-sync commands. See `creations/demos/default/CMakeLists.txt` for the full pattern with `copy_if_different` for `.lua` files and `scripts/` directories.
 
 ## Step 2: Register the creation
 
@@ -183,5 +183,5 @@ Within each pipeline, systems execute in the order listed in `registerPipeline`.
 ## Reference Creations
 
 - **Minimal C++:** `creations/demos/default/main.cpp`
-- **Full Lua:** `creations/demos/midi_polyrhythm/` (complete Lua stack with MIDI)
+- **Full Lua:** `creations/demos/default/` (complete Lua stack; MIDI-specific example has moved to the game repo)
 - **C++ + Lua hybrid:** `creations/demos/default/main_lua.cpp`
