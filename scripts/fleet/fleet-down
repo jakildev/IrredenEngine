@@ -135,25 +135,56 @@ echo "$$ $(date '+%Y-%m-%dT%H:%M:%S%z')" > "$SHUTDOWN_FLAG"
 trap 'rm -f "$SHUTDOWN_FLAG"' EXIT
 
 # ----------------------------------------------------------------------
-# Ctrl-C trap: continue to graceful shutdown instead of bailing
+# Ctrl-C trap: per-phase abort, doesn't cascade
 # ----------------------------------------------------------------------
 #
 # Without this trap, hitting Ctrl-C during --wait or --summary would
 # kill fleet-down outright (bash propagates SIGINT under `set -e`).
 # The user then has to run `fleet-down --force` separately to actually
-# bring the fleet down — which observed in production after the user
-# Ctrl-C'd a stuck --summary pass.
+# bring the fleet down — observed in production.
 #
-# With the trap: Ctrl-C sets a flag, the long-running loops below
-# notice the flag and break out of their wait, and the rest of
-# fleet-down (graceful shutdown + kill-session + claim-clear) runs
-# normally. One Ctrl-C and the whole shutdown completes.
-USER_ABORTED=0
+# Per-phase semantics matter: a Ctrl-C during --wait should skip
+# *only* the wait, then run --summary normally (the user explicitly
+# asked for --summary). Earlier behavior used a single USER_ABORTED
+# flag that cascaded — Ctrl-C during a stuck --wait left every pane
+# in the --summary loop printing "skipped — fleet-down aborted by
+# user" and produced 0/9 summaries. To skip multiple phases the user
+# Ctrl-Cs once per phase.
+#
+# Implementation: trap sets ABORTED_<phase> for whatever phase is
+# active, based on CURRENT_PHASE. Each loop checks only its own
+# phase's flag, so a Ctrl-C during one phase doesn't pre-cancel the
+# next.
+ABORTED_WAIT=0
+ABORTED_SUMMARY=0
+ABORTED_GRACE=0
+CURRENT_PHASE="init"
 on_sigint() {
-    USER_ABORTED=1
-    echo
-    echo "fleet-down: Ctrl-C received — skipping remaining wait/summary work"
-    echo "            and proceeding to graceful shutdown."
+    case "$CURRENT_PHASE" in
+        wait)
+            ABORTED_WAIT=1
+            echo
+            echo "fleet-down: Ctrl-C — skipping remaining --wait, proceeding to --summary."
+            ;;
+        summary)
+            ABORTED_SUMMARY=1
+            echo
+            echo "fleet-down: Ctrl-C — skipping remaining --summary, proceeding to graceful shutdown."
+            ;;
+        grace)
+            ABORTED_GRACE=1
+            echo
+            echo "fleet-down: Ctrl-C — skipping graceful pause, killing tmux session now."
+            ;;
+        *)
+            # Pre-phase or post-everything Ctrl-C: just abort all.
+            ABORTED_WAIT=1
+            ABORTED_SUMMARY=1
+            ABORTED_GRACE=1
+            echo
+            echo "fleet-down: Ctrl-C — aborting current operation."
+            ;;
+    esac
 }
 trap on_sigint INT TERM
 
@@ -187,10 +218,11 @@ count_active_claims() {
 }
 
 if [[ "$WAIT_FOR_IDLE" -eq 1 ]]; then
+    CURRENT_PHASE="wait"
     deadline=$(( $(date +%s) + WAIT_MAX_SECONDS ))
     echo "fleet-down --wait: waiting for active claims to drain (max ${WAIT_MAX_SECONDS}s, polling every ${WAIT_POLL_SECONDS}s)"
-    echo "                   (Ctrl-C to skip the wait and proceed to shutdown)"
-    while [[ $(date +%s) -lt $deadline && "$USER_ABORTED" -eq 0 ]]; do
+    echo "                   (Ctrl-C to skip the wait and proceed to --summary / shutdown)"
+    while [[ $(date +%s) -lt $deadline && "$ABORTED_WAIT" -eq 0 ]]; do
         n=$(count_active_claims)
         if [[ "$n" -eq 0 ]]; then
             echo "fleet-down --wait: all claims released. Proceeding."
@@ -206,13 +238,14 @@ if [[ "$WAIT_FOR_IDLE" -eq 1 ]]; then
         fi
         # `|| true` defends against `set -e` when sleep is interrupted by
         # SIGINT — without it, bash sees sleep's 130 exit and kills the
-        # script before the next loop iteration can check USER_ABORTED.
+        # script before the next loop iteration can check ABORTED_WAIT.
         sleep "$WAIT_POLL_SECONDS" || true
     done
-    if [[ "$USER_ABORTED" -eq 0 && $(date +%s) -ge $deadline ]]; then
+    if [[ "$ABORTED_WAIT" -eq 0 && $(date +%s) -ge $deadline ]]; then
         n=$(count_active_claims)
-        echo "fleet-down --wait: deadline reached with $n claim(s) still held. Proceeding to graceful shutdown anyway."
+        echo "fleet-down --wait: deadline reached with $n claim(s) still held. Proceeding to --summary / shutdown anyway."
     fi
+    CURRENT_PHASE="post-wait"
 fi
 
 # ----------------------------------------------------------------------
@@ -330,6 +363,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         SUMMARY_ROLES+=("$role")
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 
+    CURRENT_PHASE="summary"
     total_panes=${#SUMMARY_PANES[@]}
     pane_idx=0
     for pane_id in "${SUMMARY_PANES[@]}"; do
@@ -338,10 +372,13 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         summary_file="$SUMMARY_DIR/$role.md"
         echo "[$pane_idx/$total_panes] $role:"
 
-        # User Ctrl-C'd — bail out of the loop, print what we got, then
+        # User Ctrl-C'd during --summary — bail out of the loop, then
         # let the rest of fleet-down (graceful shutdown + claim clear) run.
-        if [[ "$USER_ABORTED" -eq 1 ]]; then
-            echo "  skipped — fleet-down aborted by user"
+        # ABORTED_SUMMARY is per-phase: a Ctrl-C during --wait does NOT
+        # set this flag, so summary still runs normally if the user
+        # only wanted to skip the wait.
+        if [[ "$ABORTED_SUMMARY" -eq 1 ]]; then
+            echo "  skipped — --summary aborted by user"
             continue
         fi
 
@@ -380,7 +417,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         # 1. Wait for idle.
         idle_deadline=$(( $(date +%s) + SUMMARY_IDLE_WAIT_SECONDS ))
         first_busy_report=1
-        while [[ $(date +%s) -lt $idle_deadline && "$USER_ABORTED" -eq 0 ]]; do
+        while [[ $(date +%s) -lt $idle_deadline && "$ABORTED_SUMMARY" -eq 0 ]]; do
             if pane_is_idle "$pane_id"; then
                 break
             fi
@@ -390,7 +427,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
             fi
             sleep "$SUMMARY_IDLE_POLL_SECONDS" || true
         done
-        if [[ "$USER_ABORTED" -eq 1 ]]; then
+        if [[ "$ABORTED_SUMMARY" -eq 1 ]]; then
             echo "  aborted while waiting for idle"
             continue
         fi
@@ -405,7 +442,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         # 3. Wait for the file to appear.
         write_deadline=$(( $(date +%s) + SUMMARY_WRITE_WAIT_SECONDS ))
         wrote=0
-        while [[ $(date +%s) -lt $write_deadline && "$USER_ABORTED" -eq 0 ]]; do
+        while [[ $(date +%s) -lt $write_deadline && "$ABORTED_SUMMARY" -eq 0 ]]; do
             if [[ -f "$summary_file" ]]; then
                 wrote=1
                 break
@@ -414,7 +451,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         done
         if [[ "$wrote" -eq 1 ]]; then
             echo "  ✓ $(basename "$summary_file") landed ($(wc -c < "$summary_file" | tr -d ' ') bytes)"
-        elif [[ "$USER_ABORTED" -eq 1 ]]; then
+        elif [[ "$ABORTED_SUMMARY" -eq 1 ]]; then
             echo "  aborted while waiting for $(basename "$summary_file")"
         else
             echo "  ✗ $(basename "$summary_file") did not appear within ${SUMMARY_WRITE_WAIT_SECONDS}s"
@@ -424,6 +461,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
     written=$(find "$SUMMARY_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
     echo
     echo "fleet-down --summary: $written/$total_panes summary file(s) written to $SUMMARY_DIR/"
+    CURRENT_PHASE="post-summary"
 fi
 
 # ----------------------------------------------------------------------
@@ -455,12 +493,14 @@ if [[ "$FORCE" -eq 0 ]]; then
         tmux send-keys -t "$pane_id" "exit" Enter
     done < <(tmux list-panes -t "$SESSION" -F '#{pane_id}')
 
-    if [[ "$USER_ABORTED" -eq 1 ]]; then
+    CURRENT_PHASE="grace"
+    if [[ "$ABORTED_GRACE" -eq 1 ]]; then
         echo "fleet-down: skipping ${GRACE_SECONDS}s grace pause (user aborted)."
     else
-        echo "fleet-down: waiting ${GRACE_SECONDS}s for panes to wind down..."
+        echo "fleet-down: waiting ${GRACE_SECONDS}s for panes to wind down... (Ctrl-C to skip)"
         sleep "$GRACE_SECONDS" || true
     fi
+    CURRENT_PHASE="post-grace"
 else
     echo "fleet-down: --force — skipping graceful shutdown."
 fi
