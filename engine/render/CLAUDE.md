@@ -146,14 +146,12 @@ the prefab layer".
 
 ### Current deviations
 
-Three features landed before this principle was established. Each will be
-relocated in the T-034 / T-035 / T-036 refactor stack:
+Two features still need relocating in the T-035 / T-036 refactor stack:
 
 | Feature | Current (wrong) surface | Tracking task |
 |---|---|---|
 | Sun lighting | `IRRender::setSunDirection` / `getSunDirection` | T-036 (PR #210) |
 | Debug overlay | `IRRender::setDebugOverlay` / `getDebugOverlay` | T-035 (PR #235) |
-| Fog-of-war | `IRRender::setFogCell` / `getFogCell` / `revealRadius` / `clearFogOfWar` | T-034 (PR #238) |
 
 When a tracking task's PR merges, remove the corresponding row from this table.
 
