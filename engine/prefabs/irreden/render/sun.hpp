@@ -11,7 +11,7 @@
 
 #include <irreden/ir_math.hpp>
 
-using namespace IRMath;
+using IRMath::vec3;
 
 namespace IRPrefab::Sun {
 
