@@ -407,11 +407,11 @@ Avoid:
   - **Notes:** third in 4-task stack from issue #266. Overlay mode introduced in T-025 (PR #235). Use the prefab pattern established by T-034.
   - **Links:**
 
-- [ ] **Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace** — remove `setSunDirection`/`getSunDirection` from `IRRender::`, delete `m_sunDirection` from `RenderManager`; relocate to prefab-scoped surface tied to the directional-light entity
+- [~] **Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace** — remove `setSunDirection`/`getSunDirection` from `IRRender::`, delete `m_sunDirection` from `RenderManager`; relocate to prefab-scoped surface tied to the directional-light entity
   - **ID:** T-036
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** T-036-sun-prefab-namespace
   - **Blocked by:** T-035
   - **Acceptance:** (1) `setSunDirection`/`getSunDirection` removed from `IRRender::` and `RenderManager`; `m_sunDirection` deleted; (2) pipeline reads sun direction from new prefab home; (3) all callers updated; (4) build clean on both backends; (5) `render-debug-loop` shows identical sun lighting/shadow behavior at multiple sun angles
   - **Issue:** #266
@@ -427,6 +427,7 @@ Avoid:
 - [~] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
 - [~] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
+- [~] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
 
 ---
 
