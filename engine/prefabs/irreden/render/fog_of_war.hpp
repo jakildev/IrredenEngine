@@ -56,6 +56,7 @@ inline void revealRadius(int cx, int cy, int radius) {
     }
 }
 
+/// Reset every cell to `kFogStateUnexplored`.
 inline void clear() {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearAll();
