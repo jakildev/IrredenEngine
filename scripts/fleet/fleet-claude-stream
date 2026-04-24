@@ -122,6 +122,7 @@ def handle_result(event):
 # up with exact wording. Add new prefixes here as they show up.
 BENIGN_WARNING_PREFIXES = (
     "API Error: Stream idle timeout",
+    # These appear post-result during HTTP-client cleanup; annotating rather than suppressing.
     "API Error: Connection error",
     "API Error: Request timed out",
 )

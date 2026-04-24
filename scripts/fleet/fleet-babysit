@@ -111,9 +111,7 @@ shutdown_aware_sleep() {
         if [[ -f "$SHUTDOWN_FLAG" ]]; then
             return 1
         fi
-        # Re-touch heartbeat so the witness doesn't false-alarm STALE
-        # during a healthy between-iteration wait. Workers only —
-        # HEARTBEAT_FILE is empty for architects.
+        # Keep heartbeat fresh during between-iteration wait.
         [[ -n "$HEARTBEAT_FILE" ]] && touch "$HEARTBEAT_FILE" 2>/dev/null || true
         # Sleep at most 5s at a time, but never longer than what's left.
         local remaining=$(( end - $(date +%s) ))
