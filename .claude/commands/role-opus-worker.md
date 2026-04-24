@@ -103,17 +103,26 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    steps below (3–6 game variants, step 1's game PR check) and
    proceed with engine tasks only — do not abort the iteration.
 3. **Read the latest TASKS.md from origin/master without staging.**
-   Use `git show` to write current master versions to temp files — does
-   NOT touch the working tree or index, so it won't break later branch
-   checkouts. Two repos, two temp files:
-   `git -C ~/src/IrredenEngine show origin/master:TASKS.md > /tmp/tasks-engine.md`
-   `git -C ~/src/IrredenEngine/creations/game show origin/master:TASKS.md > /tmp/tasks-game.md`
+   Use `git show` to dump the current master versions directly to
+   stdout — does NOT touch the working tree or index, so it won't
+   break later branch checkouts. Two repos, two Bash calls:
+   `git -C ~/src/IrredenEngine show origin/master:TASKS.md`
+   `git -C ~/src/IrredenEngine/creations/game show origin/master:TASKS.md`
+   The Bash tool returns the full content as its output (and
+   auto-persists to a `.claude/projects/.../`-side file if the
+   output is large — automatic, you don't have to manage it).
+
+   Do NOT redirect to `/tmp` or anywhere else with `>`. Claude
+   Code's Bash tool blocks shell redirects regardless of whether
+   the destination is in `additionalDirectories` (the gate is on
+   the `>` operation, not the path). Stick with stdout-only.
+
    For plan files, list them with `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
    then `git -C <repo> show origin/master:.fleet/plans/<file>` for any
    you need to read. Do NOT use `git checkout origin/master -- ...` —
    it stages the files and breaks later `git checkout -b`.
-4. Read `/tmp/tasks-engine.md` and `/tmp/tasks-game.md` (Read tool) —
-   review both queues.
+4. Review both queues from the `git show` output you just captured
+   for the engine and game `TASKS.md`.
 5. Open-PR cross-check on both repos:
    `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName,author`
    `gh pr list --repo jakildev/irreden       --state open --json number,title,headRefName,author`
@@ -367,8 +376,9 @@ Do the work, then exit cleanly:
      below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
-   Look at both `/tmp/tasks-engine.md` and `/tmp/tasks-game.md`. Find
-   the first `[ ]` item in `## Open` with `Model: opus` whose:
+   Re-run the two `git show origin/master:TASKS.md` Bash calls from
+   step 3 if their output isn't still in your context. Find the
+   first `[ ]` item in `## Open` with `Model: opus` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
