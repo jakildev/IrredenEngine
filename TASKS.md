@@ -396,11 +396,11 @@ Avoid:
   - **Notes:** second in 4-task stack from issue #266. Known caller: `creations/demos/shape_debug/main.cpp:542`. Lua bindings forward fog calls to `IRRender::` — both must be updated together. Check existing prefab namespaces before picking `IRPrefab::Fog::` — use whatever convention is already established.
   - **Links:**
 
-- [ ] **Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace** — remove `setDebugOverlay`/`getDebugOverlay` from `IRRender::`, delete `m_debugOverlayMode` from `RenderManager`; expose from a prefab-scoped surface
+- [~] **Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace** — remove `setDebugOverlay`/`getDebugOverlay` from `IRRender::`, delete `m_debugOverlayMode` from `RenderManager`; expose from a prefab-scoped surface
   - **ID:** T-035
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** T-035-debug-overlay-prefab
   - **Blocked by:** T-034
   - **Acceptance:** (1) `setDebugOverlay`/`getDebugOverlay` removed from `IRRender::` and `RenderManager`; `m_debugOverlayMode` deleted; (2) API exposed from prefab-scoped surface or singleton component; (3) all callers updated (Lua bindings, C++ call sites); (4) build clean on both backends; (5) `render-debug-loop` shows identical debug overlay behavior
   - **Issue:** (none)
@@ -426,6 +426,7 @@ Avoid:
 
 - [~] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [~] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
+- [~] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
 
 ---
 
