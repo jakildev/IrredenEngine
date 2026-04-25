@@ -162,11 +162,12 @@ overwritten by checkout."
 ### 7. Check out the new branch off the right base
 
 ```bash
-git checkout -B <new-branch> "$BASE"
+git checkout -B <new-branch> origin/master      # standard mode
+git checkout -B <new-branch> <old-branch-name>  # stack mode
 ```
 
-`$BASE` was set in step 4: `origin/master` for the standard flow,
-`<old-branch-name>` for stack mode. `-B` (uppercase) creates the branch
+The base is `origin/master` for the standard flow, `<old-branch-name>` for
+stack mode (see step 4). `-B` (uppercase) creates the branch
 if it doesn't exist AND resets it to the named commit if it does.
 Lowercase `-b` errors out with "branch already exists" — surprisingly
 common because the worktree's previous scratch branches accumulate over
