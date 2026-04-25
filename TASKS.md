@@ -164,7 +164,7 @@ Avoid:
   - **Notes:** hybrid approach — keeps babysit hardening from PRs #246/#247/#248/#257/#265/#269, adds trigger-awareness for ~80% cost-saving benefit without full transient dispatcher replacement. New env var FLEET_LONG_BACKOFF (default 1800). Difficulty: medium.
   - **Links:**
 
-- [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
+- [~] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
   engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
   24.04. This is the umbrella epic — break it into smaller follow-up
@@ -174,7 +174,7 @@ Avoid:
   - **Model:** opus (for anything touching core-engine invariants) /
     sonnet (for mechanical port fixes like missing `#include`, case-
     sensitive paths, EOL drift)
-  - **Owner:** free
+  - **Owner:** T-001-linux-ci
   - **Blocked by:** (none)
   - **Acceptance:** from a fresh WSL2 Ubuntu 24.04 clone,
     `cmake --preset linux-debug && cmake --build build -j$(nproc)`
