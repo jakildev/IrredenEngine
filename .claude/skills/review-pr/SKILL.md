@@ -396,9 +396,16 @@ host the author was NOT on:
 | Neither (Windows-native author, or pre-fix PR) | Both labels |
 
 ```bash
-# Determine which host(s) need smoke (one Bash call per add — keep
-# them separate so each is independently safe and idempotent):
-gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"
+# Linux author  → one call:
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+
+# macOS author  → one call:
+gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+
+# Neither (Windows-native or pre-fix PR) → two calls, one per label
+# (keep them separate so each is independently safe and idempotent):
+gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 ```
 
 Each host's author agents (opus-worker, sonnet-author) poll for the
