@@ -375,9 +375,9 @@ fi
 # (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
 # queue-manager, merger) read state.json instead of running their own
 # `gh pr list` / `git show` calls — see each role's "Shared fleet
-# state cache" section. The trigger files are emitted but not yet
-# consumed by babysit (the trigger-aware back-off planned by #272 is
-# still pending). Backgrounded with nohup, PID written to scout.pid
+# state cache" section. The trigger files are emitted and consumed by
+# babysit — trigger-aware back-off is live (T-040 / PR #300).
+# Backgrounded with nohup, PID written to scout.pid
 # for fleet-down to terminate cleanly.
 scout_cmd=""
 if command -v fleet-state-scout >/dev/null 2>&1; then
