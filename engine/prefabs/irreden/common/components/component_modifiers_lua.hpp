@@ -19,6 +19,10 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_NoGlobalModifie
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_LambdaModifiers> = true;
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_ResolvedFields> = true;
 
+// TransformKind is registered here as a side effect. Bind Modifier before
+// C_Modifiers / C_GlobalModifiers if scripts inspect the kind_ field on a
+// modifier entry; to remove the ordering dependency, factor TransformKind
+// registration into its own bindLuaType specialization.
 template <> inline void bindLuaType<IRComponents::Modifier>(LuaScript &luaScript) {
     using IRComponents::Modifier;
     using IRComponents::TransformKind;
@@ -49,7 +53,7 @@ template <> inline void bindLuaType<IRComponents::LambdaModifier>(LuaScript &lua
     using IRComponents::LambdaModifier;
 
     // fn_ deliberately not exposed — lambda push goes through the
-    // dedicated API surface in child 4 (`ir.modifier.pushLambda`).
+    // dedicated behavior API surface (`ir.modifier.pushLambda`).
     luaScript.registerType<LambdaModifier, LambdaModifier()>(
         "LambdaModifier",
         "field",           &LambdaModifier::field_,

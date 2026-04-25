@@ -34,10 +34,10 @@ mechanism: any feature that wants a stack of additive / multiplicative
 `C_Modifiers` vector. The resolver pipeline composes them once per
 UPDATE tick and writes the result to `C_ResolvedFields`.
 
-Child task 1 of issue #302 ships only the **types** and the **design
-contract**. The runtime (`FieldBindingId` registry, the five resolver
-systems, source-destruction sweep, `applyToField` query) ships in
-child 2.
+The framework ships in two phases: type declarations (component types,
+`Modifier` struct, static asserts) and the runtime (`FieldBindingId`
+registry, the five resolver systems, source-destruction sweep,
+`applyToField` query) in a follow-up.
 
 Full design — locked choices, rationale, audit, public-API surface,
 and decomposition — is in `docs/design/modifiers.md`. Read that
