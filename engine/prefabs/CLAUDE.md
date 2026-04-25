@@ -111,7 +111,7 @@ are worse:
   `IRRender::getActiveCanvasEntity()` (or similar) to bind the component
   to the currently-active canvas is fine — no other entity is mutated,
   and the alternative is forcing every caller to thread the canvas id.
-  Examples: `C_VoxelSet`, `C_ShapeDescriptor`.
+  Examples: `C_VoxelSetNew`, `C_ShapeDescriptor`.
 
 Anything outside (a)/(b) and not on the exceptions list is a (c) violation
 and should be moved to a system, builder, or namespace.
