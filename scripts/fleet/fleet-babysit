@@ -75,6 +75,20 @@ esac
 # To change one pane's effort, edit the case statement above.
 EFFORT="${FLEET_EFFORT:-$EFFORT}"
 
+# Architects boot with auto-memory disabled. The project-wide
+# MEMORY.md auto-injects past-session notes into every Claude Code
+# session — useful continuity for autonomous workers/reviewers, but
+# noise for the architects' interactive design conversations, where
+# stale notes from unrelated prior sessions bias the discussion
+# before the human types anything. Persistent design memory belongs
+# on the issue thread, not in a project-wide file. Glob matches the
+# `*architect*` convention used by ARCHITECT_RESUME below.
+case "$ROLE" in
+    *architect*)
+        export CLAUDE_CODE_DISABLE_AUTO_MEMORY="${CLAUDE_CODE_DISABLE_AUTO_MEMORY:-1}"
+        ;;
+esac
+
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
