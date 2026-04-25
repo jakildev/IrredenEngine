@@ -123,7 +123,7 @@ Small and bounded is the target. Good shapes for this queue:
 - **FFmpeg / audio interface hardening** — "add bounds checks to
   `VideoRecorder::submitVideoFrame` stride handling"
 - **Compile-time cleanup** — "reduce `engine/render/` TU rebuild cascade by
-  moving X out of the hot header"
+  moving X out of the low header"
 - **Shader hygiene** — "extract repeated iso-projection math in
   `engine/render/src/shaders/` into `ir_iso_common.glsl`"
 
@@ -141,6 +141,39 @@ Avoid:
 ## Open
 
 <!-- Add tasks below this line. -->
+
+- [ ] **Fleet: add fleet-state-scout daemon for shared state caching** — build a Python daemon that polls GitHub + git state, computes per-role content hashes, writes `~/.fleet/state/state.json`, and emits trigger files
+  - **ID:** T-038
+  - **Area:** scripts/fleet
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `~/.fleet/state/state.json` updated within 60s of any TASKS.md change or new PR; (2) per-role hash files change only when projected data changes (verified on quiescent fleet); (3) trigger files appear when role-relevant state changes, absent otherwise; (4) `fleet-down` stops scout cleanly with no orphaned children; (5) `bash -n` and python3 import clean; (6) no agent role file changed in this PR
+  - **Issue:** #270
+  - **Notes:** pure additive infra — roles don't consume the cache yet (follow-up T-039). Content-hash + per-role projection + trigger-touch pattern. Wire into fleet-up/fleet-down/install.sh. ~150 LOC Python. Difficulty: medium.
+  - **Links:**
+
+- [ ] **Fleet: roles read scout cache instead of running gh/git directly** — update all six worker/reviewer/queue-manager/merger role files to read `~/.fleet/state/state.json` instead of running per-iteration gh/git list calls
+  - **ID:** T-039
+  - **Area:** .claude/commands
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-038
+  - **Acceptance:** (1) each affected role's startup reads `~/.fleet/state/state.json` instead of inline gh/git list calls; (2) per-item ops (gh pr view, gh pr diff) remain inline; (3) architect role files unchanged; (4) smoke test verifies same work items found via cache as via direct queries; (5) no regression in any role's dispatch behavior
+  - **Issue:** #271
+  - **Notes:** affects six files: role-sonnet-author.md, role-opus-worker.md, role-sonnet-reviewer.md, role-opus-reviewer.md, role-queue-manager.md, role-merger.md. Architects untouched. Mostly mechanical rewrites but spans whole worker fleet — careful to preserve each role's filter logic. Difficulty: medium.
+  - **Links:**
+
+- [ ] **Fleet: trigger-aware back-off in fleet-babysit** — extend fleet-babysit to sleep a long back-off (~30 min) when no trigger file exists, relaunch immediately when a trigger appears
+  - **ID:** T-040
+  - **Area:** scripts/fleet
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-038, T-039
+  - **Acceptance:** (1) worker babysit sleeps LONG_BACKOFF_SECONDS (~1800) when no trigger file exists; (2) fires immediately (within ~5s) when trigger appears mid-sleep; (3) trigger file removed after consumption; (4) architect babysit lifecycle unchanged; (5) shutdown sentinel from PR #269 still wins; (6) `bash -n` clean; (7) real fleet test: no worker iterates more than once per LONG_BACKOFF_SECONDS on a quiet queue
+  - **Issue:** #272
+  - **Notes:** hybrid approach — keeps babysit hardening from PRs #246/#247/#248/#257/#265/#269, adds trigger-awareness for ~80% cost-saving benefit without full transient dispatcher replacement. New env var FLEET_LONG_BACKOFF (default 1800). Difficulty: medium.
+  - **Links:**
 
 - [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
   fix every compile/link/runtime issue encountered when building the
@@ -175,6 +208,7 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+
 ---
 
 ## Done — last 20
@@ -201,4 +235,3 @@ Avoid:
 - [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
 - [x] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
 - [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
-
