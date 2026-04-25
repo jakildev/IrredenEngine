@@ -191,11 +191,11 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [ ] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
+- [~] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
   - **ID:** T-042
   - **Area:** .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-042-start-next-task-stack-aware
   - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** after opening PR for first task in a 2-task stack, `start-next-task` lands on a branch whose merge-base is the just-opened PR's head ref; after exhausting the stack, resets to `origin/master`
