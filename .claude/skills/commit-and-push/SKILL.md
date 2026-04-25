@@ -324,10 +324,17 @@ multi-commit PRs, use a broader title that covers the series.
 
 **Stack-aware override:** when the current task is part of a
 `fleet-claim stack`, compute the base via `stack-base` and record the
-resulting PR via `stack-set-pr`:
+resulting PR via `stack-set-pr`. When `$base` is a feature branch
+(i.e. not `master`), also pass `--label "fleet:stacked"` so the merger
+can filter stacked PRs via label without an extra `gh pr view --json
+baseRefName` call per candidate:
 
 ```bash
 base=$(fleet-claim stack-base <agent> <task-id>)
+labels=(--label "fleet:wip")
+if [[ "$base" != "master" ]]; then
+    labels+=(--label "fleet:stacked")
+fi
 pr_url=$(gh pr create --base "$base" \
     --title "T-<NNN>: <short title>" \
     --body "$(cat <<'EOF'
@@ -348,13 +355,15 @@ Closes #<issue-N>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
-)" --label "fleet:wip")
+)" "${labels[@]}")
 fleet-claim stack-set-pr <agent> <task-id> "$(git branch --show-current)" "$pr_url"
 ```
 
 The `Stacked on:` line is the reviewer's primary signal that earlier
 PRs are prerequisites. The `Full chain:` line helps them find the
-siblings if they want cross-context.
+siblings if they want cross-context. The merger reads `baseRefName`
+directly for correctness decisions; `fleet:stacked` is a derived
+convenience label for human visibility and cheap filtering.
 
 ### 9. Report the result
 

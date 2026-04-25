@@ -117,8 +117,10 @@ exit cleanly:
    For each number returned:
    `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:merger-cooldown"`
 
-2. Fetch the engine PR list:
-   `gh pr list --repo <engine-repo> --state open --json number,title,mergeable,labels,headRefName,updatedAt`
+2. Fetch the engine PR list. Include `baseRefName` so step a.5's
+   stacked-PR check can read it from memory instead of re-querying
+   per candidate:
+   `gh pr list --repo <engine-repo> --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`
 
 3. Filter to candidates. A PR is a candidate if:
    - `mergeable == "CONFLICTING"`, OR
@@ -133,6 +135,7 @@ exit cleanly:
    - `human:needs-fix` — human owes a fix; don't loop on it
    - `human:blocker` — same
    - `human:re-review` — reviewer concern; not the merger's lane
+   - `fleet:awaiting-base` — stacked PR waiting on its base to merge; skip until base merges/closes and sub-case ii/iii removes this label
 
    **Cap UNKNOWN-state refreshes at 2 per iteration.** If the
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
@@ -149,6 +152,83 @@ exit cleanly:
       checkout, which is what we want here):
       `git fetch origin <headRefName>`
       `git checkout -B <headRefName> origin/<headRefName>`
+
+   **a.5. Stacked-PR check.** Read the candidate's `baseRefName` from
+      the PR list fetched in step 2 — no extra API call needed. If the
+      value is `master`, proceed to step b (normal flow).
+
+      Otherwise (stacked PR — base is a feature branch), look up the
+      base PR by its head ref. The base might be OPEN, MERGED, or
+      CLOSED without merging:
+      `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+
+      Three sub-cases. In all three, skip this PR's rebase entirely
+      and jump to step f (reset to scratch), then move on to the next
+      candidate. The deterministic signal is `baseRefName` + the base
+      PR's `.state` from the gh API — never parse PR bodies or commit
+      messages. Each case keeps `--remove-label` separate from the
+      `--add-label`s (removing an absent label returns non-zero and
+      would abort a chained add) but collapses the adds into a single
+      `gh pr edit` call.
+
+      **i. Base PR is OPEN.** The child can't safely rebase onto master
+         until the base lands; skip this iteration.
+         - Write `.merger-body.md` with:
+           ```
+           Merger: waiting on base PR #<base-pr-number> to merge before this
+           stacked PR can be re-targeted to master and merged.
+
+           — fleet merger
+           ```
+         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:awaiting-base" --add-label "fleet:merger-cooldown"`
+         - Log: `... stacked on open #<base-pr-number>, labeled fleet:awaiting-base`
+
+      **ii. Base PR is MERGED.** GitHub auto-re-targets the child to
+         master on most merges, but not unconditionally — re-target
+         explicitly so the merger sees a master-based PR next iteration
+         and the reviewer re-evaluates the new diff. `fleet:stacked` is
+         stale after the re-target (baseRefName is now master), so
+         drop it too:
+         - `gh pr edit <N> --repo <engine-repo> --base master`
+         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:awaiting-base"`
+         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:stacked"`
+         - Write `.merger-body.md` with:
+           ```
+           Merger: base PR #<base-pr-number> merged. Re-targeted this PR from
+           `<previous-base-branch>` to `master`. The diff against
+           master may differ from the previous review — reviewer will
+           re-evaluate on next pass.
+
+           — fleet merger
+           ```
+         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
+         - Log: `... base #<base-pr-number> merged, re-targeted to master, labeled fleet:stacked-rebase`
+
+      **iii. Base PR is CLOSED (not merged).** Orphaned stack — the
+         base was abandoned. Hand off to the human. Leave `fleet:stacked`
+         in place (the PR's base is still a feature branch until the
+         human intervenes; the human removes the label when they
+         re-target or close):
+         - Write `.merger-body.md` with:
+           ```
+           Merger: base PR #<base-pr-number> was closed without merging. This
+           stacked PR has no automatic path forward — either close
+           it, or re-target to master (`gh pr edit <N> --base master`)
+           and re-scope.
+
+           — fleet merger
+           ```
+         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:awaiting-base"`
+         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-info" --add-label "fleet:merger-cooldown"`
+         - Log: `... base #<base-pr-number> closed (not merged), labeled fleet:needs-info`
+
+      `fleet:stacked`, `fleet:awaiting-base`, and `fleet:stacked-rebase`
+      are derived-state convenience labels for human visibility. Author
+      roles add `fleet:stacked` at PR creation; the merger maintains
+      `fleet:awaiting-base` / `fleet:stacked-rebase` as above.
 
    **b. Rebase guard pre-capture.** Before rebasing, snapshot the
       current diff so silently-dropped hunks can be detected
