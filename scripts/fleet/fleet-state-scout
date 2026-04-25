@@ -43,15 +43,6 @@ SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 POLL_SECONDS_DEFAULT = 60
 GH_TIMEOUT_SECONDS = 30
 
-ROLES = (
-    "sonnet-author",
-    "opus-worker",
-    "sonnet-reviewer",
-    "opus-reviewer",
-    "queue-manager",
-    "merger",
-)
-
 TERMINATE = threading.Event()
 
 
@@ -97,10 +88,13 @@ def fetch_prs(repo):
     return prs
 
 
-def fetch_needs_plan(repo):
+_ALREADY_QUEUED_LABELS = frozenset({"fleet:task", "fleet:queued"})
+
+
+def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
-        "--label", "fleet:needs-plan", "--state", "open",
+        "--label", filter_label, "--state", "open",
         "--json", "number,title,labels",
     ])
     if out is None:
@@ -108,12 +102,23 @@ def fetch_needs_plan(repo):
     try:
         issues = json.loads(out)
     except json.JSONDecodeError as e:
-        log(f"gh issue list {repo}: bad JSON: {e}")
+        log(f"gh issue list {repo} --label {filter_label}: bad JSON: {e}")
         return []
     for issue in issues:
-        issue["labels"] = sorted(label["name"] for label in issue.get("labels", []))
+        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    if exclude_labels:
+        issues = [i for i in issues if not (set(i["labels"]) & exclude_labels)]
     issues.sort(key=lambda issue: issue.get("number", 0))
     return issues
+
+
+def fetch_needs_plan(repo):
+    return fetch_issues_by_label(repo, "fleet:needs-plan")
+
+
+def fetch_human_approved(repo):
+    # Exclude already-ingested issues to avoid re-triggering queue-manager.
+    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
 
 
 TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
@@ -184,8 +189,9 @@ REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
 })
 REVIEW_SKIP_LABELS = frozenset({
-    "fleet:wip", "human:wip", "fleet:merger-cooldown",
+    "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
 })
+RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
@@ -236,11 +242,17 @@ def project_sonnet_reviewer(state):
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS or labels & REVIEW_VERDICT_LABELS:
+            if labels & REVIEW_SKIP_LABELS:
                 continue
             if pr.get("isDraft"):
                 continue
-            items.append({"repo": repo, "pr": pr["number"], "head": pr["headRefName"]})
+            # Re-review triggers override the verdict check.
+            has_recheck = labels & RECHECK_LABELS
+            has_verdict = labels & REVIEW_VERDICT_LABELS
+            if has_verdict and not has_recheck:
+                continue
+            items.append({"repo": repo, "pr": pr["number"],
+                          "head": pr["headRefName"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -263,6 +275,9 @@ def project_queue_manager(state):
     for repo, repo_state in state["repos"].items():
         for issue in repo_state.get("needs_plan", []):
             items.append({"kind": "needs_plan", "repo": repo,
+                          "issue": issue["number"]})
+        for issue in repo_state.get("human_approved", []):
+            items.append({"kind": "human_approved", "repo": repo,
                           "issue": issue["number"]})
         for task in repo_state.get("tasks", {}).get("done", []):
             items.append({"kind": "done", "repo": repo,
@@ -324,12 +339,14 @@ def collect_state():
         fetch_specs += [
             ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
+            ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
         ]
     if "game" in repos:
         fetch_specs += [
             ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
+            ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_tasks(GAME)),
         ]
 
