@@ -166,6 +166,99 @@ Avoid:
   - **Notes:** Part 5 of 5. Touches TASKS.md template and `role-queue-manager.md`. See `.fleet/plans/T-045.md`.
   - **Links:**
 
+- [ ] **Audit: component-with-helper patterns across engine prefabs, codify rules** — enumerate all component methods, categorize, refactor violations, land style rule
+  - **ID:** T-046
+  - **Area:** engine/prefabs/irreden/common, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) audit pass enumerates every method in `engine/prefabs/**/components/component_*.hpp` and categorizes each as pure-data, self-only-helper, or cross-component-reaching; (2) rule added to engine `CLAUDE.md` Style section specifying which patterns are allowed; (3) all cross-component-reaching (c) violations refactored into systems or domain free functions; (4) `fleet-build --target IRShapeDebug` clean
+  - **Issue:** #294
+  - **Notes:** Components like `C_PeriodicIdle` with self-only helpers are acceptable; the problem case is methods that reach into other components — those belong in systems. The naming/style table already exists; this adds the components-helpers rule next to it.
+  - **Links:**
+
+- [ ] **Engine CLAUDE.md style: add "prefer enums over strings" rule** — add one bullet to Style section directing use of enum class for typed categorical fields
+  - **ID:** T-047
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) one new bullet in `engine/CLAUDE.md` Style section stating the rule with wording per the issue; (2) wording is terse and prescriptive, matching the engine voice; (3) no code changes — doc-only
+  - **Issue:** #298
+  - **Notes:** Proposed wording in issue body: "Prefer enums over strings for typed categorical fields. Closed-set fields are `enum class TypeName : int { SCREAMING_SNAKE_CASE }`. Strings are for human-readable text, file paths, external interop — not closed categorical sets." Reference examples: `LightType`, `TextAlignH`, `SystemName`. Doc-only; parallel to T-046 (both add to the Style section and can land independently).
+  - **Links:**
+
+- [ ] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
+  - **ID:** T-048
+  - **Area:** docs, creations
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) design doc answers: sharing mechanism (symlinks / include directives / build-merge), granularity (whole-file vs per-section), opt-out form, discovery model; (2) reference implementation: at least one creation uses the mechanism to inherit engine baseline docs, with one opt-out demonstrated; (3) audit pass produces clear list of "creation-shared" vs "engine-internal" CLAUDE.md sections; (4) documented in `engine/CLAUDE.md` and `creations/CLAUDE.md`
+  - **Issue:** #299
+  - **Notes:** Open design questions captured in issue body: mechanism, granularity, opt-out form, and discovery. Design doc must answer all four before implementation. The motivation is that "see engine root CLAUDE.md for X" soft references rot as engine docs evolve.
+  - **Links:**
+
+- [ ] **Modifier framework: design doc + audit + framework declarations** — write design doc, audit existing patterns, ship header declarations for all framework types
+  - **ID:** T-049
+  - **Area:** engine/prefabs/irreden/common, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-049..T-053 modifier-framework
+  - **Acceptance:** (1) design doc checked into repo, cross-linked from `engine/prefabs/irreden/common/CLAUDE.md`; (2) all declared types (`Modifier`, `LambdaModifier`, `TransformKind`, `FieldBindingId`, `C_Modifiers`, `C_GlobalModifiers`, `C_NoGlobalModifiers`, `C_LambdaModifiers`, `C_ResolvedFields`) compile and register in the ECS component enum; (3) Lua-binding stub headers committed (reflection-only); (4) `fleet-build --target IRShapeDebug` clean
+  - **Issue:** #303
+  - **Notes:** Child 1 of 5 in the modifier framework epic (#302). Locked design choices in `.fleet/plans/T-049.md` are the source of truth — hybrid transforms (structured TransformKind + lambda escape hatch), eager composition, vector-on-component storage, EntityId source attribution, ticksRemaining decay. No runtime systems in this child; that's T-050.
+  - **Links:**
+
+- [ ] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
+  - **ID:** T-050
+  - **Area:** engine/prefabs/irreden/common, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-049
+  - **Stack:** T-049..T-053 modifier-framework
+  - **Acceptance:** (1) unit tests cover ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE composition correctness, composition order pinned and tested, ticksRemaining decay exact, source-destruction sweep correct, global+exempt archetype routing correct, lambda escape hatch; (2) no `getComponent`/`getComponentOptional` calls inside any tick body; (3) resolver tick at 1000 entities × 5 modifiers < 0.5 ms, recorded in PR body; (4) builds clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #304
+  - **Notes:** Child 2 of 5. Resolver pipeline order (end of UPDATE phase, before RENDER reads): ModifierDecay → GlobalModifierDecay → ModifierResolveGlobal → ModifierResolveExempt → ModifierResolveLambda. Use `beginTick` to capture global modifier vector pointer once per pipeline execution. See `.fleet/plans/T-050.md` for full locked design.
+  - **Links:**
+
+- [ ] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
+  - **ID:** T-051
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-050
+  - **Stack:** T-049..T-053 modifier-framework
+  - **Acceptance:** (1) all demos and creations consuming position-global or drag-modulated velocity render and behave identically before and after; (2) `fleet-run IRShapeDebug` no visible regressions; (3) `render-debug-loop` before/after screenshots in PR body; (4) builds clean on `linux-debug` AND `macos-debug`; (5) removed-line count > added-line count (framework absorbs the one-off pattern)
+  - **Issue:** #305
+  - **Notes:** Child 3 of 5. Two migrations: (a) position pattern — `C_Position3D` base + offset pushed as C_Modifiers entries → `C_PositionGlobal3D` as resolved; (b) velocity drag — `C_VelocityDrag` becomes MULTIPLY modifier on velocity field, `system_velocity_drag.hpp` shrinks. Worker chooses exact migration shape for each; behavior preservation is the hard gate. Deferred: color animation, spring color, spawn glow, texture scroll.
+  - **Links:**
+
+- [ ] **Modifier framework: Lua bindings** — expose field registration, modifier push/remove/query, and TransformKind enum to Lua via sol2
+  - **ID:** T-052
+  - **Area:** engine/script, engine/prefabs/irreden/common
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-050
+  - **Stack:** T-049..T-053 modifier-framework
+  - **Acceptance:** (1) Lua script registers field and pushes one modifier per transform kind (6 total), observing correct resolved values; (2) Lua script pushes lambda modifier and confirms it's applied; (3) Lua script pushes global modifier, tags one entity `C_NoGlobalModifiers`, confirms only non-exempt entities receive globals; (4) `removeBySource` removes only matching modifiers; (5) builds clean on active preset
+  - **Issue:** #306
+  - **Notes:** Child 4 of 5. API surface: `ir.modifier.registerField`, `push`, `pushGlobal`, `pushLambda`, `removeBySource`, `applyToField`; `TransformKind` enum as `ir.modifier.ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE`. Bindings live on the modifier prefab's Lua surface — NOT `ir.render.*`. sol2 lambda lifetime for `pushLambda` is the trickiest binding — escalate if the `std::function` doesn't survive GC.
+  - **Links:**
+
+- [ ] **Modifier framework: modifier_demo creation (visual showcase)** — scaffold `modifier_demo` creation with 8 key-toggleable capabilities, on-screen HUD, and auto-screenshot shot list
+  - **ID:** T-053
+  - **Area:** creations/demos/modifier_demo, docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-050, T-051, T-052
+  - **Stack:** T-049..T-053 modifier-framework
+  - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key 1-8 triggers corresponding capability with obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (verified manually on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #307
+  - **Notes:** Child 5 of 5. Use `create-creation` skill to scaffold — don't hand-roll CMakeLists.txt. 8 capabilities: Haste (MULTIPLY 1.5×), Stun (SET 0), Slow (MULTIPLY 0.3×), Stack (Haste+Slow composed), Global Slow (singleton, one exempt cube), Lambda Sinusoidal, Source Kill, Clamp (CLAMP_MAX 0.5 + Haste). All wiring in Lua via T-052 bindings. ~200-line Lua script target. Cross-link from `engine/prefabs/irreden/common/CLAUDE.md` when done.
+  - **Links:**
+
 ---
 
 ## In progress
