@@ -113,7 +113,7 @@ def fetch_prs(repo):
     return prs
 
 
-_ALREADY_QUEUED_LABELS = frozenset({"fleet:task", "fleet:queued"})
+_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued"})
 
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None):

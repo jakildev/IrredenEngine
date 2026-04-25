@@ -51,10 +51,10 @@ Schema (slices this role uses):
   parsing keeps a per-item `gh pr view <N> --json body` inline.
 - `repos.{engine,game}.human_approved[]` — open issues with
   `human:approved` label, MINUS the ones the scout already filters
-  (`fleet:task`, `fleet:queued`). Each entry has `number`, `title`,
-  `labels` — to match the queue-manager's full ingest search,
-  additionally filter out entries whose `labels` include
-  `fleet:needs-plan` or `fleet:needs-info`.
+  (`fleet:queued`). Each entry has `number`, `title`, `labels` — to
+  match the queue-manager's full ingest search, additionally filter
+  out entries whose `labels` include `fleet:needs-plan` or
+  `fleet:needs-info`.
 - `repos.{engine,game}.needs_plan[]` — open issues with
   `fleet:needs-plan` label. `number`, `title`, `labels`.
 - `repos.{engine,game}.tasks.{open,in_progress,done}[]` — `status`,
@@ -287,12 +287,11 @@ You are the sole TASKS.md editor. Each maintenance pass:
 2. **Ingest triaged issues (engine repo).** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
    conversation context. From `repos.engine.human_approved[]`
-   (already filtered by the scout to exclude `fleet:queued` and
-   `fleet:task`), drop any entry whose `labels` include
-   `fleet:needs-plan` or `fleet:needs-info` — that matches the
-   previous `gh issue list ... --search "label:human:approved
-   -label:fleet:queued -label:fleet:needs-plan
-   -label:fleet:needs-info"` query exactly.
+   (already filtered by the scout to exclude `fleet:queued`), drop
+   any entry whose `labels` include `fleet:needs-plan` or
+   `fleet:needs-info` — that matches the previous `gh issue list
+   ... --search "label:human:approved -label:fleet:queued
+   -label:fleet:needs-plan -label:fleet:needs-info"` query exactly.
 
    The cache only stores list-shaped data (number, title, labels),
    so for each candidate fetch the body and comments per-item:
