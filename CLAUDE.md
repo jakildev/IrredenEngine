@@ -541,6 +541,10 @@ Specifically, **never pass these via `--label` when filing**:
   during a normal `commit-and-push` flow). Don't add to issues.
 - `fleet:in-progress` / `fleet:merger-cooldown` /
   `fleet:changes-made` — owned by the worker / merger pipeline.
+- `fleet:semantic-conflict` — owned by the **merger** (sets when it
+  can't auto-rebase). Cleared by the **opus-worker** after it
+  resolves the conflict, or escalated to `human:needs-fix` if even
+  Opus can't resolve.
 
 **The right pattern when filing an issue:** create it with NO labels.
 The human will add `human:approved` if and when they want it picked

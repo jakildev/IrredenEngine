@@ -129,6 +129,10 @@ treat it as a hard rule for this role.
    - `human:needs-fix` — human requested changes, author agent is
      handling it. Don't pile on a fleet review while the human's
      feedback is being addressed.
+   - `fleet:semantic-conflict` — merger detected a non-mechanical
+     rebase conflict; the opus-worker is queued to attempt
+     resolution. The PR's diff against master is meaningless until
+     the rebase lands, so reviewing now wastes a pass.
 
 ## Loop behavior
 
@@ -151,8 +155,9 @@ iteration of polling, reviewing, and exiting cleanly:
    PRs with no fleet review, with `human:re-review`, with
    `fleet:changes-made` (remove the label on pickup), or with a "re-review please"
    comment after the last fleet review. Skip PRs carrying any of
-   `fleet:wip`, `human:wip`, or `human:needs-fix`. For each remaining
-   candidate, in oldest-first order:
+   `fleet:wip`, `human:wip`, `human:needs-fix`, or
+   `fleet:semantic-conflict`. For each remaining candidate, in
+   oldest-first order:
 
    **Engine PRs** (default repo): Invoke the `review-pr` skill with
    the PR number. Every engine PR today is single-task — one task, one

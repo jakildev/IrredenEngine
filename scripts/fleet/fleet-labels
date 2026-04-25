@@ -102,6 +102,7 @@ LABELS=(
     "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
+    "fleet:semantic-conflict|d73a4a|Merger detected non-mechanical conflict; opus-worker will attempt resolution before escalating to human"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
     "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
     "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"
