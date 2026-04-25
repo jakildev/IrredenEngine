@@ -142,11 +142,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fleet: roles read scout cache instead of running gh/git directly** — update all six worker/reviewer/queue-manager/merger role files to read `~/.fleet/state/state.json` instead of running per-iteration gh/git list calls
+- [~] **Fleet: roles read scout cache instead of running gh/git directly** — update all six worker/reviewer/queue-manager/merger role files to read `~/.fleet/state/state.json` instead of running per-iteration gh/git list calls
   - **ID:** T-039
   - **Area:** .claude/commands
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-039-roles-read-scout-cache
   - **Blocked by:** (none)
   - **Acceptance:** (1) each affected role's startup reads `~/.fleet/state/state.json` instead of inline gh/git list calls; (2) per-item ops (gh pr view, gh pr diff) remain inline; (3) architect role files unchanged; (4) smoke test verifies same work items found via cache as via direct queries; (5) no regression in any role's dispatch behavior
   - **Issue:** #271
