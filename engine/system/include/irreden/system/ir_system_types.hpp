@@ -70,6 +70,17 @@ enum SystemName {
     SPRING_PLATFORM,
     SPRING_COLOR,
 
+    // Modifier framework — runs at end of UPDATE, before RENDER reads
+    // C_ResolvedFields. Order: decay both vectors, then resolve, then
+    // lambda escape hatch. The MODIFIER_RESOLVE_EXEMPT slot is reserved
+    // for the C_NoGlobalModifiers archetype-routing path (deferred —
+    // requires an exclude-tag mechanism in engine/system).
+    MODIFIER_DECAY,
+    GLOBAL_MODIFIER_DECAY,
+    MODIFIER_RESOLVE_GLOBAL,
+    MODIFIER_RESOLVE_EXEMPT,
+    MODIFIER_RESOLVE_LAMBDA,
+
     // Render systems
     RENDERING_SCREEN_VIEW,
     RENDERING_TILE_SELECTOR,
