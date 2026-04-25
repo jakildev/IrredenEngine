@@ -31,6 +31,35 @@ Common patterns and their correct alternatives:
   exit status / error. Issue the fallback as a separate Bash call if
   needed.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs and
+parsed `TASKS.md` rows. **This cache is the source of truth for
+list-y queries — do NOT bypass it for `gh pr list` or
+`git show origin/master:TASKS.md` when the cache is fresh.** One Read
+tool call replaces what used to be two `gh`/`git` invocations at
+startup.
+
+Schema (slices this role uses):
+- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `author` (login string), `labels` (sorted strings),
+  `mergeable`, `isDraft`. (Sonnet author works only the engine queue
+  — `repos.game` is loaded by the cache too but this role ignores
+  it.)
+- `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
+  `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
+
+Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
+`gh api repos/.../comments`) stay inline — those pull live data the
+cache doesn't store. The cache covers list-shaped queries; live
+drill-in covers single-item drill-down.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print
+`scout cache stale or missing — run fleet-up` and exit; do not
+silently fall back to direct `gh`/`git` calls.
+
 ## Responsibilities
 
 - Test generation against a clear spec.
@@ -52,31 +81,25 @@ whatever directory the task touches before editing anything.
    `[sonnet-author] Picks bounded [sonnet] tasks from TASKS.md, works them end-to-end, opens PRs. Runs continuously.`
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree).
-2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. **Read the latest TASKS.md from origin/master without staging it.**
-   The working copy may be stale if the worktree is on a feature
-   branch. Use `git show` to dump the current master version
-   directly to stdout:
-   `git show origin/master:TASKS.md`
-   The Bash tool returns the full content as its output (and
-   auto-persists to a `.claude/projects/.../`-side file if the
-   output is large — the persistence is automatic, you don't have
-   to manage it). This does NOT touch the working tree or index,
-   so it won't break later branch checkouts.
+2. `git -C ~/src/IrredenEngine fetch origin --quiet` — pulls refs
+   for later `git checkout`/`git rebase`; the cache snapshots TASKS.md
+   and PR metadata but doesn't fetch refs.
+3. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. One Read replaces what used to be
+   two calls here:
+   - `git show origin/master:TASKS.md` →
+     `repos.engine.tasks.{open,in_progress,done}[]`
+   - `gh pr list --state open ...` → `repos.engine.prs[]`
 
-   Do NOT redirect to `/tmp` or anywhere else with `>`. Claude
-   Code's Bash tool blocks shell redirects regardless of whether
-   the destination is in `additionalDirectories` (the gate is on
-   the `>` operation, not the path). Stick with stdout-only.
-
-   Do NOT use `git checkout origin/master -- TASKS.md` either.
-   That stages the file. When `start-next-task` later tries
-   `git checkout -b new-branch origin/master` it errors with
-   "your local changes would be overwritten by checkout."
-4. `gh pr list --state open --json number,title,headRefName,author` —
-   see what other agents are working on.
-5. Print a one-line summary: which `[sonnet]` items look unblocked and
-   not currently claimed in any open PR.
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit. Do not
+   fall back to direct `gh`/`git` calls.
+4. Print a one-line summary: which `[sonnet]` items in
+   `tasks.open[]` look unblocked (`owner == "free"`, `blocked_by`
+   resolves to `(none)` or merged work) and not currently claimed
+   in any open PR (cross-check against `prs[].title` and
+   `prs[].headRefName`).
 
 ## Loop behavior
 
@@ -99,8 +122,13 @@ Each iteration:
    steps (fleet-build, fleet-run, commit-and-push) to prevent false
    staleness alerts during builds or PR actions.
 
-1. **Check for feedback labels on open PRs.**
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'`
+1. **Check for feedback labels on open PRs.** Re-Read
+   `~/.fleet/state/state.json` if its contents are no longer in your
+   conversation context. From `repos.engine.prs[]`, pick PRs whose
+   `labels` array contains any of `human:needs-fix`,
+   `human:blocker`, `fleet:needs-fix`, `fleet:has-nits`. (Cached
+   equivalent of the previous `gh pr list ... --jq 'select(.labels
+   ...)'` chain — same filter, no API call.)
 
    **Skip** PRs labeled `human:wip` — human is working on it directly.
 
@@ -177,9 +205,13 @@ Each iteration:
     - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
     - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
 
-    ```
-    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown" and . != "human:needs-fix")) | "#\(.number) \(.title) (\(.headRefName))"'
-    ```
+    From the cached `repos.engine.prs[]`, pick PRs whose `labels`
+    array contains BOTH `fleet:needs-<host>-smoke` AND
+    `fleet:approved`, and contains NONE of `fleet:needs-fix`,
+    `fleet:blocker`, `human:wip`, `fleet:wip`,
+    `fleet:merger-cooldown`, `human:needs-fix`. (Cached equivalent
+    of the previous `gh pr list --label fleet:needs-<host>-smoke
+    ... --jq` chain — same filter, no API call.)
 
     The filter keeps only PRs that are approved, not flagged for
     fixes, and not claimed by the human. If the list is empty, skip
@@ -263,13 +295,15 @@ Each iteration:
      there's nothing to archive, so it's safe in any batch). Then
      proceed with the normal pickup flow.
 
-   **Normal pickup (no active molecule):** Read `TASKS.md` (use the
-   Read tool) and find the first `[ ]` `[sonnet]`-tagged item in
-   `## Open` whose:
+   **Normal pickup (no active molecule):** Re-Read
+   `~/.fleet/state/state.json` if its contents are no longer in your
+   conversation context. From `repos.engine.tasks.open[]`, find the
+   first row with `status == " "` (open) and `model` containing
+   `sonnet` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
-     (cross-check with the `gh pr list` output)
+     (cross-check against `repos.engine.prs[]` from the cache)
 
    **Deterministic pickup — only these signals count:**
    - The task's `Owner:` field in TASKS.md
