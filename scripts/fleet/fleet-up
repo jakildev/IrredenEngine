@@ -367,6 +367,42 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# Step 3d: launch fleet-state-scout daemon
+# ----------------------------------------------------------------------
+#
+# Polls GitHub + git every 60s and writes `~/.fleet/state/state.json`
+# plus per-role trigger files under `~/.fleet/state/triggers/`. Pure
+# additive infra — no role currently consumes the cache (T-039
+# follow-up). Backgrounded with nohup, PID written to scout.pid for
+# fleet-down to terminate cleanly.
+scout_cmd=""
+if command -v fleet-state-scout >/dev/null 2>&1; then
+    scout_cmd="fleet-state-scout"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-state-scout" ]]; then
+    scout_cmd="$ENGINE/scripts/fleet/fleet-state-scout"
+fi
+if [[ -z "$scout_cmd" ]]; then
+    echo "fleet-up: fleet-state-scout not found — skipping state cache daemon"
+else
+    scout_pid_file="$HOME/.fleet/state/scout.pid"
+    # If a previous scout left a PID file behind, kill that PID first
+    # to avoid two scouts polling against each other.
+    if [[ -f "$scout_pid_file" ]]; then
+        old_pid=$(cat "$scout_pid_file" 2>/dev/null || true)
+        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+            kill -TERM "$old_pid" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$scout_pid_file"
+    fi
+    mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
+    scout_log="$HOME/.fleet/logs/state-scout.log"
+    nohup "$scout_cmd" >>"$scout_log" 2>&1 &
+    disown
+    echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #

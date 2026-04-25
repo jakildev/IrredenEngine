@@ -1,0 +1,456 @@
+#!/usr/bin/env python3
+"""fleet-state-scout — poll GitHub + git, write a shared fleet state cache.
+
+Runs as a backgrounded daemon (launched by fleet-up, stopped by
+fleet-down via the PID file at ~/.fleet/state/scout.pid). Every
+interval it fans out gh / git calls in parallel, writes the
+normalized result atomically to ~/.fleet/state/state.json, and
+emits a per-role trigger file under ~/.fleet/state/triggers/
+whenever a role's projected view of the data has changed.
+
+This is purely additive infrastructure — no role files consume the
+cache yet (that's T-039) and fleet-babysit isn't trigger-aware yet
+(that's T-040). The only thing T-038 ships is the daemon itself
+plus the fleet-up / fleet-down / install.sh wiring.
+
+Source of truth: scripts/fleet/fleet-state-scout in the engine repo.
+Installed to ~/bin/fleet-state-scout by scripts/fleet/install.sh.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+ENGINE = Path.home() / "src" / "IrredenEngine"
+GAME = ENGINE / "creations" / "game"
+
+STATE_DIR = Path.home() / ".fleet" / "state"
+TRIGGERS_DIR = STATE_DIR / "triggers"
+SEEN_DIR = STATE_DIR / "seen-hashes"
+PID_FILE = STATE_DIR / "scout.pid"
+STATE_FILE = STATE_DIR / "state.json"
+SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
+
+POLL_SECONDS_DEFAULT = 60
+GH_TIMEOUT_SECONDS = 30
+
+TERMINATE = threading.Event()
+
+
+def log(msg: str) -> None:
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    print(f"[{ts} state-scout] {msg}", flush=True)
+
+
+def run_capture(cmd, cwd=None):
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=GH_TIMEOUT_SECONDS, cwd=cwd,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        log(f"command failed: {' '.join(cmd)}: {e}")
+        return None
+    if proc.returncode != 0:
+        log(f"command rc={proc.returncode}: {' '.join(cmd)}: {proc.stderr.strip()}")
+        return None
+    return proc.stdout
+
+
+def fetch_prs(repo):
+    out = run_capture([
+        "gh", "pr", "list", "--repo", repo, "--state", "open",
+        "--json",
+        "number,title,headRefName,baseRefName,author,labels,mergeable,isDraft",
+    ])
+    if out is None:
+        return []
+    try:
+        prs = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh pr list {repo}: bad JSON: {e}")
+        return []
+    for pr in prs:
+        pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
+        pr["author"] = pr.get("author", {}).get("login", "")
+    # gh's PR ordering is not stable run-to-run; sort by number so the
+    # projection hash stays quiescent when nothing has actually changed.
+    prs.sort(key=lambda pr: pr.get("number", 0))
+    return prs
+
+
+_ALREADY_QUEUED_LABELS = frozenset({"fleet:task", "fleet:queued"})
+
+
+def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
+    out = run_capture([
+        "gh", "issue", "list", "--repo", repo,
+        "--label", filter_label, "--state", "open",
+        "--json", "number,title,labels",
+    ])
+    if out is None:
+        return []
+    try:
+        issues = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh issue list {repo} --label {filter_label}: bad JSON: {e}")
+        return []
+    for issue in issues:
+        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    if exclude_labels:
+        issues = [i for i in issues if not (set(i["labels"]) & exclude_labels)]
+    issues.sort(key=lambda issue: issue.get("number", 0))
+    return issues
+
+
+def fetch_needs_plan(repo):
+    return fetch_issues_by_label(repo, "fleet:needs-plan")
+
+
+def fetch_human_approved(repo):
+    # Exclude already-ingested issues to avoid re-triggering queue-manager.
+    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
+
+
+TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
+TASK_FIELD_RE = re.compile(r"^\s+- \*\*([^:]+?):\*\*\s*(.+?)\s*$")
+SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
+KNOWN_FIELDS = {"id", "model", "owner", "area", "blocked_by", "issue"}
+
+
+def parse_tasks_md(text):
+    sections = {"open": [], "in_progress": [], "done": []}
+    if not text:
+        return sections
+
+    section_key = None
+    current_task = None
+    for line in text.splitlines():
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            label = section_match.group(1).strip().lower()
+            if label.startswith("open"):
+                section_key = "open"
+            elif label.startswith("in progress"):
+                section_key = "in_progress"
+            elif label.startswith("done"):
+                section_key = "done"
+            else:
+                section_key = None
+            current_task = None
+            continue
+        if section_key is None:
+            continue
+
+        header_match = TASK_HEADER_RE.match(line)
+        if header_match:
+            current_task = {
+                "status": header_match.group(1),
+                "title": header_match.group(2),
+                "summary": (header_match.group(3) or "").strip(),
+                "id": None, "model": None, "owner": None,
+                "area": None, "blocked_by": None, "issue": None,
+            }
+            sections[section_key].append(current_task)
+            continue
+
+        if current_task is not None:
+            field_match = TASK_FIELD_RE.match(line)
+            if field_match:
+                key = field_match.group(1).strip().lower().replace(" ", "_")
+                if key in KNOWN_FIELDS:
+                    current_task[key] = field_match.group(2).strip()
+    return sections
+
+
+def fetch_tasks(repo_root):
+    out = run_capture(["git", "-C", str(repo_root), "show", "origin/master:TASKS.md"])
+    return parse_tasks_md(out or "")
+
+
+def stable_hash(obj):
+    payload = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+FEEDBACK_LABELS = frozenset({
+    "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
+})
+REVIEW_VERDICT_LABELS = frozenset({
+    "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
+})
+REVIEW_SKIP_LABELS = frozenset({
+    "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
+})
+RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
+
+MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
+
+
+def model_tags(task):
+    return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
+
+
+def project_sonnet_author(state):
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "sonnet" in model_tags(task):
+                items.append({"kind": "task", "repo": repo, "id": task["id"],
+                              "blocked_by": task["blocked_by"]})
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & FEEDBACK_LABELS:
+                items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
+                              "labels": pr["labels"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_opus_worker(state):
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "opus" in model_tags(task):
+                items.append({"kind": "task", "repo": repo, "id": task["id"],
+                              "blocked_by": task["blocked_by"]})
+        for issue in repo_state.get("needs_plan", []):
+            items.append({"kind": "needs_plan", "repo": repo,
+                          "issue": issue["number"]})
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & FEEDBACK_LABELS:
+                items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
+                              "labels": pr["labels"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_sonnet_reviewer(state):
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if pr.get("isDraft"):
+                continue
+            # Re-review triggers override the verdict check.
+            has_recheck = labels & RECHECK_LABELS
+            has_verdict = labels & REVIEW_VERDICT_LABELS
+            if has_verdict and not has_recheck:
+                continue
+            items.append({"repo": repo, "pr": pr["number"],
+                          "head": pr["headRefName"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_opus_reviewer(state):
+    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if not (labels & flag_labels):
+                continue
+            items.append({"repo": repo, "pr": pr["number"], "labels": pr["labels"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_queue_manager(state):
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for issue in repo_state.get("needs_plan", []):
+            items.append({"kind": "needs_plan", "repo": repo,
+                          "issue": issue["number"]})
+        for issue in repo_state.get("human_approved", []):
+            items.append({"kind": "human_approved", "repo": repo,
+                          "issue": issue["number"]})
+        for task in repo_state.get("tasks", {}).get("done", []):
+            items.append({"kind": "done", "repo": repo,
+                          "id": task.get("id") or task.get("title")})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_merger(state):
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            mergeable = pr.get("mergeable")
+            approved = "fleet:approved" in labels
+            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
+            if approved or blocked:
+                items.append({"repo": repo, "pr": pr["number"],
+                              "mergeable": mergeable, "labels": pr["labels"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+PROJECTORS = {
+    "sonnet-author": project_sonnet_author,
+    "opus-worker": project_opus_worker,
+    "sonnet-reviewer": project_sonnet_reviewer,
+    "opus-reviewer": project_opus_reviewer,
+    "queue-manager": project_queue_manager,
+    "merger": project_merger,
+}
+
+
+def write_atomic(path: Path, payload: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload)
+    os.replace(tmp, path)
+
+
+def update_role_trigger(role: str, projection) -> bool:
+    new_hash = stable_hash(projection)
+    seen_file = SEEN_DIR / role
+    try:
+        old_hash = seen_file.read_text().strip()
+    except FileNotFoundError:
+        old_hash = ""
+    if new_hash == old_hash:
+        return False
+    write_atomic(seen_file, new_hash + "\n")
+    (TRIGGERS_DIR / role).touch()
+    return True
+
+
+def collect_state():
+    repos = {"engine": {"path": str(ENGINE)}}
+    if (GAME / ".git").exists():
+        repos["game"] = {"path": str(GAME)}
+
+    fetch_specs = []
+    if "engine" in repos:
+        fetch_specs += [
+            ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
+            ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
+            ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
+            ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
+        ]
+    if "game" in repos:
+        fetch_specs += [
+            ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
+            ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
+            ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
+            ("game", "tasks", lambda: fetch_tasks(GAME)),
+        ]
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(fn): (repo_key, field)
+                   for (repo_key, field, fn) in fetch_specs}
+        for fut in as_completed(futures):
+            repo_key, field = futures[fut]
+            try:
+                repos[repo_key][field] = fut.result()
+            except Exception as e:
+                log(f"fetch {repo_key}/{field} failed: {e}")
+                repos[repo_key][field] = (
+                    {"open": [], "in_progress": [], "done": []}
+                    if field == "tasks" else []
+                )
+
+    return {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "repos": repos,
+    }
+
+
+def tick_once():
+    state = collect_state()
+    write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+    triggers_fired = []
+    for role, projector in PROJECTORS.items():
+        try:
+            projection = projector(state)
+        except Exception as e:
+            log(f"projector {role} failed: {e}")
+            continue
+        if update_role_trigger(role, projection):
+            triggers_fired.append(role)
+
+    if triggers_fired:
+        log(f"triggered: {', '.join(triggers_fired)}")
+    else:
+        log("no triggers (all projections unchanged)")
+
+
+def write_pid_file():
+    PID_FILE.write_text(f"{os.getpid()}\n")
+
+
+def cleanup_pid_file():
+    try:
+        if PID_FILE.exists() and PID_FILE.read_text().strip() == str(os.getpid()):
+            PID_FILE.unlink()
+    except OSError:
+        pass
+
+
+def signal_handler(signum, _frame):
+    log(f"received signal {signum}; shutting down")
+    TERMINATE.set()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="poll GitHub + git, write shared fleet state cache")
+    parser.add_argument("--once", action="store_true",
+                        help="run one tick and exit (for testing)")
+    parser.add_argument("--interval", type=int, default=POLL_SECONDS_DEFAULT,
+                        help="poll interval in seconds (default 60)")
+    args = parser.parse_args()
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    SEEN_DIR.mkdir(parents=True, exist_ok=True)
+    TRIGGERS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not ENGINE.exists():
+        log(f"engine repo not found at {ENGINE}; aborting")
+        sys.exit(1)
+
+    if args.once:
+        tick_once()
+        return
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    write_pid_file()
+    log(f"started (pid={os.getpid()}, interval={args.interval}s)")
+
+    try:
+        while not TERMINATE.is_set():
+            if SHUTDOWN_FLAG.exists():
+                log("shutdown sentinel detected; exiting")
+                break
+            try:
+                tick_once()
+            except Exception as e:
+                log(f"tick failed: {e}")
+            for _ in range(args.interval):
+                if TERMINATE.is_set() or SHUTDOWN_FLAG.exists():
+                    break
+                time.sleep(1)
+    finally:
+        cleanup_pid_file()
+        log("stopped")
+
+
+if __name__ == "__main__":
+    main()
