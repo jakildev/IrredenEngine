@@ -372,6 +372,46 @@ siblings if they want cross-context. The merger reads `baseRefName`
 directly for correctness decisions; `fleet:stacked` is a derived
 convenience label for human visibility and cheap filtering.
 
+### 8b. Tag the host the PR was authored on
+
+After `gh pr create` succeeds, stamp a `fleet:authored-on-<host>`
+label so the reviewer knows which backend the author already
+implicitly smoke-tested. Per the engine `CLAUDE.md` "Verifying
+render changes" section, render-PR authors are expected to build
+and run the demo on their host before opening — so authoring on a
+host is reasonable evidence that host's smoke is at least
+baseline-validated.
+
+This is the **author's host fact**, not a state label. Reviewers
+read it to skip the matching `fleet:needs-<host>-smoke` label so
+the author's host doesn't get tagged for redundant validation.
+The OTHER host's smoke label (if needed per the diff) still gets
+added — backend drift between OpenGL and Metal is the whole point
+of cross-host validation.
+
+```bash
+host_kernel=$(uname -s)
+case "$host_kernel" in
+    Linux)  host_label="fleet:authored-on-linux" ;;
+    Darwin) host_label="fleet:authored-on-macos" ;;
+    *)      host_label="" ;;  # unknown host (Windows native, etc.) — skip
+esac
+if [[ -n "$host_label" ]]; then
+    gh pr edit <N> --add-label "$host_label"
+fi
+```
+
+This applies to **all** PRs (engine and game, render-touching or
+not). The label is cheap and consistent — having it always present
+makes the reviewer's logic simple ("subtract author host from smoke
+labels"). Game PRs don't currently get smoke labels, so the host
+label is just informational there; that's fine.
+
+If the host kernel is neither `Linux` nor `Darwin` (Windows
+native via MSYS2, etc.), skip the label — the cross-host smoke
+flow is OpenGL-on-Linux vs Metal-on-macOS, and a Windows author
+doesn't fit either bucket cleanly.
+
 ### 9. Report the result
 
 Reply with a compact summary:

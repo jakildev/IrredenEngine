@@ -105,6 +105,8 @@ LABELS=(
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
     "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
     "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"
+    "fleet:authored-on-linux|ededed|PR was opened from a Linux/WSL host; reviewer skips fleet:needs-linux-smoke"
+    "fleet:authored-on-macos|ededed|PR was opened from a macOS host; reviewer skips fleet:needs-macos-smoke"
     "fleet:stacked|c5def5|PR's base is a feature branch (stacked PR)"
     "fleet:awaiting-base|c5def5|Stacked PR; merger is waiting for base PR to merge"
     "fleet:stacked-rebase|c5def5|Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
