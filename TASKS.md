@@ -142,11 +142,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fleet: stacked-PR: downstream auto-rebase when upstream changes** — add `fleet-claim molecule rebase-downstream` subcommand; invoke in author role after addressing upstream review feedback
+- [~] **Fleet: stacked-PR: downstream auto-rebase when upstream changes** — add `fleet-claim molecule rebase-downstream` subcommand; invoke in author role after addressing upstream review feedback
   - **ID:** T-044
   - **Area:** scripts/fleet, .claude/commands
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-044-rebase-downstream
   - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** stack A→B→C; reviewer flags A with `fleet:needs-fix`; worker fixes A, pushes, runs rebase subcommand; B and C branches now have new A tip as parent; PRs get comment; conflicts surface as `fleet:blocker` + comment, chain pauses
