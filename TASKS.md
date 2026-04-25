@@ -151,17 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Audit: component-with-helper patterns across engine prefabs, codify rules** — enumerate all component methods, categorize, refactor violations, land style rule
-  - **ID:** T-046
-  - **Area:** engine/prefabs/irreden/common, docs
-  - **Model:** opus
-  - **Owner:** claude/T-046-component-helper-audit
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) audit pass enumerates every method in `engine/prefabs/**/components/component_*.hpp` and categorizes each as pure-data, self-only-helper, or cross-component-reaching; (2) rule added to engine `CLAUDE.md` Style section specifying which patterns are allowed; (3) all cross-component-reaching (c) violations refactored into systems or domain free functions; (4) `fleet-build --target IRShapeDebug` clean
-  - **Issue:** #294
-  - **Notes:** Components like `C_PeriodicIdle` with self-only helpers are acceptable; the problem case is methods that reach into other components — those belong in systems. The naming/style table already exists; this adds the components-helpers rule next to it.
-  - **Links:**
-
 - [~] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
   - **ID:** T-048
   - **Area:** docs, creations
@@ -282,6 +271,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-046** — Audit: component-with-helper patterns across engine prefabs, codify rules · Owner: claude/T-046-component-helper-audit · PR: https://github.com/jakildev/IrredenEngine/pull/319
 - [x] **T-045** — Fleet: stacked-PR: TASKS.md Stack: field for chain visibility · Owner: claude/T-045-stack-field-task-template · PR: https://github.com/jakildev/IrredenEngine/pull/318
 - [x] **T-049** — Modifier framework: design doc + audit + framework declarations · Owner: claude/T-049-modifier-framework-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/315
 - [x] **T-047** — Engine CLAUDE.md style: add "prefer enums over strings" rule · Owner: claude/T-047-enum-style-rule · PR: https://github.com/jakildev/IrredenEngine/pull/314
@@ -301,4 +291,3 @@ Avoid:
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
 - [x] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
-- [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
