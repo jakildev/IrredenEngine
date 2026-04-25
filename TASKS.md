@@ -154,11 +154,11 @@ Avoid:
   - **Notes:** Part 5 of 5. Touches TASKS.md template and `role-queue-manager.md`. See `.fleet/plans/T-045.md`.
   - **Links:**
 
-- [ ] **Audit: component-with-helper patterns across engine prefabs, codify rules** — enumerate all component methods, categorize, refactor violations, land style rule
+- [~] **Audit: component-with-helper patterns across engine prefabs, codify rules** — enumerate all component methods, categorize, refactor violations, land style rule
   - **ID:** T-046
   - **Area:** engine/prefabs/irreden/common, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-046-component-helper-audit
   - **Blocked by:** (none)
   - **Acceptance:** (1) audit pass enumerates every method in `engine/prefabs/**/components/component_*.hpp` and categorizes each as pure-data, self-only-helper, or cross-component-reaching; (2) rule added to engine `CLAUDE.md` Style section specifying which patterns are allowed; (3) all cross-component-reaching (c) violations refactored into systems or domain free functions; (4) `fleet-build --target IRShapeDebug` clean
   - **Issue:** #294
