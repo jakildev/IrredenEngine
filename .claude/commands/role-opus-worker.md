@@ -243,6 +243,21 @@ Do the work, then exit cleanly:
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
    f. Remove stale fleet review labels (`fleet:needs-fix`,
       `fleet:blocker`) if present — but **keep `fleet:approved`**.
+   g. **Propagate the upstream fix to any downstream branches in a
+      stacked chain.** Always run, after every feedback fix:
+      `fleet-claim molecule rebase-downstream <your-worktree-basename>`
+      The subcommand auto-detects the upstream task ID from the
+      current branch (`claude/T-NNN-…`) and is a graceful no-op if
+      there's no active molecule, the current branch isn't in one,
+      or the upstream is already the tail of the chain — so it is
+      safe to invoke unconditionally. When it does apply: it fetches
+      the new tip, rebases each downstream branch in molecule order,
+      force-pushes with `--force-with-lease`, and comments on each
+      downstream PR. A rebase conflict pauses the chain at that
+      task: the affected PR gets `fleet:blocker` + a comment,
+      remaining downstreams stay on the prior base, and the
+      subcommand exits non-zero — surface the failure to the human
+      and move on.
 
    Address all flagged PRs before doing any other work.
 

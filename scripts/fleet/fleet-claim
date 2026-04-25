@@ -29,6 +29,7 @@
 #   fleet-claim molecule resume <agent>
 #   fleet-claim molecule advance <agent> <task-id> <new-state> [--pr URL] [--commit SHA]
 #   fleet-claim molecule complete <agent>
+#   fleet-claim molecule rebase-downstream <agent> [task-id]
 
 set -euo pipefail
 
@@ -1063,6 +1064,218 @@ cmd_molecule_complete() {
     cmd_release_stack "$agent"
 }
 
+cmd_molecule_rebase_downstream() {
+    # After an upstream stacked PR has been updated (typically by an
+    # author addressing review feedback), rebase every downstream branch
+    # in the molecule onto the new upstream tip and force-push with
+    # --force-with-lease. Comments on each downstream PR. Conflicts
+    # abort the rebase, surface as fleet:blocker + comment on the
+    # affected PR, and stop the chain at that point — remaining
+    # downstreams are left alone for human resolution.
+    #
+    # Usage: fleet-claim molecule rebase-downstream <agent> [task-id]
+    #
+    # If task-id is omitted, the upstream is inferred from the current
+    # branch name (expects `claude/T-NNN-…`). Pass it explicitly when
+    # the worker isn't on the upstream branch.
+    #
+    # Side effects (worktree-mutating):
+    #   - git fetch origin <upstream-branch>
+    #   - git fetch origin <each-downstream-branch>
+    #   - git checkout -B <downstream-branch> origin/<downstream-branch>
+    #   - git rebase origin/<upstream-branch>
+    #   - git push --force-with-lease origin <downstream-branch>
+    # On a conflict: git rebase --abort runs, the worker's HEAD is
+    # restored to the downstream branch (no rebase in progress), and
+    # the function returns 1. Tasks beyond the conflicting one are NOT
+    # processed — the chain pauses for human resolution.
+    #
+    # Side effects (remote, non-git):
+    #   - gh pr comment on each rebased downstream PR
+    #   - gh pr comment + gh pr edit --add-label fleet:blocker on conflict
+    local agent="${1:-}"
+    local upstream_id="${2:-}"
+    if [[ -z "$agent" ]]; then
+        echo "usage: fleet-claim molecule rebase-downstream <agent> [task-id]" >&2
+        return 2
+    fi
+    # Track whether the task ID was explicit (caller intent) or
+    # auto-detected. Auto-detect failures are no-ops; explicit
+    # failures are loud — see the per-error-path comments below.
+    local explicit=1
+    if [[ -z "$upstream_id" ]]; then
+        explicit=0
+    fi
+
+    local stack_dir="$CLAIMS_DIR/_stack_${agent}"
+    if [[ ! -f "$stack_dir/tasks" ]]; then
+        # Graceful no-op: most worker iterations have no stack. Roles
+        # invoke this after every feedback fix as a reflex; bouncing
+        # them with exit 1 would force them to gate the call themselves.
+        echo "no stack claim for agent: $agent (nothing to rebase)" >&2
+        return 0
+    fi
+
+    # Auto-detect upstream task ID from current branch if not provided.
+    if [[ $explicit -eq 0 ]]; then
+        local current_branch
+        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        if [[ "$current_branch" =~ ^claude/(T-[0-9]+) ]]; then
+            upstream_id="${BASH_REMATCH[1]}"
+            echo "auto-detected upstream task: $upstream_id (from branch $current_branch)"
+        else
+            # Graceful no-op: worker is on a non-task branch (master,
+            # scratch, etc.) — they're plainly not in a stacked-PR
+            # feedback flow, so don't error out.
+            echo "could not auto-detect upstream task ID from branch '$current_branch' (not on a claude/T-NNN-… branch); skipping" >&2
+            return 0
+        fi
+    fi
+
+    # Walk the stack's task list once. Capture the upstream's branch
+    # and, for every task after it, its branch/PR file paths into
+    # parallel arrays so the rebase loop avoids re-reading them.
+    local upstream_branch=""
+    local found=0
+    local -a downstream_ids=()
+    local -a downstream_branches=()
+    local -a downstream_prs=()
+    while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+        if [[ $found -eq 1 ]]; then
+            downstream_ids+=("$t")
+            local b=""
+            local p=""
+            [[ -f "$stack_dir/${t}.branch" ]] && b=$(cat "$stack_dir/${t}.branch")
+            [[ -f "$stack_dir/${t}.pr" ]] && p=$(cat "$stack_dir/${t}.pr")
+            downstream_branches+=("$b")
+            downstream_prs+=("$p")
+            continue
+        fi
+        if [[ "$t" == "$upstream_id" ]]; then
+            found=1
+            [[ -f "$stack_dir/${t}.branch" ]] && upstream_branch=$(cat "$stack_dir/${t}.branch")
+        fi
+    done < "$stack_dir/tasks"
+
+    if [[ $found -eq 0 ]]; then
+        # Auto-detect picked up a task ID from the branch name but it
+        # isn't in the stack — caller is on a non-stacked feature
+        # branch even though they have an active stack elsewhere.
+        # Graceful no-op for the auto-detect path; loud for explicit
+        # callers (they asked for a specific task by ID, so a miss is
+        # a usage error worth flagging).
+        if [[ $explicit -eq 0 ]]; then
+            echo "$upstream_id not in agent $agent's stack (current branch isn't part of the active chain); skipping" >&2
+            return 0
+        fi
+        echo "fleet-claim molecule rebase-downstream: $upstream_id not in agent $agent's stack" >&2
+        return 1
+    fi
+    if [[ -z "$upstream_branch" ]]; then
+        echo "fleet-claim molecule rebase-downstream: upstream $upstream_id has no branch recorded (open its PR via stack-set-pr first)" >&2
+        return 1
+    fi
+    if [[ ${#downstream_ids[@]} -eq 0 ]]; then
+        echo "no downstream tasks for $upstream_id (already at the tail of the chain)"
+        return 0
+    fi
+
+    # Save the original branch so we restore it on the way out (success
+    # or failure). HEAD-detached state is handled by checking abbrev-ref.
+    local original_branch
+    original_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+    # Single bulk fetch covers the upstream tip and every downstream
+    # branch we'll be checking out — N+1 round trips collapse to one
+    # pack negotiation. Skip empty entries (downstream tasks whose PRs
+    # haven't been opened yet have no branch recorded).
+    local -a fetch_refs=("$upstream_branch")
+    local b
+    for b in "${downstream_branches[@]}"; do
+        [[ -n "$b" ]] && fetch_refs+=("$b")
+    done
+    if ! git fetch origin "${fetch_refs[@]}" --quiet; then
+        echo "fleet-claim molecule rebase-downstream: failed to fetch one or more refs (${fetch_refs[*]})" >&2
+        return 1
+    fi
+
+    # Helper: pause the chain at the current task. Records the conflict,
+    # comments + labels the affected PR if known, and signals the loop
+    # to break. Centralising the comment+label here also fixes the bug
+    # where checkout/fetch failures previously left the PR with no
+    # `fleet:blocker` and no notification.
+    local rebased=0
+    local skipped=0
+    local conflicted=""
+    pause_chain() {
+        local task_id="$1"
+        local pr_url="$2"
+        local body="$3"
+        conflicted="$task_id"
+        if [[ -n "$pr_url" ]]; then
+            gh pr comment "$pr_url" --body "$body" 2>/dev/null || true
+            gh pr edit "$pr_url" --add-label "fleet:blocker" 2>/dev/null || true
+        fi
+    }
+
+    local i
+    for i in "${!downstream_ids[@]}"; do
+        local task_id="${downstream_ids[$i]}"
+        local branch="${downstream_branches[$i]}"
+        local pr_url="${downstream_prs[$i]}"
+        if [[ -z "$branch" ]]; then
+            echo "skip $task_id: no branch recorded (PR not opened yet)"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        echo "rebasing $task_id ($branch) onto origin/$upstream_branch"
+
+        # -B re-points the local branch to origin/<branch>; safe because
+        # the worker's pending edits live on the upstream branch they
+        # just pushed, not on the downstream we're updating.
+        if ! git checkout -B "$branch" "origin/$branch" --quiet 2>&1; then
+            echo "  failed to checkout $branch — chain pauses" >&2
+            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` could not check out \`$branch\` from origin. \`fleet:blocker\` applied — needs human resolution."
+            break
+        fi
+
+        if ! git rebase "origin/$upstream_branch" --quiet 2>&1; then
+            git rebase --abort 2>/dev/null || true
+            echo "  CONFLICT rebasing $branch onto origin/$upstream_branch — chain pauses here" >&2
+            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` (upstream of $task_id) failed: conflict while replaying this branch's commits. Rebase aborted; the PR remains on the prior base. \`fleet:blocker\` applied — needs human resolution before the chain can advance."
+            break
+        fi
+
+        if ! git push --force-with-lease origin "$branch" --quiet 2>&1; then
+            echo "  failed to force-push $branch (lease violation? concurrent edit on origin?) — chain pauses" >&2
+            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` succeeded locally but the force-push was rejected (\`--force-with-lease\` violation — concurrent edit on origin). \`fleet:blocker\` applied — needs human resolution."
+            break
+        fi
+
+        if [[ -n "$pr_url" ]]; then
+            gh pr comment "$pr_url" --body "Auto-rebased onto updated \`$upstream_branch\` tip after upstream review fix. Force-pushed with \`--force-with-lease\`." 2>/dev/null || true
+        fi
+
+        rebased=$((rebased + 1))
+    done
+
+    # Return to the original branch so the caller's worktree state is
+    # unchanged from their perspective.
+    if [[ -n "$original_branch" && "$original_branch" != "HEAD" ]]; then
+        git checkout "$original_branch" --quiet 2>/dev/null || true
+    fi
+
+    if [[ -n "$conflicted" ]]; then
+        local remaining=$(( ${#downstream_ids[@]} - rebased - skipped - 1 ))
+        echo "rebase-downstream paused at $conflicted: $rebased rebased, $skipped skipped, $remaining downstream task(s) untouched"
+        return 1
+    fi
+    echo "rebase-downstream complete: $rebased rebased, $skipped skipped"
+    return 0
+}
+
 # --- main -----------------------------------------------------------------
 
 case "${1:-}" in
@@ -1139,7 +1352,7 @@ case "${1:-}" in
     molecule)
         sub="${2:-}"
         if [[ -z "$sub" ]]; then
-            echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
+            echo "usage: fleet-claim molecule {list|show|resume|advance|complete|rebase-downstream} [args]" >&2
             exit 2
         fi
         case "$sub" in
@@ -1175,9 +1388,16 @@ case "${1:-}" in
                 fi
                 cmd_molecule_complete "$3"
                 ;;
+            rebase-downstream)
+                if [[ -z "${3:-}" ]]; then
+                    echo "usage: fleet-claim molecule rebase-downstream <agent> [task-id]" >&2
+                    exit 2
+                fi
+                cmd_molecule_rebase_downstream "$3" "${4:-}"
+                ;;
             *)
                 echo "unknown molecule subcommand: $sub" >&2
-                echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
+                echo "usage: fleet-claim molecule {list|show|resume|advance|complete|rebase-downstream} [args]" >&2
                 exit 2
                 ;;
         esac
@@ -1229,6 +1449,16 @@ molecule commands (crash-recovery state for stack claims):
                                          transition one task's state. New state is one of
                                          pending|in-progress|done|failed.
   molecule complete <agent>              archive the molecule and release the stack-claim
+  molecule rebase-downstream <agent> [task-id]
+                                         after the upstream branch of a stacked-PR chain
+                                         has been updated, rebase every downstream branch
+                                         onto the new upstream tip, force-push with
+                                         --force-with-lease, and comment on each downstream
+                                         PR. If task-id is omitted, infers the upstream
+                                         from the current branch (claude/T-NNN-…).
+                                         Conflicts abort the rebase, surface as
+                                         fleet:blocker + comment on the affected PR, and
+                                         pause the chain (remaining downstreams untouched).
 
 Dependency gate:
   claim and stack check the task's Blocked by: field in TASKS.md before
