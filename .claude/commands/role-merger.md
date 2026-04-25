@@ -195,7 +195,7 @@ exit cleanly:
          - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:stacked"`
          - Write `.merger-body.md` with:
            ```
-           Merger: base PR #<base> merged. Re-targeted this PR from
+           Merger: base PR #<base-pr-number> merged. Re-targeted this PR from
            `<previous-base-branch>` to `master`. The diff against
            master may differ from the previous review — reviewer will
            re-evaluate on next pass.
@@ -204,7 +204,7 @@ exit cleanly:
            ```
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
          - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
-         - Log: `... base #<base> merged, re-targeted to master, labeled fleet:stacked-rebase`
+         - Log: `... base #<base-pr-number> merged, re-targeted to master, labeled fleet:stacked-rebase`
 
       **iii. Base PR is CLOSED (not merged).** Orphaned stack — the
          base was abandoned. Hand off to the human. Leave `fleet:stacked`
@@ -213,7 +213,7 @@ exit cleanly:
          re-target or close):
          - Write `.merger-body.md` with:
            ```
-           Merger: base PR #<base> was closed without merging. This
+           Merger: base PR #<base-pr-number> was closed without merging. This
            stacked PR has no automatic path forward — either close
            it, or re-target to master (`gh pr edit <N> --base master`)
            and re-scope.
@@ -223,7 +223,7 @@ exit cleanly:
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
          - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:awaiting-base"`
          - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-info" --add-label "fleet:merger-cooldown"`
-         - Log: `... base #<base> closed (not merged), labeled fleet:needs-info`
+         - Log: `... base #<base-pr-number> closed (not merged), labeled fleet:needs-info`
 
       `fleet:stacked`, `fleet:awaiting-base`, and `fleet:stacked-rebase`
       are derived-state convenience labels for human visibility. Author
