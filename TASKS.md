@@ -177,11 +177,11 @@ Avoid:
   - **Notes:** Components like `C_PeriodicIdle` with self-only helpers are acceptable; the problem case is methods that reach into other components — those belong in systems. The naming/style table already exists; this adds the components-helpers rule next to it.
   - **Links:**
 
-- [ ] **Engine CLAUDE.md style: add "prefer enums over strings" rule** — add one bullet to Style section directing use of enum class for typed categorical fields
+- [~] **Engine CLAUDE.md style: add "prefer enums over strings" rule** — add one bullet to Style section directing use of enum class for typed categorical fields
   - **ID:** T-047
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-047-enum-style-rule
   - **Blocked by:** (none)
   - **Acceptance:** (1) one new bullet in `engine/CLAUDE.md` Style section stating the rule with wording per the issue; (2) wording is terse and prescriptive, matching the engine voice; (3) no code changes — doc-only
   - **Issue:** #298
