@@ -327,6 +327,9 @@ Do the work, then exit cleanly:
 
     Game repo is intentionally out of scope for v1: the merger is
     engine-only, so no game PR ever gets the label.
+    All `--repo` flags in this step use `jakildev/IrredenEngine`
+    (`<engine-repo>` in the merger-role convention — same slug, not
+    auto-derived here since this step is always engine-only).
 
     If the filtered list is empty, skip to step 2. Otherwise pick
     the oldest (smallest `number`) and:
@@ -376,6 +379,11 @@ Do the work, then exit cleanly:
        this PR matched the filter):
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:changes-made"`
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Resolved semantic conflict: <one-line summary of what you reconciled>. Build clean. Reviewer please re-evaluate the rebased diff. — opus-worker"`
+       Also clear the merger's cooldown label if still present — prevents
+       one unnecessary iteration delay before the PR can be re-evaluated
+       (the merger clears it anyway on next tick, but this makes it
+       watertight when the opus-worker resolves before the merger fires):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:merger-cooldown"`
        Then jump to step k (reset).
     j. **Resolution failed (escalation).** When to escalate:
        - The two sides did substantively different things and you
