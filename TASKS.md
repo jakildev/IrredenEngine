@@ -151,18 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fleet: stacked-PR: TASKS.md Stack: field for chain visibility** — add `Stack:` field to task template; queue-manager populates when ingesting child issues from a shared parent epic
-  - **ID:** T-045
-  - **Area:** TASKS.md template, .claude/commands
-  - **Model:** opus
-  - **Owner:** claude/T-045-stack-field-task-template
-  - **Blocked by:** (none)
-  - **Stack:** T-041..T-045 stacked-pr-vision
-  - **Acceptance:** child task shows `Stack:` populated; standalone tasks omit the field
-  - **Issue:** #289
-  - **Notes:** Part 5 of 5. Touches TASKS.md template and `role-queue-manager.md`. See `.fleet/plans/T-045.md`.
-  - **Links:**
-
 - [~] **Audit: component-with-helper patterns across engine prefabs, codify rules** — enumerate all component methods, categorize, refactor violations, land style rule
   - **ID:** T-046
   - **Area:** engine/prefabs/irreden/common, docs
@@ -185,24 +173,12 @@ Avoid:
   - **Notes:** Open design questions captured in issue body: mechanism, granularity, opt-out form, and discovery. Design doc must answer all four before implementation. The motivation is that "see engine root CLAUDE.md for X" soft references rot as engine docs evolve.
   - **Links:**
 
-- [~] **Modifier framework: design doc + audit + framework declarations** — write design doc, audit existing patterns, ship header declarations for all framework types
-  - **ID:** T-049
-  - **Area:** engine/prefabs/irreden/common, docs
-  - **Model:** opus
-  - **Owner:** claude/T-049-modifier-framework-foundation
-  - **Blocked by:** (none)
-  - **Stack:** T-049..T-053 modifier-framework
-  - **Acceptance:** (1) design doc checked into repo, cross-linked from `engine/prefabs/irreden/common/CLAUDE.md`; (2) all declared types (`Modifier`, `LambdaModifier`, `TransformKind`, `FieldBindingId`, `C_Modifiers`, `C_GlobalModifiers`, `C_NoGlobalModifiers`, `C_LambdaModifiers`, `C_ResolvedFields`) compile and register in the ECS component enum; (3) Lua-binding stub headers committed (reflection-only); (4) `fleet-build --target IRShapeDebug` clean
-  - **Issue:** #303
-  - **Notes:** Child 1 of 5 in the modifier framework epic (#302). Locked design choices in `.fleet/plans/T-049.md` are the source of truth — hybrid transforms (structured TransformKind + lambda escape hatch), eager composition, vector-on-component storage, EntityId source attribution, ticksRemaining decay. No runtime systems in this child; that's T-050.
-  - **Links:**
-
 - [ ] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
   - **ID:** T-050
   - **Area:** engine/prefabs/irreden/common, engine/system
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-049
+  - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) unit tests cover ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE composition correctness, composition order pinned and tested, ticksRemaining decay exact, source-destruction sweep correct, global+exempt archetype routing correct, lambda escape hatch; (2) no `getComponent`/`getComponentOptional` calls inside any tick body; (3) resolver tick at 1000 entities × 5 modifiers < 0.5 ms, recorded in PR body; (4) builds clean on `linux-debug` AND `macos-debug`
   - **Issue:** #304
@@ -245,6 +221,54 @@ Avoid:
   - **Notes:** Child 5 of 5. Use `create-creation` skill to scaffold — don't hand-roll CMakeLists.txt. 8 capabilities: Haste (MULTIPLY 1.5×), Stun (SET 0), Slow (MULTIPLY 0.3×), Stack (Haste+Slow composed), Global Slow (singleton, one exempt cube), Lambda Sinusoidal, Source Kill, Clamp (CLAMP_MAX 0.5 + Haste). All wiring in Lua via T-052 bindings. ~200-line Lua script target. Cross-link from `engine/prefabs/irreden/common/CLAUDE.md` when done.
   - **Links:**
 
+- [ ] **Render: world Z-yaw view/camera transform foundation** — add `C_CameraYaw`, per-tick cardinal/residual split helper, thread both yaw values to GPU feeders; foundation for Z-yaw rotation epic
+  - **ID:** T-054
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Acceptance:** (1) `C_CameraYaw { float visualYaw_; }` compiles and registers in ECS; (2) per-tick helper derives `rasterYaw` = nearest 90° cardinal and `residualYaw` = `visualYaw - rasterYaw`; (3) both values threaded to GPU feeder UBOs for trixel and SDF shaders; (4) `IRPrefab::Camera::setYaw/getYaw` API present; (5) visual + perf parity at `visualYaw=0` verified via `render-debug-loop`; (6) audit note in PR body lists all `engine/render/` sites that bake-in iso-basis assumptions; (7) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #317
+  - **Notes:** Foundation child of epic #310 (two-yaw architecture). `rasterYaw` feeds the trixel raster (T-055); `residualYaw` feeds the screen-space 2D residual composite pass (new unfiled child of #310); `visualYaw` feeds SDF (T-056) and picking (T-057). `visualYaw` is the only canonical value — gameplay never sees the cardinal split. Full plan: `.fleet/plans/T-054.md`.
+  - **Links:**
+
+- [ ] **Render: trixel rasterization under cardinal-snap Z-yaw** — update trixel raster shader to pick one of 4 basis-vector permutations from `rasterYaw`; GLSL + MSL parity
+  - **ID:** T-055
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-054
+  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Acceptance:** (1) shader selects the correct basis-vector permutation for each cardinal yaw (0°, 90°, 180°, 270°); (2) `render-debug-loop` visual parity at yaw=0; (3) correct rasterization at all four cardinal angles verified visually; (4) per-frame cost at any cardinal yaw ≤ cost at yaw=0 (no regression); (5) GLSL and MSL implementations at parity; (6) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #311
+  - **Notes:** Child 2 of 5 of epic #310. Re-scoped from "arbitrary" to "cardinal-snap" — continuous visual rotation comes from the residual 2D composite pass (new unfiled sibling). `rasterYaw` provided by T-054. Does NOT handle fractional/sub-cardinal yaw — voxels always land on integer trixel pixels. Full plan: `.fleet/plans/T-054.md`.
+  - **Links:**
+
+- [ ] **Render: SDF shape rasterization under arbitrary Z-yaw** — update SDF compute shader to consume continuous `visualYaw`; GLSL + MSL parity
+  - **ID:** T-056
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-054
+  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Acceptance:** (1) SDF shader reads `visualYaw` (continuous radians, provided by T-054); (2) `render-debug-loop` visual parity at yaw=0; (3) correct SDF rendering at several non-cardinal yaw values verified visually; (4) GLSL and MSL implementations at parity; (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #312
+  - **Notes:** Child 3 of 5 of epic #310. SDF is the "free half" — no integer-alignment requirement, so continuous-yaw works directly. Reads `visualYaw` (not `rasterYaw`). Runs in parallel with T-055 once T-054 lands. Full plan: `.fleet/plans/T-054.md`.
+  - **Links:**
+
+- [ ] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
+  - **ID:** T-057
+  - **Area:** engine/render, engine/input
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-054, render: screen-space 2D residual yaw composite pass (not yet queued — see epic #310)
+  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
+  - **Issue:** #313
+  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (unfiled) land. The residual composite is a new child of #310 not yet filed as a GitHub issue; this task is blocked on it in addition to T-054. Full plan: `.fleet/plans/T-054.md`.
+  - **Links:**
+
 ---
 
 ## In progress
@@ -258,6 +282,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-045** — Fleet: stacked-PR: TASKS.md Stack: field for chain visibility · Owner: claude/T-045-stack-field-task-template · PR: https://github.com/jakildev/IrredenEngine/pull/318
+- [x] **T-049** — Modifier framework: design doc + audit + framework declarations · Owner: claude/T-049-modifier-framework-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/315
 - [x] **T-047** — Engine CLAUDE.md style: add "prefer enums over strings" rule · Owner: claude/T-047-enum-style-rule · PR: https://github.com/jakildev/IrredenEngine/pull/314
 - [x] **T-044** — Fleet: stacked-PR: downstream auto-rebase when upstream changes · Owner: claude/T-044-rebase-downstream · PR: https://github.com/jakildev/IrredenEngine/pull/308
 - [x] **T-043** — Fleet: stacked-PR: reviewer upstream approval gating · Owner: claude/T-043-reviewer-upstream-gating · PR: https://github.com/jakildev/IrredenEngine/pull/301
@@ -276,5 +302,3 @@ Avoid:
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
 - [x] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
 - [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
-- [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
-- [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
