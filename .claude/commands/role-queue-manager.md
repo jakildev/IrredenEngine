@@ -526,8 +526,11 @@ You are the sole TASKS.md editor. Each maintenance pass:
    markdown task list (`- [ ] #N` entries). When ALL referenced
    children are closed, close the epic.
 
-   For each repo (engine, then game if present), fetch open epics:
-   `gh issue list --repo <repo> --label "fleet:epic" --state open --json number,title`
+   For each repo (engine, then game if present), fetch open epics
+   (`--limit 100` matches the `fleet-labels` workaround for the
+   default 30-row cap; one or two epics today, but cheap to
+   future-proof):
+   `gh issue list --repo <repo> --label "fleet:epic" --state open --json number,title --limit 100`
 
    For each epic returned:
 
