@@ -216,9 +216,11 @@ iteration of polling, reviewing, and exiting cleanly:
       this engine worktree). Focus on code quality, style, and obvious
       bugs. For game-specific conventions, read the game CLAUDE.md at
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   d. Post the review: write the review body to `/tmp/review-body.md`
-      using the **Write tool**, then:
-      `gh pr review <N> --repo <game-repo> --comment --body-file /tmp/review-body.md`
+   d. Post the review: write the review body to `.review-body.md`
+      (worktree-local) using the **Write tool**, then:
+      `gh pr review <N> --repo <game-repo> --comment --body-file .review-body.md`
+      Do NOT write to `/tmp/...` — Claude Code's sandbox blocks Write
+      to paths outside the worktree. `.review-body.md` is gitignored.
       **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
       escaping of backticks and special characters causes parse errors.
 
@@ -242,24 +244,30 @@ iteration of polling, reviewing, and exiting cleanly:
    after the edit, if you want to be sure).
 
    Always remove stale verdict labels before adding the new one. For
-   game PRs, add `--repo <game-repo>` to the gh pr edit call.
+   game PRs, add `--repo <game-repo>` to the gh pr edit call. Each
+   verdict also clears `fleet:stacked-rebase` (set by the merger
+   when a stacked PR's base just merged and got re-targeted to
+   master) — your re-eval after the re-target IS the action that
+   label is waiting for, regardless of which verdict you reach.
 
    Each verdict command also removes `fleet:awaiting-upstream-review`
-   so a previously-gated stacked PR exits the gate cleanly when the
-   reviewer finally proceeds.
+   (so a previously-gated stacked PR exits the gate when the reviewer
+   finally proceeds) AND `fleet:stacked-rebase` (set by merger when a
+   stacked PR's base just merged and got re-targeted to master — the
+   reviewer's re-eval is what that label is waiting for).
 
    ```
    # Verdict approve, no Nits section:
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"
 
    # Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved" --add-label "fleet:has-nits"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
    # Verdict needs-fix:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:needs-fix"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:needs-fix"
 
    # Verdict blocker:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:blocker"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:blocker"
 
    # Re-review of a previously fleet:has-nits PR that's now clean:
    #   removes the has-nits flag while keeping fleet:approved

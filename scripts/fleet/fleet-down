@@ -220,7 +220,15 @@ trap on_sigint INT TERM
 # happens after `commit-and-push` succeeds and the WIP label is
 # removed — gives in-flight work a chance to land cleanly.
 #
-# We poll fleet-claim list (filtering out _stack_* metadata dirs).
+# We poll fleet-claim list and filter out `_stack_*` metadata dirs
+# (created by `fleet-claim stack` to track which tasks are part of a
+# given stack — they're internal markers, not in-flight work). Without
+# this filter --wait would never see "all claims released" while a
+# stack metadata dir still exists, even after every member task has
+# released its own claim. fleet-claim's `cmd_list` itself doesn't
+# filter — that would be a behavior change for other callers — so we
+# filter here at the consumption site.
+#
 # When the count drops to zero, all workers are between tasks and
 # safe to shut down.
 
@@ -235,7 +243,7 @@ count_active_claims() {
         echo 0
         return
     fi
-    echo "$out" | grep -v "^$" | wc -l | tr -d ' '
+    echo "$out" | grep -v "^$" | grep -v "_stack_" | wc -l | tr -d ' '
 }
 
 if [[ "$WAIT_FOR_IDLE" -eq 1 ]]; then

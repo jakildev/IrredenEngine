@@ -80,7 +80,11 @@ whatever directory the task touches before editing anything.
 0. Print your role banner:
    `[sonnet-author] Picks bounded [sonnet] tasks from TASKS.md, works them end-to-end, opens PRs. Runs continuously.`
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
-   clone, not a reviewer worktree).
+   clone, not a reviewer worktree). The directory basename
+   (`sonnet-fleet-1` today, but parameterized so a future
+   `sonnet-fleet-2` works without a doc rewrite) is your **agent
+   name** — substitute it everywhere this file says
+   `<your-worktree-basename>` (heartbeat name, scratch branch suffix).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet` — pulls refs
    for later `git checkout`/`git rebase`; the cache snapshots TASKS.md
    and PR metadata but doesn't fetch refs.
@@ -114,13 +118,15 @@ earlier work.
 Each iteration:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `fleet-heartbeat sonnet-fleet-1`
-   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
-   the helper instead of a direct `touch` avoids the `~`-expansion
-   path-scope prompt that fires on the raw form.)
-   Also re-run `fleet-heartbeat sonnet-fleet-1` before long-running
-   steps (fleet-build, fleet-run, commit-and-push) to prevent false
-   staleness alerts during builds or PR actions.
+   `fleet-heartbeat <your-worktree-basename>`
+   (e.g. `fleet-heartbeat sonnet-fleet-1` — substitute the basename
+   from your `pwd` at startup. Wrapper script around
+   `touch ~/.fleet/heartbeats/<role>`. Using the helper instead of a
+   direct `touch` avoids the `~`-expansion path-scope prompt that
+   fires on the raw form.)
+   Also re-run `fleet-heartbeat <your-worktree-basename>` before
+   long-running steps (fleet-build, fleet-run, commit-and-push) to
+   prevent false staleness alerts during builds or PR actions.
 
 1. **Check for feedback labels on open PRs.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
@@ -233,8 +239,9 @@ Each iteration:
     The filter keeps only PRs that are approved, not flagged for
     fixes, and not claimed by the human. If the list is empty, skip
     to step 2. Otherwise, pick the oldest (smallest number), then:
-    a. Re-touch heartbeat (`fleet-heartbeat sonnet-fleet-1`) — the
-       build can take minutes and you don't want the witness to alarm.
+    a. Re-touch heartbeat (`fleet-heartbeat <your-worktree-basename>`)
+       — the build can take minutes and you don't want the witness to
+       alarm.
     b. Check out the PR: `gh pr checkout <N> --repo jakildev/IrredenEngine`
     c. Build the demo smoke target: `fleet-build --target IRShapeDebug`.
        If the PR breaks that build, the smoke has failed — jump to
@@ -254,7 +261,9 @@ Each iteration:
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
     g. Reset to scratch branch before continuing:
-       `git checkout -B claude/sonnet-fleet-1-scratch origin/master`
+       `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
+       (e.g. `claude/sonnet-fleet-1-scratch` for the sonnet-fleet-1
+       worktree.)
 
     Validate ONE PR per iteration. Multiple outstanding render PRs
     are handled across successive iterations so task pickup isn't
@@ -490,9 +499,10 @@ Each iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. File a GitHub issue for the opus work and note the escalation
+   STOP. File a GitHub issue for the opus work (no labels — see
+   CLAUDE.md "Issue/PR labeling discipline") and note the escalation
    on your PR:
-   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --label "fleet:task" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
+   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
    Then comment on your PR: "escalated — filed issue #N for opus".
    The human will triage the issue and add `human:approved` when
    ready. The queue-manager then adds it to TASKS.md. Move on to the
