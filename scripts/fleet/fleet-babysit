@@ -81,7 +81,7 @@ LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY=60        # seconds to wait after clean exit (no LOOP_INTERVAL)
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
 
-# Trigger-driven sleep cap (header comment "Trigger-driven" arm).
+# Seconds to sleep between iterations when in trigger-driven mode (default 30 min).
 # Set via env to override.
 LONG_BACKOFF_SECONDS="${FLEET_LONG_BACKOFF:-1800}"
 
