@@ -4,6 +4,11 @@ Where executables live. Each subdirectory is one binary (or one family
 of binaries) that links against the engine static libraries. The engine
 knows nothing about any specific creation.
 
+## Inherits from engine baseline
+
+Applies the rules in [`docs/agents/CLAUDE-BASELINE.md`](../docs/agents/CLAUDE-BASELINE.md).
+No opt-outs.
+
 ## Two visibility tiers
 
 ```

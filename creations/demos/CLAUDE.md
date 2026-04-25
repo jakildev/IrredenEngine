@@ -6,6 +6,11 @@ only creations checked into the engine repo — private creations (games,
 personal editors, experiments) live as gitignored subdirectories under
 `creations/`.
 
+## Inherits from engine baseline
+
+Applies the rules in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md).
+No opt-outs.
+
 ## Current demos
 
 - `default/` — minimal example showing how to spin up a `World`, register
