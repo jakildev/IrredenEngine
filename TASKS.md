@@ -165,17 +165,6 @@ Avoid:
   - **Notes:** Components like `C_PeriodicIdle` with self-only helpers are acceptable; the problem case is methods that reach into other components — those belong in systems. The naming/style table already exists; this adds the components-helpers rule next to it.
   - **Links:**
 
-- [~] **Engine CLAUDE.md style: add "prefer enums over strings" rule** — add one bullet to Style section directing use of enum class for typed categorical fields
-  - **ID:** T-047
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-047-enum-style-rule
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) one new bullet in `engine/CLAUDE.md` Style section stating the rule with wording per the issue; (2) wording is terse and prescriptive, matching the engine voice; (3) no code changes — doc-only
-  - **Issue:** #298
-  - **Notes:** Proposed wording in issue body: "Prefer enums over strings for typed categorical fields. Closed-set fields are `enum class TypeName : int { SCREAMING_SNAKE_CASE }`. Strings are for human-readable text, file paths, external interop — not closed categorical sets." Reference examples: `LightType`, `TextAlignH`, `SystemName`. Doc-only; parallel to T-046 (both add to the Style section and can land independently).
-  - **Links:**
-
 - [ ] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
   - **ID:** T-048
   - **Area:** docs, creations
@@ -260,6 +249,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-047** — Engine CLAUDE.md style: add "prefer enums over strings" rule · Owner: claude/T-047-enum-style-rule · PR: https://github.com/jakildev/IrredenEngine/pull/314
 - [x] **T-044** — Fleet: stacked-PR: downstream auto-rebase when upstream changes · Owner: claude/T-044-rebase-downstream · PR: https://github.com/jakildev/IrredenEngine/pull/308
 - [x] **T-043** — Fleet: stacked-PR: reviewer upstream approval gating · Owner: claude/T-043-reviewer-upstream-gating · PR: https://github.com/jakildev/IrredenEngine/pull/301
 - [x] **T-040** — Fleet: trigger-aware back-off in fleet-babysit · Owner: claude/T-040-trigger-aware-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/300
@@ -279,4 +269,3 @@ Avoid:
 - [x] **T-016** — Lighting: fog of war render pass (Phase 5 engine side) · Owner: render-fog-of-war-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/238
 - [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
-- [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
