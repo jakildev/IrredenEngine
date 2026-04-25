@@ -165,11 +165,11 @@ Avoid:
   - **Notes:** Components like `C_PeriodicIdle` with self-only helpers are acceptable; the problem case is methods that reach into other components — those belong in systems. The naming/style table already exists; this adds the components-helpers rule next to it.
   - **Links:**
 
-- [ ] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
+- [~] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
   - **ID:** T-048
   - **Area:** docs, creations
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-048-claude-md-sharing
   - **Blocked by:** (none)
   - **Acceptance:** (1) design doc answers: sharing mechanism (symlinks / include directives / build-merge), granularity (whole-file vs per-section), opt-out form, discovery model; (2) reference implementation: at least one creation uses the mechanism to inherit engine baseline docs, with one opt-out demonstrated; (3) audit pass produces clear list of "creation-shared" vs "engine-internal" CLAUDE.md sections; (4) documented in `engine/CLAUDE.md` and `creations/CLAUDE.md`
   - **Issue:** #299
