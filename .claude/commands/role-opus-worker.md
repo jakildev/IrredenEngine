@@ -41,6 +41,39 @@ Common patterns and their correct alternatives:
   exit status / error. Issue the fallback as a separate Bash call if
   needed.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs,
+`fleet:needs-plan` issues, and parsed `TASKS.md` rows. **This cache
+is the source of truth for list-y queries — do NOT bypass it for
+`gh pr list`, `gh issue list --label fleet:needs-plan`, or
+`git show origin/master:TASKS.md` when the cache is fresh.** One Read
+tool call replaces what used to be three to six `gh`/`git` invocations
+at startup.
+
+Schema (slices this role uses):
+- `repos.{engine,game}.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `author` (login string), `labels` (sorted strings),
+  `mergeable`, `isDraft`.
+- `repos.{engine,game}.needs_plan[]` — `number`, `title`, `labels`.
+- `repos.{engine,game}.tasks.{open,in_progress,done}[]` — `status`,
+  `title`, `summary`, `id`, `model`, `owner`, `area`, `blocked_by`,
+  `issue`.
+
+Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
+`gh issue view <N>`, `gh api repos/.../comments`) stay inline — those
+pull live data the cache doesn't store (PR bodies, comments, diffs).
+The cache covers list-shaped queries; live drill-in covers
+single-item drill-down.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print a
+diagnostic (`scout cache stale or missing — run fleet-up`) and exit;
+do not silently fall back to direct `gh`/`git` calls — that defeats
+the budget split, hides the outage, and races with whichever role
+the human is debugging.
+
 ## Responsibilities
 
 - Plan issues flagged with `fleet:needs-plan` on **either repo** — read
@@ -95,43 +128,48 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    opus-architect, not a reviewer worktree). The directory basename
    (`opus-worker-1` or `opus-worker-2`) is your **agent name** — pass
    it as the `<agent>` argument to `fleet-claim claim`.
-2. Fetch both repos (separate calls):
+2. Fetch both repos so per-task `git checkout`/`git rebase` and
+   `gh pr checkout` work later (the cache gives you a parsed
+   snapshot but does not pull refs):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git -C ~/src/IrredenEngine/creations/game fetch origin --quiet`
    If the game fetch fails because `creations/game/` isn't present,
    the game repo is not set up on this host. Skip all game-queue
-   steps below (3–6 game variants, step 1's game PR check) and
-   proceed with engine tasks only — do not abort the iteration.
-3. **Read the latest TASKS.md from origin/master without staging.**
-   Use `git show` to dump the current master versions directly to
-   stdout — does NOT touch the working tree or index, so it won't
-   break later branch checkouts. Two repos, two Bash calls:
-   `git -C ~/src/IrredenEngine show origin/master:TASKS.md`
-   `git -C ~/src/IrredenEngine/creations/game show origin/master:TASKS.md`
-   The Bash tool returns the full content as its output (and
-   auto-persists to a `.claude/projects/.../`-side file if the
-   output is large — automatic, you don't have to manage it).
+   steps below (game-side feedback, game-side needs-plan, game task
+   pickup) and proceed with engine tasks only — do not abort the
+   iteration.
+3. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. One Read replaces what used to be
+   six `gh` / `git` calls here:
+   - both repos' open PR lists
+     (`repos.{engine,game}.prs[]`)
+   - both repos' `fleet:needs-plan` issue lists
+     (`repos.{engine,game}.needs_plan[]`)
+   - both repos' `TASKS.md` parsed into open / in-progress / done
+     (`repos.{engine,game}.tasks.{open,in_progress,done}[]`)
 
-   Do NOT redirect to `/tmp` or anywhere else with `>`. Claude
-   Code's Bash tool blocks shell redirects regardless of whether
-   the destination is in `additionalDirectories` (the gate is on
-   the `>` operation, not the path). Stick with stdout-only.
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit. Do not
+   fall back to direct `gh`/`git` calls; see "Shared fleet state
+   cache" above.
 
-   For plan files, list them with `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
-   then `git -C <repo> show origin/master:.fleet/plans/<file>` for any
-   you need to read. Do NOT use `git checkout origin/master -- ...` —
-   it stages the files and breaks later `git checkout -b`.
-4. Review both queues from the `git show` output you just captured
-   for the engine and game `TASKS.md`.
-5. Open-PR cross-check on both repos:
-   `gh pr list --repo jakildev/IrredenEngine --state open --json number,title,headRefName,author`
-   `gh pr list --repo jakildev/irreden       --state open --json number,title,headRefName,author`
-6. Check for `fleet:needs-plan` issues on both repos:
-   `gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title`
-   `gh issue list --repo jakildev/irreden       --label "fleet:needs-plan" --state open --json number,title`
-7. Print a one-line summary: count of `fleet:needs-plan` issues across
-   both repos, count of unblocked unclaimed `[opus]` tasks per repo.
-8. Print `opus-worker standing by` (or `opus-worker standing by
+   For plan files (still on disk, not in cache), list with
+   `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
+   and read individual entries with
+   `git -C <repo> show origin/master:.fleet/plans/<file>`.
+   Do NOT use `git checkout origin/master -- ...` — it stages the
+   files and breaks later `git checkout -b`.
+4. Review both queues from the `tasks.open[]` arrays you just
+   loaded; cross-check the `prs[]` arrays for what is already
+   in flight under another agent (the live "is this task already
+   being worked" signal).
+5. Print a one-line summary: count of `fleet:needs-plan` entries
+   across both repos, count of unblocked unclaimed `[opus]` tasks
+   per repo (filter `tasks.open[]` where `model` contains `opus`,
+   `owner == "free"`, and `blocked_by` resolves to merged work or
+   `(none)`).
+6. Print `opus-worker standing by` (or `opus-worker standing by
    (dry-run)` if Mode above is `dry-run`).
 
 ## Loop behavior
@@ -161,10 +199,13 @@ Do the work, then exit cleanly:
    30 minutes per iteration).
 
 1. **Check for feedback labels on open PRs across both repos.**
-   ```
-   gh pr list --repo jakildev/IrredenEngine --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "engine #\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
-   gh pr list --repo jakildev/irreden       --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "human:blocker" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "game #\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
-   ```
+   Re-Read `~/.fleet/state/state.json` if its contents are no
+   longer in your conversation context. From `repos.engine.prs[]`
+   and `repos.game.prs[]`, pick PRs whose `labels` array contains
+   any of `human:needs-fix`, `human:blocker`, `fleet:needs-fix`,
+   `fleet:has-nits`. (This is the cached equivalent of the previous
+   `gh pr list ... --jq 'select(.labels ...)'` chain — same filter,
+   no API call.)
 
    For game-side feedback work, **cd into the game opus-worker
    worktree** before any git/gh ops (same as step 4 for new tasks):
@@ -212,9 +253,13 @@ Do the work, then exit cleanly:
     - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
     - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
 
-    ```
-    gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:needs-<host>-smoke" --json number,title,headRefName,labels --jq '.[] | select(.labels | map(.name) | any(. == "fleet:approved")) | select(.labels | map(.name) | all(. != "fleet:needs-fix" and . != "fleet:blocker" and . != "human:wip" and . != "fleet:wip" and . != "fleet:merger-cooldown" and . != "human:needs-fix")) | "#\(.number) \(.title) (\(.headRefName))"'
-    ```
+    From the cached `repos.engine.prs[]`, pick PRs whose `labels`
+    array contains BOTH `fleet:needs-<host>-smoke` AND
+    `fleet:approved`, and contains NONE of `fleet:needs-fix`,
+    `fleet:blocker`, `human:wip`, `fleet:wip`,
+    `fleet:merger-cooldown`, `human:needs-fix`. (Cached equivalent
+    of the previous `gh pr list --label fleet:needs-<host>-smoke
+    ... --jq` chain — same filter, no API call.)
 
     The filter keeps only PRs that are approved, not flagged for
     fixes, and not claimed by the human. If the list is empty, skip
@@ -248,11 +293,16 @@ Do the work, then exit cleanly:
     are handled across successive iterations so task pickup isn't
     starved by back-to-back smoke runs.
 
-2. **Plan any `fleet:needs-plan` issues on either repo.**
-   `gh issue list --repo jakildev/IrredenEngine --label "fleet:needs-plan" --state open --json number,title,body,comments`
-   `gh issue list --repo jakildev/irreden       --label "fleet:needs-plan" --state open --json number,title,body,comments`
+2. **Plan any `fleet:needs-plan` issues on either repo.** The
+   cached `repos.engine.needs_plan[]` and `repos.game.needs_plan[]`
+   arrays hold the open needs-plan issues. Pick the oldest
+   unprocessed entry (smallest `number`) across both repos.
 
-   Process the oldest first across both repos. For each issue:
+   The cache only stores list-shaped data — for per-issue body and
+   comments, pull live (per-item lookup, stays inline):
+   `gh issue view <N> --repo <repo> --comments`
+
+   For each issue:
    a. Read the full issue thread (title, body, all comments).
    b. Assess the scope and write a structured plan. Post it as an
       issue comment covering:
@@ -376,14 +426,15 @@ Do the work, then exit cleanly:
      below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
-   Re-run the two `git show origin/master:TASKS.md` Bash calls from
-   step 3 if their output isn't still in your context. Find the
-   first `[ ]` item in `## Open` with `Model: opus` whose:
+   Re-Read `~/.fleet/state/state.json` if its contents are no longer
+   in your conversation context. From `repos.{engine,game}.tasks.open[]`,
+   find the first row with `status == " "` (open) and `model`
+   containing `opus` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
    - **Title is NOT referenced in any open PR's title or branch name**
-     in **the same repo** (cross-check with the per-repo `gh pr list`
-     output from step 5)
+     in **the same repo** (cross-check against the same repo's
+     `prs[]` array from the cache)
 
    **Priority:** prefer engine tasks over game tasks when both are
    available — engine work is the core dependency surface. But if

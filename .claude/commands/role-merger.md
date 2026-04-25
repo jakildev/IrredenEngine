@@ -39,6 +39,33 @@ Common patterns and their correct alternatives:
   `.merger-body.md`), not to `/tmp`. The sandbox may block writes
   outside the project tree.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs
+(including labels, mergeable state, base/head refs, and
+`updatedAt`). **This cache is the source of truth for list-y
+queries — do NOT bypass it for `gh pr list --state open` when the
+cache is fresh.** One Read tool call replaces what used to be two
+`gh pr list` invocations per iteration (cooldown sweep + main
+candidate fetch).
+
+Schema (slices this role uses):
+- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `labels` (sorted strings), `mergeable`, `isDraft`,
+  `updatedAt`. (Merger is engine-only; ignore `repos.game.prs[]`.)
+
+Per-item lookups (`gh pr view <N> --json mergeable` for UNKNOWN
+refresh, the per-PR conflict-resolution flow that needs `git fetch`,
+`git rebase`, `gh pr comment`, `gh pr edit`) stay inline — those
+pull or push live data the cache doesn't store. The cache covers
+list-shaped queries; live drill-in covers single-item drill-down.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print
+`scout cache stale or missing — run fleet-up` and exit; do not
+silently fall back to direct `gh pr list` calls.
+
 ## What you do
 
 You poll open PRs on the **engine repo** every 10 minutes. For each
@@ -113,14 +140,17 @@ exit cleanly:
    than gating on `updatedAt`, which other agents' comments refresh)
    gives a single, predictable signal. Skip any PR that was already
    touched this iteration via the in-memory candidate list below.
-   `gh pr list --repo <engine-repo> --state open --label "fleet:merger-cooldown" --json number --jq '.[].number'`
-   For each number returned:
+   Read `~/.fleet/state/state.json`; from `repos.engine.prs[]`,
+   collect every PR whose `labels` contains `fleet:merger-cooldown`.
+   For each such PR number:
    `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:merger-cooldown"`
 
-2. Fetch the engine PR list. Include `baseRefName` so step a.5's
-   stacked-PR check can read it from memory instead of re-querying
-   per candidate:
-   `gh pr list --repo <engine-repo> --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`
+2. Get the engine PR list from the cache you just loaded —
+   `repos.engine.prs[]` already includes `number`, `title`,
+   `mergeable`, `labels`, `headRefName`, `baseRefName`, and
+   `updatedAt`, which is everything step 3's filter and step a.5's
+   stacked-PR check need. (Cached equivalent of the previous
+   `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
 3. Filter to candidates. A PR is a candidate if:
    - `mergeable == "CONFLICTING"`, OR

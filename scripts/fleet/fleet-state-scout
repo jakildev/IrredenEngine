@@ -66,11 +66,27 @@ def run_capture(cmd, cwd=None):
     return proc.stdout
 
 
+REVIEW_BODY_HEAD = 1024
+REVIEW_BODY_TAIL = 1024
+
+
+def _truncate_review_body(body):
+    # Reviewer roles only need enough of the body to filter on phrases like
+    # "Opus recheck required" (typically near the end) and skim the gist
+    # (typically at the start). Storing full bodies bloats state.json since
+    # every role re-reads the cache each iteration; cap at head + tail with
+    # an ellipsis between when oversized.
+    if not body or len(body) <= REVIEW_BODY_HEAD + REVIEW_BODY_TAIL:
+        return body
+    return body[:REVIEW_BODY_HEAD] + "\n…[truncated]…\n" + body[-REVIEW_BODY_TAIL:]
+
+
 def fetch_prs(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
         "--json",
-        "number,title,headRefName,baseRefName,author,labels,mergeable,isDraft",
+        "number,title,headRefName,baseRefName,author,labels,mergeable,"
+        "isDraft,reviews,updatedAt",
     ])
     if out is None:
         return []
@@ -82,6 +98,15 @@ def fetch_prs(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
+        pr["reviews"] = [
+            {
+                "author": rev.get("author", {}).get("login", ""),
+                "body": _truncate_review_body(rev.get("body", "")),
+                "state": rev.get("state", ""),
+                "submittedAt": rev.get("submittedAt", ""),
+            }
+            for rev in pr.get("reviews", [])
+        ]
     # gh's PR ordering is not stable run-to-run; sort by number so the
     # projection hash stays quiescent when nothing has actually changed.
     prs.sort(key=lambda pr: pr.get("number", 0))

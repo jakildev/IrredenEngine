@@ -34,6 +34,31 @@ Common patterns and their correct alternatives:
   write within the worktree (e.g. `.review-body.md`), not to `/tmp`.
   The sandbox may block writes outside the project tree.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs
+(including their reviews and labels). **This cache is the source of
+truth for list-y queries — do NOT bypass it for `gh pr list` when
+the cache is fresh.** One Read tool call replaces what used to be
+two `gh pr list` invocations per iteration.
+
+Schema (slices this role uses):
+- `repos.{engine,game}.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `author` (login string), `labels` (sorted strings),
+  `mergeable`, `isDraft`, `reviews[]` (each with `author` login,
+  `body`, `state`, `submittedAt`).
+
+Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
+`gh api repos/.../comments`) stay inline — those pull live data the
+cache doesn't store (issue comment timeline). The cache covers
+list-shaped queries; live drill-in covers single-item drill-down.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print
+`scout cache stale or missing — run fleet-up` and exit; do not
+silently fall back to direct `gh pr list` calls.
+
 ## Role
 
 You poll open PRs on **both repos** — the engine repo and the game
@@ -65,20 +90,28 @@ treat it as a hard rule for this role.
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    `gh pr checkout` will rewrite this branch on each review.
-4. Fetch PR lists from both repos (each as a separate command):
-   `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
-   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
-   Print both results so we both see the current PR queues.
+4. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. One Read replaces the two `gh pr
+   list --json reviews,labels,...` calls that used to live here —
+   open PRs across both repos (with their reviews and labels) live
+   at `repos.engine.prs[]` and `repos.game.prs[]`.
+
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit.
 5. Identify review candidates from both repos. A PR is a candidate if:
-   - It has **no fleet review yet** (no review from your GitHub user), OR
-   - It has the `human:re-review` label (human made changes and
+   - It has **no fleet review yet** — none of its `reviews[].author`
+     entries match the fleet's GitHub login, OR
+   - Its `labels` contains `human:re-review` (human made changes and
      explicitly requested re-review via the `request-re-review` skill), OR
-   - It has the `fleet:changes-made` label (author addressed feedback;
-     either the human or the fleet should re-verify — whichever gets
-     to it first), OR
+   - Its `labels` contains `fleet:changes-made` (author addressed
+     feedback; either the human or the fleet should re-verify —
+     whichever gets to it first), OR
    - It **previously had a fleet review** but the author pushed fixes
-     and commented "re-review please" (check the comments array for
-     this text after your last review).
+     and commented "re-review please" — for this last one, do a per-PR
+     `gh pr view <N> --comments` only when the other criteria didn't
+     already match (the comment timeline is per-item drill-in, not in
+     the cache).
 
    When picking up a `human:re-review` or `fleet:changes-made` PR,
    **immediately remove the label that triggered pickup** so another
@@ -110,9 +143,10 @@ iteration of polling, reviewing, and exiting cleanly:
    the helper instead of a direct `touch` avoids the `~`-expansion
    path-scope prompt that fires on the raw form.)
 
-1. Re-fetch PR lists from both repos (separate commands):
-   `gh pr list --state open --json number,title,headRefName,author,reviews,labels`
-   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,author,reviews,labels`
+1. Re-Read `~/.fleet/state/state.json` if its contents are no
+   longer in your conversation context — both repos' open PRs (with
+   labels and reviews) live at `repos.engine.prs[]` and
+   `repos.game.prs[]`.
 2. Re-apply the same candidate criteria from startup step 5: pick up
    PRs with no fleet review, with `human:re-review`, with
    `fleet:changes-made` (remove the label on pickup), or with a "re-review please"

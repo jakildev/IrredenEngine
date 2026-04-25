@@ -35,6 +35,37 @@ Common patterns and their correct alternatives:
   write within the worktree (e.g. `.review-body.md`), not to `/tmp`.
   The sandbox may block writes outside the project tree.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs
+(including their reviews and labels). **This cache is the source of
+truth for list-y queries — do NOT bypass it for `gh pr list` when
+the cache is fresh.** One Read tool call replaces what used to be
+two `gh pr list` invocations per iteration.
+
+Schema (slices this role uses):
+- `repos.{engine,game}.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `author` (login string), `labels` (sorted strings),
+  `mergeable`, `isDraft`, `reviews[]` (each with `author` login,
+  `body`, `state`, `submittedAt`). The `body` of the latest Sonnet
+  review is what tells you whether `Opus recheck required` is in
+  play. Bodies longer than 2 KB are stored as head + tail with an
+  `…[truncated]…` separator (the verdict line typically lives in the
+  tail), so the recheck signal still reaches the cache for typical
+  reviews; if a finding requires the full body for context, fetch
+  it with `gh pr view <N> --comments`.
+
+Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`)
+stay inline — those pull live data the cache doesn't store (issue
+comment timeline, file diffs). The cache covers list-shaped queries;
+live drill-in covers single-item drill-down.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print
+`scout cache stale or missing — run fleet-up` and exit; do not
+silently fall back to direct `gh pr list` calls.
+
 ## Role
 
 You poll open PRs on **both repos** — the engine repo and the game
@@ -72,24 +103,33 @@ conditions, allocator behavior, hot-path costs.
    separately (do NOT wrap in `cd ... &&`):
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/opus-reviewer-scratch origin/master`
-4. Fetch PR lists from both repos (each as a separate command):
-   `gh pr list --state open --json number,title,headRefName,reviews,labels`
-   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,reviews,labels`
-   Print both results.
+4. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. One Read replaces the two `gh pr
+   list --json reviews,labels,...` calls that used to live here —
+   open PRs across both repos (with their reviews and labels) live
+   at `repos.engine.prs[]` and `repos.game.prs[]`.
+
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit.
 5. Identify the candidates from both repos. A PR is a candidate if:
-   - The latest Sonnet review body contains `Opus recheck required`, OR
-   - The PR touches core engine/game invariants, OR
-   - The PR has the `human:re-review` label (human made changes and
+   - Its latest review (sort `reviews[]` by `submittedAt`) has a
+     `body` containing `Opus recheck required`, OR
+   - The PR touches core engine/game invariants (need to read its
+     diff via `gh pr diff <N>` per-item), OR
+   - Its `labels` contains `human:re-review` (human made changes and
      requested re-review — remove the label when you pick it up:
      `gh pr edit <N> --remove-label "human:re-review"`), OR
-   - The PR has the `fleet:changes-made` label AND it touches core
-     engine/game invariants (remove the label on pickup:
+   - Its `labels` contains `fleet:changes-made` AND the PR touches
+     core engine/game invariants (remove the label on pickup:
      `gh pr edit <N> --remove-label "fleet:changes-made"`). For
      non-core PRs, leave `fleet:changes-made` for sonnet-reviewer to
      handle — Opus budget is expensive, don't burn it on docs/tooling
      fixups, OR
    - The author pushed fixes and commented "re-review please" after
-     a previous Opus review (check comments after your last review).
+     a previous Opus review (per-item — check comments via
+     `gh pr view <N> --comments` after your last review's
+     `submittedAt`).
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, or `human:needs-fix`
    — those are either in-progress or human-owned.
@@ -107,9 +147,10 @@ iteration of polling, reviewing, and exiting cleanly:
    the helper instead of a direct `touch` avoids the `~`-expansion
    path-scope prompt that fires on the raw form.)
 
-1. Re-fetch PR lists from both repos (separate commands):
-   `gh pr list --state open --json number,title,headRefName,reviews,labels`
-   `gh pr list --repo <game-repo> --state open --json number,title,headRefName,reviews,labels`
+1. Re-Read `~/.fleet/state/state.json` if its contents are no
+   longer in your conversation context — both repos' open PRs (with
+   labels and reviews) live at `repos.engine.prs[]` and
+   `repos.game.prs[]`.
 2. For each candidate, in oldest-first order:
    a. Read the existing Sonnet review in full first
       (`gh pr view <N> --comments`, add `--repo <game-repo>` for
