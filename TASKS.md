@@ -142,11 +142,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fleet: add fleet-state-scout daemon for shared state caching** — build a Python daemon that polls GitHub + git state, computes per-role content hashes, writes `~/.fleet/state/state.json`, and emits trigger files
+- [~] **Fleet: add fleet-state-scout daemon for shared state caching** — build a Python daemon that polls GitHub + git state, computes per-role content hashes, writes `~/.fleet/state/state.json`, and emits trigger files
   - **ID:** T-038
   - **Area:** scripts/fleet
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-038-fleet-state-scout
   - **Blocked by:** (none)
   - **Acceptance:** (1) `~/.fleet/state/state.json` updated within 60s of any TASKS.md change or new PR; (2) per-role hash files change only when projected data changes (verified on quiescent fleet); (3) trigger files appear when role-relevant state changes, absent otherwise; (4) `fleet-down` stops scout cleanly with no orphaned children; (5) `bash -n` and python3 import clean; (6) no agent role file changed in this PR
   - **Issue:** #270
@@ -202,12 +202,73 @@ Avoid:
     first-time issues.
   - **Links:**
 
+- [ ] **Fleet: stacked-PR: commit-and-push stack-aware mode** — add `fleet:stacked` label and `Stack context:` body block when active molecule is detected
+  - **ID:** T-041
+  - **Area:** .claude/skills
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-041..T-045 stacked-pr-vision
+  - **Acceptance:** opening a PR with an active molecule produces `--base <prev-branch>`, `fleet:stacked` label, and body with Stack context; no-molecule case still produces `--base master`
+  - **Issue:** #289
+  - **Notes:** Part 1 of 5. See `.fleet/plans/T-041.md` for full plan. Bootstrapping PR — opens against master since stack-aware code doesn't exist yet.
+  - **Links:**
+
+- [ ] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
+  - **ID:** T-042
+  - **Area:** .claude/skills
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-041
+  - **Stack:** T-041..T-045 stacked-pr-vision
+  - **Acceptance:** after opening PR for first task in a 2-task stack, `start-next-task` lands on a branch whose merge-base is the just-opened PR's head ref; after exhausting the stack, resets to `origin/master`
+  - **Issue:** #289
+  - **Notes:** Part 2 of 5. See `.fleet/plans/T-042.md`.
+  - **Links:**
+
+- [ ] **Fleet: stacked-PR: reviewer upstream approval gating** — hold downstream PR approval when upstream has `fleet:needs-fix`; gate on upstream `fleet:approved` before reviewing own diff
+  - **ID:** T-043
+  - **Area:** scripts/fleet, .claude/commands
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-042
+  - **Stack:** T-041..T-045 stacked-pr-vision
+  - **Acceptance:** downstream PR open while upstream has `fleet:needs-fix` → `fleet:awaiting-upstream-review` applied, no `fleet:approved` issued; after upstream re-approved, next reviewer pass proceeds normally
+  - **Issue:** #289
+  - **Notes:** Part 3 of 5. New label: `fleet:awaiting-upstream-review`. See `.fleet/plans/T-043.md`.
+  - **Links:**
+
+- [ ] **Fleet: stacked-PR: downstream auto-rebase when upstream changes** — add `fleet-claim molecule rebase-downstream` subcommand; invoke in author role after addressing upstream review feedback
+  - **ID:** T-044
+  - **Area:** scripts/fleet, .claude/commands
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-043
+  - **Stack:** T-041..T-045 stacked-pr-vision
+  - **Acceptance:** stack A→B→C; reviewer flags A with `fleet:needs-fix`; worker fixes A, pushes, runs rebase subcommand; B and C branches now have new A tip as parent; PRs get comment; conflicts surface as `fleet:blocker` + comment, chain pauses
+  - **Issue:** #289
+  - **Notes:** Part 4 of 5. New subcommand: `fleet-claim molecule rebase-downstream`. Use `--force-with-lease`, never `--force`. See `.fleet/plans/T-044.md`.
+  - **Links:**
+
+- [ ] **Fleet: stacked-PR: TASKS.md Stack: field for chain visibility** — add `Stack:` field to task template; queue-manager populates when ingesting child issues from a shared parent epic
+  - **ID:** T-045
+  - **Area:** TASKS.md template, .claude/commands
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-044
+  - **Stack:** T-041..T-045 stacked-pr-vision
+  - **Acceptance:** child task shows `Stack:` populated; standalone tasks omit the field
+  - **Issue:** #289
+  - **Notes:** Part 5 of 5. Touches TASKS.md template and `role-queue-manager.md`. See `.fleet/plans/T-045.md`.
+  - **Links:**
+
 ---
 
 ## In progress
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
+- [~] **T-038** — Fleet: add fleet-state-scout daemon · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
 
 ---
 
