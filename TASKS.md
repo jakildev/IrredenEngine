@@ -153,11 +153,11 @@ Avoid:
   - **Notes:** hybrid approach — keeps babysit hardening from PRs #246/#247/#248/#257/#265/#269, adds trigger-awareness for ~80% cost-saving benefit without full transient dispatcher replacement. New env var FLEET_LONG_BACKOFF (default 1800). Difficulty: medium.
   - **Links:**
 
-- [ ] **Fleet: stacked-PR: reviewer upstream approval gating** — hold downstream PR approval when upstream has `fleet:needs-fix`; gate on upstream `fleet:approved` before reviewing own diff
+- [~] **Fleet: stacked-PR: reviewer upstream approval gating** — hold downstream PR approval when upstream has `fleet:needs-fix`; gate on upstream `fleet:approved` before reviewing own diff
   - **ID:** T-043
   - **Area:** scripts/fleet, .claude/commands
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-043-reviewer-upstream-gating
   - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** downstream PR open while upstream has `fleet:needs-fix` → `fleet:awaiting-upstream-review` applied, no `fleet:approved` issued; after upstream re-approved, next reviewer pass proceeds normally
