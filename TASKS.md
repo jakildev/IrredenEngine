@@ -142,24 +142,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fleet: stacked-PR: downstream auto-rebase when upstream changes** — add `fleet-claim molecule rebase-downstream` subcommand; invoke in author role after addressing upstream review feedback
-  - **ID:** T-044
-  - **Area:** scripts/fleet, .claude/commands
-  - **Model:** opus
-  - **Owner:** claude/T-044-rebase-downstream
-  - **Blocked by:** (none)
-  - **Stack:** T-041..T-045 stacked-pr-vision
-  - **Acceptance:** stack A→B→C; reviewer flags A with `fleet:needs-fix`; worker fixes A, pushes, runs rebase subcommand; B and C branches now have new A tip as parent; PRs get comment; conflicts surface as `fleet:blocker` + comment, chain pauses
-  - **Issue:** #289
-  - **Notes:** Part 4 of 5. New subcommand: `fleet-claim molecule rebase-downstream`. Use `--force-with-lease`, never `--force`. See `.fleet/plans/T-044.md`.
-  - **Links:**
-
 - [ ] **Fleet: stacked-PR: TASKS.md Stack: field for chain visibility** — add `Stack:` field to task template; queue-manager populates when ingesting child issues from a shared parent epic
   - **ID:** T-045
   - **Area:** TASKS.md template, .claude/commands
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-044
+  - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** child task shows `Stack:` populated; standalone tasks omit the field
   - **Issue:** #289
@@ -199,11 +187,11 @@ Avoid:
   - **Notes:** Open design questions captured in issue body: mechanism, granularity, opt-out form, and discovery. Design doc must answer all four before implementation. The motivation is that "see engine root CLAUDE.md for X" soft references rot as engine docs evolve.
   - **Links:**
 
-- [ ] **Modifier framework: design doc + audit + framework declarations** — write design doc, audit existing patterns, ship header declarations for all framework types
+- [~] **Modifier framework: design doc + audit + framework declarations** — write design doc, audit existing patterns, ship header declarations for all framework types
   - **ID:** T-049
   - **Area:** engine/prefabs/irreden/common, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-049-modifier-framework-foundation
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) design doc checked into repo, cross-linked from `engine/prefabs/irreden/common/CLAUDE.md`; (2) all declared types (`Modifier`, `LambdaModifier`, `TransformKind`, `FieldBindingId`, `C_Modifiers`, `C_GlobalModifiers`, `C_NoGlobalModifiers`, `C_LambdaModifiers`, `C_ResolvedFields`) compile and register in the ECS component enum; (3) Lua-binding stub headers committed (reflection-only); (4) `fleet-build --target IRShapeDebug` clean
@@ -272,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-044** — Fleet: stacked-PR: downstream auto-rebase when upstream changes · Owner: claude/T-044-rebase-downstream · PR: https://github.com/jakildev/IrredenEngine/pull/308
 - [x] **T-043** — Fleet: stacked-PR: reviewer upstream approval gating · Owner: claude/T-043-reviewer-upstream-gating · PR: https://github.com/jakildev/IrredenEngine/pull/301
 - [x] **T-040** — Fleet: trigger-aware back-off in fleet-babysit · Owner: claude/T-040-trigger-aware-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/300
 - [x] **T-039** — Fleet: roles read scout cache instead of running gh/git directly · Owner: claude/T-039-roles-read-scout-cache · PR: https://github.com/jakildev/IrredenEngine/pull/296
@@ -291,4 +280,3 @@ Avoid:
 - [x] **T-025** — Render debug: false-color lighting-data overlay · Owner: render-debug-overlay · PR: https://github.com/jakildev/IrredenEngine/pull/235
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 - [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
-- [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
