@@ -142,11 +142,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fleet: trigger-aware back-off in fleet-babysit** — extend fleet-babysit to sleep a long back-off (~30 min) when no trigger file exists, relaunch immediately when a trigger appears
+- [~] **Fleet: trigger-aware back-off in fleet-babysit** — extend fleet-babysit to sleep a long back-off (~30 min) when no trigger file exists, relaunch immediately when a trigger appears
   - **ID:** T-040
   - **Area:** scripts/fleet
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-040-trigger-aware-backoff
   - **Blocked by:** (none)
   - **Acceptance:** (1) worker babysit sleeps LONG_BACKOFF_SECONDS (~1800) when no trigger file exists; (2) fires immediately (within ~5s) when trigger appears mid-sleep; (3) trigger file removed after consumption; (4) architect babysit lifecycle unchanged; (5) shutdown sentinel from PR #269 still wins; (6) `bash -n` clean; (7) real fleet test: no worker iterates more than once per LONG_BACKOFF_SECONDS on a quiet queue
   - **Issue:** #272
