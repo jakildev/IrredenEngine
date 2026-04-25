@@ -385,6 +385,15 @@ namespaces in headers; keep them in `.cpp`.
   `enum class TypeName : int { SCREAMING_SNAKE_CASE = 0, ... }` per the naming
   table. Strings are for human-readable text, file paths, and external interop —
   not for closed categorical sets that the framework dispatches on.
+- **Components hold data; systems do work.** A component method must read or
+  write only the component's own fields. Methods that look up *another* entity
+  via a stored `EntityId` (`IREntity::getComponent`, `setComponent`,
+  `createEntity`, `setParent`, `getEntity`) belong in a system, an entity
+  builder (`Prefab<>::create`), or a prefab-scoped `IRPrefab::Foo::` namespace
+  (Pattern B in `engine/prefabs/irreden/render/CLAUDE.md`). See
+  `engine/prefabs/CLAUDE.md` §"Component method rules" for the full
+  categorization and the documented exceptions (GPU resource RAII, `onDestroy`
+  IO cleanup).
 
 ---
 
