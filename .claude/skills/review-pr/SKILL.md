@@ -369,7 +369,7 @@ After setting the verdict label in 5b, check the diff's file paths:
 gh pr diff <N> --name-only
 ```
 
-If any path matches **any** of these, add both smoke labels:
+If any path matches **any** of these, the PR needs cross-host smoke:
 
 - `engine/render/`
 - `engine/prefabs/irreden/render/`
@@ -377,8 +377,28 @@ If any path matches **any** of these, add both smoke labels:
 - any `*.glsl` file
 - any `*.metal` file
 
+**Subtract the author's host before tagging.** `commit-and-push`
+stamps `fleet:authored-on-linux` or `fleet:authored-on-macos` at
+PR-create time based on the author's `uname -s`. Per the engine
+`CLAUDE.md` "Verifying render changes" section, render-PR authors
+build + run the demo on their host before opening, so authoring
+on a host is reasonable evidence its smoke is baseline-validated.
+Only the OTHER host actually needs cross-host validation.
+
+Read the candidate's labels (already in the cache as
+`repos.engine.prs[].labels`) and add only the smoke label for the
+host the author was NOT on:
+
+| Author label present | Add smoke label |
+|---|---|
+| `fleet:authored-on-linux` | `fleet:needs-macos-smoke` only |
+| `fleet:authored-on-macos` | `fleet:needs-linux-smoke` only |
+| Neither (Windows-native author, or pre-fix PR) | Both labels |
+
 ```bash
-gh pr edit <N> --add-label "fleet:needs-linux-smoke" --add-label "fleet:needs-macos-smoke"
+# Determine which host(s) need smoke (one Bash call per add — keep
+# them separate so each is independently safe and idempotent):
+gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"
 ```
 
 Each host's author agents (opus-worker, sonnet-author) poll for the

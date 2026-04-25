@@ -539,6 +539,13 @@ Specifically, **never pass these via `--label` when filing**:
   build + run validation.
 - `fleet:wip` — owned by the **author agent** (set at PR creation
   during a normal `commit-and-push` flow). Don't add to issues.
+- `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
+  the **author's `commit-and-push`** (set at PR creation based on
+  `uname -s`). Records which host the PR was opened from so the
+  reviewer's cross-host smoke step subtracts the author's host
+  (no point asking for a smoke label on the host that just built
+  and ran the demo). Permanent label — it's a fact about the PR,
+  not a state. Don't add to issues.
 - `fleet:in-progress` / `fleet:merger-cooldown` /
   `fleet:changes-made` — owned by the worker / merger pipeline.
 

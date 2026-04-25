@@ -289,17 +289,24 @@ iteration of polling, reviewing, and exiting cleanly:
    `engine/render/`, `engine/prefabs/irreden/render/`, any `*.glsl`,
    any `*.metal`, or any file under `engine/render/src/shaders/`. Use
    `gh pr diff <N> --name-only` to read the changed paths. If any path
-   matches, add BOTH smoke labels so both hosts pick the PR up for
-   validation:
-   `gh pr edit <N> --add-label "fleet:needs-linux-smoke" --add-label "fleet:needs-macos-smoke"`
+   matches, add the smoke label for the host the author was NOT on
+   (the author already smoke-tested their own host per the workflow,
+   so tagging it again is redundant):
+
+   - PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke`
+   - PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke`
+   - Neither (Windows-native author, or pre-fix PR) → add both
+
+   `gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"`
+
    Each host's author agents (opus-worker, sonnet-author) poll for the
    label matching their host, run a clean-checkout build + `IRShapeDebug`
    smoke, and remove the label on success. The PR cannot be safely
-   merged until both labels are gone. Skip this step for game-repo PRs
-   — cross-host smoke applies to engine backends only. Skip for
-   non-render engine PRs (tooling, docs, non-render modules) — the
-   labels exist to narrow the "did this port build on the other
-   backend" question, not as general CI.
+   merged until the outstanding label is gone. Skip this step entirely
+   for game-repo PRs — cross-host smoke applies to engine backends
+   only. Skip for non-render engine PRs (tooling, docs, non-render
+   modules) — the labels exist to narrow the "did this port build on
+   the other backend" question, not as general CI.
 
    **Nits vs real issues — the bright line:**
    - **Approve with nits** is fine for genuinely-optional cosmetic
