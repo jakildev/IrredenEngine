@@ -161,16 +161,53 @@ iteration of polling, reviewing, and exiting cleanly:
    task's branch instead of `master`; each one gets its own independent
    review and label.
 
-   **Stack awareness:** before invoking the skill, check whether this
-   PR is stacked on a parent PR (it will be if its base branch is not
-   `master` or its body carries a `Stacked on:` line):
-   `gh pr view <N> --json baseRefName,body --jq '"\(.baseRefName)\n---\n\(.body)"'`
-   If it is stacked, review only this PR's own diff (`gh pr diff <N>`
-   already scopes to it — don't pull in the parent's changes) and note
-   the stack context in your review body: "Stacked on #<parent>;
-   approval assumes #<parent> lands first." Do not re-review the
-   parent — it has its own PR and its own review. The `review-pr`
-   skill handles this as part of its normal flow.
+   **Stack awareness — gate on upstream status, then note context.**
+   A stacked PR's `baseRefName` IS its upstream PR's `headRefName`.
+   The candidate PR's own metadata already lives in the cache loaded
+   at the start of the iteration; read from there first and fall
+   back to live `gh` only when the cache misses.
+
+   1. **Detect stacking.** From the cached candidate PR, check
+      `baseRefName`. If it equals `"master"`, this is a standalone
+      PR — skip to the engine/game branch below and review normally.
+
+   2. **Look up the upstream PR.** Search the same cache
+      (`repos.<repo>.prs[]`) for an entry whose `headRefName`
+      matches the candidate's `baseRefName`. A hit gives you the
+      upstream's `number` and `labels` for free. A miss means the
+      upstream is merged or closed; fall through to one live call:
+      `gh pr list --head "<baseRefName>" --state all --json number,state,mergedAt --jq '.[0]'`
+      (add `--repo <game-repo>` for game PRs).
+
+   3. **Already gated — check before deciding.** If the candidate's
+      own `labels` already contains `fleet:awaiting-upstream-review`:
+      - Re-check upstream status using the same cache-then-live-
+        fallback logic from step 2 above.
+      - If upstream is now approved or merged — remove the gate label
+        (`gh pr edit <N> --remove-label "fleet:awaiting-upstream-review"`)
+        and proceed to the review.
+      - Otherwise (still open-without-approval, OR now broken) —
+        silently skip. Do NOT post any additional comment.
+
+   4. **Decide based on upstream status** (gate label not present):
+      - **Upstream MERGED, or upstream OPEN with `fleet:approved`
+        or `human:approved`** — proceed with review. Note the stack
+        context in the review body: "Stacked on #<U>; approval
+        assumes #<U> lands first."
+      - **Upstream OPEN without an approval label** (its `labels`
+        contains neither `fleet:approved` nor `human:approved`) —
+        add the gate label and post a hold-comment once:
+        `gh pr edit <N> --add-label "fleet:awaiting-upstream-review"`
+        `gh pr comment <N> --body "Holding review: upstream PR #<U> is not yet approved. This stacked PR will be re-evaluated once the upstream lands an approval label."`
+        For game PRs add `--repo <game-repo>` to both.
+        Do NOT post a verdict.
+      - **Upstream not found, OR closed-not-merged** — the stack is
+        broken. Surface to the human once:
+        `gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."`
+        Do NOT add a verdict label.
+
+   `gh pr diff <N>` always scopes to this PR's own diff — do not
+   re-review the parent.
 
    **Game PRs** (`<game-repo>`):
    a. Read the diff: `gh pr diff <N> --repo <game-repo>`
@@ -207,18 +244,22 @@ iteration of polling, reviewing, and exiting cleanly:
    Always remove stale verdict labels before adding the new one. For
    game PRs, add `--repo <game-repo>` to the gh pr edit call.
 
+   Each verdict command also removes `fleet:awaiting-upstream-review`
+   so a previously-gated stacked PR exits the gate cleanly when the
+   reviewer finally proceeds.
+
    ```
    # Verdict approve, no Nits section:
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:approved"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved"
 
    # Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved" --add-label "fleet:has-nits"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
    # Verdict needs-fix:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:needs-fix"
 
    # Verdict blocker:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --add-label "fleet:blocker"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:blocker"
 
    # Re-review of a previously fleet:has-nits PR that's now clean:
    #   removes the has-nits flag while keeping fleet:approved

@@ -325,20 +325,22 @@ you need to be sure).
 a PR should have exactly one verdict label (`fleet:approved` /
 `fleet:needs-fix` / `fleet:blocker`) at any time. The
 `fleet:has-nits` label is orthogonal — it can ride on top of
-`fleet:approved`.
+`fleet:approved`. The remove list also clears
+`fleet:awaiting-upstream-review` so a previously-gated stacked PR
+exits the gate cleanly when the reviewer finally proceeds.
 
 ```bash
 # For approve, no nits in body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:approved"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved"
 
 # For approve WITH a non-empty Nits section in the body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "fleet:approved" --add-label "fleet:has-nits"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
 # For needs-fix (nits roll into the fix work; no separate label):
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:needs-fix"
 
 # For blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --add-label "fleet:blocker"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:blocker"
 ```
 
 The verdict label is the **primary signal** the human uses to decide

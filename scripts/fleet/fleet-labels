@@ -108,6 +108,7 @@ LABELS=(
     "fleet:stacked|c5def5|PR's base is a feature branch (stacked PR)"
     "fleet:awaiting-base|c5def5|Stacked PR; merger is waiting for base PR to merge"
     "fleet:stacked-rebase|c5def5|Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
+    "fleet:awaiting-upstream-review|c5def5|Stacked PR; reviewer is holding verdict until upstream PR is approved"
     "human:wip|5319e7|Human is editing the PR directly; agents stand off"
     "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"
