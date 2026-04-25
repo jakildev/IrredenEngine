@@ -211,6 +211,7 @@ Use the exact template from `TASKS.md`:
   - **Model:** opus | sonnet
   - **Owner:** free
   - **Blocked by:** (none) | <title or PR URL>
+  - **Stack:** T-XXX..T-YYY <slug>   ← optional, only for stacked-chain children
   - **Acceptance:** <concrete check: build passes, test X passes, screenshot looks like Y>
   - **Issue:** (none) | #N
   - **Notes:** <context, links, prior attempts>
@@ -221,6 +222,11 @@ Use the exact template from `TASKS.md`:
 for the highest `T-NNN` ID currently in use, then assign the next
 sequential number. IDs are never reused. The ID is the canonical claim
 key — agents pass it (not the free-text title) to `fleet-claim`.
+
+**Stack field (optional):** include `**Stack:**` only when the task is
+a child of a parent epic. Detection during ingestion is described in
+the maintenance pass below ("Detect stack membership"). The field is
+informational — `fleet-claim` and the scout cache both ignore it.
 
 **Issue field:** if the task was ingested from a GitHub issue, set
 `**Issue:** #N` (the issue number). Author agents use this to include
@@ -352,6 +358,47 @@ You are the sole TASKS.md editor. Each maintenance pass:
       `**Blocked by:** T-003, T-005` (comma-separated task IDs)
       or `**Blocked by:** T-003, https://github.com/.../pull/42`
       If no dependencies, write `**Blocked by:** (none)`.
+   b1. **Detect stack membership.** Parse the issue body and comments
+      for an explicit `**Stack:**` line. Two accepted forms:
+      - **Slug-only** — `**Stack:** <slug>`, where `<slug>` is a
+        short kebab-case identifier (e.g. `modifier-framework`,
+        `stacked-pr-vision`). Recommended — the planner declares
+        membership without having to predict task IDs.
+      - **Range form** — `**Stack:** T-XXX..T-YYY <slug>`. Useful
+        when the planner files all children at once and pre-computes
+        the range.
+
+      For **slug-only**: search `## Open` (the done section's
+      single-line summary format omits sub-fields like Stack:, so
+      it can't be queried) for entries whose `**Stack:**` references
+      the same `<slug>`. Treat siblings already appended earlier in
+      this same maintenance-pass as open too — append-then-recompute.
+      Compute `T-<min>..T-<max>` over those siblings ∪ the new task
+      ID. Write `**Stack:** T-<min>..T-<max> <slug>` on the new task.
+      If the new ID extends what earlier siblings already have
+      written, **retroactively edit those siblings' Stack ranges
+      in the same maintenance-pass commit** so all open members of
+      the chain agree on one range. This applies even when the
+      earlier siblings used range form: a slug-only newcomer
+      effectively reopens the range.
+
+      For **range form**: copy verbatim. Trust the planner. Do not
+      mutate other siblings — the planner wrote the range
+      deliberately and any extension by a later sibling will be
+      driven by that later sibling's own form (slug-only re-opens
+      it; range form trusts the planner again).
+
+      For an issue with **no `**Stack:**` line**, omit the field
+      entirely from the task entry — do not write
+      `**Stack:** (none)`.
+
+      **Slug-collision check.** If the new task's `Area:` is wholly
+      disjoint from the existing siblings' `Area:` values, or the
+      new ID is non-contiguous (gap > 5 IDs) from the existing
+      range, comment on the issue asking the planner to confirm
+      the slug instead of silently merging — `framework`,
+      `cleanup`, `audit` are the kind of slugs two unrelated epics
+      can collide on.
    c. Append a properly formatted entry to `## Open` in `TASKS.md`.
       Include `**Issue:** #N` in the entry. Synthesize acceptance
       criteria from the full issue thread, not just the title.
