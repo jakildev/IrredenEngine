@@ -142,23 +142,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fleet: add fleet-state-scout daemon for shared state caching** — build a Python daemon that polls GitHub + git state, computes per-role content hashes, writes `~/.fleet/state/state.json`, and emits trigger files
-  - **ID:** T-038
-  - **Area:** scripts/fleet
-  - **Model:** opus
-  - **Owner:** claude/T-038-fleet-state-scout
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `~/.fleet/state/state.json` updated within 60s of any TASKS.md change or new PR; (2) per-role hash files change only when projected data changes (verified on quiescent fleet); (3) trigger files appear when role-relevant state changes, absent otherwise; (4) `fleet-down` stops scout cleanly with no orphaned children; (5) `bash -n` and python3 import clean; (6) no agent role file changed in this PR
-  - **Issue:** #270
-  - **Notes:** pure additive infra — roles don't consume the cache yet (follow-up T-039). Content-hash + per-role projection + trigger-touch pattern. Wire into fleet-up/fleet-down/install.sh. ~150 LOC Python. Difficulty: medium.
-  - **Links:**
-
 - [ ] **Fleet: roles read scout cache instead of running gh/git directly** — update all six worker/reviewer/queue-manager/merger role files to read `~/.fleet/state/state.json` instead of running per-iteration gh/git list calls
   - **ID:** T-039
   - **Area:** .claude/commands
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-038
+  - **Blocked by:** (none)
   - **Acceptance:** (1) each affected role's startup reads `~/.fleet/state/state.json` instead of inline gh/git list calls; (2) per-item ops (gh pr view, gh pr diff) remain inline; (3) architect role files unchanged; (4) smoke test verifies same work items found via cache as via direct queries; (5) no regression in any role's dispatch behavior
   - **Issue:** #271
   - **Notes:** affects six files: role-sonnet-author.md, role-opus-worker.md, role-sonnet-reviewer.md, role-opus-reviewer.md, role-queue-manager.md, role-merger.md. Architects untouched. Mostly mechanical rewrites but spans whole worker fleet — careful to preserve each role's filter logic. Difficulty: medium.
@@ -169,7 +158,7 @@ Avoid:
   - **Area:** scripts/fleet
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-038, T-039
+  - **Blocked by:** T-039
   - **Acceptance:** (1) worker babysit sleeps LONG_BACKOFF_SECONDS (~1800) when no trigger file exists; (2) fires immediately (within ~5s) when trigger appears mid-sleep; (3) trigger file removed after consumption; (4) architect babysit lifecycle unchanged; (5) shutdown sentinel from PR #269 still wins; (6) `bash -n` clean; (7) real fleet test: no worker iterates more than once per LONG_BACKOFF_SECONDS on a quiet queue
   - **Issue:** #272
   - **Notes:** hybrid approach — keeps babysit hardening from PRs #246/#247/#248/#257/#265/#269, adds trigger-awareness for ~80% cost-saving benefit without full transient dispatcher replacement. New env var FLEET_LONG_BACKOFF (default 1800). Difficulty: medium.
@@ -202,24 +191,12 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [~] **Fleet: stacked-PR: commit-and-push stack-aware mode** — add `fleet:stacked` label and `Stack context:` body block when active molecule is detected
-  - **ID:** T-041
-  - **Area:** .claude/skills
-  - **Model:** opus
-  - **Owner:** claude/T-041-stacked-pr-skill
-  - **Blocked by:** (none)
-  - **Stack:** T-041..T-045 stacked-pr-vision
-  - **Acceptance:** opening a PR with an active molecule produces `--base <prev-branch>`, `fleet:stacked` label, and body with Stack context; no-molecule case still produces `--base master`
-  - **Issue:** #289
-  - **Notes:** Part 1 of 5. See `.fleet/plans/T-041.md` for full plan. Bootstrapping PR — opens against master since stack-aware code doesn't exist yet.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/292
-
 - [ ] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
   - **ID:** T-042
   - **Area:** .claude/skills
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-041
+  - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** after opening PR for first task in a 2-task stack, `start-next-task` lands on a branch whose merge-base is the just-opened PR's head ref; after exhausting the stack, resets to `origin/master`
   - **Issue:** #289
@@ -268,8 +245,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-038** — Fleet: add fleet-state-scout daemon · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
-- [~] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
 
 ---
 
@@ -277,6 +252,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
+- [x] **T-038** — Fleet: add fleet-state-scout daemon for shared state caching · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
 - [x] **T-037** — Fleet/merger: stacked-PR awareness via baseRefName · Owner: T-037-merger-stacked-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/290
 - [x] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
 - [x] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
@@ -295,5 +272,3 @@ Avoid:
 - [x] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
 - [x] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
 - [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
-- [x] **T-023** — Fleet: witness health monitoring with heartbeat detection · Owner: fleet-witness-heartbeat · PR: https://github.com/jakildev/IrredenEngine/pull/229
-- [x] **T-027** — Promote --auto-screenshot into a reusable engine helper · Owner: engine-video-auto-screenshot-helper · PR: https://github.com/jakildev/IrredenEngine/pull/228
