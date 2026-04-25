@@ -6,7 +6,7 @@ and each creation's `CLAUDE.md` reference this file by name; treat the
 sections below as if they were inlined into the file you started from.
 
 A creation may **opt out** of an individual section by listing its heading
-under an `## Inherits from engine baseline → Opt-outs` block in the
+as a bullet under the `## Inherits from engine baseline` block in the
 creation's own `CLAUDE.md`. Heading text is the stable identifier — don't
 abbreviate or paraphrase. See `docs/design/claude-md-sharing.md` for the
 mechanism's design.

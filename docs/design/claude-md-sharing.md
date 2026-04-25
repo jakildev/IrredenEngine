@@ -28,7 +28,7 @@ what opt-out form, what discovery model.
 ## Decision
 
 **Single canonical baseline file at `docs/agents/CLAUDE-BASELINE.md`.
-the project-root `CLAUDE.md` and each creation's `CLAUDE.md` reference it
+The project-root `CLAUDE.md` and each creation's `CLAUDE.md` reference it
 by name. Per-section opt-out via heading text in the creation's own
 `CLAUDE.md`.**
 
@@ -36,7 +36,7 @@ Concretely:
 
 1. The cross-cutting sections (ECS footgun, naming, style, Bash rules,
    what-belongs-in-CLAUDE.md, cross-repo isolation) live verbatim in
-   `docs/agents/CLAUDE-BASELINE.md`. the project-root `CLAUDE.md` no
+   `docs/agents/CLAUDE-BASELINE.md`. The project-root `CLAUDE.md` no
    longer holds them; instead it points at the baseline file at the
    top.
 2. Each creation's `CLAUDE.md` has an `## Inherits from engine
@@ -154,7 +154,7 @@ The cost is one extra Read tool call per agent invocation. The
 benefit is that every baseline edit reaches every creation
 automatically.
 
-the project-root `CLAUDE.md` follows the same pattern: a top-of-file
+The project-root `CLAUDE.md` follows the same pattern: a top-of-file
 pointer at the baseline, then the engine-fleet-specific sections
 inline. An engine agent reads one extra file relative to the
 pre-design status quo; a creation agent reads the same number of
@@ -234,7 +234,7 @@ told from the first heading where the baseline lives.
 The PR introducing this design ships:
 
 - `docs/agents/CLAUDE-BASELINE.md` — the baseline file itself.
-- the project-root `CLAUDE.md` — pointer at the top, six cross-cutting
+- The project-root `CLAUDE.md` — pointer at the top, six cross-cutting
   sections removed (now in baseline). Engine-fleet-specific sections
   stay inline.
 - `creations/CLAUDE.md` — adds an `## Inherits from engine baseline`
