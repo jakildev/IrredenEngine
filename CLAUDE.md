@@ -380,6 +380,11 @@ namespaces in headers; keep them in `.cpp`.
   future requirements.
 - Don't add error handling, fallbacks, or validation for scenarios that can't
   happen. Trust internal code. Only validate at system boundaries.
+- **Prefer `enum class` over strings for typed categorical fields.** Closed-set
+  fields (e.g., light type, text alignment, system name) are
+  `enum class TypeName : int { SCREAMING_SNAKE_CASE = 0, ... }` per the naming
+  table. Strings are for human-readable text, file paths, and external interop —
+  not for closed categorical sets that the framework dispatches on.
 
 ---
 
