@@ -71,8 +71,15 @@ The deltas versus the single-PR flow:
   ```bash
   fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
   ```
-- **PR body** includes a "Stacked on: <prev PR URL>" line for all but
-  the first PR and names the whole chain so reviewers see the context.
+- **PR body** includes a `## Stack context` block with a `Stacked on:`
+  line (the previous PR URL, or `master` for the first task in the
+  chain) and a `Full chain:` line listing the task IDs the molecule
+  covers. Reviewers use this to navigate sibling PRs without leaving
+  the diff.
+- **Labels** include `fleet:stacked` whenever `--base != master` (i.e.
+  every PR in the chain except the first). The merger reads
+  `baseRefName` directly for routing decisions; the label is a derived
+  convenience for human visibility and cheap GitHub-side filtering.
 - **Title** starts with `T-NNN: ` so the queue-manager's per-task
   matching works and reviewers can tell which task in the chain this
   PR belongs to.
