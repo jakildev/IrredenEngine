@@ -142,11 +142,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Fleet: stacked-PR: TASKS.md Stack: field for chain visibility** — add `Stack:` field to task template; queue-manager populates when ingesting child issues from a shared parent epic
+- [~] **Fleet: stacked-PR: TASKS.md Stack: field for chain visibility** — add `Stack:` field to task template; queue-manager populates when ingesting child issues from a shared parent epic
   - **ID:** T-045
   - **Area:** TASKS.md template, .claude/commands
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-045-stack-field-task-template
   - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** child task shows `Stack:` populated; standalone tasks omit the field
