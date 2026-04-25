@@ -8,10 +8,10 @@ normalized result atomically to ~/.fleet/state/state.json, and
 emits a per-role trigger file under ~/.fleet/state/triggers/
 whenever a role's projected view of the data has changed.
 
-This is purely additive infrastructure — no role files consume the
-cache yet (that's T-039) and fleet-babysit isn't trigger-aware yet
-(that's T-040). The only thing T-038 ships is the daemon itself
-plus the fleet-up / fleet-down / install.sh wiring.
+Role files now consume this cache (T-039). fleet-babysit is not yet
+trigger-aware (that's T-040) — roles read the cache on their normal
+polling interval until that lands. The daemon itself was shipped in
+T-038 (fleet-up / fleet-down / install.sh wiring).
 
 Source of truth: scripts/fleet/fleet-state-scout in the engine repo.
 Installed to ~/bin/fleet-state-scout by scripts/fleet/install.sh.
