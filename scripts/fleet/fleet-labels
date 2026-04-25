@@ -92,6 +92,7 @@ fi
 
 LABELS=(
     "fleet:task|0366d6|Task tracked in TASKS.md"
+    "fleet:epic|cc317c|Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
     "fleet:queued|c5def5|Queued for ingestion into TASKS.md"
     "fleet:needs-info|fbca04|Needs more info from the author before triage"
     "fleet:needs-plan|fbca04|Needs an architect plan before a worker can pick it up"

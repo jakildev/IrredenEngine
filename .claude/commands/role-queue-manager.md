@@ -294,10 +294,18 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `~/.fleet/state/state.json` if its contents are no longer in your
    conversation context. From `repos.engine.human_approved[]`
    (already filtered by the scout to exclude `fleet:queued`), drop
-   any entry whose `labels` include `fleet:needs-plan` or
-   `fleet:needs-info` — that matches the previous `gh issue list
-   ... --search "label:human:approved -label:fleet:queued
-   -label:fleet:needs-plan -label:fleet:needs-info"` query exactly.
+   any entry whose `labels` include `fleet:needs-plan`,
+   `fleet:needs-info`, or **`fleet:epic`** — that matches the
+   previous `gh issue list ... --search "label:human:approved
+   -label:fleet:queued -label:fleet:needs-plan -label:fleet:needs-info
+   -label:fleet:epic"` query exactly.
+
+   **`fleet:epic` excluded** because epics are meta-tracking
+   (parent issues bundling a set of children), not work items.
+   The CHILDREN go into TASKS.md via the normal flow when the
+   human approves them individually. The epic itself stays open
+   until step 7 (epic auto-close) determines all children are
+   resolved.
 
    The cache only stores list-shaped data (number, title, labels),
    so for each candidate fetch the body and comments per-item:
@@ -513,9 +521,61 @@ You are the sole TASKS.md editor. Each maintenance pass:
    issues arrives, some may reference blockers that weren't ingested
    yet. This pass resolves those once everything is in the queue.
 
-7. **Prune Done:** keep only the last 20 entries in each TASKS.md.
+7. **Auto-close completed epics (both repos).** An epic is an open
+   issue labeled `fleet:epic` whose body lists child issues as a
+   markdown task list (`- [ ] #N` entries). When ALL referenced
+   children are closed, close the epic.
 
-8. **Push changes (if any).**
+   For each repo (engine, then game if present), fetch open epics:
+   `gh issue list --repo <repo> --label "fleet:epic" --state open --json number,title`
+
+   For each epic returned:
+
+   a. Fetch the LIVE body (not from the cache — bodies aren't
+      cached, and re-reading on every pass is what catches "new
+      children added after work began" automatically):
+      `gh issue view <epic-N> --repo <repo> --json body`
+
+   b. Parse the body for markdown task list entries pointing at
+      issue or PR numbers. Pattern: lines matching the regex
+      `^\s*-\s*\[[ xX~]\]\s*#(\d+)\b`. Both `- [ ]` (open) and
+      `- [x]` (manually checked) count — we trust the actual issue
+      state, not the checkbox. Collect the set of all referenced
+      numbers.
+
+   c. **Skip if no children found.** An epic with an empty checklist
+      is either still being scoped or uses a different format we
+      don't auto-close. Don't guess.
+
+   d. For each referenced number, check its state with the GitHub
+      API (works uniformly for issues AND PRs — GitHub treats PRs
+      as a kind of issue):
+      `gh api repos/<repo>/issues/<N> --jq '.state'`
+      Returns `open` or `closed`. If `gh api` returns 404, the
+      number doesn't exist (typo, transferred, deleted) — treat
+      as closed (don't block the epic on a phantom child).
+
+   e. **If ALL children are closed, close the epic.** Comment with
+      a one-line summary listing the children. Combine the comment
+      and close in a single call (gh supports `--comment` on
+      `gh issue close`):
+      `gh issue close <epic-N> --repo <repo> --comment "Auto-closing: all <N> child issues are closed (#A, #B, #C, ...). — queue-manager"`
+
+   f. **If ANY child is still open, leave the epic alone.** No
+      label change, no comment. The next maintenance pass re-reads
+      the body and re-checks. This is what handles the "new child
+      added after work began" case: if the human edits the epic
+      body to add `- [ ] #500` after #A/#B/#C have closed, the next
+      pass sees four references and waits for #500 too.
+
+   The epic itself never goes into TASKS.md (step 2 already
+   excludes `fleet:epic`). The CHILDREN go through the normal
+   ingestion flow when the human approves them individually with
+   `human:approved`.
+
+8. **Prune Done:** keep only the last 20 entries in each TASKS.md.
+
+9. **Push changes (if any).**
    **Order matters:** stage and commit FIRST, then fetch and rebase.
    `git rebase` refuses to run with unstaged changes ("You have
    unstaged changes") AND with staged-but-uncommitted changes ("Your
@@ -548,10 +608,10 @@ You are the sole TASKS.md editor. Each maintenance pass:
    warning is informational — the push still succeeded if you don't
    see "rejected" or "failed". Don't try to "fix" it by opening a PR.
 
-9. Print the maintenance summary, queue summary, and next-run timing:
-   `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned`
-   `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
-   `[queue-manager] Iteration complete. Next run in ~5m.`
+10. Print the maintenance summary, queue summary, and next-run timing:
+    `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned, W epics closed`
+    `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
+    `[queue-manager] Iteration complete. Next run in ~5m.`
 
 ## Hard rules
 
