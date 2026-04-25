@@ -142,24 +142,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fleet: stacked-PR: reviewer upstream approval gating** — hold downstream PR approval when upstream has `fleet:needs-fix`; gate on upstream `fleet:approved` before reviewing own diff
-  - **ID:** T-043
-  - **Area:** scripts/fleet, .claude/commands
-  - **Model:** opus
-  - **Owner:** claude/T-043-reviewer-upstream-gating
-  - **Blocked by:** (none)
-  - **Stack:** T-041..T-045 stacked-pr-vision
-  - **Acceptance:** downstream PR open while upstream has `fleet:needs-fix` → `fleet:awaiting-upstream-review` applied, no `fleet:approved` issued; after upstream re-approved, next reviewer pass proceeds normally
-  - **Issue:** #289
-  - **Notes:** Part 3 of 5. New label: `fleet:awaiting-upstream-review`. See `.fleet/plans/T-043.md`.
-  - **Links:**
-
 - [ ] **Fleet: stacked-PR: downstream auto-rebase when upstream changes** — add `fleet-claim molecule rebase-downstream` subcommand; invoke in author role after addressing upstream review feedback
   - **ID:** T-044
   - **Area:** scripts/fleet, .claude/commands
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-043
+  - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** stack A→B→C; reviewer flags A with `fleet:needs-fix`; worker fixes A, pushes, runs rebase subcommand; B and C branches now have new A tip as parent; PRs get comment; conflicts surface as `fleet:blocker` + comment, chain pauses
   - **Issue:** #289
@@ -191,6 +179,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-043** — Fleet: stacked-PR: reviewer upstream approval gating · Owner: claude/T-043-reviewer-upstream-gating · PR: https://github.com/jakildev/IrredenEngine/pull/301
 - [x] **T-040** — Fleet: trigger-aware back-off in fleet-babysit · Owner: claude/T-040-trigger-aware-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/300
 - [x] **T-039** — Fleet: roles read scout cache instead of running gh/git directly · Owner: claude/T-039-roles-read-scout-cache · PR: https://github.com/jakildev/IrredenEngine/pull/296
 - [x] **T-042** — Fleet: stacked-PR: start-next-task stack-aware reset · Owner: claude/T-042-start-next-task-stack-aware · PR: https://github.com/jakildev/IrredenEngine/pull/295
@@ -210,4 +199,3 @@ Avoid:
 - [x] **T-031** — Fleet: commit-and-push post-rebase hunk-loss guard · Owner: skills-commit-push-prerebase-diff · PR: https://github.com/jakildev/IrredenEngine/pull/259
 - [x] **T-030** — Fleet: review-pr verifies previously-flagged hunks on re-review · Owner: skills-review-pr-hunk-verify · PR: https://github.com/jakildev/IrredenEngine/pull/258
 - [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
-- [x] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
