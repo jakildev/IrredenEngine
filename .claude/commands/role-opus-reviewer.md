@@ -211,10 +211,14 @@ iteration of polling, reviewing, and exiting cleanly:
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
       X; on closer read I confirm/disagree because Y".
-   e. Post the review: write the review body to `/tmp/review-body.md`
-      using the **Write tool**, then:
-      `gh pr review <N> --comment --body-file /tmp/review-body.md`
+   e. Post the review: write the review body to `.review-body.md`
+      (worktree-local) using the **Write tool**, then:
+      `gh pr review <N> --comment --body-file .review-body.md`
       For game PRs, add `--repo <game-repo>`.
+      Do NOT write to `/tmp/...` — Claude Code's sandbox blocks Write
+      to paths outside the worktree even if `/tmp` is in
+      `additionalDirectories` (the gate is broader than path matching).
+      The `.review-body.md` filename is gitignored.
       **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
       escaping of backticks and special characters causes parse errors.
       Do **not** use `--approve` or `--request-changes` — all fleet
@@ -222,11 +226,14 @@ iteration of polling, reviewing, and exiting cleanly:
       review actions on your own PRs.
    f. **Set the PR label** to match your verdict (add `--repo
       <game-repo>` for game PRs). The label is the primary signal
-      the human uses. Always remove stale labels first — the
-      remove list also clears `fleet:awaiting-upstream-review` so a
-      previously-gated stacked PR exits the gate cleanly when the
-      reviewer finally proceeds:
-      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved"`
+      the human uses. Always remove stale labels first. Two labels
+      are also cleared here as part of the verdict:
+      - `fleet:awaiting-upstream-review` — a previously-gated stacked
+        PR exits the gate cleanly when the reviewer finally proceeds.
+      - `fleet:stacked-rebase` — set by merger when a stacked PR's
+        base just merged and got re-targeted to master; your re-eval
+        after the re-target is exactly what that label is waiting for.
+      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"`
       (swap the label name for needs-fix or blocker as appropriate).
       - Verdict approve, no Nits section → `fleet:approved` only
       - Verdict approve WITH a non-empty `### Nits` section → BOTH

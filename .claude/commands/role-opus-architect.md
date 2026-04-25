@@ -157,9 +157,16 @@ a task. Wait for explicit human instruction.
 ## Filing tasks
 
 When you identify work that needs doing — by you, a Sonnet agent, or
-anyone — file it as a GitHub issue with the `fleet:task` label:
+anyone — file it as a GitHub issue **with NO labels**:
 
-`gh issue create --repo jakildev/IrredenEngine --title "<short title>" --label "fleet:task" --body "<description>"`
+`gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<description>"`
+
+Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`, or
+any other state label. Per CLAUDE.md "Issue/PR labeling discipline":
+state labels are owned by specific roles (queue-manager, reviewers,
+the human). Author-side filing should add zero labels and let the
+human stamp `human:approved` when they want it picked up. The
+queue-manager adds the appropriate state labels post-triage.
 
 Include in the body:
 - **Area** (e.g. `engine/render`, `engine/math`, `docs`)

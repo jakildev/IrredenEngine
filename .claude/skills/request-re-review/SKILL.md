@@ -1,3 +1,13 @@
+---
+description: >-
+  Push changes on the current PR branch and request a fleet re-review.
+  Use when the user says "request re-review", "push and re-review",
+  "push for re-review", "I'm done with this PR have the fleet
+  re-review", or "update PR and get it reviewed again". Also useful
+  when the user has manually edited a PR branch in any pane and wants
+  the fleet review pipeline to pick it back up.
+---
+
 # request-re-review
 
 Push changes on the current PR branch and request a fleet re-review.
@@ -46,7 +56,10 @@ git status --porcelain
 ```
 
 If there are changes:
-- Stage all modified/added files: `git add -A`
+- Stage specific files by path (e.g. `git add engine/.../foo.cpp`).
+  Do NOT use `git add -A` or `git add .` — risks staging secrets,
+  build artifacts, or unrelated stray edits in the worktree.
+  `commit-and-push` enforces the same rule; this skill follows it.
 - Commit with a descriptive message:
   `git commit -m "changes from human review session"`
 - Push: `git push`
