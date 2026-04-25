@@ -142,65 +142,15 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Fleet: roles read scout cache instead of running gh/git directly** — update all six worker/reviewer/queue-manager/merger role files to read `~/.fleet/state/state.json` instead of running per-iteration gh/git list calls
-  - **ID:** T-039
-  - **Area:** .claude/commands
-  - **Model:** opus
-  - **Owner:** claude/T-039-roles-read-scout-cache
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) each affected role's startup reads `~/.fleet/state/state.json` instead of inline gh/git list calls; (2) per-item ops (gh pr view, gh pr diff) remain inline; (3) architect role files unchanged; (4) smoke test verifies same work items found via cache as via direct queries; (5) no regression in any role's dispatch behavior
-  - **Issue:** #271
-  - **Notes:** affects six files: role-sonnet-author.md, role-opus-worker.md, role-sonnet-reviewer.md, role-opus-reviewer.md, role-queue-manager.md, role-merger.md. Architects untouched. Mostly mechanical rewrites but spans whole worker fleet — careful to preserve each role's filter logic. Difficulty: medium.
-  - **Links:**
-
 - [ ] **Fleet: trigger-aware back-off in fleet-babysit** — extend fleet-babysit to sleep a long back-off (~30 min) when no trigger file exists, relaunch immediately when a trigger appears
   - **ID:** T-040
   - **Area:** scripts/fleet
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-039
+  - **Blocked by:** (none)
   - **Acceptance:** (1) worker babysit sleeps LONG_BACKOFF_SECONDS (~1800) when no trigger file exists; (2) fires immediately (within ~5s) when trigger appears mid-sleep; (3) trigger file removed after consumption; (4) architect babysit lifecycle unchanged; (5) shutdown sentinel from PR #269 still wins; (6) `bash -n` clean; (7) real fleet test: no worker iterates more than once per LONG_BACKOFF_SECONDS on a quiet queue
   - **Issue:** #272
   - **Notes:** hybrid approach — keeps babysit hardening from PRs #246/#247/#248/#257/#265/#269, adds trigger-awareness for ~80% cost-saving benefit without full transient dispatcher replacement. New env var FLEET_LONG_BACKOFF (default 1800). Difficulty: medium.
-  - **Links:**
-
-- [~] **Linux build maturation: get `linux-debug` preset green end-to-end** —
-  fix every compile/link/runtime issue encountered when building the
-  engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
-  24.04. This is the umbrella epic — break it into smaller follow-up
-  tasks as concrete issues are found.
-  - **ID:** T-001
-  - **Area:** engine/* (anywhere the Linux path breaks)
-  - **Model:** opus (for anything touching core-engine invariants) /
-    sonnet (for mechanical port fixes like missing `#include`, case-
-    sensitive paths, EOL drift)
-  - **Owner:** T-001-linux-ci
-  - **Blocked by:** (none)
-  - **Acceptance:** from a fresh WSL2 Ubuntu 24.04 clone,
-    `cmake --preset linux-debug && cmake --build build -j$(nproc)`
-    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
-    with zero warnings escalated to errors, and `IRShapeDebug` launches
-    via WSLg without crashing on its first frame.
-  - **Notes:** the engine was originally written against Windows +
-    MSYS2. Expect missing Linux branches under `#ifdef _WIN32`, missing
-    system libs (update the apt list in `docs/AGENT_FLEET_SETUP.md` §1a
-    as you find them), case-sensitive include mismatches, and EOL
-    drift. Every real fix should land as its own dedicated PR — do
-    **not** bundle unrelated Linux-port fixes into feature work.
-    Reference `docs/AGENT_FLEET_SETUP.md` §10 for the list of known
-    first-time issues.
-  - **Links:**
-
-- [~] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
-  - **ID:** T-042
-  - **Area:** .claude/skills
-  - **Model:** opus
-  - **Owner:** claude/T-042-start-next-task-stack-aware
-  - **Blocked by:** (none)
-  - **Stack:** T-041..T-045 stacked-pr-vision
-  - **Acceptance:** after opening PR for first task in a 2-task stack, `start-next-task` lands on a branch whose merge-base is the just-opened PR's head ref; after exhausting the stack, resets to `origin/master`
-  - **Issue:** #289
-  - **Notes:** Part 2 of 5. See `.fleet/plans/T-042.md`.
   - **Links:**
 
 - [ ] **Fleet: stacked-PR: reviewer upstream approval gating** — hold downstream PR approval when upstream has `fleet:needs-fix`; gate on upstream `fleet:approved` before reviewing own diff
@@ -208,7 +158,7 @@ Avoid:
   - **Area:** scripts/fleet, .claude/commands
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-042
+  - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** downstream PR open while upstream has `fleet:needs-fix` → `fleet:awaiting-upstream-review` applied, no `fleet:approved` issued; after upstream re-approved, next reviewer pass proceeds normally
   - **Issue:** #289
@@ -252,6 +202,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-039** — Fleet: roles read scout cache instead of running gh/git directly · Owner: claude/T-039-roles-read-scout-cache · PR: https://github.com/jakildev/IrredenEngine/pull/296
+- [x] **T-042** — Fleet: stacked-PR: start-next-task stack-aware reset · Owner: claude/T-042-start-next-task-stack-aware · PR: https://github.com/jakildev/IrredenEngine/pull/295
+- [x] **T-001** — Linux build maturation: Linux CI build job added · Owner: claude/T-001-linux-ci · PR: https://github.com/jakildev/IrredenEngine/pull/297
 - [x] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
 - [x] **T-038** — Fleet: add fleet-state-scout daemon for shared state caching · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
 - [x] **T-037** — Fleet/merger: stacked-PR awareness via baseRefName · Owner: T-037-merger-stacked-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/290
@@ -269,6 +222,3 @@ Avoid:
 - [x] **T-028** — GPU timer query infrastructure (Part 1) · Owner: render-gpu-timer-queries · PR: https://github.com/jakildev/IrredenEngine/pull/237
 - [x] **T-020** — Migrate from one-PR-multi-commit stacks to true stacked PRs · Owner: stacked-prs-reviewer-alignment · PR: https://github.com/jakildev/IrredenEngine/pull/254
 - [x] **T-026** — Render verification: reference-image comparison harness · Owner: render-verify-harness · PR: https://github.com/jakildev/IrredenEngine/pull/233
-- [x] **T-024** — Lighting: culling invariants doc · Owner: docs-lighting-culling-invariants · PR: https://github.com/jakildev/IrredenEngine/pull/234
-- [x] **T-014** — Lighting: flood-fill light propagation with colored light (Phase 3) · Owner: render-flood-fill-lighting · PR: https://github.com/jakildev/IrredenEngine/pull/232
-- [x] **T-021** — Fleet: resumable workflows (molecules) for stacked task chains · Owner: fleet-resumable-molecules · PR: https://github.com/jakildev/IrredenEngine/pull/230
