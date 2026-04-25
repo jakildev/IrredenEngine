@@ -350,6 +350,17 @@ Specifically, **never pass these via `--label` when filing**:
 
 - `human:approved` — owned by the **human**. The human's "yes, work on
   this" gate. Queue-manager keys ingestion off it.
+- `fleet:epic` — owned by the **human**. Marks an issue as a parent
+  that bundles multiple child issues (listed as a markdown task list
+  `- [ ] #N` in the body). Queue-manager:
+  (1) skips epics from TASKS.md ingestion (they're meta, not work),
+  (2) auto-closes the epic on its 5-min maintenance pass once ALL
+      referenced children are closed,
+  (3) re-reads the body LIVE each pass — so adding a new `- [ ] #M`
+      after the original children close keeps the epic open until
+      #M also closes ("done done").
+  The CHILDREN go through the normal `human:approved` ingestion
+  flow individually; the epic itself is just visible bookkeeping.
 - `fleet:queued` / `fleet:task` — owned by the **queue-manager**, set
   AFTER it ingests an issue into `TASKS.md`. Adding it at filing time
   excludes the issue from queue-manager's triage search and strands
