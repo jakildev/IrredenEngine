@@ -202,17 +202,17 @@ Avoid:
     first-time issues.
   - **Links:**
 
-- [ ] **Fleet: stacked-PR: commit-and-push stack-aware mode** — add `fleet:stacked` label and `Stack context:` body block when active molecule is detected
+- [~] **Fleet: stacked-PR: commit-and-push stack-aware mode** — add `fleet:stacked` label and `Stack context:` body block when active molecule is detected
   - **ID:** T-041
   - **Area:** .claude/skills
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-041-stacked-pr-skill
   - **Blocked by:** (none)
   - **Stack:** T-041..T-045 stacked-pr-vision
   - **Acceptance:** opening a PR with an active molecule produces `--base <prev-branch>`, `fleet:stacked` label, and body with Stack context; no-molecule case still produces `--base master`
   - **Issue:** #289
   - **Notes:** Part 1 of 5. See `.fleet/plans/T-041.md` for full plan. Bootstrapping PR — opens against master since stack-aware code doesn't exist yet.
-  - **Links:**
+  - **Links:** https://github.com/jakildev/IrredenEngine/pull/292
 
 - [ ] **Fleet: stacked-PR: start-next-task stack-aware reset** — branch off just-opened PR's head ref instead of `origin/master` when active molecule has remaining tasks
   - **ID:** T-042
@@ -269,6 +269,7 @@ Avoid:
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
 - [~] **T-038** — Fleet: add fleet-state-scout daemon · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
+- [~] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
 
 ---
 
