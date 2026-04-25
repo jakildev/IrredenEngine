@@ -135,6 +135,27 @@ echo "$$ $(date '+%Y-%m-%dT%H:%M:%S%z')" > "$SHUTDOWN_FLAG"
 trap 'rm -f "$SHUTDOWN_FLAG"' EXIT
 
 # ----------------------------------------------------------------------
+# Stop fleet-state-scout daemon (started by fleet-up)
+# ----------------------------------------------------------------------
+#
+# The scout polls the shutdown sentinel above every ~1s and exits on
+# its own when the sentinel appears. The explicit SIGTERM here is
+# belt-and-suspenders for cases where the scout is wedged or the
+# sentinel poll missed the window. The scout's signal handler
+# unlinks its own PID file; we also rm it here in case it died
+# abnormally.
+
+SCOUT_PID_FILE="$HOME/.fleet/state/scout.pid"
+if [[ -f "$SCOUT_PID_FILE" ]]; then
+    scout_pid=$(cat "$SCOUT_PID_FILE" 2>/dev/null || true)
+    if [[ -n "$scout_pid" ]] && kill -0 "$scout_pid" 2>/dev/null; then
+        echo "fleet-down: stopping fleet-state-scout (pid $scout_pid)"
+        kill -TERM "$scout_pid" 2>/dev/null || true
+    fi
+    rm -f "$SCOUT_PID_FILE"
+fi
+
+# ----------------------------------------------------------------------
 # Ctrl-C trap: per-phase abort, doesn't cascade
 # ----------------------------------------------------------------------
 #
