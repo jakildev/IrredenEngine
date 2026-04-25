@@ -76,6 +76,7 @@ them in the creation's own `TASKS.md`.
   - **Model:** opus | sonnet  (which model should run this)
   - **Owner:** free | <worktree-name>
   - **Blocked by:** (none) | <title of blocking task>
+  - **Stack:** T-XXX..T-YYY <slug>  (optional — only for tasks in a stacked chain sharing a parent epic; omit for standalone tasks)
   - **Acceptance:** <concrete check: build passes, test X passes, PR merged, screenshot Y looks like Z>
   - **Issue:** (none) | #N  (GitHub issue number, if task originated from an issue)
   - **Notes:** <context, links, prior attempts>
@@ -87,6 +88,14 @@ task ID (e.g. `fleet-claim claim "T-003" sonnet-fleet-1`), **not** the
 free-text title. IDs are short and unambiguous — agents can't accidentally
 paraphrase them, which is the failure mode that free-text title slugification
 is vulnerable to.
+
+The **Stack** field groups child tasks of a shared parent epic so a
+human can follow the chain across `## Open`. Format:
+`T-<min>..T-<max> <slug>`; slug is a kebab-case identifier shared by
+all siblings. Informational only — `fleet-claim` and the scout cache
+ignore it. Standalone tasks omit the field entirely. The queue-manager
+populates it during ingestion when a child issue declares membership;
+see `role-queue-manager.md` for the detection rule.
 
 Status markers: `[ ]` open, `[~]` in progress, `[x]` done, `[!]` blocked/stuck.
 
