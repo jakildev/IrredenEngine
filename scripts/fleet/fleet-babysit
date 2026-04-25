@@ -5,17 +5,32 @@
 # on exit. Two distinct lifecycles:
 #
 #   Workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
-#   queue-manager): each task iteration is a *fresh* claude invocation,
-#   so context doesn't accumulate across tasks. After clean exit (task
-#   done), babysit waits the LOOP_INTERVAL (or CLEAN_DELAY if no
-#   interval) and then relaunches with the role slash command — no
-#   --continue, no --resume. Mid-task crashes still use --continue so
-#   partial work isn't lost.
+#   queue-manager, merger): each task iteration is a *fresh* claude
+#   invocation, so context doesn't accumulate across tasks. After a
+#   clean exit (task done), babysit picks one of two between-iteration
+#   waits depending on whether the worker has ever consumed a trigger
+#   from fleet-state-scout:
+#
+#     - Bootstrap (no trigger consumed yet): wait LOOP_INTERVAL (or
+#       CLEAN_DELAY) and relaunch. Preserves legacy behavior so the
+#       fleet still works when scout is absent or cold.
+#     - Trigger-driven (sticky once any trigger consumed): wait
+#       LONG_BACKOFF_SECONDS (default 30 min). The long sleep is
+#       interruptible — a fresh trigger appearing mid-sleep wakes the
+#       loop within ~5s and relaunches immediately. The timeout is a
+#       safety net so the worker still iterates if scout dies or
+#       misses an event.
+#
+#   Either way the relaunch is fresh (no --continue, no --resume), so the
+#   new task starts with a clean conversation. Mid-task crashes still use
+#   --continue so partial work isn't lost.
 #
 #   Architects (opus-architect, game-architect): one long conversation,
 #   preserved across crashes AND across fleet-down/fleet-up cycles via
 #   ~/.fleet/sessions/<role>.session-id. Always --resume on relaunch
 #   so the human's interactive design conversation never resets.
+#   Architects are human-driven, NOT scout-trigger-driven — their sleep
+#   path ignores the trigger file.
 #
 # Usage:
 #   fleet-babysit <model> <role> [mode] [loop-interval]
@@ -66,6 +81,10 @@ LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY=60        # seconds to wait after clean exit (no LOOP_INTERVAL)
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
 
+# Seconds to sleep between iterations when in trigger-driven mode (default 30 min).
+# Set via env to override.
+LONG_BACKOFF_SECONDS="${FLEET_LONG_BACKOFF:-1800}"
+
 # Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds.
 # This replaces what /loop used to do internally, so that babysit can
 # enforce the between-iteration delay at the *process* level (each
@@ -100,16 +119,42 @@ LOG_FILE="$LOG_DIR/$ROLE.log"
 # graceful shutdown, exits, and kill-session has nothing to do.
 SHUTDOWN_FLAG="${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
 
-# Sleep that exits early if the shutdown sentinel appears. Returns 0 if
-# the full duration elapsed (relaunch as planned), 1 if shutdown was
-# signaled (caller should break out of the loop). Polls every 5s, so
-# worst-case observed-shutdown-to-pane-exit latency is ~5s.
-shutdown_aware_sleep() {
+# Per-role trigger file written by fleet-state-scout. Architects don't
+# have projectors in scout, so this path stays untouched for them.
+TRIGGER_FILE="${FLEET_TRIGGER_DIR:-$HOME/.fleet/state/triggers}/$ROLE"
+
+# Sticky: once we've ever consumed a trigger, future post-iteration
+# sleeps use LONG_BACKOFF_SECONDS. Sticky (rather than per-iteration)
+# so a single safety-timeout wake in a quiet fleet doesn't drop us
+# back into legacy short-delay thrashing — defeating the cost-saving
+# win of "1 iteration per state change, idle otherwise."
+WORKER_HAD_TRIGGER=0
+
+consume_trigger_if_present() {
+    if [[ -f "$TRIGGER_FILE" ]]; then
+        rm -f "$TRIGGER_FILE"
+        WORKER_HAD_TRIGGER=1
+    fi
+}
+
+# Sleep that exits early on either the shutdown sentinel or (optionally)
+# a trigger file appearing. Returns:
+#   0 = full duration elapsed
+#   1 = shutdown sentinel detected (caller should break the loop)
+#   2 = trigger file appeared mid-sleep (caller should consume + relaunch)
+#
+# Pass the trigger path as $2 to enable trigger watching; omit to keep
+# the legacy shutdown-only behavior. Polls every 5s.
+interruptible_sleep() {
     local seconds="$1"
+    local trigger_path="${2:-}"
     local end=$(( $(date +%s) + seconds ))
     while [[ $(date +%s) -lt $end ]]; do
         if [[ -f "$SHUTDOWN_FLAG" ]]; then
             return 1
+        fi
+        if [[ -n "$trigger_path" && -f "$trigger_path" ]]; then
+            return 2
         fi
         # Keep heartbeat fresh during between-iteration wait.
         [[ -n "$HEARTBEAT_FILE" ]] && touch "$HEARTBEAT_FILE" 2>/dev/null || true
@@ -400,6 +445,7 @@ last_exit=0
 if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
     run_with_heartbeat launch_architect_first || last_exit=$?
 else
+    consume_trigger_if_present
     run_with_heartbeat launch_worker_fresh || last_exit=$?
 fi
 
@@ -446,30 +492,44 @@ while true; do
     case $prev_exit in
         0)
             # Clean exit = task complete. Workers get a between-task
-            # delay (LOOP_INTERVAL if set, else CLEAN_DELAY) and then
-            # relaunch *fresh* — the new task gets a clean conversation.
-            # Architects re-resume their preserved session immediately.
+            # delay and then relaunch *fresh*. Architects re-resume
+            # their preserved session immediately. Worker sleep
+            # duration depends on WORKER_HAD_TRIGGER — see header
+            # comment for the bootstrap vs trigger-driven split.
             if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
                 log "architect clean exit (attempt $attempt) — re-resuming preserved session in ${CLEAN_DELAY}s..."
-                if ! shutdown_aware_sleep "$CLEAN_DELAY"; then
+                if ! interruptible_sleep "$CLEAN_DELAY"; then
                     log "shutdown signaled during between-iteration wait — exiting"
                     break
                 fi
                 run_with_heartbeat launch_architect_first || last_exit=$?
             else
-                between_task_delay=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
-                log "worker clean exit (attempt $attempt) — fresh launch in ${between_task_delay}s (clears context for next task)"
-                if ! shutdown_aware_sleep "$between_task_delay"; then
-                    log "shutdown signaled during between-iteration wait — exiting"
-                    break
+                if [[ "$WORKER_HAD_TRIGGER" -eq 1 ]]; then
+                    sleep_dur="$LONG_BACKOFF_SECONDS"
+                    log "worker clean exit (attempt $attempt) — trigger-driven, long back-off ${sleep_dur}s (waits for next trigger or safety timeout)"
+                else
+                    sleep_dur=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
+                    log "worker clean exit (attempt $attempt) — bootstrap relaunch in ${sleep_dur}s (no trigger consumed yet)"
                 fi
+                rc=0
+                interruptible_sleep "$sleep_dur" "$TRIGGER_FILE" || rc=$?
+                case $rc in
+                    1)
+                        log "shutdown signaled during between-iteration wait — exiting"
+                        break
+                        ;;
+                    2)
+                        log "trigger fired during sleep — relaunching immediately"
+                        ;;
+                esac
+                consume_trigger_if_present
                 run_with_heartbeat launch_worker_fresh || last_exit=$?
             fi
             ;;
         2)
-            # Exit code 2 often indicates usage limit
+            # Exit code 2 often indicates usage limit.
             log "exit_code=2 attempt=$attempt (suspected usage limit), waiting ${LIMIT_DELAY}s..."
-            if ! shutdown_aware_sleep "$LIMIT_DELAY"; then
+            if ! interruptible_sleep "$LIMIT_DELAY"; then
                 log "shutdown signaled during limit wait — exiting"
                 break
             fi
@@ -480,7 +540,7 @@ while true; do
             # Crash mid-task. --continue (workers) / --resume (architects)
             # so partial work isn't lost.
             log "exit_code=$prev_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
-            if ! shutdown_aware_sleep "$CRASH_DELAY"; then
+            if ! interruptible_sleep "$CRASH_DELAY"; then
                 log "shutdown signaled during crash recovery wait — exiting"
                 break
             fi
