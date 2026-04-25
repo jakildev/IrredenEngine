@@ -363,38 +363,45 @@ exit cleanly:
 
       **iii. Anything else (semantic conflict).**
          - `git rebase --abort`
-         - Build a description of the conflict for the human. Cap
-           the file list at 5; if more files conflict, append
-           `… and N more` so the comment stays readable. For each
-           listed file, run `git log -1 --format="%h %s" origin/master -- <file>`
-           to identify what touched it on master, and
+         - Build a description of the conflict. Cap the file list at
+           5; if more files conflict, append `… and N more` so the
+           comment stays readable. For each listed file, run
+           `git log -1 --format="%h %s" origin/master -- <file>` to
+           identify what touched it on master, and
            `git log -1 --format="%h %s" -- <file>` for the PR side.
            Write to `.merger-body.md`:
            ```
-           Merger: cannot auto-resolve. The PR conflicts with
-           current master in ways that require human judgement.
+           Merger: cannot auto-resolve mechanically. The PR has
+           semantic conflicts with current master that need
+           judgement-level resolution.
 
            Conflicted files:
            - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
            - `<file2>` — ...
 
-           Please rebase locally and resolve, or coordinate with the
-           author of the conflicting master change. The
-           `fleet:approved` label has been removed if it was set —
-           the PR no longer represents a reviewed state.
+           Labeled `fleet:semantic-conflict` — an opus-worker will
+           attempt resolution on its next iteration (rebase,
+           manually resolve, build, push). If the opus-worker also
+           can't resolve (truly ambiguous, design decision needed),
+           it will escalate to `human:needs-fix`.
+
+           The `fleet:approved` label has been removed if it was set
+           — the PR no longer represents a reviewed state.
 
            — fleet merger
            ```
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - Remove `fleet:approved` if it's set. Issue this as its
-           own Bash call — `gh pr edit --remove-label` returns
-           non-zero when the label isn't present, which would abort
-           a chained `--add-label`:
+         - Remove any stale review/verdict labels. Each as its own
+           Bash call — `gh pr edit --remove-label` returns non-zero
+           when the label isn't present, which would abort a chained
+           `--add-label`:
            `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:approved"`
-           Then add the human-fix and cooldown labels:
-           `gh pr edit <N> --repo <engine-repo> --add-label "human:needs-fix"`
+           `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:has-nits"`
+           `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:needs-fix"`
+           Then add the conflict and cooldown labels:
+           `gh pr edit <N> --repo <engine-repo> --add-label "fleet:semantic-conflict"`
            `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
-         - Log: `... semantic conflict, labeled human:needs-fix`
+         - Log: `... semantic conflict, labeled fleet:semantic-conflict`
 
    **e. Post-rebase hunk check.** Runs on ALL paths that reach a push
       (clean rebase, case i, case ii). Captures the post-rebase diff

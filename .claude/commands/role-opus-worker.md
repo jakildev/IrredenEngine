@@ -308,6 +308,110 @@ Do the work, then exit cleanly:
     are handled across successive iterations so task pickup isn't
     starved by back-to-back smoke runs.
 
+1c. **Resolve one `fleet:semantic-conflict` PR per iteration
+    (engine only).** The merger sets this label when mechanical
+    rebase fails (label semantics: see CLAUDE.md "Issue/PR labeling
+    discipline"). That's your lane.
+
+    From the cached `repos.engine.prs[]`, pick PRs whose `labels`
+    array contains `fleet:semantic-conflict` AND contains NONE of
+    `fleet:wip`, `human:wip`, `human:needs-fix`, `human:blocker`,
+    `fleet:awaiting-base`, `fleet:awaiting-upstream-review`. The
+    `awaiting-*` exclusions matter because those PRs aren't yet
+    rebaseable against master.
+
+    **Stack-aware filter.** If a candidate's `baseRefName != master`
+    (stacked PR), look up the base PR in the cached `prs[]` by its
+    `headRefName`. If the base PR also has `fleet:semantic-conflict`,
+    SKIP this candidate — resolve the base first.
+
+    Game repo is intentionally out of scope for v1: the merger is
+    engine-only, so no game PR ever gets the label.
+    All `--repo` flags in this step use `jakildev/IrredenEngine`
+    (`<engine-repo>` in the merger-role convention — same slug, not
+    auto-derived here since this step is always engine-only).
+
+    If the filtered list is empty, skip to step 2. Otherwise pick
+    the oldest (smallest `number`) and:
+
+    a. Re-touch heartbeat — rebases + reads can take minutes:
+       `fleet-heartbeat <your-worktree-basename>`
+    b. Read the merger's most recent comment — it lists the
+       conflicted files and the master/PR shas that touched each,
+       so you don't need to re-discover them:
+       `gh pr view <N> --repo jakildev/IrredenEngine --comments`
+       Look for the comment ending in `— fleet merger`.
+    c. Check out the PR (this also fetches the head branch):
+       `gh pr checkout <N> --repo jakildev/IrredenEngine`
+    d. Identify the rebase target. For most PRs `baseRefName` is
+       `master`; for stacked PRs it's the upstream branch. Use
+       whichever the PR is actually based on, NOT always master:
+       `git fetch origin <baseRefName>`
+       `git rebase origin/<baseRefName>`
+    e. For each conflicted file (`git diff --name-only --diff-filter=U`):
+       - **Read the full file** (not just the conflict block) so you
+         understand the surrounding code.
+       - Step b's comment already names the relevant master/PR
+         shas. Pull bodies for context where needed:
+         `git log -1 --format="%h %s%n%n%b" <sha> -- <file>`
+       - Resolve manually with the Edit tool. The principle: preserve
+         BOTH sides' intent unless they're genuinely incompatible.
+       - `git add <file>`
+    f. Continue the rebase: `git rebase --continue`. If new conflicts
+       surface in subsequent commits, repeat step e for each.
+    g. **Build before pushing.** Safety net for resolutions that
+       compile-broke without a textual conflict marker (the most
+       common Opus failure mode):
+       `fleet-build --target IRShapeDebug`
+       If the build fails AND the failure is in code that this PR
+       touched, fix it inline and rebuild. If the failure is in
+       unrelated code, your resolution introduced a regression —
+       jump to step j (escalate).
+    h. Push:
+       `git push --force-with-lease`
+       If the lease check fails (someone pushed in parallel), add
+       `fleet:merger-cooldown` so the next iteration doesn't
+       re-attempt immediately, then jump to step k (reset):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --add-label "fleet:merger-cooldown"`
+    i. **Resolution succeeded.** Swap labels and comment in one
+       `gh pr edit` call (safe to combine remove+add here because
+       `fleet:semantic-conflict` is guaranteed present — that's how
+       this PR matched the filter):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:changes-made"`
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Resolved semantic conflict: <one-line summary of what you reconciled>. Build clean. Reviewer please re-evaluate the rebased diff. — opus-worker"`
+       Also clear the merger's cooldown label if still present — prevents
+       one unnecessary iteration delay before the PR can be re-evaluated
+       (the merger clears it anyway on next tick, but this makes it
+       watertight when the opus-worker resolves before the merger fires):
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:merger-cooldown"`
+       Then jump to step k (reset).
+    j. **Resolution failed (escalation).** When to escalate:
+       - The two sides did substantively different things and you
+         can't tell from the code which intent should win (master
+         rewrote a function, PR also rewrote it, neither is a
+         superset).
+       - The conflict requires a product/architecture decision (e.g.
+         master removed an API the PR depends on — should the PR
+         migrate or be reverted?).
+       - You resolved the markers but the build fails in code the
+         PR didn't touch — your resolution introduced a regression
+         you can't fix from the PR's intent alone.
+
+       Abort and hand off to the human (same combine-safe rationale
+       as step i):
+       `git rebase --abort`
+       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "human:needs-fix"`
+       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Opus pass on semantic conflict could not resolve: <one paragraph of why — what the two sides did, what the ambiguity is>. Handing off to human. — opus-worker"`
+    k. Reset to scratch (runs at the end of every step 1c branch —
+       success, lease-fail, or escalation — so the next iteration
+       starts clean and reviewers aren't blocked from `gh pr
+       checkout`ing this branch):
+       `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
+
+    Conflicts are slow work (read both sides, judge intent, build,
+    push) and force-push retriggers CI — keep this step bounded to
+    one PR per iteration.
+
 2. **Plan any `fleet:needs-plan` issues on either repo.** The
    cached `repos.engine.needs_plan[]` and `repos.game.needs_plan[]`
    arrays hold the open needs-plan issues. Pick the oldest

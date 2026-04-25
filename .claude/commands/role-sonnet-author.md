@@ -209,11 +209,13 @@ Each iteration:
    appears. If the human wants more changes after a review pass,
    they re-add `human:needs-fix`.
 
-   The merger uses the same path: when it labels a PR
-   `human:needs-fix` for an unresolvable conflict, an opus-worker
-   that picks up the conflict resolution should follow this same
-   cycle (remove `human:needs-fix`, fix, add `fleet:changes-made`).
-   The fleet reviewer will re-verify the resolution.
+   The merger has its own label for non-mechanical rebase
+   conflicts: `fleet:semantic-conflict`. That label is **not your
+   lane** — it's owned by the opus-worker (which has the budget +
+   the rebase + manual conflict resolution flow in its role doc).
+   You skip PRs with this label entirely. If the opus-worker also
+   can't resolve, IT escalates to `human:needs-fix`, which you DO
+   pick up via the normal cycle above.
 
    **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
    author removes it, fixes, pushes → fleet reviewer sees the new

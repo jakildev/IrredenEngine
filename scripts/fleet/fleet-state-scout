@@ -215,6 +215,7 @@ REVIEW_VERDICT_LABELS = frozenset({
 })
 REVIEW_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
+    "fleet:semantic-conflict",
 })
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 

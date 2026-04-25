@@ -131,8 +131,11 @@ conditions, allocator behavior, hot-path costs.
      `gh pr view <N> --comments` after your last review's
      `submittedAt`).
 
-   **Skip** PRs labeled `fleet:wip`, `human:wip`, or `human:needs-fix`
-   — those are either in-progress or human-owned.
+   **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
+   or `fleet:semantic-conflict` — those are either in-progress,
+   human-owned, or queued for the opus-worker's conflict-resolution
+   lane (the diff against master is meaningless until the rebase
+   lands).
 
 ## Loop behavior
 
