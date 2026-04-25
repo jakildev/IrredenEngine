@@ -94,11 +94,11 @@ Never rely on a stale local `master` ref. Always fetch before branching.
 
 If the current task is part of a `fleet-claim stack` chain, the next branch
 must build on the just-opened PR's head ref — not `origin/master` — so the
-downstream task's diff shows only its own changes. Probe the molecule:
+downstream task's diff shows only its own changes. Probe the molecule (agents already know their own worktree name — it is passed
+in their role instructions, the same way `fleet-heartbeat <name>` is called):
 
 ```bash
-agent=$(basename "$(git rev-parse --show-toplevel)")
-fleet-claim molecule resume "$agent"
+fleet-claim molecule resume <your-worktree-name>
 ```
 
 Interpret the output (the helper always exits 0; discriminate via stdout):
