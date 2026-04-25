@@ -60,7 +60,7 @@ jobs:
         run: cmake --preset linux-debug
 
       - name: Build tests
-        run: cmake --build --preset linux-tests
+        run: cmake --build --preset linux-tests --parallel
 
       - name: Run tests
         run: ctest --preset linux-default-tests
