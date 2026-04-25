@@ -162,11 +162,11 @@ Avoid:
   - **Notes:** Open design questions captured in issue body: mechanism, granularity, opt-out form, and discovery. Design doc must answer all four before implementation. The motivation is that "see engine root CLAUDE.md for X" soft references rot as engine docs evolve.
   - **Links:**
 
-- [ ] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
+- [~] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
   - **ID:** T-050
   - **Area:** engine/prefabs/irreden/common, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-050-modifier-runtime
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) unit tests cover ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE composition correctness, composition order pinned and tested, ticksRemaining decay exact, source-destruction sweep correct, global+exempt archetype routing correct, lambda escape hatch; (2) no `getComponent`/`getComponentOptional` calls inside any tick body; (3) resolver tick at 1000 entities × 5 modifiers < 0.5 ms, recorded in PR body; (4) builds clean on `linux-debug` AND `macos-debug`
