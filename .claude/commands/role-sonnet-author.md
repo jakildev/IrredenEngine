@@ -177,8 +177,9 @@ Each iteration:
       if the stale labels triggered it.
    g. **Propagate the upstream fix to any downstream branches in a
       stacked chain.** Always run, after every feedback fix:
-      `fleet-claim molecule rebase-downstream sonnet-fleet-1`
-      (replace with your actual worktree basename). The subcommand
+      `fleet-claim molecule rebase-downstream <your-worktree-basename>`
+      (substitute the placeholder with the basename you discovered in
+      §1, e.g. `sonnet-fleet-1`). The subcommand
       auto-detects the upstream task ID from the current branch
       (`claude/T-NNN-…`) and is a graceful no-op if there's no
       active molecule, the current branch isn't in one, or the

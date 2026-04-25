@@ -1064,6 +1064,32 @@ cmd_molecule_complete() {
     cmd_release_stack "$agent"
 }
 
+__rebase_pause_chain() {
+    # Helper for cmd_molecule_rebase_downstream. Comments on a paused
+    # downstream PR and applies fleet:blocker so the human knows the
+    # chain is stuck. Lives at the top level (rather than nested in
+    # the caller) so the global scope of bash function definitions is
+    # explicit — readers don't have to know that nested `function`
+    # definitions are promoted to global scope when the outer runs.
+    #
+    # The caller is responsible for setting the loop's `conflicted`
+    # variable to the task ID before calling this helper. We keep
+    # the side effect at the call site so a reader scanning the
+    # rebase loop sees the state mutation and the PR notification
+    # together.
+    #
+    # Usage: __rebase_pause_chain <pr-url> <body>
+    # If pr-url is empty (PR not yet opened for this downstream),
+    # the helper is a no-op.
+    local pr_url="$1"
+    local body="$2"
+    [[ -z "$pr_url" ]] && return 0
+    gh pr comment "$pr_url" --body "$body" \
+        || echo "  warn: failed to comment fleet:blocker notice on $pr_url" >&2
+    gh pr edit "$pr_url" --add-label "fleet:blocker" \
+        || echo "  warn: failed to add fleet:blocker label to $pr_url" >&2
+}
+
 cmd_molecule_rebase_downstream() {
     # After an upstream stacked PR has been updated (typically by an
     # author addressing review feedback), rebase every downstream branch
@@ -1200,24 +1226,9 @@ cmd_molecule_rebase_downstream() {
         return 1
     fi
 
-    # Helper: pause the chain at the current task. Records the conflict,
-    # comments + labels the affected PR if known, and signals the loop
-    # to break. Centralising the comment+label here also fixes the bug
-    # where checkout/fetch failures previously left the PR with no
-    # `fleet:blocker` and no notification.
     local rebased=0
     local skipped=0
     local conflicted=""
-    pause_chain() {
-        local task_id="$1"
-        local pr_url="$2"
-        local body="$3"
-        conflicted="$task_id"
-        if [[ -n "$pr_url" ]]; then
-            gh pr comment "$pr_url" --body "$body" 2>/dev/null || true
-            gh pr edit "$pr_url" --add-label "fleet:blocker" 2>/dev/null || true
-        fi
-    }
 
     local i
     for i in "${!downstream_ids[@]}"; do
@@ -1237,25 +1248,29 @@ cmd_molecule_rebase_downstream() {
         # just pushed, not on the downstream we're updating.
         if ! git checkout -B "$branch" "origin/$branch" --quiet 2>&1; then
             echo "  failed to checkout $branch — chain pauses" >&2
-            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` could not check out \`$branch\` from origin. \`fleet:blocker\` applied — needs human resolution."
+            conflicted="$task_id"
+            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` could not check out \`$branch\` from origin. \`fleet:blocker\` applied — needs human resolution."
             break
         fi
 
         if ! git rebase "origin/$upstream_branch" --quiet 2>&1; then
             git rebase --abort 2>/dev/null || true
             echo "  CONFLICT rebasing $branch onto origin/$upstream_branch — chain pauses here" >&2
-            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` (upstream of $task_id) failed: conflict while replaying this branch's commits. Rebase aborted; the PR remains on the prior base. \`fleet:blocker\` applied — needs human resolution before the chain can advance."
+            conflicted="$task_id"
+            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` (upstream of $task_id) failed: conflict while replaying this branch's commits. Rebase aborted; the PR remains on the prior base. \`fleet:blocker\` applied — needs human resolution before the chain can advance."
             break
         fi
 
         if ! git push --force-with-lease origin "$branch" --quiet 2>&1; then
             echo "  failed to force-push $branch (lease violation? concurrent edit on origin?) — chain pauses" >&2
-            pause_chain "$task_id" "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` succeeded locally but the force-push was rejected (\`--force-with-lease\` violation — concurrent edit on origin). \`fleet:blocker\` applied — needs human resolution."
+            conflicted="$task_id"
+            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` succeeded locally but the force-push was rejected (\`--force-with-lease\` violation — concurrent edit on origin). \`fleet:blocker\` applied — needs human resolution."
             break
         fi
 
         if [[ -n "$pr_url" ]]; then
-            gh pr comment "$pr_url" --body "Auto-rebased onto updated \`$upstream_branch\` tip after upstream review fix. Force-pushed with \`--force-with-lease\`." 2>/dev/null || true
+            gh pr comment "$pr_url" --body "Auto-rebased onto updated \`$upstream_branch\` tip after upstream review fix. Force-pushed with \`--force-with-lease\`." \
+                || echo "  warn: failed to comment success notice on $pr_url" >&2
         fi
 
         rebased=$((rebased + 1))
