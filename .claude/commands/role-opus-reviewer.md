@@ -173,22 +173,30 @@ iteration of polling, reviewing, and exiting cleanly:
          `gh pr list --head "<baseRefName>" --state all --json number,state,mergedAt --jq '.[0]'`
          (add `--repo <game-repo>` for game PRs).
 
-      3. **Decide based on upstream status:**
+      3. **Already gated — check before deciding.** If the candidate's
+         own `labels` already contains `fleet:awaiting-upstream-review`:
+         - Re-check upstream status using the same cache-then-live-
+           fallback logic from step 2 above.
+         - If upstream is now approved or merged — remove the gate label
+           (`gh pr edit <N> --remove-label "fleet:awaiting-upstream-review"`)
+           and proceed to step c.
+         - Otherwise (still open-without-approval, OR now broken) —
+           silently skip. Do NOT post any additional comment.
+
+      4. **Decide based on upstream status** (gate label not present):
          - **Upstream MERGED, or upstream OPEN with `fleet:approved`
            or `human:approved`** — proceed to step c. Note the stack
            context in the review body: "Stacked on #<U>; approval
            assumes #<U> lands first."
          - **Upstream OPEN without an approval label** (its `labels`
            contains neither `fleet:approved` nor `human:approved`) —
-           gate this PR. Do NOT post a verdict:
-           - If the candidate's own `labels` already contains
-             `fleet:awaiting-upstream-review`, silently move on.
-           - Otherwise:
-             `gh pr edit <N> --add-label "fleet:awaiting-upstream-review"`
-             `gh pr comment <N> --body "Holding review: upstream PR #<U> is not yet approved. This stacked PR will be re-evaluated once the upstream lands an approval label."`
-             For game PRs add `--repo <game-repo>` to both.
+           add the gate label and post a hold-comment once:
+           `gh pr edit <N> --add-label "fleet:awaiting-upstream-review"`
+           `gh pr comment <N> --body "Holding review: upstream PR #<U> is not yet approved. This stacked PR will be re-evaluated once the upstream lands an approval label."`
+           For game PRs add `--repo <game-repo>` to both.
+           Do NOT post a verdict.
          - **Upstream not found, OR closed-not-merged** — the stack
-           is broken. Surface to the human:
+           is broken. Surface to the human once:
            `gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."`
            Do NOT add a verdict label.
 
