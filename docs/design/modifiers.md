@@ -101,6 +101,16 @@ dies, sweep modifiers where `source_ == destroyedId`. No separate
 "modifier handle" type needed; you can either remember the source
 yourself or call `removeBySource(sourceId)`.
 
+### Source attribution lifetime contract
+
+The source-destruction sweep MUST run inside `EntityManager::destroyEntity`
+before `returnEntityToPool` fires — implemented as a pre-destroy hook the
+framework registers at `registerResolverPipeline()` init time. Deferred
+sweep is unsafe: `EntityId` has no generation counter, so after
+`returnEntityToPool` the same id can be issued to an unrelated entity, and a
+delayed `removeBySource(oldId)` would silently strip that new entity's
+modifiers. T-050 wires this by registering the sweep as a pre-destroy hook.
+
 ### `ticksRemaining_` decay only
 
 Built-in lifetime is just an `int32_t` tick counter and a one-time
@@ -228,6 +238,9 @@ lookups in any tick body. Resolver dispatch is archetype-routed:
 2. Look back through the entity's modifier vector for the **latest**
    `OVERRIDE` for this field. If found, replace `base` with that
    override's `param_` and discard every modifier earlier than it.
+   `OVERRIDE` discards prior `CLAMP_MIN`/`CLAMP_MAX` as well as prior
+   `ADD`/`MULTIPLY`/`SET`. To clamp an `OVERRIDE` result, push the clamp
+   *after* the `OVERRIDE`.
 3. Apply `ADD` / `MULTIPLY` / `SET` modifiers in push-order (newer
    wins for `SET`).
 4. Apply `CLAMP_MIN` / `CLAMP_MAX` (always after the algebra so they
@@ -283,6 +296,14 @@ float applyToField(IREntity::EntityId target,
 void registerResolverPipeline();
 }
 ```
+
+`registerField` stores the pointer, not a copy — `name` must have
+static-storage lifetime (use a string literal). `applyToField` and the
+resolver pipeline share a single per-field evaluator; T-050 should verify
+equivalence with a property test so the two read paths never silently
+disagree. `C_ResolvedFields` lookup by `FieldBindingId` is linear over
+`std::vector` — fine for v1 (~5 fields per entity), but T-050 should pick a
+lookup strategy explicitly and note it in the runtime PR.
 
 Lua mirrors this (child 4): `ir.modifier.registerField`,
 `ir.modifier.push`, `ir.modifier.pushGlobal`, `ir.modifier.pushLambda`,
@@ -375,3 +396,7 @@ needs all four predecessors.
 - `kInvalidFieldId == 0` is reserved so that an unset binding id is
   cheaply detectable and so that `0` is never a valid registered
   field. Registration starts at id `1`.
+- `push()` should defensively reject any modifier where `field_ ==
+  kInvalidFieldId` — a default-constructed `Modifier{}` produces this
+  state (`kind_ == ADD`, `field_ == 0`). Fail fast rather than silently
+  adding an invalid modifier to the vector.

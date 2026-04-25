@@ -30,7 +30,8 @@ enum class TransformKind : std::uint8_t {
 /// enforces trivial-copyability; anything that needs `std::function`
 /// or `std::string` belongs in `LambdaModifier`. `ticksRemaining_ == -1`
 /// is the sentinel for "no decay"; the decay system drops the modifier
-/// once the counter reaches 0.
+/// once the counter reaches 0. See `docs/design/modifiers.md` §Data shapes
+/// for per-field semantics.
 struct Modifier {
     FieldBindingId       field_;
     TransformKind        kind_;
