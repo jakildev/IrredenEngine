@@ -91,7 +91,7 @@ Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
 whatever directory the task touches before editing anything. For game
 tasks, also read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
 
-## Dormancy verification across private creations
+## Dormancy verification across all creations, including private ones
 
 Before declaring any engine API "dead," "dormant," or "safe-to-delete,"
 you **must** verify there are no live consumers in ALL physical paths
