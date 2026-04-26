@@ -130,3 +130,42 @@ ivec3 roundHalfUp(vec3 v) {
 int roundHalfUp(float v) {
     return int(floor(v + 0.5));
 }
+
+// Cardinal Z-yaw helpers (T-055).
+// FrameDataVoxelToTrixel.rasterYaw is guaranteed to be a multiple of pi/2 by
+// the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
+// renderer uses one of four basis-vector permutations selected by an integer
+// index in [0, 3] so integer voxel positions still land on integer trixel
+// pixels post-rotation. residualYaw is consumed by a downstream screen-space
+// composite pass; these helpers ignore it.
+
+int rasterYawCardinalIndex(float rasterYaw) {
+    const float kHalfPi = 1.5707963267948966;
+    int q = int(round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return ivec3( v.y, -v.x, v.z);
+    return v;
+}
+
+vec3 rotateCardinalZInv(vec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return vec3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return vec3(-v.y,  v.x, v.z);
+    return v;
+}
+
+ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return ivec3(-v.y,  v.x, v.z);
+    return v;
+}
+
+vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
+    return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
