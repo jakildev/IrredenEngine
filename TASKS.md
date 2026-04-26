@@ -223,6 +223,50 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
+- [ ] **Fleet docs: dormancy-verification rule for private creations** — add "check private creations before declaring engine code dormant" section to role docs and CLAUDE.md
+  - **ID:** T-059
+  - **Area:** docs, tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-opus-architect.md` and `role-opus-worker.md` both have a new "Dormancy verification across private creations" section with consistent wording; (2) engine `CLAUDE.md` has a cross-reference to the dormancy-check rule under "Cross-repo information isolation"; (3) doc-only change — builds clean on `linux-debug` trivially
+  - **Issue:** #338
+  - **Notes:** Surfaced from PR #332 / T-051 review: opus-worker grepped only checked-in `creations/demos/` and declared `VELOCITY_DRAG` dormant, missing a live consumer in a gitignored private creation. Rule to add: the information-isolation rule is about OUTPUT (what engine artifacts say publicly), not INPUT — engine-side agents MAY read private creations to verify engine-side facts, but must not reference them by name in engine PRs. Before declaring any engine API dead/dormant, grep ALL physical paths under `~/src/IrredenEngine/creations/` including gitignored subdirectories. Optionally suggest a `fleet-grep-creations` shim (defer to separate issue if proven needed).
+  - **Links:**
+
+- [ ] **Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter** — add exclude-tag support to `createSystem<...>` and wire the exempt resolver; no per-entity branching
+  - **ID:** T-060
+  - **Area:** engine/system, engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) exclude-tag mechanism works in `createSystem<...>` for arbitrary tag types (not just `C_NoGlobalModifiers`); (2) `MODIFIER_RESOLVE_EXEMPT` system exists and dispatches entities tagged `C_NoGlobalModifiers` away from global resolver via archetype filter, with no per-entity branching; (3) test covers both archetype paths (with and without tag); (4) builds clean on `linux-debug` and `macos-debug`; (5) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" entry for this gap removed
+  - **Issue:** #339
+  - **Notes:** Architect prefers form (a): `createSystem<C_Modifiers, C_ResolvedFields, Exclude<C_NoGlobalModifiers>>(...)` — clean call site, `Exclude<...>` recognized by archetype matcher. Requires updating `engine/system/include/irreden/system/system_manager.hpp` and `system_manager.cpp`. Add `system_modifier_resolve_exempt.hpp` mirroring global resolver + update global resolver to apply the exclude filter. The exclude-tag mechanism becomes engine-wide once it lands — API shape matters more than speed.
+  - **Links:**
+
+- [ ] **Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers** — add `IREntity::onPreDestroy` callback mechanism; modifier framework auto-sweeps source modifiers on entity destruction
+  - **ID:** T-061
+  - **Area:** engine/entity, engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) pre-destroy hook mechanism exists in `engine/entity/` (callback registration via `IREntity::onPreDestroy(std::function<void(EntityId)>)`); (2) modifier framework registers a sweep callback during `registerResolverPipeline()` that invokes `removeBySource` for the destroyed entity; (3) test: push modifier from source A onto target B, destroy A, verify B's `C_Modifiers` no longer contains the modifier; (4) builds clean on `linux-debug` and `macos-debug`; (5) `engine/prefabs/irreden/common/CLAUDE.md` updated (follow-up entry removed, usage docs note auto-sweep is automatic)
+  - **Issue:** #340
+  - **Notes:** Surfaced from PR #332 review. Architect prefers form (a): callback registration — generic, reusable for other subsystems. Iteration sweep is O(N) per destroy; consider whether a reverse-index (which targets have modifiers from source X) is worth maintaining for high-churn workloads, or accept linear sweep for v1. Keep `removeBySource` callable manually too — callers may want to remove a source's modifiers without destroying the source entity.
+  - **Links:**
+
+- [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add decay for `C_LambdaModifiers` (Part 1) and architect the stateful-lambda mechanism (Part 2 design, separate PR)
+  - **ID:** T-062
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test: push lambda modifier with `ticksRemaining=60`, advance 60 ticks, assert removed; (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance TBD when architect locks the stateful-lambda design (defer to separate PR).
+  - **Issue:** #341
+  - **Notes:** Surfaced from PR #332 review. Part 1 (decay system) is mechanical — mirrors `system_modifier_decay.hpp` for `C_LambdaModifiers`. Part 2 (stateful lambda) has non-trivial design surface: architect prefers form (c) — state lives on entity in companion component, lambda receives entity ID and reads companion. Lambda signature changes; resolver needs entity-ID context. Worker implements Part 1 standalone; Part 2 should be a separate issue/PR after design is locked. If implementing Part 1 only, the `[opus]` tag may be downgraded to `[sonnet]` by the architect.
+  - **Links:**
+
 ---
 
 ## In progress
