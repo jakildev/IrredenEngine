@@ -172,7 +172,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--role", default=None,
-        help="Filter to one role (e.g. merger, sonnet-author).",
+        help="Filter to one role (e.g. merger, sonnet-author). For multi-instance roles use the full per-worktree name (e.g. sonnet-author-1, opus-worker-2).",
     )
     parser.add_argument(
         "--headlines", action="store_true",
@@ -180,7 +180,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--clear", action="store_true",
-        help="Archive all feedback files to ~/.fleet/feedback/.archive/<timestamp>/.",
+        help="Archive ALL feedback files to ~/.fleet/feedback/.archive/<timestamp>/. Ignores --role; clears all agents.",
     )
     args = parser.parse_args(argv)
 
