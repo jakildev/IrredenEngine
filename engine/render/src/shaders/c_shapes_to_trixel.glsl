@@ -721,10 +721,12 @@ void main() {
         // Map front → t=0 (red) and back → t=1 (blue).
         //
         // dExtent above includes a +1 per-axis safety margin for the
-        // lattice walk; use the unpadded boundingHalf sum here instead so
-        // the hue range isn't compressed.
-        float dColor = boundingHalf.x + boundingHalf.y +
-                       boundingHalf.z;
+        // lattice walk; use the unpadded view-space half-extent sum
+        // (boundingHalfView) so the hue range matches the rotated
+        // shape's actual iso-depth extent at any yaw.  Identical to
+        // the unrotated boundingHalf sum at yaw=0.
+        float dColor = boundingHalfView.x + boundingHalfView.y +
+                       boundingHalfView.z;
         float denomC = max((4.0 / 3.0) * dColor, 1.0);
         float t = clamp(
             (float(surfaceD) + dColor) / denomC, 0.0, 1.0);

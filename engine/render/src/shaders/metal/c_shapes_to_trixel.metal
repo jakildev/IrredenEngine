@@ -763,7 +763,12 @@ kernel void c_shapes_to_trixel(
     float4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
-        const float dColor = boundingHalf.x + boundingHalf.y + boundingHalf.z;
+        // dExtent above includes a +1 per-axis safety margin for the
+        // lattice walk; use the unpadded view-space half-extent sum
+        // (boundingHalfView) so the hue range matches the rotated
+        // shape's actual iso-depth extent at any yaw.  Identical to
+        // the unrotated boundingHalf sum at yaw=0.
+        const float dColor = boundingHalfView.x + boundingHalfView.y + boundingHalfView.z;
         const float denomC = max((4.0 / 3.0) * dColor, 1.0);
         const float t = clamp((float(surfaceD) + dColor) / denomC, 0.0, 1.0);
         baseColor.rgb = hsvToRgb(float3(0.66 * t, 1.0, 1.0));
