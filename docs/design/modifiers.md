@@ -104,12 +104,13 @@ yourself or call `removeBySource(sourceId)`.
 ### Source attribution lifetime contract
 
 The source-destruction sweep MUST run inside `EntityManager::destroyEntity`
-before `returnEntityToPool` fires — implemented as a pre-destroy hook the
-framework registers at `registerResolverPipeline()` init time. Deferred
-sweep is unsafe: `EntityId` has no generation counter, so after
-`returnEntityToPool` the same id can be issued to an unrelated entity, and a
-delayed `removeBySource(oldId)` would silently strip that new entity's
-modifiers. T-050 wires this by registering the sweep as a pre-destroy hook.
+before `returnEntityToPool` fires. Deferred sweep is unsafe: `EntityId` has
+no generation counter, so after `returnEntityToPool` the same id can be
+issued to an unrelated entity, and a delayed `removeBySource(oldId)` would
+silently strip that new entity's modifiers. T-050 implements a manual sweep
+path (`removeBySource` must be called by callers before `destroyEntity`); the
+pre-destroy hook that guarantees no stale modifiers survive `EntityId` reuse
+is tracked in #340.
 
 ### `ticksRemaining_` decay only
 
@@ -254,7 +255,7 @@ later clamps; `OVERRIDE` short-circuits the prefix.
 ## Public API surface
 
 The framework's free-function API ships in child 2 alongside the
-runtime. The shape (locked here so child 3 can plan around it):
+runtime. The shape (locked here so future migration tasks can plan around it):
 
 ```cpp
 namespace IRPrefab::Modifier {
@@ -396,7 +397,7 @@ The epic decomposes into five sequenced child tasks. Stack order:
 |-------|-------------------------------------------------------|----------|
 | 1     | Design doc + audit + framework declarations           | `[opus]` |
 | 2     | Core runtime (registry, resolver systems, sweep)      | `[opus]` |
-| 3     | Migrate position + velocity-drag patterns (deferred — see PR #332) | `[opus]` |
+| 3     | Migrate position + velocity-drag patterns (deferred — see issue #305) | `[opus]` |
 | 4     | Lua bindings                                          | `[sonnet]` |
 | 5     | `modifier_demo` creation (visual showcase)            | `[sonnet]` |
 
