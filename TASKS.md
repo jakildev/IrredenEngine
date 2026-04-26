@@ -267,6 +267,39 @@ Avoid:
   - **Notes:** Surfaced from PR #332 review. Part 1 (decay system) is mechanical — mirrors `system_modifier_decay.hpp` for `C_LambdaModifiers`. Part 2 (stateful lambda) has non-trivial design surface: architect prefers form (c) — state lives on entity in companion component, lambda receives entity ID and reads companion. Lambda signature changes; resolver needs entity-ID context. Worker implements Part 1 standalone; Part 2 should be a separate issue/PR after design is locked. If implementing Part 1 only, the `[opus]` tag may be downgraded to `[sonnet]` by the architect.
   - **Links:**
 
+- [ ] **Fleet: design-escalation flow — bidirectional labels + plan re-sync + role docs** — install `fleet:design-blocked` / `fleet:design-unblocked` label lifecycle and update worker, architect, and queue-manager role docs for the mid-task escalation cycle
+  - **ID:** T-063
+  - **Area:** tooling, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `fleet:design-blocked` and `fleet:design-unblocked` labels exist in the engine repo with documented lifecycle; (2) `role-opus-worker.md` documents escalation initiation (add label, post comment, reset branch via start-next-task, pick next task) AND resumption (check own PRs for `fleet:design-unblocked` on startup before picking new work); (3) `role-opus-architect.md` has "Handling fleet:design-blocked PRs" section with concrete steps (update plan file, post comment, swap labels); (4) queue-manager maintenance pass re-syncs `~/.fleet/plans/issue-NNN.md` → `.fleet/plans/T-NNN.md` for in-progress tasks when local plan is newer; (5) engine `CLAUDE.md` labeling discipline section documents both new labels; (6) doc-only change — builds clean
+  - **Issue:** #342
+  - **Notes:** Triggered by PR #332 stall — worker escalated with NEEDS-DESIGN status but no label routed it to the architect; architect had to be told manually. Two labels as state qualifiers on top of `fleet:wip`, not ownership transfers. Workers do NOT pick up `fleet:design-blocked` PRs as new tasks. End-to-end manual cycle test required (worker escalates → architect resolves → queue-manager re-syncs plan → worker resumes). Future enhancement (auto-notify after N hours via feedback file) deferred.
+  - **Links:**
+
+- [ ] **engine/system docs: document 'no function-local static for system state' rule** — add rule, rationale, canonical `SystemParams` shape, exception, and 12-file deviation list to `engine/system/CLAUDE.md`
+  - **ID:** T-064
+  - **Area:** docs, engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/system/CLAUDE.md` has new "Don't use function-local `static` for system state" subsection with rule, 4-bullet rationale, canonical `SystemParams` code-block shape, `constexpr`/program-const exception, and 12-file deviation list with cross-link to T-065; (2) `engine/prefabs/CLAUDE.md` has one-liner cross-reference under system-authoring guidance; (3) `creations/CLAUDE.md` confirmed to inherit the rule via baseline reference (no change or minimal cross-link added as needed); (4) doc-only PR — builds clean
+  - **Issue:** #343
+  - **Notes:** Companion to T-065 (code migration). Should land first so T-065 can cite the documented pattern. Triggered by architect-review thread on PR #334. Cite PR #334 in the commit message. Match the concise style of the existing "Per-system parameters" section.
+  - **Links:**
+
+- [ ] **Render systems: migrate 12 files off function-local static onto SystemParams** — replace all mutable function-local `static` state in 12 render system headers with `SystemParams` structs; visual and performance identity required
+  - **ID:** T-065
+  - **Area:** engine/prefabs/irreden/render/systems
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) all 12 listed files use `SystemParams` for mutable system state; (2) grep shows no function-local `static` for mutable state in the 12 files — all surviving `static` matches are `constexpr` constants or program-lifetime resource pointers (each called out in PR body); (3) `render-debug-loop` before/after screenshots pixel-identical — attach via `attach-screenshots` skill; (4) `IRShapeDebug` pipeline tick cost at zoom 4 / 1000+ voxels within ±2% of pre-migration baseline (measured, reported in PR body); (5) builds clean on `linux-debug` AND `macos-debug`; (6) OpenGL and Metal backends render identically
+  - **Issue:** #344
+  - **Notes:** Soft dep on T-064 landing first (so canonical pattern is documented), but not a hard block — canonical pattern is in the issue body. One PR for all 12 files per architect direction. `thread_local` scratch buffer in `system_shapes_to_trixel.hpp::buildAndUploadTileDescriptors` is exempt per architect recommendation (leave as `thread_local` with explanatory comment). Resource pointers fetched at create time may stay `static` or move into `Params` per worker judgment — document in PR body. Behavior preservation is the hard gate — stop and escalate on ANY behavioral difference. Some statics may be relied-upon bugs; flag in PR body.
+  - **Links:**
+
 ---
 
 ## In progress
