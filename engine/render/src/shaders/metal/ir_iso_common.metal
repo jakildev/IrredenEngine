@@ -142,6 +142,40 @@ inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
 
+// Cardinal Z-yaw helpers (T-055). Mirrors shaders/ir_iso_common.glsl. See the
+// GLSL header comment for the rationale.
+
+inline int rasterYawCardinalIndex(float rasterYaw) {
+    constexpr float kHalfPi = 1.5707963267948966f;
+    int q = int(round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return int3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return int3( v.y, -v.x, v.z);
+    return v;
+}
+
+inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return float3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return float3(-v.y,  v.x, v.z);
+    return v;
+}
+
+inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return int3(-v.y,  v.x, v.z);
+    return v;
+}
+
+inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
+    return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
+
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the
 // FrameDataVoxelToTrixel UBO in the GLSL pipeline.  std140 padding rules from
 // GLSL collapse cleanly into Metal's natural packing here.

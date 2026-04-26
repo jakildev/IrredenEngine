@@ -54,19 +54,21 @@ kernel void c_voxel_to_trixel_stage_1(
     const float4 voxelPosition = positions[voxelIndex];
     const uint2 localId = localId3.xy;
     const int face = localIDToFace_2x3(localId);
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
     if (frameData.voxelRenderOptions.x == 0) {
         const int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        const int3 voxelPositionRot = rotateCardinalZ(voxelPositionInt, cardinalIndex);
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face
+            pos3DtoDistance(voxelPositionRot), face
         );
         const int2 canvasPixel =
             frameData.trixelCanvasOffsetZ1 +
             int2(floor(frameData.frameCanvasOffset)) +
             int2(localId) +
-            pos3DtoPos2DIso(voxelPositionInt);
+            pos3DtoPos2DIso(voxelPositionRot);
         writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
         return;
     }
@@ -83,10 +85,11 @@ kernel void c_voxel_to_trixel_stage_1(
 
     const int3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+    const int3 microPositionRot = rotateCardinalZ(microPositionFixed, cardinalIndex);
     const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+        microPositionRot.x + microPositionRot.y + microPositionRot.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const int2 canvasPixel =
-        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionRot);
     writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
 }

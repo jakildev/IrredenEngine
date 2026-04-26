@@ -112,6 +112,9 @@ kernel void c_lighting_to_trixel(
     if (frameData.lightVolumeEnabled != 0) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.metal.
+        // Subdivision-aware canvasOffset matches c_compute_voxel_ao.metal;
+        // R(-rasterYaw) compose recovers world coordinates from raster-frame
+        // iso pixels under cardinal-snap Z-yaw.
         const int subdivisions = max(voxelFrameData.voxelRenderOptions.y, 1);
         const float2 canvasOffset = (voxelFrameData.voxelRenderOptions.x != 0)
             ? voxelFrameData.frameCanvasOffset * float(subdivisions)
@@ -119,7 +122,8 @@ kernel void c_lighting_to_trixel(
         const int2 isoRel =
             pixel - voxelFrameData.trixelCanvasOffsetZ1 -
             int2(floor(canvasOffset));
-        float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+        const int cardinalIndex = rasterYawCardinalIndex(voxelFrameData.rasterYaw);
+        float3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
         if (voxelFrameData.voxelRenderOptions.x != 0) {
             pos3D /= float(subdivisions);
         }
