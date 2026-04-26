@@ -35,6 +35,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
+    uniform float visualYaw;
+    uniform float rasterYaw;
+    uniform float residualYaw;
+    uniform float _yawPadding;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;

@@ -18,6 +18,10 @@ struct ShapesFrameData {
     int2 voxelRenderOptions;
     int2 cullIsoMin;
     int2 cullIsoMax;
+    float visualYaw;
+    float _yawPadding0;
+    float _yawPadding1;
+    float _yawPadding2;
 };
 
 struct ShapeDescriptor {

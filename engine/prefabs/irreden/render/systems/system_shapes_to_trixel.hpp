@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 
@@ -153,6 +154,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             []() {
                 auto &timing = IRRender::gpuStageTiming();
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+                const float visualYaw = IRPrefab::Camera::getYaw();
 
                 for (auto &[canvasId, gpuShapes] : gpuShapesByCanvas) {
                     if (gpuShapes.empty()) {
@@ -188,6 +190,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         frameData.cullIsoMin = ivec2(-999999);
                         frameData.cullIsoMax = ivec2(999999);
                     }
+                    frameData.visualYaw = visualYaw;
 
                     s_shapeDescBuf->subData(
                         0,
