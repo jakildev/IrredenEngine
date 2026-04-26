@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/camera.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -59,6 +60,7 @@ bool g_depthColor = false;
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f;  // 0 = use engine default
+float g_initialYawRadians = 0.0f;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 
 } // namespace
@@ -94,6 +96,11 @@ int main(int argc, char **argv) {
                 g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--yaw") == 0) {
+            if (i + 1 < argc) {
+                g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
+                ++i;
+            }
         }
     }
 
@@ -113,6 +120,12 @@ int main(int argc, char **argv) {
     }
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
+    }
+    if (g_initialYawRadians != 0.0f) {
+        IRPrefab::Camera::setYaw(g_initialYawRadians);
+        IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
+                    g_initialYawRadians,
+                    g_initialYawRadians * (180.0f / 3.14159265f));
     }
     IREngine::gameLoop();
     return 0;

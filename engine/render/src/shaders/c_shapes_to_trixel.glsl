@@ -486,6 +486,32 @@ int generalDepthSearch(ivec2 isoRel, uint shapeType, vec4 params, bool hollow,
     return kInvalidDepth;
 }
 
+// Yaw-aware general SDF depth search. The iso projection is fixed in view
+// space, but the SDF's local frame is world-aligned. Camera yaw rotates the
+// world by -visualYaw from the view's POV, so the world-local query point is
+// the view-local point rotated by +visualYaw around Z. The analytical paths
+// (box / sphere / cylinder / ellipsoid) bake in yaw=0 in their interval
+// derivations, so this brute-force search is the only correct path at
+// non-zero yaw — we accept the per-step SDF cost in exchange for handling
+// any shape under any continuous angle.
+int generalDepthSearchYaw(ivec2 isoRel, uint shapeType, vec4 params, bool hollow,
+                          float dExtent, float yawC, float yawS) {
+    int dMin = int(floor(-dExtent));
+    int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        vec3 pView = isoToLocal3D(isoRel, float(d));
+        vec3 p = vec3(yawC * pView.x - yawS * pView.y,
+                      yawS * pView.x + yawC * pView.y,
+                      pView.z);
+        float sdf = evaluateSDF(p, shapeType, params);
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
+        }
+    }
+    return kInvalidDepth;
+}
+
 // O(1) surface depth dispatcher.  Accepts pre-scaled parameters so the
 // same analytical intersections work at any subdivision resolution.
 // All returned depths are LOCAL (relative to shape origin).
@@ -515,8 +541,26 @@ void main() {
     ivec2 isoOrigin = tile.tileIsoOrigin;
     ShapeDescriptor shape = shapes[shapeIndex];
 
+    // Continuous Z-yaw consumed by the SDF path.  At yaw=0 every line below
+    // collapses to the original code (rotation is identity); the bool gate
+    // keeps the analytical fast paths in scope at exactly yaw=0 so reference
+    // images remain pixel-stable.  Ternary on the uniform-driven yawZero
+    // skips the transcendental dispatch entirely at yaw=0 instead of
+    // computing cos/sin unconditionally.  See engine/render/CLAUDE.md and
+    // docs/design/iso-basis-baked-assumptions.md for the model.
+    bool yawZero = (visualYaw == 0.0);
+    float yawC = yawZero ? 1.0 : cos(visualYaw);
+    float yawS = yawZero ? 0.0 : sin(visualYaw);
+
     vec3 worldPos = shape.worldPosition.xyz;
-    ivec3 origin = ivec3(round(worldPos));
+    // viewPos = R_z(-visualYaw) · worldPos.  Camera yaws by +visualYaw, so
+    // world coords appear rotated by -visualYaw from the view's POV.
+    vec3 viewPos = yawZero
+        ? worldPos
+        : vec3( yawC * worldPos.x + yawS * worldPos.y,
+               -yawS * worldPos.x + yawC * worldPos.y,
+                worldPos.z);
+    ivec3 origin = ivec3(round(viewPos));
 
     int renderMode = voxelRenderOptions.x;
     int subdivisions = max(voxelRenderOptions.y, 1);
@@ -557,7 +601,21 @@ void main() {
     } else {
         boundingHalf = paramsScaled.xyz * 0.5;
     }
-    ivec3 extentScaled = ivec3(ceil(boundingHalf)) + ivec3(1);
+    // After Z-yaw the shape's view-space AABB grows in XY by |c|·hX + |s|·hY
+    // (and symmetrically for Y).  Use this expanded half-extent for the iso
+    // footprint check and the generalDepthSearch range so the full rotated
+    // shape stays inside the search window.
+    vec3 boundingHalfView;
+    if (yawZero) {
+        boundingHalfView = boundingHalf;
+    } else {
+        float absC = abs(yawC);
+        float absS = abs(yawS);
+        boundingHalfView = vec3(boundingHalf.x * absC + boundingHalf.y * absS,
+                                boundingHalf.x * absS + boundingHalf.y * absC,
+                                boundingHalf.z);
+    }
+    ivec3 extentScaled = ivec3(ceil(boundingHalfView)) + ivec3(1);
 
     ivec2 originIsoScaled = pos3DtoPos2DIso(originScaled);
     ivec2 isoExtentScaled = ivec2(
@@ -586,46 +644,66 @@ void main() {
 
     int surfaceD;
 
-    // In snapped mode (sub=1) the shape must behave like discrete voxels and
-    // match the CPU voxel-pool carve exactly.  The analytical findSurfaceDepth
-    // is unreliable here because (a) its fast paths evaluate the SDF at the
-    // non-lattice analytical entry point, not at integer voxel centers, and
-    // (b) its generalDepthSearch uses integer-d but non-lattice column points
-    // as well.  Both can miss the true front-most lattice voxel on a column.
-    //
-    // So in snap mode we ignore findSurfaceDepth entirely and walk the ENTIRE
-    // iso-column lattice from -dExtent to +dExtent.  Integer voxels along an
-    // iso column live on a sublattice: only iso pixels with (isoX + isoY)
-    // even have voxels, and the valid depths satisfy d ≡ -isoY (mod 3),
-    // spaced by 3.  The first hit whose integer-voxel SDF is inside the 0.5
-    // carve threshold is the winner — this is exactly what CPU carving does.
-    if (!smoothMode) {
-        if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) return;
+    // Yaw=0 keeps the existing fast paths (snap-mode integer lattice walk +
+    // analytical findSurfaceDepth).  Non-zero yaw routes through the
+    // brute-force generalDepthSearchYaw because the analytical interval
+    // derivations bake in yaw=0 and the integer lattice walk only matches
+    // the CPU voxel pool when world == view (which is not true under camera
+    // yaw).  See the comment above generalDepthSearchYaw.
+    if (yawZero) {
+        // In snapped mode (sub=1) the shape must behave like discrete voxels
+        // and match the CPU voxel-pool carve exactly.  The analytical
+        // findSurfaceDepth is unreliable here because (a) its fast paths
+        // evaluate the SDF at the non-lattice analytical entry point, not at
+        // integer voxel centers, and (b) its generalDepthSearch uses integer-d
+        // but non-lattice column points as well.  Both can miss the true
+        // front-most lattice voxel on a column.
+        //
+        // So in snap mode we ignore findSurfaceDepth entirely and walk the
+        // ENTIRE iso-column lattice from -dExtent to +dExtent.  Integer voxels
+        // along an iso column live on a sublattice: only iso pixels with
+        // (isoX + isoY) even have voxels, and the valid depths satisfy
+        // d ≡ -isoY (mod 3), spaced by 3.  The first hit whose integer-voxel
+        // SDF is inside the 0.5 carve threshold is the winner — this is
+        // exactly what CPU carving does.
+        if (!smoothMode) {
+            if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) return;
 
-        int isoY = isoPixelRel.y;
-        int dMin = int(floor(-dExtent)) - 3;
-        int dMax = int(ceil(dExtent)) + 3;
-        int rem = ((dMin + isoY) % 3 + 3) % 3;
-        int dStart = dMin + ((3 - rem) % 3);
+            int isoY = isoPixelRel.y;
+            int dMin = int(floor(-dExtent)) - 3;
+            int dMax = int(ceil(dExtent)) + 3;
+            int rem = ((dMin + isoY) % 3 + 3) % 3;
+            int dStart = dMin + ((3 - rem) % 3);
 
-        bool found = false;
-        int validD = 0;
-        for (int d = dStart; d <= dMax; d += 3) {
-            vec3 p = isoToLocal3D(isoPixelRel, float(d));
-            ivec3 voxelPos = ivec3(round(p));
-            if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
-            if (evaluateSDF(vec3(voxelPos), shape.shapeType, paramsScaled) <= 0.5) {
-                validD = voxelPos.x + voxelPos.y + voxelPos.z;
-                found = true;
-                break;
+            bool found = false;
+            int validD = 0;
+            for (int d = dStart; d <= dMax; d += 3) {
+                vec3 p = isoToLocal3D(isoPixelRel, float(d));
+                ivec3 voxelPos = ivec3(round(p));
+                if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
+                if (evaluateSDF(vec3(voxelPos), shape.shapeType, paramsScaled) <= 0.5) {
+                    validD = voxelPos.x + voxelPos.y + voxelPos.z;
+                    found = true;
+                    break;
+                }
             }
+            if (!found) return;
+            surfaceD = validD;
+        } else {
+            surfaceD = findSurfaceDepth(
+                isoPixelRel, shape.shapeType, paramsScaled, shape.flags,
+                dExtent);
+            if (surfaceD == kInvalidDepth) return;
         }
-        if (!found) return;
-        surfaceD = validD;
     } else {
-        surfaceD = findSurfaceDepth(
-            isoPixelRel, shape.shapeType, paramsScaled, shape.flags,
-            dExtent);
+        // Yaw-aware path. Always smooth-equivalent: at sub==1 the result is
+        // a 2x3 diamond at every iso pixel (the documented overlap), but
+        // since the trixel raster takes the cardinal-snap path at non-zero
+        // yaw, the SDF and voxel-pool are not expected to align anyway.
+        bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
+        surfaceD = generalDepthSearchYaw(
+            isoPixelRel, shape.shapeType, paramsScaled, hollow,
+            dExtent, yawC, yawS);
         if (surfaceD == kInvalidDepth) return;
     }
 
@@ -673,7 +751,23 @@ void main() {
         int sx = (nx6 >= 0) ? (nx6 + 3) / 6 : -((-nx6 + 3) / 6);
         int sy = (ny6 >= 0) ? (ny6 + 3) / 6 : -((-ny6 + 3) / 6);
         int sz = (nz6 >= 0) ? (nz6 + 3) / 6 : -((-nz6 + 3) / 6);
-        if (((sx + sy + sz) & 1) != 0) {
+        // (sx, sy, sz) above is the recovered cell index in VIEW coords.
+        // Under camera yaw the shape's checker pattern is in world coords
+        // (it lives on the SDF, which we evaluated at the rotated point),
+        // so rotate (sx, sy) by +visualYaw to recover the world-coord cell
+        // before the parity test.  At yaw=0 this is identity and the
+        // existing integer-only path is preserved bit-exact.
+        int parity;
+        if (yawZero) {
+            parity = (sx + sy + sz) & 1;
+        } else {
+            float wx = yawC * float(sx) - yawS * float(sy);
+            float wy = yawS * float(sx) + yawC * float(sy);
+            int wxi = int(floor(wx + 0.5));
+            int wyi = int(floor(wy + 0.5));
+            parity = (wxi + wyi + sz) & 1;
+        }
+        if (parity != 0) {
             baseColor.rgb *= 0.55;
         }
     }
