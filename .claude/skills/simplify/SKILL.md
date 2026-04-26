@@ -254,8 +254,9 @@ auto-fix — these need human judgment on scope):
   in simplify (out of scope per "doesn't refactor across modules"
   below), but flag when you see it accumulating.
 - Stale instructions that contradict newer ones in the same
-  doc — e.g. step 5 says "use X", step 7 (added later) says "do
-  NOT use X". Reconcile inline if obvious; report otherwise.
+  doc — same smell as the main "Contradictions within a doc"
+  bullet, but in role/skill docs scope judgment belongs with the
+  human. Report; reconciling is outside simplify's scope here.
 
 ### 10. Format and verify
 
