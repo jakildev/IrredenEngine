@@ -314,32 +314,57 @@ Lua mirrors this (child 4): `ir.modifier.registerField`,
 ## Existing-pattern audit
 
 The engine already hand-rolls the "base + modulation → effective"
-shape in several places. The framework's first internal consumers are
-the v1 migration targets; later candidates are folded in once the
-framework has baked.
+shape in several places. Both v1 migration candidates were deferred
+after implementation-phase analysis; the framework's first real
+consumers will come from downstream game logic.
 
-### v1 migration targets (this epic)
+### v1 migration targets — deferred with rationale
 
-- **Position pattern** — `C_Position3D` + `C_PositionOffset3D` →
-  `C_PositionGlobal3D`. The canonical worked example. Drivers:
-  `engine/prefabs/irreden/update/systems/system_apply_position_offset.hpp`
-  and `system_update_positions_global.hpp`. Migration: register a
-  `position.x/y/z` field triplet, push offsets as
-  `ADD` modifiers from whichever system owns the offset (idle drift,
-  bumps, knock-back, hover), let the resolver write
-  `C_PositionGlobal3D`. Follow-up: `apply_position_offset.hpp` and
-  `update_positions_global.hpp` collapse into the resolver.
+Both candidates identified during planning were deferred after
+implementation-phase analysis (see issue #305 discussion and PR #332
+architect review). The framework (T-050, T-052) is complete and tested;
+its first real consumers arrive via downstream game logic.
 
-- **Velocity drag** — `C_VelocityDrag` modulates `C_Velocity3D`.
-  Driver: `engine/prefabs/irreden/update/systems/system_velocity_drag.hpp`.
-  Mostly a `MULTIPLY` transform on three velocity components, with a
-  hover-blend phase that's better expressed as a lambda or a
-  switch-on-state in the source's tick function. Migration: register
-  `velocity.x/y/z` fields, push the drag scale as `MULTIPLY`
-  modifiers, push the hover envelope as a `LambdaModifier`. The
-  current `system_velocity_drag.hpp` collapses into a *modifier
-  source* (something that pushes/refreshes the modifier each tick)
-  rather than a velocity-mutating system.
+- **Position pattern** — deferred. Three concrete blockers found during
+  analysis:
+  1. `CHILD_OF` inheritance: `system_update_positions_global` reads the
+     parent's `C_PositionGlobal3D` via `RelationParams<...>{Relation::CHILD_OF}`.
+     The modifier resolver has no relation-walking; keeping inheritance
+     requires keeping the legacy system, which defeats the migration.
+  2. Vec3 vs flat-scalar: `C_ResolvedFields` holds
+     `std::vector<{FieldBindingId, float}>`. Writing back three correlated
+     position fields costs more overhead than the offset addition it replaces.
+  3. The existing pattern is already minimal: `system_apply_position_offset`
+     is ~30 lines of focused, well-fitted code the framework cannot shrink.
+
+- **Velocity drag** — deferred. The hover/blend phase in
+  `system_velocity_drag.hpp` is the system's core value for its private
+  consumer. That phase requires stateful-lambda support plus a
+  `LAMBDA_MODIFIER_DECAY` system — neither exists yet (see #341).
+  Splitting the simple `MULTIPLY` part out while leaving hover/blend in
+  the legacy system produces two systems with split state models, which is
+  worse than the status quo. Migration is viable only after the framework
+  grows stateful-lambda support.
+
+  **Do not delete or declare this system dormant without checking private
+  creations under `creations/<gitignored>/`** — a private consumer
+  registers `VELOCITY_DRAG` and would break silently (see #338 for the
+  engine-wide process rule).
+
+### Framework gaps — follow-up issues
+
+Three gaps discovered during T-050 runtime development:
+
+- **#339** — Wire `MODIFIER_RESOLVE_EXEMPT` via archetype exclude-tag filter
+  (the exempt-resolver dispatch path is designed but not yet wired in
+  `registerResolverPipeline()`).
+- **#340** — Pre-destroy hook for auto-sweep of source-attributed modifiers.
+  T-050 implemented a manual sweep path; the pre-destroy hook that guarantees
+  no stale modifiers survive `EntityId` reuse is still needed.
+- **#341** — `LAMBDA_MODIFIER_DECAY` system + stateful-lambda design. Part 1
+  (tick-based decay for `C_LambdaModifiers`) is mechanical; Part 2
+  (stateful lambdas with per-frame accumulator state) requires architect
+  input. Velocity-drag migration is gated on Part 2.
 
 ### Follow-up candidates (post-epic)
 
@@ -371,7 +396,7 @@ The epic decomposes into five sequenced child tasks. Stack order:
 |-------|-------------------------------------------------------|----------|
 | 1     | Design doc + audit + framework declarations           | `[opus]` |
 | 2     | Core runtime (registry, resolver systems, sweep)      | `[opus]` |
-| 3     | Migrate position + velocity-drag patterns             | `[opus]` |
+| 3     | Migrate position + velocity-drag patterns (deferred — see PR #332) | `[opus]` |
 | 4     | Lua bindings                                          | `[sonnet]` |
 | 5     | `modifier_demo` creation (visual showcase)            | `[sonnet]` |
 
