@@ -232,9 +232,14 @@ causes parse errors when the body contains backticks or special
 characters. Instead, write the body to a temp file with the **Write
 tool**, then pass it with `--body-file`:
 
-1. Use the **Write tool** to write the review body to `.review-body.md`
-   in the worktree root (NOT `/tmp/` — the sandbox may block writes
-   outside the project tree). This file is gitignored:
+1. **First** run `rm -f .review-body.md` so the Write tool doesn't
+   refuse with "File has not been read yet" — that error fires when
+   an existing file at the path wasn't Read in this session, which
+   is the normal case when a previous review iteration left the
+   body file behind. Then use the **Write tool** to write the review
+   body to `.review-body.md` in the worktree root (NOT `/tmp/` —
+   the sandbox may block writes outside the project tree). This
+   file is gitignored:
 
 ```markdown
 ## Review — <title>
