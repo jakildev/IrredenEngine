@@ -385,6 +385,24 @@ Specifically, **never pass these via `--label` when filing**:
   can't auto-rebase). Cleared by the **opus-worker** after it
   resolves the conflict, or escalated to `human:needs-fix` if even
   Opus can't resolve.
+- `fleet:human-amending` / `fleet:human-deferred` — owned by the
+  **author worker** (sonnet-author / opus-worker) when picking up
+  `human:needs-fix`. The two labels express which disposition the
+  worker chose:
+  - `fleet:human-amending` — worker is fixing the concerns inline
+    on this PR. Set when the worker removes `human:needs-fix`;
+    cleared and replaced with `fleet:changes-made` after the push.
+    Co-set with removing `fleet:approved` (prior approval is no
+    longer valid until the reviewer re-approves the amended diff).
+    **Read as: "hold merge, fixes pending."**
+  - `fleet:human-deferred` — worker filed the human's concerns as
+    a follow-up issue rather than amending this PR. Set when the
+    worker removes `human:needs-fix`; **kept** until the human
+    either accepts the deferral (PR merges with this label) or
+    re-adds `human:needs-fix` to force AMEND mode on the next
+    iteration. `fleet:approved` is kept (PR is internally OK).
+    **Read as: "agent acknowledged your concerns, linked issue
+    tracks them, you decide whether to merge as-is or re-flag."**
 
 **The right pattern when filing an issue:** create it with NO labels.
 The human will add `human:approved` if and when they want it picked
