@@ -33,6 +33,15 @@ struct PendingComponentRemoval {
     ComponentId componentType_;
 };
 
+using PreDestroyHook = std::function<void(EntityId)>;
+using PreDestroyHookId = std::uint32_t;
+inline constexpr PreDestroyHookId kInvalidPreDestroyHookId = 0;
+
+struct PreDestroyHookEntry {
+    PreDestroyHookId id_;
+    PreDestroyHook   hook_;
+};
+
 class EntityManager {
   public:
     EntityManager();
@@ -306,6 +315,22 @@ class EntityManager {
 
     EntityId getLiveEntityCount() const { return m_liveEntityCount; }
 
+    /// Register a hook that fires inside `destroyEntity` BEFORE the
+    /// entity's components are torn down. The hook receives the
+    /// `EntityId` about to be destroyed; the entity and all its
+    /// components are still fully readable, and the hook may iterate
+    /// other entities (typical use: framework-level sweeps that strip
+    /// references to the dying entity from peer entities — e.g. the
+    /// modifier framework's source-attribution sweep).
+    ///
+    /// The hook MUST NOT mutate the about-to-be-destroyed entity's
+    /// archetype (no `setComponent` / `removeComponent` on that id);
+    /// peer entities are fine to mutate. Hooks fire in registration
+    /// order. Returns a token; pass it to `unregisterPreDestroyHook`
+    /// to remove. Token `0` is reserved for "invalid".
+    PreDestroyHookId registerPreDestroyHook(PreDestroyHook hook);
+    void unregisterPreDestroyHook(PreDestroyHookId id);
+
   private:
     std::queue<EntityId> m_entityPool;
     std::unordered_map<EntityId, EntityRecord> m_entityIndex;
@@ -320,6 +345,8 @@ class EntityManager {
     std::vector<EntityId> m_entitiesMarkedForDeletion;
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;
+    std::vector<PreDestroyHookEntry> m_preDestroyHooks;
+    PreDestroyHookId m_nextPreDestroyHookId{1};
 
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);

@@ -61,6 +61,35 @@ deferred API:
 - `flushStructuralChanges()` — apply queued changes at a safe point (the
   frame boundary in most pipelines).
 
+## Pre-destroy hooks
+
+`EntityManager::registerPreDestroyHook(callback)` registers a
+`std::function<void(EntityId)>` that fires inside `destroyEntity`
+**before** the entity's components are torn down. The hook receives the
+dying `EntityId` while the entity (and every peer) is still fully
+queryable, so the callback can iterate other entities and strip
+references to the dying id — typical use is the modifier framework's
+auto-sweep of source-attributed modifiers off live target entities.
+
+Returns a `PreDestroyHookId` token. Pass to `unregisterPreDestroyHook`
+to remove. Hooks fire in registration order; callbacks may unregister
+themselves mid-iteration without breaking.
+
+Constraints:
+
+- A hook MUST NOT mutate the about-to-be-destroyed entity's archetype
+  (no `setComponent` / `removeComponent` on that id). Mutating peer
+  entities (other ids) is fine.
+- The cost is O(hooks × destructions); each hook should be O(world)
+  at worst. Don't register hooks that run an expensive search per
+  destroy.
+
+The framework-level use case is wiring engine-wide invariants (modifier
+sweeps, owned-resource cleanup) that would otherwise force every caller
+to remember a manual cleanup step before `destroyEntity`. Per-component
+cleanup belongs in the component's `onDestroy()` member, not in a hook
+— see `engine/prefabs/CLAUDE.md` "Documented exceptions".
+
 ## Position components are automatic
 
 `createEntity(...)` always adds `C_PositionGlobal3D` and
