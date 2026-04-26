@@ -217,6 +217,14 @@ per-entity `getComponent` inside system ticks, duplicated helpers, naming-
 convention slips, and other project-specific smells. It applies fixes
 directly.
 
+**Always run simplify, regardless of file types.** No "doc-only"
+or "small change" carve-out. The skill has a doc-side section
+(stale cross-references, change-narration prose, drifted examples,
+section drift) that earns its keep on markdown-heavy diffs too —
+exactly the failure mode that produced the wrong macOS smoke
+label on PR #319 (a stale cross-reference between the role doc
+and the actual host the author was on).
+
 After `simplify` finishes:
 
 - Re-run `git status` / `git diff --stat` to see the post-simplify state.
