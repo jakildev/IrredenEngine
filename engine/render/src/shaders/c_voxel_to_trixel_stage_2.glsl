@@ -73,16 +73,23 @@ void main() {
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
+    // At cardinalIndex==0 the rotation is the identity; gating it behind a
+    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
+    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
+    // pixel-for-pixel against master.
+
     if (voxelRenderOptions.x == 0) {
-        const ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
-        const ivec3 voxelPositionRot = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        }
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionRot), face);
+            pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
             trixelCanvasOffsetZ1 +
             ivec2(floor(frameCanvasOffset)) +
             ivec2(gl_LocalInvocationID.xy) +
-            pos3DtoPos2DIso(voxelPositionRot);
+            pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
         return;
     }
@@ -97,13 +104,15 @@ void main() {
         trixelCanvasOffsetZ1 +
         ivec2(floor(frameCanvasOffset * float(subdivisions)));
 
-    const ivec3 microPositionFixed =
+    ivec3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
-    const ivec3 microPositionRot = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    if (cardinalIndex != 0) {
+        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    }
     const int depthBase =
-        microPositionRot.x + microPositionRot.y + microPositionRot.z;
+        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const ivec2 canvasPixel =
-        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionRot);
+        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionFixed);
     writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
 }

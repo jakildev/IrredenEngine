@@ -58,17 +58,24 @@ kernel void c_voxel_to_trixel_stage_1(
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
+    // At cardinalIndex==0 the rotation is the identity; gating it behind a
+    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
+    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
+    // pixel-for-pixel against master.
+
     if (frameData.voxelRenderOptions.x == 0) {
-        const int3 voxelPositionInt = int3(round(voxelPosition.xyz));
-        const int3 voxelPositionRot = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        }
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionRot), face
+            pos3DtoDistance(voxelPositionInt), face
         );
         const int2 canvasPixel =
             frameData.trixelCanvasOffsetZ1 +
             int2(floor(frameData.frameCanvasOffset)) +
             int2(localId) +
-            pos3DtoPos2DIso(voxelPositionRot);
+            pos3DtoPos2DIso(voxelPositionInt);
         writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
         return;
     }
@@ -83,13 +90,15 @@ kernel void c_voxel_to_trixel_stage_1(
         frameData.trixelCanvasOffsetZ1 +
         int2(floor(frameData.frameCanvasOffset * float(subdivisions)));
 
-    const int3 microPositionFixed =
+    int3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v);
-    const int3 microPositionRot = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    if (cardinalIndex != 0) {
+        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    }
     const int depthBase =
-        microPositionRot.x + microPositionRot.y + microPositionRot.z;
+        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const int2 canvasPixel =
-        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionRot);
+        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
     writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
 }

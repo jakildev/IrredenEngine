@@ -57,7 +57,10 @@ void main() {
             if (alpha != 0u) {
                 int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
-                ivec2 isoPos = pos3DtoPos2DIso(rotateCardinalZ(voxelPos, cardinalIndex));
+                if (cardinalIndex != 0) {
+                    voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                }
+                ivec2 isoPos = pos3DtoPos2DIso(voxelPos);
                 if (isoPos.x >= cullIsoMin.x && isoPos.x <= cullIsoMax.x &&
                     isoPos.y >= cullIsoMin.y && isoPos.y <= cullIsoMax.y) {
                     uint slot = atomicAdd(visibleCount, 1u);
