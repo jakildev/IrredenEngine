@@ -168,7 +168,7 @@ Avoid:
   - **Area:** creations/demos/modifier_demo, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-051, T-052
+  - **Blocked by:** T-051
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key 1-8 triggers corresponding capability with obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (verified manually on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
   - **Issue:** #307
