@@ -66,6 +66,57 @@ The params are owned by the system entity and freed when the system is
 destroyed. **Do not store raw references to params across frames** — if the
 system is recreated (e.g. via reload), the pointer is invalid.
 
+### Don't use function-local `static` for system state
+
+Function-local `static` for system-owned state is an anti-pattern.
+Use `SystemParams` instead.
+
+**Why it's wrong:**
+- Hidden state — not visible to ECS inspectors or system-walking tools.
+- Lifetime mismatch — persists for program lifetime, doesn't free when the
+  system entity is destroyed.
+- Single-instance assumption — all instances of `System<X>` share the same
+  statics; future multi-instance use silently cross-talks.
+- Conflicts with the ECS "everything on an entity" philosophy.
+
+**Why the perf argument doesn't hold:** the canonical `SystemParams` pattern
+has the same per-tick access cost as `static`. Capture the pointer once at
+`create()` time and pass into lambdas by value — the pointer lookup happens
+once, not per tick.
+
+```cpp
+SystemId create() {
+    SystemId myId = ...;
+    setSystemParams(myId, std::make_unique<MyParams>());
+    auto* p = getSystemParams<MyParams>(myId);   // once, at create
+    return createSystem<...>(
+        "Name",
+        [p](C_Foo& foo) { p->bar += foo.x; },
+        [p]()           { p->bar = 0.0f; },
+        [p]()           { /* end-of-tick using p */ }
+    );
+}
+```
+
+**Exception:** truly invariant data — `constexpr` integer constants,
+named-resource pointers fetched once at engine init that never change — is
+fine as `static`. Those are program constants, not system state. The rule
+applies to *mutable* or *system-owned* state.
+
+**Current deviations** (migration tracked in T-065):
+- `engine/prefabs/irreden/render/systems/system_trixel_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_build_occupancy_grid.hpp`
+- `engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp`
+- `engine/prefabs/irreden/render/systems/system_text_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp`
+- `engine/prefabs/irreden/render/systems/system_sprites_to_screen.hpp`
+- `engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp`
+- `engine/prefabs/irreden/render/systems/system_framebuffer_to_screen.hpp`
+- `engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp`
+
 ## Pipelines
 
 ```cpp
