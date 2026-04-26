@@ -139,9 +139,8 @@ inline float applyToField(
     IRComponents::FieldBindingId field,
     float baseValue
 ) {
-    static const std::vector<IRComponents::Modifier> kEmpty;
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target);
-    const auto &entityMods = c ? c->modifiers_ : kEmpty;
+    const auto &entityMods = c ? c->modifiers_ : detail::emptyModifiers();
 
     const std::vector<IRComponents::Modifier> *globalsPtr = nullptr;
     auto entity = detail::globalsEntityId();
@@ -149,7 +148,7 @@ inline float applyToField(
         auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity);
         if (g) globalsPtr = &g->modifiers_;
     }
-    const auto &globals = globalsPtr ? *globalsPtr : kEmpty;
+    const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiers();
 
     return detail::composeForField(baseValue, field, globals, entityMods);
 }

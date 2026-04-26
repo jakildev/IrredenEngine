@@ -84,13 +84,17 @@ inline float composeForField(
     return value;
 }
 
+inline const std::vector<IRComponents::Modifier> &emptyModifiers() {
+    static const std::vector<IRComponents::Modifier> kEmpty;
+    return kEmpty;
+}
+
 inline float composeForField(
     float base,
     IRComponents::FieldBindingId field,
     const std::vector<IRComponents::Modifier> &mods
 ) {
-    static const std::vector<IRComponents::Modifier> kEmpty;
-    return composeForField(base, field, kEmpty, mods);
+    return composeForField(base, field, emptyModifiers(), mods);
 }
 
 } // namespace IRPrefab::Modifier::detail

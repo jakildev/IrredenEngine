@@ -56,10 +56,10 @@ template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
             "ModifierResolveGlobal",
             [](IRComponents::C_Modifiers &m,
                IRComponents::C_ResolvedFields &resolved) {
-                static const std::vector<IRComponents::Modifier> kEmpty;
                 const auto *globalsPtr =
                     IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
-                const auto &globals = globalsPtr ? *globalsPtr : kEmpty;
+                const auto &globals = globalsPtr ? *globalsPtr
+                                                 : IRPrefab::Modifier::detail::emptyModifiers();
                 for (auto &rf : resolved.fields_) {
                     rf.value_ = IRPrefab::Modifier::detail::composeForField(
                         rf.value_, rf.field_, globals, m.modifiers_
