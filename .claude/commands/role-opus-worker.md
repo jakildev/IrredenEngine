@@ -222,7 +222,29 @@ Do the work, then exit cleanly:
       The cost of a fix-and-push iteration is tiny vs merging with known
       smells. Address every nit unless it's purely subjective preference.
 
-   For each flagged PR:
+   **Filter the candidate set: skip PRs whose branch is already
+   checked out in another worktree.** A PR's branch can only be in
+   one worktree at a time (git refuses to share). After a fleet
+   kill+restart, the worker that originally opened a PR still has
+   its branch checked out — that worker should address the
+   feedback, not you. Trying anyway just earns a `gh pr checkout`
+   failure (`branch is already used by worktree at ...`) after
+   you've already invested reasoning.
+
+   List other worktrees and their branches in one call:
+   `git -C ~/src/IrredenEngine worktree list --porcelain`
+
+   The output groups each worktree as 3 lines (`worktree <path>`,
+   `HEAD <sha>`, `branch refs/heads/<name>`). Build a set of
+   `<name>` values from worktrees whose path is NOT your own (i.e.,
+   skip the line group whose `worktree` matches `pwd`). For each
+   feedback PR in `repos.engine.prs[]`, match its `headRefName`
+   against that set; skip the PR if its head branch is in the set.
+   The same check applies to game-side PRs against
+   `git -C ~/src/IrredenEngine/creations/game worktree list
+   --porcelain`.
+
+   For each flagged PR (after the filter):
    a. Read **all** feedback (two separate commands):
       `gh pr view <N> --comments`
       `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
