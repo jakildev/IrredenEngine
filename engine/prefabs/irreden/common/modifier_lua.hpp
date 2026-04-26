@@ -72,6 +72,8 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
     // fn: Lua function(base: float) -> float.
     // ticks is reserved for a future lambda-decay system; lambda modifiers
     // never auto-expire regardless of the value passed. Use removeBySource to clean up.
+    // LIFETIME: the captured sol::function calls lua_unref on destruction; LuaScript
+    // must outlive any EntityManager that holds entities with C_LambdaModifiers entries.
     modTbl["pushLambda"] = [](IREntity::EntityId target, sol::table opts) {
         auto field = static_cast<IRComponents::FieldBindingId>(opts.get<int>("field"));
         sol::function fn = opts["fn"];
