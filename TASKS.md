@@ -199,11 +199,11 @@ Avoid:
   - **Notes:** Child 5 of 5. Use `create-creation` skill to scaffold — don't hand-roll CMakeLists.txt. 8 capabilities: Haste (MULTIPLY 1.5×), Stun (SET 0), Slow (MULTIPLY 0.3×), Stack (Haste+Slow composed), Global Slow (singleton, one exempt cube), Lambda Sinusoidal, Source Kill, Clamp (CLAMP_MAX 0.5 + Haste). All wiring in Lua via T-052 bindings. ~200-line Lua script target. Cross-link from `engine/prefabs/irreden/common/CLAUDE.md` when done.
   - **Links:**
 
-- [ ] **Render: world Z-yaw view/camera transform foundation** — add `C_CameraYaw`, per-tick cardinal/residual split helper, thread both yaw values to GPU feeders; foundation for Z-yaw rotation epic
+- [~] **Render: world Z-yaw view/camera transform foundation** — add `C_CameraYaw`, per-tick cardinal/residual split helper, thread both yaw values to GPU feeders; foundation for Z-yaw rotation epic
   - **ID:** T-054
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-054-camera-yaw
   - **Blocked by:** (none)
   - **Stack:** T-054..T-057 z-yaw-pipeline
   - **Acceptance:** (1) `C_CameraYaw { float visualYaw_; }` compiles and registers in ECS; (2) per-tick helper derives `rasterYaw` = nearest 90° cardinal and `residualYaw` = `visualYaw - rasterYaw`; (3) both values threaded to GPU feeder UBOs for trixel and SDF shaders; (4) `IRPrefab::Camera::setYaw/getYaw` API present; (5) visual + perf parity at `visualYaw=0` verified via `render-debug-loop`; (6) audit note in PR body lists all `engine/render/` sites that bake-in iso-basis assumptions; (7) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
