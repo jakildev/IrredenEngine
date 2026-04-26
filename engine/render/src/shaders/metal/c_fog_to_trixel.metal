@@ -35,7 +35,8 @@ kernel void c_fog_to_trixel(
     }
 
     // R(-rasterYaw) recovers world coords from the cardinal-rotated raster
-    // frame; the fog grid is world-space (X-Y plane).
+    // frame; the fog grid is world-space (X-Y plane). At cardinalIndex==0
+    // the path collapses to master so yaw=0 stays byte-identical.
     const int rawDepth = encoded >> 2;
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
     const float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
@@ -44,9 +45,12 @@ kernel void c_fog_to_trixel(
     const int2 isoRel =
         pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
+    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (frameData.voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     const int3 surfaceVoxel = int3(round(pos3D));
 
