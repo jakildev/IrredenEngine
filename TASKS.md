@@ -151,17 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **CLAUDE.md sharing: shared docs for creations, with per-creation opt-out** — design and implement mechanism for creations to inherit engine CLAUDE.md sections by reference with opt-out support
-  - **ID:** T-048
-  - **Area:** docs, creations
-  - **Model:** opus
-  - **Owner:** claude/T-048-claude-md-sharing
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) design doc answers: sharing mechanism (symlinks / include directives / build-merge), granularity (whole-file vs per-section), opt-out form, discovery model; (2) reference implementation: at least one creation uses the mechanism to inherit engine baseline docs, with one opt-out demonstrated; (3) audit pass produces clear list of "creation-shared" vs "engine-internal" CLAUDE.md sections; (4) documented in `engine/CLAUDE.md` and `creations/CLAUDE.md`
-  - **Issue:** #299
-  - **Notes:** Open design questions captured in issue body: mechanism, granularity, opt-out form, and discovery. Design doc must answer all four before implementation. The motivation is that "see engine root CLAUDE.md for X" soft references rot as engine docs evolve.
-  - **Links:**
-
 - [~] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
   - **ID:** T-050
   - **Area:** engine/prefabs/irreden/common, engine/system
@@ -271,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-048** — CLAUDE.md sharing mechanism: baseline file + per-creation opt-out · Owner: claude/T-048-claude-md-sharing · PR: https://github.com/jakildev/IrredenEngine/pull/320
 - [x] **T-046** — Audit: component-with-helper patterns across engine prefabs, codify rules · Owner: claude/T-046-component-helper-audit · PR: https://github.com/jakildev/IrredenEngine/pull/319
 - [x] **T-045** — Fleet: stacked-PR: TASKS.md Stack: field for chain visibility · Owner: claude/T-045-stack-field-task-template · PR: https://github.com/jakildev/IrredenEngine/pull/318
 - [x] **T-049** — Modifier framework: design doc + audit + framework declarations · Owner: claude/T-049-modifier-framework-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/315
@@ -290,4 +280,3 @@ Avoid:
 - [x] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
 - [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
-- [x] **T-007** — Wire up a `backend-parity` dry run · Owner: metal-finish-parity · PR: https://github.com/jakildev/IrredenEngine/pull/260
