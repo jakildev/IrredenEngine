@@ -35,9 +35,46 @@ mechanism: any feature that wants a stack of additive / multiplicative
 UPDATE tick and writes the result to `C_ResolvedFields`.
 
 The framework ships in two phases: type declarations (component types,
-`Modifier` struct, static asserts) and the runtime (`FieldBindingId`
-registry, the five resolver systems, source-destruction sweep,
-`applyToField` query) in a follow-up.
+`Modifier` struct, static asserts) and the runtime
+(`IRPrefab::Modifier::` free-function API, `FieldBindingId` registry,
+the resolver systems, `applyToField`) shipped on top.
+
+Runtime entry points (all `inline`, header-only):
+
+- `registerField(name)` / `fieldName(id)` / `fieldCount()` — dense
+  registry, init-time only.
+- `push(target, field, kind, param, source, ticks)` — push one
+  structured modifier onto an entity. `pushGlobal(...)` targets the
+  singleton; `pushLambda(...)` writes the escape-hatch component.
+  All three reject `kInvalidFieldId` defensively.
+- `removeBySource(source)` — sweeps every `C_Modifiers`,
+  `C_GlobalModifiers`, and `C_LambdaModifiers` in the world,
+  dropping entries whose `source_` matches. **Manual-only in v1**;
+  see "Auto-sweep on entity destruction" below.
+- `applyToField(target, field, base) → float` — direct query. Shares
+  one evaluator with the resolver pipeline so the cache and direct
+  paths give the same answer for the same input.
+- `registerResolverPipeline()` — call once at creation init. Creates
+  the singleton globals entity (named `"modifierGlobals"`) and
+  registers the four resolver systems in canonical order. Returns
+  the four `SystemId`s in pipeline order so the caller splices them
+  into its `IRTime::UPDATE` pipeline.
+- `globalsEntity()` — returns the singleton globals entity created by
+  `registerResolverPipeline()`. Intended for tests and diagnostics;
+  production code should use `pushGlobal` / `removeBySource`.
+
+Composition core lives in `modifier_compose.hpp` and is called from
+both the resolver tick and `applyToField`. Order is non-obvious:
+
+1. Latest `OVERRIDE` in (`globals` ++ `entity_mods`) wins; an
+   `OVERRIDE` in `entity_mods` trumps one in `globals`. Everything
+   earlier than the chosen `OVERRIDE` is discarded.
+2. `ADD` / `MULTIPLY` / `SET` apply in push-order across both
+   vectors (vector A first, then vector B).
+3. `CLAMP_MIN` / `CLAMP_MAX` apply last across the surviving
+   modifiers — even if they appear earlier than the algebra in push-
+   order. This is the "always after the algebra so they bound the
+   result" rule from the design doc.
 
 Full design — locked choices, rationale, audit, public-API surface,
 and decomposition — is in `docs/design/modifiers.md`. Read that
@@ -59,6 +96,40 @@ Key invariants the design rests on:
 - Decay is built-in only as `ticksRemaining_` (an `int32_t` counter
   with `-1` as the sentinel for "no decay"). Curved / source-driven
   decay is the source entity's job, not the modifier struct's.
+
+### Open follow-ups (runtime gaps)
+
+The current runtime ships four of the five resolver systems plus the
+manual-call sweep API. Two design-mandated paths are deferred:
+
+- **`MODIFIER_RESOLVE_EXEMPT` archetype-routed exemption.** The
+  design routes entities tagged `C_NoGlobalModifiers` to a sibling
+  resolver that skips globals. `engine/system/` does not yet expose
+  an exclude-tag filter mechanism — `addSystemTag<T>` is include-
+  only. Until an `addSystemExcludeTag<T>` (or equivalent) lands,
+  exempt-tagged entities still receive globals. The `SystemName`
+  enum slot is reserved.
+- **Auto-sweep on entity destruction.** The design contract is for
+  `removeModifiersFromSource(entityId)` to fire inside
+  `EntityManager::destroyEntity` *before* `returnEntityToPool`, so
+  recycled `EntityId`s never inherit a previous owner's modifiers.
+  No pre-destroy hook registry exists in `engine/entity/` yet;
+  callers must invoke `IRPrefab::Modifier::removeBySource(id)`
+  explicitly before destroying a source entity. `EntityId` has no
+  generation counter, so deferring the sweep one tick is unsafe —
+  the hook is the right shape; it just needs the engine plumbing.
+
+- **Lambda modifier auto-expire (`pushLambda` `ticksRemaining` gap).**
+  `pushLambda` accepts a `ticksRemaining` parameter and stores it in
+  `LambdaModifier`, but no `LAMBDA_MODIFIER_DECAY` system exists — lambda
+  modifiers never auto-expire regardless of the value passed. Callers who
+  pass a non-`-1` value will get a permanent modifier. Until a lambda
+  decay system is wired, use `removeBySource` to clean up lambda modifiers
+  explicitly. The `ticksRemaining` parameter is reserved for this future
+  system.
+
+The first two gaps need engine-level additions; the lambda decay gap is
+prefab-layer work. File a follow-up task before relying on any of them.
 
 ## Commands
 
