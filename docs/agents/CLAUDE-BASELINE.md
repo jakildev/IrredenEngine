@@ -211,3 +211,11 @@ A creation in its own private repo may participate in this rule by
 treating its own repo as the private side and the engine repo as
 the public side. A creation that does not participate in the engine
 fleet at all may opt out of this section.
+
+**Engine API dormancy checks:** The isolation rule governs what engine
+artifacts SAY, not what engine agents may READ. Before declaring any
+engine API dormant or safe-to-delete, agents must search ALL
+`creations/` subdirectories on disk — including gitignored ones. The
+dormancy-check procedure and output format are documented in the
+"Dormancy verification across private creations" section of
+`role-opus-architect.md` and `role-opus-worker.md`.

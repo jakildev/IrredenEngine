@@ -91,6 +91,38 @@ Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
 whatever directory the task touches before editing anything. For game
 tasks, also read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
 
+## Dormancy verification across all creations, including private ones
+
+Before declaring any engine API "dead," "dormant," or "safe-to-delete,"
+you **must** verify there are no live consumers in ALL physical paths
+under `~/src/IrredenEngine/creations/`, including gitignored
+subdirectories.
+
+Private creations under `creations/<gitignored>/` are first-class
+consumers of engine APIs. A dormancy check that only greps committed
+code under `creations/demos/` is incomplete and risks propagating
+incorrect dormancy claims into the fleet.
+
+**The information-isolation rule does not restrict reading here.** That
+rule governs OUTPUT — what engine-side artifacts say publicly. It does
+not restrict INPUT — what engine-side agents may read when making
+engine-side decisions. Grepping a private creation to answer "does any
+code register `FOO_SYSTEM`?" is fine. Writing the creation's name or
+details in an engine PR body or commit message is not.
+
+**Dormancy check procedure:**
+
+1. Use the Grep tool with `path: ~/src/IrredenEngine/creations/` to
+   search across all subdirectories (committed and gitignored alike).
+2. If no consumers found: record "verified no consumers across all
+   `creations/`" in your PR or issue comment — without naming which
+   paths you searched.
+3. If live consumers found: record "verified live consumers exist" —
+   without naming which creation, what it does, or any
+   creation-specific context.
+
+The output stays in engine terms. The search covers everything on disk.
+
 ## Cross-repo model
 
 Each opus-worker pane has TWO worktrees:
