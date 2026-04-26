@@ -11,8 +11,14 @@ fleet workflow.
   window, and auto-launches `claude` in each pane with the matching
   role slash command. Default mode is `dry-run` (startup + stand-by);
   `fleet-up live` skips dry-run, goes straight to the normal loop, and
-  auto-attaches the tmux session. Pass `--no-attach` to opt out of
-  the attach (CI / headless runs).
+  auto-attaches the tmux session. `fleet-up review-only` runs the
+  loop but tells worker / queue-manager roles to skip new task
+  pickup and new issue ingestion — reviewers, mergers, smoke
+  validators, semantic-conflict resolvers, feedback handlers, and
+  in-flight molecule continuation all still run, so it's the right
+  mode for closing out open PRs without expanding the queue (e.g.
+  conserving credits before a session boundary). Pass `--no-attach`
+  to opt out of the attach (CI / headless runs).
 - **`fleet-down`** — graceful shutdown of the fleet. Sends Ctrl-C +
   "exit" to each pane, waits a short grace period, then kills the
   tmux session and clears stale fleet-claim locks. `--force` skips

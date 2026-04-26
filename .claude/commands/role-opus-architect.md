@@ -154,6 +154,11 @@ When you do pick a task:
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.
 
+If Mode above is `review-only`: behave as `live` for this role. The
+architect is interactive and never autonomously claims tasks, so
+`review-only` (which gates worker / queue-manager autonomous pickup)
+has no special behavior here.
+
 ## Filing tasks
 
 When you identify work that needs doing — by you, a Sonnet agent, or

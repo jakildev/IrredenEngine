@@ -266,9 +266,44 @@ If you hit a usage-limit error: print the error and exit.
 `fleet-babysit` waits the limit-delay before relaunching with a fresh
 context.
 
-If Mode above is `dry-run`: do exactly one maintenance pass, then
-stop and wait for human instruction. `fleet-babysit` does not
-auto-relaunch in dry-run mode.
+### Mode behavior
+
+The Mode argument at the top of this file is one of `dry-run`, `live`,
+or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+
+- **`live`** (full operation): each iteration runs a full maintenance
+  pass (steps 0–10 below), then exits. fleet-babysit relaunches every
+  ~5m with fresh context.
+
+- **`dry-run`** (default): do exactly one maintenance pass, then stop
+  and wait for human instruction. `fleet-babysit` does not auto-relaunch
+  in dry-run mode.
+
+- **`review-only`** (close-out mode): conserves credit by closing out
+  in-flight work without expanding the queue. Each iteration runs:
+  - Step 0 (heartbeat)
+  - Step 1 (clean stale claims)
+  - Step 1b (release timed-out claims)
+  - Step 4 (sync merged PRs → Done)
+  - Step 5 (sync open PRs → In-progress)
+  - Step 5b (clean stale `fleet:in-progress` labels)
+  - Step 6 (resolve stale blocker references)
+  - Step 7 (auto-close completed epics)
+  - Step 8 (prune Done)
+  - Step 9 (push changes)
+  - Step 10 (print summary)
+
+  **Skip entirely** in review-only mode:
+  - Step 2 (ingest engine `human:approved` issues into TASKS.md) —
+    ingestion expands the queue.
+  - Step 3 (ingest game `human:approved` issues into TASKS.md) — same.
+
+  Human-pasted task descriptions in this pane are still processed
+  normally (the ingestion skip applies to autonomous polling only —
+  if the human explicitly hands you a task between iterations, file
+  it). The autonomous skip prevents the maintenance loop from
+  silently pulling new issues into the queue while the user is
+  trying to close out existing work.
 
 ### Maintenance pass
 

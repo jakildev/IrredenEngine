@@ -842,8 +842,41 @@ Do the work, then exit cleanly:
     in ~20 minutes — the new process lands cwd back in the engine
     worktree, so the next iteration starts from a clean slate.
 
-If Mode above is `dry-run`: do startup actions only. Do not plan or
-pick a task. Wait for human instruction.
+## Mode behavior
+
+The Mode argument at the top of this file is one of `dry-run`, `live`,
+or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+
+- **`live`** (full operation): each iteration runs steps 0–12 above,
+  then exits. fleet-babysit relaunches every ~20m with fresh context.
+
+- **`dry-run`** (default): do startup actions only. Do not plan or
+  pick a task. Wait for human instruction.
+
+- **`review-only`** (close-out mode): conserves credit by closing out
+  in-flight work without expanding the queue. Each iteration runs:
+  - Step 0 (heartbeat)
+  - Step 1 (address feedback labels on open PRs, both repos)
+  - Step 1b (cross-host smoke validation on approved render PRs)
+  - Step 1c (resolve `fleet:semantic-conflict` PRs)
+  - Step 3 **molecule-resume only** — call
+    `fleet-claim molecule resume <your-worktree-name>`. If stdout
+    returns a `T-NNN`, that's an in-flight stack you started earlier;
+    continue with steps 4–12 to finish that task (in-flight work IS
+    in scope). If stdout is empty, **exit cleanly** — do NOT fall
+    through to "Normal pickup".
+
+  **Skip entirely** in review-only mode:
+  - Step 2 (planning `fleet:needs-plan` issues) — planning expands
+    the queue; the architect can plan manually if needed.
+  - Step 3's "Normal pickup (no active molecule)" branch — that's
+    what brings new tasks into in-flight state.
+
+  If step 1 finds no flagged PRs, step 1b finds no smoke-pending PRs,
+  step 1c finds no semantic conflicts, and step 3's molecule resume
+  returns empty, print
+  `[opus-worker] review-only: nothing to address this iteration.`
+  and exit. fleet-babysit will relaunch you on the normal cadence.
 
 If you hit a usage-limit error: print the error and exit. `fleet-babysit`
 detects exit code 2 and waits the limit-delay before relaunching.
