@@ -241,8 +241,7 @@ Do the work, then exit cleanly:
    feedback PR in `repos.engine.prs[]`, match its `headRefName`
    against that set; skip the PR if its head branch is in the set.
    The same check applies to game-side PRs against
-   `git -C ~/src/IrredenEngine/creations/game worktree list
-   --porcelain`.
+   `git -C ~/src/IrredenEngine/creations/game worktree list --porcelain`.
 
    For each flagged PR (after the filter):
    a. Read **all** feedback (two separate commands):
