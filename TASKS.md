@@ -205,10 +205,10 @@ Avoid:
   - **Model:** opus
   - **Owner:** claude/T-054-camera-yaw
   - **Blocked by:** (none)
-  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) `C_CameraYaw { float visualYaw_; }` compiles and registers in ECS; (2) per-tick helper derives `rasterYaw` = nearest 90° cardinal and `residualYaw` = `visualYaw - rasterYaw`; (3) both values threaded to GPU feeder UBOs for trixel and SDF shaders; (4) `IRPrefab::Camera::setYaw/getYaw` API present; (5) visual + perf parity at `visualYaw=0` verified via `render-debug-loop`; (6) audit note in PR body lists all `engine/render/` sites that bake-in iso-basis assumptions; (7) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #317
-  - **Notes:** Foundation child of epic #310 (two-yaw architecture). `rasterYaw` feeds the trixel raster (T-055); `residualYaw` feeds the screen-space 2D residual composite pass (new unfiled child of #310); `visualYaw` feeds SDF (T-056) and picking (T-057). `visualYaw` is the only canonical value — gameplay never sees the cardinal split. Full plan: `.fleet/plans/T-054.md`.
+  - **Notes:** Foundation child of epic #310 (two-yaw architecture). `rasterYaw` feeds the trixel raster (T-055); `residualYaw` feeds the screen-space 2D residual composite pass (T-058); `visualYaw` feeds SDF (T-056) and picking (T-057). `visualYaw` is the only canonical value — gameplay never sees the cardinal split. Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
 - [ ] **Render: trixel rasterization under cardinal-snap Z-yaw** — update trixel raster shader to pick one of 4 basis-vector permutations from `rasterYaw`; GLSL + MSL parity
@@ -217,7 +217,7 @@ Avoid:
   - **Model:** opus
   - **Owner:** free
   - **Blocked by:** T-054
-  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) shader selects the correct basis-vector permutation for each cardinal yaw (0°, 90°, 180°, 270°); (2) `render-debug-loop` visual parity at yaw=0; (3) correct rasterization at all four cardinal angles verified visually; (4) per-frame cost at any cardinal yaw ≤ cost at yaw=0 (no regression); (5) GLSL and MSL implementations at parity; (6) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #311
   - **Notes:** Child 2 of 5 of epic #310. Re-scoped from "arbitrary" to "cardinal-snap" — continuous visual rotation comes from the residual 2D composite pass (new unfiled sibling). `rasterYaw` provided by T-054. Does NOT handle fractional/sub-cardinal yaw — voxels always land on integer trixel pixels. Full plan: `.fleet/plans/T-054.md`.
@@ -229,7 +229,7 @@ Avoid:
   - **Model:** opus
   - **Owner:** free
   - **Blocked by:** T-054
-  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) SDF shader reads `visualYaw` (continuous radians, provided by T-054); (2) `render-debug-loop` visual parity at yaw=0; (3) correct SDF rendering at several non-cardinal yaw values verified visually; (4) GLSL and MSL implementations at parity; (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #312
   - **Notes:** Child 3 of 5 of epic #310. SDF is the "free half" — no integer-alignment requirement, so continuous-yaw works directly. Reads `visualYaw` (not `rasterYaw`). Runs in parallel with T-055 once T-054 lands. Full plan: `.fleet/plans/T-054.md`.
@@ -240,11 +240,23 @@ Avoid:
   - **Area:** engine/render, engine/input
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-054, render: screen-space 2D residual yaw composite pass (not yet queued — see epic #310)
-  - **Stack:** T-054..T-057 z-yaw-pipeline
+  - **Blocked by:** T-054, T-058
+  - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
   - **Issue:** #313
-  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (unfiled) land. The residual composite is a new child of #310 not yet filed as a GitHub issue; this task is blocked on it in addition to T-054. Full plan: `.fleet/plans/T-054.md`.
+  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`.
+  - **Links:**
+
+- [ ] **Render: screen-space 2D residual yaw composite pass** — add `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline stage that rotates the trixel canvas by `residualYaw`; GLSL + MSL parity
+  - **ID:** T-058
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-054, T-055
+  - **Stack:** T-054..T-058 z-yaw-pipeline
+  - **Acceptance:** (1) new GLSL + MSL shader pair committed under `engine/render/src/shaders/`; (2) new system registered at `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline slot; (3) at `visualYaw=0°` the framebuffer is pixel-identical to canvas content (passthrough); (4) at `visualYaw=30°` with cardinal-snap raster from T-055, visible result rotates 30° in screen space without distortion beyond expected bilinear filtering; (5) `render-debug-loop` screenshots showing rotations at 0°, 30°, 60°, 90°, 120° demonstrating smooth continuity; (6) builds clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #322
+  - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
 ---
