@@ -128,3 +128,7 @@ and should be moved to a system, builder, or namespace.
 - ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component
   including `audio/` component). Prefabs are grouped by domain on purpose;
   cross-domain composition belongs in a creation.
+- ❌ Function-local `static` for system-owned state. Use `SystemParams`
+  instead — same per-tick cost, correct lifetime, multi-instance safe.
+  See `engine/system/CLAUDE.md` "Don't use function-local `static` for
+  system state" for the rule, rationale, and canonical pattern.
