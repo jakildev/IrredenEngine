@@ -187,7 +187,7 @@ inline ResolverPipelineSystems registerResolverPipeline() {
     // would then inherit them on a future allocation. Linear sweep is
     // acceptable for v1 — see CLAUDE.md "Open follow-ups" for the
     // reverse-index option if churn becomes a profile hotspot.
-    IREntity::getEntityManager().registerPreDestroyHook(
+    (void)IREntity::getEntityManager().registerPreDestroyHook(
         [](IREntity::EntityId destroyed) { removeBySource(destroyed); }
     );
     return ResolverPipelineSystems{
