@@ -71,15 +71,18 @@ void main() {
     vec4 voxelColor = unpackColor(colors[voxelIndex]);
     int face = localIDToFace_2x3();
 
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+
     if (voxelRenderOptions.x == 0) {
         const ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        const ivec3 voxelPositionRot = rotateCardinalZ(voxelPositionInt, cardinalIndex);
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face);
+            pos3DtoDistance(voxelPositionRot), face);
         const ivec2 canvasPixel =
             trixelCanvasOffsetZ1 +
             ivec2(floor(frameCanvasOffset)) +
             ivec2(gl_LocalInvocationID.xy) +
-            pos3DtoPos2DIso(voxelPositionInt);
+            pos3DtoPos2DIso(voxelPositionRot);
         writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
         return;
     }
@@ -96,10 +99,11 @@ void main() {
 
     const ivec3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
+    const ivec3 microPositionRot = rotateCardinalZ(microPositionFixed, cardinalIndex);
     const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+        microPositionRot.x + microPositionRot.y + microPositionRot.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const ivec2 canvasPixel =
-        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionRot);
     writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
 }

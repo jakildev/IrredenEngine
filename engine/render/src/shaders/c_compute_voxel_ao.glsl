@@ -101,6 +101,13 @@ void main() {
     // encoding ever shifts, update c_voxel_to_trixel_stage_1.glsl and
     // c_voxel_to_trixel_stage_2.glsl in lockstep — all three shaders
     // must agree on rawDepth scaling.
+    //
+    // The raster shaders write canvas pixels at iso(M . R(rasterYaw) . world);
+    // recover the world-frame surface position by composing R(-rasterYaw)
+    // onto the inverse iso projection. Face outward and tangent vectors are
+    // in raster frame here too — rotate them to world for sampling against
+    // the world-space occupancy grid.
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec2 canvasOffset = (voxelRenderOptions.x != 0)
         ? frameCanvasOffset * float(subdivisions)
@@ -108,7 +115,7 @@ void main() {
     ivec2 isoRel =
         pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
 
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    vec3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }
@@ -137,6 +144,9 @@ void main() {
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
     }
+    outward = rotateCardinalZInvI(outward, cardinalIndex);
+    t1 = rotateCardinalZInvI(t1, cardinalIndex);
+    t2 = rotateCardinalZInvI(t2, cardinalIndex);
 
     ivec3 baseOut = surfaceVoxel + outward;
     int occl = 0;

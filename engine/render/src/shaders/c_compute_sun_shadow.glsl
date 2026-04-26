@@ -214,7 +214,10 @@ void main() {
     int rawDepth = encoded >> 2;
 
     // Same reconstruction as c_compute_voxel_ao.glsl — keep the two in
-    // lockstep so AO and shadow sample the same voxel cells.
+    // lockstep so AO and shadow sample the same voxel cells. sunDirection
+    // stays in world coordinates (camera-independent), so only the surface
+    // position needs the R(-rasterYaw) compose.
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec2 canvasOffset = (voxelRenderOptions.x != 0)
         ? frameCanvasOffset * float(subdivisions)
@@ -222,7 +225,7 @@ void main() {
     ivec2 isoRel =
         pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
 
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    vec3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }

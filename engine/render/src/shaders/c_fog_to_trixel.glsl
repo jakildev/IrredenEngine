@@ -73,7 +73,8 @@ void main() {
     // Recover world-space pos3D from the iso pixel + raw depth, applying
     // the same subdivision-aware scaling that c_compute_voxel_ao.glsl
     // uses. The three pos3D-recovery shaders (AO, sun shadow, fog) must
-    // stay in lockstep with the stage-2 encoding.
+    // stay in lockstep with the stage-2 encoding. R(-rasterYaw) recovers
+    // world coords from the cardinal-rotated raster frame.
     const int rawDepth = encoded >> 2;
     const int subdivisions = max(voxelRenderOptions.y, 1);
     const vec2 canvasOffset = (voxelRenderOptions.x != 0)
@@ -81,7 +82,8 @@ void main() {
         : frameCanvasOffset;
     const ivec2 isoRel =
         pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    vec3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }

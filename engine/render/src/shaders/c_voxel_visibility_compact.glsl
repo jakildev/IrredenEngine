@@ -55,8 +55,9 @@ void main() {
             uint packedColor = colors[idx];
             uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
+                int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
-                ivec2 isoPos = pos3DtoPos2DIso(voxelPos);
+                ivec2 isoPos = pos3DtoPos2DIso(rotateCardinalZ(voxelPos, cardinalIndex));
                 if (isoPos.x >= cullIsoMin.x && isoPos.x <= cullIsoMax.x &&
                     isoPos.y >= cullIsoMin.y && isoPos.y <= cullIsoMax.y) {
                     uint slot = atomicAdd(visibleCount, 1u);

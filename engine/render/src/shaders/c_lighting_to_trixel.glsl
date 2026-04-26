@@ -142,13 +142,17 @@ void main() {
     if (lightVolumeEnabled != 0) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
+        // Subdivision-aware canvasOffset matches c_compute_voxel_ao.glsl;
+        // R(-rasterYaw) compose then recovers world coordinates from
+        // raster-frame iso pixels under cardinal-snap Z-yaw.
         const int subdivisions = max(voxelRenderOptions.y, 1);
         const vec2 canvasOffset = (voxelRenderOptions.x != 0)
             ? frameCanvasOffset * float(subdivisions)
             : frameCanvasOffset;
         const ivec2 isoRel =
             pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-        vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+        const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+        vec3 pos3D = isoPixelToWorld3D(isoRel.x, isoRel.y, float(rawDepth), cardinalIndex);
         if (voxelRenderOptions.x != 0) {
             pos3D /= float(subdivisions);
         }
