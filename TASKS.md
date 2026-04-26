@@ -151,24 +151,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Modifier framework: core runtime (registry, 5 resolver systems, source sweep)** — implement FieldBindingId registry, C_ResolvedFields machinery, 5 resolver systems, pipeline helper, source-destruction sweep, applyToField query
-  - **ID:** T-050
-  - **Area:** engine/prefabs/irreden/common, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-050-modifier-runtime
-  - **Blocked by:** (none)
-  - **Stack:** T-049..T-053 modifier-framework
-  - **Acceptance:** (1) unit tests cover ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE composition correctness, composition order pinned and tested, ticksRemaining decay exact, source-destruction sweep correct, global+exempt archetype routing correct, lambda escape hatch; (2) no `getComponent`/`getComponentOptional` calls inside any tick body; (3) resolver tick at 1000 entities × 5 modifiers < 0.5 ms, recorded in PR body; (4) builds clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #304
-  - **Notes:** Child 2 of 5. Resolver pipeline order (end of UPDATE phase, before RENDER reads): ModifierDecay → GlobalModifierDecay → ModifierResolveGlobal → ModifierResolveExempt → ModifierResolveLambda. Use `beginTick` to capture global modifier vector pointer once per pipeline execution. See `.fleet/plans/T-050.md` for full locked design.
-  - **Links:**
-
 - [ ] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
   - **ID:** T-051
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/world
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-050
+  - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) all demos and creations consuming position-global or drag-modulated velocity render and behave identically before and after; (2) `fleet-run IRShapeDebug` no visible regressions; (3) `render-debug-loop` before/after screenshots in PR body; (4) builds clean on `linux-debug` AND `macos-debug`; (5) removed-line count > added-line count (framework absorbs the one-off pattern)
   - **Issue:** #305
@@ -180,7 +168,7 @@ Avoid:
   - **Area:** engine/script, engine/prefabs/irreden/common
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-050
+  - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) Lua script registers field and pushes one modifier per transform kind (6 total), observing correct resolved values; (2) Lua script pushes lambda modifier and confirms it's applied; (3) Lua script pushes global modifier, tags one entity `C_NoGlobalModifiers`, confirms only non-exempt entities receive globals; (4) `removeBySource` removes only matching modifiers; (5) builds clean on active preset
   - **Issue:** #306
@@ -192,7 +180,7 @@ Avoid:
   - **Area:** creations/demos/modifier_demo, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-050, T-051, T-052
+  - **Blocked by:** T-051, T-052
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key 1-8 triggers corresponding capability with obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (verified manually on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
   - **Issue:** #307
@@ -272,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-050** — Modifier framework: core runtime (registry, 5 resolver systems, source sweep) · Owner: claude/T-050-modifier-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/325
 - [x] **T-048** — CLAUDE.md sharing mechanism: baseline file + per-creation opt-out · Owner: claude/T-048-claude-md-sharing · PR: https://github.com/jakildev/IrredenEngine/pull/320
 - [x] **T-046** — Audit: component-with-helper patterns across engine prefabs, codify rules · Owner: claude/T-046-component-helper-audit · PR: https://github.com/jakildev/IrredenEngine/pull/319
 - [x] **T-045** — Fleet: stacked-PR: TASKS.md Stack: field for chain visibility · Owner: claude/T-045-stack-field-task-template · PR: https://github.com/jakildev/IrredenEngine/pull/318
@@ -291,4 +280,3 @@ Avoid:
 - [x] **T-036** — Prefab refactor: relocate sun lighting API from IRRender:: to prefab namespace · Owner: T-036-sun-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/278
 - [x] **T-032** — Remove engine-side midi_polyrhythm demo after game port lands · Owner: T-032-remove-midi-polyrhythm · PR: https://github.com/jakildev/IrredenEngine/pull/274
 - [x] **T-033** — engine/render CLAUDE.md: install layering principle between render and prefabs · Owner: T-033-render-prefab-layering-doc · PR: https://github.com/jakildev/IrredenEngine/pull/267
-- [x] **T-029** — Fleet: cross-host smoke-test running-tally for render changes · Owner: T-029-cross-host-smoke-tally · PR: https://github.com/jakildev/IrredenEngine/pull/262
