@@ -65,6 +65,16 @@ struct FrameDataVoxelToCanvas {
     // Derived from the cull camera (frozen or live) and zoom.
     ivec2 cullIsoMin_ = ivec2(0);
     ivec2 cullIsoMax_ = ivec2(0);
+    // Z-yaw camera rotation, in radians. visualYaw_ is the canonical
+    // continuous angle written by gameplay; rasterYaw_ is the cardinal-snap
+    // multiple of pi/2 nearest visualYaw_; residualYaw_ = visualYaw_ -
+    // rasterYaw_. The integer trixel rasterizer picks a basis permutation
+    // from rasterYaw_; the screen-space residual composite pass consumes
+    // residualYaw_.
+    float visualYaw_ = 0.0f;
+    float rasterYaw_ = 0.0f;
+    float residualYaw_ = 0.0f;
+    float _yawPadding_ = 0.0f;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -186,6 +196,10 @@ struct GPUShapesFrameData {
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;
+    // Z-yaw camera rotation (radians); SDF math is continuous so it consumes
+    // visualYaw directly.
+    float visualYaw = 0.0f;
+    float _yawPadding[3] = {};
 };
 
 /// @{

@@ -129,6 +129,10 @@ struct FrameDataVoxelToTrixel {
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
+    float visualYaw;
+    float rasterYaw;
+    float residualYaw;
+    float _yawPadding;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

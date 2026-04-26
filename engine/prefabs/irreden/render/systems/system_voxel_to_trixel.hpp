@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 
@@ -80,6 +81,12 @@ inline void buildVoxelFrameData(
     frameData.voxelDispatchGrid_ = dispatchGrid;
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
+
+    frameData.visualYaw_ = IRPrefab::Camera::getYaw();
+    const auto [rasterYaw, residualYaw] =
+        IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
+    frameData.rasterYaw_ = rasterYaw;
+    frameData.residualYaw_ = residualYaw;
 
     static int previousRenderMode = -1;
     static int previousEffectiveSubdivisions = -1;

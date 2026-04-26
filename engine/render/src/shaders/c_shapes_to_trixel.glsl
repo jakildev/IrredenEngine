@@ -21,6 +21,10 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
+    uniform float visualYaw;
+    uniform float _yawPadding0;
+    uniform float _yawPadding1;
+    uniform float _yawPadding2;
 };
 
 struct ShapeDescriptor {
