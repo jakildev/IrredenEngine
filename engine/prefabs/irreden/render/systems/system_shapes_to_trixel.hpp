@@ -97,14 +97,36 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         static Buffer *s_shapeTileDescBuf =
             IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
 
+        // Camera Z-yaw cached at pre-tick (read once per frame). The cull
+        // check applies R_z(-visualYaw) to each shape's world position so
+        // the iso footprint matches what the GPU will actually rasterize.
+        // At yaw=0 this is identity and the cull behavior is unchanged.
+        static float s_visualYaw = 0.0f;
+        static float s_yawCos = 1.0f;
+        static float s_yawSin = 0.0f;
+
         return createSystem<C_ShapeDescriptor, C_PositionGlobal3D>(
             "ShapesToTrixel",
             [](IREntity::EntityId &entityId,
                const C_ShapeDescriptor &shape,
                const C_PositionGlobal3D &pos) {
                 if (cullBounds.has_value()) {
-                    vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(pos.pos_);
-                    vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(vec3(shape.params_));
+                    vec3 viewPos = pos.pos_;
+                    vec3 sizeForExtent = vec3(shape.params_);
+                    if (s_visualYaw != 0.0f) {
+                        viewPos = vec3(
+                            s_yawCos * pos.pos_.x + s_yawSin * pos.pos_.y,
+                           -s_yawSin * pos.pos_.x + s_yawCos * pos.pos_.y,
+                            pos.pos_.z);
+                        const float absC = std::abs(s_yawCos);
+                        const float absS = std::abs(s_yawSin);
+                        sizeForExtent = vec3(
+                            sizeForExtent.x * absC + sizeForExtent.y * absS,
+                            sizeForExtent.x * absS + sizeForExtent.y * absC,
+                            sizeForExtent.z);
+                    }
+                    vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
+                    vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
                     if (shapeIsoPosition.x + shapeIsoHalfExtent.x < cullBounds->min_.x ||
                         shapeIsoPosition.x - shapeIsoHalfExtent.x > cullBounds->max_.x ||
                         shapeIsoPosition.y + shapeIsoHalfExtent.y < cullBounds->min_.y ||
@@ -136,6 +158,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             []() {
                 gpuShapesByCanvas.clear();
 
+                // Snapshot camera yaw once for the whole tick so the cull
+                // pass and the per-tile dispatch share the same value, even
+                // if a script mutates yaw mid-frame.
+                s_visualYaw = IRPrefab::Camera::getYaw();
+                s_yawCos = std::cos(s_visualYaw);
+                s_yawSin = std::sin(s_visualYaw);
+
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
                 auto texOpt =
                     IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
@@ -154,7 +183,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             []() {
                 auto &timing = IRRender::gpuStageTiming();
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-                const float visualYaw = IRPrefab::Camera::getYaw();
+                const float visualYaw = s_visualYaw;
 
                 for (auto &[canvasId, gpuShapes] : gpuShapesByCanvas) {
                     if (gpuShapes.empty()) {
@@ -199,7 +228,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     );
 
                     const int tileCount = buildAndUploadTileDescriptors(
-                        gpuShapes, s_shapeTileDescBuf, effectiveSub, renderMode);
+                        gpuShapes, s_shapeTileDescBuf, effectiveSub, renderMode,
+                        visualYaw, s_yawCos, s_yawSin);
                     if (tileCount == 0) {
                         continue;
                     }
@@ -270,22 +300,41 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // it to the SSBO, and returns the total tile count. The batched compute
     // dispatch then runs once per pass, with gl_WorkGroupID.x indexing this
     // buffer — one workgroup per 8×8 pixel tile.
+    //
+    // @p visualYaw is the camera Z-yaw (radians). Each shape's worldPos is
+    // rotated by R_z(-visualYaw) before iso projection, and its XY bounding
+    // half-extent is grown to cover the rotated AABB. At yaw=0 both
+    // operations are identity and the tile coverage is unchanged.
+    // @p yawCos/@p yawSin are cos/sin of visualYaw, snapshotted at frame
+    // start so the cull pass and the per-tile dispatch see byte-identical
+    // values even if a script mutates yaw mid-frame.
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         Buffer *tileDescBuf,
         int effectiveSubdivisions,
-        IRRender::SubdivisionMode renderMode
+        IRRender::SubdivisionMode renderMode,
+        float visualYaw,
+        float yawCos,
+        float yawSin
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
 
         const int sub =
             (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
+        const bool yawZero = (visualYaw == 0.0f);
+        const float absYawC = std::abs(yawCos);
+        const float absYawS = std::abs(yawSin);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            ivec3 origin = ivec3(glm::round(worldPos));
+            vec3 viewPos = yawZero
+                ? worldPos
+                : vec3( yawCos * worldPos.x + yawSin * worldPos.y,
+                       -yawSin * worldPos.x + yawCos * worldPos.y,
+                        worldPos.z);
+            ivec3 origin = ivec3(glm::round(viewPos));
 
             vec3 boundingHalf;
             auto shapeType =
@@ -320,6 +369,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 default:
                     boundingHalf = vec3(desc.params) * 0.5f;
                     break;
+            }
+            // Z-yaw expands the XY AABB by |c|·hX + |s|·hY (and symmetric).
+            // Grow the iso footprint conservatively so every visible pixel
+            // of the rotated shape is inside at least one dispatched tile.
+            if (!yawZero) {
+                boundingHalf = vec3(
+                    boundingHalf.x * absYawC + boundingHalf.y * absYawS,
+                    boundingHalf.x * absYawS + boundingHalf.y * absYawC,
+                    boundingHalf.z);
             }
             ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
             ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
