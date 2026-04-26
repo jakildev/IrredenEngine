@@ -199,11 +199,11 @@ Avoid:
   - **Notes:** Child 2 of 5 of epic #310. Re-scoped from "arbitrary" to "cardinal-snap" — continuous visual rotation comes from the residual 2D composite pass (new unfiled sibling). `rasterYaw` provided by T-054. Does NOT handle fractional/sub-cardinal yaw — voxels always land on integer trixel pixels. Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [ ] **Render: SDF shape rasterization under arbitrary Z-yaw** — update SDF compute shader to consume continuous `visualYaw`; GLSL + MSL parity
+- [~] **Render: SDF shape rasterization under arbitrary Z-yaw** — update SDF compute shader to consume continuous `visualYaw`; GLSL + MSL parity
   - **ID:** T-056
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-056-sdf-yaw
   - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) SDF shader reads `visualYaw` (continuous radians, provided by T-054); (2) `render-debug-loop` visual parity at yaw=0; (3) correct SDF rendering at several non-cardinal yaw values verified visually; (4) GLSL and MSL implementations at parity; (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
