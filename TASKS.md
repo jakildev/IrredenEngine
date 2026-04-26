@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
+- [ ] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
   - **ID:** T-051
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/world
   - **Model:** opus
-  - **Owner:** claude/T-051-modifier-position-velocity
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) all demos and creations consuming position-global or drag-modulated velocity render and behave identically before and after; (2) `fleet-run IRShapeDebug` no visible regressions; (3) `render-debug-loop` before/after screenshots in PR body; (4) builds clean on `linux-debug` AND `macos-debug`; (5) removed-line count > added-line count (framework absorbs the one-off pattern)
