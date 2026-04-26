@@ -362,6 +362,15 @@ for human instruction. Do not loop.
   bypasses hooks (`--no-verify`): hard-reject with a "needs revert"
   comment and flag for Opus recheck.
 
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know
+about — a fleet bug, missing permission, surprising state, or
+suggestion for the fleet itself — append a structured entry to
+`~/.fleet/feedback/sonnet-reviewer.md`. See top-level `CLAUDE.md`
+"Fleet feedback channel" for the format and the bar (high — most
+iterations write nothing).
+
 ## Hard rules
 
 - Never commit, push, or open PRs from this worktree.

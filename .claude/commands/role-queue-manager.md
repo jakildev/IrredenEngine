@@ -616,6 +616,15 @@ You are the sole TASKS.md editor. Each maintenance pass:
     `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
     `[queue-manager] Iteration complete. Next run in ~5m.`
 
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know
+about — a fleet bug, missing permission, surprising state, or
+suggestion for the fleet itself — append a structured entry to
+`~/.fleet/feedback/queue-manager.md`. See top-level `CLAUDE.md`
+"Fleet feedback channel" for the format and the bar (high — most
+iterations write nothing).
+
 ## Hard rules
 
 - Never claim or work tasks. You only file and maintain them.

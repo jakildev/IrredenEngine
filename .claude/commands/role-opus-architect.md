@@ -218,6 +218,15 @@ Stop and surface to the human when:
 - You hit a usage-limit error — print the error, the stated reset
   time, and wait. Do not retry blindly.
 
+## End-of-iteration feedback
+
+If during a session you noticed something the human should know
+about — a fleet bug, missing permission, surprising state, or
+suggestion for the fleet itself — append a structured entry to
+`~/.fleet/feedback/opus-architect.md`. See top-level `CLAUDE.md`
+"Fleet feedback channel" for the format and the bar (high — write
+only when there's a real signal worth surfacing).
+
 ## Hard rules
 
 - Never `git push origin master`. Never `--force`. Never call

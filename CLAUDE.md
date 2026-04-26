@@ -399,6 +399,62 @@ from human conversations.
 
 ---
 
+## Fleet feedback channel (applies everywhere, all roles)
+
+Each fleet iteration runs in a fresh `claude` process, so the
+agent's per-iteration observations evaporate when the process
+exits. To keep useful signals from getting lost, every role appends
+to a per-role markdown file at `~/.fleet/feedback/<role>.md` when
+it notices something the human should know about. The human reads
+the digest with `fleet-feedback` (default: last 24h, all roles)
+in interactive sessions and addresses items by editing the fleet
+directly. The channel is **one-way** — there's no return path; the
+human's response is whatever fleet edit they make.
+
+**The bar for writing an entry:** "would a future fleet-up benefit
+from the human knowing this?" Examples worth recording:
+
+- A fleet bug or surprising state (permission denial that should
+  have worked; cache stale because daemon wasn't restarted; tool
+  not on PATH).
+- A missing tool, missing permission, or confusing role-doc
+  instruction that cost you time this iteration.
+- A pattern you noticed across multiple iterations (e.g., "tasks
+  with this shape keep getting stuck at step X").
+- A concrete fleet-improvement suggestion you'd file as an issue
+  if the threshold were lower.
+
+**Skip routine completion notes.** "I did task T-NNN, no issues"
+goes in logs (which already capture everything). The feedback
+channel is for things the human should consider acting on. Most
+iterations write nothing — that's correct.
+
+**Format:**
+
+```
+## YYYY-MM-DD HH:MM
+<one-line headline (action-oriented if possible)>
+
+<optional 1-3 lines of context: what you tried, what surprised you,
+what you'd suggest>
+```
+
+The timestamp is parsed by `fleet-feedback` for `--since` filtering
+— use 24-hour `HH:MM`, optionally with seconds. Append (don't
+overwrite) the file. The directory `~/.fleet/feedback/` is created
+on first use; just `mkdir -p` it before appending.
+
+**Aggregator commands:**
+
+- `fleet-feedback` — last 24h, all roles, chronological
+- `fleet-feedback --since 1h` (or `30m`, `2d`, `7d`)
+- `fleet-feedback --role merger` — filter to one role
+- `fleet-feedback --headlines` — one-liners only
+- `fleet-feedback --clear` — archive all entries to
+  `~/.fleet/feedback/.archive/<timestamp>/` and start fresh
+
+---
+
 ## Project layout (pointers to deeper CLAUDE.md files)
 
 ```
