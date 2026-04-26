@@ -3,10 +3,9 @@
 #
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
-# then builds a single tmux session "fleet" with one window "agents"
-# containing up to 9 tiled panes (8 engine + 1 game architect if the
-# game repo is present) — each launching `claude` with the right model
-# and the matching role slash command in dry-run mode.
+# then builds two tmux windows — "fleet" (3×3 grid) and "ops" (2×2
+# meta panes) — each pane launching `claude` with the right model and
+# the matching role slash command in dry-run mode.
 #
 # Source of truth: scripts/fleet/fleet-up in the engine repo.
 # Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
@@ -72,6 +71,7 @@ ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-archite
 ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-1     fleet/opus-worker-1
 ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-2     fleet/opus-worker-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
+ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
@@ -102,7 +102,6 @@ warn_legacy_worktree() {
     fi
 }
 warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
-warn_legacy_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"
 warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 
 # ----------------------------------------------------------------------
@@ -138,6 +137,7 @@ reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scra
 reset_worktree "$ENGINE/.claude/worktrees/opus-worker-1"   claude/opus-worker-1-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-worker-2"   claude/opus-worker-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
@@ -285,7 +285,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-reviewer opus-reviewer queue-manager merger; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
@@ -410,12 +410,8 @@ fi
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: single window with three rows (see detailed comment block
-# below the launch_cmd helper — that's the canonical description).
-# Summary:
-#   top    (~32%, 4 panes) — autonomous workers
-#   middle (~40%, 2 panes) — interactive architects (biggest)
-#   bottom (~28%, 4 panes) — ops
+# Layout: see the canonical description at the launch_cmd comment
+# block below (two windows: fleet 3×3, ops 2×2).
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -461,26 +457,38 @@ launch_cmd() {
     fi
 }
 
-# Single window, three rows:
-#   Top    (~32% height): autonomous workers (3 panes)  — small workspace
-#                         sonnet-fleet-1, opus-worker-1, opus-worker-2
-#   Middle (~40% height): architects (2 wide panes)     — interactive design
-#                         opus-architect, [game-architect] — biggest, most-used
-#   Bottom (~28% height): ops (5 panes)                 — small status panes
-#                         sonnet-reviewer, opus-reviewer, queue-manager, merger, witness
+# Two windows:
 #
-# The architect row is widest+tallest because it's where the human
-# spends interactive time. Workers and ops are autonomous loops you
-# only glance at.
+# Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
+#   Top    (~33%): sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+#   Middle (~33%): opus-architect            [game-architect]
+#   Bottom (~33%): opus-worker-1   opus-worker-2   opus-reviewer
 #
-# Worker mix: 2× opus-worker, 1× sonnet-fleet. Most engine work is
-# core/perf-sensitive (rendering, ECS, audio/video, math) which needs
-# Opus reasoning; one Sonnet pane covers tests, docs, and mechanical
-# refactors. The two opus-workers can plan + execute in parallel,
-# halving the planning queue latency.
+# Window 2 ("ops") — 2x2 grid, 4 panes:
+#   queue-manager  merger
+#   witness        terminal (interactive shell in $HOME)
 #
-# Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
-# Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
+# Reviewers sit at the right end of each worker row so the verdict
+# pane is adjacent to the work it reviews. Architects span the
+# middle row at full width — that's where interactive design work
+# happens.
+#
+# Worker mix: 2× sonnet + 2× opus. Sonnet covers tests, docs, and
+# mechanical refactors (most of the queue). Opus covers core/perf-
+# sensitive engine work and plans needs-plan issues. Each tier has
+# its own dedicated reviewer.
+#
+# The "ops" window holds the meta panes — queue-manager (intake +
+# maintenance), merger (auto-rebase), witness (heartbeat monitor),
+# and a free-form terminal for ad-hoc commands. These don't need
+# constant visibility; jump to ops with Alt+n when you want to
+# check on them, then Alt+p back to the fleet view.
+#
+# Navigate without a prefix key:
+#   Option+arrow              — pane navigation within current window
+#   Alt+n / Alt+p             — next / previous window (added by this script)
+#   Ctrl-a o                  — cycle to next pane
+#   Ctrl-a ;                  — jump to last-used pane
 
 # Label a pane by its tmux pane ID using @role.
 # Using @role instead of pane_title makes it immune to application
@@ -489,106 +497,121 @@ label_pane_id() {
     tmux set-option -t "$1" -p @role "$2"
 }
 
-# Return the active pane ID in the fleet window.
-# split-window selects the new pane, so calling this right after a
-# split-window returns the newly created pane's ID.
-active_pane_id() {
-    tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
-}
+# --- Window 1: "fleet" — 3 rows × 3 columns ---------------------------
+#
+# Build top-down: create initial pane (will become top-left), split
+# vertically twice for middle and bottom rows, then split each row
+# horizontally to add columns. `-P -F "#{pane_id}"` makes split-window
+# print the new pane's ID so we can target it for the next split.
 
-# --- Row 1: workers (starts full-screen, ends as top ~32%) -------------
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
-TOP1=$(active_pane_id)
-label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
+TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
+label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
 
-# --- Row 3 (bottom, ~28%): ops -----------------------------------------
-# Split off the bottom strip first.
-tmux split-window -v -t "$TOP1" -p 28 \
-    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)"
-BOT1=$(active_pane_id)
-label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
-
-tmux split-window -h -t "$BOT1" \
-    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)"
-BOT2=$(active_pane_id)
-label_pane_id "$BOT2" "opus-reviewer [opus 4.7]"
-
-tmux split-window -h -t "$BOT2" \
-    -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)"
-BOT3=$(active_pane_id)
-label_pane_id "$BOT3" "queue-manager [sonnet]"
-
-tmux split-window -h -t "$BOT3" \
-    -c "$ENGINE/.claude/worktrees/merger" \
-    "$(launch_cmd "$OPUS_MODEL" merger 10m)"
-BOT4=$(active_pane_id)
-label_pane_id "$BOT4" "merger [opus 4.7]"
-
-tmux split-window -h -t "$BOT4" \
-    -c "$HOME/.fleet" \
-    "witness; exec $SHELL"
-BOT5=$(active_pane_id)
-label_pane_id "$BOT5" "witness"
-
-# --- Row 2 (middle, ~40%): architects ---------------------------------
-# Split off the middle row from TOP1. TOP1 is currently 72% of window
-# (after bottom 28%). Splitting 56% off the bottom of TOP1 gives:
-#   TOP1 = 72% * 44% = ~32% of window  (workers)
-#   MID  = 72% * 56% = ~40% of window  (architects — taller)
-tmux split-window -v -t "$TOP1" -p 56 \
+# Split bottom 2/3 off — that becomes the middle row's leftmost pane.
+MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd "$OPUS_MODEL" opus-architect)"
-MID1=$(active_pane_id)
-label_pane_id "$MID1" "opus-architect [opus 4.7]"
+    "$(launch_cmd "$OPUS_MODEL" opus-architect)")
+label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
 
+# Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
+BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+
+# Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
+# sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
+# of the original TOP_LEFT region); the second split halves what's
+# left, giving three equal columns.
+TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    "$(launch_cmd "$SONNET_MODEL" sonnet-author)")
+label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+
+TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)")
+label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+
+# Middle row: split MID_LEFT horizontally for game-architect (only if
+# the game worktree exists). 50/50 split since architects coexist as
+# equals (engine + game).
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$MID1" \
+    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd "$OPUS_MODEL" game-architect)"
-    MID2=$(active_pane_id)
-    label_pane_id "$MID2" "game-architect [opus 4.7]"
+        "$(launch_cmd "$OPUS_MODEL" game-architect)")
+    label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
 fi
 
-# --- Expand Row 1 (top) with remaining workers -------------------------
-# Top row layout: 3 autonomous workers
-#   sonnet-fleet-1, opus-worker-1, opus-worker-2
-tmux split-window -h -t "$TOP1" \
-    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
-TOP2=$(active_pane_id)
-label_pane_id "$TOP2" "opus-worker-1 [opus 4.7]"
-
-tmux split-window -h -t "$TOP2" \
+# Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
+# opus-reviewer. Same 67/50 pattern as the top row to get three
+# equal columns.
+BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)"
-TOP3=$(active_pane_id)
-label_pane_id "$TOP3" "opus-worker-2 [opus 4.7]"
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
 
-# Enable pane border labels using @role (immune to program overrides)
+BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "$(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+
+# --- Window 2: "ops" — 2x2 grid ---------------------------------------
+#
+# queue-manager (top-left), merger (top-right),
+# witness (bottom-left), terminal (bottom-right, $HOME, free-form shell).
+
+OPS_TL=$(tmux new-window -t "$SESSION" -n ops -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/queue-manager" \
+    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
+label_pane_id "$OPS_TL" "queue-manager [sonnet]"
+
+OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/merger" \
+    "$(launch_cmd "$OPUS_MODEL" merger 10m)")
+label_pane_id "$OPS_TR" "merger [opus 4.7]"
+
+OPS_BL=$(tmux split-window -v -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+    -c "$HOME/.fleet" \
+    "witness; exec $SHELL")
+label_pane_id "$OPS_BL" "witness"
+
+OPS_BR=$(tmux split-window -v -t "$OPS_TR" -p 50 -P -F "#{pane_id}" \
+    -c "$HOME" \
+    "exec $SHELL")
+label_pane_id "$OPS_BR" "terminal"
+
+# Enable pane border labels using @role (immune to program overrides).
+# Apply at session level so it covers both windows.
 tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
-# Focus opus-architect on attach (the human's main interactive pane)
-tmux select-pane -t "$MID1"
+# Focus opus-architect in the fleet window on attach (the human's main
+# interactive pane). Also select the fleet window so attach lands
+# there rather than ops.
+tmux select-window -t "$SESSION:fleet"
+tmux select-pane -t "$MID_LEFT"
 
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-layout (single window, three rows):
-  top (~32%, 3 panes) — sonnet-fleet-1  opus-worker-1  opus-worker-2                  (autonomous workers)
-  middle (~40%, 2 panes, taller) — opus-architect  [game-architect]                  (interactive architects — biggest)
-  bottom (~28%, 5 panes) — sonnet-reviewer  opus-reviewer  queue-manager  merger  witness   (ops)
+layout (two windows):
+  window 1 "fleet" (3x3 grid, ~33% per row):
+    top    — sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+    middle — opus-architect            [game-architect]
+    bottom — opus-worker-1   opus-worker-2   opus-reviewer
+  window 2 "ops" (2x2 grid):
+    top    — queue-manager  merger
+    bottom — witness        terminal (\$HOME, free-form shell)
 
 effort levels:
   opus agents (architects, opus-workers, opus-reviewer, merger) — max
-  sonnet agents (worker, reviewer, queue-manager) — high
+  sonnet agents (sonnet-fleet-1/2, sonnet-reviewer, queue-manager) — high
   override globally by exporting FLEET_EFFORT=<level> before fleet-up.
   (to change one pane, edit fleet-babysit's case statement — fleet-up
   does not thread env per-pane.)
@@ -597,8 +620,15 @@ permission mode: auto (model decides when to ask vs proceed)
 
 navigation (no prefix needed):
   Option+Up/Down/Left/Right — move to pane in that direction
+  Alt+n / Alt+p             — next / previous window (fleet ↔ ops)
   Ctrl-a o                  — cycle to next pane
   Ctrl-a ;                  — jump to last-used pane
+
+  Alt+n/p requires the matching bind-key lines in ~/.tmux.conf:
+    bind-key -n M-n next-window
+    bind-key -n M-p previous-window
+  (Run \`tmux source-file ~/.tmux.conf\` after adding to apply
+  without restarting tmux.)
 
 mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
@@ -612,10 +642,10 @@ the session if claude exits (crash, usage limit, network drop).
 scheduling (live mode): each worker iteration is a fresh \`claude\` process
   (no context carry-over between tasks). babysit relaunches per role's
   configured interval:
-  sonnet-reviewer — every ~3m     opus-reviewer — every ~30m
-  opus-worker-1/2 — every ~20m    queue-manager — every ~5m
-  merger          — every ~10m
-  sonnet-fleet-1  — back-to-back (60s pause between iterations)
+  sonnet-reviewer    — every ~3m     opus-reviewer — every ~30m
+  opus-worker-1/2    — every ~20m    queue-manager — every ~5m
+  merger             — every ~10m
+  sonnet-fleet-1/2   — back-to-back (60s pause between iterations)
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 
