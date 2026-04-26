@@ -39,6 +39,10 @@ Common patterns and their correct alternatives:
   file at the path wasn't Read in this session, which is the normal
   case when a previous iteration left the body file behind. The
   `rm` removes the staleness; the fresh Write goes through.
+- **Delete a temp body file before writing:** `rm -f .review-body.md`
+  (or `.merger-body.md`). This is safe and single-command — `-f`
+  silences "no such file" so first-iteration runs proceed without
+  error.
 
 ## Shared fleet state cache
 
