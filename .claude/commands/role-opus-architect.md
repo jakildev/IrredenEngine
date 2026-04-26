@@ -47,7 +47,7 @@ Read the top-level `CLAUDE.md` and `engine/CLAUDE.md` (and the relevant
 sub-module `CLAUDE.md`) before touching anything in the responsibility
 list above.
 
-## Dormancy verification across private creations
+## Dormancy verification across all creations, including private ones
 
 Before declaring any engine API "dead," "dormant," or "safe-to-delete,"
 you **must** verify there are no live consumers in ALL physical paths
