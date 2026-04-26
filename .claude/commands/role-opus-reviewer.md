@@ -33,7 +33,16 @@ Common patterns and their correct alternatives:
   needed.
 - **Write a temp file for `--body-file`:** Use the **Write** tool to
   write within the worktree (e.g. `.review-body.md`), not to `/tmp`.
-  The sandbox may block writes outside the project tree.
+  The sandbox may block writes outside the project tree. **First**
+  run `rm -f .review-body.md` so the Write tool doesn't refuse with
+  "File has not been read yet" — that error fires when an existing
+  file at the path wasn't Read in this session, which is the normal
+  case when a previous iteration left the body file behind. The
+  `rm` removes the staleness; the fresh Write goes through.
+- **Delete a temp body file before writing:** `rm -f .review-body.md`
+  (or `.merger-body.md`). This is safe and single-command — `-f`
+  silences "no such file" so first-iteration runs proceed without
+  error.
 
 ## Shared fleet state cache
 
