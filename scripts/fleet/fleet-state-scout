@@ -216,6 +216,10 @@ REVIEW_VERDICT_LABELS = frozenset({
 REVIEW_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
     "fleet:semantic-conflict",
+    # Worker is amending the PR for the human's concerns; the diff
+    # the reviewer sees is in flux. Re-evaluate once fleet:changes-made
+    # appears (which RECHECK_LABELS picks up).
+    "fleet:human-amending",
 })
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 

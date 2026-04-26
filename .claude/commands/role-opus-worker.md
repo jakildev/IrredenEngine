@@ -250,20 +250,91 @@ Do the work, then exit cleanly:
 
       **For `fleet:has-nits`**: focus on the latest review's `### Nits`
       section. Address every nit unless it's purely subjective preference.
-   b. **Immediately remove the feedback label**:
+
+   a2. **For `human:needs-fix` / `human:blocker` only — decide
+       AMEND vs ESCALATE.** Two valid dispositions:
+
+       - **AMEND** (default): you'll fix the concerns inline in
+         this PR. The PR is being changed; merge should hold until
+         the reviewer re-approves. Continue with step b — step b
+         will set `fleet:human-amending` + clear `fleet:approved`
+         to make the "hold merge" state visible.
+
+       - **ESCALATE**: file a follow-up issue and leave this PR's
+         approval intact. Choose when:
+         - The concern is scope expansion (architect-level
+           redesign, follow-up feature)
+         - The concern is a downstream-PR dependency ("won't align
+           until T-X ships"), not a bug in THIS PR
+         - The original Sonnet/Opus review explicitly deferred the
+           concern; the human is overriding that deferral and the
+           new direction belongs in its own design issue
+         - The fix needs a different model tier than your own (rare
+           for opus-worker; mostly relevant for sonnet-author
+           escalating to opus)
+
+         Skip to the **ESCALATE path** below.
+
+       Default to AMEND when uncertain. ESCALATE is a deliberate
+       choice that needs justification in the linked issue.
+
+       **ESCALATE path:**
+       1. File the follow-up issue:
+          `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"`
+          The body must include:
+          - **Context** — escalated from PR #<N>, list the human's
+            specific concerns (file:line for each)
+          - **Why escalating** — one paragraph: scope-expansion,
+            downstream-dependency, deferred-by-prior-review, etc.
+          - **Suggested model** — `[opus]` or `[sonnet]`
+          - **Suggested area** — module path
+          - **Suggested approach** — bullets, for the picker to
+            validate
+       2. Swap PR labels in one combine-safe call (the removed
+          label is guaranteed present — that is what brought you
+          here):
+          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred"`
+       3. **Keep `fleet:approved`** — the PR is internally
+          consistent, the prior reviewer approval stands.
+          `fleet:human-deferred` signals: "agent acknowledged the
+          concerns, linked issue tracks them, human decides
+          whether to merge as-is or re-add `human:needs-fix` to
+          force AMEND mode."
+       4. Comment on the PR linking the issue:
+          `gh pr comment <N> --body "Escalated — filed issue #<M> for the <opus|sonnet> work. Concerns map to <one-line summary>. PR is internally OK to merge if you accept the deferral; re-add human:needs-fix to switch to AMEND mode. — opus-worker"`
+       5. **Skip steps b–g.** Jump to step h (move to next
+          iteration). The PR's code is unchanged.
+
+   b. **(AMEND path)** **Immediately remove the feedback label**
+      to prevent another agent from also picking it up:
       `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
+
+      For `human:needs-fix` / `human:blocker` specifically, also
+      mark the PR as in-progress and clear the prior approval so
+      the human knows to hold the merge (two separate calls —
+      `fleet:approved` may not be present and combining
+      remove-when-absent with `--add-label` would abort the call):
+      `gh pr edit <N> --add-label "fleet:human-amending"`
+      `gh pr edit <N> --remove-label "fleet:approved"`
+      For `fleet:needs-fix` / `fleet:has-nits` only (no human
+      label): skip both — reviewer-flagged feedback doesn't
+      trigger the human-amending state.
    c. Address every piece of feedback. Build with `fleet-build`.
    d. Push fixes using `commit-and-push`.
-   e. Add the appropriate response label:
-      - If it was `human:needs-fix` or `human:blocker` → add
-        `fleet:changes-made`:
-        `gh pr edit <N> --add-label "fleet:changes-made"`
+   e. Swap the in-progress label for the done label:
+      - If it was `human:needs-fix` or `human:blocker` → swap
+        `fleet:human-amending` for `fleet:changes-made` (one
+        combine-safe call — the removed label is guaranteed
+        present from step b):
+        `gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"`
       - If it was `fleet:needs-fix` → no response label needed.
       - If it was `fleet:has-nits` → no response label needed; existing
         `fleet:approved` stays valid (cleanups don't invalidate approval).
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
    f. Remove stale fleet review labels (`fleet:needs-fix`,
-      `fleet:blocker`) if present — but **keep `fleet:approved`**.
+      `fleet:blocker`) if present — but **keep `fleet:approved`** if
+      the path was `fleet:has-nits`. (The AMEND path already
+      cleared `fleet:approved` in step b for `human:needs-fix`.)
    g. **Propagate the upstream fix to any downstream branches in a
       stacked chain.** Always run, after every feedback fix:
       `fleet-claim molecule rebase-downstream <your-worktree-basename>`

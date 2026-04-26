@@ -178,17 +178,87 @@ Each iteration:
       Address every nit unless it's purely subjective preference. The
       reviewer's "Nits" section is the comprehensive list — treat it
       like a checklist.
-   b. **Immediately remove the feedback label** to prevent another agent
-      from also picking it up:
+
+   a2. **For `human:needs-fix` / `human:blocker` only — decide
+       AMEND vs ESCALATE.** Two valid dispositions:
+
+       - **AMEND** (default): you'll fix the concerns inline in
+         this PR. The PR is being changed; merge should hold until
+         the reviewer re-approves. Continue with step b — the
+         existing flow handles this and step b will set
+         `fleet:human-amending` + clear `fleet:approved` to make
+         the "hold merge" state visible.
+
+       - **ESCALATE**: file a follow-up issue and leave this PR's
+         approval intact. Choose when:
+         - The concern is scope expansion (architect-level
+           redesign, follow-up feature)
+         - The concern is a downstream-PR dependency ("won't align
+           until T-X ships"), not a bug in THIS PR
+         - The fix needs Opus-tier reasoning and you're Sonnet
+         - The original review (Sonnet/Opus) explicitly deferred
+           the concern; the human is overriding that deferral and
+           the new direction belongs in its own design issue
+
+         Skip to the **ESCALATE path** below.
+
+       Default to AMEND when uncertain. ESCALATE is a deliberate
+       choice that needs justification in the linked issue.
+
+       **ESCALATE path:**
+       1. File the follow-up issue:
+          `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"`
+          The body must include:
+          - **Context** — escalated from PR #<N>, list the human's
+            specific concerns (file:line for each)
+          - **Why escalating** — one paragraph: scope-expansion,
+            tier-mismatch, deferred-by-prior-review, etc.
+          - **Suggested model** — `[opus]` or `[sonnet]`
+          - **Suggested area** — module path
+          - **Suggested approach** — bullets, for the picker to
+            validate
+       2. Swap PR labels (one call combines remove+add safely
+          because `human:needs-fix` is guaranteed present — that
+          is what brought you here):
+          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred"`
+       3. **Keep `fleet:approved`** — the PR is internally
+          consistent, the prior reviewer approval stands.
+          `fleet:human-deferred` signals: "agent acknowledged the
+          concerns, linked issue tracks them, human decides
+          whether to merge as-is or re-add `human:needs-fix` to
+          force amend mode."
+       4. Comment on the PR linking the issue:
+          `gh pr comment <N> --body "Escalated — filed issue #<M> for the <opus|sonnet> work. Concerns map to <one-line summary>. PR is internally OK to merge if you accept the deferral; re-add human:needs-fix to switch to AMEND mode. — sonnet-author"`
+       5. **Skip steps b–g.** Jump to step h (move to next
+          iteration). The PR's code is unchanged.
+
+   b. **(AMEND path)** **Immediately remove the feedback label** to
+      prevent another agent from also picking it up:
       `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
+
+      For `human:needs-fix` / `human:blocker` specifically, also
+      mark the PR as in-progress and clear the prior approval so
+      the human knows to hold the merge:
+      `gh pr edit <N> --add-label "fleet:human-amending"`
+      `gh pr edit <N> --remove-label "fleet:approved"`
+      (Two separate calls — `fleet:approved` may not be present
+      and `gh pr edit --remove-label` returns non-zero when the
+      label is absent, which would abort a chained `--add-label`.
+      For `fleet:needs-fix` / `fleet:has-nits` paths, skip both —
+      reviewer-flagged feedback doesn't trigger the human-amending
+      state.)
    c. Address every piece of feedback. Make the edits, build with
       `fleet-build --target <name>`.
    d. Push fixes using `commit-and-push`.
-   e. Add the appropriate response label and post a summary:
-      - If it was `human:needs-fix` or `human:blocker` → add
-        `fleet:changes-made` (signals BOTH the human AND the fleet
-        reviewer to re-verify; whichever picks it up first wins):
-        `gh pr edit <N> --add-label "fleet:changes-made"`
+   e. Swap the in-progress label for the done label and post a
+      summary:
+      - If it was `human:needs-fix` or `human:blocker` → swap
+        `fleet:human-amending` for `fleet:changes-made` (signals
+        BOTH the human AND the fleet reviewer to re-verify;
+        whichever picks it up first wins). Safe to combine in one
+        call — the removed label is guaranteed present (you set
+        it in step b):
+        `gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"`
       - If it was `fleet:needs-fix` → no response label needed
         (fleet reviewer will re-review automatically on next poll)
       - If it was `fleet:has-nits` → no response label needed; the
@@ -220,13 +290,23 @@ Each iteration:
    h. Move to the next loop iteration.
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
-   comments) → agent removes it, works, adds `fleet:changes-made` →
-   either the human or the next-poll fleet reviewer re-verifies
-   (whichever happens first; the reviewer removes the label on
-   pickup so they don't double-process). Human can add multiple
-   comments before re-tagging; ALL are picked up when the tag
-   appears. If the human wants more changes after a review pass,
-   they re-add `human:needs-fix`.
+   comments) → agent picks up, decides AMEND vs ESCALATE per a2.
+
+   - **AMEND** (default): agent removes `human:needs-fix`, adds
+     `fleet:human-amending` + clears `fleet:approved`, works,
+     swaps `fleet:human-amending` for `fleet:changes-made` after
+     pushing. Either the human or the next-poll fleet reviewer
+     re-verifies (whichever first; reviewer removes the label on
+     pickup to avoid double-processing). Reviewer's re-approval
+     re-sets `fleet:approved`.
+   - **ESCALATE**: agent files a follow-up issue, swaps
+     `human:needs-fix` for `fleet:human-deferred`, KEEPS
+     `fleet:approved`. Human reviews the linked issue and either
+     accepts the deferral (PR ready to merge) or re-adds
+     `human:needs-fix` to force AMEND mode on the next iteration.
+
+   Human can add multiple comments before re-tagging; ALL are
+   picked up when the tag appears.
 
    The merger has its own label for non-mechanical rebase
    conflicts: `fleet:semantic-conflict`. That label is **not your
