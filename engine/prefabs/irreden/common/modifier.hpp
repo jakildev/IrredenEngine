@@ -59,7 +59,7 @@ inline void push(
     std::int32_t ticksRemaining = -1
 ) {
     if (field == IRComponents::kInvalidFieldId) return;
-    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target);
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c) return;
     c->modifiers_.push_back(IRComponents::Modifier{
         field, kind, param, source, ticksRemaining
@@ -76,7 +76,7 @@ inline void pushGlobal(
     if (field == IRComponents::kInvalidFieldId) return;
     auto entity = detail::globalsEntityId();
     if (entity == IREntity::kNullEntity) return;
-    auto *c = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity);
+    auto *c = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c) return;
     c->modifiers_.push_back(IRComponents::Modifier{
         field, kind, param, source, ticksRemaining
@@ -94,7 +94,7 @@ inline void pushLambda(
     std::int32_t ticksRemaining = -1
 ) {
     if (field == IRComponents::kInvalidFieldId) return;
-    auto *c = IREntity::getComponentOptional<IRComponents::C_LambdaModifiers>(target);
+    auto *c = IREntity::getComponentOptional<IRComponents::C_LambdaModifiers>(target).value_or(nullptr);
     if (!c) return;
     c->modifiers_.push_back(IRComponents::LambdaModifier{
         field, std::move(fn), source, ticksRemaining
@@ -139,13 +139,13 @@ inline float applyToField(
     IRComponents::FieldBindingId field,
     float baseValue
 ) {
-    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target);
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     const auto &entityMods = c ? c->modifiers_ : detail::emptyModifiers();
 
     const std::vector<IRComponents::Modifier> *globalsPtr = nullptr;
     auto entity = detail::globalsEntityId();
     if (entity != IREntity::kNullEntity) {
-        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity);
+        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
         if (g) globalsPtr = &g->modifiers_;
     }
     const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiers();

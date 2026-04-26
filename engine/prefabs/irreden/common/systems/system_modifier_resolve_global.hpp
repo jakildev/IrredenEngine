@@ -76,7 +76,7 @@ template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
                     cachedPtr = nullptr;
                     return;
                 }
-                auto *gm = IREntity::getComponentOptional<C_GlobalModifiers>(entity);
+                auto *gm = IREntity::getComponentOptional<C_GlobalModifiers>(entity).value_or(nullptr);
                 cachedPtr = gm ? &gm->modifiers_ : nullptr;
             }
         );
