@@ -173,6 +173,13 @@ Remove:
 - Tautological comments where the code says exactly what the comment
   says — `/// Returns the value` on `int getValue() { return value_; }`.
   Same for `// Increment counter` on `++counter_;`.
+- Change-narration comments that describe what the diff modified
+  rather than what the code does — `// Refactored from std::vector
+  to std::array`, `// Now uses the deferred variant`, `// Updated
+  for the new API`, `// Removed old approach (was X, now Y)`.
+  These narrate the diff (which git already shows in the commit
+  history) and age into noise once the change is the new normal.
+  Delete; let the commit message carry the change story.
 - Stale `// TODO`/`// FIXME` markers on code you actually finished
   this session.
 - "Old code" markers next to deleted lines.
@@ -194,10 +201,67 @@ The engine's style preferences are simple and worth applying inline:
 - Don't add abstractions for hypothetical future requirements.
 - Don't validate scenarios that can't happen (defensive checks
   against impossible states); only validate at system boundaries.
+- Magic numbers that carry domain meaning — `if (count > 64)` where
+  64 is a GPU dispatch group size, `sleep(900)` where 900 is the
+  usage-limit cooldown, `if (depth > 4)` where 4 is the max
+  recursion. Extract to a named `constexpr` (or `const` in code that
+  can't be `constexpr`) at the appropriate scope (function-local,
+  file-local, or module-level). Throwaway numbers in tests, init
+  lists, axis vectors (`vec3(1.0f, 0.0f, 0.0f)`), or one-off math
+  are fine — only flag numbers where a name would clarify intent.
 
-### 9. Format and verify
+### 9. Doc-side checks (run when the diff includes any markdown)
 
-After applying fixes, run the formatter and rebuild:
+Code-only diffs can skip. Mixed and doc-heavy diffs run these too.
+Markdown sources to check: `.md` files anywhere, `docs/**`, role
+docs under `.claude/commands/`, skill docs under `.claude/skills/`,
+top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
+
+- **Stale cross-references.** A file path, label name, role name,
+  task ID, PR number, or skill name cited in the prose now refers
+  to something that no longer exists or means something different.
+  Common triggers: a renamed file, a removed label, a role that
+  got merged into another, a TASKS.md task ID that already shipped.
+  Grep the cited identifiers against the current tree and fix what
+  drifted.
+- **Examples that drifted from the current API.** A doc shows a
+  code snippet using `IRRender::makeCanvas()` but the API is now
+  `IRRender::createCanvas()`. Same for shell snippets that use
+  removed scripts or outdated flags.
+- **Change-narration prose** (markdown analog of the code rule):
+  paragraphs that describe what *was changed* in the current PR
+  rather than what the doc covers — "Updated this section to
+  reflect the new flow", "Removed the old explanation of X". The
+  commit message is the place for change history; doc bodies
+  describe the current state.
+- **Redundant prose.** A paragraph that re-says the previous
+  paragraph in different words. Pick the clearer one, drop the
+  other. Same for two bullet items that say the same thing with
+  different framing.
+- **Section drift.** A section header promises one thing but the
+  body covers something else (heading "Common patterns" but body
+  is a single example, or heading "Examples" with no examples).
+  Either rename the heading or refocus the body.
+- **Contradictions within a doc.** Step 3 says X, step 7 (added
+  later in a different change) says NOT X. Reconcile or report.
+
+For role docs and skill docs specifically, also report (don't
+auto-fix — these need human judgment on scope):
+
+- Cross-doc duplication that's grown unmanageable. The earlier
+  fleet audit flagged 3-7× duplication of "Common patterns" /
+  "single-command Bash" blocks across role docs. Don't refactor
+  in simplify (out of scope per "doesn't refactor across modules"
+  below), but flag when you see it accumulating.
+- Stale instructions that contradict newer ones in the same
+  doc — same smell as the main "Contradictions within a doc"
+  bullet, but in role/skill docs scope judgment belongs with the
+  human. Report; reconciling is outside simplify's scope here.
+
+### 10. Format and verify
+
+After applying fixes, run the formatter and rebuild (code diffs
+only; doc-only diffs can skip the build):
 
 ```bash
 fleet-build --target format
@@ -209,7 +273,7 @@ keep them. If the build broke, **revert your simplify changes** (or
 fix the break before continuing) — never push a simplify pass that
 broke the build.
 
-### 10. Report
+### 11. Report
 
 Print a compact summary so the author knows what changed and what
 needs their attention:
