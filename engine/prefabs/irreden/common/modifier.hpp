@@ -168,6 +168,9 @@ struct ResolverPipelineSystems {
 };
 
 inline ResolverPipelineSystems registerResolverPipeline() {
+    static bool registered = false;
+    IR_ASSERT(!registered, "registerResolverPipeline called more than once — duplicate decay/resolve systems would double-apply per tick");
+    registered = true;
     auto &globalsEntity = detail::globalsEntityId();
     if (globalsEntity == IREntity::kNullEntity) {
         globalsEntity = IREntity::createEntity(
