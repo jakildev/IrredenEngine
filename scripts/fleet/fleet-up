@@ -3,10 +3,9 @@
 #
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
-# then builds a single tmux session "fleet" with one window "agents"
-# containing up to 9 tiled panes (8 engine + 1 game architect if the
-# game repo is present) — each launching `claude` with the right model
-# and the matching role slash command in dry-run mode.
+# then builds two tmux windows — "fleet" (3×3 grid) and "ops" (2×2
+# meta panes) — each pane launching `claude` with the right model and
+# the matching role slash command in dry-run mode.
 #
 # Source of truth: scripts/fleet/fleet-up in the engine repo.
 # Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
@@ -411,12 +410,8 @@ fi
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: single window with three rows (see detailed comment block
-# below the launch_cmd helper — that's the canonical description).
-# Summary:
-#   top    (~32%, 4 panes) — autonomous workers
-#   middle (~40%, 2 panes) — interactive architects (biggest)
-#   bottom (~28%, 4 panes) — ops
+# Layout: see the canonical description at the launch_cmd comment
+# block below (two windows: fleet 3×3, ops 2×2).
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
