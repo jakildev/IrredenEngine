@@ -22,6 +22,7 @@
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/common/systems/system_global_modifier_decay.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
+#include <irreden/common/systems/system_modifier_resolve_exempt.hpp>
 #include <irreden/common/systems/system_modifier_resolve_global.hpp>
 #include <irreden/common/systems/system_modifier_resolve_lambda.hpp>
 
@@ -153,17 +154,20 @@ inline float applyToField(
     return detail::composeForField(baseValue, field, globals, entityMods);
 }
 
-// Wires up the singleton globals entity and registers the four resolver
+// Wires up the singleton globals entity and registers the five resolver
 // systems in the canonical order. Must be called once at creation init,
 // before any system that depends on resolved fields.
 //
 // Pipeline ordering chosen by the caller's registerPipeline(); this
 // function returns the SystemIds in resolver order so the caller can
-// splice them in.
+// splice them in. The two RESOLVE_GLOBAL/RESOLVE_EXEMPT systems
+// archetype-route on C_NoGlobalModifiers so each entity hits exactly
+// one (no per-entity branching).
 struct ResolverPipelineSystems {
     IRSystem::SystemId modifierDecay_;
     IRSystem::SystemId globalModifierDecay_;
     IRSystem::SystemId modifierResolveGlobal_;
+    IRSystem::SystemId modifierResolveExempt_;
     IRSystem::SystemId modifierResolveLambda_;
 };
 
@@ -182,6 +186,7 @@ inline ResolverPipelineSystems registerResolverPipeline() {
         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::GLOBAL_MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_GLOBAL>(),
+        IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_EXEMPT>(),
         IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_LAMBDA>(),
     };
 }

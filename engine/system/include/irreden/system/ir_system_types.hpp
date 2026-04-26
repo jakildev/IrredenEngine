@@ -71,10 +71,9 @@ enum SystemName {
     SPRING_COLOR,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
-    // C_ResolvedFields. Order: decay both vectors, then resolve, then
-    // lambda escape hatch. The MODIFIER_RESOLVE_EXEMPT slot is reserved
-    // for the C_NoGlobalModifiers archetype-routing path (deferred —
-    // requires an exclude-tag mechanism in engine/system).
+    // C_ResolvedFields. Order: decay both vectors, then resolve
+    // (global / exempt partitioned by C_NoGlobalModifiers via the
+    // Exclude<> archetype filter), then lambda escape hatch.
     MODIFIER_DECAY,
     GLOBAL_MODIFIER_DECAY,
     MODIFIER_RESOLVE_GLOBAL,
@@ -115,6 +114,63 @@ template <typename... RelationComponents> struct RelationParams {
     RelationParams(Relation relation = Relation::NONE)
         : relation_(relation) {}
 };
+
+/// Mark archetype components that a system should EXCLUDE from its match,
+/// not include. Use as a template parameter to `createSystem<...>`:
+///
+///     createSystem<
+///         C_Modifiers,
+///         C_ResolvedFields,
+///         Exclude<C_NoGlobalModifiers>
+///     >("ModifierResolveGlobal", [](C_Modifiers&, C_ResolvedFields&) { ... });
+///
+/// The wrapper partitions the pack into includes / excludes at compile
+/// time, so dispatch only iterates the include components and the
+/// archetype matcher rejects nodes whose type intersects the exclude set
+/// (no per-entity branching).
+template <typename... Tags> struct Exclude {};
+
+namespace detail {
+
+template <typename...> struct TypeList {};
+
+template <typename T> struct ExtractFromExclude {
+    using Included = TypeList<T>;
+    using Excluded = TypeList<>;
+};
+template <typename... Tags> struct ExtractFromExclude<Exclude<Tags...>> {
+    using Included = TypeList<>;
+    using Excluded = TypeList<Tags...>;
+};
+
+template <typename A, typename B> struct ConcatTypeList;
+template <typename... A, typename... B>
+struct ConcatTypeList<TypeList<A...>, TypeList<B...>> {
+    using Type = TypeList<A..., B...>;
+};
+
+template <typename Acc, typename... Pack> struct PartitionImpl;
+
+template <typename Inc, typename Exc>
+struct PartitionImpl<TypeList<Inc, Exc>> {
+    using Included = Inc;
+    using Excluded = Exc;
+};
+
+template <typename Inc, typename Exc, typename Head, typename... Tail>
+struct PartitionImpl<TypeList<Inc, Exc>, Head, Tail...> {
+    using Extract = ExtractFromExclude<Head>;
+    using NextInc = typename ConcatTypeList<Inc, typename Extract::Included>::Type;
+    using NextExc = typename ConcatTypeList<Exc, typename Extract::Excluded>::Type;
+    using Rec = PartitionImpl<TypeList<NextInc, NextExc>, Tail...>;
+    using Included = typename Rec::Included;
+    using Excluded = typename Rec::Excluded;
+};
+
+template <typename... Pack>
+using PartitionExcludes = PartitionImpl<TypeList<TypeList<>, TypeList<>>, Pack...>;
+
+} // namespace detail
 // // Deduction guide
 // template <typename... RelationComponents>
 // RelationParams(Relation, void (*)(const RelationComponents&...)) ->

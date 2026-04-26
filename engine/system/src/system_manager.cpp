@@ -50,12 +50,16 @@ void SystemManager::executeSystem(SystemId system) {
     m_beginTicks[system].functionBeginTick_();
     std::vector<ArchetypeNode *> nodes;
     if (m_relations[system].relation_ == Relation::NONE) {
-        nodes = IREntity::queryArchetypeNodesSimple(m_ticks[system].archetype_);
+        nodes = IREntity::queryArchetypeNodesSimple(
+            m_ticks[system].archetype_,
+            m_ticks[system].excludeArchetype_
+        );
     }
     if (m_relations[system].relation_ == Relation::CHILD_OF) {
         nodes = IREntity::queryArchetypeNodesRelational(
             m_relations[system].relation_,
-            m_ticks[system].archetype_
+            m_ticks[system].archetype_,
+            m_ticks[system].excludeArchetype_
         );
     }
 
