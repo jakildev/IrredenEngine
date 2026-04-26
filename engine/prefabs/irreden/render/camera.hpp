@@ -65,10 +65,14 @@ inline std::pair<float, float> getYawSplit() { return computeYawSplit(getYaw());
 
 /// Cardinal-snap component of yaw — multiple of π/2 nearest visualYaw.
 /// Consumed by the integer trixel raster shader to pick a basis permutation.
+/// Still pays for the full split math; use `getYawSplit()` when both halves
+/// are needed.
 inline float getRasterYaw() { return getYawSplit().first; }
 
 /// Sub-cardinal residual in [-π/4, π/4]; consumed by the screen-space
 /// residual composite pass to apply the leftover continuous rotation.
+/// Still pays for the full split math; use `getYawSplit()` when both halves
+/// are needed.
 inline float getResidualYaw() { return getYawSplit().second; }
 
 } // namespace IRPrefab::Camera

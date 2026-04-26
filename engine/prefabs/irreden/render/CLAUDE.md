@@ -16,6 +16,8 @@ the ECS surface.
 - `C_Camera` — tag.
 - `C_CameraPosition2DIso` — iso-space position.
 - `C_ZoomLevel` — float zoom.
+- `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
+  `camera.hpp` for the cardinal/residual split API.
 - `C_TextSegment` — UTF-8 string for text-to-trixel.
 - `C_TextStyle` — font, size, color.
 - `C_GeometricShape` — 2D overlay shape descriptor.

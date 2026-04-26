@@ -14,6 +14,7 @@ add_executable(IrredenEngineTest
   math/ir_math_easing_color_sort_test.cpp
   math/ir_math_random_misc_test.cpp
   math/ir_math_trixel_index_test.cpp
+  render/camera_yaw_test.cpp
   utility/ir_utility_test.cpp
 )
 
