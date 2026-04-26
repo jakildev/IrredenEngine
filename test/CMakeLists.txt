@@ -7,6 +7,7 @@ add_executable(IrredenEngineTest
   ecs/entity_manager_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
+  ecs/system_exclude_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
   math/ir_math_viewport_helpers_test.cpp

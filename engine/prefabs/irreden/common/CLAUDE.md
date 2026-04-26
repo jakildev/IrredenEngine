@@ -56,8 +56,8 @@ Runtime entry points (all `inline`, header-only):
   paths give the same answer for the same input.
 - `registerResolverPipeline()` — call once at creation init. Creates
   the singleton globals entity (named `"modifierGlobals"`) and
-  registers the four resolver systems in canonical order. Returns
-  the four `SystemId`s in pipeline order so the caller splices them
+  registers the five resolver systems in canonical order. Returns
+  the `SystemId`s in pipeline order so the caller splices them
   into its `IRTime::UPDATE` pipeline.
 - `globalsEntity()` — returns the singleton globals entity created by
   `registerResolverPipeline()`. Intended for tests and diagnostics;
@@ -99,16 +99,10 @@ Key invariants the design rests on:
 
 ### Open follow-ups (runtime gaps)
 
-The current runtime ships four of the five resolver systems plus the
-manual-call sweep API. Two design-mandated paths are deferred:
+The current runtime ships all five resolver systems plus the
+manual-call sweep API. One design-mandated path is deferred, plus a
+prefab-layer gap:
 
-- **`MODIFIER_RESOLVE_EXEMPT` archetype-routed exemption.** The
-  design routes entities tagged `C_NoGlobalModifiers` to a sibling
-  resolver that skips globals. `engine/system/` does not yet expose
-  an exclude-tag filter mechanism — `addSystemTag<T>` is include-
-  only. Until an `addSystemExcludeTag<T>` (or equivalent) lands,
-  exempt-tagged entities still receive globals. The `SystemName`
-  enum slot is reserved.
 - **Auto-sweep on entity destruction.** The design contract is for
   `removeModifiersFromSource(entityId)` to fire inside
   `EntityManager::destroyEntity` *before* `returnEntityToPool`, so
@@ -128,8 +122,8 @@ manual-call sweep API. Two design-mandated paths are deferred:
   explicitly. The `ticksRemaining` parameter is reserved for this future
   system.
 
-The first two gaps need engine-level additions; the lambda decay gap is
-prefab-layer work. File a follow-up task before relying on any of them.
+The pre-destroy hook is engine-level work; the lambda decay gap is
+prefab-layer. File a follow-up task before relying on either.
 
 ## Commands
 
