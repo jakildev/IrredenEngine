@@ -572,6 +572,17 @@ If you hit a usage-limit error:
 Do NOT switch to `/model opus` to keep working — that defeats the
 budget split. Just wait.
 
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know
+about — a fleet bug, missing permission, surprising state, or
+suggestion for the fleet itself — append a structured entry to
+`~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
+`~/.fleet/feedback/sonnet-fleet-1.md`). Per-worktree filename so
+the human can tell which sonnet pane observed what. See top-level
+`CLAUDE.md` "Fleet feedback channel" for the format and the bar
+(high — most iterations write nothing).
+
 ## Hard rules
 
 - Never `git push origin master`. Never `--force`. Never call

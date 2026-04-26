@@ -317,6 +317,15 @@ end-to-end, then stop and wait for human instruction. Do not loop.
 - The PR force-pushed over master or bypassed hooks — hard-reject and
   surface to human.
 
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know
+about — a fleet bug, missing permission, surprising state, or
+suggestion for the fleet itself — append a structured entry to
+`~/.fleet/feedback/opus-reviewer.md`. See top-level `CLAUDE.md`
+"Fleet feedback channel" for the format and the bar (high — most
+iterations write nothing).
+
 ## Hard rules
 
 - Never `gh pr merge` — the human merges.
