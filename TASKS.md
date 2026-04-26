@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
+- [~] **Modifier framework: migrate position + velocity-drag patterns** — reframe existing position-offset and velocity-drag hand-rolled patterns onto the framework; preserve behavior exactly
   - **ID:** T-051
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-051-modifier-position-velocity
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) all demos and creations consuming position-global or drag-modulated velocity render and behave identically before and after; (2) `fleet-run IRShapeDebug` no visible regressions; (3) `render-debug-loop` before/after screenshots in PR body; (4) builds clean on `linux-debug` AND `macos-debug`; (5) removed-line count > added-line count (framework absorbs the one-off pattern)
@@ -163,11 +163,11 @@ Avoid:
   - **Notes:** Child 3 of 5. Two migrations: (a) position pattern — `C_Position3D` base + offset pushed as C_Modifiers entries → `C_PositionGlobal3D` as resolved; (b) velocity drag — `C_VelocityDrag` becomes MULTIPLY modifier on velocity field, `system_velocity_drag.hpp` shrinks. Worker chooses exact migration shape for each; behavior preservation is the hard gate. Deferred: color animation, spring color, spawn glow, texture scroll.
   - **Links:**
 
-- [ ] **Modifier framework: Lua bindings** — expose field registration, modifier push/remove/query, and TransformKind enum to Lua via sol2
+- [~] **Modifier framework: Lua bindings** — expose field registration, modifier push/remove/query, and TransformKind enum to Lua via sol2
   - **ID:** T-052
   - **Area:** engine/script, engine/prefabs/irreden/common
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-052-lua-bindings
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) Lua script registers field and pushes one modifier per transform kind (6 total), observing correct resolved values; (2) Lua script pushes lambda modifier and confirms it's applied; (3) Lua script pushes global modifier, tags one entity `C_NoGlobalModifiers`, confirms only non-exempt entities receive globals; (4) `removeBySource` removes only matching modifiers; (5) builds clean on active preset
