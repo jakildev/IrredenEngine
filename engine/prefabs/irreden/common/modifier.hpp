@@ -103,9 +103,12 @@ inline void pushLambda(
 
 // Sweep both per-entity and global modifier vectors, removing any whose
 // source_ matches `source`. Linear in the total number of (entity ×
-// modifier) pairs in the world. Engine consumers call this from a
-// pre-destroy hook on the source's owning system; for v1, callers must
-// invoke explicitly before destroying the source entity.
+// modifier) pairs in the world. Wired automatically into
+// `EntityManager::destroyEntity` by `registerResolverPipeline()` — a
+// pre-destroy hook fires `removeBySource(destroyedEntity)` before the
+// EntityId is recycled. Callers who want to drop a source's modifiers
+// without destroying the source (e.g. "ability ends but caster
+// persists") still invoke this directly.
 inline void removeBySource(IREntity::EntityId source) {
     auto stripVec = [&](auto &v) {
         v.erase(
@@ -178,6 +181,15 @@ inline ResolverPipelineSystems registerResolverPipeline() {
         );
         IREntity::setName(globalsEntity, "modifierGlobals");
     }
+    // Auto-sweep source-attributed modifiers when their source entity is
+    // destroyed. Without this, a target outliving its source keeps the
+    // dead source's modifiers applied indefinitely; recycled EntityIds
+    // would then inherit them on a future allocation. Linear sweep is
+    // acceptable for v1 — see CLAUDE.md "Open follow-ups" for the
+    // reverse-index option if churn becomes a profile hotspot.
+    IREntity::getEntityManager().registerPreDestroyHook(
+        [](IREntity::EntityId destroyed) { removeBySource(destroyed); }
+    );
     return ResolverPipelineSystems{
         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::GLOBAL_MODIFIER_DECAY>(),

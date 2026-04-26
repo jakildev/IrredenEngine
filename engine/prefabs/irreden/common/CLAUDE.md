@@ -49,8 +49,13 @@ Runtime entry points (all `inline`, header-only):
   All three reject `kInvalidFieldId` defensively.
 - `removeBySource(source)` — sweeps every `C_Modifiers`,
   `C_GlobalModifiers`, and `C_LambdaModifiers` in the world,
-  dropping entries whose `source_` matches. **Manual-only in v1**;
-  see "Auto-sweep on entity destruction" below.
+  dropping entries whose `source_` matches. Wired automatically
+  into `EntityManager::destroyEntity` by `registerResolverPipeline()`
+  via a pre-destroy hook, so destroying a source entity sweeps its
+  attributed modifiers off live targets before the EntityId
+  recycles. Callable directly when an "ability ends but caster
+  persists" pattern needs the same sweep without destroying the
+  source entity.
 - `applyToField(target, field, base) → float` — direct query. Shares
   one evaluator with the resolver pipeline so the cache and direct
   paths give the same answer for the same input.
@@ -99,8 +104,9 @@ Key invariants the design rests on:
 
 ### Open follow-ups (runtime gaps)
 
-The current runtime ships four of the five resolver systems plus the
-manual-call sweep API. Two design-mandated paths are deferred:
+The current runtime ships four of the five resolver systems, the
+manual-call sweep API, and the pre-destroy hook auto-sweep. One
+design-mandated resolver path and one decay gap remain deferred:
 
 - **`MODIFIER_RESOLVE_EXEMPT` archetype-routed exemption.** The
   design routes entities tagged `C_NoGlobalModifiers` to a sibling
@@ -108,16 +114,7 @@ manual-call sweep API. Two design-mandated paths are deferred:
   an exclude-tag filter mechanism — `addSystemTag<T>` is include-
   only. Until an `addSystemExcludeTag<T>` (or equivalent) lands,
   exempt-tagged entities still receive globals. The `SystemName`
-  enum slot is reserved.
-- **Auto-sweep on entity destruction.** The design contract is for
-  `removeModifiersFromSource(entityId)` to fire inside
-  `EntityManager::destroyEntity` *before* `returnEntityToPool`, so
-  recycled `EntityId`s never inherit a previous owner's modifiers.
-  No pre-destroy hook registry exists in `engine/entity/` yet;
-  callers must invoke `IRPrefab::Modifier::removeBySource(id)`
-  explicitly before destroying a source entity. `EntityId` has no
-  generation counter, so deferring the sweep one tick is unsafe —
-  the hook is the right shape; it just needs the engine plumbing.
+  enum slot is reserved. Tracked in #339 / T-060.
 
 - **Lambda modifier auto-expire (`pushLambda` `ticksRemaining` gap).**
   `pushLambda` accepts a `ticksRemaining` parameter and stores it in
@@ -126,10 +123,18 @@ manual-call sweep API. Two design-mandated paths are deferred:
   pass a non-`-1` value will get a permanent modifier. Until a lambda
   decay system is wired, use `removeBySource` to clean up lambda modifiers
   explicitly. The `ticksRemaining` parameter is reserved for this future
-  system.
+  system. Tracked in #341 / T-062.
 
-The first two gaps need engine-level additions; the lambda decay gap is
-prefab-layer work. File a follow-up task before relying on any of them.
+The exempt resolver gap needs an engine-level addition; the lambda decay
+gap is prefab-layer work. File a follow-up task before relying on either.
+
+The pre-destroy hook used for auto-sweep is a generic
+`EntityManager::registerPreDestroyHook` mechanism (see
+`engine/entity/CLAUDE.md`). Iterating all entities with `C_Modifiers`
+on every destruction is O(N) per destroy; for high-churn workloads a
+reverse-index (which targets carry modifiers from source X) would
+make sweeps O(K) in the per-source modifier count instead. Defer the
+index until a profile shows the linear sweep matters.
 
 ## Commands
 

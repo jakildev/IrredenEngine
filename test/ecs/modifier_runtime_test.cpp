@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/modifier.hpp>
 #include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/ir_entity.hpp>
 
 #include <vector>
 
@@ -344,6 +346,79 @@ TEST(ModifierDecay, SourceRemovalKeepsOnlyMatchingSourceOut) {
     ASSERT_EQ(mods.size(), 1u);
     EXPECT_EQ(mods[0].source_, IREntity::EntityId{2});
     EXPECT_FLOAT_EQ(mods[0].param_, 2.0f);
+}
+
+// ---- Auto-sweep on entity destruction (pre-destroy hook integration) ----
+
+class IRModifierAutoSweepTest : public testing::Test {
+  protected:
+    IRModifierAutoSweepTest()
+        : m_entity_manager{} {
+        // Mirror what registerResolverPipeline() wires up, without
+        // creating the SystemManager-backed resolver systems (this test
+        // only exercises the pre-destroy hook + sweep, not the resolver
+        // pipeline). Stash the hook id so the destructor can unregister
+        // it before the next test instance reinstalls one.
+        m_hook_id = IREntity::getEntityManager().registerPreDestroyHook(
+            [](IREntity::EntityId destroyed) {
+                IRPrefab::Modifier::removeBySource(destroyed);
+            }
+        );
+    }
+
+    ~IRModifierAutoSweepTest() override {
+        IREntity::getEntityManager().unregisterPreDestroyHook(m_hook_id);
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IREntity::PreDestroyHookId m_hook_id{IREntity::kInvalidPreDestroyHookId};
+};
+
+TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsModifiersFromTarget) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
+
+    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 5.0f, source);
+    auto &modsBefore = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    ASSERT_EQ(modsBefore.size(), 1u);
+    EXPECT_EQ(modsBefore[0].source_, source);
+
+    m_entity_manager.destroyEntity(source);
+
+    auto &modsAfter = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    EXPECT_EQ(modsAfter.size(), 0u);
+}
+
+TEST_F(IRModifierAutoSweepTest, DestroyingSourceLeavesUnrelatedModifiersAlone) {
+    auto sourceA = IREntity::createEntity();
+    auto sourceB = IREntity::createEntity();
+    auto target  = IREntity::createEntity(IRComponents::C_Modifiers{});
+
+    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 5.0f, sourceA);
+    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 7.0f, sourceB);
+
+    m_entity_manager.destroyEntity(sourceA);
+
+    auto &mods = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_EQ(mods[0].source_, sourceB);
+    EXPECT_FLOAT_EQ(mods[0].param_, 7.0f);
+}
+
+TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsLambdaModifiers) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(IRComponents::C_LambdaModifiers{});
+
+    IRPrefab::Modifier::pushLambda(
+        target, kFieldA, [](float v) { return v * 2.0f; }, source
+    );
+    auto &lambdasBefore = IREntity::getComponent<IRComponents::C_LambdaModifiers>(target).modifiers_;
+    ASSERT_EQ(lambdasBefore.size(), 1u);
+
+    m_entity_manager.destroyEntity(source);
+
+    auto &lambdasAfter = IREntity::getComponent<IRComponents::C_LambdaModifiers>(target).modifiers_;
+    EXPECT_EQ(lambdasAfter.size(), 0u);
 }
 
 } // namespace

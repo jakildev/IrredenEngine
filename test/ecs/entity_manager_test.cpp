@@ -96,4 +96,64 @@ TEST_F(IREntityTest, RemoveComponentsSimpleRemovesImmediatelyFromSnapshot) {
     EXPECT_TRUE(IREntity::getComponentOptional<TestMarker>(entityA).has_value());
     EXPECT_TRUE(IREntity::getComponentOptional<TestMarker>(entityB).has_value());
 }
+
+TEST_F(IREntityTest, PreDestroyHookFiresWithEntityIdBeforeDestruction) {
+    IREntity::EntityId entity = IREntity::createEntity(TestMarker{});
+    IREntity::EntityId observed = IREntity::kNullEntity;
+    bool componentVisibleInHook = false;
+    auto id = m_entity_manager.registerPreDestroyHook(
+        [&, entity](IREntity::EntityId destroyed) {
+            observed = destroyed;
+            // The entity must still be queryable at hook time — that's
+            // the whole point of "pre-destroy", as opposed to post-.
+            componentVisibleInHook =
+                IREntity::getComponentOptional<TestMarker>(destroyed).has_value();
+            EXPECT_EQ(destroyed, entity);
+        }
+    );
+    EXPECT_NE(id, IREntity::kInvalidPreDestroyHookId);
+
+    m_entity_manager.destroyEntity(entity);
+
+    EXPECT_EQ(observed, entity);
+    EXPECT_TRUE(componentVisibleInHook);
+}
+
+TEST_F(IREntityTest, PreDestroyHooksFireInRegistrationOrder) {
+    std::vector<int> order;
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(1); }
+    );
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(2); }
+    );
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(3); }
+    );
+
+    auto entity = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entity);
+
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
+}
+
+TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
+    int fireCount = 0;
+    auto id = m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { ++fireCount; }
+    );
+
+    auto entityA = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entityA);
+    EXPECT_EQ(fireCount, 1);
+
+    m_entity_manager.unregisterPreDestroyHook(id);
+
+    auto entityB = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entityB);
+    EXPECT_EQ(fireCount, 1);
+}
 } // namespace
