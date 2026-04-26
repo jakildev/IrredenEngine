@@ -15,6 +15,9 @@
 #include <irreden/common/modifier.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <string>
+#include <unordered_set>
+
 namespace IRScript {
 
 inline void bindModifierNamespace(LuaScript &luaScript) {
@@ -33,7 +36,9 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
     modTbl["OVERRIDE"]  = static_cast<int>(IRComponents::TransformKind::OVERRIDE);
 
     modTbl["registerField"] = [](const char *name) -> int {
-        return static_cast<int>(IRPrefab::Modifier::registerField(name));
+        static std::unordered_set<std::string> s_luaNames;
+        const char *interned = s_luaNames.emplace(name).first->c_str();
+        return static_cast<int>(IRPrefab::Modifier::registerField(interned));
     };
 
     struct PushOpts {

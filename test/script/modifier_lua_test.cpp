@@ -127,7 +127,7 @@ TEST_F(ModifierLuaApplyTest, ClampMinModifierApplied) {
         })
     )");
     float result = IRPrefab::Modifier::applyToField(m_entity, m_field_id, 5.0f);
-    EXPECT_GE(result, 20.0f);
+    EXPECT_FLOAT_EQ(result, 20.0f);
 }
 
 TEST_F(ModifierLuaApplyTest, ClampMaxModifierApplied) {
@@ -140,7 +140,7 @@ TEST_F(ModifierLuaApplyTest, ClampMaxModifierApplied) {
         })
     )");
     float result = IRPrefab::Modifier::applyToField(m_entity, m_field_id, 100.0f);
-    EXPECT_LE(result, 8.0f);
+    EXPECT_FLOAT_EQ(result, 8.0f);
 }
 
 TEST_F(ModifierLuaApplyTest, OverrideModifierApplied) {
@@ -217,6 +217,46 @@ TEST_F(ModifierLuaApplyTest, PushLambdaApplied) {
     EXPECT_EQ(lmPtr->modifiers_[0].field_, m_field_id);
     EXPECT_EQ(lmPtr->modifiers_[0].source_, lambdaEntity);
     EXPECT_FLOAT_EQ(lmPtr->modifiers_[0].fn_(5.0f), 10.0f);
+}
+
+// ---- pushGlobal -------------------------------------------------------------
+
+// Fixture: sets up a standalone globals entity and wires it into the detail
+// singleton directly, avoiding registerResolverPipeline() which also creates
+// systems and requires SystemManager.
+class ModifierLuaGlobalTest : public ModifierLuaTest {
+  protected:
+    ModifierLuaGlobalTest() {
+        m_field_id = IRPrefab::Modifier::registerField("lua.global.smoke");
+        m_globals_entity = IREntity::createEntity(IRComponents::C_GlobalModifiers{});
+        IRPrefab::Modifier::detail::globalsEntityId() = m_globals_entity;
+        m_lua.lua()["testField"] = static_cast<lua_Integer>(m_field_id);
+    }
+
+    ~ModifierLuaGlobalTest() {
+        IRPrefab::Modifier::detail::globalsEntityId() = IREntity::kNullEntity;
+    }
+
+    IRComponents::FieldBindingId m_field_id = 0;
+    IREntity::EntityId m_globals_entity = IREntity::kNullEntity;
+};
+
+TEST_F(ModifierLuaGlobalTest, PushGlobalAddsModifierToGlobalsEntity) {
+    m_lua.lua().script(R"(
+        ir.modifier.pushGlobal({
+            field  = testField,
+            kind   = ir.modifier.ADD,
+            param  = 5.0,
+            source = 0,
+        })
+    )");
+    auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(m_globals_entity)
+                  .value_or(nullptr);
+    ASSERT_NE(g, nullptr);
+    ASSERT_EQ(g->modifiers_.size(), 1u);
+    EXPECT_EQ(g->modifiers_[0].field_, m_field_id);
+    EXPECT_FLOAT_EQ(g->modifiers_[0].param_, 5.0f);
+    EXPECT_EQ(g->modifiers_[0].kind_, IRComponents::TransformKind::ADD);
 }
 
 } // namespace
