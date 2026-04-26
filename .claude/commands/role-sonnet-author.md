@@ -577,9 +577,33 @@ Each iteration:
    `claude` session — `fleet-babysit` handles the relaunch with a
    clean conversation).
 
-If Mode above is `dry-run`: do exactly **one** task end-to-end (steps
-1-11), print the PR URL, then stop and wait for human instruction. Do
-not loop.
+## Mode behavior
+
+The Mode argument at the top of this file is one of `dry-run`, `live`,
+or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+
+- **`live`** (full operation): each iteration runs steps 0–11 above,
+  then exits. fleet-babysit relaunches with fresh context.
+
+- **`dry-run`** (default): do exactly **one** task end-to-end (steps
+  1–11), print the PR URL, then stop and wait for human instruction.
+  Do not loop.
+
+- **`review-only`** (close-out mode): conserves credit by closing out
+  in-flight work without expanding the queue. Each iteration runs:
+  - Step 0 (heartbeat)
+  - Step 1 (address feedback labels on open PRs)
+  - Step 1b (cross-host smoke validation on approved render PRs)
+
+  Then **exit cleanly** — skip step 2 and beyond. Do **not** pick up
+  any new task from TASKS.md. The smoke and feedback steps still help
+  close out PRs the fleet already opened; new claims would expand the
+  queue, which is exactly what review-only mode is meant to prevent.
+
+  If step 1 finds no flagged PRs and step 1b finds no smoke-pending
+  PRs, print
+  `[sonnet-author] review-only: nothing to address this iteration.`
+  and exit. fleet-babysit will relaunch you on the normal cadence.
 
 ## Usage-limit handling
 

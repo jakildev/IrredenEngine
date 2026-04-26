@@ -359,6 +359,9 @@ If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait
 for human instruction. Do not loop.
 
+If Mode above is `review-only`: behave as `live`. Reviewing IS the
+point of review-only mode — keep reviewing PRs as normal.
+
 ## Escalation
 
 - A PR that looks structurally broken (wrong file edited, force-pushed
