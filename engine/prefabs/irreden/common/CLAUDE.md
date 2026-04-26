@@ -59,6 +59,9 @@ Runtime entry points (all `inline`, header-only):
   registers the four resolver systems in canonical order. Returns
   the four `SystemId`s in pipeline order so the caller splices them
   into its `IRTime::UPDATE` pipeline.
+- `globalsEntity()` — returns the singleton globals entity created by
+  `registerResolverPipeline()`. Intended for tests and diagnostics;
+  production code should use `pushGlobal` / `removeBySource`.
 
 Composition core lives in `modifier_compose.hpp` and is called from
 both the resolver tick and `applyToField`. Order is non-obvious:
@@ -116,8 +119,17 @@ manual-call sweep API. Two design-mandated paths are deferred:
   generation counter, so deferring the sweep one tick is unsafe —
   the hook is the right shape; it just needs the engine plumbing.
 
-Both gaps need engine-level additions, not prefab-only work. File a
-follow-up task before relying on either.
+- **Lambda modifier auto-expire (`pushLambda` `ticksRemaining` gap).**
+  `pushLambda` accepts a `ticksRemaining` parameter and stores it in
+  `LambdaModifier`, but no `LAMBDA_MODIFIER_DECAY` system exists — lambda
+  modifiers never auto-expire regardless of the value passed. Callers who
+  pass a non-`-1` value will get a permanent modifier. Until a lambda
+  decay system is wired, use `removeBySource` to clean up lambda modifiers
+  explicitly. The `ticksRemaining` parameter is reserved for this future
+  system.
+
+The first two gaps need engine-level additions; the lambda decay gap is
+prefab-layer work. File a follow-up task before relying on any of them.
 
 ## Commands
 

@@ -83,6 +83,9 @@ inline void pushGlobal(
     });
 }
 
+// NOTE: ticksRemaining is stored but currently unused — no LAMBDA_MODIFIER_DECAY
+// system exists. Lambda modifiers never auto-expire regardless of the value
+// passed. Use removeBySource to clean up; see CLAUDE.md "Open follow-ups".
 inline void pushLambda(
     IREntity::EntityId target,
     IRComponents::FieldBindingId field,
@@ -181,6 +184,8 @@ inline ResolverPipelineSystems registerResolverPipeline() {
     };
 }
 
+// For tests and diagnostics only; production code should use pushGlobal /
+// removeBySource rather than touching the entity directly.
 inline IREntity::EntityId globalsEntity() {
     return detail::globalsEntityId();
 }
