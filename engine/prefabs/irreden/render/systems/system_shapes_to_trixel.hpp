@@ -229,7 +229,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
                     const int tileCount = buildAndUploadTileDescriptors(
                         gpuShapes, s_shapeTileDescBuf, effectiveSub, renderMode,
-                        visualYaw);
+                        visualYaw, s_yawCos, s_yawSin);
                     if (tileCount == 0) {
                         continue;
                     }
@@ -305,12 +305,17 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // rotated by R_z(-visualYaw) before iso projection, and its XY bounding
     // half-extent is grown to cover the rotated AABB. At yaw=0 both
     // operations are identity and the tile coverage is unchanged.
+    // @p yawCos/@p yawSin are cos/sin of visualYaw, snapshotted at frame
+    // start so the cull pass and the per-tile dispatch see byte-identical
+    // values even if a script mutates yaw mid-frame.
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         Buffer *tileDescBuf,
         int effectiveSubdivisions,
         IRRender::SubdivisionMode renderMode,
-        float visualYaw
+        float visualYaw,
+        float yawCos,
+        float yawSin
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
@@ -318,18 +323,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         const int sub =
             (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
         const bool yawZero = (visualYaw == 0.0f);
-        const float yawC = std::cos(visualYaw);
-        const float yawS = std::sin(visualYaw);
-        const float absYawC = std::abs(yawC);
-        const float absYawS = std::abs(yawS);
+        const float absYawC = std::abs(yawCos);
+        const float absYawS = std::abs(yawSin);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
             vec3 viewPos = yawZero
                 ? worldPos
-                : vec3( yawC * worldPos.x + yawS * worldPos.y,
-                       -yawS * worldPos.x + yawC * worldPos.y,
+                : vec3( yawCos * worldPos.x + yawSin * worldPos.y,
+                       -yawSin * worldPos.x + yawCos * worldPos.y,
                         worldPos.z);
             ivec3 origin = ivec3(glm::round(viewPos));
 

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <numbers>
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);
         IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
                     g_initialYawRadians,
-                    g_initialYawRadians * (180.0f / 3.14159265f));
+                    g_initialYawRadians * (180.0f / std::numbers::pi_v<float>));
     }
     IREngine::gameLoop();
     return 0;
