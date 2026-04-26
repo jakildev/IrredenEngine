@@ -15,11 +15,9 @@
 // current base value before this system runs; the resolver mutates
 // value_ in place.
 //
-// NOTE — exempt path (C_NoGlobalModifiers) is not yet wired. A separate
-// MODIFIER_RESOLVE_EXEMPT system would require an exclude-tag filter
-// mechanism in engine/system. Until that lands, exempt entities still
-// receive globals; tag them with absorbing-no-op globals or push through
-// a custom path.
+// Entities tagged with C_NoGlobalModifiers are routed away by the
+// archetype filter (Exclude<C_NoGlobalModifiers>) so they fall through
+// to MODIFIER_RESOLVE_EXEMPT instead — no per-entity branching here.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -51,7 +49,8 @@ template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
     static SystemId create() {
         return createSystem<
             IRComponents::C_Modifiers,
-            IRComponents::C_ResolvedFields
+            IRComponents::C_ResolvedFields,
+            Exclude<IRComponents::C_NoGlobalModifiers>
         >(
             "ModifierResolveGlobal",
             [](IRComponents::C_Modifiers &m,

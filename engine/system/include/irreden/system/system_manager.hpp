@@ -63,14 +63,14 @@ class SystemManager {
         FunctionBeginTick functionBeginTick = nullptr,
         FunctionEndTick functionEndTick = nullptr,
         RelationParams<RelationComponents...> extraParams = {},
-        FunctionRelationTick functionRelationTick = nullptr
-
+        FunctionRelationTick functionRelationTick = nullptr,
+        Archetype excludeArchetype = {}
     ) {
         m_systemNames.emplace_back(C_Name{name});
         SystemId newSystemId = m_nextSystemId++;
 
         insertBeginTickFunction(functionBeginTick);
-        insertTickFunction<Components...>(functionTick, extraParams);
+        insertTickFunction<Components...>(functionTick, extraParams, std::move(excludeArchetype));
         insertEndTickFunction(functionEndTick);
         insertRelationTickFunction<RelationComponents...>(functionRelationTick);
 
@@ -82,6 +82,10 @@ class SystemManager {
 
     template <typename Tag> void addSystemTag(SystemId system) {
         m_ticks[system].archetype_.insert(IREntity::getComponentType<Tag>());
+    }
+
+    template <typename Tag> void addSystemExcludeTag(SystemId system) {
+        m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
     }
 
     template <typename Params> void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
@@ -140,7 +144,9 @@ class SystemManager {
     // matching the archetype. This can happen a variery of ways
     template <typename... Components, typename... RelationComponents, typename FunctionTick>
     void insertTickFunction(
-        FunctionTick functionTick, RelationParams<RelationComponents...> extraParams
+        FunctionTick functionTick,
+        RelationParams<RelationComponents...> extraParams,
+        Archetype excludeArchetype
     ) {
         m_ticks.emplace_back(
             C_SystemEvent<TICK>{
@@ -210,7 +216,8 @@ class SystemManager {
                         static_assert(false, "Unsupported tick function signature.");
                     }
                 },
-                getArchetype<Components...>()
+                getArchetype<Components...>(),
+                std::move(excludeArchetype)
             }
         );
     }
