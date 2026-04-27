@@ -52,6 +52,59 @@ This repo runs a parallel-agent workflow. The rules:
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
 
+### Cursor flow (human-in-the-loop)
+
+The rules above describe the fleet workflow. When working with the
+human directly in the Cursor IDE — an interactive chat session, not
+an autonomous role — the same correctness rules apply (no commits to
+`master`, no force-pushes, PRs only via `commit-and-push`) but the
+**timing is different**: the human drives when to commit, not the
+agent.
+
+In Cursor flow:
+
+- **Iterate freely.** Edit files, build, run, refine. Do not propose
+  committing after every change. The human will say when a slice is
+  ready.
+- **Quality skills are on-demand.** `simplify`, `polish-checkpoint`,
+  `optimize`, `attach-screenshots`, `render-debug-loop` may be
+  invoked whenever the human asks. Don't auto-invoke them
+  mid-iteration.
+- **Never auto-invoke `commit-and-push` or `start-next-task`.** Wait
+  for an explicit "ship it" / "commit this" / "open a PR" / "ready
+  for review" cue. The fleet's rules 2 and 3 describe what happens
+  *when* those cues arrive — they don't license proactive
+  invocation.
+- **`TASKS.md` is fleet-only.** The Cursor session is not bound to
+  the shared queue; the human decides what to work on.
+
+**Branching.** You do not need to manually create a feature branch
+before starting Cursor work. `commit-and-push` step 2 detects when
+HEAD is `master` and creates `claude/<area>-<topic>` for you before
+staging; the dirty working tree carries over via `git checkout -b`.
+The only things to keep in mind:
+
+- **No local commits on `master` during a session.** Dirty changes
+  are fine (they migrate to the new branch); committed history on
+  local `master` is not (it would have to be moved off, which is
+  error-prone). The "Never commit to master directly" rule above
+  applies in Cursor flow too.
+- **Watch for stale local master.** If a session runs for a while on
+  a local `master` that's behind `origin/master`, the auto-created
+  branch will be based on stale code. Mention this at commit time so
+  the human can decide whether to rebase the new branch onto current
+  `origin/master` before pushing.
+
+If you want to start a Cursor session with a known-fresh base, invoke
+`start-next-task` at the top — it fetches `origin/master` and
+branches off it cleanly. Otherwise, working dirty on `master` and
+letting `commit-and-push` branch you at the end is the lowest-friction
+default.
+
+If the agent is unsure which flow it's in, default to Cursor flow.
+Fleet roles (`.claude/commands/role-*.md`) override this default by
+being explicit about autonomous behavior.
+
 ### Model split: Opus for core, Sonnet for the fleet
 
 The user has much more Sonnet budget than Opus budget. Spend each where it
