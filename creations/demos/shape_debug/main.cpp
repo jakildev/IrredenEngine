@@ -56,6 +56,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0;  // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
+bool g_checkerboard = false;  // opt-in via --checkerboard; flickered, off by default
 int g_autoProfileFrames = 0;  // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f;  // 0 = use engine default
@@ -81,6 +82,8 @@ int main(int argc, char **argv) {
             }
         } else if (std::strcmp(argv[i], "--depth-color") == 0) {
             g_depthColor = true;
+        } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
+            g_checkerboard = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -372,12 +375,13 @@ EntityId createVoxelPoolShape(
             ++activeCount;
         }
     }
-    // g_depthColor toggles the debug tint: depth-colored voxels
-    // visualize z-bands; checkerboard makes adjacent same-color
-    // voxels visually distinguishable.
+    // Debug tint is opt-in: --depth-color visualizes z-bands; --checkerboard
+    // distinguishes adjacent same-color voxels. Default is plain shape color
+    // — the checkerboard path was flickering frame-to-frame and breaking
+    // visual regression tests.
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
-    } else {
+    } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }
 
@@ -396,11 +400,12 @@ EntityId createSDFShape(
     Color color
 ) {
     C_ShapeDescriptor desc{type, params, color};
-    // Same debug-tint toggle as createVoxelPoolShape — depth bands or
-    // checkerboard, applied GPU-side via shader flags for SDF shapes.
+    // Same opt-in debug-tint toggle as createVoxelPoolShape, applied GPU-side
+    // via shader flags. Default is no tint — the checkerboard path flickered
+    // frame-to-frame on this side too.
     if (g_depthColor) {
         desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
-    } else {
+    } else if (g_checkerboard) {
         desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
     }
     EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
