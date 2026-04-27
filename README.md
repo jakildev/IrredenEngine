@@ -138,6 +138,10 @@ For more advanced setups, the root `CMakeLists.txt` still supports `IRREDEN_USER
 **I AM CURRENTLY VERY INTERESTED IN FEEDBACK REGARDING THE DESIGN OF THIS ENGINE.**
 -   If you have a suggestion, create a new discussion post or email me at jakildev@gmail.com.
 
+### Development workflow
+
+The engine is developed using a parallel-agent workflow on top of normal IDE-driven coding. See [`docs/fleet/README.md`](docs/fleet/README.md) for the human-facing tour: what each skill does, what each role does, and how the Cursor (human-in-the-loop) and fleet (autonomous) workflows fit together. Setup details live in [`docs/AGENT_FLEET_SETUP.md`](docs/AGENT_FLEET_SETUP.md).
+
 ### Ways to contribute
 1. Submit an issue on github.
 2. Add, expand, or modify the engine's ***prefabs*** (built-in components, entities, systems, and commands).
