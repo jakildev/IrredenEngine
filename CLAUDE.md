@@ -71,10 +71,9 @@ In Cursor flow:
   invoked whenever the human asks. Don't auto-invoke them
   mid-iteration.
 - **Never auto-invoke `commit-and-push` or `start-next-task`.** Wait
-  for an explicit "ship it" / "commit this" / "open a PR" / "ready
-  for review" cue. The fleet's rules 2 and 3 describe what happens
-  *when* those cues arrive — they don't license proactive
-  invocation.
+  for an explicit cue (see the cue table below). The fleet's rules
+  2 and 3 describe what happens *when* those cues arrive — they
+  don't license proactive invocation.
 - **`TASKS.md` is fleet-only.** The Cursor session is not bound to
   the shared queue; the human decides what to work on.
 
@@ -82,24 +81,100 @@ In Cursor flow:
 before starting Cursor work. `commit-and-push` step 2 detects when
 HEAD is `master` and creates `claude/<area>-<topic>` for you before
 staging; the dirty working tree carries over via `git checkout -b`.
-The only things to keep in mind:
+
+The cursor-flow cues that drive branching:
+
+- **"commit"** / **"commit and push"** / **"open a PR"** / **"ship
+  it"** / **"ready for review"** → `commit-and-push` runs end-to-end.
+  If on `master`, it auto-branches first.
+- **"I merged it"** / **"back to master"** / **"fresh start"** /
+  **"new task"** / **"next task"** → `start-next-task` runs. Fetches
+  `origin/master`, branches off it cleanly, primes context for the
+  new area.
+- **"stack this"** / **"next slice, stacked"** / **"keep stacking"** /
+  **"stack the next on this PR"** → the next `start-next-task` (or
+  `commit-and-push`, depending on which side of the chain you're on)
+  runs in **cursor stack mode**. See "Stacking in cursor flow" below.
+
+Two things to watch when working dirty on `master`:
 
 - **No local commits on `master` during a session.** Dirty changes
   are fine (they migrate to the new branch); committed history on
-  local `master` is not (it would have to be moved off, which is
-  error-prone). The "Never commit to master directly" rule above
-  applies in Cursor flow too.
+  local `master` is not. The "Never commit to master directly" rule
+  above applies in Cursor flow too.
 - **Watch for stale local master.** If a session runs for a while on
   a local `master` that's behind `origin/master`, the auto-created
   branch will be based on stale code. Mention this at commit time so
   the human can decide whether to rebase the new branch onto current
   `origin/master` before pushing.
 
-If you want to start a Cursor session with a known-fresh base, invoke
-`start-next-task` at the top — it fetches `origin/master` and
-branches off it cleanly. Otherwise, working dirty on `master` and
-letting `commit-and-push` branch you at the end is the lowest-friction
-default.
+**New chats.** Each Cursor chat starts with fresh context. The agent
+should briefly check `git rev-parse --abbrev-ref HEAD` early in the
+first turn that touches code, so it knows the branch state. Do not
+propose any branching action unless the human cues for it. The one
+exception: **if the human asks for new work and HEAD is a feature
+branch whose PR is already merged**, surface this and ask whether to
+run `start-next-task` first — continuing on a stale merged branch
+produces a confusing PR later.
+
+If a new chat lands on a feature branch with an **open PR**, assume
+the human is continuing that PR (e.g. addressing review feedback).
+Don't suggest branching.
+
+If a new chat lands on `master`, just work — the auto-branch happens
+at commit time. This is the lowest-friction default and the most
+common shape.
+
+**Stacking in cursor flow.** Use this when you want to ship slice
+A's PR and immediately start slice B that depends on A — before A
+is merged — with B's diff scoped to its own changes only.
+
+Cursor stacking is a lighter-weight pattern than fleet's
+`fleet-claim stack` mode: no molecules, no task IDs, no worktree
+claims, no `fleet:stacked` label. State is per-branch git config,
+so it survives across chat boundaries automatically.
+
+Mechanics:
+
+1. Ship slice A normally: "commit and push" → PR A vs `master`.
+2. Start B stacked: "next slice, stacked" → `start-next-task`
+   branches off the **current branch** (A's head) instead of
+   `origin/master`, and writes
+   `branch.<new>.cursor-stack-base = <A's branch>` to git config.
+3. Iterate on B, then "commit and push" → `commit-and-push` reads
+   the `cursor-stack-base` config; if set, opens the PR with
+   `--base <A's branch>` and adds `Stacked on: <PR A URL>` to the
+   PR body.
+4. Repeat for C, D, …
+
+Stacks usually live in one Cursor chat (ship A → start B → ship B
+→ start C, all in one context), but they can span chats. The git
+config is per-branch and persists, so a fresh chat that lands on
+`claude/slice-c` finds its `cursor-stack-base` automatically and
+`commit-and-push` does the right thing.
+
+When PR A merges, change PR B's base to `master` in the GitHub UI
+(or `gh pr edit B --base master`) — same step as in any stacked-PR
+workflow. The `cursor-stack-base` config is local-only; nothing
+upstream needs cleanup.
+
+If a chat lands on a branch that already has `cursor-stack-base`
+set and the human cues a non-specific "next slice" without saying
+"stacked" or "fresh start", **ask** whether to continue the stack
+or branch off master. Don't guess.
+
+**macOS sandbox note.** Cursor's Bash sandbox on macOS blocks
+writes to `.git/config`, `gh` keychain access, and SSH `git push`.
+Any `git config <branch>.<key> <value>` write, `git push`, `gh pr
+create`, or `gh pr edit` invoked from a cursor-flow skill needs to
+run with the `all` permission. Reads (`git config --get …`) are
+not sandboxed and run normally.
+
+If you want to start a Cursor session with a known-fresh base,
+invoke `start-next-task` at the top — it fetches `origin/master`
+and branches off it cleanly. Otherwise, working dirty on `master`
+and letting `commit-and-push` branch you at the end is the
+lowest-friction default.
 
 If the agent is unsure which flow it's in, default to Cursor flow.
 Fleet roles (`.claude/commands/role-*.md`) override this default by
