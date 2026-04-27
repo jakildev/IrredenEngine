@@ -40,6 +40,10 @@ Do **not** invoke proactively — only when the user explicitly asks.
 
 ## Stack-aware mode
 
+This is the **fleet stack** path. The cursor-flow stacking variant
+lives in the next section ("Cursor stack mode"); they have separate
+detection signals and are mutually exclusive in practice.
+
 If the current task is part of an `fleet-claim stack` chain (i.e. the
 caller's worktree name has a stack claim under
 `~/.fleet/claims/_stack_<agent>/`), this skill opens **one PR per task,
@@ -92,6 +96,65 @@ back, the next stacked-PR iteration computes its own `--base` via
 When **the final task's PR is merged**, run
 `fleet-claim release-stack <agent>` to clean up both the per-task
 claims and the stack metadata.
+
+## Cursor stack mode
+
+This is the cursor-flow analog of the fleet stack mode above. It
+opens a single PR per slice but with `--base <previous-feature-
+branch>` instead of `--base master`, so the diffs stay isolated
+while the chain accumulates. No `fleet-claim` machinery, no task
+IDs, no `fleet:stacked` label. State lives entirely in the per-
+branch git config that `start-next-task` writes when the human
+cues stacking.
+
+Detect cursor stack mode after step 1 of the main flow, AFTER
+ruling out fleet stack mode:
+
+```bash
+git config --get branch.$(git branch --show-current).cursor-stack-base
+```
+
+- Output is empty / exit 1 → not cursor-stacked. Proceed with the
+  normal single-PR flow.
+- Output names a branch (e.g. `claude/render-glow-pulse`) → the
+  current branch is cursor-stacked on that branch. Note the value;
+  step 8 uses it as `--base` and writes a `Stacked on:` line to
+  the PR body.
+
+The deltas vs the normal single-PR flow:
+
+- **Step 8 PR base** is the recorded `cursor-stack-base` instead
+  of `master`. Pass it to `gh pr create` as `--base <base>`.
+- **PR body** includes a `Stacked on: <PR URL>` line. Look up the
+  parent PR URL once at PR-open time:
+  ```bash
+  parent_branch=$(git config --get branch.$(git branch --show-current).cursor-stack-base)
+  parent_pr_url=$(gh pr list --head "$parent_branch" --state all --json url -q '.[0].url' --limit 1)
+  ```
+  If the parent has no PR yet (e.g. the human hasn't run
+  `commit-and-push` on it — unusual but possible), use the branch
+  name instead: `Stacked on: <parent_branch>` and warn the user.
+- **Title** uses the normal cursor-flow shape (no `T-NNN:` prefix —
+  cursor flow doesn't use the queue).
+- **No labels** beyond what the normal flow adds. The
+  `fleet:stacked` label is fleet-only; cursor flow just relies on
+  `Stacked on:` in the PR body.
+
+After the PR opens, do NOT clear the `cursor-stack-base` config —
+leave it as a record of the chain. The config is local-only and
+doesn't need cleanup; the next `commit-and-push` on a
+non-stacked branch (no config set) takes the standard path
+automatically.
+
+When the parent PR merges, change this PR's base to `master` in the
+GitHub UI (or `gh pr edit <N> --base master`) — same step as in any
+manual stacked-PR workflow.
+
+**macOS sandbox note.** Cursor's Bash sandbox blocks `gh` keychain
+access and SSH `git push`. Always run `gh pr create`,
+`gh pr edit`, `gh pr list`, and `git push` with the `all`
+permission on macOS. Reads of `git config --get …` are not
+sandboxed.
 
 ## Flow
 
@@ -379,6 +442,48 @@ PRs are prerequisites. The `Full chain:` line helps them find the
 siblings if they want cross-context. The merger reads `baseRefName`
 directly for correctness decisions; `fleet:stacked` is a derived
 convenience label for human visibility and cheap filtering.
+
+**Cursor stack override:** when the current branch has a
+`cursor-stack-base` git config set (see "Cursor stack mode" section
+above), use that as the PR base instead of `master`. No `fleet-claim`
+calls and no `fleet:stacked` label — cursor stack mode is human-
+managed.
+
+```bash
+parent_branch=$(git config --get branch."$(git branch --show-current)".cursor-stack-base)
+if [[ -n "$parent_branch" ]]; then
+    parent_pr_url=$(gh pr list --head "$parent_branch" --state all \
+        --json url -q '.[0].url' --limit 1)
+    parent_pr_ref="${parent_pr_url:-$parent_branch (no PR yet)}"
+    gh pr create --base "$parent_branch" \
+        --title "<scope>: <title>" \
+        --body "$(cat <<EOF
+## Summary
+- <what this slice does>
+
+## Stack context
+Stacked on: $parent_pr_ref
+
+When the parent PR merges, change this PR's base to \`master\`
+(via the GitHub UI or \`gh pr edit <N> --base master\`).
+
+## Test plan
+- [ ] <slice-specific checks>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+fi
+```
+
+The `Stacked on:` line is the reviewer's signal that an earlier PR is
+a prerequisite. Cursor stack mode does not record a `Full chain:`
+line — chains are short and the link-walk via `Stacked on:` is
+sufficient.
+
+The `gh pr list --head` and `gh pr create` calls both need keychain
+access; on macOS Cursor's Bash sandbox, run them with `all`
+permissions.
 
 ### 8b. Tag the host the PR was authored on
 
