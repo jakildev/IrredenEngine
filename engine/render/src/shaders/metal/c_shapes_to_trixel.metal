@@ -703,7 +703,6 @@ kernel void c_shapes_to_trixel(
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
-        const float4 col = adjustColorForFace(baseColor, face);
 
         for (int subPixel = 0; subPixel < 2; ++subPixel) {
             const int2 offset = faceOffset_2x3(face, subPixel);
@@ -730,7 +729,7 @@ kernel void c_shapes_to_trixel(
                 );
                 if (depthEncoded == stored) {
                     const uint2 pix = uint2(canvasPixel);
-                    triangleCanvasColors.write(col, pix);
+                    triangleCanvasColors.write(baseColor, pix);
                     triangleCanvasDistances.write(
                         int4(depthEncoded, 0, 0, 0), pix);
                     triangleCanvasEntityIds.write(

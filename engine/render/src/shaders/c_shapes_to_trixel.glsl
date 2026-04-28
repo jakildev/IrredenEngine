@@ -680,7 +680,6 @@ void main() {
 
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);
-        vec4 col = adjustColorForFace(baseColor, face);
 
         for (int subPixel = 0; subPixel < 2; subPixel++) {
             ivec2 offset = faceOffset_2x3(face, subPixel);
@@ -695,7 +694,7 @@ void main() {
                 int stored = imageLoad(triangleCanvasDistances,
                                        canvasPixel).x;
                 if (depthEncoded == stored) {
-                    imageStore(triangleCanvasColors, canvasPixel, col);
+                    imageStore(triangleCanvasColors, canvasPixel, baseColor);
                     imageStore(triangleCanvasEntityIds, canvasPixel,
                                uvec4(shape.entityId, 0u, 0u, 0u));
                 }

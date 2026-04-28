@@ -42,7 +42,8 @@ struct FrameDataTrixelToFramebuffer {
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
-    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions, y=unused.
+    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions,
+    /// y=unused.
     vec2 effectiveSubdivisionsForHover_;
     /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
     float showHoverHighlight_;
@@ -85,9 +86,9 @@ struct FrameDataTrixelToTrixel {
 };
 
 struct GlyphDrawCommand {
-    uint32_t positionPacked;  // x | (y << 16)
+    uint32_t positionPacked; // x | (y << 16)
     uint32_t glyphIndex;
-    uint32_t colorPacked;     // RGBA as packed uint
+    uint32_t colorPacked; // RGBA as packed uint
     uint32_t distance;
     uint32_t styleFlags = 0;
 };
@@ -106,13 +107,7 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 ///   SMOOTH mode. Changing mode or subdivisions mid-frame stalls the pipeline.
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
-enum class LodLevel : std::uint32_t {
-    LOD_0 = 0,
-    LOD_1 = 1,
-    LOD_2 = 2,
-    LOD_3 = 3,
-    LOD_4 = 4
-};
+enum class LodLevel : std::uint32_t { LOD_0 = 0, LOD_1 = 1, LOD_2 = 2, LOD_3 = 3, LOD_4 = 4 };
 
 struct GPUEntityTransform {
     vec4 worldPosition;
@@ -137,7 +132,7 @@ enum class ShapeType : std::uint32_t {
     CURVED_PANEL = 4,
     WEDGE = 5,
     TAPERED_BOX = 6,
-    CUSTOM_SDF = 7,  ///< User-supplied SDF; requires a matching shader specialization.
+    CUSTOM_SDF = 7, ///< User-supplied SDF; requires a matching shader specialization.
     CONE = 8,
     TORUS = 9
 };
@@ -145,15 +140,15 @@ enum class ShapeType : std::uint32_t {
 /// Bit-combinable rendering flags stored in @c GPUShapeDescriptor::flags.
 /// Combine with @c |.
 enum ShapeFlags : std::uint32_t {
-    SHAPE_FLAG_NONE       = 0,
-    SHAPE_FLAG_HOLLOW     = 1u << 0,  ///< Render only the shell; skip interior voxels.
-    SHAPE_FLAG_MIRROR_X   = 1u << 1,
-    SHAPE_FLAG_MIRROR_Y   = 1u << 2,
-    SHAPE_FLAG_VISIBLE    = 1u << 3,
+    SHAPE_FLAG_NONE = 0,
+    SHAPE_FLAG_HOLLOW = 1u << 0, ///< Render only the shell; skip interior voxels.
+    SHAPE_FLAG_MIRROR_X = 1u << 1,
+    SHAPE_FLAG_MIRROR_Y = 1u << 2,
+    SHAPE_FLAG_VISIBLE = 1u << 3,
     /// Forward-looking: snap joint rotation to nearest 90° in iso-adjusted space.
     /// Not yet implemented.
     SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
-    SHAPE_FLAG_CHECKERBOARD      = 1u << 5,
+    SHAPE_FLAG_CHECKERBOARD = 1u << 5,
     /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
     /// normalized to [0, 1] over the shape's own depth extent. Useful for
     /// visually distinguishing individual shapes regardless of world position.
@@ -202,6 +197,20 @@ struct GPUShapesFrameData {
     float _yawPadding[3] = {};
 };
 
+struct FrameDataSun {
+    // xyz = unit vector pointing from surfaces toward the sun; w unused.
+    // Default mirrors RenderManager::m_sunDirection (overhead with small
+    // +X / +Y tilt). Live frame data is overwritten from resolveSun()
+    // each tick — this default only matters before the first tick.
+    vec4 sunDirection_ = vec4(0.3f, 0.2f, -0.93f, 0.0f);
+    float sunIntensity_ = 1.0f;
+    float sunAmbient_ = 0.4f;
+    int shadowsEnabled_ = 1;
+    int shapeCasterCount_ = 0;
+    ivec4 _padding_ = ivec4(0);
+};
+static_assert(sizeof(FrameDataSun) == 48, "FrameDataSun must match std140 layout");
+
 /// @{
 /// @name GPU buffer binding points
 /// **CRITICAL:** These indices are hard-coded in both C++ and GLSL/MSL shaders.
@@ -233,9 +242,14 @@ constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
+constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 constexpr std::uint32_t kBufferIndex_OccupancyGrid = 28;
-constexpr std::uint32_t kBufferIndex_FrameDataSunShadow = 29;
+constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
+// Metal caps buffer slots at 30; the sun-shadow pass runs after
+// SHAPES_TO_TRIXEL, so it can reuse the shape descriptor slot as long as each
+// pass explicitly binds the buffer it needs before dispatch.
+constexpr std::uint32_t kBufferIndex_SunShadowShapeCasters = kBufferIndex_ShapeDescriptors;
 /// @}
 
 // One entry per dispatched tile in the batched shapes→trixel pass.

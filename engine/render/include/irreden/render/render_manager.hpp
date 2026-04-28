@@ -69,6 +69,12 @@ class RenderManager {
 
     void setSunDirection(vec3 dir);
     vec3 getSunDirection() const;
+    void setSunIntensity(float intensity);
+    float getSunIntensity() const;
+    void setSunAmbient(float ambient);
+    float getSunAmbient() const;
+    void setSunShadowsEnabled(bool enabled);
+    bool getSunShadowsEnabled() const;
 
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
@@ -94,10 +100,7 @@ class RenderManager {
     );
 
     EntityId createCanvas(
-        std::string name,
-        ivec3 voxelPoolSize,
-        ivec2 trixelSize,
-        EntityId framebuffer = EntityId{}
+        std::string name, ivec3 voxelPoolSize, ivec2 trixelSize, EntityId framebuffer = EntityId{}
     );
 
     bool hasCanvas(const std::string &name) const;
@@ -130,10 +133,18 @@ class RenderManager {
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
-    // Unit vector pointing from surfaces toward the sun. Default is
-    // overhead-lit; creations override via setSunDirection() per frame or
-    // at init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
-    vec3 m_sunDirection = vec3(0.0f, 1.0f, 0.0f);
+    // Unit vector pointing from surfaces toward the sun. Default is a
+    // mostly-overhead pose with a small +X / +Y tilt so the three voxel
+    // faces shade in the order Z > X > Y, recovering the visual feel of
+    // the old hardcoded per-face brightness multiplier (Z=1.25, X=1.0,
+    // Y=0.75). Creations override via setSunDirection() per frame or at
+    // init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
+    // Component breakdown after normalize: |z|≈0.93 (top brightest),
+    // x≈0.30, y≈0.20 — every face has at least 0.4 ambient floor.
+    vec3 m_sunDirection = vec3(0.3f, 0.2f, -0.93f);
+    float m_sunIntensity = 1.0f;
+    float m_sunAmbient = 0.4f;
+    bool m_sunShadowsEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 
     void initRenderingSystems();

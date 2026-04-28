@@ -24,11 +24,6 @@ namespace IRSystem {
 // Must match local_size in c_lighting_to_trixel.glsl / .metal.
 constexpr int kLightingToTrixelGroupSize = 16;
 
-// Binding slot for the lighting frame-data UBO. Kept local to this prefab
-// since the engine-wide binding table (ir_render_types.hpp) does not yet
-// reserve one for lighting — slot 27 is currently unused.
-constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
-
 // CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
 // `lutEnabled_` activates palette LUT shading, which replaces the plain
 // grayscale AO multiplication with a luminance-indexed palette lookup
@@ -47,11 +42,11 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
 // no explicit padding is needed.
 struct FrameDataLightingToTrixel {
-    int   lightingEnabled_     = 0;
-    int   lutEnabled_          = 0;
-    int   lightVolumeEnabled_  = 0;
-    float debugLightLevel_     = 0.0f;
-    int   debugOverlayMode_    = 0;
+    int lightingEnabled_ = 0;
+    int lutEnabled_ = 0;
+    int lightVolumeEnabled_ = 0;
+    float debugLightLevel_ = 0.0f;
+    int debugOverlayMode_ = 0;
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -68,9 +63,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
         IRRender::createNamedResource<ShaderProgram>(
             "LightingToTrixelProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "LightingToTrixelFrameData",
@@ -82,13 +75,21 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         );
         IRRender::createNamedResource<Texture2D>(
             "PaletteLUT_Nearest",
-            TextureKind::TEXTURE_2D, 256, 16,
-            TextureFormat::RGBA8, TextureWrap::CLAMP_TO_EDGE, TextureFilter::NEAREST
+            TextureKind::TEXTURE_2D,
+            256,
+            16,
+            TextureFormat::RGBA8,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::NEAREST
         );
         IRRender::createNamedResource<Texture2D>(
             "PaletteLUT_Linear",
-            TextureKind::TEXTURE_2D, 256, 16,
-            TextureFormat::RGBA8, TextureWrap::CLAMP_TO_EDGE, TextureFilter::LINEAR
+            TextureKind::TEXTURE_2D,
+            256,
+            16,
+            TextureFormat::RGBA8,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::LINEAR
         );
 
         static ShaderProgram *s_program =
@@ -101,6 +102,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // later in the pipeline so the buffer is always populated.
         static Buffer *s_voxelFrameDataBuf =
             IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        static Buffer *s_sunFrameDataBuf =
+            IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         static Texture2D *s_paletteLUT =
             IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
@@ -118,13 +121,24 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 }
             }
             s_paletteLUT->subImage2D(
-                0, 0, 256, 16,
-                PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, data.data()
+                0,
+                0,
+                256,
+                16,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                data.data()
             );
-            IRRender::getNamedResource<Texture2D>("PaletteLUT_Linear")->subImage2D(
-                0, 0, 256, 16,
-                PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, data.data()
-            );
+            IRRender::getNamedResource<Texture2D>("PaletteLUT_Linear")
+                ->subImage2D(
+                    0,
+                    0,
+                    256,
+                    16,
+                    PixelDataFormat::RGBA,
+                    PixelDataType::UNSIGNED_BYTE,
+                    data.data()
+                );
         }
 
         return createSystem<
@@ -132,8 +146,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             C_TrixelCanvasRenderBehavior,
             C_CanvasAOTexture,
             C_CanvasSunShadow,
-            C_CanvasLightVolume
-        >(
+            C_CanvasLightVolume>(
             "LightingToTrixel",
             [](const C_TriangleCanvasTextures &canvasTextures,
                const C_TrixelCanvasRenderBehavior &behavior,
@@ -146,17 +159,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
                 auto &timing = IRRender::gpuStageTiming();
                 IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
+                if (timing.enabled_) {
+                    IRRender::device()->finish();
+                    t0 = IRRender::SteadyClock::now();
+                }
 
-                canvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::READ_WRITE, TextureFormat::RGBA8
-                );
-                canvasTextures.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::READ_ONLY, TextureFormat::R32I
-                );
-                ao.getTexture()->bindAsImage(
-                    2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
-                );
+                canvasTextures.getTextureColors()
+                    ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                canvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                 // Texture/image unit layout (must match GLSL + MSL):
                 //   3: paletteLUT (sampler2D)
                 //   4: canvasSunShadow (image2D, R/O)
@@ -165,40 +177,40 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 // shared setTexture slot space, so all three slots must be
                 // unique across both kinds.
                 s_paletteLUT->bind(3);
-                shadow.getTexture()->bindAsImage(
-                    4, TextureAccess::READ_ONLY, TextureFormat::RGBA8
-                );
+                shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                 lightVolume.getTexture()->bind(5);
                 s_frameDataBuf->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataLightingToTrixel
                 );
                 s_voxelFrameDataBuf->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataVoxelToCanvas
                 );
+                s_sunFrameDataBuf->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
-                const int groupsX = IRMath::divCeil(
-                    canvasTextures.size_.x, kLightingToTrixelGroupSize
-                );
-                const int groupsY = IRMath::divCeil(
-                    canvasTextures.size_.y, kLightingToTrixelGroupSize
-                );
+                const int groupsX =
+                    IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
+                const int groupsY =
+                    IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
                 // Assumes a single matching canvas per frame. Switch to `+=`
                 // with a `beginTick` reset if the filter ever matches
                 // multiple entities — otherwise later entities overwrite.
-                if (timing.enabled_) { IRRender::device()->finish(); timing.lightingToTrixelMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
+                if (timing.enabled_) {
+                    IRRender::device()->finish();
+                    timing.lightingToTrixelMs_ =
+                        IRRender::elapsedMs(t0, IRRender::SteadyClock::now());
+                }
             },
             []() {
                 s_program->use();
                 frameData.lightingEnabled_ = 1;
                 frameData.lightVolumeEnabled_ = 1;
-                frameData.debugOverlayMode_ =
-                    static_cast<int>(IRRender::getDebugOverlay());
-                s_frameDataBuf->subData(
-                    0, sizeof(FrameDataLightingToTrixel), &frameData
-                );
+                frameData.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+                s_frameDataBuf->subData(0, sizeof(FrameDataLightingToTrixel), &frameData);
             }
         );
     }

@@ -46,13 +46,6 @@ inline float4 unpackColor(uint packedColor) {
     );
 }
 
-inline float4 adjustColorForFace(float4 color, int face) {
-    float b = 1.0;
-    if (face == kYFace) b = 0.75;
-    if (face == kZFace) b = 1.25;
-    return float4(clamp(color.rgb * b, 0.0, 1.0), color.a);
-}
-
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 //   (0,0),(1,0) -> Z_FACE
 //   (1,1),(1,2) -> X_FACE

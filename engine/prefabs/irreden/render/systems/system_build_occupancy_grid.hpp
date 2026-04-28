@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 
@@ -45,22 +46,20 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
             kBufferIndex_OccupancyGrid
         );
 
-        static Buffer *s_ssbo =
-            IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        static Buffer *s_ssbo = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
 
         return createSystem<C_VoxelPool, C_OccupancyGrid>(
             "BuildOccupancyGrid",
-            [](C_VoxelPool &pool, C_OccupancyGrid &grid) {
+            [](IREntity::EntityId, C_VoxelPool &pool, C_OccupancyGrid &grid) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-
-                if (!grid.isAnyDirty()) return;
+                IR_ASSERT(
+                    grid.sizeVoxels() == kMaxOccupancyGridSideVoxels,
+                    "Lighting occupancy shaders currently require a 256^3 grid"
+                );
 
                 {
-                    IR_PROFILE_BLOCK(
-                        "BuildOccupancyGrid::ClearDirty",
-                        IR_PROFILER_COLOR_RENDER
-                    );
-                    grid.clearBitsInDirtyChunks();
+                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Clear", IR_PROFILER_COLOR_RENDER);
+                    std::fill(grid.bitfield().begin(), grid.bitfield().end(), 0u);
                 }
 
                 const auto &globals = pool.getPositionGlobals();
@@ -68,12 +67,10 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                 const int liveCount = pool.getLiveVoxelCount();
 
                 {
-                    IR_PROFILE_BLOCK(
-                        "BuildOccupancyGrid::Populate",
-                        IR_PROFILER_COLOR_RENDER
-                    );
+                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Populate", IR_PROFILER_COLOR_RENDER);
                     for (int i = 0; i < liveCount; ++i) {
-                        if (colors[i].color_.alpha_ == 0) continue;
+                        if (colors[i].color_.alpha_ == 0)
+                            continue;
                         const vec3 &wp = globals[i].pos_;
                         const int wx = static_cast<int>(std::lround(wp.x));
                         const int wy = static_cast<int>(std::lround(wp.y));
@@ -83,24 +80,11 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                 }
 
                 {
-                    IR_PROFILE_BLOCK(
-                        "BuildOccupancyGrid::Upload",
-                        IR_PROFILER_COLOR_RENDER
-                    );
-                    s_ssbo->subData(
-                        0,
-                        grid.bitfieldByteSize(),
-                        grid.bitfield().data()
-                    );
+                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Upload", IR_PROFILER_COLOR_RENDER);
+                    s_ssbo->subData(0, grid.bitfieldByteSize(), grid.bitfield().data());
                 }
-
-                grid.clearAllDirty();
             },
-            []() {
-                s_ssbo->bindBase(
-                    BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid
-                );
-            }
+            []() { s_ssbo->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); }
         );
     }
 };

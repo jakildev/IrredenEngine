@@ -6,6 +6,7 @@
 #include <irreden/math/color_palettes.hpp>
 #include <irreden/math/color.hpp>
 #include <irreden/math/physics.hpp>
+#include <irreden/math/sdf.hpp>
 #include <irreden/ir_platform.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -250,14 +251,17 @@ struct IsoBounds2D {
 
     /// Returns true if @p point lies within [min_, max_] (inclusive).
     bool contains(vec2 point) const {
-        return point.x >= min_.x && point.x <= max_.x &&
-               point.y >= min_.y && point.y <= max_.y;
+        return point.x >= min_.x && point.x <= max_.x && point.y >= min_.y && point.y <= max_.y;
     }
 
     /// Returns the centre of the bounds.
-    vec2 center() const { return (min_ + max_) * 0.5f; }
+    vec2 center() const {
+        return (min_ + max_) * 0.5f;
+    }
     /// Returns the size of the bounds (max_ - min_).
-    vec2 extent() const { return max_ - min_; }
+    vec2 extent() const {
+        return max_ - min_;
+    }
 };
 
 /// Returns the visible iso-space viewport rectangle given camera and canvas
@@ -279,14 +283,11 @@ inline IsoBounds2D visibleIsoViewport(
     vec2 zoom = vec2(1.0f),
     int margin = 0
 ) {
-    vec2 viewCenter = -vec2(canvasOriginOffset)
-                      - vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y))
-                      + vec2(canvasSize) * 0.5f;
+    vec2 viewCenter = -vec2(canvasOriginOffset) -
+                      vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y)) +
+                      vec2(canvasSize) * 0.5f;
     vec2 halfExtent = vec2(canvasSize) / (zoom * 2.0f);
-    return {
-        viewCenter - halfExtent - vec2(margin),
-        viewCenter + halfExtent + vec2(margin)
-    };
+    return {viewCenter - halfExtent - vec2(margin), viewCenter + halfExtent + vec2(margin)};
 }
 
 /// Returns a conservative iso-space half-extent for a rectangular-prism
@@ -310,11 +311,7 @@ inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
     for (int dx = 0; dx <= 1; ++dx) {
         for (int dy = 0; dy <= 1; ++dy) {
             for (int dz = 0; dz <= 1; ++dz) {
-                vec3 corner = worldPos + vec3(
-                    dx * voxelSize.x,
-                    dy * voxelSize.y,
-                    dz * voxelSize.z
-                );
+                vec3 corner = worldPos + vec3(dx * voxelSize.x, dy * voxelSize.y, dz * voxelSize.z);
                 corners[idx++] = pos3DtoPos2DIso(corner);
             }
         }
@@ -332,17 +329,15 @@ inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
 /// the trixel canvas.  Converts the world AABB to iso, translates to canvas
 /// pixels, and tests against [0, canvasSize).
 inline bool isEntityOnScreen(
-    vec3 worldPos,
-    ivec3 voxelSize,
-    vec2 cameraIso,
-    ivec2 canvasOffsetZ1,
-    ivec2 canvasSize
+    vec3 worldPos, ivec3 voxelSize, vec2 cameraIso, ivec2 canvasOffsetZ1, ivec2 canvasSize
 ) {
     IsoBounds2D bounds = entityIsoBounds(worldPos, voxelSize);
-    vec2 canvasMin = bounds.min_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
-    vec2 canvasMax = bounds.max_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
-    return canvasMax.x >= 0 && canvasMin.x < canvasSize.x &&
-           canvasMax.y >= 0 && canvasMin.y < canvasSize.y;
+    vec2 canvasMin =
+        bounds.min_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    vec2 canvasMax =
+        bounds.max_ + vec2(canvasOffsetZ1) + vec2(glm::floor(cameraIso.x), glm::floor(cameraIso.y));
+    return canvasMax.x >= 0 && canvasMin.x < canvasSize.x && canvasMax.y >= 0 &&
+           canvasMin.y < canvasSize.y;
 }
 
 /// Converts a screen-centre-relative position to iso space by dividing by
@@ -353,17 +348,13 @@ constexpr vec2 pos2DScreenToPos2DIso(const vec2 screenPos, const vec2 triangleSt
 
 /// Converts a screen-space delta to an iso-space delta.  The backend-specific
 /// Y sign from IRPlatform::kGfx is applied automatically.
-constexpr vec2 screenDeltaToIsoDelta(
-    const vec2 screenDelta, const vec2 triangleStepSizeScreen
-) {
+constexpr vec2 screenDeltaToIsoDelta(const vec2 screenDelta, const vec2 triangleStepSizeScreen) {
     return screenDelta / triangleStepSizeScreen * vec2(1.0f, IRPlatform::kGfx.screenYDirection_);
 }
 
 /// Converts an iso-space delta to a screen-space delta (inverse of
 /// screenDeltaToIsoDelta).
-constexpr vec2 isoDeltaToScreenDelta(
-    const vec2 isoDelta, const vec2 triangleStepSizeScreen
-) {
+constexpr vec2 isoDeltaToScreenDelta(const vec2 isoDelta, const vec2 triangleStepSizeScreen) {
     return isoDelta * triangleStepSizeScreen * vec2(1.0f, IRPlatform::kGfx.screenYDirection_);
 }
 
@@ -754,10 +745,7 @@ vec3 layoutZigZagPath(
 
 /// Outward square-spiral layout.
 vec3 layoutSquareSpiral(
-    int index,
-    float spacing,
-    PlaneIso plane = PlaneIso::XY,
-    float depth = 0.0f
+    int index, float spacing, PlaneIso plane = PlaneIso::XY, float depth = 0.0f
 );
 
 /// Circular ring layout.  @p startAngleRad is the angle of the first entity

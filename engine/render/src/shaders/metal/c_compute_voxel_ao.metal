@@ -45,13 +45,16 @@ kernel void c_compute_voxel_ao(
     int face = encoded & 3;
     int rawDepth = encoded >> 2;
 
-    int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(frameData.frameCanvasOffset));
-
     // If the subdivision encoding ever shifts, update
     // c_voxel_to_trixel_stage_1.metal and c_voxel_to_trixel_stage_2.metal
     // in lockstep — all three shaders must agree on rawDepth scaling.
     int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+    float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
+        ? frameData.frameCanvasOffset * float(subdivisions)
+        : frameData.frameCanvasOffset;
+    int2 isoRel =
+        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
+
     float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (frameData.voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);

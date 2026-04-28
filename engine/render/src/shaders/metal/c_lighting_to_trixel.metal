@@ -19,13 +19,29 @@ struct FrameDataLightingToTrixel {
     int   debugOverlayMode;
 };
 
+struct FrameDataSun {
+    float4 sunDirection;
+    float sunIntensity;
+    float sunAmbient;
+    int shadowsEnabled;
+    int shapeCasterCount;
+    int4 padding;
+};
+
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
 constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
+inline float3 faceNormal(int face) {
+    if (face == kXFace) return float3(1.0f, 0.0f, 0.0f);
+    if (face == kYFace) return float3(0.0f, 1.0f, 0.0f);
+    return float3(0.0f, 0.0f, -1.0f);
+}
+
 kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
+    constant FrameDataSun& sunFrameData [[buffer(29)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
@@ -75,9 +91,15 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
+    const int rawDepth = encoded >> 2;
+    const int face = encoded & 3;
+    const float lambert = max(0.0f, dot(faceNormal(face), sunFrameData.sunDirection.xyz));
+    const float faceFactor =
+        mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
+
     float3 baseRgb;
     if (frameData.lutEnabled == 0) {
-        baseRgb = src.rgb * ao * shadow;
+        baseRgb = src.rgb * ao * shadow * faceFactor;
     } else {
         // LUT palette shading: AO drives the X axis (light level), luminance
         // drives Y. Shadow darkening is applied after the LUT lookup so
@@ -86,17 +108,19 @@ kernel void c_lighting_to_trixel(
         constexpr sampler s(filter::nearest, address::clamp_to_edge);
         const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
         const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * shadow;
+        baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
     if (frameData.lightVolumeEnabled != 0) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.metal.
-        const int rawDepth = encoded >> 2;
+        const int subdivisions = max(voxelFrameData.voxelRenderOptions.y, 1);
+        const float2 canvasOffset = (voxelFrameData.voxelRenderOptions.x != 0)
+            ? voxelFrameData.frameCanvasOffset * float(subdivisions)
+            : voxelFrameData.frameCanvasOffset;
         const int2 isoRel =
             pixel - voxelFrameData.trixelCanvasOffsetZ1 -
-            int2(floor(voxelFrameData.frameCanvasOffset));
-        const int subdivisions = max(voxelFrameData.voxelRenderOptions.y, 1);
+            int2(floor(canvasOffset));
         float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
         if (voxelFrameData.voxelRenderOptions.x != 0) {
             pos3D /= float(subdivisions);
@@ -112,7 +136,7 @@ kernel void c_lighting_to_trixel(
             (pos3D + float3(kLightVolumeHalfExtent) + float3(0.5)) /
             float3(kLightVolumeSize);
         const float3 light = lightVolume.sample(volumeSampler, sampleCoord).rgb;
-        baseRgb = baseRgb + src.rgb * light;
+        baseRgb = clamp(baseRgb + src.rgb * light, 0.0f, 1.0f);
     }
 
     trixelColors.write(float4(baseRgb, src.a), uint2(pixel));

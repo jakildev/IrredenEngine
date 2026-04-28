@@ -72,9 +72,6 @@ void main() {
     int face = encoded & 3;
     int rawDepth = encoded >> 2;
 
-    ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(frameCanvasOffset));
-
     // Reconstruct a voxel-space surface point. In POSITION_ONLY / FULL
     // subdivision modes rawDepth + iso coords are in sub-voxel units —
     // divide back to the integer voxel grid so occupancyGetBit reads from
@@ -83,6 +80,12 @@ void main() {
     // c_voxel_to_trixel_stage_2.glsl in lockstep — all three shaders
     // must agree on rawDepth scaling.
     int subdivisions = max(voxelRenderOptions.y, 1);
+    vec2 canvasOffset = (voxelRenderOptions.x != 0)
+        ? frameCanvasOffset * float(subdivisions)
+        : frameCanvasOffset;
+    ivec2 isoRel =
+        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
+
     vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);

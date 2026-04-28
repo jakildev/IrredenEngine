@@ -77,6 +77,18 @@ namespaces in headers; keep them in `.cpp`.
   `engine/prefabs/CLAUDE.md` §"Component method rules" for the full
   categorization and the documented exceptions (GPU resource RAII, `onDestroy`
   IO cleanup).
+- **Prefer culling, alloc-free reuse, and GPU-side computation over CPU-side
+  dirty-flag bookkeeping.** Dirty flags are imperative state; every missed
+  invalidation path produces silent stale output. For per-frame render work,
+  prefer, in order:
+  1. Cull with the fixed iso camera angle and known lighting axes.
+  2. Reuse containers across frames and clear them without releasing capacity.
+  3. Generate derived lighting/render data on the GPU from buffers already
+     there, avoiding CPU uploads.
+  4. Use content-addressable memoization only as a documented stopgap with a
+     follow-up issue for the culling or GPU-compute fix.
+  5. Use dirty flags only as a last resort, with a focused test proving every
+     input mutation invalidates the cached output.
 
 ---
 

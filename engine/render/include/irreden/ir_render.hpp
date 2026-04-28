@@ -212,10 +212,25 @@ bool isHoveredTrixelVisible();
 /// @{
 /// @name Directional sun lighting
 /// Unit vector pointing from surfaces toward the sun. Consumed each frame
-/// by the @c COMPUTE_SUN_SHADOW pass to ray-march the occupancy grid;
-/// setter normalizes on write so callers can pass any non-zero vector.
+/// by the @c COMPUTE_SUN_SHADOW pass to ray-march the occupancy grid.
+///
+/// Irreden's isometric world uses +Z as the downward height axis, so a sun
+/// above the ground must have @c dir.z <= 0. Positive Z points below the
+/// world and makes top faces shadow themselves instead of casting shadows
+/// onto the floor. The setter asserts this convention and normalizes on write
+/// so callers can pass any non-zero vector.
 void setSunDirection(vec3 dir);
 vec3 getSunDirection();
+/// Global directional sun intensity used when no ECS DIRECTIONAL light exists.
+/// Values below zero are clamped to zero.
+void setSunIntensity(float intensity);
+float getSunIntensity();
+/// Ambient floor for sun face shading. 0 is pure Lambert, 1 is fully ambient.
+void setSunAmbient(float ambient);
+float getSunAmbient();
+/// When false, sun face shading remains active but projected shadows are disabled.
+void setSunShadowsEnabled(bool enabled);
+bool getSunShadowsEnabled();
 /// @}
 
 /// @{
