@@ -26,6 +26,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -221,6 +222,8 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         static Buffer *s_sunShadowFrameDataBuf =
             IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         static Buffer *s_occupancySSBO = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        static Buffer *s_occupancyBoundsSSBO =
+            IRRender::getNamedResource<Buffer>("OccupancyEntityBoundsBuffer");
         static Buffer *s_voxelFrameDataBuf =
             IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         static Buffer *s_shapeCasterSSBO =
@@ -266,6 +269,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 canvasTextures.getTextureEntityIds()
                     ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 s_occupancySSBO->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid);
+                s_occupancyBoundsSSBO->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_OccupancyEntityBounds
+                );
                 s_shapeCasterSSBO->bindBase(
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_SunShadowShapeCasters
@@ -311,6 +318,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 frameData.sunIntensity_ = sun.intensity_;
                 frameData.sunAmbient_ = sun.ambient_;
                 frameData.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
+                // Picked up from the occupancy grid build that ran earlier
+                // this frame. The bounds buffer is also bound globally by
+                // BUILD_OCCUPANCY_GRID, so no per-canvas rebind needed.
+                frameData.occupancyBoundsCount_ = IRSystem::detail::occupancyEntityBoundsCount();
             }
         );
     }

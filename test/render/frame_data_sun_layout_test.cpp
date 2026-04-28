@@ -11,5 +11,12 @@ TEST(FrameDataSunLayout, MatchesStd140Packing) {
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunAmbient_), 20u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, shadowsEnabled_), 24u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, shapeCasterCount_), 28u);
-    EXPECT_EQ(offsetof(IRRender::FrameDataSun, _padding_), 32u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, occupancyBoundsCount_), 32u);
+}
+
+TEST(GPUOccupancyEntityBoundsLayout, MatchesStd430Packing) {
+    EXPECT_EQ(sizeof(IRRender::GPUOccupancyEntityBounds), 48u);
+    EXPECT_EQ(offsetof(IRRender::GPUOccupancyEntityBounds, entityId), 0u);
+    EXPECT_EQ(offsetof(IRRender::GPUOccupancyEntityBounds, minCell), 16u);
+    EXPECT_EQ(offsetof(IRRender::GPUOccupancyEntityBounds, maxCell), 32u);
 }

@@ -207,9 +207,34 @@ struct FrameDataSun {
     float sunAmbient_ = 0.4f;
     int shadowsEnabled_ = 1;
     int shapeCasterCount_ = 0;
-    ivec4 _padding_ = ivec4(0);
+    // Number of valid entries in the OccupancyEntityBounds SSBO. The shadow
+    // compute shader linear-scans this many entries to look up the surface
+    // entity's voxel bbox so it can skip self-cells during occupancy march
+    // (the parity equivalent of analytic-path selfEntityId exclusion).
+    int occupancyBoundsCount_ = 0;
+    int _padding0_ = 0;
+    int _padding1_ = 0;
+    int _padding2_ = 0;
 };
 static_assert(sizeof(FrameDataSun) == 48, "FrameDataSun must match std140 layout");
+
+/// Per-entity occupancy bbox passed to the sun shadow shader so it can
+/// exclude self-cells from the occupancy march. Built each frame in
+/// `system_build_occupancy_grid` from the per-voxel entity IDs that
+/// `system_update_voxel_set_children` writes into the voxel pool. One entry
+/// per voxel-pool entity that contributed at least one in-bounds voxel.
+///
+/// std430 layout: each member is naturally aligned to 16 bytes via the
+/// uvec4 / ivec4 wrappers. Total 48 bytes per entry.
+struct GPUOccupancyEntityBounds {
+    /// .x = entity id; .yzw padding to keep the next member 16-byte aligned.
+    uvec4 entityId = uvec4(0u);
+    /// Inclusive minimum cell coordinates (signed world-voxel space).
+    ivec4 minCell = ivec4(0);
+    /// Inclusive maximum cell coordinates.
+    ivec4 maxCell = ivec4(0);
+};
+static_assert(sizeof(GPUOccupancyEntityBounds) == 48, "GPUOccupancyEntityBounds std430 layout");
 
 /// @{
 /// @name GPU buffer binding points
@@ -250,6 +275,9 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // SHAPES_TO_TRIXEL, so it can reuse the shape descriptor slot as long as each
 // pass explicitly binds the buffer it needs before dispatch.
 constexpr std::uint32_t kBufferIndex_SunShadowShapeCasters = kBufferIndex_ShapeDescriptors;
+// Reuses slot 4 (otherwise unassigned). The sun-shadow pass binds this
+// before dispatch; no other pass uses slot 4 today.
+constexpr std::uint32_t kBufferIndex_OccupancyEntityBounds = 4;
 /// @}
 
 // One entry per dispatched tile in the batched shapes→trixel pass.

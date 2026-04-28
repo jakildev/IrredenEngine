@@ -59,6 +59,22 @@ layout(std430, binding = 28) readonly buffer OccupancyGrid {
     uint occupancyBits[];
 };
 
+// Mirrors GPUOccupancyEntityBounds in ir_render_types.hpp. Filled by
+// system_build_occupancy_grid each frame: one entry per voxel-pool
+// entity that contributed at least one in-bounds voxel. The per-pixel
+// shader linear-scans this list to find the surface entity's bbox so
+// it can skip self-cells during the occupancy march — same role as
+// selfEntityId exclusion in the analytic shape path.
+struct OccupancyEntityBounds {
+    uvec4 entityId;
+    ivec4 minCell;
+    ivec4 maxCell;
+};
+
+layout(std430, binding = 4) readonly buffer OccupancyEntityBoundsBuffer {
+    OccupancyEntityBounds occupancyEntityBounds[];
+};
+
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
@@ -82,7 +98,10 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunAmbient;
     uniform int shadowsEnabled;
     uniform int shapeCasterCount;
-    uniform ivec4 _sunPadding;
+    uniform int occupancyBoundsCount;
+    uniform int _sunPadding0;
+    uniform int _sunPadding1;
+    uniform int _sunPadding2;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
@@ -258,7 +277,6 @@ void main() {
         return;
     }
 
-    int face = encoded & 3;
     int rawDepth = encoded >> 2;
 
     // Same reconstruction as c_compute_voxel_ao.glsl — keep the two in
@@ -275,31 +293,27 @@ void main() {
         pos3D /= float(subdivisions);
     }
 
-    // The voxel-to-trixel rasterizer encodes positions at the voxel CENTER
-    // plane in the face's normal axis (Z face stays at the voxel-center z;
-    // X face stays at center x; Y face stays at center y). For the SDF
-    // path that's fine — pos3D already lies on the surface — but for the
-    // voxel-pool path the reconstructed point is half a voxel inside the
-    // surface. Shift along the face's outward normal so rays start at the
-    // actual face surface. Without this shift, sub-voxel offsets on the
-    // X / Y faces (where u, v span [0, 0.75] inward) make the very first
-    // ray cell land back on the voxel itself and self-shadow.
-    if (face == kZFace) {
-        pos3D.z -= 0.5;
-    } else if (face == kXFace) {
-        pos3D.x += 0.5;
-    } else { // kYFace
-        pos3D.y += 0.5;
-    }
-
     uint selfEntityId = imageLoad(trixelEntityIds, pixel).x;
+
+    // Look up this surface's voxel-pool bbox so the occupancy march below
+    // can skip self-cells. Mirrors the analytic path's selfEntityId
+    // exclusion. SDF surfaces and pixels where the entity didn't make it
+    // into the bounds buffer simply fall through with the sentinel range,
+    // matching no cell — i.e. behaving as if no self-exclusion is needed.
+    ivec3 selfMin = ivec3(2147483647);
+    ivec3 selfMax = ivec3(-2147483648);
+    for (int i = 0; i < occupancyBoundsCount; ++i) {
+        if (occupancyEntityBounds[i].entityId.x == selfEntityId) {
+            selfMin = occupancyEntityBounds[i].minCell.xyz;
+            selfMax = occupancyEntityBounds[i].maxCell.xyz;
+            break;
+        }
+    }
 
     vec3 sunDir = sunDirection.xyz;
     vec3 rayOrigin = pos3D + sunDir;
     bool shadowed = analyticShapeShadowHit(rayOrigin, sunDir, selfEntityId);
 
-    // Start the ray one voxel outside the surface in the sun direction to
-    // avoid counting the surface voxel itself as its own occluder.
     vec3 rayPos = rayOrigin;
     for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
         ivec3 cell = ivec3(round(rayPos));
@@ -310,7 +324,11 @@ void main() {
             // Left the grid without hitting anything — lit.
             break;
         }
-        if (occupancyGetBit(cell.x, cell.y, cell.z)) {
+        bool isSelfCell =
+            cell.x >= selfMin.x && cell.x <= selfMax.x &&
+            cell.y >= selfMin.y && cell.y <= selfMax.y &&
+            cell.z >= selfMin.z && cell.z <= selfMax.z;
+        if (!isSelfCell && occupancyGetBit(cell.x, cell.y, cell.z)) {
             shadowed = true;
             break;
         }

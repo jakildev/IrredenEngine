@@ -30,7 +30,10 @@ struct FrameDataSun {
     float sunAmbient;
     int shadowsEnabled;
     int shapeCasterCount;
-    int4 padding;
+    int occupancyBoundsCount;
+    int padding0;
+    int padding1;
+    int padding2;
 };
 
 struct ShapeDescriptor {
@@ -44,6 +47,14 @@ struct ShapeDescriptor {
     uint lodLevel;
     uint pad0;
     uint pad1;
+};
+
+// Mirrors GPUOccupancyEntityBounds in ir_render_types.hpp. See the GLSL
+// shader for the rationale.
+struct OccupancyEntityBounds {
+    uint4 entityId;
+    int4 minCell;
+    int4 maxCell;
 };
 
 inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
@@ -225,6 +236,7 @@ kernel void c_compute_sun_shadow(
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *occupancyBits [[buffer(28)]],
     device const ShapeDescriptor *shapeCasters [[buffer(20)]],
+    device const OccupancyEntityBounds *occupancyEntityBounds [[buffer(4)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasSunShadow [[texture(1)]],
     texture2d<uint, access::read> trixelEntityIds [[texture(2)]],
@@ -247,7 +259,6 @@ kernel void c_compute_sun_shadow(
         return;
     }
 
-    int face = encoded & 3;
     int rawDepth = encoded >> 2;
 
     int subdivisions = max(frameData.voxelRenderOptions.y, 1);
@@ -262,25 +273,24 @@ kernel void c_compute_sun_shadow(
         pos3D /= float(subdivisions);
     }
 
-    // The voxel-to-trixel rasterizer encodes positions at the voxel CENTER
-    // plane in the face's normal axis (Z face stays at the voxel-center z;
-    // X face stays at center x; Y face stays at center y). For the SDF
-    // path that's fine — pos3D already lies on the surface — but for the
-    // voxel-pool path the reconstructed point is half a voxel inside the
-    // surface. Shift along the face's outward normal so rays start at the
-    // actual face surface. Without this shift, sub-voxel offsets on the
-    // X / Y faces (where u, v span [0, 0.75] inward) make the very first
-    // ray cell land back on the voxel itself and self-shadow.
-    if (face == kZFace) {
-        pos3D.z -= 0.5;
-    } else if (face == kXFace) {
-        pos3D.x += 0.5;
-    } else { // kYFace
-        pos3D.y += 0.5;
-    }
-
     float3 sunDir = sunFrameData.sunDirection.xyz;
     uint selfEntityId = trixelEntityIds.read(uint2(pixel)).x;
+
+    // Look up this surface's voxel-pool bbox so the occupancy march below
+    // can skip self-cells. Mirrors the analytic path's selfEntityId
+    // exclusion. SDF surfaces and pixels where the entity didn't make it
+    // into the bounds buffer simply fall through with the sentinel range,
+    // matching no cell — i.e. behaving as if no self-exclusion is needed.
+    int3 selfMin = int3(2147483647);
+    int3 selfMax = int3(-2147483648);
+    for (int i = 0; i < sunFrameData.occupancyBoundsCount; ++i) {
+        if (occupancyEntityBounds[i].entityId.x == selfEntityId) {
+            selfMin = occupancyEntityBounds[i].minCell.xyz;
+            selfMax = occupancyEntityBounds[i].maxCell.xyz;
+            break;
+        }
+    }
+
     float3 rayOrigin = pos3D + sunDir;
     bool shadowed = analyticShapeShadowHit(
         rayOrigin,
@@ -290,6 +300,7 @@ kernel void c_compute_sun_shadow(
         sunFrameData,
         shapeCasters
     );
+
     float3 rayPos = rayOrigin;
     for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
         int3 cell = int3(round(rayPos));
@@ -299,7 +310,11 @@ kernel void c_compute_sun_shadow(
             cell.z < -he || cell.z >= he) {
             break;
         }
-        if (occupancyGetBit(occupancyBits, cell.x, cell.y, cell.z)) {
+        bool isSelfCell =
+            cell.x >= selfMin.x && cell.x <= selfMax.x &&
+            cell.y >= selfMin.y && cell.y <= selfMax.y &&
+            cell.z >= selfMin.z && cell.z <= selfMax.z;
+        if (!isSelfCell && occupancyGetBit(occupancyBits, cell.x, cell.y, cell.z)) {
             shadowed = true;
             break;
         }
