@@ -64,6 +64,24 @@ int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
+// Outward unit normal for the visible side of each iso-rendered face. With
+// +Z = down (gravity), the three visible faces in iso view are +X, +Y, -Z.
+// Used by both the AO compute (to step OUTside the surface and read
+// neighbor occluders) and the lighting compute (to dot with the
+// sun-direction for lambert). Both shaders MUST share this so the surface
+// shading and the AO sampling agree on which way is "out".
+vec3 faceOutwardNormal(int face) {
+    if (face == kXFace) return vec3(1.0, 0.0, 0.0);
+    if (face == kYFace) return vec3(0.0, 1.0, 0.0);
+    return vec3(0.0, 0.0, -1.0);
+}
+
+ivec3 faceOutwardNormalI(int face) {
+    if (face == kXFace) return ivec3(1, 0, 0);
+    if (face == kYFace) return ivec3(0, 1, 0);
+    return ivec3(0, 0, -1);
+}
+
 ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
     if (face == kXFace) {
         return ivec3(
@@ -95,4 +113,18 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     vec3 voxelRounded = round(voxelPosition);
     bvec3 nearGrid = lessThanEqual(abs(voxelPosition - voxelRounded), vec3(0.0001));
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
+}
+
+// Round-half-up: rounds to the nearest integer, ties go UP. Mirrors
+// `IRMath::roundHalfUp` (engine/math/include/irreden/ir_math.hpp) so any
+// CPU↔GPU coordinate handshake (occupancy grid build, ray-march cell sampling)
+// resolves half-integer voxel positions to the same cell on both sides.
+// Hardware `round()` is implementation-defined at half-integers and cannot be
+// trusted for that handshake.
+ivec3 roundHalfUp(vec3 v) {
+    return ivec3(floor(v + vec3(0.5)));
+}
+
+int roundHalfUp(float v) {
+    return int(floor(v + 0.5));
 }

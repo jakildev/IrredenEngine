@@ -59,21 +59,25 @@ kernel void c_compute_voxel_ao(
     if (frameData.voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }
-    int3 surfaceVoxel = int3(round(pos3D));
+    // `roundHalfUp` lives in ir_iso_common.metal and mirrors
+    // `IRMath::roundHalfUp` on the CPU side (see
+    // system_build_occupancy_grid.hpp). Both ends MUST agree on
+    // half-integer voxel positions or the AO sample lands in a
+    // different cell than the one the CPU populated.
+    int3 surfaceVoxel = roundHalfUp(pos3D);
 
-    int3 outward;
+    // Face-outward + tangent axes shared with the lighting lambert via
+    // `faceOutwardNormalI` in ir_iso_common.metal.
+    int3 outward = faceOutwardNormalI(face);
     int3 t1;
     int3 t2;
     if (face == kZFace) {
-        outward = int3(0, 0, 1);
         t1 = int3(1, 0, 0);
         t2 = int3(0, 1, 0);
     } else if (face == kXFace) {
-        outward = int3(-1, 0, 0);
         t1 = int3(0, 1, 0);
         t2 = int3(0, 0, 1);
     } else {
-        outward = int3(0, -1, 0);
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }

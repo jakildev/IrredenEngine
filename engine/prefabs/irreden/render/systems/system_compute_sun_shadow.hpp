@@ -94,7 +94,7 @@ inline ResolvedSun resolveSun() {
                 "Directional light points from the world toward the sun; +Z is down, so z must be "
                 "<= 0"
             );
-            const float length = glm::length(light.direction_);
+            const float length = IRMath::length(light.direction_);
             if (length > 0.0f) {
                 sun.direction_ = light.direction_ / length;
             }
@@ -116,8 +116,8 @@ inline IsoBounds2D shadowRelevantIsoBounds(ivec2 canvasSize, vec3 sunDir) {
     IsoBounds2D visible =
         IRRender::getCullViewport().isoViewportForCanvas(canvasSize, kRenderGuardMargin);
     const vec2 sweep = IRMath::pos3DtoPos2DIso(-sunDir * static_cast<float>(kSunShadowMarchSteps));
-    visible.min_ += glm::min(sweep, vec2(0.0f));
-    visible.max_ += glm::max(sweep, vec2(0.0f));
+    visible.min_ += IRMath::min(sweep, vec2(0.0f));
+    visible.max_ += IRMath::max(sweep, vec2(0.0f));
     return visible;
 }
 

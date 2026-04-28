@@ -11,6 +11,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_constants.glsl"
+#include "ir_sdf_common.glsl"
 
 layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec2 frameCanvasOffset;
@@ -56,15 +57,8 @@ layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
-const uint SHAPE_BOX = 0u;
-const uint SHAPE_SPHERE = 1u;
-const uint SHAPE_CYLINDER = 2u;
-const uint SHAPE_ELLIPSOID = 3u;
-const uint SHAPE_CURVED_PANEL = 4u;
-const uint SHAPE_WEDGE = 5u;
-const uint SHAPE_TAPERED_BOX = 6u;
-const uint SHAPE_CONE = 8u;
-const uint SHAPE_TORUS = 9u;
+// Shape-type constants (SHAPE_BOX, SHAPE_SPHERE, …) and the SDF primitive
+// functions live in ir_sdf_common.glsl, shared with the sun-shadow shader.
 
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
@@ -126,83 +120,8 @@ vec3 hsvToRgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-// SDF evaluation (same functions as before, used for general fallback)
-float sdfBox(vec3 p, vec3 halfExtents) {
-    vec3 d = abs(p) - halfExtents;
-    return max(d.x, max(d.y, d.z));
-}
-
-float sdfSphere(vec3 p, float radius) {
-    return length(p) - radius;
-}
-
-float sdfCylinder(vec3 p, float radius, float halfHeight) {
-    vec2 d = abs(vec2(length(p.xy), p.z)) - vec2(radius, halfHeight);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-}
-
-float sdfEllipsoid(vec3 p, vec3 radii) {
-    if (radii.x <= 0.0 || radii.y <= 0.0 || radii.z <= 0.0) return 1.0;
-    float k0 = length(p / radii);
-    if (k0 < 1e-6) return -min(radii.x, min(radii.y, radii.z));
-    float k1 = length(p / (radii * radii));
-    return k0 * (k0 - 1.0) / k1;
-}
-
-float sdfTaperedBox(vec3 p, vec3 halfExtents, float taper) {
-    float taperFactor = mix(1.0, taper, clamp((p.z + halfExtents.z) / (2.0 * halfExtents.z), 0.0, 1.0));
-    vec3 scaled = vec3(p.xy / max(taperFactor, 0.001), p.z);
-    return sdfBox(scaled, halfExtents);
-}
-
-float sdfCone(vec3 p, float baseRadius, float halfHeight) {
-    float t = clamp((p.z + halfHeight) / (2.0 * halfHeight), 0.0, 1.0);
-    float radiusAtZ = baseRadius * (1.0 - t);
-    float dRadial = length(p.xy) - radiusAtZ;
-    float dZ = abs(p.z) - halfHeight;
-    float dOutside = length(max(vec2(dRadial, dZ), 0.0));
-    float dInside = min(max(dRadial, dZ), 0.0);
-    return dOutside + dInside;
-}
-
-float sdfTorus(vec3 p, float majorR, float minorR) {
-    float q = length(p.xy) - majorR;
-    return length(vec2(q, p.z)) - minorR;
-}
-
-float sdfWedge(vec3 p, vec3 halfExtents) {
-    float boxD = sdfBox(p, halfExtents);
-    float planeD = p.z - halfExtents.z * (1.0 - p.x / max(halfExtents.x, 0.001));
-    return max(boxD, planeD);
-}
-
-float sdfCurvedPanel(vec3 p, vec3 halfExtents, float curvature) {
-    float nx = p.x / max(halfExtents.x, 0.001);
-    float ny = p.y / max(halfExtents.y, 0.001);
-    float zMid = curvature * halfExtents.x * nx * nx;
-    float dThickness = abs(p.z - zMid) - halfExtents.z;
-    float dX = abs(p.x) - halfExtents.x;
-    float dY = abs(p.y) - halfExtents.y;
-    float dOutside = length(max(vec3(dX, dY, dThickness), 0.0));
-    float dInside = min(max(dX, max(dY, dThickness)), 0.0);
-    return dOutside + dInside;
-}
-
-float evaluateSDF(vec3 localPos, uint shapeType, vec4 params) {
-    vec3 halfSize = params.xyz * 0.5;
-    switch (shapeType) {
-        case SHAPE_BOX:          return sdfBox(localPos, halfSize);
-        case SHAPE_SPHERE:       return sdfSphere(localPos, params.x);
-        case SHAPE_CYLINDER:     return sdfCylinder(localPos, params.x, halfSize.z);
-        case SHAPE_ELLIPSOID:    return sdfEllipsoid(localPos, halfSize);
-        case SHAPE_TAPERED_BOX:  return sdfTaperedBox(localPos, halfSize, params.w);
-        case SHAPE_CONE:         return sdfCone(localPos, params.x, halfSize.z);
-        case SHAPE_TORUS:        return sdfTorus(localPos, params.x, params.y);
-        case SHAPE_WEDGE:        return sdfWedge(localPos, halfSize);
-        case SHAPE_CURVED_PANEL: return sdfCurvedPanel(localPos, halfSize, params.w);
-        default:                 return sdfBox(localPos, halfSize);
-    }
-}
+// SDF primitives (sdfBox, sdfSphere, …) and `evaluateSDF` live in
+// ir_sdf_common.glsl, shared with c_compute_sun_shadow.glsl.
 
 // Axis-aligned slab intersection: depth interval [dEntry, dExit] where
 // |x(d)| <= hExt.x AND |y(d)| <= hExt.y AND |z(d)| <= hExt.z.

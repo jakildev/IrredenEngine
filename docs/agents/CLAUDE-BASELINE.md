@@ -89,6 +89,22 @@ namespaces in headers; keep them in `.cpp`.
      follow-up issue for the culling or GPU-compute fix.
   5. Use dirty flags only as a last resort, with a focused test proving every
      input mutation invalidates the cached output.
+- **All math primitives flow through `IRMath`.** `glm::*` and `std::min`
+  / `std::max` / `std::clamp` / `std::abs` / `std::cos` / `std::lround`
+  / etc. should not appear outside the `engine/math/` library. Anywhere
+  else (engine prefabs, shaders' CPU feeders, render systems, creations,
+  lighting demos), call `IRMath::min(...)`, `IRMath::clamp(...)`,
+  `IRMath::length(...)`, `IRMath::roundHalfUp(...)`, etc. The math
+  library owns the wrappers (and may add new ones — `IRMath::cos`,
+  `IRMath::sqrt`, `IRMath::roundHalfUp` were added in PR #368). The
+  rationale is two-fold: (a) one place to swap implementations
+  (e.g. switch between glm and a faster custom path) without touching
+  every caller, and (b) one place to encode CPU↔GPU consistency rules
+  (`IRMath::roundHalfUp` mirrors GLSL/Metal `roundHalfUp` so half-integer
+  positions classify the same on both sides). If you need a primitive
+  that isn't in `IRMath` yet, add a wrapper in `engine/math/` first,
+  then call it. The math library may itself wrap `glm::*` / `std::*`
+  internally — that is the **only** place those names should appear.
 
 ---
 

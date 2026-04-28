@@ -11,6 +11,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_sdf_common.glsl"
 
 // Matches system_build_occupancy_grid.hpp's SSBO sizing.
 const int kOccupancyGridSize = 256;
@@ -31,15 +32,7 @@ const float kShadowDarken = 0.45;
 const int kMaxAnalyticShapeMarchSteps = 32;
 const float kAnalyticShadowSurfaceThreshold = 0.35;
 
-const uint SHAPE_BOX = 0u;
-const uint SHAPE_SPHERE = 1u;
-const uint SHAPE_CYLINDER = 2u;
-const uint SHAPE_ELLIPSOID = 3u;
-const uint SHAPE_CURVED_PANEL = 4u;
-const uint SHAPE_WEDGE = 5u;
-const uint SHAPE_TAPERED_BOX = 6u;
-const uint SHAPE_CONE = 8u;
-const uint SHAPE_TORUS = 9u;
+// Shape-type constants (SHAPE_BOX, …) live in ir_sdf_common.glsl.
 const uint FLAG_HOLLOW = 1u;
 
 struct ShapeDescriptor {
@@ -126,84 +119,8 @@ bool occupancyGetBit(int wx, int wy, int wz) {
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
-float sdfBox(vec3 p, vec3 halfExtents) {
-    vec3 d = abs(p) - halfExtents;
-    return max(d.x, max(d.y, d.z));
-}
-
-float sdfSphere(vec3 p, float radius) {
-    return length(p) - radius;
-}
-
-float sdfCylinder(vec3 p, float radius, float halfHeight) {
-    vec2 d = abs(vec2(length(p.xy), p.z)) - vec2(radius, halfHeight);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-}
-
-float sdfEllipsoid(vec3 p, vec3 radii) {
-    if (radii.x <= 0.0 || radii.y <= 0.0 || radii.z <= 0.0) return 1.0;
-    float k0 = length(p / radii);
-    if (k0 < 1e-6) return -min(radii.x, min(radii.y, radii.z));
-    float k1 = length(p / (radii * radii));
-    return k0 * (k0 - 1.0) / k1;
-}
-
-float sdfTaperedBox(vec3 p, vec3 halfExtents, float taper) {
-    float taperFactor = mix(
-        1.0, taper,
-        clamp((p.z + halfExtents.z) / (2.0 * halfExtents.z), 0.0, 1.0)
-    );
-    vec3 scaled = vec3(p.xy / max(taperFactor, 0.001), p.z);
-    return sdfBox(scaled, halfExtents);
-}
-
-float sdfCone(vec3 p, float baseRadius, float halfHeight) {
-    float t = clamp((p.z + halfHeight) / (2.0 * halfHeight), 0.0, 1.0);
-    float radiusAtZ = baseRadius * (1.0 - t);
-    float dRadial = length(p.xy) - radiusAtZ;
-    float dZ = abs(p.z) - halfHeight;
-    float dOutside = length(max(vec2(dRadial, dZ), 0.0));
-    float dInside = min(max(dRadial, dZ), 0.0);
-    return dOutside + dInside;
-}
-
-float sdfTorus(vec3 p, float majorR, float minorR) {
-    float q = length(p.xy) - majorR;
-    return length(vec2(q, p.z)) - minorR;
-}
-
-float sdfWedge(vec3 p, vec3 halfExtents) {
-    float boxD = sdfBox(p, halfExtents);
-    float planeD = p.z - halfExtents.z * (1.0 - p.x / max(halfExtents.x, 0.001));
-    return max(boxD, planeD);
-}
-
-float sdfCurvedPanel(vec3 p, vec3 halfExtents, float curvature) {
-    float nx = p.x / max(halfExtents.x, 0.001);
-    float zMid = curvature * halfExtents.x * nx * nx;
-    float dThickness = abs(p.z - zMid) - halfExtents.z;
-    float dX = abs(p.x) - halfExtents.x;
-    float dY = abs(p.y) - halfExtents.y;
-    float dOutside = length(max(vec3(dX, dY, dThickness), 0.0));
-    float dInside = min(max(dX, max(dY, dThickness)), 0.0);
-    return dOutside + dInside;
-}
-
-float evaluateShapeSDF(vec3 localPos, uint shapeType, vec4 params) {
-    vec3 halfSize = params.xyz * 0.5;
-    switch (shapeType) {
-        case SHAPE_BOX:          return sdfBox(localPos, halfSize);
-        case SHAPE_SPHERE:       return sdfSphere(localPos, params.x);
-        case SHAPE_CYLINDER:     return sdfCylinder(localPos, params.x, halfSize.z);
-        case SHAPE_ELLIPSOID:    return sdfEllipsoid(localPos, halfSize);
-        case SHAPE_TAPERED_BOX:  return sdfTaperedBox(localPos, halfSize, params.w);
-        case SHAPE_CONE:         return sdfCone(localPos, params.x, halfSize.z);
-        case SHAPE_TORUS:        return sdfTorus(localPos, params.x, params.y);
-        case SHAPE_WEDGE:        return sdfWedge(localPos, halfSize);
-        case SHAPE_CURVED_PANEL: return sdfCurvedPanel(localPos, halfSize, params.w);
-        default:                 return sdfBox(localPos, halfSize);
-    }
-}
+// SDF primitives (sdfBox, sdfSphere, …) and `evaluateSDF` live in
+// ir_sdf_common.glsl, shared with the shape rasterizer.
 
 float shapeBoundingRadius(ShapeDescriptor shape) {
     vec3 halfSize = abs(shape.params.xyz) * 0.5;
@@ -250,7 +167,7 @@ bool analyticShapeShadowHit(vec3 rayOrigin, vec3 rayDir, uint selfEntityId) {
         float t = max(tNear, minStep);
         for (int step = 0; step < kMaxAnalyticShapeMarchSteps && t <= tFar; ++step) {
             vec3 samplePos = rayOrigin + rayDir * t;
-            float distance = evaluateShapeSDF(samplePos - center, shape.shapeType, shape.params);
+            float distance = evaluateSDF(samplePos - center, shape.shapeType, shape.params);
             bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
             if ((!hollow && distance <= kAnalyticShadowSurfaceThreshold) ||
                 (hollow && abs(distance) <= kAnalyticShadowSurfaceThreshold)) {
@@ -316,7 +233,12 @@ void main() {
 
     vec3 rayPos = rayOrigin;
     for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
-        ivec3 cell = ivec3(round(rayPos));
+        // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
+        // `IRMath::roundHalfUp` on the CPU side (see
+        // system_build_occupancy_grid.hpp). The CPU populates cells with
+        // round-half-up; the GPU march MUST sample with the same rule or
+        // half-integer rays classify cells inconsistently.
+        ivec3 cell = roundHalfUp(rayPos);
         int he = kOccupancyGridHalfExtent;
         if (cell.x < -he || cell.x >= he ||
             cell.y < -he || cell.y >= he ||

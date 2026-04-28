@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/math/sdf.hpp>
 
 #include <cstdint>
 
@@ -123,19 +124,10 @@ struct GPUUpdateParams {
 };
 
 /// SDF primitive type dispatched to the shapes→trixel compute shader.
-/// Each value corresponds to a branch in the shader's SDF evaluation function.
-enum class ShapeType : std::uint32_t {
-    BOX = 0,
-    SPHERE = 1,
-    CYLINDER = 2,
-    ELLIPSOID = 3,
-    CURVED_PANEL = 4,
-    WEDGE = 5,
-    TAPERED_BOX = 6,
-    CUSTOM_SDF = 7, ///< User-supplied SDF; requires a matching shader specialization.
-    CONE = 8,
-    TORUS = 9
-};
+/// Canonical definition lives in @ref IRMath::SDF::ShapeType so the math-side
+/// SDF helpers (`IRMath::SDF::evaluate`, `boundingHalf`, …) and the renderer
+/// stay in lockstep without two parallel enums to keep synchronized.
+using ShapeType = IRMath::SDF::ShapeType;
 
 /// Bit-combinable rendering flags stored in @c GPUShapeDescriptor::flags.
 /// Combine with @c |.

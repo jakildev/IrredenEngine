@@ -8,7 +8,9 @@
 
 namespace IRMath::SDF {
 
-// Mirrors IRRender::ShapeType values without depending on render headers.
+/// Canonical SDF primitive type for the engine. The renderer
+/// (`IRRender::ShapeType`) is a `using` alias of this enum, and the GPU shape
+/// descriptors store these values directly. Add new shapes here first.
 enum class ShapeType : std::uint32_t {
     BOX = 0,
     SPHERE = 1,

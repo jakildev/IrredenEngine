@@ -19,7 +19,6 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <unordered_map>
 #include <vector>
@@ -117,9 +116,15 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                         if (colors[i].color_.alpha_ == 0)
                             continue;
                         const vec3 &wp = globals[i].pos_;
-                        const int wx = static_cast<int>(std::lround(wp.x));
-                        const int wy = static_cast<int>(std::lround(wp.y));
-                        const int wz = static_cast<int>(std::lround(wp.z));
+                        // Round-half-up — must match the `roundHalfUp(...)`
+                        // helper in shaders/ir_iso_common.glsl + .metal. See
+                        // IRMath::roundHalfUp doc-comment for why this rule
+                        // (vs std::lround / glm::round) is required for the
+                        // CPU↔GPU occupancy-grid handshake.
+                        const ivec3 cell = IRMath::roundVec3HalfUp(wp);
+                        const int wx = cell.x;
+                        const int wy = cell.y;
+                        const int wz = cell.z;
                         if (!grid.inBounds(wx, wy, wz))
                             continue;
                         grid.setBit(wx, wy, wz);

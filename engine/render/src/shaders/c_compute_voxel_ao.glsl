@@ -90,24 +90,28 @@ void main() {
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }
-    ivec3 surfaceVoxel = ivec3(round(pos3D));
+    // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
+    // `IRMath::roundHalfUp` on the CPU side (see
+    // system_build_occupancy_grid.hpp). Both ends MUST agree on
+    // half-integer voxel positions or the AO sample lands in a
+    // different cell than the one the CPU populated.
+    ivec3 surfaceVoxel = roundHalfUp(pos3D);
 
-    // Face-outward direction + the two tangent axes spanning the face
-    // plane. Sampling happens one voxel out from the face, offset along
-    // each tangent, to detect edge-adjacent occluders.
-    ivec3 outward;
+    // Face-outward + the two tangent axes spanning the face plane.
+    // Sampling happens one voxel out, offset along each tangent, to
+    // detect edge-adjacent occluders. `faceOutwardNormalI` lives in
+    // ir_iso_common.glsl and is shared with the lighting lambert
+    // calculation so AO and shading agree on which way is "out".
+    ivec3 outward = faceOutwardNormalI(face);
     ivec3 t1;
     ivec3 t2;
     if (face == kZFace) {
-        outward = ivec3(0, 0, 1);
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 1, 0);
     } else if (face == kXFace) {
-        outward = ivec3(-1, 0, 0);
         t1 = ivec3(0, 1, 0);
         t2 = ivec3(0, 0, 1);
     } else {
-        outward = ivec3(0, -1, 0);
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
     }

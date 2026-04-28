@@ -29,7 +29,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <queue>
 #include <tuple>
@@ -58,13 +57,13 @@ inline void writeLightTexel(
     const float g = static_cast<float>(emit.green_) * falloff;
     const float b = static_cast<float>(emit.blue_) * falloff;
     const auto clamp8 = [](float v) {
-        return static_cast<std::uint8_t>(std::clamp(v, 0.0f, 255.0f));
+        return static_cast<std::uint8_t>(IRMath::clamp(v, 0.0f, 255.0f));
     };
     // Max-composite so multiple lights overlap by max-channel rather
     // than additive (prevents oversaturation in shared regions).
-    buffer[idx + 0] = std::max(buffer[idx + 0], clamp8(r));
-    buffer[idx + 1] = std::max(buffer[idx + 1], clamp8(g));
-    buffer[idx + 2] = std::max(buffer[idx + 2], clamp8(b));
+    buffer[idx + 0] = IRMath::max(buffer[idx + 0], clamp8(r));
+    buffer[idx + 1] = IRMath::max(buffer[idx + 1], clamp8(g));
+    buffer[idx + 2] = IRMath::max(buffer[idx + 2], clamp8(b));
     // Alpha unused by the shader (samples .rgb only). Force 255 so the
     // RGBA8 upload doesn't ship uninitialised bytes through the driver.
     buffer[idx + 3] = 255u;
@@ -100,7 +99,7 @@ inline void floodFillEmissive(
         q.pop();
 
         const float falloff =
-            std::max(0.0f, (1.0f - static_cast<float>(d) * invRadius) * intensity);
+            IRMath::max(0.0f, (1.0f - static_cast<float>(d) * invRadius) * intensity);
         if (falloff > 0.0f) {
             writeLightTexel(buffer, x, y, z, emit, falloff);
         }
@@ -122,7 +121,7 @@ inline void floodFillEmissive(
             // surface (the trixel pixel's pos3D recovers the solid voxel,
             // not the empty cell next to it).
             const float nFalloff =
-                std::max(0.0f, (1.0f - static_cast<float>(d + 1) * invRadius) * intensity);
+                IRMath::max(0.0f, (1.0f - static_cast<float>(d + 1) * invRadius) * intensity);
             if (grid.getBit(nx, ny, nz)) {
                 if (nFalloff > 0.0f) {
                     writeLightTexel(buffer, nx, ny, nz, emit, nFalloff);
@@ -136,7 +135,8 @@ inline void floodFillEmissive(
 
 inline bool hasLineOfSight(const C_OccupancyGrid &grid, ivec3 originVoxel, ivec3 targetVoxel) {
     const ivec3 delta = targetVoxel - originVoxel;
-    const int steps = std::max({std::abs(delta.x), std::abs(delta.y), std::abs(delta.z)});
+    const int steps =
+        IRMath::max(IRMath::abs(delta.x), IRMath::max(IRMath::abs(delta.y), IRMath::abs(delta.z)));
     if (steps <= 1)
         return true;
 
@@ -144,7 +144,10 @@ inline bool hasLineOfSight(const C_OccupancyGrid &grid, ivec3 originVoxel, ivec3
     const vec3 step = vec3(delta) / static_cast<float>(steps);
     for (int i = 1; i < steps; ++i) {
         const vec3 p = origin + step * static_cast<float>(i);
-        const ivec3 cell = ivec3(glm::round(p));
+        // Round-half-up matches the GPU shadow march's cell sampling rule
+        // (`roundHalfUp` in ir_iso_common.glsl/.metal). LOS rays through
+        // half-integer voxel positions classify the same cells on both sides.
+        const ivec3 cell = IRMath::roundVec3HalfUp(p);
         if (cell == originVoxel || cell == targetVoxel)
             continue;
         if (grid.getBit(cell.x, cell.y, cell.z))
@@ -161,7 +164,7 @@ inline void fillPointLight(
     float intensity,
     int radius
 ) {
-    radius = std::clamp(radius, 0, 32);
+    radius = IRMath::clamp(radius, 0, 32);
     if (radius <= 0 || intensity <= 0.0f)
         return;
     if (!C_CanvasLightVolume::inBounds(originVoxel.x, originVoxel.y, originVoxel.z)) {
@@ -169,18 +172,18 @@ inline void fillPointLight(
     }
 
     const float invRadius = 1.0f / static_cast<float>(radius);
-    const int xMin = std::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
-    const int xMax = std::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
-    const int yMin = std::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
-    const int yMax = std::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
-    const int zMin = std::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
-    const int zMax = std::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
+    const int xMin = IRMath::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
+    const int xMax = IRMath::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
+    const int yMin = IRMath::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
+    const int yMax = IRMath::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
+    const int zMin = IRMath::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
+    const int zMax = IRMath::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
 
     for (int z = zMin; z <= zMax; ++z) {
         for (int y = yMin; y <= yMax; ++y) {
             for (int x = xMin; x <= xMax; ++x) {
                 const vec3 delta = vec3(x, y, z) - vec3(originVoxel);
-                const float distance = glm::length(delta);
+                const float distance = IRMath::length(delta);
                 if (distance > static_cast<float>(radius))
                     continue;
 
@@ -200,19 +203,19 @@ inline void fillPointLight(
 inline bool
 isInsideSpotCone(ivec3 originVoxel, ivec3 targetVoxel, vec3 direction, float coneAngleDeg) {
     const vec3 toTarget = vec3(targetVoxel - originVoxel);
-    const float distance = glm::length(toTarget);
+    const float distance = IRMath::length(toTarget);
     if (distance <= 0.0f)
         return true;
 
-    const float directionLength = glm::length(direction);
+    const float directionLength = IRMath::length(direction);
     if (directionLength <= 0.0f)
         return false;
 
     const vec3 coneDir = direction / directionLength;
-    const float halfAngleDeg = std::clamp(coneAngleDeg, 0.0f, 180.0f) * 0.5f;
+    const float halfAngleDeg = IRMath::clamp(coneAngleDeg, 0.0f, 180.0f) * 0.5f;
     const float radians = halfAngleDeg * 0.01745329251994329577f;
-    const float minDot = std::cos(radians);
-    return glm::dot(toTarget / distance, coneDir) >= minDot;
+    const float minDot = IRMath::cos(radians);
+    return IRMath::dot(toTarget / distance, coneDir) >= minDot;
 }
 
 inline void fillSpotLight(
@@ -225,7 +228,7 @@ inline void fillSpotLight(
     vec3 direction,
     float coneAngleDeg
 ) {
-    radius = std::clamp(radius, 0, 32);
+    radius = IRMath::clamp(radius, 0, 32);
     if (radius <= 0 || intensity <= 0.0f)
         return;
     if (!C_CanvasLightVolume::inBounds(originVoxel.x, originVoxel.y, originVoxel.z)) {
@@ -233,12 +236,12 @@ inline void fillSpotLight(
     }
 
     const float invRadius = 1.0f / static_cast<float>(radius);
-    const int xMin = std::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
-    const int xMax = std::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
-    const int yMin = std::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
-    const int yMax = std::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
-    const int zMin = std::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
-    const int zMax = std::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
+    const int xMin = IRMath::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
+    const int xMax = IRMath::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
+    const int yMin = IRMath::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
+    const int yMax = IRMath::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
+    const int zMin = IRMath::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
+    const int zMax = IRMath::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
 
     for (int z = zMin; z <= zMax; ++z) {
         for (int y = yMin; y <= yMax; ++y) {
@@ -249,7 +252,7 @@ inline void fillSpotLight(
                 }
 
                 const vec3 delta = vec3(target - originVoxel);
-                const float distance = glm::length(delta);
+                const float distance = IRMath::length(delta);
                 if (distance > static_cast<float>(radius))
                     continue;
                 if (!hasLineOfSight(grid, originVoxel, target))
@@ -277,11 +280,9 @@ template <typename Function> void forEachLightSourceWithPosition(Function &&func
 }
 
 inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
-    return ivec3(
-        static_cast<int>(std::lround(position.pos_.x)),
-        static_cast<int>(std::lround(position.pos_.y)),
-        static_cast<int>(std::lround(position.pos_.z))
-    );
+    // Round-half-up so light origins line up with the occupancy-grid cells
+    // populated by `system_build_occupancy_grid` (also round-half-up).
+    return IRMath::roundVec3HalfUp(position.pos_);
 }
 
 } // namespace detail

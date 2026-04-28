@@ -32,11 +32,9 @@ struct FrameDataSun {
 constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
-inline float3 faceNormal(int face) {
-    if (face == kXFace) return float3(1.0f, 0.0f, 0.0f);
-    if (face == kYFace) return float3(0.0f, 1.0f, 0.0f);
-    return float3(0.0f, 0.0f, -1.0f);
-}
+// `faceOutwardNormal()` lives in ir_iso_common.metal — shared with
+// c_compute_voxel_ao.metal so AO sampling and lambert use the same
+// convention.
 
 kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
@@ -93,7 +91,7 @@ kernel void c_lighting_to_trixel(
 
     const int rawDepth = encoded >> 2;
     const int face = encoded & 3;
-    const float lambert = max(0.0f, dot(faceNormal(face), sunFrameData.sunDirection.xyz));
+    const float lambert = max(0.0f, dot(faceOutwardNormal(face), sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
 

@@ -40,6 +40,28 @@ constexpr int round(float value) {
     return glm::round(value);
 }
 
+/// Round-half-up: rounds to the nearest integer, with ties going UP toward
+/// +infinity. Implemented as `floor(x + 0.5)`.
+///
+/// This is the rounding rule we use for converting float voxel positions to
+/// integer voxel cells whenever CPU and GPU need to agree byte-for-byte.
+/// `glm::round`/`std::lround` use round-half-away-from-zero, which mismatches
+/// GLSL's implementation-defined `round()` for negative half-integer values
+/// (e.g. -0.5 → 0 with round-half-up vs -1 with round-half-away-from-zero).
+/// Use this for occupancy-grid cell assignment, ray-march cell sampling, and
+/// any other CPU↔GPU coordinate handshake.
+///
+/// GPU mirrors live as `roundHalfUp()` in `shaders/ir_iso_common.glsl` and
+/// `shaders/metal/ir_iso_common.metal` and MUST stay byte-compatible.
+constexpr int roundHalfUp(float value) {
+    return static_cast<int>(glm::floor(value + 0.5f));
+}
+
+/// Component-wise round-half-up of a 3-vector. See @ref roundHalfUp.
+constexpr ivec3 roundVec3HalfUp(vec3 value) {
+    return ivec3(roundHalfUp(value.x), roundHalfUp(value.y), roundHalfUp(value.z));
+}
+
 /// Ceiling division: equivalent to ceil(numerator / denominator) without
 /// floating-point arithmetic.
 constexpr int divCeil(int numerator, int denominator) {
@@ -131,6 +153,16 @@ template <typename T> constexpr auto fractAbs(const T &value) {
 /// Sine of @p value (radians). GLM wrapper.
 constexpr float sin(float value) {
     return glm::sin(value);
+}
+
+/// Cosine of @p value (radians). GLM wrapper.
+constexpr float cos(float value) {
+    return glm::cos(value);
+}
+
+/// Square root of @p value. GLM wrapper.
+constexpr float sqrt(float value) {
+    return glm::sqrt(value);
 }
 
 /// Orthographic projection matrix.  Selects the depth range convention

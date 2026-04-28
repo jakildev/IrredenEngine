@@ -180,8 +180,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     frameData.voxelRenderOptions =
                         ivec2(static_cast<int>(renderMode), effectiveSub);
                     if (cullBounds.has_value() && canvasId == mainCanvas) {
-                        frameData.cullIsoMin = ivec2(glm::floor(cullBounds->min_));
-                        frameData.cullIsoMax = ivec2(glm::ceil(cullBounds->max_));
+                        frameData.cullIsoMin = ivec2(IRMath::floor(cullBounds->min_));
+                        frameData.cullIsoMax = ivec2(IRMath::ceil(cullBounds->max_));
                     } else {
                         frameData.cullIsoMin = ivec2(-999999);
                         frameData.cullIsoMax = ivec2(999999);
@@ -285,39 +285,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            ivec3 origin = ivec3(glm::round(worldPos));
+            ivec3 origin = IRMath::roundVec3HalfUp(worldPos);
 
-            vec3 boundingHalf;
-            auto shapeType = static_cast<IRRender::ShapeType>(desc.shapeType);
-            switch (shapeType) {
-            case IRRender::ShapeType::BOX:
-                boundingHalf = (vec3(desc.params) - 1.0f) * 0.5f;
-                break;
-            case IRRender::ShapeType::SPHERE:
-                boundingHalf = vec3(desc.params.x);
-                break;
-            case IRRender::ShapeType::CYLINDER:
-            case IRRender::ShapeType::CONE:
-                boundingHalf = vec3(desc.params.x, desc.params.x, desc.params.z * 0.5f);
-                break;
-            case IRRender::ShapeType::ELLIPSOID:
-                boundingHalf = vec3(desc.params) * 0.5f;
-                break;
-            case IRRender::ShapeType::TORUS: {
-                float xyR = desc.params.x + desc.params.y;
-                boundingHalf = vec3(xyR, xyR, desc.params.y);
-                break;
-            }
-            case IRRender::ShapeType::CURVED_PANEL: {
-                vec3 hs = vec3(desc.params) * 0.5f;
-                hs.z += std::abs(desc.params.w) * hs.x;
-                boundingHalf = hs;
-                break;
-            }
-            default:
-                boundingHalf = vec3(desc.params) * 0.5f;
-                break;
-            }
+            // Canonical bounding half-extent lives in IRMath::SDF (shared with
+            // the lighting / shadow pipeline). Renderer + shadow shader stay
+            // in lockstep on what each shape's footprint is.
+            const vec3 boundingHalf = IRMath::SDF::boundingHalf(
+                static_cast<IRMath::SDF::ShapeType>(desc.shapeType),
+                desc.params
+            );
             ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
             ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
 
@@ -325,8 +301,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             ivec2 isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             ivec2 isoSize = isoMax - isoMin;
 
-            const int tilesX = IRMath::divCeil(std::max(isoSize.x, 1), kShapeTileSize);
-            const int tilesY = IRMath::divCeil(std::max(isoSize.y, 1), kShapeTileSize);
+            const int tilesX = IRMath::divCeil(IRMath::max(isoSize.x, 1), kShapeTileSize);
+            const int tilesY = IRMath::divCeil(IRMath::max(isoSize.y, 1), kShapeTileSize);
 
             for (int ty = 0; ty < tilesY; ++ty) {
                 for (int tx = 0; tx < tilesX; ++tx) {

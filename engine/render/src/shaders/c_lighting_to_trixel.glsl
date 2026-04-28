@@ -75,11 +75,9 @@ layout(binding = 5) uniform sampler3D lightVolume;
 const float kLightVolumeSize = 128.0;
 const float kLightVolumeHalfExtent = 64.0;
 
-vec3 faceNormal(int face) {
-    if (face == kXFace) return vec3(1.0, 0.0, 0.0);
-    if (face == kYFace) return vec3(0.0, 1.0, 0.0);
-    return vec3(0.0, 0.0, -1.0);
-}
+// `faceOutwardNormal()` lives in ir_iso_common.glsl — shared with
+// c_compute_voxel_ao.glsl so the AO sampling direction and the lambert
+// dot product use the same convention.
 
 void main() {
     if (lightingEnabled == 0) {
@@ -124,7 +122,7 @@ void main() {
 
     const int rawDepth = encoded >> 2;
     const int face = encoded & 3;
-    const float lambert = max(0.0, dot(faceNormal(face), sunDirection.xyz));
+    const float lambert = max(0.0, dot(faceOutwardNormal(face), sunDirection.xyz));
     const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
 
     vec3 baseRgb;

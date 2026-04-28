@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <list>
 
 namespace IRLightingDemo {
@@ -79,6 +80,14 @@ struct DemoConfig {
     vec3 directionalOverrideDirection_ = vec3(0.3f, 0.2f, -0.93f);
     float directionalOverrideIntensity_ = 1.0f;
     float directionalOverrideAmbient_ = 0.4f;
+
+    // Optional override hooks. When `geometryFn_` is set, the demo's scene
+    // geometry comes from the callback instead of the default voxel-pool /
+    // SDF row layout — useful for SDF-only or animated-sun demos that need
+    // a different layout. When `tickFn_` is set, it runs once per render
+    // frame and may mutate the global sun, move entities, etc.
+    std::function<void()> geometryFn_;
+    std::function<void()> tickFn_;
 };
 
 namespace detail {
@@ -88,6 +97,13 @@ inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {2.0f, vec2(0, 0), "zoom2_origin"},
     {4.0f, vec2(0, 0), "zoom4_origin"},
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    // Higher-zoom shots make per-voxel-pool / SDF parity issues
+    // (self-shadowing, AO mismatch from rounding-half-integer voxel
+    // positions) immediately visible — they're how the rounding bug
+    // fixed in commit `<this>` was found and how regressions on it
+    // would surface.
+    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {16.0f, vec2(0, 0), "zoom16_origin"},
 };
 
 inline int g_autoWarmupFrames = 0;
@@ -288,7 +304,11 @@ inline void createLights(const DemoConfig &config) {
 
 inline void initEntities(const DemoConfig &config) {
     configureCanvases(config.enableFog_);
-    createGeometry();
+    if (config.geometryFn_) {
+        config.geometryFn_();
+    } else {
+        createGeometry();
+    }
     createLights(config);
 
     if (config.enableFog_) {
@@ -305,7 +325,7 @@ inline void initCommands() {
     IRCommand::registerCaptureCommands();
 }
 
-inline void initSystems(bool enableFog) {
+inline void initSystems(const DemoConfig &config) {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
@@ -330,7 +350,18 @@ inline void initSystems(bool enableFog) {
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
     };
 
-    if (enableFog) {
+    // Demo-supplied tick (e.g. animated sun direction). Runs first in the
+    // render pipeline so subsequent systems pick up the updated state.
+    if (config.tickFn_) {
+        IRSystem::SystemId tickId = IRSystem::createSystem<C_Name>(
+            "LightingDemoTick",
+            [](C_Name &) {},
+            [tick = config.tickFn_]() { tick(); }
+        );
+        renderPipeline.push_front(tickId);
+    }
+
+    if (config.enableFog_) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>());
     }
 
@@ -372,7 +403,7 @@ inline int run(int argc, char **argv, const DemoConfig &config) {
     IR_LOG_INFO("Starting creation: {}", config.name_);
     IREngine::init(argv[0]);
     IREngine::enableFrameTiming(true);
-    detail::initSystems(config.enableFog_);
+    detail::initSystems(config);
     detail::initCommands();
     detail::initEntities(config);
     if (detail::g_initialZoom > 0.0f) {
