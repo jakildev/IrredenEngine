@@ -225,6 +225,14 @@ bool getSunShadowsEnabled() {
     return getRenderManager().getSunShadowsEnabled();
 }
 
+void setAOEnabled(bool enabled) {
+    getRenderManager().setAOEnabled(enabled);
+}
+
+bool getAOEnabled() {
+    return getRenderManager().getAOEnabled();
+}
+
 void setDebugOverlay(DebugOverlayMode mode) {
     getRenderManager().setDebugOverlay(mode);
 }

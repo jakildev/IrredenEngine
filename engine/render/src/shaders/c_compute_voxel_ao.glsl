@@ -41,6 +41,24 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float _yawPadding;
 };
 
+// Sun lighting state. Only `aoEnabled` is read by this shader; the rest of
+// the block is kept in lockstep with `FrameDataSun` in ir_render_types.hpp
+// so std140 layout matches when the same UBO is bound by sun-shadow and
+// lighting passes. Updated each frame by `system_compute_voxel_ao`'s
+// beginTick (so the value is fresh when this shader runs even though
+// COMPUTE_SUN_SHADOW comes later in the pipeline and overwrites it again).
+layout(std140, binding = 29) uniform FrameDataSun {
+    uniform vec4 sunDirection;
+    uniform float sunIntensity;
+    uniform float sunAmbient;
+    uniform int shadowsEnabled;
+    uniform int shapeCasterCount;
+    uniform int occupancyBoundsCount;
+    uniform int aoEnabled;
+    uniform int _sunPadding1;
+    uniform int _sunPadding2;
+};
+
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
 
@@ -65,6 +83,10 @@ void main() {
 
     int encoded = imageLoad(trixelDistances, pixel).x;
     if (encoded >= kEmptyDistanceEncoded) {
+        imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
+    if (aoEnabled == 0) {
         imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }

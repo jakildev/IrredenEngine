@@ -469,7 +469,7 @@ bool RenderManager::isHoveredTrixelVisible() const {
 
 void RenderManager::setSunDirection(vec3 dir) {
     const float len = glm::length(dir);
-    m_sunDirection = len > 0.0f ? dir / len : vec3(0.3f, 0.2f, -0.93f);
+    m_sunDirection = len > 0.0f ? dir / len : vec3(-0.3f, -0.2f, -0.93f);
 }
 
 vec3 RenderManager::getSunDirection() const {
@@ -498,6 +498,14 @@ void RenderManager::setSunShadowsEnabled(bool enabled) {
 
 bool RenderManager::getSunShadowsEnabled() const {
     return m_sunShadowsEnabled;
+}
+
+void RenderManager::setAOEnabled(bool enabled) {
+    m_aoEnabled = enabled;
+}
+
+bool RenderManager::getAOEnabled() const {
+    return m_aoEnabled;
 }
 
 void RenderManager::setDebugOverlay(DebugOverlayMode mode) {

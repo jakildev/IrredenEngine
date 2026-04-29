@@ -20,17 +20,26 @@ const int kOccupancyGridHalfExtent = 128;
 // Must match `kEmptyDistanceEncoded` in c_compute_voxel_ao.glsl.
 const int kEmptyDistanceEncoded = 65535;
 
-// Max iso-march steps per pixel. 64 covers the common "building casting
-// a shadow" scale while bounding per-frame work — the full pass is
-// O(canvasPixels * steps) so tune here if the 1 ms budget slips.
-const int kMaxShadowMarchSteps = 64;
+// Max occupancy-grid cells visited per pixel by the 3D DDA below. Each
+// step advances the ray to the next cell boundary (Amanatides-Woo
+// traversal), so this caps total cells touched rather than ray distance.
+// 128 covers diagonal rays (which visit ~sqrt(3)× more cells per unit of
+// ray length than axis-aligned ones) for the same effective shadow
+// distance the old fixed-step march produced. The full pass is
+// O(canvasPixels * steps); tune here if the per-frame budget slips.
+const int kMaxShadowMarchSteps = 128;
+// Hard cap on ray distance in voxel units. Mirrors the old fixed-step
+// march (64 unit-length steps = 64 units), so the longest shadow a
+// caster can throw is unchanged. Per-cell `tMax` from the DDA is what
+// terminates the loop when we exceed this.
+const float kMaxShadowRayDistance = 64.0;
 
 // Darkening applied to fully-shadowed pixels. 0.45 leaves enough
 // detail visible inside shadows; tweak here rather than in the lighting
 // pass so the shadow texture stays the single source of truth.
 const float kShadowDarken = 0.45;
 const int kMaxAnalyticShapeMarchSteps = 32;
-const float kAnalyticShadowSurfaceThreshold = 0.35;
+const float kAnalyticShadowSurfaceThreshold = 0.05;
 
 // Shape-type constants (SHAPE_BOX, …) live in ir_sdf_common.glsl.
 const uint FLAG_HOLLOW = 1u;
@@ -150,7 +159,15 @@ bool analyticShapeShadowHit(vec3 rayOrigin, vec3 rayDir, uint selfEntityId) {
     if (voxelRenderOptions.x == 0 || shapeCasterCount <= 0) return false;
 
     int subdivisions = max(voxelRenderOptions.y, 1);
-    float minStep = 1.0 / float(min(subdivisions, 4));
+    // minStep is the smallest the sphere-trace step is allowed to be
+    // (when the SDF distance estimate is small). Setting it to one
+    // sub-voxel = `1 / subdivisions` keeps the per-step precision
+    // matched to the render resolution: at zoom 16 the march can still
+    // resolve to a sub-pixel level. The previous `min(subdivisions, 4)`
+    // clamp held minStep at 0.25 voxel even at zoom 16, which produced
+    // ~4 px of jaggedness at the shadow boundary because neighboring
+    // rays could only converge on a 0.25-voxel grid.
+    float minStep = 1.0 / float(subdivisions);
 
     for (int i = 0; i < shapeCasterCount; ++i) {
         ShapeDescriptor shape = shapeCasters[i];
@@ -231,14 +248,43 @@ void main() {
     vec3 rayOrigin = pos3D + sunDir;
     bool shadowed = analyticShapeShadowHit(rayOrigin, sunDir, selfEntityId);
 
+    // 3D DDA (Amanatides-Woo) over the occupancy grid. Visits every cell
+    // the ray actually crosses, so the shadow boundary is determined by
+    // analytic ray-vs-cell-face intersections rather than the discrete
+    // 1-unit-step sampling the old march did. Fixed-step sampling could
+    // miss cells when the ray clipped a corner and produced multi-pixel
+    // zigzag artifacts on the cast shadow boundary; DDA's per-cell
+    // visitation eliminates the misses, and the boundary stair-step
+    // collapses to the projected cell-face spacing (~one cell on screen).
+    //
+    // Cells are indexed by `roundHalfUp` so cell `i` covers the spatial
+    // range `[i - 0.5, i + 0.5)`. For step direction +1 the next cell
+    // boundary is at `i + 0.5`; for -1 it's at `i - 0.5`. `tDelta` is
+    // the parametric distance along the ray to traverse one full cell
+    // along that axis.
     vec3 rayPos = rayOrigin;
+    ivec3 cell = roundHalfUp(rayPos);
+    ivec3 stepCell = ivec3(
+        sunDir.x > 0.0 ? 1 : (sunDir.x < 0.0 ? -1 : 0),
+        sunDir.y > 0.0 ? 1 : (sunDir.y < 0.0 ? -1 : 0),
+        sunDir.z > 0.0 ? 1 : (sunDir.z < 0.0 ? -1 : 0)
+    );
+    // Direction-component clamp to keep tMax / tDelta finite for nearly
+    // axis-aligned suns. 1e30 is large enough that the min() comparison
+    // below never picks the clamped axis as the next step.
+    vec3 invDir = vec3(
+        stepCell.x != 0 ? 1.0 / sunDir.x : 1e30,
+        stepCell.y != 0 ? 1.0 / sunDir.y : 1e30,
+        stepCell.z != 0 ? 1.0 / sunDir.z : 1e30
+    );
+    vec3 nextEdge = vec3(cell) + 0.5 * vec3(stepCell);
+    vec3 tMax = (nextEdge - rayPos) * invDir;
+    vec3 tDelta = abs(invDir);
+    if (stepCell.x == 0) { tMax.x = 1e30; tDelta.x = 1e30; }
+    if (stepCell.y == 0) { tMax.y = 1e30; tDelta.y = 1e30; }
+    if (stepCell.z == 0) { tMax.z = 1e30; tDelta.z = 1e30; }
+
     for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
-        // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
-        // `IRMath::roundHalfUp` on the CPU side (see
-        // system_build_occupancy_grid.hpp). The CPU populates cells with
-        // round-half-up; the GPU march MUST sample with the same rule or
-        // half-integer rays classify cells inconsistently.
-        ivec3 cell = roundHalfUp(rayPos);
         int he = kOccupancyGridHalfExtent;
         if (cell.x < -he || cell.x >= he ||
             cell.y < -he || cell.y >= he ||
@@ -254,7 +300,21 @@ void main() {
             shadowed = true;
             break;
         }
-        rayPos += sunDir;
+        // Advance to the next cell along the ray — the axis with the
+        // smallest tMax is the one whose boundary the ray reaches first.
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            cell.x += stepCell.x;
+            tMax.x += tDelta.x;
+        } else if (tMax.y < tMax.z) {
+            cell.y += stepCell.y;
+            tMax.y += tDelta.y;
+        } else {
+            cell.z += stepCell.z;
+            tMax.z += tDelta.z;
+        }
+        if (min(min(tMax.x, tMax.y), tMax.z) > kMaxShadowRayDistance) {
+            break;
+        }
     }
 
     float factor = shadowed ? kShadowDarken : 1.0;

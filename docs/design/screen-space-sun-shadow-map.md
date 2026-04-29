@@ -19,11 +19,20 @@ of it. Read this before touching the sun-shadow path again.
 Today `c_compute_sun_shadow.glsl` does, per visible pixel:
 
 1. Reconstruct `pos3D` from the iso distance map.
-2. Step toward the sun through a 256³ CPU-built occupancy bitfield up
-   to 64 times, looking for an occluder.
+2. Traverse the 256³ CPU-built occupancy bitfield with 3D DDA
+   (Amanatides-Woo) up to 128 cells, looking for an occluder.
 3. Separately, march analytically against an SSBO of `C_ShapeDescriptor`
    shape casters (sphere bound + iterative SDF refinement, up to 32
    march steps per shape).
+
+The DDA in step 2 replaced an earlier fixed-step march that advanced
+by `sunDir` per iteration and snapped to integer cells. That sampling
+scheme could miss cells the ray clipped at a corner, producing
+multi-pixel zigzag artifacts on cast shadows. DDA visits every cell
+the ray crosses, so the boundary stair-step collapses to the projected
+cell-face spacing (~one screen pixel per cell). The screen-space
+approach below makes this further cheaper, but DDA is the correct
+intermediate state.
 
 The cost is `O(canvasPixels × stepsAlongRay)` plus the per-frame
 `BUILD_OCCUPANCY_GRID` rebuild and 2 MB SSBO upload. We pay this even

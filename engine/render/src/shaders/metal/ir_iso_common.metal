@@ -71,19 +71,22 @@ inline int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
-// Outward unit normal for the visible side of each iso-rendered face. With
-// +Z = down, the three visible faces in iso view are +X, +Y, -Z. Used by
-// AO sampling (step out from the surface) and lighting lambert (dot with
-// sun direction); both consumers MUST share this so they agree on "out".
+// Outward unit normal for the visible side of each iso-rendered face. The
+// iso projection has view direction (1,1,1), so a camera at
+// (-large,-large,-large) sees the faces whose outward normals point
+// AGAINST the view direction — -X, -Y, -Z (+Z is down, so -Z is up = the
+// top face). Used by AO sampling (step out of the surface) and lighting
+// lambert (dot with sun direction); both consumers MUST share this so
+// they agree on "out". GLSL mirror lives in ir_iso_common.glsl.
 inline float3 faceOutwardNormal(int face) {
-    if (face == kXFace) return float3(1.0, 0.0, 0.0);
-    if (face == kYFace) return float3(0.0, 1.0, 0.0);
+    if (face == kXFace) return float3(-1.0, 0.0, 0.0);
+    if (face == kYFace) return float3(0.0, -1.0, 0.0);
     return float3(0.0, 0.0, -1.0);
 }
 
 inline int3 faceOutwardNormalI(int face) {
-    if (face == kXFace) return int3(1, 0, 0);
-    if (face == kYFace) return int3(0, 1, 0);
+    if (face == kXFace) return int3(-1, 0, 0);
+    if (face == kYFace) return int3(0, -1, 0);
     return int3(0, 0, -1);
 }
 

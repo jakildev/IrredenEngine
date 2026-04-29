@@ -51,6 +51,7 @@ struct ResolvedSun {
     float intensity_ = IRRender::getSunIntensity();
     float ambient_ = IRRender::getSunAmbient();
     bool shadowsEnabled_ = IRRender::getSunShadowsEnabled();
+    bool aoEnabled_ = IRRender::getAOEnabled();
 };
 
 inline IREntity::EntityId sunShadowShapeCanvas(const C_ShapeDescriptor &shape) {
@@ -103,6 +104,7 @@ inline ResolvedSun resolveSun() {
         }
     }
     sun.shadowsEnabled_ = IRRender::getSunShadowsEnabled();
+    sun.aoEnabled_ = IRRender::getAOEnabled();
     return sun;
 }
 
@@ -318,6 +320,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 frameData.sunIntensity_ = sun.intensity_;
                 frameData.sunAmbient_ = sun.ambient_;
                 frameData.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
+                frameData.aoEnabled_ = sun.aoEnabled_ ? 1 : 0;
                 // Picked up from the occupancy grid build that ran earlier
                 // this frame. The bounds buffer is also bound globally by
                 // BUILD_OCCUPANCY_GRID, so no per-canvas rebind needed.

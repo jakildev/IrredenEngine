@@ -9,10 +9,15 @@
 constant int kOccupancyGridSize = 256;
 constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
-constant int kMaxShadowMarchSteps = 64;
+// Max occupancy-grid cells visited per pixel by the 3D DDA below. See
+// the GLSL counterpart (c_compute_sun_shadow.glsl) for the rationale —
+// 128 covers diagonal rays for the same effective shadow distance the
+// old fixed-step march produced.
+constant int kMaxShadowMarchSteps = 128;
+constant float kMaxShadowRayDistance = 64.0;
 constant float kShadowDarken = 0.45;
 constant int kMaxAnalyticShapeMarchSteps = 32;
-constant float kAnalyticShadowSurfaceThreshold = 0.35;
+constant float kAnalyticShadowSurfaceThreshold = 0.05;
 
 // Shape-type constants (SHAPE_BOX, …) live in ir_sdf_common.metal.
 constant uint FLAG_HOLLOW        = 1u;
@@ -112,7 +117,11 @@ inline bool analyticShapeShadowHit(
     }
 
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    const float minStep = 1.0 / float(min(subdivisions, 4));
+    // See the GLSL counterpart: minStep matches one sub-voxel of the
+    // render resolution so the march resolves to ~one screen pixel at
+    // any zoom, avoiding the 0.25-voxel jagged plateau the old clamp
+    // imposed at zoom 16.
+    const float minStep = 1.0 / float(subdivisions);
 
     for (int i = 0; i < sunFrameData.shapeCasterCount; ++i) {
         const ShapeDescriptor shape = shapeCasters[i];
@@ -214,14 +223,30 @@ kernel void c_compute_sun_shadow(
         shapeCasters
     );
 
+    // 3D DDA over the occupancy grid — see the GLSL counterpart in
+    // c_compute_sun_shadow.glsl for the full rationale. Cells are
+    // indexed by `roundHalfUp`, so the cell boundary in the +1 step
+    // direction is at `cell + 0.5` and `cell - 0.5` for -1.
     float3 rayPos = rayOrigin;
+    int3 cell = roundHalfUp(rayPos);
+    int3 stepCell = int3(
+        sunDir.x > 0.0 ? 1 : (sunDir.x < 0.0 ? -1 : 0),
+        sunDir.y > 0.0 ? 1 : (sunDir.y < 0.0 ? -1 : 0),
+        sunDir.z > 0.0 ? 1 : (sunDir.z < 0.0 ? -1 : 0)
+    );
+    float3 invDir = float3(
+        stepCell.x != 0 ? 1.0 / sunDir.x : 1e30,
+        stepCell.y != 0 ? 1.0 / sunDir.y : 1e30,
+        stepCell.z != 0 ? 1.0 / sunDir.z : 1e30
+    );
+    float3 nextEdge = float3(cell) + 0.5 * float3(stepCell);
+    float3 tMax = (nextEdge - rayPos) * invDir;
+    float3 tDelta = abs(invDir);
+    if (stepCell.x == 0) { tMax.x = 1e30; tDelta.x = 1e30; }
+    if (stepCell.y == 0) { tMax.y = 1e30; tDelta.y = 1e30; }
+    if (stepCell.z == 0) { tMax.z = 1e30; tDelta.z = 1e30; }
+
     for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
-        // `roundHalfUp` lives in ir_iso_common.metal and mirrors
-        // `IRMath::roundHalfUp` on the CPU side (see
-        // system_build_occupancy_grid.hpp). The CPU populates cells with
-        // round-half-up; the GPU march MUST sample with the same rule or
-        // half-integer rays classify cells inconsistently.
-        int3 cell = roundHalfUp(rayPos);
         int he = kOccupancyGridHalfExtent;
         if (cell.x < -he || cell.x >= he ||
             cell.y < -he || cell.y >= he ||
@@ -236,7 +261,19 @@ kernel void c_compute_sun_shadow(
             shadowed = true;
             break;
         }
-        rayPos += sunDir;
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            cell.x += stepCell.x;
+            tMax.x += tDelta.x;
+        } else if (tMax.y < tMax.z) {
+            cell.y += stepCell.y;
+            tMax.y += tDelta.y;
+        } else {
+            cell.z += stepCell.z;
+            tMax.z += tDelta.z;
+        }
+        if (min(min(tMax.x, tMax.y), tMax.z) > kMaxShadowRayDistance) {
+            break;
+        }
     }
 
     float factor = shadowed ? kShadowDarken : 1.0;

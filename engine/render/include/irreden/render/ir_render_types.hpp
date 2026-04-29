@@ -192,9 +192,11 @@ struct GPUShapesFrameData {
 struct FrameDataSun {
     // xyz = unit vector pointing from surfaces toward the sun; w unused.
     // Default mirrors RenderManager::m_sunDirection (overhead with small
-    // +X / +Y tilt). Live frame data is overwritten from resolveSun()
-    // each tick — this default only matters before the first tick.
-    vec4 sunDirection_ = vec4(0.3f, 0.2f, -0.93f, 0.0f);
+    // -X / -Y tilt — those match the outward-normal signs of the visible
+    // X_FACE / Y_FACE so dot-product shading produces Z > X > Y).
+    // Live frame data is overwritten from resolveSun() each tick — this
+    // default only matters before the first tick.
+    vec4 sunDirection_ = vec4(-0.3f, -0.2f, -0.93f, 0.0f);
     float sunIntensity_ = 1.0f;
     float sunAmbient_ = 0.4f;
     int shadowsEnabled_ = 1;
@@ -204,7 +206,12 @@ struct FrameDataSun {
     // entity's voxel bbox so it can skip self-cells during occupancy march
     // (the parity equivalent of analytic-path selfEntityId exclusion).
     int occupancyBoundsCount_ = 0;
-    int _padding0_ = 0;
+    // Mirrors `RenderManager::m_aoEnabled`. When 0 the AO compute shader
+    // short-circuits with a constant 1.0 (no darkening) so the lighting
+    // pass treats AO as a no-op. Wired in here rather than in its own UBO
+    // because every consumer (AO compute, lighting) already binds
+    // FrameDataSun.
+    int aoEnabled_ = 1;
     int _padding1_ = 0;
     int _padding2_ = 0;
 };

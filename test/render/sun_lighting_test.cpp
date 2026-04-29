@@ -29,17 +29,20 @@ TEST(SunLightingConfig, FrameDataDefaultsKeepShadowsEnabled) {
     EXPECT_FLOAT_EQ(frameData.sunAmbient_, 0.4f);
     EXPECT_EQ(frameData.shadowsEnabled_, 1);
     EXPECT_EQ(frameData.shapeCasterCount_, 0);
+    EXPECT_EQ(frameData.aoEnabled_, 1);
 }
 
 TEST(SunLightingConfig, FrameDataDefaultDirectionMatchesRenderManager) {
-    // Mirror of RenderManager::m_sunDirection (overhead with small +X /
-    // +Y tilt). Both initializers must stay in lockstep — the GPU UBO
-    // is overwritten from RenderManager state on the first tick, but the
+    // Mirror of RenderManager::m_sunDirection (overhead with small -X /
+    // -Y tilt — matches the outward normals of the visible X_FACE /
+    // Y_FACE so dot-product lambert produces brightness Z > X > Y).
+    // Both initializers must stay in lockstep — the GPU UBO is
+    // overwritten from RenderManager state on the first tick, but the
     // default matters for any path that reads the UBO before a tick
     // runs (e.g. headless tools, tests).
     IRRender::FrameDataSun frameData{};
-    EXPECT_FLOAT_EQ(frameData.sunDirection_.x, 0.3f);
-    EXPECT_FLOAT_EQ(frameData.sunDirection_.y, 0.2f);
+    EXPECT_FLOAT_EQ(frameData.sunDirection_.x, -0.3f);
+    EXPECT_FLOAT_EQ(frameData.sunDirection_.y, -0.2f);
     EXPECT_FLOAT_EQ(frameData.sunDirection_.z, -0.93f);
     EXPECT_LE(frameData.sunDirection_.z, 0.0f); // +Z is down — sun must be above
 }

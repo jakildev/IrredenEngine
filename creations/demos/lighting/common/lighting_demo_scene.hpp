@@ -64,20 +64,27 @@ struct DemoConfig {
     bool addSpot_ = false;
     bool addDirectional_ = false;
     bool enableFog_ = false;
-    // Mostly-overhead pose with a small +X / +Y tilt so face shading
+    // Mostly-overhead pose with a small -X / -Y tilt so face shading
     // orders Z > X > Y, recovering the visual feel of the engine's old
-    // hardcoded per-face brightness multiplier. Demos that want a
-    // different sun (e.g. dramatic side-light) override this.
-    vec3 sunDirection_ = vec3(0.3f, 0.2f, -0.93f);
+    // hardcoded per-face brightness multiplier. The negated X/Y match
+    // the outward-normal signs of the visible X_FACE / Y_FACE in iso
+    // view (see `faceOutwardNormal` in ir_iso_common.glsl) so the
+    // dot-product lambert is positive on the visible sides. Demos that
+    // want a different sun (e.g. dramatic side-light) override this.
+    vec3 sunDirection_ = vec3(-0.3f, -0.2f, -0.93f);
     float sunIntensity_ = 1.0f;
     float sunAmbient_ = 0.4f;
     bool sunShadowsEnabled_ = true;
+    // When false, ambient-occlusion crease darkening is skipped — the AO
+    // compute shader writes a constant 1.0. Useful for isolating shadow
+    // contribution in lighting demos.
+    bool aoEnabled_ = true;
     // C_LightSource{DIRECTIONAL} override. Only applied when
     // addDirectional_ is true. Defaults match the global sun so demos
     // that opt into a directional entity *without* customizing it see
     // no visible change. The lighting_directional demo overrides these
     // to make the override behavior visually obvious.
-    vec3 directionalOverrideDirection_ = vec3(0.3f, 0.2f, -0.93f);
+    vec3 directionalOverrideDirection_ = vec3(-0.3f, -0.2f, -0.93f);
     float directionalOverrideIntensity_ = 1.0f;
     float directionalOverrideAmbient_ = 0.4f;
 
@@ -111,6 +118,10 @@ inline int g_autoProfileFrames = 0;
 inline int g_autoProfileCount = 0;
 inline float g_initialZoom = 0.0f;
 inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NONE;
+// CLI flag for `--no-ao` (or `--ao-off`). Applied after the demo's own
+// DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
+// off without rebuilding.
+inline bool g_cliDisableAO = false;
 
 inline void parseArgs(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
@@ -137,6 +148,9 @@ inline void parseArgs(int argc, char **argv) {
                 g_cliOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--no-ao") == 0 ||
+                   std::strcmp(argv[i], "--ao-off") == 0) {
+            g_cliDisableAO = true;
         }
     }
 }
@@ -247,6 +261,7 @@ inline void createLights(const DemoConfig &config) {
     IRRender::setSunIntensity(config.sunIntensity_);
     IRRender::setSunAmbient(config.sunAmbient_);
     IRRender::setSunShadowsEnabled(config.sunShadowsEnabled_);
+    IRRender::setAOEnabled(config.aoEnabled_ && !g_cliDisableAO);
 
     if (config.addDirectional_) {
         IREntity::createEntity(

@@ -8,6 +8,22 @@ constant int kOccupancyGridSize = 256;
 constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 
+// Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
+// consumed here; the rest of the layout must match so the same UBO can
+// be bound by sun-shadow and lighting passes. Kept in lockstep with the
+// GLSL counterpart at binding 29.
+struct FrameDataSun {
+    float4 sunDirection;
+    float sunIntensity;
+    float sunAmbient;
+    int shadowsEnabled;
+    int shapeCasterCount;
+    int occupancyBoundsCount;
+    int aoEnabled;
+    int padding1;
+    int padding2;
+};
+
 inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
     int he = kOccupancyGridHalfExtent;
     if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
@@ -24,6 +40,7 @@ inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, in
 
 kernel void c_compute_voxel_ao(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
+    constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *occupancyBits [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
@@ -38,6 +55,10 @@ kernel void c_compute_voxel_ao(
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
     if (encoded >= kEmptyDistanceEncoded) {
+        canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+        return;
+    }
+    if (sunFrameData.aoEnabled == 0) {
         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }

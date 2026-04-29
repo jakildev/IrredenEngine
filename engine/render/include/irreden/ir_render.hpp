@@ -231,6 +231,11 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
+/// When false, ambient occlusion crease darkening is skipped — the AO compute
+/// shader short-circuits with a constant 1.0 so the lighting pass treats AO
+/// as a no-op. Sun face shading and projected shadows are unaffected.
+void setAOEnabled(bool enabled);
+bool getAOEnabled();
 /// @}
 
 /// @{

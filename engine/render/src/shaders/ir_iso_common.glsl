@@ -64,21 +64,23 @@ int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
-// Outward unit normal for the visible side of each iso-rendered face. With
-// +Z = down (gravity), the three visible faces in iso view are +X, +Y, -Z.
-// Used by both the AO compute (to step OUTside the surface and read
-// neighbor occluders) and the lighting compute (to dot with the
-// sun-direction for lambert). Both shaders MUST share this so the surface
-// shading and the AO sampling agree on which way is "out".
+// Outward unit normal for the visible side of each iso-rendered face. The
+// iso projection has view direction (1,1,1), so the three faces a camera
+// at (-large, -large, -large) actually sees are the ones whose outward
+// normals point AGAINST the view direction — i.e. -X, -Y, -Z (+Z is down,
+// so -Z is up = the top face). Used by both the AO compute (to step OUT
+// of the surface and read neighbor occluders) and the lighting lambert
+// (dot with sun direction). Both consumers MUST share this so AO sampling
+// and shading agree on which way is "out".
 vec3 faceOutwardNormal(int face) {
-    if (face == kXFace) return vec3(1.0, 0.0, 0.0);
-    if (face == kYFace) return vec3(0.0, 1.0, 0.0);
+    if (face == kXFace) return vec3(-1.0, 0.0, 0.0);
+    if (face == kYFace) return vec3(0.0, -1.0, 0.0);
     return vec3(0.0, 0.0, -1.0);
 }
 
 ivec3 faceOutwardNormalI(int face) {
-    if (face == kXFace) return ivec3(1, 0, 0);
-    if (face == kYFace) return ivec3(0, 1, 0);
+    if (face == kXFace) return ivec3(-1, 0, 0);
+    if (face == kYFace) return ivec3(0, -1, 0);
     return ivec3(0, 0, -1);
 }
 

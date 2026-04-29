@@ -13,6 +13,7 @@ set(IR_LIGHTING_DEMO_TARGETS
     IRLightingSunShading
     IRLightingSdfCascade
     IRLightingSunOrbit
+    IRLightingSunElevationOrbit
 )
 
 set(IR_LIGHTING_DEMO_SOURCES
@@ -27,6 +28,7 @@ set(IR_LIGHTING_DEMO_SOURCES
     main_sun_shading.cpp
     main_sdf_cascade.cpp
     main_sun_orbit.cpp
+    main_sun_elevation_orbit.cpp
 )
 
 list(LENGTH IR_LIGHTING_DEMO_TARGETS IR_LIGHTING_DEMO_COUNT)

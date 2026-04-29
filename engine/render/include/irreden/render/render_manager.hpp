@@ -75,6 +75,8 @@ class RenderManager {
     float getSunAmbient() const;
     void setSunShadowsEnabled(bool enabled);
     bool getSunShadowsEnabled() const;
+    void setAOEnabled(bool enabled);
+    bool getAOEnabled() const;
 
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
@@ -134,17 +136,20 @@ class RenderManager {
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
     // Unit vector pointing from surfaces toward the sun. Default is a
-    // mostly-overhead pose with a small +X / +Y tilt so the three voxel
-    // faces shade in the order Z > X > Y, recovering the visual feel of
-    // the old hardcoded per-face brightness multiplier (Z=1.25, X=1.0,
+    // mostly-overhead pose with a small -X / -Y tilt: those are the
+    // outward-normal directions of the visible X_FACE / Y_FACE in iso
+    // view (see `faceOutwardNormal` in ir_iso_common.glsl), so the dot
+    // product produces brightness Z > X > Y, recovering the visual feel
+    // of the old hardcoded per-face brightness multiplier (Z=1.25, X=1.0,
     // Y=0.75). Creations override via setSunDirection() per frame or at
     // init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
     // Component breakdown after normalize: |z|≈0.93 (top brightest),
-    // x≈0.30, y≈0.20 — every face has at least 0.4 ambient floor.
-    vec3 m_sunDirection = vec3(0.3f, 0.2f, -0.93f);
+    // |x|≈0.30, |y|≈0.20 — every face has at least 0.4 ambient floor.
+    vec3 m_sunDirection = vec3(-0.3f, -0.2f, -0.93f);
     float m_sunIntensity = 1.0f;
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
+    bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 
     void initRenderingSystems();
