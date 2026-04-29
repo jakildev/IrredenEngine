@@ -21,6 +21,8 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 
+#include <cstddef>
+
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRRender;
@@ -45,6 +47,15 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
         static Buffer *s_voxelFrameDataBuf =
             IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        // `ComputeSunShadowFrameData` is created by the COMPUTE_SUN_SHADOW
+        // system, which is constructed AFTER AO in pipeline registration
+        // order. Looking it up here (during AO's create()) would race the
+        // creation. Looking it up inside the lambdas below defers the
+        // resolution to first-tick, by which time every system's create()
+        // has run. AO consumes only `aoEnabled_` and refreshes that
+        // single field in its beginTick (see below) so the value is fresh
+        // at AO-dispatch time even though shadow hasn't ticked yet this
+        // frame.
 
         return createSystem<
             C_TriangleCanvasTextures,
@@ -76,6 +87,9 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 s_voxelFrameDataBuf->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
                 );
+                static Buffer *s_sunFrameDataBuf =
+                    IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+                s_sunFrameDataBuf->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
                 const int groupsX = IRMath::divCeil(
                     canvasTextures.size_.x, kComputeVoxelAOGroupSize
@@ -91,7 +105,22 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 // multiple entities — otherwise later entities overwrite.
                 if (timing.enabled_) { IRRender::device()->finish(); timing.computeVoxelAoMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
-            []() { s_program->use(); }
+            []() {
+                s_program->use();
+                // Refresh just `aoEnabled_` in the shared FrameDataSun
+                // buffer so the AO shader reads a current value. The
+                // COMPUTE_SUN_SHADOW system later overwrites the entire
+                // struct with the same field derived from
+                // IRRender::getAOEnabled(), so the two writes agree.
+                static Buffer *s_sunFrameDataBuf =
+                    IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+                int aoEnabledFlag = IRRender::getAOEnabled() ? 1 : 0;
+                s_sunFrameDataBuf->subData(
+                    offsetof(FrameDataSun, aoEnabled_),
+                    sizeof(int),
+                    &aoEnabledFlag
+                );
+            }
         );
     }
 };

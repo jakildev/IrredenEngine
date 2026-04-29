@@ -70,7 +70,6 @@ void main() {
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(colors[voxelIndex]);
     int face = localIDToFace_2x3();
-    voxelColor = adjustColorForFace(voxelColor, face);
 
     if (voxelRenderOptions.x == 0) {
         const ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));

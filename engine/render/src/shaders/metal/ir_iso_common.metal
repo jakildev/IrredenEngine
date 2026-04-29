@@ -46,13 +46,6 @@ inline float4 unpackColor(uint packedColor) {
     );
 }
 
-inline float4 adjustColorForFace(float4 color, int face) {
-    float b = 1.0;
-    if (face == kYFace) b = 0.75;
-    if (face == kZFace) b = 1.25;
-    return float4(clamp(color.rgb * b, 0.0, 1.0), color.a);
-}
-
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 //   (0,0),(1,0) -> Z_FACE
 //   (1,1),(1,2) -> X_FACE
@@ -76,6 +69,25 @@ inline int2 faceOffset_2x3(int face, int subPixel) {
 // The *4 spacing ensures face indices never cross depth boundaries.
 inline int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
+}
+
+// Outward unit normal for the visible side of each iso-rendered face. The
+// iso projection has view direction (1,1,1), so a camera at
+// (-large,-large,-large) sees the faces whose outward normals point
+// AGAINST the view direction — -X, -Y, -Z (+Z is down, so -Z is up = the
+// top face). Used by AO sampling (step out of the surface) and lighting
+// lambert (dot with sun direction); both consumers MUST share this so
+// they agree on "out". GLSL mirror lives in ir_iso_common.glsl.
+inline float3 faceOutwardNormal(int face) {
+    if (face == kXFace) return float3(-1.0, 0.0, 0.0);
+    if (face == kYFace) return float3(0.0, -1.0, 0.0);
+    return float3(0.0, 0.0, -1.0);
+}
+
+inline int3 faceOutwardNormalI(int face) {
+    if (face == kXFace) return int3(-1, 0, 0);
+    if (face == kYFace) return int3(0, -1, 0);
+    return int3(0, 0, -1);
 }
 
 inline int3 faceMicroPositionFixed(
@@ -114,6 +126,20 @@ inline float3 snapNearIntegerVoxelPosition(float3 voxelPosition) {
     float3 voxelRounded = round(voxelPosition);
     bool3 nearGrid = abs(voxelPosition - voxelRounded) <= float3(0.0001);
     return select(voxelPosition, voxelRounded, nearGrid);
+}
+
+// Round-half-up: rounds to the nearest integer, ties go UP. Mirrors
+// `IRMath::roundHalfUp` (engine/math/include/irreden/ir_math.hpp) so any
+// CPU↔GPU coordinate handshake (occupancy grid build, ray-march cell sampling)
+// resolves half-integer voxel positions to the same cell on both sides.
+// Hardware `round()` is implementation-defined at half-integers and cannot be
+// trusted for that handshake.
+inline int3 roundHalfUp(float3 v) {
+    return int3(floor(v + float3(0.5)));
+}
+
+inline int roundHalfUp(float v) {
+    return int(floor(v + 0.5f));
 }
 
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the

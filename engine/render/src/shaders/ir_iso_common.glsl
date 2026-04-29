@@ -41,13 +41,6 @@ vec4 unpackColor(uint packedColor) {
     );
 }
 
-vec4 adjustColorForFace(vec4 color, int face) {
-    float b = 1.0;
-    if (face == kYFace) b = 0.75;
-    if (face == kZFace) b = 1.25;
-    return vec4(clamp(color.rgb * b, 0.0, 1.0), color.a);
-}
-
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 // (0,0),(1,0) -> Z_FACE; (1,1),(1,2) -> X_FACE; (0,1),(0,2) -> Y_FACE
 int localIDToFace_2x3() {
@@ -69,6 +62,26 @@ ivec2 faceOffset_2x3(int face, int subPixel) {
 // The *4 spacing ensures face indices never cross depth boundaries.
 int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
+}
+
+// Outward unit normal for the visible side of each iso-rendered face. The
+// iso projection has view direction (1,1,1), so the three faces a camera
+// at (-large, -large, -large) actually sees are the ones whose outward
+// normals point AGAINST the view direction — i.e. -X, -Y, -Z (+Z is down,
+// so -Z is up = the top face). Used by both the AO compute (to step OUT
+// of the surface and read neighbor occluders) and the lighting lambert
+// (dot with sun direction). Both consumers MUST share this so AO sampling
+// and shading agree on which way is "out".
+vec3 faceOutwardNormal(int face) {
+    if (face == kXFace) return vec3(-1.0, 0.0, 0.0);
+    if (face == kYFace) return vec3(0.0, -1.0, 0.0);
+    return vec3(0.0, 0.0, -1.0);
+}
+
+ivec3 faceOutwardNormalI(int face) {
+    if (face == kXFace) return ivec3(-1, 0, 0);
+    if (face == kYFace) return ivec3(0, -1, 0);
+    return ivec3(0, 0, -1);
 }
 
 ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
@@ -102,4 +115,18 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     vec3 voxelRounded = round(voxelPosition);
     bvec3 nearGrid = lessThanEqual(abs(voxelPosition - voxelRounded), vec3(0.0001));
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
+}
+
+// Round-half-up: rounds to the nearest integer, ties go UP. Mirrors
+// `IRMath::roundHalfUp` (engine/math/include/irreden/ir_math.hpp) so any
+// CPU↔GPU coordinate handshake (occupancy grid build, ray-march cell sampling)
+// resolves half-integer voxel positions to the same cell on both sides.
+// Hardware `round()` is implementation-defined at half-integers and cannot be
+// trusted for that handshake.
+ivec3 roundHalfUp(vec3 v) {
+    return ivec3(floor(v + vec3(0.5)));
+}
+
+int roundHalfUp(float v) {
+    return int(floor(v + 0.5));
 }

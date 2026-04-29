@@ -43,9 +43,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
         IRRender::createNamedResource<ShaderProgram>(
             "ShapesToTrixelProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompShapesToTrixel, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixel, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "ShapeDescriptorBuffer",
@@ -90,8 +88,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
         static ShaderProgram *s_shapesProgram =
             IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
-        static Buffer *s_shapeDescBuf =
-            IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
+        static Buffer *s_shapeDescBuf = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
         static Buffer *s_shapesFrameDataBuf =
             IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         static Buffer *s_shapeTileDescBuf =
@@ -137,8 +134,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 gpuShapesByCanvas.clear();
 
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-                auto texOpt =
-                    IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
+                auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
                 if (texOpt.has_value()) {
                     IRRender::updateCullViewport(
                         IRRender::getCameraPosition2DIso(),
@@ -181,11 +177,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     frameData.shapeCount = static_cast<int>(gpuShapes.size());
                     const auto renderMode = IRRender::getSubdivisionMode();
                     const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
-                    frameData.voxelRenderOptions = ivec2(
-                        static_cast<int>(renderMode), effectiveSub);
+                    frameData.voxelRenderOptions =
+                        ivec2(static_cast<int>(renderMode), effectiveSub);
                     if (cullBounds.has_value() && canvasId == mainCanvas) {
-                        frameData.cullIsoMin = ivec2(glm::floor(cullBounds->min_));
-                        frameData.cullIsoMax = ivec2(glm::ceil(cullBounds->max_));
+                        frameData.cullIsoMin = ivec2(IRMath::floor(cullBounds->min_));
+                        frameData.cullIsoMax = ivec2(IRMath::ceil(cullBounds->max_));
                     } else {
                         frameData.cullIsoMin = ivec2(-999999);
                         frameData.cullIsoMax = ivec2(999999);
@@ -199,23 +195,31 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     );
 
                     const int tileCount = buildAndUploadTileDescriptors(
-                        gpuShapes, s_shapeTileDescBuf, effectiveSub, renderMode);
+                        gpuShapes,
+                        s_shapeTileDescBuf,
+                        effectiveSub,
+                        renderMode
+                    );
                     if (tileCount == 0) {
                         continue;
                     }
 
                     s_shapesProgram->use();
-                    canvasTextures.getTextureDistances()->bindAsImage(
-                        1, TextureAccess::READ_WRITE, TextureFormat::R32I
+                    s_shapeDescBuf->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_ShapeDescriptors
                     );
+                    canvasTextures.getTextureDistances()
+                        ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
 
                     s_shapesFrameDataBuf->bindBase(
-                        BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_ShapesFrameData
+                    );
 
                     // Pass 0: depth via imageAtomicMin
                     frameData.passIndex = 0;
-                    s_shapesFrameDataBuf->subData(
-                        0, sizeof(GPUShapesFrameData), &frameData);
+                    s_shapesFrameDataBuf->subData(0, sizeof(GPUShapesFrameData), &frameData);
 
                     IRRender::TimePoint pass0Start;
                     if (timing.enabled_) {
@@ -223,14 +227,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         pass0Start = IRRender::SteadyClock::now();
                     }
 
-                    IRRender::device()->dispatchCompute(
-                        static_cast<std::uint32_t>(tileCount), 1, 1);
+                    IRRender::device()
+                        ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
                     if (timing.enabled_) {
                         IRRender::device()->finish();
-                        timing.shapePass0Ms_ = IRRender::elapsedMs(
-                            pass0Start, IRRender::SteadyClock::now());
+                        timing.shapePass0Ms_ =
+                            IRRender::elapsedMs(pass0Start, IRRender::SteadyClock::now());
                     }
 
                     // Pass 1: color + entity ID where depth matches
@@ -239,25 +243,22 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         pass1Start = IRRender::SteadyClock::now();
                     }
 
-                    canvasTextures.getTextureColors()->bindAsImage(
-                        0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                    );
-                    canvasTextures.getTextureEntityIds()->bindAsImage(
-                        2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI
-                    );
+                    canvasTextures.getTextureColors()
+                        ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    canvasTextures.getTextureEntityIds()
+                        ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
                     frameData.passIndex = 1;
-                    s_shapesFrameDataBuf->subData(
-                        0, sizeof(GPUShapesFrameData), &frameData);
+                    s_shapesFrameDataBuf->subData(0, sizeof(GPUShapesFrameData), &frameData);
 
-                    IRRender::device()->dispatchCompute(
-                        static_cast<std::uint32_t>(tileCount), 1, 1);
+                    IRRender::device()
+                        ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
                     if (timing.enabled_) {
                         IRRender::device()->finish();
-                        timing.shapePass1Ms_ = IRRender::elapsedMs(
-                            pass1Start, IRRender::SteadyClock::now());
+                        timing.shapePass1Ms_ =
+                            IRRender::elapsedMs(pass1Start, IRRender::SteadyClock::now());
                         timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
                         timing.shapeGroupsZ_ = 0;
                     }
@@ -279,48 +280,20 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
 
-        const int sub =
-            (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
+        const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            ivec3 origin = ivec3(glm::round(worldPos));
+            ivec3 origin = IRMath::roundVec3HalfUp(worldPos);
 
-            vec3 boundingHalf;
-            auto shapeType =
-                static_cast<IRRender::ShapeType>(desc.shapeType);
-            switch (shapeType) {
-                case IRRender::ShapeType::BOX:
-                    boundingHalf = (vec3(desc.params) - 1.0f) * 0.5f;
-                    break;
-                case IRRender::ShapeType::SPHERE:
-                    boundingHalf = vec3(desc.params.x);
-                    break;
-                case IRRender::ShapeType::CYLINDER:
-                case IRRender::ShapeType::CONE:
-                    boundingHalf = vec3(
-                        desc.params.x, desc.params.x,
-                        desc.params.z * 0.5f);
-                    break;
-                case IRRender::ShapeType::ELLIPSOID:
-                    boundingHalf = vec3(desc.params) * 0.5f;
-                    break;
-                case IRRender::ShapeType::TORUS: {
-                    float xyR = desc.params.x + desc.params.y;
-                    boundingHalf = vec3(xyR, xyR, desc.params.y);
-                    break;
-                }
-                case IRRender::ShapeType::CURVED_PANEL: {
-                    vec3 hs = vec3(desc.params) * 0.5f;
-                    hs.z += std::abs(desc.params.w) * hs.x;
-                    boundingHalf = hs;
-                    break;
-                }
-                default:
-                    boundingHalf = vec3(desc.params) * 0.5f;
-                    break;
-            }
+            // Canonical bounding half-extent lives in IRMath::SDF (shared with
+            // the lighting / shadow pipeline). Renderer + shadow shader stay
+            // in lockstep on what each shape's footprint is.
+            const vec3 boundingHalf = IRMath::SDF::boundingHalf(
+                static_cast<IRMath::SDF::ShapeType>(desc.shapeType),
+                desc.params
+            );
             ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
             ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
 
@@ -328,8 +301,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             ivec2 isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             ivec2 isoSize = isoMax - isoMin;
 
-            const int tilesX = IRMath::divCeil(std::max(isoSize.x, 1), kShapeTileSize);
-            const int tilesY = IRMath::divCeil(std::max(isoSize.y, 1), kShapeTileSize);
+            const int tilesX = IRMath::divCeil(IRMath::max(isoSize.x, 1), kShapeTileSize);
+            const int tilesY = IRMath::divCeil(IRMath::max(isoSize.y, 1), kShapeTileSize);
 
             for (int ty = 0; ty < tilesY; ++ty) {
                 for (int tx = 0; tx < tilesX; ++tx) {
@@ -338,8 +311,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     }
                     ShapeTileDescriptor tile{};
                     tile.shapeIndex = i;
-                    tile.tileIsoOrigin =
-                        isoMin + ivec2(tx * kShapeTileSize, ty * kShapeTileSize);
+                    tile.tileIsoOrigin = isoMin + ivec2(tx * kShapeTileSize, ty * kShapeTileSize);
                     tiles.push_back(tile);
                 }
             }
@@ -350,8 +322,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         if (tileCount == 0) {
             return 0;
         }
-        tileDescBuf->subData(
-            0, tileCount * sizeof(ShapeTileDescriptor), tiles.data());
+        tileDescBuf->subData(0, tileCount * sizeof(ShapeTileDescriptor), tiles.data());
         return tileCount;
     }
 };

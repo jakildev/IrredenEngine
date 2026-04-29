@@ -8,6 +8,22 @@ constant int kOccupancyGridSize = 256;
 constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 
+// Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
+// consumed here; the rest of the layout must match so the same UBO can
+// be bound by sun-shadow and lighting passes. Kept in lockstep with the
+// GLSL counterpart at binding 29.
+struct FrameDataSun {
+    float4 sunDirection;
+    float sunIntensity;
+    float sunAmbient;
+    int shadowsEnabled;
+    int shapeCasterCount;
+    int occupancyBoundsCount;
+    int aoEnabled;
+    int padding1;
+    int padding2;
+};
+
 inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
     int he = kOccupancyGridHalfExtent;
     if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
@@ -24,6 +40,7 @@ inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, in
 
 kernel void c_compute_voxel_ao(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
+    constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *occupancyBits [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
@@ -41,36 +58,47 @@ kernel void c_compute_voxel_ao(
         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
+    if (sunFrameData.aoEnabled == 0) {
+        canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+        return;
+    }
 
     int face = encoded & 3;
     int rawDepth = encoded >> 2;
-
-    int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(frameData.frameCanvasOffset));
 
     // If the subdivision encoding ever shifts, update
     // c_voxel_to_trixel_stage_1.metal and c_voxel_to_trixel_stage_2.metal
     // in lockstep — all three shaders must agree on rawDepth scaling.
     int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+    float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
+        ? frameData.frameCanvasOffset * float(subdivisions)
+        : frameData.frameCanvasOffset;
+    int2 isoRel =
+        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
+
     float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (frameData.voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }
-    int3 surfaceVoxel = int3(round(pos3D));
+    // `roundHalfUp` lives in ir_iso_common.metal and mirrors
+    // `IRMath::roundHalfUp` on the CPU side (see
+    // system_build_occupancy_grid.hpp). Both ends MUST agree on
+    // half-integer voxel positions or the AO sample lands in a
+    // different cell than the one the CPU populated.
+    int3 surfaceVoxel = roundHalfUp(pos3D);
 
-    int3 outward;
+    // Face-outward + tangent axes shared with the lighting lambert via
+    // `faceOutwardNormalI` in ir_iso_common.metal.
+    int3 outward = faceOutwardNormalI(face);
     int3 t1;
     int3 t2;
     if (face == kZFace) {
-        outward = int3(0, 0, 1);
         t1 = int3(1, 0, 0);
         t2 = int3(0, 1, 0);
     } else if (face == kXFace) {
-        outward = int3(-1, 0, 0);
         t1 = int3(0, 1, 0);
         t2 = int3(0, 0, 1);
     } else {
-        outward = int3(0, -1, 0);
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }

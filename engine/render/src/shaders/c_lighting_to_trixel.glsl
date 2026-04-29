@@ -48,6 +48,15 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float _yawPadding;
 };
 
+layout(std140, binding = 29) uniform FrameDataSun {
+    uniform vec4 sunDirection;
+    uniform float sunIntensity;
+    uniform float sunAmbient;
+    uniform int shadowsEnabled;
+    uniform int shapeCasterCount;
+    uniform ivec4 _sunPadding;
+};
+
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasAO;
@@ -65,6 +74,10 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // at texel centers.
 const float kLightVolumeSize = 128.0;
 const float kLightVolumeHalfExtent = 64.0;
+
+// `faceOutwardNormal()` lives in ir_iso_common.glsl — shared with
+// c_compute_voxel_ao.glsl so the AO sampling direction and the lambert
+// dot product use the same convention.
 
 void main() {
     if (lightingEnabled == 0) {
@@ -107,9 +120,14 @@ void main() {
         return;
     }
 
+    const int rawDepth = encoded >> 2;
+    const int face = encoded & 3;
+    const float lambert = max(0.0, dot(faceOutwardNormal(face), sunDirection.xyz));
+    const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
+
     vec3 baseRgb;
     if (lutEnabled == 0) {
-        baseRgb = src.rgb * ao * shadow;
+        baseRgb = src.rgb * ao * shadow * faceFactor;
     } else {
         // LUT palette shading: AO drives the X axis (light level) and pixel
         // luminance selects the palette row so highlights and shadows get
@@ -118,16 +136,18 @@ void main() {
         // without needing a 3D LUT.
         const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
         const vec4  lut       = texture(paletteLUT, vec2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * shadow;
+        baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
     if (lightVolumeEnabled != 0) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
-        const int rawDepth = encoded >> 2;
-        const ivec2 isoRel =
-            pixel - trixelCanvasOffsetZ1 - ivec2(floor(frameCanvasOffset));
         const int subdivisions = max(voxelRenderOptions.y, 1);
+        const vec2 canvasOffset = (voxelRenderOptions.x != 0)
+            ? frameCanvasOffset * float(subdivisions)
+            : frameCanvasOffset;
+        const ivec2 isoRel =
+            pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
         vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
         if (voxelRenderOptions.x != 0) {
             pos3D /= float(subdivisions);
@@ -140,7 +160,7 @@ void main() {
             (pos3D + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
             vec3(kLightVolumeSize);
         const vec3 light = texture(lightVolume, sampleCoord).rgb;
-        baseRgb = baseRgb + src.rgb * light;
+        baseRgb = clamp(baseRgb + src.rgb * light, 0.0, 1.0);
     }
 
     imageStore(trixelColors, pixel, vec4(baseRgb, src.a));
