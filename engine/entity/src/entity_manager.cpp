@@ -72,11 +72,13 @@ void EntityManager::destroyEntity(EntityId entity) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     // Pre-destroy hooks run before component teardown so callbacks see
     // the entity (and its peers) in their final fully-valid state.
-    // Iterate by index — hooks may unregister themselves, which mutates
-    // the vector; we re-read .size() each iteration for that case.
+    // Hooks must not unregister hooks during this loop — see the
+    // assert in unregisterPreDestroyHook.
+    m_preDestroyHookIterating = true;
     for (std::size_t i = 0; i < m_preDestroyHooks.size(); ++i) {
         m_preDestroyHooks[i].hook_(entity);
     }
+    m_preDestroyHookIterating = false;
     EntityRecord &record = getRecord(entity);
     IRE_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
     ArchetypeNode *node = record.archetypeNode;
@@ -94,6 +96,11 @@ PreDestroyHookId EntityManager::registerPreDestroyHook(PreDestroyHook hook) {
 }
 
 void EntityManager::unregisterPreDestroyHook(PreDestroyHookId id) {
+    IR_ASSERT(
+        !m_preDestroyHookIterating,
+        "unregisterPreDestroyHook called from inside a pre-destroy hook callback — "
+        "this would silently skip a sibling hook. Defer the unregister until destroyEntity returns."
+    );
     if (id == kInvalidPreDestroyHookId) return;
     auto it = std::find_if(
         m_preDestroyHooks.begin(),

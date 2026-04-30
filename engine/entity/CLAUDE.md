@@ -72,14 +72,19 @@ references to the dying id — typical use is the modifier framework's
 auto-sweep of source-attributed modifiers off live target entities.
 
 Returns a `PreDestroyHookId` token. Pass to `unregisterPreDestroyHook`
-to remove. Hooks fire in registration order; callbacks may unregister
-themselves mid-iteration without breaking.
+to remove. Hooks fire in registration order.
 
 Constraints:
 
+- A hook MUST NOT unregister any hook (itself or others) while a
+  `destroyEntity` is in progress. Doing so would silently skip a
+  sibling hook; an `IR_ASSERT` fires in debug builds to catch this.
+  Defer any unregistration until `destroyEntity` returns.
 - A hook MUST NOT mutate the about-to-be-destroyed entity's archetype
   (no `setComponent` / `removeComponent` on that id). Mutating peer
   entities (other ids) is fine.
+- A hook MAY call `markEntityForDeletion` on peer entities, but SHOULD
+  NOT call `destroyEntity` reentrantly during the hook.
 - The cost is O(hooks × destructions); each hook should be O(world)
   at worst. Don't register hooks that run an expensive search per
   destroy.

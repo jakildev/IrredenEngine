@@ -347,6 +347,7 @@ class EntityManager {
     std::vector<std::function<void()>> m_pendingStructuralChanges;
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
+    bool m_preDestroyHookIterating{false};
 
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);
