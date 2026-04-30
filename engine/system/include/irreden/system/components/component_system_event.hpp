@@ -29,12 +29,12 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
 
     C_SystemEvent(
         const std::function<void(IREntity::ArchetypeNode *)> &tickFunctions,
-        const IREntity::Archetype &archetype,
-        const IREntity::Archetype &excludeArchetype = {}
+        IREntity::Archetype archetype,
+        IREntity::Archetype excludeArchetype = {}
     )
         : functionTick_(tickFunctions)
-        , archetype_(archetype)
-        , excludeArchetype_(excludeArchetype) {}
+        , archetype_(std::move(archetype))
+        , excludeArchetype_(std::move(excludeArchetype)) {}
 
     C_SystemEvent()
         : functionTick_() {}

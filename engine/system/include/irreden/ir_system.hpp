@@ -61,7 +61,7 @@ constexpr SystemId createSystem(
         std::move(functionTick),
         std::move(functionBeginTick),
         std::move(functionEndTick),
-        extraParams,
+        std::move(extraParams),
         std::move(functionRelationTick),
         std::move(excludeArchetype)
     );
