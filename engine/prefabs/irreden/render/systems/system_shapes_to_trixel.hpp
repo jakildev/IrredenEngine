@@ -101,6 +101,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         static float s_visualYaw = 0.0f;
         static float s_yawCos = 1.0f;
         static float s_yawSin = 0.0f;
+        static bool s_yawZero = true;
 
         return createSystem<C_ShapeDescriptor, C_PositionGlobal3D>(
             "ShapesToTrixel",
@@ -110,7 +111,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 if (cullBounds.has_value()) {
                     vec3 viewPos = pos.pos_;
                     vec3 sizeForExtent = vec3(shape.params_);
-                    if (s_visualYaw != 0.0f) {
+                    if (!s_yawZero) {
                         viewPos = vec3(
                             s_yawCos * pos.pos_.x + s_yawSin * pos.pos_.y,
                            -s_yawSin * pos.pos_.x + s_yawCos * pos.pos_.y,
@@ -161,6 +162,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 s_visualYaw = IRPrefab::Camera::getYaw();
                 s_yawCos = std::cos(s_visualYaw);
                 s_yawSin = std::sin(s_visualYaw);
+                s_yawZero = (s_visualYaw == 0.0f);
 
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
                 auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
