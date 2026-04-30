@@ -15,13 +15,15 @@ template <> inline void bindLuaType<IRComponents::C_LightSource>(LuaScript &luaS
     luaScript.registerEnum<LightType>(
         "LightType",
         {{"DIRECTIONAL", LightType::DIRECTIONAL},
-         {"POINT",       LightType::POINT},
-         {"EMISSIVE",    LightType::EMISSIVE},
-         {"SPOT",        LightType::SPOT}}
+         {"POINT", LightType::POINT},
+         {"EMISSIVE", LightType::EMISSIVE},
+         {"SPOT", LightType::SPOT}}
     );
 
     luaScript.registerType<
         C_LightSource,
+        C_LightSource(LightType, IRMath::Color, float, uint8_t, IRMath::vec3, float, float),
+        C_LightSource(LightType, IRMath::Color, float, uint8_t, IRMath::vec3, float),
         C_LightSource(LightType, IRMath::Color, float, uint8_t, IRMath::vec3),
         C_LightSource(LightType, IRMath::Color, float, uint8_t),
         C_LightSource()>(
@@ -35,7 +37,11 @@ template <> inline void bindLuaType<IRComponents::C_LightSource>(LuaScript &luaS
         "radius",
         &C_LightSource::radius_,
         "direction",
-        &C_LightSource::direction_
+        &C_LightSource::direction_,
+        "coneAngleDeg",
+        &C_LightSource::coneAngleDeg_,
+        "ambient",
+        &C_LightSource::ambient_
     );
 }
 

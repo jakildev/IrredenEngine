@@ -32,7 +32,7 @@ but no shader reads it. Each row is a target for a follow-up task.
 | `engine/render/src/shaders/ir_iso_common.glsl:9-14` and `metal/ir_iso_common.metal:15` (`pos3DtoPos2DIso`) | Root iso projection in GPU; mirrors the CPU helper. Every consumer below depends on this. | T-055 introduces a 4-permutation variant indexed by `rasterYaw`. T-056 keeps the SDF path on the continuous `visualYaw`. |
 | `engine/render/src/shaders/ir_iso_common.glsl:24-29` and `metal/ir_iso_common.metal:29` (`isoPixelToPos3D`) | Inverse projection from iso pixel + depth back to 3D world. Used by AO, sun shadow, lighting, fog reconstruction. | Must compose `R(-rasterYaw)` after the inverse to recover the pre-rotation world position. Sun-shadow / lighting consumers rely on this — see "Sun shadow / lighting" below. |
 | `engine/render/src/shaders/ir_iso_common.glsl:5-7` (face constants `kXFace=0, kYFace=1, kZFace=2`) and `localIDToFace_2x3`, `faceMicroPositionFixed`, `faceOffset_2x3` | Face indices encode which world axis a trixel sub-pixel belongs to. The face → world-axis mapping rotates discontinuously at cardinal swaps. | Plan §"Procedural face brightness flip": acceptable for v1; future fix derives face brightness from the post-rotation world face direction. |
-| `engine/render/src/shaders/ir_iso_common.glsl:44-49` (`adjustColorForFace`) | Z=1.25, X=1.0, Y=0.75 brightness baked per face index. Same artifact as above. | Same — flagged as v1 artifact. |
+| Face shading in `engine/render/src/shaders/c_lighting_to_trixel.glsl` and the Metal twin | Face brightness now comes from the configurable directional sun (Lambert + ambient floor), not a fixed per-face color multiplier. | Future yaw work should rotate the face normal before evaluating the sun term. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl:71-76` and `_stage_2.glsl:75-80` | Each voxel writes to canvas pixels via `pos3DtoPos2DIso(voxelPositionInt)` with no rotation. | T-055 picks one of 4 cardinal basis permutations from `rasterYaw`. |
 | `engine/render/src/shaders/c_shapes_to_trixel.glsl` (entire SDF dispatch) | SDF marches along the (1,1,1) iso depth axis, fixed. | T-056 rotates the world-space SDF query by `visualYaw` (continuous; no integer constraint). |
 | `engine/render/src/shaders/c_voxel_visibility_compact.glsl:54-58` | Cull test in iso space against `cullIsoMin/Max` from CPU. | Cull viewport derivation already moves with `rasterYaw` (see CPU side). Shader only consumes the bounds; no shader change needed. |
@@ -44,7 +44,7 @@ to check for `yaw=0` assumptions. Result of the audit:
 
 - **Sun direction is world-space** —
   `engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp:36-39`
-  and the corresponding GPU UBO `FrameDataSunShadow.sunDirection` is a
+  and the corresponding GPU UBO `FrameDataSun.sunDirection` is a
   unit vector in **world coordinates**, independent of the camera basis.
   Shadow marching iterates the world-space occupancy grid
   (`engine/render/src/shaders/c_compute_sun_shadow.glsl`) along that

@@ -144,17 +144,20 @@ RenderManager::RenderManager(
     m_canvasMap["gui"] = m_guiCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
 
-    IREntity::setComponent(m_guiCanvas, C_TrixelCanvasRenderBehavior{
-        false,  // useCameraPositionIso
-        false,  // useCameraZoom
-        false,  // applyRenderSubdivisions
-        false,  // mouseHoverEnabled
-        false,  // usePixelPerfectCameraOffset
-        0.0f,   // parityOffsetIsoX
-        0.0f,   // parityOffsetIsoY
-        0.0f,   // staticPixelOffsetX
-        0.0f    // staticPixelOffsetY
-    });
+    IREntity::setComponent(
+        m_guiCanvas,
+        C_TrixelCanvasRenderBehavior{
+            false, // useCameraPositionIso
+            false, // useCameraZoom
+            false, // applyRenderSubdivisions
+            false, // mouseHoverEnabled
+            false, // usePixelPerfectCameraOffset
+            0.0f,  // parityOffsetIsoX
+            0.0f,  // parityOffsetIsoY
+            0.0f,  // staticPixelOffsetX
+            0.0f   // staticPixelOffsetY
+        }
+    );
 
     m_activeCanvas = m_mainCanvas;
 
@@ -246,10 +249,9 @@ int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
     case SubdivisionMode::POSITION_ONLY:
         return IRMath::clamp(m_voxelRenderSubdivisions, 1, 16);
     case SubdivisionMode::FULL: {
-        const int zoomScale = static_cast<int>(
-            IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
-        return IRMath::clamp(
-            m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
+        const int zoomScale =
+            static_cast<int>(IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
+        return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
     }
     }
     return 1;
@@ -320,18 +322,13 @@ EntityId RenderManager::getCanvas(std::string canvasName) {
 }
 
 EntityId RenderManager::createCanvas(
-    std::string name,
-    ivec3 voxelPoolSize,
-    ivec2 trixelSize,
-    EntityId framebuffer
+    std::string name, ivec3 voxelPoolSize, ivec2 trixelSize, EntityId framebuffer
 ) {
     EntityId fb = framebuffer;
     if (fb == EntityId{}) {
         fb = m_mainFramebuffer;
     }
-    EntityId canvas = IREntity::createEntity<kVoxelPoolCanvas>(
-        name, voxelPoolSize, trixelSize, fb
-    );
+    EntityId canvas = IREntity::createEntity<kVoxelPoolCanvas>(name, voxelPoolSize, trixelSize, fb);
     m_canvasMap[name] = canvas;
     return canvas;
 }
@@ -367,13 +364,7 @@ void RenderManager::initRenderingResources() {
                               0
     )
                               .second;
-    IRRender::createNamedResource<VAO>(
-        "QuadVAO",
-        vertexBuffer,
-        indexBuffer,
-        1,
-        &kAttrFloat2
-    );
+    IRRender::createNamedResource<VAO>("QuadVAO", vertexBuffer, indexBuffer, 1, &kAttrFloat2);
 
     Buffer *vertexBufferTextured = IRRender::createResource<Buffer>(
                                        IRShapes2D::k2DQuadTextured,
@@ -398,18 +389,24 @@ void RenderManager::printRenderInfo() {
 
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
-        return IRMath::max(ivec2(
-            IRMath::min(
-                IRMath::floor(m_viewport.x / m_gameResolution.x),
-                IRMath::floor(m_viewport.y / m_gameResolution.y)
-            )
-        ), ivec2(1));
+        return IRMath::max(
+            ivec2(
+                IRMath::min(
+                    IRMath::floor(m_viewport.x / m_gameResolution.x),
+                    IRMath::floor(m_viewport.y / m_gameResolution.y)
+                )
+            ),
+            ivec2(1)
+        );
     }
     if (m_fitMode == FitMode::STRETCH) {
-        return IRMath::max(ivec2(
-            IRMath::floor(m_viewport.x / m_gameResolution.x),
-            IRMath::floor(m_viewport.y / m_gameResolution.y)
-        ), ivec2(1));
+        return IRMath::max(
+            ivec2(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            ),
+            ivec2(1)
+        );
     }
     IR_ASSERT(false, "Unexpected FitMode type");
     return ivec2(1);
@@ -442,7 +439,8 @@ bool RenderManager::isGuiVisible() const {
 
 void RenderManager::setGuiScale(int scale) {
     scale = std::clamp(scale, 1, 8);
-    if (scale == m_guiScale) return;
+    if (scale == m_guiScale)
+        return;
     m_guiScale = scale;
 
     ivec2 mainSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
@@ -471,11 +469,43 @@ bool RenderManager::isHoveredTrixelVisible() const {
 
 void RenderManager::setSunDirection(vec3 dir) {
     const float len = glm::length(dir);
-    m_sunDirection = len > 0.0f ? dir / len : vec3(0.0f, 1.0f, 0.0f);
+    m_sunDirection = len > 0.0f ? dir / len : vec3(-0.3f, -0.2f, -0.93f);
 }
 
 vec3 RenderManager::getSunDirection() const {
     return m_sunDirection;
+}
+
+void RenderManager::setSunIntensity(float intensity) {
+    m_sunIntensity = IRMath::max(0.0f, intensity);
+}
+
+float RenderManager::getSunIntensity() const {
+    return m_sunIntensity;
+}
+
+void RenderManager::setSunAmbient(float ambient) {
+    m_sunAmbient = IRMath::clamp(ambient, 0.0f, 1.0f);
+}
+
+float RenderManager::getSunAmbient() const {
+    return m_sunAmbient;
+}
+
+void RenderManager::setSunShadowsEnabled(bool enabled) {
+    m_sunShadowsEnabled = enabled;
+}
+
+bool RenderManager::getSunShadowsEnabled() const {
+    return m_sunShadowsEnabled;
+}
+
+void RenderManager::setAOEnabled(bool enabled) {
+    m_aoEnabled = enabled;
+}
+
+bool RenderManager::getAOEnabled() const {
+    return m_aoEnabled;
 }
 
 void RenderManager::setDebugOverlay(DebugOverlayMode mode) {

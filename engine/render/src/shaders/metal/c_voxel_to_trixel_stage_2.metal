@@ -72,7 +72,6 @@ kernel void c_voxel_to_trixel_stage_2(
     }
     const uint2 localId = localId3.xy;
     const int face = localIDToFace_2x3(localId);
-    voxelColor = adjustColorForFace(voxelColor, face);
 
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];

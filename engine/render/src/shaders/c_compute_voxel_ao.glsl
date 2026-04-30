@@ -41,6 +41,24 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float _yawPadding;
 };
 
+// Sun lighting state. Only `aoEnabled` is read by this shader; the rest of
+// the block is kept in lockstep with `FrameDataSun` in ir_render_types.hpp
+// so std140 layout matches when the same UBO is bound by sun-shadow and
+// lighting passes. Updated each frame by `system_compute_voxel_ao`'s
+// beginTick (so the value is fresh when this shader runs even though
+// COMPUTE_SUN_SHADOW comes later in the pipeline and overwrites it again).
+layout(std140, binding = 29) uniform FrameDataSun {
+    uniform vec4 sunDirection;
+    uniform float sunIntensity;
+    uniform float sunAmbient;
+    uniform int shadowsEnabled;
+    uniform int shapeCasterCount;
+    uniform int occupancyBoundsCount;
+    uniform int aoEnabled;
+    uniform int _sunPadding1;
+    uniform int _sunPadding2;
+};
+
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
 
@@ -68,12 +86,13 @@ void main() {
         imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
+    if (aoEnabled == 0) {
+        imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
 
     int face = encoded & 3;
     int rawDepth = encoded >> 2;
-
-    ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(frameCanvasOffset));
 
     // Reconstruct a voxel-space surface point. In POSITION_ONLY / FULL
     // subdivision modes rawDepth + iso coords are in sub-voxel units —
@@ -83,28 +102,38 @@ void main() {
     // c_voxel_to_trixel_stage_2.glsl in lockstep — all three shaders
     // must agree on rawDepth scaling.
     int subdivisions = max(voxelRenderOptions.y, 1);
+    vec2 canvasOffset = (voxelRenderOptions.x != 0)
+        ? frameCanvasOffset * float(subdivisions)
+        : frameCanvasOffset;
+    ivec2 isoRel =
+        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
+
     vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
     }
-    ivec3 surfaceVoxel = ivec3(round(pos3D));
+    // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
+    // `IRMath::roundHalfUp` on the CPU side (see
+    // system_build_occupancy_grid.hpp). Both ends MUST agree on
+    // half-integer voxel positions or the AO sample lands in a
+    // different cell than the one the CPU populated.
+    ivec3 surfaceVoxel = roundHalfUp(pos3D);
 
-    // Face-outward direction + the two tangent axes spanning the face
-    // plane. Sampling happens one voxel out from the face, offset along
-    // each tangent, to detect edge-adjacent occluders.
-    ivec3 outward;
+    // Face-outward + the two tangent axes spanning the face plane.
+    // Sampling happens one voxel out, offset along each tangent, to
+    // detect edge-adjacent occluders. `faceOutwardNormalI` lives in
+    // ir_iso_common.glsl and is shared with the lighting lambert
+    // calculation so AO and shading agree on which way is "out".
+    ivec3 outward = faceOutwardNormalI(face);
     ivec3 t1;
     ivec3 t2;
     if (face == kZFace) {
-        outward = ivec3(0, 0, 1);
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 1, 0);
     } else if (face == kXFace) {
-        outward = ivec3(-1, 0, 0);
         t1 = ivec3(0, 1, 0);
         t2 = ivec3(0, 0, 1);
     } else {
-        outward = ivec3(0, -1, 0);
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
     }
