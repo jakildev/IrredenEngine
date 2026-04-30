@@ -212,17 +212,6 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [~] **Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter** — add exclude-tag support to `createSystem<...>` and wire the exempt resolver; no per-entity branching
-  - **ID:** T-060
-  - **Area:** engine/system, engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-060-exclude-tag-filter
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) exclude-tag mechanism works in `createSystem<...>` for arbitrary tag types (not just `C_NoGlobalModifiers`); (2) `MODIFIER_RESOLVE_EXEMPT` system exists and dispatches entities tagged `C_NoGlobalModifiers` away from global resolver via archetype filter, with no per-entity branching; (3) test covers both archetype paths (with and without tag); (4) builds clean on `linux-debug` and `macos-debug`; (5) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" entry for this gap removed
-  - **Issue:** #339
-  - **Notes:** Architect prefers form (a): `createSystem<C_Modifiers, C_ResolvedFields, Exclude<C_NoGlobalModifiers>>(...)` — clean call site, `Exclude<...>` recognized by archetype matcher. Requires updating `engine/system/include/irreden/system/system_manager.hpp` and `system_manager.cpp`. Add `system_modifier_resolve_exempt.hpp` mirroring global resolver + update global resolver to apply the exclude filter. The exclude-tag mechanism becomes engine-wide once it lands — API shape matters more than speed.
-  - **Links:**
-
 - [~] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add decay for `C_LambdaModifiers` (Part 1) and architect the stateful-lambda mechanism (Part 2 design, separate PR)
   - **ID:** T-062
   - **Area:** engine/prefabs/irreden/common
@@ -243,17 +232,6 @@ Avoid:
   - **Acceptance:** (1) `fleet:design-blocked` and `fleet:design-unblocked` labels exist in the engine repo with documented lifecycle; (2) `role-opus-worker.md` documents escalation initiation (add label, post comment, reset branch via start-next-task, pick next task) AND resumption (check own PRs for `fleet:design-unblocked` on startup before picking new work); (3) `role-opus-architect.md` has "Handling fleet:design-blocked PRs" section with concrete steps (update plan file, post comment, swap labels); (4) queue-manager maintenance pass re-syncs `~/.fleet/plans/issue-NNN.md` → `.fleet/plans/T-NNN.md` for in-progress tasks when local plan is newer; (5) engine `CLAUDE.md` labeling discipline section documents both new labels; (6) doc-only change — builds clean
   - **Issue:** #342
   - **Notes:** Triggered by PR #332 stall — worker escalated with NEEDS-DESIGN status but no label routed it to the architect; architect had to be told manually. Two labels as state qualifiers on top of `fleet:wip`, not ownership transfers. Workers do NOT pick up `fleet:design-blocked` PRs as new tasks. End-to-end manual cycle test required (worker escalates → architect resolves → queue-manager re-syncs plan → worker resumes). Future enhancement (auto-notify after N hours via feedback file) deferred.
-  - **Links:**
-
-- [~] **engine/system docs: document 'no function-local static for system state' rule** — add rule, rationale, canonical `SystemParams` shape, exception, and 12-file deviation list to `engine/system/CLAUDE.md`
-  - **ID:** T-064
-  - **Area:** docs, engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-064-system-static-docs
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/system/CLAUDE.md` has new "Don't use function-local `static` for system state" subsection with rule, 4-bullet rationale, canonical `SystemParams` code-block shape, `constexpr`/program-const exception, and 12-file deviation list with cross-link to T-065; (2) `engine/prefabs/CLAUDE.md` has one-liner cross-reference under system-authoring guidance; (3) `creations/CLAUDE.md` confirmed to inherit the rule via baseline reference (no change or minimal cross-link added as needed); (4) doc-only PR — builds clean
-  - **Issue:** #343
-  - **Notes:** Companion to T-065 (code migration). Should land first so T-065 can cite the documented pattern. Triggered by architect-review thread on PR #334. Cite PR #334 in the commit message. Match the concise style of the existing "Per-system parameters" section.
   - **Links:**
 
 - [~] **Render systems: migrate 12 files off function-local static onto SystemParams** — replace all mutable function-local `static` state in 12 render system headers with `SystemParams` structs; visual and performance identity required
@@ -280,6 +258,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
+- [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
 - [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
 - [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
 - [x] **T-051** — Modifier framework: migrate position + velocity-drag patterns · Owner: claude/T-051-modifier-position-velocity · PR: https://github.com/jakildev/IrredenEngine/pull/332
@@ -298,5 +278,3 @@ Avoid:
 - [x] **T-042** — Fleet: stacked-PR: start-next-task stack-aware reset · Owner: claude/T-042-start-next-task-stack-aware · PR: https://github.com/jakildev/IrredenEngine/pull/295
 - [x] **T-001** — Linux build maturation: Linux CI build job added · Owner: claude/T-001-linux-ci · PR: https://github.com/jakildev/IrredenEngine/pull/297
 - [x] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
-- [x] **T-038** — Fleet: add fleet-state-scout daemon for shared state caching · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
-- [x] **T-037** — Fleet/merger: stacked-PR awareness via baseRefName · Owner: T-037-merger-stacked-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/290
