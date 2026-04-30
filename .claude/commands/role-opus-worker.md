@@ -359,7 +359,7 @@ Do the work, then exit cleanly:
         `fleet:approved` stays valid (cleanups don't invalidate approval).
       - If it was `fleet:design-unblocked` → no response label
         needed; the PR re-enters the normal review flow once you
-        push (sonnet-reviewer will pick it up via `fleet:wip`).
+        push (sonnet-reviewer will pick it up via `fleet:changes-made` (set by `commit-and-push`)).
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
    f. Remove stale fleet review labels (`fleet:needs-fix`,
       `fleet:blocker`) if present — but **keep `fleet:approved`** if
