@@ -175,14 +175,12 @@ void initSystems() {
                 }
             }
             // [7] SourceKill: destroy the source entity that holds cube 7's Haste.
-            // Must call removeBySource before destroyEntity — auto-sweep (T-061)
-            // is not yet merged, so lingering source IDs would persist in the
-            // modifier vector after the entity pool recycles the ID.
+            // registerResolverPipeline() registers a pre-destroy hook that
+            // auto-sweeps all modifier vectors for the destroyed entity's source ID.
             if (IRInput::checkKeyMouseButton(IRInput::kKeyButton7, IRInput::PRESSED)
                 && !IRModifierDemo::g_source7Killed
                 && IRModifierDemo::g_sourceEntity7 != IREntity::kNullEntity)
             {
-                IRPrefab::Modifier::removeBySource(IRModifierDemo::g_sourceEntity7);
                 IREntity::destroyEntity(IRModifierDemo::g_sourceEntity7);
                 IRModifierDemo::g_source7Killed = true;
             }
@@ -288,8 +286,6 @@ void initEntities() {
         }
     }
 
-    // removeBySource must be called before destroyEntity — auto-sweep on
-    // entity destruction (T-061) is not yet merged to master.
     IRModifierDemo::g_sourceEntity7 = IREntity::createEntity();
     IRPrefab::Modifier::push(
         IRModifierDemo::g_cubes[7], IRModifierDemo::g_speedField,
