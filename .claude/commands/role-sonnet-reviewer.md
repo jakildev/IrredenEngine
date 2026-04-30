@@ -138,6 +138,8 @@ treat it as a hard rule for this role.
    - `human:needs-fix` — human requested changes, author agent is
      handling it. Don't pile on a fleet review while the human's
      feedback is being addressed.
+   - `fleet:human-amending` — author agent is actively addressing
+     human feedback. Hold review until `fleet:changes-made` appears.
    - `fleet:semantic-conflict` — merger detected a non-mechanical
      rebase conflict; the opus-worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
@@ -164,7 +166,7 @@ iteration of polling, reviewing, and exiting cleanly:
    PRs with no fleet review, with `human:re-review`, with
    `fleet:changes-made` (remove the label on pickup), or with a "re-review please"
    comment after the last fleet review. Skip PRs carrying any of
-   `fleet:wip`, `human:wip`, `human:needs-fix`, or
+   `fleet:wip`, `human:wip`, `human:needs-fix`, `fleet:human-amending`, or
    `fleet:semantic-conflict`. For each remaining candidate, in
    oldest-first order:
 
