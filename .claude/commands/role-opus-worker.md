@@ -218,9 +218,9 @@ Do the work, then exit cleanly:
    longer in your conversation context. From `repos.engine.prs[]`
    and `repos.game.prs[]`, pick PRs whose `labels` array contains
    any of `human:needs-fix`, `human:blocker`, `fleet:needs-fix`,
-   `fleet:has-nits`. (This is the cached equivalent of the previous
-   `gh pr list ... --jq 'select(.labels ...)'` chain — same filter,
-   no API call.)
+   `fleet:has-nits`, `fleet:design-unblocked`. (This is the cached
+   equivalent of the previous `gh pr list ... --jq 'select(.labels
+   ...)'` chain — same filter, no API call.)
 
    For game-side feedback work, **cd into the game opus-worker
    worktree** before any git/gh ops (same as step 4 for new tasks):
@@ -236,6 +236,11 @@ Do the work, then exit cleanly:
       improvements that should land before merge to keep code quality high.
       The cost of a fix-and-push iteration is tiny vs merging with known
       smells. Address every nit unless it's purely subjective preference.
+   4. `fleet:design-unblocked` — architect responded to a prior
+      mid-task escalation (`fleet:design-blocked` → resolved). The
+      canonical plan at `.fleet/plans/T-<NNN>.md` has been re-synced
+      by the queue-manager; address per the architect's PR comment
+      + updated plan, just like a normal feedback fix.
 
    **Filter the candidate set: skip PRs whose branch is already
    checked out in another worktree.** A PR's branch can only be in
@@ -265,6 +270,13 @@ Do the work, then exit cleanly:
 
       **For `fleet:has-nits`**: focus on the latest review's `### Nits`
       section. Address every nit unless it's purely subjective preference.
+
+      **For `fleet:design-unblocked`**: also re-read the canonical
+      plan file at `.fleet/plans/T-<NNN>.md` (the queue-manager has
+      re-synced it from `~/.fleet/plans/issue-<N>.md` after the
+      architect updated it). The latest architect comment is the
+      authoritative direction; the plan file is the long-form
+      version. If the two diverge, the comment wins for this PR.
 
    a2. **For `human:needs-fix` / `human:blocker` only — decide
        AMEND vs ESCALATE.** Two valid dispositions:
@@ -322,7 +334,7 @@ Do the work, then exit cleanly:
 
    b. **(AMEND path)** **Immediately remove the feedback label**
       to prevent another agent from also picking it up:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred"`
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred" --remove-label "fleet:design-unblocked"`
 
       For `human:needs-fix` / `human:blocker` specifically, also
       mark the PR as in-progress and clear the prior approval so
@@ -331,9 +343,9 @@ Do the work, then exit cleanly:
       remove-when-absent with `--add-label` would abort the call):
       `gh pr edit <N> --add-label "fleet:human-amending"`
       `gh pr edit <N> --remove-label "fleet:approved"`
-      For `fleet:needs-fix` / `fleet:has-nits` only (no human
-      label): skip both — reviewer-flagged feedback doesn't
-      trigger the human-amending state.
+      For `fleet:needs-fix` / `fleet:has-nits` / `fleet:design-unblocked`
+      only (no human label): skip both — reviewer-flagged feedback
+      and architect direction don't trigger the human-amending state.
    c. Address every piece of feedback. Build with `fleet-build`.
    d. Push fixes using `commit-and-push`.
    e. Swap the in-progress label for the done label:
@@ -345,6 +357,9 @@ Do the work, then exit cleanly:
       - If it was `fleet:needs-fix` → no response label needed.
       - If it was `fleet:has-nits` → no response label needed; existing
         `fleet:approved` stays valid (cleanups don't invalidate approval).
+      - If it was `fleet:design-unblocked` → no response label
+        needed; the PR re-enters the normal review flow once you
+        push (sonnet-reviewer will pick it up via `fleet:wip`).
       `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
    f. Remove stale fleet review labels (`fleet:needs-fix`,
       `fleet:blocker`) if present — but **keep `fleet:approved`** if
@@ -863,9 +878,50 @@ Do the work, then exit cleanly:
      multiple modules in one PR
    - A build break looks structural
 
-   STOP. Surface the issue to the human. Do NOT try to redesign
-   mid-task — the architect handles design conversations. Comment on
-   your PR explaining the blocker and wait.
+   STOP. Do NOT try to redesign mid-task — the architect handles
+   design conversations.
+
+   **Design escalation via `fleet:design-blocked`.** When the
+   blocker is specifically architectural — the assigned task can't
+   proceed without a design call you don't have authority to make —
+   escalate via the label-driven flow (engine `CLAUDE.md`
+   "Design-escalation flow") so the architect can pick it up from
+   the trigger surface and the same worker (or any worker) can
+   resume cleanly:
+
+   a. **Commit and push whatever in-progress work you have on the
+      branch.** Even if half-done — the next worker iteration will
+      need it as the starting point when `fleet:design-unblocked`
+      appears. Use `commit-and-push` (the WIP PR already exists).
+   b. Post a `## NEEDS-DESIGN` escalation comment on the PR:
+      `gh pr comment <N> --body "## NEEDS-DESIGN
+
+      <what you've learned about the existing code / framework that
+      contradicts the original plan>
+
+      <the specific architectural question(s) you can't answer —
+      one per bullet>
+
+      <suggested options if you have a view; the architect picks,
+      you don't have to know the right answer>"`
+   c. Add the `fleet:design-blocked` label:
+      `gh pr edit <N> --add-label "fleet:design-blocked"`
+      Keep `fleet:wip` — design-blocked is a state qualifier on top
+      of WIP, not a transfer of ownership. Don't release the
+      `fleet-claim` lock — the open PR + the claim lock together
+      keep T-NNN reserved for resumption.
+   d. Reset the worktree via `start-next-task` so the branch is free
+      for the architect (or anyone else) to `gh pr checkout`. Then
+      pick a different unblocked TASKS.md task as your next
+      iteration's work — do NOT re-claim the same task. Once the
+      architect responds, the PR will be re-armed via
+      `fleet:design-unblocked` and any worker can pick it up via
+      step 1 priority 4 above.
+
+   For non-architectural escalations (scope grew, build break is
+   structural, public-API surface) where there's no design call to
+   route — comment on your PR explaining the blocker, leave the PR
+   in `fleet:wip`, and wait for the human directly.
 
 9. **Attach screenshots (when visual output changed).** Check whether
    the diff touches visual/render code:

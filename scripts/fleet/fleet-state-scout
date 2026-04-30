@@ -210,12 +210,17 @@ def stable_hash(obj):
 FEEDBACK_LABELS = frozenset({
     "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
 })
+# Worker-only resume signal — a PR the worker escalated for architectural
+# input that the architect has now answered. Surfaced in project_opus_worker
+# (and only there) so the worker iteration picks it up like any other
+# feedback PR; reviewers and authors do not act on it.
+DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
 })
 REVIEW_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
-    "fleet:semantic-conflict",
+    "fleet:semantic-conflict", "fleet:design-blocked",
     # Worker is amending the PR for the human's concerns; the diff
     # the reviewer sees is in flux. Re-evaluate once fleet:changes-made
     # appears (which RECHECK_LABELS picks up).
@@ -261,7 +266,7 @@ def project_opus_worker(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
-            if labels & FEEDBACK_LABELS:
+            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
                               "labels": pr["labels"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))

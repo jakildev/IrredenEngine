@@ -542,6 +542,32 @@ You are the sole TASKS.md editor. Each maintenance pass:
    For each in-progress issue not referenced by any open PR:
    `gh issue edit <N> --repo <repo> --remove-label "fleet:in-progress"`
 
+5c. **Re-sync plan files for in-progress tasks.** The architect can
+   update `~/.fleet/plans/issue-<N>.md` after a task has already
+   been ingested (the design-escalation flow in
+   `role-opus-architect.md` does exactly this when responding to a
+   `fleet:design-blocked` PR). The original `.fleet/plans/T-<NNN>.md`
+   in the repo was copied at ingestion time (step 2.d) and is now
+   stale. Workers read the repo copy, so we need to re-copy when
+   the local file is newer.
+
+   For each `[~]` (in-progress) task in each TASKS.md whose entry
+   has `**Issue:** #N`:
+   - Local path: `~/.fleet/plans/issue-<N>.md`
+   - Repo path: `.fleet/plans/T-<NNN>.md` (engine repo) or
+     `creations/game/.fleet/plans/T-<NNN>.md` (game repo)
+   - If the local file exists AND its mtime is newer than the repo
+     file's mtime (or the repo file doesn't exist), re-copy:
+     `cp ~/.fleet/plans/issue-<N>.md <repo-path>`
+     Stage in the same maintenance commit as TASKS.md edits.
+   - If neither file exists, skip (no plan was ever written).
+
+   The re-copy is content-equivalent to the original ingest copy
+   (step 2.d) — same source, same destination. Workers see the
+   updated plan on their next iteration when they `git pull` (via
+   `git -C <repo> show origin/master:.fleet/plans/T-<NNN>.md` per
+   the role-opus-worker startup actions).
+
 6. **Resolve stale blocker references.** Scan all `## Open` entries in
    each TASKS.md. For any `Blocked by:` field that contains:
    - A free-text title that now matches an existing task → replace

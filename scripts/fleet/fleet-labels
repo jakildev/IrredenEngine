@@ -105,6 +105,8 @@ LABELS=(
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus-worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
+    "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
+    "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + updated plan file"
     "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
     "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"
     "fleet:authored-on-linux|ededed|PR was opened from a Linux/WSL host; reviewer skips fleet:needs-linux-smoke"
