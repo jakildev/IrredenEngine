@@ -444,6 +444,10 @@ fetched (consistent with startup, which deliberately skips that
 work) and no candidates are printed. Do not check out any branch,
 do not rebase, do not push.
 
+If Mode above is `review-only`: behave as `live`. Auto-rebasing
+mechanical conflicts helps close out PRs, which IS the point of
+review-only mode.
+
 If you hit a usage-limit error: print the error and exit. The
 `/loop` driver and `fleet-babysit` wrapper handle backoff.
 

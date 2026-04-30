@@ -427,16 +427,19 @@ fi
 #
 # Argument parsing:
 #   fleet-up [mode] [--no-attach]
-#     mode = dry-run | live (default: dry-run)
+#     mode = dry-run | live | review-only (default: dry-run)
 #     --no-attach: skip the auto-attach (live mode only). Useful for
 #                  headless runs / CI / tests that just need the panes
 #                  spawned but don't want to attach.
+#
+# See the heredoc below ("mode review-only ...") for the user-facing
+# description of each mode.
 
 MODE="dry-run"
 ATTACH_LIVE=1   # in live mode, attach to the tmux session at the end
 for arg in "$@"; do
     case "$arg" in
-        dry-run|live) MODE="$arg" ;;
+        dry-run|live|review-only) MODE="$arg" ;;
         --no-attach)  ATTACH_LIVE=0 ;;
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
     esac
@@ -634,10 +637,18 @@ mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
   "exit dry-run mode and begin your normal loop"
 
+mode "review-only" keeps the loop running but the role docs skip
+new-task pickup and new-issue ingestion. Reviewers review, mergers
+merge, smoke runs, feedback gets addressed, in-flight molecules
+finish — but no NEW work enters the queue. Use this to close out
+open PRs without expanding the queue (e.g. before a session
+boundary or to conserve credits).
+
 babysit: each agent is wrapped in fleet-babysit, which auto-resumes
 the session if claude exits (crash, usage limit, network drop).
-  dry-run — auto-resumes on crash, stops on clean exit
-  live    — auto-resumes on any exit (runs indefinitely)
+  dry-run     — auto-resumes on crash, stops on clean exit
+  live        — auto-resumes on any exit (runs indefinitely)
+  review-only — same as live; the role docs gate new-work pickup
 
 scheduling (live mode): each worker iteration is a fresh \`claude\` process
   (no context carry-over between tasks). babysit relaunches per role's
@@ -655,6 +666,7 @@ other modes you can pass to fleet-up:
   fleet-up dry-run               # default — startup + stand-by, no auto-attach
   fleet-up live                  # full loop from the start, auto-attaches tmux
   fleet-up live --no-attach      # full loop, leave detached (CI / headless)
+  fleet-up review-only           # close-out mode — no new work, finish in-flight
 
 graceful shutdown:
   fleet-down                     # graceful: send "exit", wait, kill, clear claims
@@ -669,11 +681,11 @@ architect session resume:
   next time, delete the corresponding .session-id file.
 EOF
 
-# In live mode, attach to the tmux session so the user lands in the
-# fleet without a separate `tmux attach`. dry-run mode leaves the
+# In live or review-only mode, attach to tmux so the user lands in
+# the fleet without a separate `tmux attach`. dry-run leaves the
 # session detached so the user can confirm panes spawned cleanly
 # before opting in.
-if [[ "$MODE" == "live" && "$ATTACH_LIVE" -eq 1 ]]; then
+if [[ ( "$MODE" == "live" || "$MODE" == "review-only" ) && "$ATTACH_LIVE" -eq 1 ]]; then
     echo
     echo "fleet-up: attaching to tmux session 'fleet' (Ctrl-a d to detach)..."
     exec tmux attach-session -t "$SESSION"

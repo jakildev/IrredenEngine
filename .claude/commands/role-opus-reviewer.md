@@ -315,6 +315,9 @@ iteration of polling, reviewing, and exiting cleanly:
 If Mode above is `dry-run`: review exactly **one** flagged PR
 end-to-end, then stop and wait for human instruction. Do not loop.
 
+If Mode above is `review-only`: behave as `live`. Reviewing IS the
+point of review-only mode — keep reviewing PRs as normal.
+
 ## When to escalate to the human (do not approve)
 
 - The PR's design implies a follow-up architectural decision.
