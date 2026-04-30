@@ -285,6 +285,11 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     s_boundsUpload.reserve(s_boundsByEntity.size());
                     for (auto &kv : s_boundsByEntity) {
                         if (static_cast<int>(s_boundsUpload.size()) >= kMaxOccupancyEntityBounds) {
+                            IRE_LOG_WARN(
+                                "OccupancyEntityBounds buffer full ({} entities truncated). "
+                                "Increase kMaxOccupancyEntityBounds if the creation needs more.",
+                                kMaxOccupancyEntityBounds
+                            );
                             IR_ASSERT(
                                 false,
                                 "Too many voxel-pool entities for OccupancyEntityBounds buffer"
