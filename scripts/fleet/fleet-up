@@ -564,7 +564,13 @@ label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
 # queue-manager (top-left), merger (top-right),
 # witness (bottom-left), terminal (bottom-right, $HOME, free-form shell).
 
-OPS_TL=$(tmux new-window -t "$SESSION" -n ops -P -F "#{pane_id}" \
+# Anchor explicitly after the fleet window with `-a -t fleet`. Without
+# the anchor, `new-window -t "$SESSION"` picks the lowest unused index
+# starting at base-index — which collides on tmux configs with
+# `base-index 1` (fleet itself sits at 1, and `-t "$SESSION"` retries
+# 1 instead of advancing to 2). `-a -t fleet:fleet` always lands ops
+# at fleet-index + 1 regardless of base-index.
+OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
     "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
 label_pane_id "$OPS_TL" "queue-manager [sonnet]"
