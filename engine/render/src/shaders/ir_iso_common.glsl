@@ -140,7 +140,7 @@ int roundHalfUp(float v) {
 // composite pass; these helpers ignore it.
 
 int rasterYawCardinalIndex(float rasterYaw) {
-    const float kHalfPi = 1.5707963267948966;
+    const float kHalfPi = 1.5707963267948966f;
     int q = int(round(rasterYaw / kHalfPi));
     return ((q % 4) + 4) % 4;
 }
@@ -166,6 +166,9 @@ ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
     return v;
 }
 
+// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
+// can reference it from ir_iso_common directly.
 vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
     return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
 }

@@ -46,6 +46,7 @@ layout(std430, binding = 26) buffer IndirectDispatchParams {
 };
 
 void main() {
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     uint idx = workGroupIndex * 64u + gl_LocalInvocationID.x;
 
@@ -55,7 +56,6 @@ void main() {
             uint packedColor = colors[idx];
             uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
-                int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
