@@ -152,11 +152,11 @@ Avoid:
 <!-- Add tasks below this line. -->
 
 
-- [ ] **Modifier framework: modifier_demo creation (visual showcase)** — scaffold `modifier_demo` creation with 8 key-toggleable capabilities, on-screen HUD, and auto-screenshot shot list
+- [~] **Modifier framework: modifier_demo creation (visual showcase)** — scaffold `modifier_demo` creation with 8 key-toggleable capabilities, on-screen HUD, and auto-screenshot shot list
   - **ID:** T-053
   - **Area:** creations/demos/modifier_demo, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-053-modifier-demo
   - **Blocked by:** (none)
   - **Stack:** T-049..T-053 modifier-framework
   - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key 1-8 triggers corresponding capability with obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (verified manually on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
@@ -212,17 +212,6 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [~] **Fleet docs: dormancy-verification rule for private creations** — add "check private creations before declaring engine code dormant" section to role docs and CLAUDE.md
-  - **ID:** T-059
-  - **Area:** docs, tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-059-dormancy-check
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-opus-architect.md` and `role-opus-worker.md` both have a new "Dormancy verification across private creations" section with consistent wording; (2) engine `CLAUDE.md` has a cross-reference to the dormancy-check rule under "Cross-repo information isolation"; (3) doc-only change — builds clean on `linux-debug` trivially
-  - **Issue:** #338
-  - **Notes:** Surfaced from PR #332 / T-051 review: opus-worker grepped only checked-in `creations/demos/` and declared `VELOCITY_DRAG` dormant, missing a live consumer in a gitignored private creation. Rule to add: the information-isolation rule is about OUTPUT (what engine artifacts say publicly), not INPUT — engine-side agents MAY read private creations to verify engine-side facts, but must not reference them by name in engine PRs. Before declaring any engine API dead/dormant, grep ALL physical paths under `~/src/IrredenEngine/creations/` including gitignored subdirectories. Optionally suggest a `fleet-grep-creations` shim (defer to separate issue if proven needed).
-  - **Links:**
-
 - [~] **Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter** — add exclude-tag support to `createSystem<...>` and wire the exempt resolver; no per-entity branching
   - **ID:** T-060
   - **Area:** engine/system, engine/prefabs/irreden/common
@@ -232,17 +221,6 @@ Avoid:
   - **Acceptance:** (1) exclude-tag mechanism works in `createSystem<...>` for arbitrary tag types (not just `C_NoGlobalModifiers`); (2) `MODIFIER_RESOLVE_EXEMPT` system exists and dispatches entities tagged `C_NoGlobalModifiers` away from global resolver via archetype filter, with no per-entity branching; (3) test covers both archetype paths (with and without tag); (4) builds clean on `linux-debug` and `macos-debug`; (5) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" entry for this gap removed
   - **Issue:** #339
   - **Notes:** Architect prefers form (a): `createSystem<C_Modifiers, C_ResolvedFields, Exclude<C_NoGlobalModifiers>>(...)` — clean call site, `Exclude<...>` recognized by archetype matcher. Requires updating `engine/system/include/irreden/system/system_manager.hpp` and `system_manager.cpp`. Add `system_modifier_resolve_exempt.hpp` mirroring global resolver + update global resolver to apply the exclude filter. The exclude-tag mechanism becomes engine-wide once it lands — API shape matters more than speed.
-  - **Links:**
-
-- [~] **Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers** — add `IREntity::onPreDestroy` callback mechanism; modifier framework auto-sweeps source modifiers on entity destruction
-  - **ID:** T-061
-  - **Area:** engine/entity, engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-061-pre-destroy-hook
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) pre-destroy hook mechanism exists in `engine/entity/` (callback registration via `IREntity::onPreDestroy(std::function<void(EntityId)>)`); (2) modifier framework registers a sweep callback during `registerResolverPipeline()` that invokes `removeBySource` for the destroyed entity; (3) test: push modifier from source A onto target B, destroy A, verify B's `C_Modifiers` no longer contains the modifier; (4) builds clean on `linux-debug` and `macos-debug`; (5) `engine/prefabs/irreden/common/CLAUDE.md` updated (follow-up entry removed, usage docs note auto-sweep is automatic)
-  - **Issue:** #340
-  - **Notes:** Surfaced from PR #332 review. Architect prefers form (a): callback registration — generic, reusable for other subsystems. Iteration sweep is O(N) per destroy; consider whether a reverse-index (which targets have modifiers from source X) is worth maintaining for high-churn workloads, or accept linear sweep for v1. Keep `removeBySource` callable manually too — callers may want to remove a source's modifiers without destroying the source entity.
   - **Links:**
 
 - [~] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add decay for `C_LambdaModifiers` (Part 1) and architect the stateful-lambda mechanism (Part 2 design, separate PR)
@@ -256,11 +234,11 @@ Avoid:
   - **Notes:** Surfaced from PR #332 review. Part 1 (decay system) is mechanical — mirrors `system_modifier_decay.hpp` for `C_LambdaModifiers`. Part 2 (stateful lambda) has non-trivial design surface: architect prefers form (c) — state lives on entity in companion component, lambda receives entity ID and reads companion. Lambda signature changes; resolver needs entity-ID context. Worker implements Part 1 standalone; Part 2 should be a separate issue/PR after design is locked. If implementing Part 1 only, the `[opus]` tag may be downgraded to `[sonnet]` by the architect.
   - **Links:**
 
-- [ ] **Fleet: design-escalation flow — bidirectional labels + plan re-sync + role docs** — install `fleet:design-blocked` / `fleet:design-unblocked` label lifecycle and update worker, architect, and queue-manager role docs for the mid-task escalation cycle
+- [~] **Fleet: design-escalation flow — bidirectional labels + plan re-sync + role docs** — install `fleet:design-blocked` / `fleet:design-unblocked` label lifecycle and update worker, architect, and queue-manager role docs for the mid-task escalation cycle
   - **ID:** T-063
   - **Area:** tooling, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-063-design-escalation
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet:design-blocked` and `fleet:design-unblocked` labels exist in the engine repo with documented lifecycle; (2) `role-opus-worker.md` documents escalation initiation (add label, post comment, reset branch via start-next-task, pick next task) AND resumption (check own PRs for `fleet:design-unblocked` on startup before picking new work); (3) `role-opus-architect.md` has "Handling fleet:design-blocked PRs" section with concrete steps (update plan file, post comment, swap labels); (4) queue-manager maintenance pass re-syncs `~/.fleet/plans/issue-NNN.md` → `.fleet/plans/T-NNN.md` for in-progress tasks when local plan is newer; (5) engine `CLAUDE.md` labeling discipline section documents both new labels; (6) doc-only change — builds clean
   - **Issue:** #342
@@ -302,6 +280,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
+- [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
 - [x] **T-051** — Modifier framework: migrate position + velocity-drag patterns · Owner: claude/T-051-modifier-position-velocity · PR: https://github.com/jakildev/IrredenEngine/pull/332
 - [x] **T-052** — Modifier framework: Lua bindings · Owner: claude/T-052-lua-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/331
 - [x] **T-054** — Render: world Z-yaw view/camera transform foundation (C_CameraYaw, cardinal/residual split, GPU feeders) · Owner: claude/T-054-camera-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/327
@@ -320,5 +300,3 @@ Avoid:
 - [x] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
 - [x] **T-038** — Fleet: add fleet-state-scout daemon for shared state caching · Owner: claude/T-038-fleet-state-scout · PR: https://github.com/jakildev/IrredenEngine/pull/291
 - [x] **T-037** — Fleet/merger: stacked-PR awareness via baseRefName · Owner: T-037-merger-stacked-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/290
-- [x] **T-035** — Prefab refactor: relocate debug overlay API from IRRender:: to prefab namespace · Owner: T-035-debug-overlay-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/276
-- [x] **T-034** — Prefab refactor: relocate fog-of-war API from IRRender:: to prefab namespace · Owner: T-034-fog-prefab-namespace · PR: https://github.com/jakildev/IrredenEngine/pull/275
