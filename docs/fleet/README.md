@@ -148,7 +148,7 @@ loop, hard rules. Skills are reusable routines any role can call.
 ### Reviewers — gate quality
 
 - **`/role-sonnet-reviewer`** (Sonnet, `sonnet-reviewer`, polling
-  loop ~10 min) — reviews **every** open un-reviewed PR. Catches
+  loop ~3 min) — reviews **every** open un-reviewed PR. Catches
   obvious bugs, style nits, missing null checks, naming slips. Ends
   every verdict with either `Opus recheck not required` or `Opus
   recheck required` so the next stage knows what to do. Sets
