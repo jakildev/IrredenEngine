@@ -354,11 +354,13 @@ its first real consumers arrive via downstream game logic.
 
 ### Framework gaps — follow-up issues
 
-Three gaps discovered during T-050 runtime development:
+Of the three gaps discovered during T-050 runtime development, two
+remain:
 
-- **#339** — Wire `MODIFIER_RESOLVE_EXEMPT` via archetype exclude-tag filter
-  (the exempt-resolver dispatch path is designed but not yet wired in
-  `registerResolverPipeline()`).
+- **#339** — Wire `MODIFIER_RESOLVE_EXEMPT` via archetype exclude-tag filter.
+  Resolved by T-060: `Exclude<...>` template parameter added to
+  `IRSystem::createSystem<>`, `MODIFIER_RESOLVE_EXEMPT` system shipped,
+  `MODIFIER_RESOLVE_GLOBAL` updated to skip `C_NoGlobalModifiers`.
 - **#340** — Pre-destroy hook for auto-sweep of source-attributed modifiers.
   T-050 implemented a manual sweep path; the pre-destroy hook that guarantees
   no stale modifiers survive `EntityId` reuse is still needed.

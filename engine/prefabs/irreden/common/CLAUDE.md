@@ -61,8 +61,8 @@ Runtime entry points (all `inline`, header-only):
   paths give the same answer for the same input.
 - `registerResolverPipeline()` — call once at creation init. Creates
   the singleton globals entity (named `"modifierGlobals"`) and
-  registers the four resolver systems in canonical order. Returns
-  the four `SystemId`s in pipeline order so the caller splices them
+  registers the five resolver systems in canonical order. Returns
+  the `SystemId`s in pipeline order so the caller splices them
   into its `IRTime::UPDATE` pipeline.
 - `globalsEntity()` — returns the singleton globals entity created by
   `registerResolverPipeline()`. Intended for tests and diagnostics;
@@ -104,17 +104,9 @@ Key invariants the design rests on:
 
 ### Open follow-ups (runtime gaps)
 
-The current runtime ships four of the five resolver systems, the
-manual-call sweep API, and the pre-destroy hook auto-sweep. One
-design-mandated resolver path and one decay gap remain deferred:
-
-- **`MODIFIER_RESOLVE_EXEMPT` archetype-routed exemption.** The
-  design routes entities tagged `C_NoGlobalModifiers` to a sibling
-  resolver that skips globals. `engine/system/` does not yet expose
-  an exclude-tag filter mechanism — `addSystemTag<T>` is include-
-  only. Until an `addSystemExcludeTag<T>` (or equivalent) lands,
-  exempt-tagged entities still receive globals. The `SystemName`
-  enum slot is reserved. Tracked in #339 / T-060.
+The current runtime ships all five resolver systems, the manual-call
+sweep API, and the pre-destroy hook auto-sweep. One decay gap remains
+deferred:
 
 - **Lambda modifier auto-expire (`pushLambda` `ticksRemaining` gap).**
   `pushLambda` accepts a `ticksRemaining` parameter and stores it in
@@ -125,8 +117,8 @@ design-mandated resolver path and one decay gap remain deferred:
   explicitly. The `ticksRemaining` parameter is reserved for this future
   system. Tracked in #341 / T-062.
 
-The exempt resolver gap needs an engine-level addition; the lambda decay
-gap is prefab-layer work. File a follow-up task before relying on either.
+The lambda decay gap is prefab-layer work. File a follow-up task before
+relying on it.
 
 The pre-destroy hook used for auto-sweep is a generic
 `EntityManager::registerPreDestroyHook` mechanism (see
