@@ -234,7 +234,7 @@ Each iteration:
 
    b. **(AMEND path)** **Immediately remove the feedback label** to
       prevent another agent from also picking it up:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
+      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred"`
 
       For `human:needs-fix` / `human:blocker` specifically, also
       mark the PR as in-progress and clear the prior approval so
