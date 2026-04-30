@@ -91,37 +91,20 @@ Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
 whatever directory the task touches before editing anything. For game
 tasks, also read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
 
-## Dormancy verification across all creations, including private ones
+## Engine API removal rule
 
-Before declaring any engine API "dead," "dormant," or "safe-to-delete,"
-you **must** verify there are no live consumers in ALL physical paths
-under `~/src/IrredenEngine/creations/`, including gitignored
-subdirectories.
+**Never remove engine-defined systems, components, or entities.**
+External consumers of the engine may not have their code present in any
+`creations/` subdirectory — a local grep finding no consumers does not
+mean there are no consumers.
 
-Private creations under `creations/<gitignored>/` are first-class
-consumers of engine APIs. A dormancy check that only greps committed
-code under `creations/demos/` is incomplete and risks propagating
-incorrect dormancy claims into the fleet.
+When an engine API appears unused locally, the right action is to write
+a demo creation for it. Demos serve as living documentation and prevent
+the API from appearing dormant to future agents.
 
-**The information-isolation rule does not restrict reading here.** That
-rule governs OUTPUT — what engine-side artifacts say publicly. It does
-not restrict INPUT — what engine-side agents may read when making
-engine-side decisions. Grepping a private creation to answer "does any
-code register `FOO_SYSTEM`?" is fine. Writing the creation's name or
-details in an engine PR body or commit message is not.
-
-**Dormancy check procedure:**
-
-1. Use the Grep tool with `path: ~/src/IrredenEngine/creations/` to
-   search across all subdirectories (committed and gitignored alike).
-2. If no consumers found: record "verified no consumers across all
-   `creations/`" in your PR or issue comment — without naming which
-   paths you searched.
-3. If live consumers found: record "verified live consumers exist" —
-   without naming which creation, what it does, or any
-   creation-specific context.
-
-The output stays in engine terms. The search covers everything on disk.
+If an engine API is genuinely superseded and removal is being considered,
+escalate to the human. Do not unilaterally delete engine-level systems,
+components, or entities.
 
 ## Cross-repo model
 
