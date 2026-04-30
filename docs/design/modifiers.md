@@ -219,13 +219,14 @@ Once per pipeline execution, end of UPDATE phase, before RENDER reads:
 ```
 ModifierDecay              decrement ticksRemaining_, drop expired
 GlobalModifierDecay        same on the singleton
+LambdaModifierDecay        same on C_LambdaModifiers (also runs lambda dtors)
 ModifierResolveGlobal      non-exempt entities (archetype filter)
 ModifierResolveExempt      exempt entities (with C_NoGlobalModifiers)
 ModifierResolveLambda      lambda escape hatch, both archetypes
 → RENDER reads C_ResolvedFields directly
 ```
 
-Five systems, all dense archetype iterations, no per-entity hash
+Six systems, all dense archetype iterations, no per-entity hash
 lookups in any tick body. Resolver dispatch is archetype-routed:
 `ModifierResolveGlobal` is registered with an *exclude*
 `C_NoGlobalModifiers` filter; `ModifierResolveExempt` with an
@@ -354,20 +355,24 @@ its first real consumers arrive via downstream game logic.
 
 ### Framework gaps — follow-up issues
 
-Of the three gaps discovered during T-050 runtime development, two
-remain:
+Three gaps surfaced during T-050 runtime development. All three ship in
+master after T-060, T-061, and T-062 (Part 1) land; one follow-up
+(stateful lambdas, #341 Part 2) remains gated on architect review.
 
 - **#339** — Wire `MODIFIER_RESOLVE_EXEMPT` via archetype exclude-tag filter.
   Resolved by T-060: `Exclude<...>` template parameter added to
   `IRSystem::createSystem<>`, `MODIFIER_RESOLVE_EXEMPT` system shipped,
   `MODIFIER_RESOLVE_GLOBAL` updated to skip `C_NoGlobalModifiers`.
 - **#340** — Pre-destroy hook for auto-sweep of source-attributed modifiers.
-  T-050 implemented a manual sweep path; the pre-destroy hook that guarantees
-  no stale modifiers survive `EntityId` reuse is still needed.
-- **#341** — `LAMBDA_MODIFIER_DECAY` system + stateful-lambda design. Part 1
-  (tick-based decay for `C_LambdaModifiers`) is mechanical; Part 2
-  (stateful lambdas with per-frame accumulator state) requires architect
-  input. Velocity-drag migration is gated on Part 2.
+  Resolved by T-061: `EntityManager::registerPreDestroyHook` shipped,
+  `registerResolverPipeline()` wires `removeBySource(destroyed)` so
+  destroying a source entity sweeps its modifiers off live targets
+  before the EntityId recycles.
+- **#341 Part 2** — Stateful-lambda design. Proposal in
+  `docs/design/modifier_stateful_lambdas.md`. Recommends the
+  "companion component" shape (lambda receives entity ID; state lives
+  on a sibling component). Needs architect lock-in before the lambda
+  signature changes. Velocity-drag migration is gated on this landing.
 
 ### Follow-up candidates (post-epic)
 

@@ -71,11 +71,13 @@ enum SystemName {
     SPRING_COLOR,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
-    // C_ResolvedFields. Order: decay both vectors, then resolve
-    // (global / exempt partitioned by C_NoGlobalModifiers via the
-    // Exclude<> archetype filter), then lambda escape hatch.
+    // C_ResolvedFields. Order: decay all three vectors (per-entity,
+    // global, lambda), then resolve (global / exempt partitioned by
+    // C_NoGlobalModifiers via the Exclude<> archetype filter), then
+    // lambda escape hatch.
     MODIFIER_DECAY,
     GLOBAL_MODIFIER_DECAY,
+    LAMBDA_MODIFIER_DECAY,
     MODIFIER_RESOLVE_GLOBAL,
     MODIFIER_RESOLVE_EXEMPT,
     MODIFIER_RESOLVE_LAMBDA,

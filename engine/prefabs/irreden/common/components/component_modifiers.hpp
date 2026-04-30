@@ -72,6 +72,17 @@ inline ResolvedField *findResolvedField(std::vector<ResolvedField> &fields,
     return nullptr;
 }
 
+// Shared decay predicate for the three modifier-decay systems
+// (`MODIFIER_DECAY`, `GLOBAL_MODIFIER_DECAY`, `LAMBDA_MODIFIER_DECAY`).
+// `T` is `Modifier` or `LambdaModifier` — both expose `ticksRemaining_`
+// with identical semantics. Mutates `mod.ticksRemaining_` in place.
+template <typename T>
+inline bool tickAndExpired(T &mod) {
+    if (mod.ticksRemaining_ == -1) return false;
+    --mod.ticksRemaining_;
+    return mod.ticksRemaining_ <= 0;
+}
+
 } // namespace detail
 
 struct C_Modifiers {

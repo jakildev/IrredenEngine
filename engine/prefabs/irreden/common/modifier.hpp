@@ -22,6 +22,7 @@
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/common/systems/system_global_modifier_decay.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
+#include <irreden/common/systems/system_modifier_lambda_decay.hpp>
 #include <irreden/common/systems/system_modifier_resolve_exempt.hpp>
 #include <irreden/common/systems/system_modifier_resolve_global.hpp>
 #include <irreden/common/systems/system_modifier_resolve_lambda.hpp>
@@ -84,9 +85,11 @@ inline void pushGlobal(
     });
 }
 
-// NOTE: ticksRemaining is stored but currently unused — no LAMBDA_MODIFIER_DECAY
-// system exists. Lambda modifiers never auto-expire regardless of the value
-// passed. Use removeBySource to clean up; see CLAUDE.md "Open follow-ups".
+// `ticksRemaining` is honored by `LAMBDA_MODIFIER_DECAY`, registered alongside
+// the structured-modifier decay systems in `registerResolverPipeline`. Decay
+// runs at the start of the resolver pipeline, so a value of 1 fires for zero
+// frames; use 2 to fire for exactly one frame. `-1` is the sentinel for
+// "no decay" (modifier persists until manually removed via `removeBySource`).
 inline void pushLambda(
     IREntity::EntityId target,
     IRComponents::FieldBindingId field,
@@ -157,7 +160,7 @@ inline float applyToField(
     return detail::composeForField(baseValue, field, globals, entityMods);
 }
 
-// Wires up the singleton globals entity and registers the five resolver
+// Wires up the singleton globals entity and registers the six resolver
 // systems in the canonical order. Must be called once at creation init,
 // before any system that depends on resolved fields.
 //
@@ -169,6 +172,7 @@ inline float applyToField(
 struct ResolverPipelineSystems {
     IRSystem::SystemId modifierDecay_;
     IRSystem::SystemId globalModifierDecay_;
+    IRSystem::SystemId lambdaModifierDecay_;
     IRSystem::SystemId modifierResolveGlobal_;
     IRSystem::SystemId modifierResolveExempt_;
     IRSystem::SystemId modifierResolveLambda_;
@@ -197,6 +201,7 @@ inline ResolverPipelineSystems registerResolverPipeline() {
     return ResolverPipelineSystems{
         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::GLOBAL_MODIFIER_DECAY>(),
+        IRSystem::createSystem<IRSystem::LAMBDA_MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_GLOBAL>(),
         IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_EXEMPT>(),
         IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_LAMBDA>(),
