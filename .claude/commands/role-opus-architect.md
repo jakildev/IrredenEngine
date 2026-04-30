@@ -70,10 +70,16 @@ components, or entities.
 2. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
 3. `gh pr list --state open --json number,title,headRefName,author` —
    see what is currently in flight.
-4. Print a one-line summary: how many `[opus]` tasks are unblocked, how
+4. **List `fleet:design-blocked` PRs** (architect's lane — workers
+   escalate mid-task by adding this label):
+   `gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'`
+   If non-empty, surface the list in the standing-by message so
+   the human can direct attention. See "Handling
+   `fleet:design-blocked` PRs" below for the response flow.
+5. Print a one-line summary: how many `[opus]` tasks are unblocked, how
    many open PRs are in flight, and which (if any) appear to be claiming
    core-engine work.
-5. Print `opus-arch standing by` (or `opus-arch standing by (dry-run)`
+6. Print `opus-arch standing by` (or `opus-arch standing by (dry-run)`
    if Mode above is `dry-run`).
 
 ## Loop behavior
@@ -225,6 +231,75 @@ conversation), use the same flow:
 
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.
+
+## Handling `fleet:design-blocked` PRs
+
+The architect role is interactive (no autonomous loop), but workers
+can escalate mid-task by labeling their open PR with
+`fleet:design-blocked` and posting a `## NEEDS-DESIGN` comment.
+Those PRs sit there until you respond — the human will direct your
+attention to them, but you should also list them on startup so
+you know what's queued for you.
+
+On startup, list `fleet:design-blocked` PRs in the engine repo:
+
+```
+gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'
+```
+
+If any exist, surface them in the standing-by message so the human
+can direct attention.
+
+When working a `fleet:design-blocked` PR:
+
+1. Read the PR body and the worker's `## NEEDS-DESIGN` comment(s)
+   carefully — the worker has done analysis you should leverage.
+   The escalation comment names the contradiction with the original
+   plan, the specific architectural question(s), and (sometimes)
+   suggested options.
+2. Decide on the architectural questions. You are not coding the
+   fix yourself; you are providing direction the worker will execute.
+3. **Update the canonical plan file at `~/.fleet/plans/issue-<N>.md`**
+   (where `<N>` is the issue number referenced in the PR body via
+   `Closes #<N>` — assumes the task was ingested from a backing
+   issue, which is the common case). Add a revision-history entry
+   at the bottom and update the scope / acceptance criteria
+   sections in place. The queue-manager re-syncs this file into
+   the repo at `.fleet/plans/T-<NNN>.md` on its next maintenance
+   pass, so the worker reads the updated plan when it picks the PR
+   back up. If the PR has no backing issue (rare — ad-hoc work
+   without a TASKS.md row), skip the plan-file update and put the
+   full direction inline in the PR comment in step 4.
+4. Post a PR comment with concrete decisions, re-scoped acceptance
+   criteria (if changed), and a pointer to the plan file:
+   ```
+   gh pr comment <N> --body "## Architect direction
+
+   <decisions, concretely — not vaguely>
+
+   <re-scoped acceptance criteria if the original ones changed>
+
+   The canonical plan at \`~/.fleet/plans/issue-<N>.md\` has been
+   updated; queue-manager will re-sync to
+   \`.fleet/plans/T-<NNN>.md\` on the next maintenance pass."
+   ```
+5. Swap labels — remove `fleet:design-blocked`, add
+   `fleet:design-unblocked`. The worker's next iteration picks
+   this up via its feedback-PR loop:
+   ```
+   gh pr edit <N> --remove-label "fleet:design-blocked" --add-label "fleet:design-unblocked"
+   ```
+6. (Optional) If the re-scope changes the semantics significantly,
+   update the PR title:
+   ```
+   gh pr edit <N> --title "<new title>"
+   ```
+
+Do NOT take ownership of the worker's branch. Do NOT push fixes
+yourself. The worker resumes execution; you provide direction only.
+The `fleet:wip` label stays on throughout — `design-blocked` and
+`design-unblocked` are state qualifiers on top of WIP, not transfers
+of ownership.
 
 ## Escalation rules (always)
 

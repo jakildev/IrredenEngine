@@ -180,6 +180,35 @@ If the agent is unsure which flow it's in, default to Cursor flow.
 Fleet roles (`.claude/commands/role-*.md`) override this default by
 being explicit about autonomous behavior.
 
+### Design-escalation flow
+
+When a worker discovers mid-task that the assigned task can't proceed
+without architectural input — the existing code/framework contradicts
+the original plan, or a design call is needed that the worker doesn't
+have authority to make — the fleet uses a label-driven cycle to route
+the question to the architect and resume cleanly:
+
+1. Worker posts `## NEEDS-DESIGN` comment on the open PR + adds
+   `fleet:design-blocked` (keeping `fleet:wip`) + commits whatever
+   in-progress work is on the branch + `start-next-task`s away to
+   pick a different unblocked task next iteration.
+2. Architect reads the comment, updates the canonical plan at
+   `~/.fleet/plans/issue-<N>.md`, posts a PR comment with concrete
+   decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
+3. Queue-manager re-syncs the updated plan into the repo at
+   `.fleet/plans/T-<NNN>.md` on its next maintenance pass.
+4. Worker (any worker — not necessarily the original one) sees the
+   `fleet:design-unblocked` PR via its feedback-PR loop on the next
+   iteration, reads the architect's comment + the updated plan,
+   addresses the direction, removes the label, pushes via
+   `commit-and-push`. PR re-enters normal review flow.
+
+Reviewer agents skip `fleet:design-blocked` PRs (they're in
+escalation limbo, not awaiting review). The full per-role procedure
+is in `role-opus-worker.md` (escalate + resume),
+`role-opus-architect.md` ("Handling `fleet:design-blocked` PRs"),
+and `role-queue-manager.md` (step 5c plan re-sync).
+
 ### Model split: Opus for core, Sonnet for the fleet
 
 The user has much more Sonnet budget than Opus budget. Spend each where it
@@ -531,6 +560,18 @@ Specifically, **never pass these via `--label` when filing**:
     iteration. `fleet:approved` is kept (PR is internally OK).
     **Read as: "agent acknowledged your concerns, linked issue
     tracks them, you decide whether to merge as-is or re-flag."**
+- `fleet:design-blocked` / `fleet:design-unblocked` — paired
+  state qualifiers for the mid-task design-escalation cycle (see
+  "Design-escalation flow" above). `design-blocked` is set by the
+  **worker** when it escalates and cleared by the **architect** when
+  responding (replaced by `design-unblocked`). `design-unblocked`
+  is then cleared by the **worker** when it picks the PR back up.
+  Coexist with `fleet:wip` — they're qualifiers, not transfers of
+  ownership. Distinct from `fleet:needs-fix` because the worker
+  isn't fixing a defect, they're following architectural direction
+  (which may include "no code change, just doc update"). Reviewer
+  agents skip `fleet:design-blocked` PRs (the scout's
+  `REVIEW_SKIP_LABELS` excludes them).
 
 **The right pattern when filing an issue:** create it with NO labels.
 The human will add `human:approved` if and when they want it picked
