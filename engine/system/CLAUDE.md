@@ -55,10 +55,12 @@ Go to (3) for bulk-processing opportunities (SIMD, sort, partition).
 ## Per-system parameters
 
 If a system needs persistent state beyond components (e.g. a GPU buffer
-handle, an accumulator), allocate a `SystemParams` subclass and attach:
+handle, an accumulator), allocate a `SystemParams` subclass. Call
+`setSystemParams` **after** `createSystem` — the system entity must exist
+first. See the canonical example in the section below.
 
 ```cpp
-setSystemParams(systemId, std::make_unique<MyParams>(...));
+// After createSystem returns systemId:
 auto& params = getSystemParams<MyParams>(systemId);
 ```
 
