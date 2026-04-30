@@ -290,6 +290,14 @@ void decayOnce(std::vector<T> &v) {
     v.erase(end, v.end());
 }
 
+IRComponents::LambdaModifier mkLambda(FieldBindingId field,
+                                      std::function<float(float)> fn,
+                                      std::int32_t ticksRemaining) {
+    return IRComponents::LambdaModifier{
+        field, std::move(fn), IREntity::EntityId{0}, ticksRemaining
+    };
+}
+
 } // namespace
 
 TEST(ModifierDecay, MinusOneSentinelIsKeptForever) {
@@ -418,14 +426,6 @@ TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsLambdaModifiers) {
 // structured-modifier decay path. These tests confirm the predicate behaves
 // identically on LambdaModifier (which holds a std::function and is NOT
 // trivially-copyable, so erase() also runs the captured callable's destructor).
-
-IRComponents::LambdaModifier mkLambda(FieldBindingId field,
-                                      std::function<float(float)> fn,
-                                      std::int32_t ticksRemaining) {
-    return IRComponents::LambdaModifier{
-        field, std::move(fn), IREntity::EntityId{0}, ticksRemaining
-    };
-}
 
 TEST(LambdaModifierDecay, MinusOneSentinelIsKeptForever) {
     std::vector<IRComponents::LambdaModifier> lambdas;
