@@ -152,18 +152,6 @@ Avoid:
 <!-- Add tasks below this line. -->
 
 
-- [~] **Modifier framework: modifier_demo creation (visual showcase)** — scaffold `modifier_demo` creation with 8 key-toggleable capabilities, on-screen HUD, and auto-screenshot shot list
-  - **ID:** T-053
-  - **Area:** creations/demos/modifier_demo, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-053-modifier-demo
-  - **Blocked by:** (none)
-  - **Stack:** T-049..T-053 modifier-framework
-  - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key 1-8 triggers corresponding capability with obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (verified manually on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #307
-  - **Notes:** Child 5 of 5. Use `create-creation` skill to scaffold — don't hand-roll CMakeLists.txt. 8 capabilities: Haste (MULTIPLY 1.5×), Stun (SET 0), Slow (MULTIPLY 0.3×), Stack (Haste+Slow composed), Global Slow (singleton, one exempt cube), Lambda Sinusoidal, Source Kill, Clamp (CLAMP_MAX 0.5 + Haste). All wiring in Lua via T-052 bindings. ~200-line Lua script target. Cross-link from `engine/prefabs/irreden/common/CLAUDE.md` when done.
-  - **Links:**
-
 - [~] **Render: trixel rasterization under cardinal-snap Z-yaw** — update trixel raster shader to pick one of 4 basis-vector permutations from `rasterYaw`; GLSL + MSL parity
   - **ID:** T-055
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -212,17 +200,6 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [~] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add decay for `C_LambdaModifiers` (Part 1) and architect the stateful-lambda mechanism (Part 2 design, separate PR)
-  - **ID:** T-062
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-062-lambda-decay
-  - **Blocked by:** (none)
-  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test: push lambda modifier with `ticksRemaining=60`, advance 60 ticks, assert removed; (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance TBD when architect locks the stateful-lambda design (defer to separate PR).
-  - **Issue:** #341
-  - **Notes:** Surfaced from PR #332 review. Part 1 (decay system) is mechanical — mirrors `system_modifier_decay.hpp` for `C_LambdaModifiers`. Part 2 (stateful lambda) has non-trivial design surface: architect prefers form (c) — state lives on entity in companion component, lambda receives entity ID and reads companion. Lambda signature changes; resolver needs entity-ID context. Worker implements Part 1 standalone; Part 2 should be a separate issue/PR after design is locked. If implementing Part 1 only, the `[opus]` tag may be downgraded to `[sonnet]` by the architect.
-  - **Links:**
-
 - [~] **Fleet: design-escalation flow — bidirectional labels + plan re-sync + role docs** — install `fleet:design-blocked` / `fleet:design-unblocked` label lifecycle and update worker, architect, and queue-manager role docs for the mid-task escalation cycle
   - **ID:** T-063
   - **Area:** tooling, docs
@@ -258,6 +235,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-062** — Modifier framework: lambda decay system + stateful-lambda design · Owner: claude/T-062-lambda-decay · PR: https://github.com/jakildev/IrredenEngine/pull/351
+- [x] **T-053** — Modifier framework: modifier_demo creation (visual showcase) · Owner: claude/T-053-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/377
 - [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
 - [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
 - [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
@@ -276,5 +255,3 @@ Avoid:
 - [x] **T-040** — Fleet: trigger-aware back-off in fleet-babysit · Owner: claude/T-040-trigger-aware-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/300
 - [x] **T-039** — Fleet: roles read scout cache instead of running gh/git directly · Owner: claude/T-039-roles-read-scout-cache · PR: https://github.com/jakildev/IrredenEngine/pull/296
 - [x] **T-042** — Fleet: stacked-PR: start-next-task stack-aware reset · Owner: claude/T-042-start-next-task-stack-aware · PR: https://github.com/jakildev/IrredenEngine/pull/295
-- [x] **T-001** — Linux build maturation: Linux CI build job added · Owner: claude/T-001-linux-ci · PR: https://github.com/jakildev/IrredenEngine/pull/297
-- [x] **T-041** — Fleet: stacked-PR: commit-and-push stack-aware mode · Owner: claude/T-041-stacked-pr-skill · PR: https://github.com/jakildev/IrredenEngine/pull/292
