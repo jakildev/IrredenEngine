@@ -15,8 +15,6 @@
 
 #include <irreden/render/gpu_stage_timing.hpp>
 
-#include <cmath>
-
 #include <cstring>
 #include <optional>
 #include <unordered_map>
@@ -116,8 +114,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                             s_yawCos * pos.pos_.x + s_yawSin * pos.pos_.y,
                            -s_yawSin * pos.pos_.x + s_yawCos * pos.pos_.y,
                             pos.pos_.z);
-                        const float absC = std::abs(s_yawCos);
-                        const float absS = std::abs(s_yawSin);
+                        const float absC = IRMath::abs(s_yawCos);
+                        const float absS = IRMath::abs(s_yawSin);
                         sizeForExtent = vec3(
                             sizeForExtent.x * absC + sizeForExtent.y * absS,
                             sizeForExtent.x * absS + sizeForExtent.y * absC,
@@ -160,8 +158,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // pass and the per-tile dispatch share the same value, even
                 // if a script mutates yaw mid-frame.
                 s_visualYaw = IRPrefab::Camera::getYaw();
-                s_yawCos = std::cos(s_visualYaw);
-                s_yawSin = std::sin(s_visualYaw);
+                s_yawCos = IRMath::cos(s_visualYaw);
+                s_yawSin = IRMath::sin(s_visualYaw);
                 s_yawZero = (s_visualYaw == 0.0f);
 
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
@@ -327,8 +325,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
         const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
         const bool yawZero = (visualYaw == 0.0f);
-        const float absYawC = std::abs(yawCos);
-        const float absYawS = std::abs(yawSin);
+        const float absYawC = IRMath::abs(yawCos);
+        const float absYawS = IRMath::abs(yawSin);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];

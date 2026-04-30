@@ -232,7 +232,7 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
     // Match GPU: in iso camera convention, smaller d = closer, so visible
     // window is [-dColor, +dColor/3] and front → t=0 (red), back → t=1.
     float dColor = boundingHalf.x + boundingHalf.y + boundingHalf.z;
-    float denom = std::max((4.0f / 3.0f) * dColor, 1.0f);
+    float denom = IRMath::max((4.0f / 3.0f) * dColor, 1.0f);
 
     for (int i = 0; i < voxelSet.numVoxels_; ++i) {
         if (voxelSet.voxels_[i].color_.alpha_ == 0)
