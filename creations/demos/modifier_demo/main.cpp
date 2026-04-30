@@ -219,6 +219,7 @@ void initSystems() {
         resolver.modifierDecay_,
         resolver.globalModifierDecay_,
         resolver.modifierResolveGlobal_,
+        resolver.modifierResolveExempt_,
         resolver.modifierResolveLambda_,
         consumeId,
         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
