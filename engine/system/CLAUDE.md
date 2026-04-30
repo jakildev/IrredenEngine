@@ -86,15 +86,16 @@ once, not per tick.
 
 ```cpp
 SystemId create() {
-    SystemId myId = ...;
-    setSystemParams(myId, std::make_unique<MyParams>());
-    auto* p = getSystemParams<MyParams>(myId);   // once, at create
-    return createSystem<...>(
+    auto paramsOwner = std::make_unique<MyParams>();
+    auto* p = paramsOwner.get();    // capture raw ptr before move
+    SystemId myId = createSystem<...>(
         "Name",
         [p](C_Foo& foo) { p->bar += foo.x; },
         [p]()           { p->bar = 0.0f; },
         [p]()           { /* end-of-tick using p */ }
     );
+    setSystemParams(myId, std::move(paramsOwner));
+    return myId;
 }
 ```
 
