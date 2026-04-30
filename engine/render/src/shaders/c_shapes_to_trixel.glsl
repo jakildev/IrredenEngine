@@ -142,9 +142,15 @@ bool boxSlabIntersect(float isoX, float isoY, vec3 hExt,
 // |a*d + b| <= H solved for d. Degenerate (a == 0) returns either an empty
 // or all-d slab depending on |b| vs H. Used by yaw-aware box and ellipsoid
 // analytical depth searches where each axis has its own slope/offset.
+//
+// Threshold 1e-6 catches FP near-degenerate at irrational yaws near pi/4
+// where (cos-sin)/3 is tiny but nonzero (the exact pi/4 case has cos==sin
+// in IEEE-754 so (c-s)/3 == 0 already). 1e-10 missed the cluster around
+// it where 1/|a| blows up past 1e6; the explicit +/-1e18 sentinel reads
+// more clearly than the centered-far slab the downstream min/max swallows.
 bool slabFromLinear(float a, float b, float H,
                     out float dLo, out float dHi) {
-    if (abs(a) < 1e-10) {
+    if (abs(a) < 1e-6) {
         if (abs(b) <= H) {
             dLo = -1e18; dHi = 1e18;
             return true;
