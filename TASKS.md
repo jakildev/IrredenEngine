@@ -256,11 +256,11 @@ Avoid:
   - **Notes:** Companion to T-065 (code migration). Should land first so T-065 can cite the documented pattern. Triggered by architect-review thread on PR #334. Cite PR #334 in the commit message. Match the concise style of the existing "Per-system parameters" section.
   - **Links:**
 
-- [ ] **Render systems: migrate 12 files off function-local static onto SystemParams** — replace all mutable function-local `static` state in 12 render system headers with `SystemParams` structs; visual and performance identity required
+- [~] **Render systems: migrate 12 files off function-local static onto SystemParams** — replace all mutable function-local `static` state in 12 render system headers with `SystemParams` structs; visual and performance identity required
   - **ID:** T-065
   - **Area:** engine/prefabs/irreden/render/systems
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-065-render-system-params
   - **Blocked by:** (none)
   - **Acceptance:** (1) all 12 listed files use `SystemParams` for mutable system state; (2) grep shows no function-local `static` for mutable state in the 12 files — all surviving `static` matches are `constexpr` constants or program-lifetime resource pointers (each called out in PR body); (3) `render-debug-loop` before/after screenshots pixel-identical — attach via `attach-screenshots` skill; (4) `IRShapeDebug` pipeline tick cost at zoom 4 / 1000+ voxels within ±2% of pre-migration baseline (measured, reported in PR body); (5) builds clean on `linux-debug` AND `macos-debug`; (6) OpenGL and Metal backends render identically
   - **Issue:** #344
