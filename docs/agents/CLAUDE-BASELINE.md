@@ -211,3 +211,13 @@ A creation in its own private repo may participate in this rule by
 treating its own repo as the private side and the engine repo as
 the public side. A creation that does not participate in the engine
 fleet at all may opt out of this section.
+
+**Engine API removal rule:** Systems, components, and entities defined
+in the engine must never be removed. External consumers of the engine
+may not have their code present in any `creations/` subdirectory — a
+local grep that finds no consumers does not mean there are no consumers.
+When an engine API appears unused locally, the right action is to write
+a demo creation for it, not to remove it. Removal requires an explicit
+human decision. See the "Engine API removal rule" section of
+`role-opus-architect.md` and `role-opus-worker.md` for the full
+guidance.

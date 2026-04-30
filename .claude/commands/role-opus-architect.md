@@ -47,6 +47,21 @@ Read the top-level `CLAUDE.md` and `engine/CLAUDE.md` (and the relevant
 sub-module `CLAUDE.md`) before touching anything in the responsibility
 list above.
 
+## Engine API removal rule
+
+**Never remove engine-defined systems, components, or entities.**
+External consumers of the engine may not have their code present in any
+`creations/` subdirectory — a local grep finding no consumers does not
+mean there are no consumers.
+
+When an engine API appears unused locally, the right action is to write
+a demo creation for it. Demos serve as living documentation and prevent
+the API from appearing dormant to future agents.
+
+If an engine API is genuinely superseded and removal is being considered,
+escalate to the human. Do not unilaterally delete engine-level systems,
+components, or entities.
+
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
