@@ -28,7 +28,7 @@ template <> struct System<MODIFIER_RESOLVE_EXEMPT> {
             "ModifierResolveExempt",
             [](IRComponents::C_Modifiers &m,
                IRComponents::C_ResolvedFields &resolved,
-               IRComponents::C_NoGlobalModifiers &) {
+               [[maybe_unused]] IRComponents::C_NoGlobalModifiers &) {
                 for (auto &rf : resolved.fields_) {
                     rf.value_ = IRPrefab::Modifier::detail::composeForField(
                         rf.value_, rf.field_, m.modifiers_
