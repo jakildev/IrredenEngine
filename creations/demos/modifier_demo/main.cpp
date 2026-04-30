@@ -75,8 +75,9 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {2.0f, vec2(0, 0), "zoom2"},
     {4.0f, vec2(0, 0), "zoom4"},
 };
-int g_autoWarmupFrames = 0;
 } // namespace
+
+int g_autoWarmupFrames = 0;
 
 void initSystems();
 void initCommands();
