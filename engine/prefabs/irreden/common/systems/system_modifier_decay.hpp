@@ -26,13 +26,7 @@ template <> struct System<MODIFIER_DECAY> {
             [](IRComponents::C_Modifiers &m) {
                 auto &v = m.modifiers_;
                 auto newEnd = std::remove_if(
-                    v.begin(),
-                    v.end(),
-                    [](IRComponents::Modifier &mod) {
-                        if (mod.ticksRemaining_ == -1) return false;
-                        --mod.ticksRemaining_;
-                        return mod.ticksRemaining_ <= 0;
-                    }
+                    v.begin(), v.end(), IRComponents::detail::tickAndExpired<IRComponents::Modifier>
                 );
                 v.erase(newEnd, v.end());
             }

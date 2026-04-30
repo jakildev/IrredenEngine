@@ -279,17 +279,32 @@ TEST(CResolvedFields, GetFallbackForUnknownField) {
 
 // ---- Decay semantics: in-place via std::remove_if -----------------------
 
+namespace {
+
+// Mirror the per-system tick: drop entries where `tickAndExpired` reports true.
+// Templated so the same harness covers both Modifier and LambdaModifier.
+template <typename T>
+void decayOnce(std::vector<T> &v) {
+    auto end = std::remove_if(v.begin(), v.end(),
+                              IRComponents::detail::tickAndExpired<T>);
+    v.erase(end, v.end());
+}
+
+IRComponents::LambdaModifier mkLambda(FieldBindingId field,
+                                      std::function<float(float)> fn,
+                                      std::int32_t ticksRemaining) {
+    return IRComponents::LambdaModifier{
+        field, std::move(fn), IREntity::EntityId{0}, ticksRemaining
+    };
+}
+
+} // namespace
+
 TEST(ModifierDecay, MinusOneSentinelIsKeptForever) {
-    // Mirror what system_modifier_decay does: decrement-and-prune.
     std::vector<Modifier> mods{
         Modifier{kFieldA, TransformKind::ADD, 1.0f, IREntity::EntityId{0}, -1},
     };
-    auto end = std::remove_if(mods.begin(), mods.end(), [](Modifier &m) {
-        if (m.ticksRemaining_ == -1) return false;
-        --m.ticksRemaining_;
-        return m.ticksRemaining_ <= 0;
-    });
-    mods.erase(end, mods.end());
+    decayOnce(mods);
     EXPECT_EQ(mods.size(), 1u);
 }
 
@@ -297,15 +312,7 @@ TEST(ModifierDecay, ExactExpiryDropsAtZero) {
     std::vector<Modifier> mods{
         Modifier{kFieldA, TransformKind::ADD, 1.0f, IREntity::EntityId{0}, 1},
     };
-    auto decayOnce = [&]() {
-        auto end = std::remove_if(mods.begin(), mods.end(), [](Modifier &m) {
-            if (m.ticksRemaining_ == -1) return false;
-            --m.ticksRemaining_;
-            return m.ticksRemaining_ <= 0;
-        });
-        mods.erase(end, mods.end());
-    };
-    decayOnce();
+    decayOnce(mods);
     EXPECT_EQ(mods.size(), 0u);
 }
 
@@ -313,19 +320,11 @@ TEST(ModifierDecay, SixtyTickModifierExpiresAtSixty) {
     std::vector<Modifier> mods{
         Modifier{kFieldA, TransformKind::ADD, 1.0f, IREntity::EntityId{0}, 60},
     };
-    auto decayOnce = [&]() {
-        auto end = std::remove_if(mods.begin(), mods.end(), [](Modifier &m) {
-            if (m.ticksRemaining_ == -1) return false;
-            --m.ticksRemaining_;
-            return m.ticksRemaining_ <= 0;
-        });
-        mods.erase(end, mods.end());
-    };
     for (int i = 0; i < 59; ++i) {
-        decayOnce();
+        decayOnce(mods);
         EXPECT_EQ(mods.size(), 1u) << "premature drop at tick " << i;
     }
-    decayOnce(); // 60th tick decrements to 0 → drop
+    decayOnce(mods); // 60th tick decrements to 0 → drop
     EXPECT_EQ(mods.size(), 0u);
 }
 
@@ -419,6 +418,72 @@ TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsLambdaModifiers) {
 
     auto &lambdasAfter = IREntity::getComponent<IRComponents::C_LambdaModifiers>(target).modifiers_;
     EXPECT_EQ(lambdasAfter.size(), 0u);
+}
+
+// ---- Lambda decay semantics (mirrors ModifierDecay above) -------------------
+//
+// LAMBDA_MODIFIER_DECAY shares the decrement-and-prune predicate with the
+// structured-modifier decay path. These tests confirm the predicate behaves
+// identically on LambdaModifier (which holds a std::function and is NOT
+// trivially-copyable, so erase() also runs the captured callable's destructor).
+
+TEST(LambdaModifierDecay, MinusOneSentinelIsKeptForever) {
+    std::vector<IRComponents::LambdaModifier> lambdas;
+    lambdas.push_back(mkLambda(kFieldA, [](float v) { return v + 1.0f; }, -1));
+    decayOnce(lambdas);
+    ASSERT_EQ(lambdas.size(), 1u);
+    EXPECT_EQ(lambdas[0].ticksRemaining_, -1);
+}
+
+TEST(LambdaModifierDecay, ExactExpiryDropsAtZero) {
+    std::vector<IRComponents::LambdaModifier> lambdas;
+    lambdas.push_back(mkLambda(kFieldA, [](float v) { return v + 1.0f; }, 1));
+    decayOnce(lambdas);
+    EXPECT_EQ(lambdas.size(), 0u);
+}
+
+TEST(LambdaModifierDecay, SixtyTickLambdaExpiresAtSixty) {
+    std::vector<IRComponents::LambdaModifier> lambdas;
+    lambdas.push_back(mkLambda(kFieldA, [](float v) { return v + 1.0f; }, 60));
+    for (int i = 0; i < 59; ++i) {
+        decayOnce(lambdas);
+        ASSERT_EQ(lambdas.size(), 1u) << "premature drop at tick " << i;
+    }
+    decayOnce(lambdas); // 60th tick decrements to 0 → drop
+    EXPECT_EQ(lambdas.size(), 0u);
+}
+
+TEST(LambdaModifierDecay, MixedSentinelAndExpiringEntries) {
+    std::vector<IRComponents::LambdaModifier> lambdas;
+    lambdas.push_back(mkLambda(kFieldA, [](float v) { return v * 2.0f; }, -1));
+    lambdas.push_back(mkLambda(kFieldB, [](float v) { return v + 5.0f; }, 2));
+    lambdas.push_back(mkLambda(kFieldA, [](float v) { return v - 1.0f; }, -1));
+
+    decayOnce(lambdas);
+    ASSERT_EQ(lambdas.size(), 3u);
+    EXPECT_EQ(lambdas[1].ticksRemaining_, 1);
+
+    decayOnce(lambdas);
+    ASSERT_EQ(lambdas.size(), 2u);
+    EXPECT_EQ(lambdas[0].field_, kFieldA);
+    EXPECT_EQ(lambdas[1].field_, kFieldA);
+}
+
+TEST(LambdaModifierDecay, DropRunsCapturedDestructor) {
+    // Pruning must run the captured callable's destructor — std::function
+    // can hold heap state. Captured shared_ptr witnesses use_count drop.
+    auto witness = std::make_shared<int>(7);
+    std::vector<IRComponents::LambdaModifier> lambdas;
+    lambdas.push_back(mkLambda(
+        kFieldA,
+        [witness](float v) { return v + static_cast<float>(*witness); },
+        1
+    ));
+    EXPECT_EQ(witness.use_count(), 2L); // one capture + outer
+
+    decayOnce(lambdas);
+    EXPECT_EQ(lambdas.size(), 0u);
+    EXPECT_EQ(witness.use_count(), 1L); // capture released
 }
 
 } // namespace

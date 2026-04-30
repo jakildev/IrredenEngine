@@ -61,7 +61,7 @@ Runtime entry points (all `inline`, header-only):
   paths give the same answer for the same input.
 - `registerResolverPipeline()` — call once at creation init. Creates
   the singleton globals entity (named `"modifierGlobals"`) and
-  registers the five resolver systems in canonical order. Returns
+  registers the six resolver systems in canonical order. Returns
   the `SystemId`s in pipeline order so the caller splices them
   into its `IRTime::UPDATE` pipeline.
 - `globalsEntity()` — returns the singleton globals entity created by
@@ -104,21 +104,22 @@ Key invariants the design rests on:
 
 ### Open follow-ups (runtime gaps)
 
-The current runtime ships all five resolver systems, the manual-call
-sweep API, and the pre-destroy hook auto-sweep. One decay gap remains
-deferred:
+The current runtime ships all six resolver systems, the manual-call
+sweep API, and the pre-destroy hook auto-sweep. One prefab-layer
+escape-hatch remains gated on architect review:
 
-- **Lambda modifier auto-expire (`pushLambda` `ticksRemaining` gap).**
-  `pushLambda` accepts a `ticksRemaining` parameter and stores it in
-  `LambdaModifier`, but no `LAMBDA_MODIFIER_DECAY` system exists — lambda
-  modifiers never auto-expire regardless of the value passed. Callers who
-  pass a non-`-1` value will get a permanent modifier. Until a lambda
-  decay system is wired, use `removeBySource` to clean up lambda modifiers
-  explicitly. The `ticksRemaining` parameter is reserved for this future
-  system. Tracked in #341 / T-062.
+- **Stateful lambdas.** `LambdaModifier::fn_` is `std::function<float(float)>`
+  — pure base→effective. Patterns that need per-modifier mutable state
+  (velocity-drag's hover/blend, glow's hold/fade phases, anything with
+  an elapsed-time accumulator) cannot be expressed today. The architect-
+  preferred path is the "companion component" shape (entity ID threaded
+  into the lambda; state lives in a sibling component on the source).
+  Design proposal in `docs/design/modifier_stateful_lambdas.md`; needs
+  architect lock-in before implementation.
 
-The lambda decay gap is prefab-layer work. File a follow-up task before
-relying on it.
+The stateful-lambda gap is prefab-layer work but has cross-cutting
+implications (lambda signature change, new "companion component"
+convention) and is gated on architect review.
 
 The pre-destroy hook used for auto-sweep is a generic
 `EntityManager::registerPreDestroyHook` mechanism (see
