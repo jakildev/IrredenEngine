@@ -672,7 +672,8 @@ You are the sole TASKS.md editor. Each maintenance pass:
    warning is informational — the push still succeeded if you don't
    see "rejected" or "failed". Don't try to "fix" it by opening a PR.
 
-10. Print the maintenance summary, queue summary, and next-run timing:
+10. Write a per-iteration summary, then print the maintenance summary:
+    `fleet-iteration-summary queue-manager "<X issues ingested, Y tasks flipped, Z claims cleaned. Snags if any. Under 100 words.>"`
     `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned, W epics closed`
     `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
     `[queue-manager] Iteration complete. Next run in ~5m.`

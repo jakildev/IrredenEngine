@@ -460,7 +460,9 @@ exit cleanly:
       checking out the same branch:
       `git checkout -B claude/merger-scratch origin/master`
 
-6. Print `[merger] Iteration complete. Next run in ~10m.`
+6. Write a per-iteration summary, then print completion:
+   `fleet-iteration-summary merger "<PRs processed, outcomes, snags — under 100 words.>"`
+   Then print `[merger] Iteration complete. Next run in ~10m.`
    Then exit cleanly. The `/loop` driver will re-invoke in 10
    minutes.
 
