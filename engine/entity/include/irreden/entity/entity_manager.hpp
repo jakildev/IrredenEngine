@@ -131,18 +131,32 @@ class EntityManager {
         return m_pureComponentTypes[typeName];
     }
 
-    // Set component should return an ComponentId
-    // The ComponentId can be looked up to figure out what component it belongs to
-    // Therefore, it can be looked up in memory
+    // Insert (or overwrite) a component on an entity. Does NOT require the
+    // component to be default-constructible: the new-archetype path moves
+    // the entity, then push_backs the caller's value directly into the
+    // new column. Lets components like C_CanvasAOTexture `= delete` their
+    // default ctor and force a size-bearing ctor at the call site.
     template <typename Component>
     Component &setComponent(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        Component &c = getInsertComponent<Component>(entity);
+        EntityRecord &record = getRecord(entity);
+        ComponentId componentType = getComponentType<Component>();
+
+        if (!record.archetypeNode->type_.contains(componentType)) {
+            return insertNewComponent<Component>(record, component);
+        }
+
+        IComponentDataImpl<Component> *data =
+            castComponentDataPointer<Component>(
+                record.archetypeNode->components_[componentType].get()
+            );
+        Component &c = data->dataVector[record.row];
         c = component;
         return c;
     }
 
-    template <typename Component> void insertDefaultComponent(EntityRecord &record) {
+    template <typename Component>
+    Component &insertNewComponent(EntityRecord &record, const Component &component) {
         ComponentId componentType = getComponentType<Component>();
         ArchetypeNode *fromNode = record.archetypeNode;
         Archetype type = fromNode->type_;
@@ -151,16 +165,18 @@ class EntityManager {
 
         moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
 
-        int insertedIndex =
-            insertComponent<Component>(toNode->components_[componentType].get(), Component{});
+        IComponentDataImpl<Component> *data =
+            castComponentDataPointer<Component>(toNode->components_[componentType].get());
+        data->dataVector.push_back(component);
 
         IR_ASSERT(
-            insertedIndex == toNode->length_ - 1,
-            "Component inserted at unexpected location."
+            static_cast<int>(data->dataVector.size()) == toNode->length_,
+            "Component column out of sync with archetype node row count "
+            "after push_back into new archetype column."
         );
 
         IRE_LOG_DEBUG(
-            "Added default component type={} to entity={}: \n\
+            "Added component type={} to entity={}: \n\
                 \tnew row={}\n\
                 \tnew type={}",
             componentType,
@@ -168,25 +184,11 @@ class EntityManager {
             record.row,
             makeComponentStringInternal(type).c_str()
         );
-    }
-
-    EntityId setRelation(Relation relation, EntityId entity, EntityId relatedEntity);
-
-    template <typename Component> Component &getInsertComponent(EntityId entity) {
-        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        EntityRecord &record = getRecord(entity);
-        ComponentId componentType = getComponentType<Component>();
-        Archetype archetype = record.archetypeNode->type_;
-
-        if (std::find(archetype.begin(), archetype.end(), componentType) == archetype.end()) {
-            insertDefaultComponent<Component>(record);
-        }
-        ArchetypeNode *node = record.archetypeNode;
-        IComponentDataImpl<Component> *data =
-            castComponentDataPointer<Component>(node->components_[componentType].get());
 
         return data->dataVector[record.row];
     }
+
+    EntityId setRelation(Relation relation, EntityId entity, EntityId relatedEntity);
 
     template <typename... Components>
     void setComponents(EntityId entity, const Components &...components) {
@@ -384,13 +386,6 @@ class EntityManager {
     int emplaceComponent(IComponentData *dest, Args &&...args) {
         IComponentDataImpl<Component> *d = castComponentDataPointer<Component>(dest);
         d->dataVector.emplace_back(std::forward<Args>(args)...);
-        int index = d->size() - 1;
-        return index;
-    }
-
-    template <typename Component> int insertComponent(IComponentData *dest, Component component) {
-        IComponentDataImpl<Component> *d = castComponentDataPointer<Component>(dest);
-        d->dataVector.push_back(component);
         int index = d->size() - 1;
         return index;
     }
