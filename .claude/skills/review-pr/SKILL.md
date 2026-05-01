@@ -78,7 +78,7 @@ the top-level `CLAUDE.md` for the full model split.
 ### 1. Resolve the PR and pull its metadata
 
 ```bash
-gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits
+gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable
 gh pr diff <N>
 ```
 
@@ -128,6 +128,43 @@ If stacked:
 
 If the base is `master` and there's no `Stacked on:` line, this is a
 standalone PR — proceed with the rest of the flow as normal.
+
+### 1c. Churn audit when `mergeable == CONFLICTING`
+
+A PR in `CONFLICTING` state has a stale branch relative to `master`.
+A stale branch can silently carry reverted hunks — content that landed
+on `master` after the PR branch was cut but isn't reflected in the PR
+body because the author never rebased. `gh pr diff --stat` makes the
+actual scope visible before any code-path review.
+
+**When `mergeable` is `CONFLICTING`**, run:
+
+```bash
+gh pr diff <N> --stat
+```
+
+Apply two checks to the stat output:
+
+1. **Oversized churn** — any file with ≥100 added + deleted lines that
+   the PR body does not explicitly mention. Flag as **Needs-fix** (escalate
+   to **Blocker** if the churn includes deleted functions or files that
+   would break the build): the PR may be silently reverting work that
+   landed on master after the branch was cut. Classic pattern: a file
+   with 200+ line deletions in a PR that never claimed to touch it
+   (e.g. `system_compute_light_volume.hpp` appearing in a PR scoped to
+   12 other system files).
+2. **Out-of-scope file** — any file that appears in the stat output but
+   is neither described in the PR body nor a known mechanical side-effect
+   of the PR's claimed scope (e.g. a `CMakeLists.txt` accompanying a new
+   source file — not `TASKS.md`, `.fleet/plans/` drift, or unrelated docs).
+   Flag as **Needs-fix**: author must acknowledge the file in the PR
+   body or rebase to drop the accidental hunk.
+
+If neither check fires, note in the review body:
+> "CONFLICTING state checked — `gh pr diff --stat` shows no out-of-scope
+> files or oversized churn."
+
+If `mergeable` is anything other than `CONFLICTING`, skip this step.
 
 ### 2. Check out the PR branch locally (read-only)
 
@@ -205,14 +242,9 @@ compliance or raise an issue.
   archetype changes invalidate addresses.
 - ❌ Capturing `this` or references to World managers in lambdas that outlive
   the World (e.g. lua callbacks registered before World teardown).
-<<<<<<< claude/T-076-worker-doc-tweaks
-- ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime can
-  outlive `World` (e.g. `std::thread` tasks, sol2 callback closures).
-=======
 - ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime
   can outlive `World` (background threads, sol2 callback closures, long-lived
   caches) — see `engine/world/CLAUDE.md` and `engine/CLAUDE.md`.
->>>>>>> master
 
 **Render pipeline**
 - ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)`

@@ -435,9 +435,9 @@ Do the work, then exit cleanly:
     From the cached `repos.engine.prs[]`, pick PRs whose `labels`
     array contains `fleet:semantic-conflict` AND contains NONE of
     `fleet:wip`, `human:wip`, `human:needs-fix`, `human:blocker`,
-    `fleet:awaiting-base`, `fleet:awaiting-upstream-review`. The
-    `awaiting-*` exclusions matter because those PRs aren't yet
-    rebaseable against master.
+    `fleet:awaiting-base`, `fleet:awaiting-upstream-review`,
+    `fleet:fork-of-other-pr`. The `awaiting-*` and `fork-*` exclusions
+    matter because those PRs aren't yet rebaseable against master.
 
     **Stack-aware filter.** If a candidate's `baseRefName != master`
     (stacked PR), look up the base PR in the cached `prs[]` by its
