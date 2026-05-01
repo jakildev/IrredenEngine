@@ -34,6 +34,22 @@ template <typename Params> class ISystemParamsImpl : public ISystemParams {
     std::unique_ptr<Params> params_;
 };
 
+/// Observer hook fired before and after every system tick. Used by the
+/// render layer to bracket GPU-stage timing samples around per-system work
+/// without inlining `device()->finish()` blocks into every tick lambda.
+/// Generic on purpose: trace capture or per-system telemetry can plug in
+/// using the same hook without touching SystemManager again.
+class TickObserver {
+  public:
+    virtual ~TickObserver() = default;
+    virtual void onBeforeTick(SystemId system) = 0;
+    virtual void onAfterTick(SystemId system) = 0;
+};
+
+struct TickObserverId {
+    std::uint32_t value_;
+};
+
 class SystemManager {
   public:
     using ErasedParamsPtr = std::unique_ptr<ISystemParams>;
@@ -105,6 +121,13 @@ class SystemManager {
     bool isTimingEnabled() const { return m_timingEnabled; }
     void resetTimingStats();
 
+    /// Take ownership of an observer; fires `onBeforeTick`/`onAfterTick`
+    /// around every `executeSystem` call. Returns an id usable with
+    /// `unregisterTickObserver`. If `m_observers` is empty the dispatch
+    /// is a single bool check, so unregistered systems pay nothing.
+    TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
+    void unregisterTickObserver(TickObserverId id);
+
     const std::string &getSystemName(SystemId id) const { return m_systemNames[id].name_; }
     SystemId getSystemCount() const { return m_nextSystemId; }
     const TimingAccum &getTimingAccum(SystemId id) const { return m_timingAccum[id]; }
@@ -127,6 +150,9 @@ class SystemManager {
 
     bool m_timingEnabled = false;
     std::vector<TimingAccum> m_timingAccum;
+
+    std::uint32_t m_nextObserverId = 1;
+    std::vector<std::pair<TickObserverId, std::unique_ptr<TickObserver>>> m_observers;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>

@@ -56,6 +56,23 @@ struct GpuStageInfo {
     float budgetShare_;
 };
 
+// Authoritative mapping name → field → budget. `gpu_stage_timing_observer`
+// resolves a system's tag against this table; pass the same name to
+// `IRRender::tagGpuStage(system, "<name>")` and the observer fills the
+// matching `GpuStageTiming::*Ms_` field at end-of-tick.
+//
+// Per-system mapping post-T-066 (one observer fire per `SystemId`):
+//   `voxelStage1`  ← VOXEL_TO_TRIXEL_STAGE_1 (covers former canvasClear +
+//                    voxelCompact + voxelStage1 sub-stages)
+//   `voxelStage2`  ← VOXEL_TO_TRIXEL_STAGE_2
+//   `shapePass1`   ← SHAPES_TO_TRIXEL (covers former shapePass0 + shapePass1)
+//   The remaining 8 names map 1:1 to single-stage systems.
+//
+// Three rows have no current writer: `canvasClear`, `voxelCompact`,
+// `shapePass0` (folded into the per-system measurement above), and
+// `shapeCompact` (no system has ever written it; reserved for a
+// future shape-compaction pass). They stay in the registry to keep
+// the Lua API and perf overlay stable; their reported value is 0.0f.
 inline const std::array<GpuStageInfo, 15> &gpuStageRegistry() {
     static const std::array<GpuStageInfo, 15> registry{{
         {"canvasClear",       &GpuStageTiming::canvasClearMs_,      0.05f},

@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -161,13 +162,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     return;
                 }
 
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    t0 = IRRender::SteadyClock::now();
-                }
-
                 canvasTextures.getTextureColors()
                     ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
                 canvasTextures.getTextureDistances()
@@ -199,15 +193,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                // Assumes a single matching canvas per frame. Switch to `+=`
-                // with a `beginTick` reset if the filter ever matches
-                // multiple entities — otherwise later entities overwrite.
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    timing.lightingToTrixelMs_ =
-                        IRRender::elapsedMs(t0, IRRender::SteadyClock::now());
-                }
             },
             [p]() {
                 p->program_->use();
@@ -221,6 +206,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "lightingToTrixel");
         return systemId;
     }
 };

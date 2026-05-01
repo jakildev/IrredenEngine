@@ -25,6 +25,21 @@ void SystemManager::resetTimingStats() {
     }
 }
 
+TickObserverId SystemManager::registerTickObserver(std::unique_ptr<TickObserver> observer) {
+    TickObserverId id{m_nextObserverId++};
+    m_observers.emplace_back(id, std::move(observer));
+    return id;
+}
+
+void SystemManager::unregisterTickObserver(TickObserverId id) {
+    for (auto it = m_observers.begin(); it != m_observers.end(); ++it) {
+        if (it->first.value_ == id.value_) {
+            m_observers.erase(it);
+            return;
+        }
+    }
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }
@@ -40,6 +55,13 @@ void SystemManager::executePipeline(IRTime::Events event) {
 
 void SystemManager::executeSystem(SystemId system) {
     IR_PROFILE_BLOCK(m_systemNames[system].name_.c_str(), IR_PROFILER_COLOR_SYSTEMS);
+
+    // Observer fires bracket the entire system execution. They sit outside
+    // the CPU timing window so a GPU observer's `device()->finish()` doesn't
+    // get billed against m_timingAccum (CPU vs GPU stay orthogonal).
+    for (auto &entry : m_observers) {
+        entry.second->onBeforeTick(system);
+    }
 
     using Clock = std::chrono::steady_clock;
     Clock::time_point t0;
@@ -85,6 +107,10 @@ void SystemManager::executeSystem(SystemId system) {
         if (ns > acc.maxNs_) acc.maxNs_ = ns;
         acc.callCount_++;
         acc.totalEntityCount_ += entityCount;
+    }
+
+    for (auto &entry : m_observers) {
+        entry.second->onAfterTick(system);
     }
 
     IREntity::flushStructuralChanges();

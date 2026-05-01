@@ -14,6 +14,7 @@
 #include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstring>
 #include <optional>
@@ -180,7 +181,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 }
             },
             [p]() {
-                auto &timing = IRRender::gpuStageTiming();
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
                 const float visualYaw = p->visualYaw_;
 
@@ -257,28 +257,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     p->shapesFrameDataBuf_->subData(
                         0, sizeof(GPUShapesFrameData), &p->frameData_);
 
-                    IRRender::TimePoint pass0Start;
-                    if (timing.enabled_) {
-                        IRRender::device()->finish();
-                        pass0Start = IRRender::SteadyClock::now();
-                    }
-
                     IRRender::device()
                         ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-                    if (timing.enabled_) {
-                        IRRender::device()->finish();
-                        timing.shapePass0Ms_ =
-                            IRRender::elapsedMs(pass0Start, IRRender::SteadyClock::now());
-                    }
-
                     // Pass 1: color + entity ID where depth matches
-                    IRRender::TimePoint pass1Start;
-                    if (timing.enabled_) {
-                        pass1Start = IRRender::SteadyClock::now();
-                    }
-
                     canvasTextures.getTextureColors()
                         ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                     canvasTextures.getTextureEntityIds()
@@ -292,18 +275,17 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-                    if (timing.enabled_) {
-                        IRRender::device()->finish();
-                        timing.shapePass1Ms_ =
-                            IRRender::elapsedMs(pass1Start, IRRender::SteadyClock::now());
-                        timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
-                        timing.shapeGroupsZ_ = 0;
-                    }
+                    auto &timing = IRRender::gpuStageTiming();
+                    timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
+                    timing.shapeGroupsZ_ = 0;
                 }
             }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        // Per-system bracket covers both pass 0 (depth) and pass 1 (color/id);
+        // the formerly-separate shapePass0 slot stays at 0.0f for API stability.
+        IRRender::tagGpuStage(systemId, "shapePass1");
         return systemId;
     }
 

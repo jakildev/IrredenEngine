@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -71,10 +72,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             [p](IREntity::EntityId &entity,
                 const C_TriangleCanvasTextures &triangleCanvasTextures,
                 const C_Name &) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint drawStart;
-                if (timing.enabled_) { IRRender::device()->finish(); drawStart = IRRender::SteadyClock::now(); }
-
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 auto &frameData =
@@ -142,11 +139,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     IndexType::UNSIGNED_SHORT
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.trixelToFbMs_ += IRRender::elapsedMs(drawStart, IRRender::SteadyClock::now()); }
             },
             [p]() {
-                IRRender::gpuStageTiming().trixelToFbMs_ = 0.0f;
                 struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;
                 p->hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
                 p->program_->use();
@@ -159,6 +153,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "trixelToFb");
         return systemId;
     }
 
