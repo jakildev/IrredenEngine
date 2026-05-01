@@ -95,6 +95,23 @@ checked, then focus your pass on what Sonnet could not confirm:
 ECS invariants three systems deep, GPU buffer lifetimes, race
 conditions, allocator behavior, hot-path costs.
 
+**Items Sonnet's checklist already covered** — assume confirmed
+unless you spot a blatant miss while reading the diff:
+
+- naming conventions (`m_` / trailing `_`, `C_` prefix,
+  `c_` / `v_` / `f_` / `g_` shader prefixes)
+- anonymous namespaces in headers
+- `shared_ptr` where `unique_ptr` would do
+- per-entity `getComponent` / `getComponentOptional` in tick paths
+- new prefab system missing from `SystemName` enum in
+  `engine/system/include/irreden/system/ir_system_types.hpp`
+- new component without `C_` prefix or with non-`_`-suffixed members
+- everything else in `review-pr/SKILL.md` step 4 that doesn't
+  appear in the **Opus-only items** subsection
+
+Don't re-check these — wasted Opus budget. Spend the pass on the
+**Opus-only items** in `review-pr/SKILL.md` step 4.
+
 ## Startup actions
 
 0. Print your role banner:
@@ -305,7 +322,9 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/opus-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, print
+4. After the reset, write a per-iteration summary:
+   `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   Then print
    `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
    ~30 minutes — no carry-over from this iteration.

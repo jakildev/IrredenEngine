@@ -33,6 +33,17 @@ namespace IRSystem {
 constexpr int kComputeVoxelAOGroupSize = 16;
 
 template <> struct System<COMPUTE_VOXEL_AO> {
+    struct Params {
+        ShaderProgram *program_ = nullptr;
+        Buffer *occupancySSBO_ = nullptr;
+        Buffer *voxelFrameDataBuf_ = nullptr;
+        // `ComputeSunShadowFrameData` is created by COMPUTE_SUN_SHADOW,
+        // which is constructed AFTER AO in pipeline registration order.
+        // Resolved lazily on the first beginTick (which fires before any
+        // per-entity tick), so the per-entity tick can use it directly.
+        Buffer *sunFrameDataBuf_ = nullptr;
+    };
+
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "ComputeVoxelAOProgram",
@@ -41,31 +52,21 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             }
         );
 
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
-        static Buffer *s_occupancySSBO =
-            IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
-        static Buffer *s_voxelFrameDataBuf =
-            IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        // `ComputeSunShadowFrameData` is created by the COMPUTE_SUN_SHADOW
-        // system, which is constructed AFTER AO in pipeline registration
-        // order. Looking it up here (during AO's create()) would race the
-        // creation. Looking it up inside the lambdas below defers the
-        // resolution to first-tick, by which time every system's create()
-        // has run. AO consumes only `aoEnabled_` and refreshes that
-        // single field in its beginTick (see below) so the value is fresh
-        // at AO-dispatch time even though shadow hasn't ticked yet this
-        // frame.
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
+        p->occupancySSBO_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
 
-        return createSystem<
+        SystemId systemId = createSystem<
             C_TriangleCanvasTextures,
             C_CanvasAOTexture,
             C_TrixelCanvasRenderBehavior
         >(
             "ComputeVoxelAO",
-            [](const C_TriangleCanvasTextures &canvasTextures,
-               const C_CanvasAOTexture &ao,
-               const C_TrixelCanvasRenderBehavior &behavior) {
+            [p](const C_TriangleCanvasTextures &canvasTextures,
+                const C_CanvasAOTexture &ao,
+                const C_TrixelCanvasRenderBehavior &behavior) {
                 // GUI canvases carry no world-space geometry, so AO would
                 // read garbage iso coords — skip.
                 if (!behavior.useCameraPositionIso_) return;
@@ -81,15 +82,13 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 ao.getTexture()->bindAsImage(
                     1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
                 );
-                s_occupancySSBO->bindBase(
+                p->occupancySSBO_->bindBase(
                     BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid
                 );
-                s_voxelFrameDataBuf->bindBase(
+                p->voxelFrameDataBuf_->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
                 );
-                static Buffer *s_sunFrameDataBuf =
-                    IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
-                s_sunFrameDataBuf->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+                p->sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
                 const int groupsX = IRMath::divCeil(
                     canvasTextures.size_.x, kComputeVoxelAOGroupSize
@@ -105,8 +104,8 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 // multiple entities — otherwise later entities overwrite.
                 if (timing.enabled_) { IRRender::device()->finish(); timing.computeVoxelAoMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
-            []() {
-                s_program->use();
+            [p]() {
+                p->program_->use();
                 // AO only writes `aoEnabled_` into the shared FrameDataSun
                 // buffer. All other fields carry the previous frame's values
                 // written by COMPUTE_SUN_SHADOW's beginTick — AO must not
@@ -115,16 +114,21 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 // it in pipeline order, so this partial write is safe and
                 // the two systems agree on `aoEnabled_` via the same
                 // IRRender::getAOEnabled() source.
-                static Buffer *s_sunFrameDataBuf =
-                    IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+                if (p->sunFrameDataBuf_ == nullptr) {
+                    p->sunFrameDataBuf_ =
+                        IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+                }
                 int aoEnabledFlag = IRRender::getAOEnabled() ? 1 : 0;
-                s_sunFrameDataBuf->subData(
+                p->sunFrameDataBuf_->subData(
                     offsetof(FrameDataSun, aoEnabled_),
                     sizeof(int),
                     &aoEnabledFlag
                 );
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        return systemId;
     }
 };
 
