@@ -179,6 +179,22 @@ exit cleanly:
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
    refreshes to the next iteration.
 
+3.5. **Drop candidates whose head branch is held by another worktree.**
+   A branch can only be checked out in one worktree at a time. If an
+   opus-worker is mid-resolution of `fleet:semantic-conflict` on
+   `claude/T-NNN-foo`, step 5a's `git checkout -B claude/T-NNN-foo`
+   will fail with "branch is already used by worktree at …" and the
+   merger has no useful work it can do on that PR this iteration.
+
+   List the busy branches once (any path inside the engine clone
+   resolves to the same worktree set):
+   `fleet-worktree-busy-branches`
+
+   For each candidate from step 3, drop it if its `headRefName`
+   appears in that list. The dropped candidate stays in flight under
+   whichever worktree holds it; retry on the next iteration. Log:
+   `… N candidates dropped (branch held by another worktree)`.
+
 4. **Process at most 2 candidates per iteration.** Auto-resolution
    pushes a force-with-lease, which retriggers CI and reviewers.
    Don't flood. Pick the oldest two (lowest PR number).
@@ -371,6 +387,13 @@ exit cleanly:
 
       **iii. Anything else (semantic conflict).**
          - `git rebase --abort`
+         - **Immediately switch back to scratch** so the PR's branch is
+           released even if the steps below crash or hit a usage limit
+           before step f runs. Otherwise the next agent that tries to
+           `gh pr checkout` this branch hits "branch is already used by
+           worktree at .../merger" and the conflict-resolution lane is
+           unreachable until the merger reboots:
+           `git switch claude/merger-scratch`
          - Build a description of the conflict. Cap the file list at
            5; if more files conflict, append `… and N more` so the
            comment stays readable. For each listed file, run
