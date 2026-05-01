@@ -138,6 +138,7 @@ int main(int argc, char **argv) {
         IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
                     g_initialYawRadians,
                     g_initialYawRadians * (180.0f / std::numbers::pi_v<float>));
+    }
     if (g_initialYawSet) {
         IRPrefab::Camera::setYaw(g_initialYaw);
         IR_LOG_INFO("Initial yaw: {} rad", g_initialYaw);
