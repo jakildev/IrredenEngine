@@ -699,10 +699,17 @@ iterations write nothing).
   other agent should edit TASKS.md. If you see a PR that includes
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
+- You are also the **sole `.fleet/status/*.md` editor** — same rule
+  shape as TASKS.md. Update these files when a PR referenced from
+  one merges, either by appending to the next maintenance commit
+  (covered by the bookkeeping exception below) or via a regular
+  `queue: status update` PR through `commit-and-push`. Canonical
+  explanation in `.fleet/status/README.md`.
 - Never `gh pr merge` — the human merges.
 - **Bookkeeping exception:** you MAY push directly to master in
   **both** repos (engine and game) when the commit touches **only**
-  `TASKS.md` and/or `.fleet/plans/*.md`. These are bookkeeping files,
-  not code. Never push any other file to master in either repo.
+  `TASKS.md`, `.fleet/plans/*.md`, and/or `.fleet/status/*.md`.
+  These are bookkeeping files, not code. Never push any other file
+  to master in either repo.
 - Never `git push --force`.
 - Single-command Bash only (see CRITICAL section above).

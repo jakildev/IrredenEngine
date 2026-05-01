@@ -1107,6 +1107,10 @@ human can tell which opus-worker observed what. See top-level
   Read only the file matching your task ID. Authority for "who works
   on what" lives in TASKS.md `Owner:` and `fleet-claim` locks; nothing
   else.
+- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
+  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one;
+  never include them in a feature PR's diff. Canonical explanation
+  in `.fleet/status/README.md`.
 - **Edit/Write paths must stay inside your worktree.** The parent
   clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
   in the path) and your worktree at

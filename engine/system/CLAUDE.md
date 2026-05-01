@@ -106,19 +106,9 @@ named-resource pointers fetched once at engine init that never change — is
 fine as `static`. Those are program constants, not system state. The rule
 applies to *mutable* or *system-owned* state.
 
-**Current deviations** (migration tracked in T-065):
-- `engine/prefabs/irreden/render/systems/system_trixel_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_build_occupancy_grid.hpp`
-- `engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp`
-- `engine/prefabs/irreden/render/systems/system_text_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp`
-- `engine/prefabs/irreden/render/systems/system_sprites_to_screen.hpp`
-- `engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp`
-- `engine/prefabs/irreden/render/systems/system_framebuffer_to_screen.hpp`
-- `engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp`
+See `.fleet/status/system-static-deviations.md` (queue-manager-owned;
+feature PRs do not edit) for the current list of files still using
+function-local `static` for system state.
 
 ## Pipelines
 

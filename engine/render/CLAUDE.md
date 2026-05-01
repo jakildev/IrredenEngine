@@ -146,14 +146,9 @@ the prefab layer".
 
 ### Current deviations
 
-Two features still need relocating in the T-035 / T-036 refactor stack:
-
-| Feature | Current (wrong) surface | Tracking task |
-|---|---|---|
-| Sun lighting | `IRRender::setSunDirection` / `getSunDirection` | T-036 (PR #210) |
-| Debug overlay | `IRRender::setDebugOverlay` / `getDebugOverlay` | T-035 (PR #235) |
-
-When a tracking task's PR merges, remove the corresponding row from this table.
+See `.fleet/status/render-api-relocations.md` (queue-manager-owned;
+feature PRs do not edit) for in-flight relocations of feature-specific
+API off `IRRender::` and onto feature-scoped prefab namespaces.
 
 ## Verifying render changes
 
