@@ -31,20 +31,13 @@ struct C_CanvasSunShadow {
               TextureFilter::NEAREST
           )} {}
 
-    // Required by EntityManager::setComponent, which default-constructs the
-    // destination slot before assigning the concrete sized component.
-    C_CanvasSunShadow() = default;
+    C_CanvasSunShadow() = delete;
 
     void onDestroy() {
         IRRender::destroyResource<Texture2D>(textureShadow_.first);
     }
 
     const Texture2D *getTexture() const {
-        IR_ASSERT(
-            textureShadow_.second != nullptr,
-            "C_CanvasSunShadow::getTexture() called on default-constructed "
-            "instance — must be constructed with a size."
-        );
         return textureShadow_.second;
     }
 };

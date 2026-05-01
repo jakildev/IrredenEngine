@@ -1,6 +1,25 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_entity.hpp>
 
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
+
+#include <type_traits>
+
+// Issue #367: these canvas components must require an explicit size at
+// construction. Default-construction must be a compile error so a missing
+// size shows up at the call site rather than as a runtime null-texture.
+static_assert(
+    !std::is_default_constructible_v<IRComponents::C_CanvasAOTexture>,
+    "C_CanvasAOTexture must remain non-default-constructible — "
+    "size argument is required."
+);
+static_assert(
+    !std::is_default_constructible_v<IRComponents::C_CanvasSunShadow>,
+    "C_CanvasSunShadow must remain non-default-constructible — "
+    "size argument is required."
+);
+
 namespace {
 struct TestMarker {
 };
@@ -13,6 +32,14 @@ struct TestPayload {
 
     TestPayload() = default;
     explicit TestPayload(int value)
+        : value_{value} {}
+};
+
+struct TestNonDefaultConstructible {
+    int value_;
+
+    TestNonDefaultConstructible() = delete;
+    explicit TestNonDefaultConstructible(int value)
         : value_{value} {}
 };
 
@@ -155,5 +182,27 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
     auto entityB = IREntity::createEntity(TestMarker{});
     m_entity_manager.destroyEntity(entityB);
     EXPECT_EQ(fireCount, 1);
+}
+
+// setComponent must construct the new archetype slot directly from the
+// caller's value rather than default-construct + assign — components like
+// C_CanvasAOTexture rely on this so they can `= delete` their default ctor.
+TEST_F(IREntityTest, SetComponentSupportsNonDefaultConstructibleType) {
+    static_assert(
+        !std::is_default_constructible_v<TestNonDefaultConstructible>,
+        "Test component must remain non-default-constructible to be a "
+        "meaningful regression guard."
+    );
+
+    auto entity = IREntity::createEntity(TestMarker{});
+
+    IREntity::setComponent(entity, TestNonDefaultConstructible{7});
+
+    auto opt = IREntity::getComponentOptional<TestNonDefaultConstructible>(entity);
+    ASSERT_TRUE(opt.has_value());
+    EXPECT_EQ((*opt)->value_, 7);
+
+    IREntity::setComponent(entity, TestNonDefaultConstructible{42});
+    EXPECT_EQ(IREntity::getComponent<TestNonDefaultConstructible>(entity).value_, 42);
 }
 } // namespace
