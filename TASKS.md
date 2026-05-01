@@ -288,22 +288,22 @@ Avoid:
   - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
   - **Links:**
 
-- [ ] **ECS: support non-default-constructible component types in EntityManager::setComponent** — change `EntityManager::setComponent` to accept non-default-constructible types via in-place placement-new or move-construct; then restore deleted default ctors on `C_CanvasAOTexture` and `C_CanvasSunShadow`
+- [~] **ECS: support non-default-constructible component types in EntityManager::setComponent** — change `EntityManager::setComponent` to accept non-default-constructible types via in-place placement-new or move-construct; then restore deleted default ctors on `C_CanvasAOTexture` and `C_CanvasSunShadow`
   - **ID:** T-073
   - **Area:** engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-073-non-default-component
   - **Blocked by:** (none)
   - **Acceptance:** (1) `EntityManager::setComponent` (and related archetype-storage code) accepts non-default-constructible types via placement-new or move-construct overload; (2) `C_CanvasAOTexture() = delete;` and `C_CanvasSunShadow() = delete;` restored; existing creation code that passes size at construction compiles; (3) a test that tries to default-construct either component fails at compile time; (4) `fleet-build --target IrredenEngineTest` clean; all existing tests pass
   - **Issue:** #367
   - **Notes:** Lighting-fidelity-polish PR tried deleting the default ctors but `EntityManager::setComponent` requires default-constructibility internally (default-construct + assign). The default ctors were reverted to `= default;` with explanatory comment. Right fix: route `setComponent` through placement-new or caller-provided value to avoid default-construct requirement. This is an ECS storage refactor — not purely a render change. Natural synergy with T-071 (which deletes canvas-component adjacents).
   - **Links:**
 
-- [ ] **Fleet docs: add silent-correctness rule coverage to review-pr + simplify (Tier 1)** — add five missing engine-invariant checks (lighting culling, position-component split, beginTick/endTick signature, component-method tiers, std140 UBO sync) to the review-pr and simplify skill files
+- [~] **Fleet docs: add silent-correctness rule coverage to review-pr + simplify (Tier 1)** — add five missing engine-invariant checks (lighting culling, position-component split, beginTick/endTick signature, component-method tiers, std140 UBO sync) to the review-pr and simplify skill files
   - **ID:** T-074
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-074-review-simplify-checks
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md` has lighting-culling subsection (4 invariants from `engine/render/CLAUDE.md:218-294`); (2) render checklist includes ❌ `C_Position3D` for visual placement; (3) ECS checklist includes `beginTick`/`endTick` signature + empty-set guard items; (4) ECS checklist includes tier-c component-method violation item; (5) shader section extended with std140 rules + bind-point match check; (6) `simplify/SKILL.md` mirrors same checks for same file trigger patterns; (7) doc-only; no build required
   - **Issue:** #379
@@ -321,22 +321,22 @@ Avoid:
   - **Notes:** Tier 2 of 3 from issue #379 (findings #6–9). Issue author tags as `[opus]` — especially #6 (Opus-only sub-checklist is a design call about what Opus should be uniquely doing). Finding #9 (`render-debug-loop` not gated) is referenced in `engine/render/CLAUDE.md:160-167`.
   - **Links:**
 
-- [ ] **Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3)** — fix fleet-run timeout floor, add SystemName pre-flight build target rule, make Opus escalation symmetric, fix Co-Authored-By trailer, add stacked-PR downstream interface note, add manager-pointer lifetime flag
+- [~] **Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3)** — fix fleet-run timeout floor, add SystemName pre-flight build target rule, make Opus escalation symmetric, fix Co-Authored-By trailer, add stacked-PR downstream interface note, add manager-pointer lifetime flag
   - **ID:** T-076
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-076-worker-doc-tweaks
   - **Blocked by:** (none)
   - **Acceptance:** (1) worker docs updated: build target is engine lib or `IrredenEngineTest` when diff adds `engine/prefabs/**/systems/` files; (2) `fleet-run` timeout raised to ≥15s for non-screenshot demos; `--auto-screenshot` replaces `--timeout` for screenshot-capable demos; (3) Opus escalation in `role-opus-worker.md` symmetric: file issue, comment, release claim, exit (or `fleet:opus-blocked` label defined); (4) `commit-and-push/SKILL.md` Co-Authored-By parameterized or uses generic `Claude <noreply@anthropic.com>`; (5) `review-pr/SKILL.md` stacked-PR section notes upstream interface stability requirement; (6) `review-pr` ownership section flags stored `g_*Manager` pointers in objects that can outlive `World`
   - **Issue:** #379
   - **Notes:** Tier 3 of 3 from issue #379 (findings #10–15). Grab bag of small worker-doc tweaks. Finding #12 (Opus escalation) has two options: (a) symmetric file+comment+exit, or (b) `fleet:opus-blocked` label — pick (a) for symmetry with design-escalation flow.
   - **Links:**
 
-- [ ] **Fleet: label discipline — verdict-without-label, has-nits stripping, changes-made handoff** — collapse post-verdict and set-verdict-label into one step in review-pr skill; fix commit-and-push to add fleet:changes-made when removing fleet:needs-fix; scope has-nits stripping authority; add re-apply guard to reviewers
+- [~] **Fleet: label discipline — verdict-without-label, has-nits stripping, changes-made handoff** — collapse post-verdict and set-verdict-label into one step in review-pr skill; fix commit-and-push to add fleet:changes-made when removing fleet:needs-fix; scope has-nits stripping authority; add re-apply guard to reviewers
   - **ID:** T-077
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-077-label-discipline
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md` makes post-verdict + set-verdict-label indivisible (not a separate advisory step); (2) `commit-and-push/SKILL.md` atomically adds `fleet:changes-made` when removing `fleet:needs-fix` after a fix push; (3) identify which agent strips `fleet:has-nits` and scope its removal authority to leave it intact when `fleet:approved` is also co-present; (4) reviewer role docs add: before re-applying a verdict label, check for any commit/comment after the most recent reviewer's `submittedAt`; (5) doc-only; no build required
   - **Issue:** #384
