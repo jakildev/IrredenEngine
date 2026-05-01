@@ -174,6 +174,13 @@ exit cleanly:
    - `human:blocker` — same
    - `human:re-review` — reviewer concern; not the merger's lane
    - `fleet:awaiting-base` — stacked PR waiting on its base to merge; skip until base merges/closes and sub-case ii/iii removes this label
+   - `fleet:semantic-conflict` — already handed off to opus-worker; the
+     label IS the durable cooldown and only opus-worker (or the human,
+     via `human:needs-fix` escalation) clears it. Re-running rebase
+     would just re-post the same comment every loop.
+   - `fleet:needs-info` — set in stacked-PR case iii (orphaned base).
+     Durable human-handoff signal; only the human clears it by
+     re-targeting or closing.
 
    **Cap UNKNOWN-state refreshes at 2 per iteration.** If the
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
@@ -497,13 +504,34 @@ iterations write nothing).
 
 ## How the cooldown label works
 
-`fleet:merger-cooldown` is a self-managed label. The merger adds
-it whenever it touches a PR, regardless of outcome. Step 1 of
-the next iteration clears all such labels unconditionally — the
-10-minute loop interval IS the cooldown, so a single iteration
-of "skip this PR" is enough. (An earlier draft tried to gate on
-`updatedAt`, but reviewer comments refresh that timestamp and
-prevented cooldowns from clearing predictably.)
+The merger has TWO tiers of "don't touch this PR again":
+
+1. **Durable handoff labels** — `fleet:semantic-conflict`,
+   `fleet:awaiting-base`, `fleet:needs-info`. Once the merger
+   sets one of these, the PR is no longer the merger's
+   responsibility. Only the role that owns the next step
+   (opus-worker for semantic-conflict; the merger itself for
+   awaiting-base when the base merges/closes; the human for
+   needs-info) removes the label. These are in step 3's skip
+   list, so the merger never re-runs rebase on a PR in this
+   state — no comment spam.
+
+2. **`fleet:merger-cooldown`** — short-lived, self-managed.
+   The merger adds it after a *non-durable* outcome (clean
+   rebase, TASKS.md sort-merge, whitespace-only — all of which
+   already pushed and don't need a handoff label). Step 1 of
+   the next iteration clears all such labels unconditionally,
+   so the 10-minute loop interval IS the cooldown — one
+   iteration of "skip this PR" is enough breathing room before
+   re-checking. (An earlier draft tried to gate on `updatedAt`,
+   but reviewer comments refresh that timestamp and prevented
+   cooldowns from clearing predictably.)
+
+The cooldown label is intentionally NOT used as the only stop
+sign for semantic conflicts — without a durable label, every
+iteration would re-classify and re-comment. The durable label
+is what holds the PR steady; the cooldown is a one-iteration
+nudge for the cases that already resolved.
 
 ## Observability
 
