@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# fleet-worktree-busy-branches — list branches held by other worktrees.
+#
+# A branch can only be checked out in one worktree at a time; git refuses
+# `gh pr checkout`, `git checkout -B`, etc. with "branch is already used
+# by worktree at ..." otherwise. Multiple fleet roles need to know
+# "is this PR's branch held elsewhere?" before trying to take it:
+#
+#   - sonnet-author / opus-worker feedback PR pickup (PR #336 lifted this
+#     out of an inline awk loop into a role-doc note; agents kept burning
+#     reasoning before hitting the gh pr checkout failure).
+#   - merger candidate selection (when an opus-worker is mid-resolution
+#     of fleet:semantic-conflict, the merger trying the same branch
+#     always fails).
+#   - opus-worker step 1c semantic-conflict resolution.
+#
+# Outputs one branch name per line on stdout (no `refs/heads/` prefix),
+# suitable for `grep -F -x` filtering.
+#
+# Usage:
+#   fleet-worktree-busy-branches [--exclude <path>] [--repo <path>]
+#
+# Options:
+#   --exclude <path>   Worktree path to exclude (the caller's own worktree).
+#                      Default: $PWD (the cwd's worktree).
+#   --repo <path>      Repo root to query. Default: $PWD's git toplevel.
+#
+# Source of truth: scripts/fleet/fleet-worktree-busy-branches in the engine
+# repo. Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+exclude_path=""
+repo_path=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --exclude)
+            exclude_path="$2"
+            shift 2
+            ;;
+        --repo)
+            repo_path="$2"
+            shift 2
+            ;;
+        -h|--help)
+            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *)
+            echo "fleet-worktree-busy-branches: unknown arg '$1'" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ -z "$repo_path" ]]; then
+    repo_path="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    if [[ -z "$repo_path" ]]; then
+        echo "fleet-worktree-busy-branches: not in a git repo and no --repo given" >&2
+        exit 2
+    fi
+fi
+
+if [[ -z "$exclude_path" ]]; then
+    exclude_path="$PWD"
+fi
+
+# Resolve both paths so the comparison is symlink-safe and trailing-slash-
+# safe. `realpath -m` doesn't fail on missing tail components, but we expect
+# both to exist; pwd -P would also work but is awk-unfriendly.
+exclude_real="$(cd "$exclude_path" 2>/dev/null && pwd -P || echo "$exclude_path")"
+
+git -C "$repo_path" worktree list --porcelain | awk -v exclude="$exclude_real" '
+    /^worktree / {
+        wt = $2
+        next
+    }
+    /^branch refs\/heads\// {
+        if (wt != exclude) {
+            sub(/^branch refs\/heads\//, "", $0)
+            print
+        }
+    }
+'

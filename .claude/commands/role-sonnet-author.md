@@ -155,15 +155,14 @@ Each iteration:
    failure (`branch is already used by worktree at ...`) after
    you've already invested reasoning.
 
-   List other worktrees and their branches in one call:
-   `git -C ~/src/IrredenEngine worktree list --porcelain`
+   List the busy branches with the shared helper. It reads
+   `git worktree list --porcelain` and emits one branch name per
+   line, excluding the caller's own worktree:
+   `fleet-worktree-busy-branches`
 
-   The output groups each worktree as 3 lines (`worktree <path>`,
-   `HEAD <sha>`, `branch refs/heads/<name>`). Build a set of
-   `<name>` values from worktrees whose path is NOT your own (i.e.,
-   skip the line group whose `worktree` matches `pwd`). For each
-   feedback PR in `repos.engine.prs[]`, match its `headRefName`
-   against that set; skip the PR if its head branch is in the set.
+   For each feedback PR in `repos.engine.prs[]`, match its
+   `headRefName` against the helper's output; skip the PR if its
+   head branch is in the set.
 
    For each flagged PR (after the filter):
    a. Read **all** feedback (two separate commands):
@@ -762,4 +761,16 @@ the human can tell which sonnet pane observed what. See top-level
   finish the flow. Don't invoke `simplify` standalone — let
   `commit-and-push` invoke it for you, so the commit step is
   guaranteed to follow.
+- **Edit/Write paths must stay inside your worktree.** The parent
+  clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
+  in the path) and your worktree at
+  `.../.claude/worktrees/<your-basename>/` both contain the same tree
+  shape, so an Edit aimed at the parent's absolute path will succeed
+  silently — but your build runs against the worktree, so the edit
+  appears to "do nothing" while quietly orphaning changes in the
+  parent clone (potentially clobbering another agent's work). Prefer
+  relative paths from your worktree's cwd. If you must use an
+  absolute path, it MUST start with
+  `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
+  Re-confirm with `pwd` if unsure.
 - Single-command Bash only (see CRITICAL section above).
