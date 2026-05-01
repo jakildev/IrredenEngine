@@ -542,6 +542,14 @@ Specifically, **never pass these via `--label` when filing**:
   can't auto-rebase). Cleared by the **opus-worker** after it
   resolves the conflict, or escalated to `human:needs-fix` if even
   Opus can't resolve.
+- `fleet:fork-of-other-pr` — owned by the **merger** (sets when it
+  detects this PR's branch was forked from another open PR's branch
+  rather than from master, meaning the diff carries inherited commits
+  from that PR). Signals: wait for the other PR to merge, then use
+  `rebase --onto` to drop the inherited commits. The merger skips
+  these in its CONFLICTING sweep; opus-worker excludes them from its
+  `fleet:semantic-conflict` step. Cleared by the **human** after the
+  upstream PR merges.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the
