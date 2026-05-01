@@ -164,11 +164,11 @@ Avoid:
   - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [ ] **Render: screen-space 2D residual yaw composite pass** — add `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline stage that rotates the trixel canvas by `residualYaw`; GLSL + MSL parity
+- [~] **Render: screen-space 2D residual yaw composite pass** — add `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline stage that rotates the trixel canvas by `residualYaw`; GLSL + MSL parity
   - **ID:** T-058
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-058-screen-residual-rotate
   - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) new GLSL + MSL shader pair committed under `engine/render/src/shaders/`; (2) new system registered at `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline slot; (3) at `visualYaw=0°` the framebuffer is pixel-identical to canvas content (passthrough); (4) at `visualYaw=30°` with cardinal-snap raster from T-055, visible result rotates 30° in screen space without distortion beyond expected bilinear filtering; (5) `render-debug-loop` screenshots showing rotations at 0°, 30°, 60°, 90°, 120° demonstrating smooth continuity; (6) builds clean on `linux-debug` AND `macos-debug`
@@ -253,17 +253,6 @@ Avoid:
   - **Notes:** Three issues: D2 opus-reviewer relaunched 2.4m after previous iteration (30m floor not enforced) burning ~5m context; D3 T-053 unclaimable 5–15m after T-051 merged because fleet-claim reads TASKS.md not git; D4 T-064 had stale `[~]` status after PR #383 merged — empty-diff PR #383 opened and immediately closed.
   - **Links:**
 
-- [~] **Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal** — add `gh pr diff --stat` check when mergeable==CONFLICTING; add fleet:fork-of-other-pr label when merger detects branch forked from another open PR
-  - **ID:** T-081
-  - **Area:** tooling, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-081-review-pr-conflicting-churn
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `review-pr/SKILL.md` runs `gh pr diff <N> --stat` when `mergeable == CONFLICTING`; flags files with >100 lines churn not in PR's claimed file list; (2) merger adds `fleet:fork-of-other-pr` label (or repurposes `fleet:awaiting-base` with updated description) when detecting fork condition; (3) opus-worker step 1c excludes `fleet:fork-of-other-pr` same as `fleet:awaiting-base`; (4) CLAUDE.md labeling section documents new label; doc + label creation; no engine build required
-  - **Issue:** #388
-  - **Notes:** Two issues: E1 PR #382 (T-065) would have silently reverted ~590 lines of PR #368 (lighting fidelity polish) if merged — the `mergeable: CONFLICTING` status was the signal; Sonnet missed it because no `gh pr diff --stat` check exists; E2 PR #378 (T-063) was forked from `claude/T-062-lambda-decay` branch (not master), carrying T-062's 10 commits — `fleet:semantic-conflict` set by merger was misleading; the right resolution is `git rebase --onto origin/master <T-062-tip> <T-063-branch>` once T-062 merges. Detect via `git merge-base PR-head other-PR-head == other-PR-head`.
-  - **Links:**
-
 - [~] **Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts** — move rapidly-changing status prose from feature-PR-editable CLAUDE.md sections into queue-manager-owned file(s); update worker docs to restate only changed lines when editing shared status sections
   - **ID:** T-082
   - **Area:** tooling, docs
@@ -288,6 +277,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
 - [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
 - [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
 - [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
@@ -307,4 +297,3 @@ Avoid:
 - [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
 - [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
 - [x] **T-051** — Modifier framework: migrate position + velocity-drag patterns · Owner: claude/T-051-modifier-position-velocity · PR: https://github.com/jakildev/IrredenEngine/pull/332
-- [x] **T-052** — Modifier framework: Lua bindings · Owner: claude/T-052-lua-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/331
