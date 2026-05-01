@@ -99,9 +99,7 @@ EOF
             fi
             ;;
         *)
-            if bash "$path" --help 2>/dev/null; then
-                :
-            elif "$path" --help 2>/dev/null; then
+            if "$path" --help 2>/dev/null; then
                 :
             else
                 echo "fleet-help: no --help for $name; see $path" >&2

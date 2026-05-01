@@ -187,7 +187,8 @@ emit_built() {
     list_built | LC_ALL=C sort -u >"$tmp"
     if [[ ! -s "$tmp" ]]; then
         echo "fleet-run-targets: no built executables under creations/ or test/." >&2
-        echo "           try:  fleet-build --preset macos-build-all   (or linux/windows preset)" >&2
+        echo "           try:  fleet-build --target IRShapeDebug   (auto-configures build/ on first run)" >&2
+        echo "           or:   cmake --preset macos-debug  # one-time setup if build/ not yet configured" >&2
         echo "           or:   fleet-run --targets --plan   (CMake names; needs configure)" >&2
         exit 0
     fi
@@ -248,8 +249,8 @@ emit_plan() {
     local matches
     matches=$(
         {
-            echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo'
-            echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRGame|IrredenEngineTest)$'
+            echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo' || true
+            echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRGame|IrredenEngineTest)$' || true
         } | LC_ALL=C sort -u
     )
 
