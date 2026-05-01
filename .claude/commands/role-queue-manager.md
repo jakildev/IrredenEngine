@@ -516,6 +516,19 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `rm -f ~/.fleet/plans/<task-ID>.md`
    `rm -f .fleet/plans/<task-ID>.md`
 
+   **Also scan `.fleet/status/*.md`** (engine repo) for references to
+   the merged PR or its task ID and update accordingly. Use the Grep
+   tool across `.fleet/status/` for the merged task's `T-NNN`, the PR
+   number `#<N>`, and the PR URL `pull/<N>`. For per-row references
+   (e.g., a table row in `render-api-relocations.md` listing the task)
+   delete the row. For whole-file references (e.g., the "Migration
+   tracked in T-NNN" framing in `system-static-deviations.md`) the
+   file's premise may dissolve when its tracking task ships — if the
+   remaining content is a stub, delete the file and remove its entry
+   from `.fleet/status/README.md`. Stage `.fleet/status/` edits in the
+   same maintenance commit as the TASKS.md flip; the bookkeeping
+   exception (Hard rules) covers them.
+
 5. **Sync open PRs → In-progress (both repos).** Use the cached
    `repos.engine.prs[]` and `repos.game.prs[]` for the open PR
    list — the title-to-task match below uses `title` and
