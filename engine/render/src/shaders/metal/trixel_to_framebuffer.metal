@@ -18,7 +18,27 @@ struct FrameDataIsoTriangles {
     float2 mouseHoveredTriangleIndex;
     float2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
+    int distanceOffset;
 };
+
+// SSBO populated by the fragment shader when the mouse hovers over a
+// non-transparent trixel that wins the depth test. CPU side is
+// `HoveredEntityIdBuffer` (slot 14, kBufferIndex_HoveredEntityId);
+// readback layout matches the C++ `HoveredLayout` in
+// `getEntityIdAtMouseTrixel()` and the GLSL std430 buffer in
+// `f_trixel_to_framebuffer.glsl`.
+struct HoveredEntityIdBuffer {
+    uint2 hoveredEntityId;
+    float hoveredDepth;
+};
+
+inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
+    return trixelCanvasSize / int2(2);
+}
+
+inline int2 trixelOriginOffsetZ1(int2 trixelCanvasSize) {
+    return trixelOriginOffsetX1(trixelCanvasSize) + int2(-1, -1);
+}
 
 struct VertexOut {
     float4 position [[position]];
@@ -53,24 +73,71 @@ fragment FragmentOut f_trixel_to_framebuffer(
     VertexOut in [[stage_in]],
     texture2d<float> triangleColors [[texture(0)]],
     texture2d<int> triangleDistances [[texture(1)]],
-    constant GlobalConstants& globals [[buffer(1)]]
+    texture2d<uint> triangleEntityIds [[texture(2)]],
+    constant GlobalConstants& globals [[buffer(1)]],
+    constant FrameDataIsoTriangles& frameData [[buffer(3)]],
+    device HoveredEntityIdBuffer& hovered [[buffer(14)]]
 ) {
     FragmentOut out;
     constexpr sampler triangleSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
-    const float4 color = triangleColors.sample(triangleSampler, in.texCoords);
-    if (color.a < 0.001) {
+
+    const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
+    const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
+    const float2 canvasOffsetFloored = floor(frameData.canvasOffset);
+
+    // Convert to pixel-space and apply the same parity-based row shift the
+    // GLSL fragment uses (see `f_trixel_to_framebuffer.glsl`). Each iso
+    // quad cell is split diagonally into two trixels; this picks which
+    // row of the trixel canvas this fragment maps to.
+    float2 origin = in.texCoords * textureSize;
+    const float2 originFloored = floor(origin);
+    const float2 fractComp = fract(origin);
+    const int originModifier =
+        (z1.x + z1.y + int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
+    const int parity = (int(originFloored.x) + int(originFloored.y) + originModifier) & 1;
+    if (parity != 0) {
+        if (fractComp.y < fractComp.x) {
+            origin.y -= 1.0f;
+        }
+    } else {
+        if (fractComp.y < 1.0f - fractComp.x) {
+            origin.y -= 1.0f;
+        }
+    }
+
+    const float2 sampleUv = origin / textureSize;
+    float4 color = triangleColors.sample(triangleSampler, sampleUv);
+    const uint2 readCoord = uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
+    const int rawDist = triangleDistances.read(readCoord).r;
+    float depth = normalizeDistance(rawDist + frameData.distanceOffset, globals);
+
+    const int subdivisions = max(int(frameData.effectiveSubdivisionsForHover.x), 1);
+    const float2 hoveredPosition =
+        frameData.mouseHoveredTriangleIndex * float(subdivisions) +
+        float2(z1) +
+        frameData.canvasOffset;
+    const int2 originIndex = int2(floor(origin));
+    const int2 hoveredIndex = int2(floor(hoveredPosition));
+    const bool isMouseHovered = all(hoveredIndex == originIndex);
+    if (isMouseHovered) {
+        if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
+            const uint2 entityId = triangleEntityIds.read(readCoord).rg;
+            if (any(entityId != uint2(0u))) {
+                hovered.hoveredEntityId = entityId;
+                hovered.hoveredDepth = depth;
+            }
+        }
+        if (frameData.showHoverHighlight > 0.0f) {
+            color = float4(1.0f, 0.0f, 0.0f, 1.0f);
+            depth = 0.0f;
+        }
+    }
+
+    if (color.a < 0.1f) {
         discard_fragment();
     }
 
-    const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
-    const float2 clampedTexCoords = clamp(
-        in.texCoords,
-        float2(0.0f),
-        float2(0.999999f)
-    );
-    const uint2 distanceCoord = uint2(clampedTexCoords * textureSize);
-
     out.color = color;
-    out.depth = normalizeDistance(triangleDistances.read(distanceCoord).r, globals);
+    out.depth = depth;
     return out;
 }
