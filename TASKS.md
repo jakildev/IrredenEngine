@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Soft dep on T-064 landing first (so canonical pattern is documented), but not a hard block — canonical pattern is in the issue body. One PR for all 12 files per architect direction. `thread_local` scratch buffer in `system_shapes_to_trixel.hpp::buildAndUploadTileDescriptors` is exempt per architect recommendation (leave as `thread_local` with explanatory comment). Resource pointers fetched at create time may stay `static` or move into `Params` per worker judgment — document in PR body. Behavior preservation is the hard gate — stop and escalate on ANY behavioral difference. Some statics may be relied-upon bugs; flag in PR body.
   - **Links:**
 
-- [ ] **Render/system: centralize GPU stage probes via SystemManager TickObserver** — add a generic `TickObserver` hook to `SystemManager`, implement `GpuStageTimingObserver` in render layer, and remove the 15+ inlined probe blocks from render system headers
+- [~] **Render/system: centralize GPU stage probes via SystemManager TickObserver** — add a generic `TickObserver` hook to `SystemManager`, implement `GpuStageTimingObserver` in render layer, and remove the 15+ inlined probe blocks from render system headers
   - **ID:** T-066
   - **Area:** engine/system, engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-066-tick-observer
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRSystem::TickObserver` + `registerTickObserver`/`unregisterTickObserver` in `ir_system.hpp`/`system_manager.hpp`, fire pre/post in `SystemManager::executeSystem`; empty-observer-list path has no measurable overhead; (2) `GpuStageTimingObserver` + `IRRender::tagGpuStage` exist; observer installed once during render init; (3) all inlined GPU probe blocks under `engine/prefabs/irreden/render/systems/` removed; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; Lua `ir.render.getPassTimings()`/`getPassTiming()` returns same 15+ rows with same field semantics; (5) a creation with >1 matching canvas for a formerly-`=` system reports sum across entities, not the last one
   - **Issue:** #261
@@ -308,11 +308,11 @@ Avoid:
   - **Notes:** Three issues: D2 opus-reviewer relaunched 2.4m after previous iteration (30m floor not enforced) burning ~5m context; D3 T-053 unclaimable 5–15m after T-051 merged because fleet-claim reads TASKS.md not git; D4 T-064 had stale `[~]` status after PR #383 merged — empty-diff PR #383 opened and immediately closed.
   - **Links:**
 
-- [ ] **Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal** — add `gh pr diff --stat` check when mergeable==CONFLICTING; add fleet:fork-of-other-pr label when merger detects branch forked from another open PR
+- [~] **Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal** — add `gh pr diff --stat` check when mergeable==CONFLICTING; add fleet:fork-of-other-pr label when merger detects branch forked from another open PR
   - **ID:** T-081
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-081-review-pr-conflicting-churn
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md` runs `gh pr diff <N> --stat` when `mergeable == CONFLICTING`; flags files with >100 lines churn not in PR's claimed file list; (2) merger adds `fleet:fork-of-other-pr` label (or repurposes `fleet:awaiting-base` with updated description) when detecting fork condition; (3) opus-worker step 1c excludes `fleet:fork-of-other-pr` same as `fleet:awaiting-base`; (4) CLAUDE.md labeling section documents new label; doc + label creation; no engine build required
   - **Issue:** #388
