@@ -27,10 +27,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 canvasSizePixels;         // trixel canvas dimensions
     uniform ivec2 cullIsoMin;               // iso-space cull viewport (matches CPU chunk mask)
     uniform ivec2 cullIsoMax;
-    uniform float visualYaw;                // continuous Z-yaw (radians)
-    uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw
-    uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]
-    uniform float _yawPadding;
+    uniform float visualYaw;                // continuous Z-yaw (radians); not consumed in T-055 — scaffolded for T-058
+    uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw; consumed in T-055
+    uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]; not consumed in T-055 — scaffolded for T-058
+    uniform float _yawPadding;              // not consumed in T-055 — scaffolded for T-058
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {

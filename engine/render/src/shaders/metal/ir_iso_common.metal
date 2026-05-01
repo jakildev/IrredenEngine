@@ -197,10 +197,10 @@ struct FrameDataVoxelToTrixel {
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
-    float visualYaw;
-    float rasterYaw;
-    float residualYaw;
-    float _yawPadding;
+    float visualYaw;    // not consumed in T-055 — scaffolded for T-058
+    float rasterYaw;    // consumed: cardinal-snap basis selection
+    float residualYaw;  // not consumed in T-055 — scaffolded for T-058
+    float _yawPadding;  // not consumed in T-055 — scaffolded for T-058
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

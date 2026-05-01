@@ -82,6 +82,7 @@ inline void buildVoxelFrameData(
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
 
+    // visualYaw_, residualYaw_, and _yawPadding_ not consumed in T-055; scaffolded for T-058 (screen-space residual composite)
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
     const auto [rasterYaw, residualYaw] =
         IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
