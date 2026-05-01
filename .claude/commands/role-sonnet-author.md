@@ -617,23 +617,53 @@ Each iteration:
    ready. The queue-manager then adds it to TASKS.md. Move on to the
    next task.
 
-8. **Attach screenshots (when visual output changed).** Check whether
-   the diff touches visual/render code:
+8. **Verify visual output (when it changed).** Check whether the diff
+   touches visual/render code:
    `git diff --name-only origin/master...HEAD`
 
-   Invoke the `attach-screenshots` skill if the diff includes any file under:
+   The trigger file set is the same for both skills below:
    - `engine/render/` (any file)
    - `engine/prefabs/irreden/render/` (any file)
    - Any `*.glsl` or `*.metal` shader file anywhere in the tree
    - `creations/demos/*/src/**` or `creations/demos/*/main*.cpp`
 
-   Skip if the diff is purely docs, tests, mechanical refactors (rename,
-   extract-header, add-logging), or build/CI changes with no visual effect.
-   Skip if `docs/pr-screenshots/<branch>/` already contains screenshots
-   from a prior run on this branch.
+   When the diff includes any of those, you must invoke BOTH skills:
 
-   Screenshots must be staged before `optimize` and `commit-and-push` so
-   they land in the same commit as the code change.
+   a. **`attach-screenshots`** — captures before/after pairs (master
+      vs working tree) and writes them under
+      `docs/pr-screenshots/<branch>/` so the PR body can embed them
+      via raw GitHub URLs. Does not diagnose — see (b). Skip if
+      `docs/pr-screenshots/<branch>/` already contains screenshots
+      from a prior run on this branch.
+
+   b. **`render-debug-loop`** — drives any creation that supports
+      `--auto-screenshot` (today: `shape_debug`), reads each
+      captured frame, and diagnoses rendering issues against the
+      topic-indexed reference (trixel/SDF shapes, lighting,
+      backend-parity symptoms). Catches visual regressions that
+      would otherwise reach the reviewer (or, worse, ship). Required
+      by `engine/render/CLAUDE.md` "Verifying render changes" for
+      any PR touching shaders, render systems, or pipeline ordering.
+
+   The two skills serve different purposes — `attach-screenshots`
+   produces the PR record; `render-debug-loop` is the diagnostic
+   pass that confirms the change actually renders correctly. Run
+   both; do not substitute one for the other.
+
+   If `render-debug-loop` surfaces something subtler than expected
+   (the diagnostic table doesn't match a known symptom, or the fix
+   would touch core render pipeline code), STOP and escalate per
+   step 7 — that's an Opus-tier debugging session, not a Sonnet
+   one.
+
+   Skip BOTH if the diff is purely docs, tests, mechanical refactors
+   (rename, extract-header, add-logging), or build/CI changes with no
+   visual effect. The exceptions list in `engine/render/CLAUDE.md`
+   "Verifying render changes" is authoritative — when in doubt, run
+   the loop; a missing diagnostic pass is a fast reviewer-rejection.
+
+   Both must complete before `optimize` and `commit-and-push` so any
+   resulting fixes land in the same commit as the code change.
 
 9. **Optimize before commit (when relevant).** Run the `optimize`
    skill ONLY if the change touches a system tick, a render pipeline

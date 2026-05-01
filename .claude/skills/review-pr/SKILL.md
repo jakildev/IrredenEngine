@@ -152,15 +152,22 @@ For each changed file:
   it (GLSL layouts and C++ structs in `engine/render/include/irreden/render/`
   must stay in sync).
 
-Keep a running mental list of issues, ranked by severity:
+Keep a running mental list of issues, ranked by severity. The
+boundary between **blocker** and **needs-fix** is the question
+"would master survive this merge?" — if no, blocker; if yes-but-
+worse, needs-fix.
 
-- **Blocker** — will crash, corrupt data, violate ECS invariants, leak
-  memory, or break the build.
-- **Needs-fix** — correctness or performance issue that must be addressed
-  before merge.
-- **Nit** — style, naming, minor simplification, docs.
-- **Praise** — non-obvious good decision worth calling out so the author-agent
-  keeps doing it.
+- **Blocker** — master build breaks, the demo crashes/hangs, or data
+  on disk is corrupted if this lands. The PR is unmergeable as-is —
+  the human cannot ship it without a fix.
+- **Needs-fix** — the PR could compile and run on master, but
+  introduces a correctness or performance regression that must be
+  repaired before merge. Master survives, but in a worse state than
+  it should be.
+- **Nit** — style, naming, minor simplification, docs. Truly
+  optional; the PR may merge without addressing.
+- **Praise** — non-obvious good decision worth calling out so the
+  author-agent keeps doing it.
 
 ### 4. Apply the Irreden-Engine-specific review checklist
 
@@ -175,7 +182,7 @@ compliance or raise an issue.
 - ❌ Allocating memory (new, std::vector push in hot loop, std::string
   concat) in per-entity tick paths.
 - ❌ New prefab system that isn't added to the `SystemName` enum in
-  `engine/system/include/irreden/ir_system_types.hpp`.
+  `engine/system/include/irreden/system/ir_system_types.hpp`.
 - ❌ New component that isn't `C_`-prefixed, or whose public members don't
   have a trailing `_`.
 - ❌ `functionBeginTick` / `functionEndTick` declared with `Archetype&` or
@@ -261,6 +268,43 @@ compliance or raise an issue.
   message for mention, or run `cmake --build build --target format-check`
   yourself if cheap).
 
+**Opus-only items** (Sonnet should not attempt these — escalate via the
+verdict footer if any of these surfaces are touched)
+
+Sonnet's single-file diff scan can't reliably catch these — they live
+multiple frames deep, span modules, or only manifest under specific
+scheduling. If the PR touches any of these surfaces, append
+`Opus recheck required: <one-line reason>` to the verdict footer.
+
+- **GPU buffer lifetime across frames.** Does an SSBO/UBO get bound on
+  frame N and read on frame N+1 without a fence or explicit double-
+  buffer swap? Async readback (compute → CPU mapped pointer) is
+  especially prone to use-after-free if the destination buffer is
+  recycled before the readback completes.
+- **Archetype-mutation race during structural-change deferral.** A
+  system that calls `addComponent` / `removeComponent` /
+  `removeEntity` mid-iteration must use the deferred variant. If it
+  touches the live archetype while a parallel system is iterating,
+  component addresses are invalidated silently. Confirm every
+  structural call inside a tick path goes through the deferred queue.
+- **Race between `flushStructuralChanges` and async GPU readback.**
+  The readback's destination buffer (or the entity it indexes) may
+  vanish if the structural flush runs first. Verify the readback's
+  lifetime is decoupled from any entity that `flushStructuralChanges`
+  could remove — either it indexes by stable ID, or it has its own
+  refcount.
+- **Allocator behavior in long-lived caches.** A cache that uses
+  `std::unordered_map<EntityId, T>` with a poorly-chosen hash, or a
+  `std::vector<T>` that's never shrunk, grows unbounded across
+  frames. Confirm the cache has an eviction path (entity-removed
+  hook, LRU cap, periodic compact) or a clear teardown order.
+- **Hot-path register pressure.** A per-entity tick that touches >8
+  components or carries >12 live local variables across a loop body
+  is approaching the architecture's register file. The compiler may
+  spill to memory; the cost is invisible until profiled. Flag any
+  tick path that grew significantly in number of locals or component
+  reads, especially in `engine/render/` or `engine/world/`.
+
 **Creation- or implementation-specific criteria**
 - If the PR touches a subdirectory under `creations/` (or any other
   implementation layered on top of the engine), read the nearest
@@ -335,10 +379,13 @@ Rules for the review body:
 - For each blocker/needs-fix, suggest a concrete fix, not just "this is
   wrong". The author-agent will use your suggestion literally.
 - Empty sections are fine — drop them, don't write "None".
-- Verdict options:
+- Verdict options (severity definitions live in step 3 — apply
+  "would master survive this merge?" as the deciding question):
   - **approve** — no blockers, no needs-fix. Nits only, if any.
   - **needs-fix** — one or more needs-fix items. No blockers.
-  - **blocker** — at least one blocker. Merging would break master.
+    Master would survive the merge but in a worse state.
+  - **blocker** — one or more blockers. Master breaks, the demo
+    crashes/hangs, or data on disk is corrupted if this lands.
 
 **The bright line between Nits and needs-fix:**
 
