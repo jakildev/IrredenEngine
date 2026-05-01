@@ -18,8 +18,13 @@ namespace IRSystem {
 constexpr int kTrixelToTrixelGroupSize = 16; // must match local_size in c_trixel_to_trixel.glsl
 
 template <> struct System<TRIXEL_TO_TRIXEL> {
+    struct Params {
+        ShaderProgram *program_ = nullptr;
+        Buffer *frameDataBuf_ = nullptr;
+        FrameDataTrixelToTrixel frameData_{};
+    };
+
     static SystemId create() {
-        static FrameDataTrixelToTrixel frameData{};
         IRRender::createNamedResource<ShaderProgram>(
             "TrixelToTrixelProgram",
             std::vector{
@@ -35,24 +40,24 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
             kBufferIndex_FrameDataTrixelToTrixel
         );
 
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram");
-        static Buffer *s_frameDataBuf =
-            IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("TrixelToTrixelProgram");
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToTrixelFrameData");
 
-        return createSystem<C_TriangleCanvasTextures, C_Position2DIso>(
+        SystemId systemId = createSystem<C_TriangleCanvasTextures, C_Position2DIso>(
             "CanvasToFramebuffer",
-            [](const C_TriangleCanvasTextures &trixelTextures,
-               const C_Position2DIso &position2DIso) {
+            [p](const C_TriangleCanvasTextures &trixelTextures,
+                const C_Position2DIso &position2DIso) {
                 auto &timing = IRRender::gpuStageTiming();
                 IRRender::TimePoint t0;
                 if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
 
                 trixelTextures.bind(2, 3);
-                frameData.trixelTextureOffsetZ1_ =
+                p->frameData_.trixelTextureOffsetZ1_ =
                     IRMath::trixelOriginOffsetZ1(trixelTextures.size_);
-                frameData.texturePos2DIso_ = position2DIso.pos_;
-                s_frameDataBuf->subData(0, sizeof(FrameDataTrixelToTrixel), &frameData);
+                p->frameData_.texturePos2DIso_ = position2DIso.pos_;
+                p->frameDataBuf_->subData(0, sizeof(FrameDataTrixelToTrixel), &p->frameData_);
                 const int groupsX = IRMath::divCeil(trixelTextures.size_.x, kTrixelToTrixelGroupSize);
                 const int groupsY = IRMath::divCeil(trixelTextures.size_.y, kTrixelToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
@@ -60,11 +65,11 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
 
                 if (timing.enabled_) { IRRender::device()->finish(); timing.trixelToTrixelMs_ += IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
-            []() {
+            [p]() {
                 IRRender::gpuStageTiming().trixelToTrixelMs_ = 0.0f;
-                s_program->use();
+                p->program_->use();
                 vec2 camIso = IRRender::getCameraPosition2DIso();
-                frameData.cameraTrixelOffset_ = ivec2(
+                p->frameData_.cameraTrixelOffset_ = ivec2(
                     static_cast<int>(IRMath::floor(camIso.x)),
                     static_cast<int>(IRMath::floor(camIso.y))
                 );
@@ -73,12 +78,15 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
             // TODO: Add position here and bind camera position to
             // main trixel canvas.
             RelationParams<C_TriangleCanvasTextures>{Relation::CHILD_OF},
-            [](const C_TriangleCanvasTextures &parentTexture) {
+            [p](const C_TriangleCanvasTextures &parentTexture) {
                 parentTexture.bind(0, 1);
-                frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(parentTexture.size_);
+                p->frameData_.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(parentTexture.size_);
             }
 
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        return systemId;
     }
 };
 

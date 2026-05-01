@@ -66,6 +66,17 @@ inline int &occupancyEntityBoundsCount() {
 } // namespace detail
 
 template <> struct System<BUILD_OCCUPANCY_GRID> {
+    struct Params {
+        Buffer *ssbo_ = nullptr;
+        Buffer *boundsSSBO_ = nullptr;
+        // Scratch reused across frames. Per-entity bbox accumulator keyed
+        // by entity id; cleared at the start of each tick. Vector for
+        // upload is packed each frame so the shader sees a contiguous,
+        // valid prefix.
+        std::unordered_map<IREntity::EntityId, GPUOccupancyEntityBounds> boundsByEntity_;
+        std::vector<GPUOccupancyEntityBounds> boundsUpload_;
+    };
+
     static SystemId create() {
         IRRender::createNamedResource<Buffer>(
             "OccupancyGridBuffer",
@@ -84,19 +95,14 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
             kBufferIndex_OccupancyEntityBounds
         );
 
-        static Buffer *s_ssbo = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
-        static Buffer *s_boundsSSBO =
-            IRRender::getNamedResource<Buffer>("OccupancyEntityBoundsBuffer");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->ssbo_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        p->boundsSSBO_ = IRRender::getNamedResource<Buffer>("OccupancyEntityBoundsBuffer");
 
-        // Scratch reused across frames. Per-entity bbox accumulator keyed by
-        // entity id; cleared at the start of each tick. Vector for upload is
-        // packed each frame so the shader sees a contiguous, valid prefix.
-        static std::unordered_map<IREntity::EntityId, GPUOccupancyEntityBounds> s_boundsByEntity;
-        static std::vector<GPUOccupancyEntityBounds> s_boundsUpload;
-
-        return createSystem<C_VoxelPool, C_OccupancyGrid>(
+        SystemId systemId = createSystem<C_VoxelPool, C_OccupancyGrid>(
             "BuildOccupancyGrid",
-            [](IREntity::EntityId, C_VoxelPool &pool, C_OccupancyGrid &grid) {
+            [p](IREntity::EntityId, C_VoxelPool &pool, C_OccupancyGrid &grid) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
                 IR_ASSERT(
                     grid.sizeVoxels() == kMaxOccupancyGridSideVoxels,
@@ -107,7 +113,7 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::Clear", IR_PROFILER_COLOR_RENDER);
                     std::fill(grid.bitfield().begin(), grid.bitfield().end(), 0u);
                 }
-                s_boundsByEntity.clear();
+                p->boundsByEntity_.clear();
 
                 const auto &globals = pool.getPositionGlobals();
                 const auto &colors = pool.getColors();
@@ -137,7 +143,7 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                         if (owner == IREntity::kNullEntity)
                             continue;
 
-                        auto [it, inserted] = s_boundsByEntity.try_emplace(owner);
+                        auto [it, inserted] = p->boundsByEntity_.try_emplace(owner);
                         GPUOccupancyEntityBounds &b = it->second;
                         if (inserted) {
                             b.entityId = uvec4(static_cast<std::uint32_t>(owner), 0u, 0u, 0u);
@@ -255,7 +261,7 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                             if (!hasAnyCell || owner == IREntity::kNullEntity)
                                 continue;
 
-                            auto [it, inserted] = s_boundsByEntity.try_emplace(owner);
+                            auto [it, inserted] = p->boundsByEntity_.try_emplace(owner);
                             GPUOccupancyEntityBounds &b = it->second;
                             if (inserted) {
                                 b.entityId =
@@ -276,15 +282,15 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
 
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::Upload", IR_PROFILER_COLOR_RENDER);
-                    s_ssbo->subData(0, grid.bitfieldByteSize(), grid.bitfield().data());
+                    p->ssbo_->subData(0, grid.bitfieldByteSize(), grid.bitfield().data());
                 }
 
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::UploadBounds", IR_PROFILER_COLOR_RENDER);
-                    s_boundsUpload.clear();
-                    s_boundsUpload.reserve(s_boundsByEntity.size());
-                    for (auto &kv : s_boundsByEntity) {
-                        if (static_cast<int>(s_boundsUpload.size()) >= kMaxOccupancyEntityBounds) {
+                    p->boundsUpload_.clear();
+                    p->boundsUpload_.reserve(p->boundsByEntity_.size());
+                    for (auto &kv : p->boundsByEntity_) {
+                        if (static_cast<int>(p->boundsUpload_.size()) >= kMaxOccupancyEntityBounds) {
                             IRE_LOG_WARN(
                                 "OccupancyEntityBounds buffer full ({} entities truncated). "
                                 "Increase kMaxOccupancyEntityBounds if the creation needs more.",
@@ -296,26 +302,30 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                             );
                             break;
                         }
-                        s_boundsUpload.push_back(kv.second);
+                        p->boundsUpload_.push_back(kv.second);
                     }
-                    if (!s_boundsUpload.empty()) {
-                        s_boundsSSBO->subData(
+                    if (!p->boundsUpload_.empty()) {
+                        p->boundsSSBO_->subData(
                             0,
-                            s_boundsUpload.size() * sizeof(GPUOccupancyEntityBounds),
-                            s_boundsUpload.data()
+                            p->boundsUpload_.size() * sizeof(GPUOccupancyEntityBounds),
+                            p->boundsUpload_.data()
                         );
                     }
-                    detail::occupancyEntityBoundsCount() = static_cast<int>(s_boundsUpload.size());
+                    detail::occupancyEntityBoundsCount() =
+                        static_cast<int>(p->boundsUpload_.size());
                 }
             },
-            []() {
-                s_ssbo->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid);
-                s_boundsSSBO->bindBase(
+            [p]() {
+                p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid);
+                p->boundsSSBO_->bindBase(
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_OccupancyEntityBounds
                 );
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        return systemId;
     }
 };
 

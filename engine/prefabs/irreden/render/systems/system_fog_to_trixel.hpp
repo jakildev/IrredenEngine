@@ -38,6 +38,16 @@ constexpr int kFogToTrixelGroupSize = 16;
 // RGBA8 in a transient buffer because the GPU texture format is RGBA8
 // (Metal binding-layout sharing — see C_CanvasSunShadow rationale).
 template <> struct System<FOG_TO_TRIXEL> {
+    struct Params {
+        ShaderProgram *program_ = nullptr;
+        Buffer *voxelFrameDataBuf_ = nullptr;
+        // Reusable CPU staging buffer for the .r → RGBA8 expansion.
+        // Single shared scratch keeps per-frame uploads allocation-free
+        // regardless of how many fog canvases exist — system ticks are
+        // serial. value-init on resize zeros GBA bytes we never write.
+        std::vector<std::uint8_t> uploadScratch_;
+    };
+
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "FogToTrixelProgram",
@@ -46,28 +56,20 @@ template <> struct System<FOG_TO_TRIXEL> {
             }
         );
 
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
-        static Buffer *s_voxelFrameDataBuf =
-            IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
+        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
 
-        // Reusable CPU staging buffer for the .r → RGBA8 expansion. Held
-        // at function scope (capturing static) so per-frame uploads stay
-        // allocation-free regardless of how many fog canvases exist —
-        // they all share this scratch since the system tick is serial
-        // while the system pipeline is single-threaded per-canvas.
-        // value-init on resize zeros the GBA bytes we never touch again.
-        static std::vector<std::uint8_t> s_uploadScratch;
-
-        return createSystem<
+        SystemId systemId = createSystem<
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
             C_CanvasFogOfWar
         >(
             "FogToTrixel",
-            [](const C_TriangleCanvasTextures &canvasTextures,
-               const C_TrixelCanvasRenderBehavior &behavior,
-               C_CanvasFogOfWar &fog) {
+            [p](const C_TriangleCanvasTextures &canvasTextures,
+                const C_TrixelCanvasRenderBehavior &behavior,
+                C_CanvasFogOfWar &fog) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
                 if (!behavior.useCameraPositionIso_) {
                     return;
@@ -75,21 +77,21 @@ template <> struct System<FOG_TO_TRIXEL> {
 
                 if (fog.dirty_) {
                     const std::size_t cellCount = fog.cpuBuffer_.size();
-                    if (s_uploadScratch.size() < cellCount * 4) {
-                        s_uploadScratch.resize(cellCount * 4);
+                    if (p->uploadScratch_.size() < cellCount * 4) {
+                        p->uploadScratch_.resize(cellCount * 4);
                     }
                     // Only the .r channel ever changes; GBA stay at the
                     // zero-init from resize. Cuts per-dirty-frame stores
                     // 4×, ~256K → ~64K at 256² grid.
                     for (std::size_t i = 0; i < cellCount; ++i) {
-                        s_uploadScratch[i * 4] = fog.cpuBuffer_[i];
+                        p->uploadScratch_[i * 4] = fog.cpuBuffer_[i];
                     }
                     fog.getTexture()->subImage2D(
                         0, 0,
                         kFogOfWarSize, kFogOfWarSize,
                         PixelDataFormat::RGBA,
                         PixelDataType::UNSIGNED_BYTE,
-                        s_uploadScratch.data()
+                        p->uploadScratch_.data()
                     );
                     fog.dirty_ = false;
                 }
@@ -108,7 +110,7 @@ template <> struct System<FOG_TO_TRIXEL> {
                 // the iso pixel → world pos3D recovery in the shader.
                 // Each pass that consumes it re-binds explicitly because
                 // any intervening dispatch may have rebound binding 7.
-                s_voxelFrameDataBuf->bindBase(
+                p->voxelFrameDataBuf_->bindBase(
                     BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
                 );
 
@@ -121,8 +123,11 @@ template <> struct System<FOG_TO_TRIXEL> {
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
-            []() { s_program->use(); }
+            [p]() { p->program_->use(); }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        return systemId;
     }
 };
 
