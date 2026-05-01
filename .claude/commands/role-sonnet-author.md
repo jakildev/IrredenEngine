@@ -259,8 +259,9 @@ Each iteration:
         call — the removed label is guaranteed present (you set
         it in step b):
         `gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"`
-      - If it was `fleet:needs-fix` → no response label needed
-        (fleet reviewer will re-review automatically on next poll)
+      - If it was `fleet:needs-fix` → add `fleet:changes-made` so
+        the reviewer knows new commits arrived and should re-verify:
+        `gh pr edit <N> --add-label "fleet:changes-made"`
       - If it was `fleet:has-nits` → no response label needed; the
         existing `fleet:approved` stays valid (cleanups don't
         invalidate the approval)
@@ -582,15 +583,22 @@ Each iteration:
 
 6. **Build and run.**
    `fleet-build --target <name>`
-   If the touched code has an executable target, run it once with a
-   timeout so the window auto-closes:
-   `fleet-run --timeout 5 <executable-name>`
-   **Always use `--timeout`** for GUI executables — without it the
-   window stays open and steals focus from the human. Use `--timeout`
-   for test executables too (they exit on their own, but the timeout
-   is a safety net). **Never** use `cd <dir> && ./<exe>` — that
-   triggers the compound-command security gate. Untested commits are
-   the single biggest waste of reviewer-agent time.
+
+   **If the diff adds files under `engine/prefabs/**/systems/`**, also
+   build `IrredenEngineTest` (or the engine static library) — creation
+   targets like `IRShapeDebug` only link the systems they reference, so
+   a new system with a missing `SystemName` enum entry is a silent
+   linker error from the creation perspective.
+
+   If the touched code has an executable target, run it to confirm it
+   launches cleanly:
+   - **Demos that support `--auto-screenshot`:** `fleet-run <executable-name> --auto-screenshot 10` (no `--timeout` — auto-screenshot fires `closeWindow()` when done).
+   - **All other GUI executables:** `fleet-run --timeout 15 <executable-name>` — 5 seconds is too short for a demo mid-init.
+   - **Test executables:** `fleet-run --timeout 15 <executable-name>` as a safety net.
+
+   **Never** use `cd <dir> && ./<exe>` — that triggers the
+   compound-command security gate. Untested commits are the single
+   biggest waste of reviewer-agent time.
 
 7. **Stop and escalate if the task is subtler than expected.** If the
    work touches:

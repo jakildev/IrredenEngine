@@ -399,12 +399,12 @@ exit cleanly:
            — fleet merger
            ```
          - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - Remove any stale review/verdict labels. Each as its own
-           Bash call — `gh pr edit --remove-label` returns non-zero
-           when the label isn't present, which would abort a chained
-           `--add-label`:
+         - Remove stale verdict labels (not fleet:has-nits — nits remain valid
+           regardless of merge conflicts and should be addressed once the
+           conflict is resolved). Each as its own Bash call — `gh pr edit
+           --remove-label` returns non-zero when the label isn't present,
+           which would abort a chained `--add-label`:
            `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:approved"`
-           `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:has-nits"`
            `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:needs-fix"`
            Then add the conflict and cooldown labels:
            `gh pr edit <N> --repo <engine-repo> --add-label "fleet:semantic-conflict"`

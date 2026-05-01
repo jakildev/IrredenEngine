@@ -29,20 +29,13 @@ struct C_CanvasAOTexture {
               TextureFilter::NEAREST
           )} {}
 
-    // Required by EntityManager::setComponent, which default-constructs the
-    // destination slot before assigning the concrete sized component.
-    C_CanvasAOTexture() = default;
+    C_CanvasAOTexture() = delete;
 
     void onDestroy() {
         IRRender::destroyResource<Texture2D>(textureAO_.first);
     }
 
     const Texture2D *getTexture() const {
-        IR_ASSERT(
-            textureAO_.second != nullptr,
-            "C_CanvasAOTexture::getTexture() called on default-constructed "
-            "instance — must be constructed with a size."
-        );
         return textureAO_.second;
     }
 };

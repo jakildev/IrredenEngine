@@ -865,11 +865,22 @@ Do the work, then exit cleanly:
 
 7. **Build and run.**
    `fleet-build --target <name>`
-   Run the relevant executable with a timeout so the window auto-closes:
-   `fleet-run --timeout 5 <name>`
-   **Always use `--timeout`** for GUI executables — without it the
-   window stays open and steals focus from the human.
-   Untested commits are the single biggest waste of reviewer-agent time.
+
+   **If the diff adds files under `engine/prefabs/**/systems/`**, also
+   build `IrredenEngineTest` (or the engine static library) — creation
+   targets like `IRShapeDebug` only link the systems they reference, so
+   a new system with a missing `SystemName` enum entry is a silent
+   linker error from the creation perspective.
+
+   If the touched code has an executable target, run it to confirm it
+   launches cleanly:
+   - **Demos that support `--auto-screenshot`:** `fleet-run <name> --auto-screenshot 10` (no `--timeout` — auto-screenshot fires `closeWindow()` when done).
+   - **All other GUI executables:** `fleet-run --timeout 15 <name>` — 5 seconds is too short for a demo mid-init.
+   - **Test executables:** `fleet-run --timeout 15 <name>` as a safety net.
+
+   **Never** use `cd <dir> && ./<exe>` — that triggers the
+   compound-command security gate. Untested commits are the single
+   biggest waste of reviewer-agent time.
 
 8. **Stop and escalate if the task scope grows.** If:
    - The scope grows beyond one PR's worth of work
@@ -920,8 +931,11 @@ Do the work, then exit cleanly:
 
    For non-architectural escalations (scope grew, build break is
    structural, public-API surface) where there's no design call to
-   route — comment on your PR explaining the blocker, leave the PR
-   in `fleet:wip`, and wait for the human directly.
+   route — file a GitHub issue (no labels), comment on your PR
+   linking it with the blocker context, release the claim with
+   `fleet-claim release "<task-ID>"`, reset via `start-next-task`,
+   and exit. The human will add `human:approved` to the follow-up
+   issue when ready to resume.
 
 9. **Attach screenshots (when visual output changed).** Check whether
    the diff touches visual/render code:

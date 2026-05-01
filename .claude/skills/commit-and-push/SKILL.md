@@ -309,7 +309,7 @@ obvious from filenames.>
 <If the session unearthed build/runtime gotchas worth remembering, note
 them here so the commit doubles as a changelog entry.>
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 If the work is entirely inside a subdirectory with its own `CLAUDE.md`
@@ -356,7 +356,7 @@ Stage-1 compute was over-culling near the left edge because the cpu-side
 visibleIsoViewport used the raw camera pos while the gpu used the
 trixel-offset-corrected one. Align both to the offset-corrected form.
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -526,6 +526,14 @@ flow is OpenGL-on-Linux vs Metal-on-macOS, and a Windows author
 doesn't fit either bucket cleanly.
 
 ### 9. Report the result
+
+**Fix-push convention:** if you are calling commit-and-push to push a
+fix in response to `fleet:needs-fix` feedback, add `fleet:changes-made`
+to the PR after the push so the reviewer knows new commits arrived and
+should re-verify. Your role file's feedback-fix flow handles the
+`fleet:changes-made` label step; check that step and do not skip it.
+Without `fleet:changes-made`, the reviewer has no signal to pick the
+PR back up and re-review.
 
 Reply with a compact summary:
 
