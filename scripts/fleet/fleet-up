@@ -215,6 +215,8 @@ baseline = [
     "Bash(fleet-claim:*)",
     "Bash(fleet-build:*)",
     "Bash(fleet-run:*)",
+    "Bash(fleet-run-targets:*)",
+    "Bash(fleet-help:*)",
     "Bash(fleet-heartbeat:*)",
     # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
     # in the user-level allowlist matches commands STARTING with `git`,

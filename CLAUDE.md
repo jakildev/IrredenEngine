@@ -461,6 +461,15 @@ fleet-run IRShapeDebug
 fleet-run IrredenEngineTest --gtest_brief=1
 ```
 
+`fleet-run --targets` lists names you can pass to `fleet-run` (built
+executables under `creations/` and `test/` by default; add `--plan` for
+CMake demo/test targets from `cmake --build --target help`). Same as
+`fleet-run-targets` in `scripts/fleet/`.
+
+`fleet-help` prints an index of all `fleet-*` tools (after
+`scripts/fleet/install.sh`); `fleet-help <command>` opens per-tool help
+when available.
+
 `fleet-run` auto-detects the build directory using the same logic as
 `fleet-build` (worktree root → `<root>/build`).
 

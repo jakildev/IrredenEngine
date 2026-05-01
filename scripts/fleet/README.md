@@ -29,6 +29,14 @@ fleet workflow.
   the game-architect role from `creations/game/` if that repo is
   cloned. Warns (but does not edit) if `~/bin` is not on PATH.
   Idempotent — re-run after every `git pull` that touches fleet tooling.
+- **`fleet-run --targets`** (also the `fleet-run-targets` script in this
+  directory) — lists names you can pass to `fleet-run`: built executables
+  under `creations/` and `test/` by default, or `--plan` for CMake
+  demo/test target names from `cmake --build --target help`. Use
+  `fleet-run --targets --plain` for one name per line (e.g. pipe to `fzf`).
+- **`fleet-help`** — prints an index of all `fleet-*` tools (build, run,
+  tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
+  forwards to `--help` when the tool supports it (or a short summary).
 
 All files are portable across Linux (WSL/Ubuntu) and macOS. None
 requires sudo.

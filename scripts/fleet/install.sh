@@ -70,6 +70,10 @@ FLEET_BUILD_SRC="$SCRIPT_DIR/fleet-build"
 FLEET_BUILD_DEST="$HOME/bin/fleet-build"
 FLEET_RUN_SRC="$SCRIPT_DIR/fleet-run"
 FLEET_RUN_DEST="$HOME/bin/fleet-run"
+FLEET_RUN_TARGETS_SRC="$SCRIPT_DIR/fleet-run-targets"
+FLEET_RUN_TARGETS_DEST="$HOME/bin/fleet-run-targets"
+FLEET_HELP_SRC="$SCRIPT_DIR/fleet-help"
+FLEET_HELP_DEST="$HOME/bin/fleet-help"
 FLEET_BABYSIT_SRC="$SCRIPT_DIR/fleet-babysit"
 FLEET_BABYSIT_DEST="$HOME/bin/fleet-babysit"
 FLEET_LABELS_SRC="$SCRIPT_DIR/fleet-labels"
@@ -93,7 +97,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -125,6 +129,16 @@ fi
 if [[ -f "$FLEET_RUN_SRC" ]]; then
     ln -sf "$FLEET_RUN_SRC" "$FLEET_RUN_DEST"
     echo "symlinked $FLEET_RUN_DEST -> $FLEET_RUN_SRC"
+fi
+
+if [[ -f "$FLEET_RUN_TARGETS_SRC" ]]; then
+    ln -sf "$FLEET_RUN_TARGETS_SRC" "$FLEET_RUN_TARGETS_DEST"
+    echo "symlinked $FLEET_RUN_TARGETS_DEST -> $FLEET_RUN_TARGETS_SRC"
+fi
+
+if [[ -f "$FLEET_HELP_SRC" ]]; then
+    ln -sf "$FLEET_HELP_SRC" "$FLEET_HELP_DEST"
+    echo "symlinked $FLEET_HELP_DEST -> $FLEET_HELP_SRC"
 fi
 
 if [[ -f "$FLEET_BABYSIT_SRC" ]]; then
