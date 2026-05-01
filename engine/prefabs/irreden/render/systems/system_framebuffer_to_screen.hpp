@@ -23,8 +23,14 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<FRAMEBUFFER_TO_SCREEN> {
+    struct Params {
+        Buffer *frameDataBuf_ = nullptr;
+        ShaderProgram *program_ = nullptr;
+        VAO *quadVao_ = nullptr;
+        FrameDataFramebuffer frameData_{};
+    };
+
     static SystemId create() {
-        static FrameDataFramebuffer frameData{};
         IRRender::createNamedResource<ShaderProgram>(
             "FramebufferToScreenProgram",
             std::vector{
@@ -41,23 +47,23 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             kBufferIndex_FramebufferFrameDataUniform
         );
 
-        static Buffer *s_frameDataBuf =
-            IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");
-        static VAO *s_quadVao = IRRender::getNamedResource<VAO>("QuadVAOArrays");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");
+        p->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
 
-        return createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
+        SystemId systemId = createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
             "FramebufferToScreen",
-            [](const C_TrixelCanvasFramebuffer &framebuffer,
-               const C_Position3D &cameraPosition,
-               const C_Name &name) {
+            [p](const C_TrixelCanvasFramebuffer &framebuffer,
+                const C_Position3D &cameraPosition,
+                const C_Name &name) {
                 auto &timing = IRRender::gpuStageTiming();
                 IRRender::TimePoint t0;
                 if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
 
                 framebuffer.bindTextures(0, 1);
-                frameData.mvpMatrix =
+                p->frameData_.mvpMatrix =
                     calcProjectionMatrix() * calcModelMatrix(
                                                  framebuffer.getResolution(),
                                                  framebuffer.getResolutionPlusBuffer(),
@@ -65,20 +71,23 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                                                  IRRender::getCameraPosition2DIso(),
                                                  name.name_
                                              );
-                s_frameDataBuf->subData(0, sizeof(FrameDataFramebuffer), &frameData);
+                p->frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &p->frameData_);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
                 IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
 
                 if (timing.enabled_) { IRRender::device()->finish(); timing.fbToScreenMs_ += IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
-            []() {
+            [p]() {
                 IRRender::gpuStageTiming().fbToScreenMs_ = 0.0f;
                 bindDefaultFramebuffer();
                 clearDefaultFramebuffer();
-                s_program->use();
-                s_quadVao->bind();
+                p->program_->use();
+                p->quadVao_->bind();
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        return systemId;
     }
 
   private:
