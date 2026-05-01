@@ -218,7 +218,7 @@ void main() {
     // stays in world coordinates (camera-independent), so only the surface
     // position needs the R(-rasterYaw) compose. At cardinalIndex==0 the
     // path collapses to master so yaw=0 stays byte-identical.
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec2 canvasOffset = (voxelRenderOptions.x != 0)
         ? frameCanvasOffset * float(subdivisions)

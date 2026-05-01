@@ -108,7 +108,7 @@ void main() {
     // world); compose R(-rasterYaw) onto the iso inverse to recover world
     // coords, and rotate the raster-frame outward / tangent vectors so the
     // occupancy grid sampling walks the world axes.
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec2 canvasOffset = (voxelRenderOptions.x != 0)
         ? frameCanvasOffset * float(subdivisions)

@@ -46,7 +46,7 @@ layout(std430, binding = 26) buffer IndirectDispatchParams {
 };
 
 void main() {
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     uint idx = workGroupIndex * 64u + gl_LocalInvocationID.x;
 

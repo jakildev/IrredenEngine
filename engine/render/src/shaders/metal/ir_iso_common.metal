@@ -142,33 +142,38 @@ inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
 
-// Cardinal Z-yaw helpers (T-055). Mirrors shaders/ir_iso_common.glsl. See the
-// GLSL header comment for the rationale.
+// Cardinal Z-yaw helpers (T-055). Mirrors shaders/ir_iso_common.glsl.
+// Sign convention is documented there; bodies here match line-for-line.
 
 inline int rasterYawCardinalIndex(float rasterYaw) {
+    // CPU snaps visualYaw to a multiple of pi/2 (Camera::computeYawSplit) so
+    // this index pick is exact at floats that survived the UBO upload. The
+    // round() defends against bit-wise drift only; it is not the cardinal-snap
+    // policy itself. Negative inputs (yaw=-pi/2 -> q=-1) fold via the (mod 4 +
+    // 4) mod 4 clamp.
     constexpr float kHalfPi = 1.5707963267948966f;
     int q = int(round(rasterYaw / kHalfPi));
     return ((q % 4) + 4) % 4;
 }
 
 inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return int3(-v.y,  v.x, v.z);
-    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return int3( v.y, -v.x, v.z);
+    if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return int3(-v.y,  v.x, v.z);   // R_z(+pi/2)
     return v;
 }
 
 inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return float3( v.y, -v.x, v.z);
-    if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return float3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 1) return float3(-v.y,  v.x, v.z); // R_z(+pi/2)
+    if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z); // R_z(+/-pi)
+    if (cardinalIndex == 3) return float3( v.y, -v.x, v.z); // R_z(-pi/2)
     return v;
 }
 
 inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);
-    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return int3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 1) return int3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
     return v;
 }
 
