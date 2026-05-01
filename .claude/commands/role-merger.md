@@ -285,9 +285,15 @@ exit cleanly:
 
       `git merge-base --is-ancestor` exits 0 if the other PR's tip is an
       ancestor of this PR's HEAD (fork confirmed), exits 1 otherwise.
+      (Exit 1 is the expected "not an ancestor" result; do not treat it
+      as a script error — the Bash tool reports non-zero exits but this
+      check intentionally returns 1 for the common "no fork" case.)
       Each fetch + check is a separate Bash call (single-command rule).
 
       If any check exits 0 for an "upstream PR" (`<upstream-N>`):
+      - Resolve the upstream tip SHA (needed for the rebase recipe below):
+        `git rev-parse origin/<upstream-headRefName>`
+        Store this output as `<upstream-tip-sha>`.
       - Write `.merger-body.md` with:
         ```
         Merger: this PR's branch was forked from open PR #<upstream-N>

@@ -141,10 +141,12 @@ conditions, allocator behavior, hot-path costs.
      `submittedAt`).
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
-   or `fleet:semantic-conflict` — those are either in-progress,
-   human-owned, or queued for the opus-worker's conflict-resolution
-   lane (the diff against master is meaningless until the rebase
-   lands).
+   `fleet:semantic-conflict`, or `fleet:fork-of-other-pr` — those are
+   either in-progress, human-owned, queued for conflict resolution
+   (diff against master is meaningless until the rebase lands), or
+   forked from another open PR (diff includes inherited commits that
+   don't belong to this PR's scope — skip until the human runs
+   `rebase --onto` and clears this label).
 
 ## Loop behavior
 
