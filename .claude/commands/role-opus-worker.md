@@ -878,7 +878,9 @@ Do the work, then exit cleanly:
    - **All other GUI executables:** `fleet-run --timeout 15 <name>` — 5 seconds is too short for a demo mid-init.
    - **Test executables:** `fleet-run --timeout 15 <name>` as a safety net.
 
-   Untested commits are the single biggest waste of reviewer-agent time.
+   **Never** use `cd <dir> && ./<exe>` — that triggers the
+   compound-command security gate. Untested commits are the single
+   biggest waste of reviewer-agent time.
 
 8. **Stop and escalate if the task scope grows.** If:
    - The scope grows beyond one PR's worth of work
