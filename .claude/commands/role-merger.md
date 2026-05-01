@@ -399,7 +399,10 @@ exit cleanly:
            comment stays readable. For each listed file, run
            `git log -1 --format="%h %s" origin/master -- <file>` to
            identify what touched it on master, and
-           `git log -1 --format="%h %s" -- <file>` for the PR side.
+           `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
+           for the PR side. The `origin/<headRefName>` ref is required
+           because `git switch claude/merger-scratch` left HEAD on
+           master — a bare `git log -- <file>` would log master twice.
            Write to `.merger-body.md`:
            ```
            Merger: cannot auto-resolve mechanically. The PR has
