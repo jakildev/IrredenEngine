@@ -85,6 +85,18 @@ Also flag (don't auto-fix):
 - A new prefab system that isn't added to `SystemName` in
   `engine/system/include/irreden/ir_system_types.hpp` (the system
   name enum is the registration mechanism).
+- `C_Position3D` read in a render-related system for visual placement
+  instead of `C_PositionGlobal3D + C_PositionOffset3D` — rendered
+  position is always Global + Offset. Flag; confirm the component is
+  intentional.
+- A component method that calls `IREntity::getComponent` /
+  `setComponent` / `createEntity` / `setParent` on a *different*
+  entity (tier-c violation per `engine/prefabs/CLAUDE.md`). Flag
+  unless the method is on the documented exceptions list.
+- `functionBeginTick` / `functionEndTick` declared with `Archetype&`
+  or any component parameter — they must be `void()`.
+- `endTick` body that reads `ids[0]` or indexes `ids` without first
+  guarding `ids.size() == 0`.
 
 ### 3. Naming convention slips
 
@@ -127,7 +139,11 @@ For files in `engine/render/` or shaders, check that the CPU
 frame-data struct in `engine/render/include/irreden/render/` is in
 sync with its GLSL `layout(std140)` counterpart — an out-of-sync pair
 silently corrupts uniform blocks. Cross-reference the two if either
-side changed.
+side changed. When checking: `vec3` members pad to 16 bytes, array
+elements stride to 16 bytes, members crossing a 16-byte boundary need
+`alignas(16)`. Also verify that every `binding = N` in the shader
+matches the C++ `kBufferIndex_*` constant — a bind-point mismatch is
+silent.
 
 Also check:
 - Canvas allocation before the canvas entity exists (race in init).
@@ -137,6 +153,16 @@ Also check:
 - 3D-world-coord values being mixed with iso-2D-coord values without
   going through `IRMath::pos3DtoPos2DIso` or a named helper. The two
   spaces are not interchangeable.
+
+If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`,
+`system_*fog*`, `system_build_occupancy_grid*`, or any
+`c_compute_*shadow*.glsl` / `.metal`, also flag:
+- Grid-build code that includes `cull_viewport_state.hpp` or calls
+  `visibleIsoViewport` — the occupancy grid must cover the full voxel
+  pool, not the render-culled subset.
+- Flood-fill seed gather filtered by `visibleIsoViewport` without
+  expanding by `C_LightSource::radius_` — off-screen sources must
+  still seed on-screen tiles.
 
 ### 6. Reuse opportunities (the highest-leverage check)
 
