@@ -171,7 +171,8 @@ class EntityManager {
 
         IR_ASSERT(
             static_cast<int>(data->dataVector.size()) == toNode->length_,
-            "Component column out of sync with archetype node row count."
+            "Component column out of sync with archetype node row count "
+            "after push_back into new archetype column."
         );
 
         IRE_LOG_DEBUG(
