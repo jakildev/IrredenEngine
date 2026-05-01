@@ -4,6 +4,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <cstring>
 #include <cstdlib>
@@ -63,6 +64,8 @@ int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
 float g_initialYawRadians = 0.0f;
+float g_initialYaw = 0.0f;
+bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 
 } // namespace
@@ -103,6 +106,8 @@ int main(int argc, char **argv) {
         } else if (std::strcmp(argv[i], "--yaw") == 0) {
             if (i + 1 < argc) {
                 g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
+                g_initialYaw = static_cast<float>(std::atof(argv[i + 1]));
+                g_initialYawSet = true;
                 ++i;
             }
         }
@@ -133,6 +138,9 @@ int main(int argc, char **argv) {
         IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
                     g_initialYawRadians,
                     g_initialYawRadians * (180.0f / std::numbers::pi_v<float>));
+    if (g_initialYawSet) {
+        IRPrefab::Camera::setYaw(g_initialYaw);
+        IR_LOG_INFO("Initial yaw: {} rad", g_initialYaw);
     }
     IREngine::gameLoop();
     return 0;

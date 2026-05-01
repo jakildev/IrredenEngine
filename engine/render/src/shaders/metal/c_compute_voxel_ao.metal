@@ -69,6 +69,11 @@ kernel void c_compute_voxel_ao(
     // If the subdivision encoding ever shifts, update
     // c_voxel_to_trixel_stage_1.metal and c_voxel_to_trixel_stage_2.metal
     // in lockstep — all three shaders must agree on rawDepth scaling.
+    // R(-rasterYaw) compose recovers world-frame surface position and
+    // outward / tangent vectors from the cardinal-rotated raster frame.
+    // At cardinalIndex==0 the path collapses to master so yaw=0 stays
+    // byte-identical.
+    int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     int subdivisions = max(frameData.voxelRenderOptions.y, 1);
     float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
         ? frameData.frameCanvasOffset * float(subdivisions)
@@ -79,6 +84,9 @@ kernel void c_compute_voxel_ao(
     float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (frameData.voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     // `roundHalfUp` lives in ir_iso_common.metal and mirrors
     // `IRMath::roundHalfUp` on the CPU side (see
@@ -101,6 +109,11 @@ kernel void c_compute_voxel_ao(
     } else {
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
+    }
+    if (cardinalIndex != 0) {
+        outward = rotateCardinalZInvI(outward, cardinalIndex);
+        t1 = rotateCardinalZInvI(t1, cardinalIndex);
+        t2 = rotateCardinalZInvI(t2, cardinalIndex);
     }
 
     int3 baseOut = surfaceVoxel + outward;
