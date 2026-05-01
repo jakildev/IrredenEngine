@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <vector>
 
@@ -58,10 +59,6 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             [p](const C_TrixelCanvasFramebuffer &framebuffer,
                 const C_Position3D &cameraPosition,
                 const C_Name &name) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
-
                 framebuffer.bindTextures(0, 1);
                 p->frameData_.mvpMatrix =
                     calcProjectionMatrix() * calcModelMatrix(
@@ -74,11 +71,8 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                 p->frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &p->frameData_);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
                 IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.fbToScreenMs_ += IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
             [p]() {
-                IRRender::gpuStageTiming().fbToScreenMs_ = 0.0f;
                 bindDefaultFramebuffer();
                 clearDefaultFramebuffer();
                 p->program_->use();
@@ -87,6 +81,7 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "fbToScreen");
         return systemId;
     }
 

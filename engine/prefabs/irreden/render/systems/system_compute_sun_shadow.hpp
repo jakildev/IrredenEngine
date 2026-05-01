@@ -26,6 +26,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -265,13 +266,6 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 }
                 p->frameData_.shapeCasterCount_ = static_cast<int>(shapeCasters.size());
 
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    t0 = IRRender::SteadyClock::now();
-                }
-
                 canvasTextures.getTextureDistances()
                     ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 shadow.getTexture()
@@ -312,15 +306,6 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                     IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                // Assumes a single matching canvas per frame. Switch to `+=`
-                // with a `beginTick` reset if the filter ever matches
-                // multiple entities — otherwise later entities overwrite.
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    timing.computeSunShadowMs_ =
-                        IRRender::elapsedMs(t0, IRRender::SteadyClock::now());
-                }
             },
             [p]() {
                 p->program_->use();
@@ -342,6 +327,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "computeSunShadow");
         return systemId;
     }
 };

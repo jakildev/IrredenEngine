@@ -8,6 +8,7 @@
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -49,10 +50,6 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
             "CanvasToFramebuffer",
             [p](const C_TriangleCanvasTextures &trixelTextures,
                 const C_Position2DIso &position2DIso) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
-
                 trixelTextures.bind(2, 3);
                 p->frameData_.trixelTextureOffsetZ1_ =
                     IRMath::trixelOriginOffsetZ1(trixelTextures.size_);
@@ -62,11 +59,8 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
                 const int groupsY = IRMath::divCeil(trixelTextures.size_.y, kTrixelToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.trixelToTrixelMs_ += IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
             [p]() {
-                IRRender::gpuStageTiming().trixelToTrixelMs_ = 0.0f;
                 p->program_->use();
                 vec2 camIso = IRRender::getCameraPosition2DIso();
                 p->frameData_.cameraTrixelOffset_ = ivec2(
@@ -86,6 +80,7 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "trixelToTrixel");
         return systemId;
     }
 };

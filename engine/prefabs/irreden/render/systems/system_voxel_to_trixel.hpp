@@ -20,6 +20,7 @@
 #include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -222,9 +223,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             [p](IREntity::EntityId &entity,
                 C_VoxelPool &voxelPool,
                 C_TriangleCanvasTextures &triangleCanvasTextures) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0, t1;
-
                 const int liveVoxelCount = voxelPool.getLiveVoxelCount();
                 if (liveVoxelCount == 0) return;
 
@@ -256,9 +254,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     p->previousEffectiveSubdivisions_ = effectiveSub;
                 }
 
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
                 clearCanvasAndDistances(entity, triangleCanvasTextures);
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.canvasClearMs_ = IRRender::elapsedMs(t0, t1); }
 
                 ivec2 cullOffsetZ1 = IRMath::trixelOriginOffsetZ1(cull.canvasSize_);
                 const auto &uploadMask = buildChunkVisibilityMask(
@@ -288,9 +284,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 syncEntityIds(voxelPool, liveVoxelCount, p->voxelEntityIdBuf_);
 
-                // --- GPU visibility compaction ---
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
-
                 const VoxelIndirectDispatchParams zeroed{};
                 p->indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
 
@@ -302,19 +295,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.voxelCompactMs_ = IRRender::elapsedMs(t0, t1); }
-
-                // --- Stage 1: indirect dispatch from compacted visible set ---
-                if (timing.enabled_) { t0 = IRRender::SteadyClock::now(); }
-
                 p->stage1Program_->use();
                 triangleCanvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::READ_ONLY, TextureFormat::R32I
                 );
                 IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.voxelStage1Ms_ = IRRender::elapsedMs(t0, t1); }
             },
             []() {
                 IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
@@ -330,6 +316,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        // The observer-based timing brackets the entire system tick. The
+        // formerly-separate canvasClear and voxelCompact sub-stages now
+        // collapse into voxelStage1's measurement; their registry slots
+        // remain at 0.0f for API-compatibility.
+        IRRender::tagGpuStage(systemId, "voxelStage1");
         return systemId;
     }
 };
@@ -358,10 +349,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
             [p](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
                 if (voxelPool.getLiveVoxelCount() == 0) return;
 
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
-
                 triangleCanvasTextures.getTextureColors()->bindAsImage(
                     0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
                 );
@@ -374,13 +361,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
 
                 IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.voxelStage2Ms_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
             [p]() { p->stage2Program_->use(); }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "voxelStage2");
         return systemId;
     }
 };

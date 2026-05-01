@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <vector>
 
@@ -267,17 +268,12 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 }
             },
             [p]() {
-                auto &timing = IRRender::gpuStageTiming();
-                timing.textToTrixelMs_ = 0.0f;
                 if (p->drawCommands_.empty()) return;
 
                 int count = static_cast<int>(p->drawCommands_.size());
                 if (count > kMaxGlyphCommands) {
                     count = kMaxGlyphCommands;
                 }
-
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
 
                 p->glyphCmdBuf_->subData(
                     0, count * sizeof(GlyphDrawCommand), p->drawCommands_.data());
@@ -295,12 +291,11 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 IRRender::device()->dispatchCompute(count, 1, 1);
                 // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
                 IRRender::device()->memoryBarrier(BarrierType::ALL);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.textToTrixelMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "textToTrixel");
         return systemId;
     }
 };
