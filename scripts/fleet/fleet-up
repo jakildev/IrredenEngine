@@ -559,7 +559,7 @@ label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+    "FLEET_MIN_BACKOFF=1800 $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
 
 # --- Window 2: "ops" — 2x2 grid ---------------------------------------
