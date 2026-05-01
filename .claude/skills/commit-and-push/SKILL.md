@@ -400,6 +400,16 @@ EOF
 Title should match the commit title when the PR is a single commit. For
 multi-commit PRs, use a broader title that covers the series.
 
+**PR labels — `fleet:wip` (important):** For the **default Cursor /
+human-ready** single-PR open to `master`, **do not** pass
+`--label fleet:wip`. Fleet reviewers **skip** PRs labeled `fleet:wip`
+(see `role-sonnet-reviewer.md`). Use `fleet:wip` only in the **fleet
+worker** lane: task **claim** / early-work PRs until the author removes
+it for review pickup. Step **8b** below adds `fleet:authored-on-*`
+where appropriate — that is unrelated and still applies. The
+**Stack-aware** block still uses `fleet:wip` for stacked fleet-worker
+PRs; that is intentional for that workflow.
+
 **Stack-aware override:** when the current task is part of a
 `fleet-claim stack`, compute the base via `stack-base` and record the
 resulting PR via `stack-set-pr`. When `$base` is a feature branch

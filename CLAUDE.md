@@ -461,6 +461,15 @@ fleet-run IRShapeDebug
 fleet-run IrredenEngineTest --gtest_brief=1
 ```
 
+`fleet-run --targets` lists names you can pass to `fleet-run` (built
+executables under `creations/` and `test/` by default; add `--plan` for
+CMake demo/test targets from `cmake --build --target help`). Same as
+`fleet-run-targets` in `scripts/fleet/`.
+
+`fleet-help` prints an index of all `fleet-*` tools (after
+`scripts/fleet/install.sh`); `fleet-help <command>` opens per-tool help
+when available.
+
 `fleet-run` auto-detects the build directory using the same logic as
 `fleet-build` (worktree root → `<root>/build`).
 
@@ -527,8 +536,11 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` — owned by the
   **reviewer agents**, added after the verdict to request a cross-host
   build + run validation.
-- `fleet:wip` — owned by the **author agent** (set at PR creation
-  during a normal `commit-and-push` flow). Don't add to issues.
+- `fleet:wip` — owned by the **fleet author worker** while a **claimed /
+  in-progress** PR is not ready for fleet review (reviewers **skip** this
+  label). Set on claim / early fleet-worker PRs; remove when ready for
+  review. **Do not** add on **Cursor / human-ready** PRs to `master`
+  (those should be reviewable immediately). Don't add to issues.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the
