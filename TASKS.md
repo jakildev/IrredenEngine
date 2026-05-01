@@ -176,17 +176,6 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [~] **Render systems: migrate 12 files off function-local static onto SystemParams** — replace all mutable function-local `static` state in 12 render system headers with `SystemParams` structs; visual and performance identity required
-  - **ID:** T-065
-  - **Area:** engine/prefabs/irreden/render/systems
-  - **Model:** opus
-  - **Owner:** claude/T-065-render-system-params
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all 12 listed files use `SystemParams` for mutable system state; (2) grep shows no function-local `static` for mutable state in the 12 files — all surviving `static` matches are `constexpr` constants or program-lifetime resource pointers (each called out in PR body); (3) `render-debug-loop` before/after screenshots pixel-identical — attach via `attach-screenshots` skill; (4) `IRShapeDebug` pipeline tick cost at zoom 4 / 1000+ voxels within ±2% of pre-migration baseline (measured, reported in PR body); (5) builds clean on `linux-debug` AND `macos-debug`; (6) OpenGL and Metal backends render identically
-  - **Issue:** #344
-  - **Notes:** Soft dep on T-064 landing first (so canonical pattern is documented), but not a hard block — canonical pattern is in the issue body. One PR for all 12 files per architect direction. `thread_local` scratch buffer in `system_shapes_to_trixel.hpp::buildAndUploadTileDescriptors` is exempt per architect recommendation (leave as `thread_local` with explanatory comment). Resource pointers fetched at create time may stay `static` or move into `Params` per worker judgment — document in PR body. Behavior preservation is the hard gate — stop and escalate on ANY behavioral difference. Some statics may be relied-upon bugs; flag in PR body.
-  - **Links:**
-
 - [~] **Render/system: centralize GPU stage probes via SystemManager TickObserver** — add a generic `TickObserver` hook to `SystemManager`, implement `GpuStageTimingObserver` in render layer, and remove the 15+ inlined probe blocks from render system headers
   - **ID:** T-066
   - **Area:** engine/system, engine/render, engine/prefabs/irreden/render
@@ -220,17 +209,6 @@ Avoid:
   - **Notes:** Escalated from sonnet-author after human:needs-fix on PR #334 (T-056). Three human concerns: (1) confusing nesting + redundant smoothMode check, (2) no analytical fast path at non-zero yaw (existing `boxDepthIntersect` etc. bake in yaw=0 iso direction), (3) voxel-pool carving not rotating with T-055. Blocked until both T-055 (cardinal-snap raster) and T-056 (SDF arbitrary yaw) land. Opus architectural decision required on whether to rederive analytical intersectors for rotated ray.
   - **Links:**
 
-- [~] **Metal: port entity-id readback into f_trixel_to_framebuffer** — add `HoveredEntityIdBuffer` SSBO, `triangleEntityIds` texture, and hover-detection logic to `trixel_to_framebuffer.metal` fragment shader to match GLSL parity; restores Mac hover/click
-  - **ID:** T-069
-  - **Area:** engine/render, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-069-metal-entity-id-readback
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Metal `FrameDataIsoTriangles` extended with `int distanceOffset` matching GLSL + C++ `FrameDataTrixelToFramebuffer`; (2) `trixel_to_framebuffer.metal` fragment receives `texture2d<uint> triangleEntityIds [[texture(2)]]` and `device HoveredEntityIdBuffer& hovered [[buffer(14)]]`; (3) hover/click logic ported from `f_trixel_to_framebuffer.glsl` (origin parity, entity ID sampling, depth test, hover highlight); (4) `fleet-build` clean on `macos-debug`; `IRShapeDebug` and any hover-enabled demo shows `[HoverDetect]` logs on hover; `IRInput.onEntityHovered`/`onEntityClicked` Lua callbacks fire correctly on Mac
-  - **Issue:** #353
-  - **Notes:** Root cause: `f_trixel_to_framebuffer.glsl` writes `HoveredEntityIdBuffer` with parity/origin/depth logic; the Metal counterpart `trixel_to_framebuffer.metal` only samples colors + distances with no SSBO/entity-id logic. CPU buffer and C++ binding (slot 14) already exist in `system_trixel_to_framebuffer.hpp`. `C_TriangleCanvasTextures::bind(0,1,2)` already binds entity IDs to texture unit 2. Metal runtime binds SSBOs by slot via `setBuffer` in `metal_render_impl.cpp`.
-  - **Links:**
-
 - [ ] **Render: screen-space sun shadow map — add bake pass (flag-guarded)** — implement `system_bake_sun_shadow_map` + GLSL/Metal compute shaders that project rasterized iso pixels into a sun-aligned 2D buffer via `imageAtomicMin`; gate behind `useScreenSpaceShadow_` flag
   - **ID:** T-070
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -247,7 +225,7 @@ Avoid:
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-065, T-070
+  - **Blocked by:** T-070
   - **Acceptance:** (1) `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers removed; (2) `system_bake_sun_shadow_map` is the sole shadow producer; (3) `engine/render/CLAUDE.md` and `engine/prefabs/irreden/render/CLAUDE.md` updated to drop occupancy/analytic-caster sections; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; shadow renders correctly; (5) revisit `C_CanvasAOTexture`/`C_CanvasSunShadow` construction per #367 during deletion pass
   - **Issue:** #358
   - **Notes:** PR 2 of 2 from issue #358. Must wait for T-065 (12-file render-system-params migration) to land first — `system_compute_sun_shadow.hpp` and `system_build_occupancy_grid.hpp` are the exact files T-065 migrates; if PR 2 races T-065, both sides conflict on every line. PR 1 (T-070) adds new path; this PR deletes the old one. Several closed issues (pre-existing size mismatch, multi-canvas SSBO collision, SDF shadow artifacts) resolved by construction once old paths are removed.
@@ -262,39 +240,6 @@ Avoid:
   - **Acceptance:** (1) `system_compute_light_volume.hpp` has no per-frame CPU `vector<>` or `std::fill` of volume-sized buffers; `subImage3D` upload for the volume texture removed; (2) GPU seed pass + propagate pass(es) replace CPU BFS; light sources seeded via compute dispatch; (3) `IRLightingCombined` and `IRLightingEmissive` outputs within sample-noise of pre-migration reference; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #359
   - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
-  - **Links:**
-
-- [~] **Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2)** — add "Opus-only items" section to review-pr, wire render-debug-loop into worker render-PR flow, rewrite blocker/needs-fix boundary, add GLSL-without-Metal parity flag
-  - **ID:** T-075
-  - **Area:** tooling, docs
-  - **Model:** opus
-  - **Owner:** claude/T-075-opus-only-checklist
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `review-pr/SKILL.md` has explicit "Opus-only items" section (GPU buffer lifetime, archetype-mutation race, allocator behavior, hot-path register pressure); (2) `role-opus-reviewer.md` clarifies Opus does not re-run Sonnet's checks; (3) `review-pr` render checklist has ❌ new `*.glsl` without matching `*.metal`; (4) `review-pr/SKILL.md` blocker-vs-needs-fix definition rewritten with concrete criteria; (5) `role-sonnet-author.md` and `role-opus-worker.md` invoke `render-debug-loop` for render-touching PRs after `attach-screenshots`
-  - **Issue:** #379
-  - **Notes:** Tier 2 of 3 from issue #379 (findings #6–9). Issue author tags as `[opus]` — especially #6 (Opus-only sub-checklist is a design call about what Opus should be uniquely doing). Finding #9 (`render-debug-loop` not gated) is referenced in `engine/render/CLAUDE.md:160-167`.
-  - **Links:**
-
-- [~] **Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute** — fix merger give-up path to abort + switch back; lift branch-lock filter into shared helper for merger + opus-worker; add Edit/Write hook to catch worktree misroute
-  - **ID:** T-078
-  - **Area:** tooling, docs
-  - **Model:** opus
-  - **Owner:** claude/T-078-worktree-contention
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) merger give-up path always runs `git rebase --abort && git switch claude/merger-scratch` before exiting; (2) shared `fleet-worktree-busy-branches` helper (or equivalent) applied at merger step 3.5 and opus-worker step 1c to skip branch-locked candidates; (3) a `settings.json PreToolUse:Edit|Write` hook warns or blocks when a worktree agent writes to the parent-clone path outside its worktree prefix (or role docs updated with explicit path-prefix rule); (4) doc and script changes only; no engine build required
-  - **Issue:** #385
-  - **Notes:** Three issues from feedback: B1 merger left mid-rebase state on `claude/T-055-trixel-cardinal-yaw` blocking opus-worker from checking out the branch; B2 `git checkout -B` fails with "branch is already used by worktree" in merger candidate selection and author pickup paths; B3 agent in worktrees/opus-worker-1 used absolute paths pointing to parent clone instead of own worktree — Edit succeeded silently, build passed against clean code. Blast radius of B3: if parent clone were on another branch, `git restore` could have nuked another agent's work.
-  - **Links:**
-
-- [~] **Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries** — carve Edit/Write permission for .claude/commands/ files in open PR diff; allowlist rm for .fleet/plans/; restore fleet-down session summaries to all roles
-  - **ID:** T-079
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-079-permissions-and-summaries
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) harness gate exception carved for `.claude/commands/*.md` files in an open PR's diff (or inline-Python workaround officially documented in role docs); (2) `~/.claude/settings.json` allowlist includes `rm -f ~/.fleet/plans/*.md` and `rm -f .fleet/plans/*.md`; (3) `fleet-down` session summaries write for all active roles (workers, reviewers, queue-manager, merger), not just architects; smoke-test added to fleet-down asserting summary file count matches active-role count
-  - **Issue:** #386
-  - **Notes:** Three issues: C1 `.claude/commands/` Edit blocked even for files in an open PR's diff — inline-Python workaround discovered (`python3 -c "with open(path, 'w') as f: f.write(content)"`); C2 `rm -f ~/.fleet/plans/*.md` blocked by Bash sandbox — plan files accumulate forever; D1 `fleet-down` session summaries only written by architect roles since ~2026-04-20 — workers/reviewers/queue-manager/merger no longer writing summaries.
   - **Links:**
 
 - [~] **Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip** — enforce 30m floor between opus-reviewer relaunches; make fleet-claim resolve blockers via git merge-base; queue-manager detects stale [~] tasks merged to master and auto-flips to [x]
@@ -319,11 +264,11 @@ Avoid:
   - **Notes:** Two issues: E1 PR #382 (T-065) would have silently reverted ~590 lines of PR #368 (lighting fidelity polish) if merged — the `mergeable: CONFLICTING` status was the signal; Sonnet missed it because no `gh pr diff --stat` check exists; E2 PR #378 (T-063) was forked from `claude/T-062-lambda-decay` branch (not master), carrying T-062's 10 commits — `fleet:semantic-conflict` set by merger was misleading; the right resolution is `git rebase --onto origin/master <T-062-tip> <T-063-branch>` once T-062 merges. Detect via `git merge-base PR-head other-PR-head == other-PR-head`.
   - **Links:**
 
-- [ ] **Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts** — move rapidly-changing status prose from feature-PR-editable CLAUDE.md sections into queue-manager-owned file(s); update worker docs to restate only changed lines when editing shared status sections
+- [~] **Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts** — move rapidly-changing status prose from feature-PR-editable CLAUDE.md sections into queue-manager-owned file(s); update worker docs to restate only changed lines when editing shared status sections
   - **ID:** T-082
   - **Area:** tooling, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-082-status-prose-factor
   - **Blocked by:** (none)
   - **Acceptance:** (1) rapidly-changing status prose (e.g. "Open follow-ups", "Runtime gaps", "ships X of Y systems") factored out of CLAUDE.md sections that feature PRs touch, into queue-manager-owned file(s); OR `simplify/SKILL.md` flags diffs touching >2 paragraphs of a shared status section as conflict-prone; (2) worker docs updated: when editing CLAUDE.md "Open follow-ups"/"Status" sections, restate only changed lines; (3) path chosen (option 1 or 2) documented in `CLAUDE.md` or relevant role doc
   - **Issue:** #389
@@ -343,6 +288,11 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
+- [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
+- [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
+- [x] **T-065** — Render systems: migrate 12 files off function-local static onto SystemParams · Owner: claude/T-065-render-system-params · PR: https://github.com/jakildev/IrredenEngine/pull/382
+- [x] **T-075** — Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2) · Owner: claude/T-075-opus-only-checklist · PR: https://github.com/jakildev/IrredenEngine/pull/395
 - [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392
 - [x] **T-076** — Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3) · Owner: claude/T-076-worker-doc-tweaks · PR: https://github.com/jakildev/IrredenEngine/pull/391
 - [x] **T-077** — Fleet: label discipline — verdict-without-label, has-nits stripping, changes-made handoff · Owner: claude/T-077-label-discipline · PR: https://github.com/jakildev/IrredenEngine/pull/393
@@ -358,8 +308,3 @@ Avoid:
 - [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
 - [x] **T-051** — Modifier framework: migrate position + velocity-drag patterns · Owner: claude/T-051-modifier-position-velocity · PR: https://github.com/jakildev/IrredenEngine/pull/332
 - [x] **T-052** — Modifier framework: Lua bindings · Owner: claude/T-052-lua-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/331
-- [x] **T-054** — Render: world Z-yaw view/camera transform foundation (C_CameraYaw, cardinal/residual split, GPU feeders) · Owner: claude/T-054-camera-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/327
-- [x] **T-050** — Modifier framework: core runtime (registry, 5 resolver systems, source sweep) · Owner: claude/T-050-modifier-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/325
-- [x] **T-048** — CLAUDE.md sharing mechanism: baseline file + per-creation opt-out · Owner: claude/T-048-claude-md-sharing · PR: https://github.com/jakildev/IrredenEngine/pull/320
-- [x] **T-046** — Audit: component-with-helper patterns across engine prefabs, codify rules · Owner: claude/T-046-component-helper-audit · PR: https://github.com/jakildev/IrredenEngine/pull/319
-- [x] **T-045** — Fleet: stacked-PR: TASKS.md Stack: field for chain visibility · Owner: claude/T-045-stack-field-task-template · PR: https://github.com/jakildev/IrredenEngine/pull/318
