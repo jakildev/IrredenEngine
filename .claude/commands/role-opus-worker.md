@@ -1068,4 +1068,4 @@ human can tell which opus-worker observed what. See top-level
   permission gate blocks these paths even with `Edit(*)`/`Write(*)`
   in the allowlist. Use python3 for OS-level writes (sanctioned via
   `Bash(python3:*)` in the allowlist):
-  `python3 -c "f=open(path).read(); open(path, 'w').write(f.replace(old, new, 1))"`
+  `python3 -c "f=open(path).read(); assert old in f, 'string not found'; open(path, 'w').write(f.replace(old, new, 1))"`
