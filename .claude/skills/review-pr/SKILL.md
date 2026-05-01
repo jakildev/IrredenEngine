@@ -120,6 +120,11 @@ If stacked:
   stacked PRs' reviews is the main failure mode to avoid.
 - Verdict and label are set for this PR alone, the same way as a
   non-stacked PR.
+- **Flag upstream interface fragility.** For any new function,
+  component, system, or shader this PR introduces that depends on an
+  upstream symbol, note in the review body: "if `<upstream-symbol>`
+  changes between approval and merge, this downstream will need a
+  rebase." This alerts the human merger to sequence carefully.
 
 If the base is `master` and there's no `Stacked on:` line, this is a
 standalone PR — proceed with the rest of the flow as normal.
@@ -181,6 +186,8 @@ compliance or raise an issue.
   archetype changes invalidate addresses.
 - ❌ Capturing `this` or references to World managers in lambdas that outlive
   the World (e.g. lua callbacks registered before World teardown).
+- ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime can
+  outlive `World` (e.g. `std::thread` tasks, sol2 callback closures).
 
 **Render pipeline**
 - ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)` counter-
