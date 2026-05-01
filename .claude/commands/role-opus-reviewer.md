@@ -305,7 +305,9 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/opus-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, print
+4. After the reset, write a per-iteration summary:
+   `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   Then print
    `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
    ~30 minutes — no carry-over from this iteration.

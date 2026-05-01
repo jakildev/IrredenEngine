@@ -350,7 +350,9 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, print
+4. After the reset, write a per-iteration summary:
+   `fleet-iteration-summary sonnet-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   Then print
    `[sonnet-reviewer] Iteration complete. Next run in ~3m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
    ~3 minutes — no carry-over from this iteration.
