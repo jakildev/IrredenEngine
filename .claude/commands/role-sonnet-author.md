@@ -259,8 +259,9 @@ Each iteration:
         call — the removed label is guaranteed present (you set
         it in step b):
         `gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"`
-      - If it was `fleet:needs-fix` → no response label needed
-        (fleet reviewer will re-review automatically on next poll)
+      - If it was `fleet:needs-fix` → add `fleet:changes-made` so
+        the reviewer knows new commits arrived and should re-verify:
+        `gh pr edit <N> --add-label "fleet:changes-made"`
       - If it was `fleet:has-nits` → no response label needed; the
         existing `fleet:approved` stays valid (cleanups don't
         invalidate the approval)

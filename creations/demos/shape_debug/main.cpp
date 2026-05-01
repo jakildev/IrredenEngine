@@ -4,9 +4,11 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <cstring>
 #include <cstdlib>
+#include <numbers>
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -20,6 +22,7 @@
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/camera.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -60,6 +63,9 @@ bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by def
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
+float g_initialYawRadians = 0.0f;
+float g_initialYaw = 0.0f;
+bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 
 } // namespace
@@ -97,6 +103,13 @@ int main(int argc, char **argv) {
                 g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--yaw") == 0) {
+            if (i + 1 < argc) {
+                g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
+                g_initialYaw = static_cast<float>(std::atof(argv[i + 1]));
+                g_initialYawSet = true;
+                ++i;
+            }
         }
     }
 
@@ -119,6 +132,15 @@ int main(int argc, char **argv) {
     }
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
+    }
+    if (g_initialYawRadians != 0.0f) {
+        IRPrefab::Camera::setYaw(g_initialYawRadians);
+        IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
+                    g_initialYawRadians,
+                    g_initialYawRadians * (180.0f / std::numbers::pi_v<float>));
+    if (g_initialYawSet) {
+        IRPrefab::Camera::setYaw(g_initialYaw);
+        IR_LOG_INFO("Initial yaw: {} rad", g_initialYaw);
     }
     IREngine::gameLoop();
     return 0;
@@ -218,7 +240,7 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
     // Match GPU: in iso camera convention, smaller d = closer, so visible
     // window is [-dColor, +dColor/3] and front → t=0 (red), back → t=1.
     float dColor = boundingHalf.x + boundingHalf.y + boundingHalf.z;
-    float denom = std::max((4.0f / 3.0f) * dColor, 1.0f);
+    float denom = IRMath::max((4.0f / 3.0f) * dColor, 1.0f);
 
     for (int i = 0; i < voxelSet.numVoxels_; ++i) {
         if (voxelSet.voxels_[i].color_.alpha_ == 0)

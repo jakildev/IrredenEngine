@@ -527,6 +527,14 @@ doesn't fit either bucket cleanly.
 
 ### 9. Report the result
 
+**Fix-push convention:** if you are calling commit-and-push to push a
+fix in response to `fleet:needs-fix` feedback, add `fleet:changes-made`
+to the PR after the push so the reviewer knows new commits arrived and
+should re-verify. Your role file's feedback-fix flow handles the
+`fleet:changes-made` label step; check that step and do not skip it.
+Without `fleet:changes-made`, the reviewer has no signal to pick the
+PR back up and re-review.
+
 Reply with a compact summary:
 
 - The branch name you pushed.

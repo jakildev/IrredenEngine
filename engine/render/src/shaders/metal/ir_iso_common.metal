@@ -142,6 +142,48 @@ inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
 
+// Cardinal Z-yaw helpers (T-055). Mirrors shaders/ir_iso_common.glsl.
+// Sign convention is documented there; bodies here match line-for-line.
+
+inline int rasterYawCardinalIndex(float rasterYaw) {
+    // CPU snaps visualYaw to a multiple of pi/2 (Camera::computeYawSplit) so
+    // this index pick is exact at floats that survived the UBO upload. The
+    // round() defends against bit-wise drift only; it is not the cardinal-snap
+    // policy itself. Negative inputs (yaw=-pi/2 -> q=-1) fold via the (mod 4 +
+    // 4) mod 4 clamp.
+    constexpr float kHalfPi = 1.5707963267948966f;
+    int q = int(round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return int3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    return v;
+}
+
+inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return float3(-v.y,  v.x, v.z); // R_z(+pi/2)
+    if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z); // R_z(+/-pi)
+    if (cardinalIndex == 3) return float3( v.y, -v.x, v.z); // R_z(-pi/2)
+    return v;
+}
+
+inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return int3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    return v;
+}
+
+// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
+// can reference it from ir_iso_common directly.
+inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
+    return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
+
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the
 // FrameDataVoxelToTrixel UBO in the GLSL pipeline.  std140 padding rules from
 // GLSL collapse cleanly into Metal's natural packing here.
@@ -155,10 +197,10 @@ struct FrameDataVoxelToTrixel {
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
-    float visualYaw;
-    float rasterYaw;
-    float residualYaw;
-    float _yawPadding;
+    float visualYaw;    // not consumed in T-055 — scaffolded for T-058
+    float rasterYaw;    // consumed: cardinal-snap basis selection
+    float residualYaw;  // not consumed in T-055 — scaffolded for T-058
+    float _yawPadding;  // not consumed in T-055 — scaffolded for T-058
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

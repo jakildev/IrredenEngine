@@ -178,6 +178,18 @@ compliance or raise an issue.
   `engine/system/include/irreden/ir_system_types.hpp`.
 - ❌ New component that isn't `C_`-prefixed, or whose public members don't
   have a trailing `_`.
+- ❌ `functionBeginTick` / `functionEndTick` declared with `Archetype&` or
+  any component parameter — they must be `void()`. The per-entity tick is
+  where entity data arrives; `begin`/`endTick` receive no entity args.
+- ❌ `endTick` reads `ids[0]` or indexes `ids` without a `ids.size() == 0`
+  guard — `begin`/`endTick` fire even when the archetype is empty.
+- ❌ system reads `C_Position3D` for visual placement instead of
+  `C_PositionGlobal3D + C_PositionOffset3D` — rendered position is always
+  Global + Offset (see `engine/CLAUDE.md`).
+- ❌ component method calls `IREntity::getComponent` / `setComponent` /
+  `createEntity` / `setParent` on a *different* entity (tier-c violation per
+  `engine/prefabs/CLAUDE.md`). Confirm the method appears on the documented
+  exceptions list before allowing.
 
 **Ownership / lifetime**
 - ❌ `shared_ptr` where `unique_ptr` would do.
@@ -186,15 +198,47 @@ compliance or raise an issue.
   archetype changes invalidate addresses.
 - ❌ Capturing `this` or references to World managers in lambdas that outlive
   the World (e.g. lua callbacks registered before World teardown).
+<<<<<<< claude/T-076-worker-doc-tweaks
 - ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime can
   outlive `World` (e.g. `std::thread` tasks, sol2 callback closures).
+=======
+- ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime
+  can outlive `World` (background threads, sol2 callback closures, long-lived
+  caches) — see `engine/world/CLAUDE.md` and `engine/CLAUDE.md`.
+>>>>>>> master
 
 **Render pipeline**
-- ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)` counter-
-  part.
+- ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)`
+  counterpart. `vec3` members pad to 16 bytes; array elements stride to 16
+  bytes; members crossing a 16-byte boundary need `alignas(16)`. If either
+  the C++ struct (in `engine/render/include/irreden/render/`) or its shader
+  `uniform` block changed, cross-reference both sides.
+- ❌ shader references `binding = N` but the C++ `kBufferIndex_*` constant
+  was not updated — the mismatch is silent (wrong uniforms, no error).
+  Confirm every bind-point index agrees on both sides.
 - ❌ New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
 - ❌ Canvas allocation before the canvas entity exists.
 - ❌ Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
+- ❌ new `*.glsl` added without a matching `*.metal` counterpart (if parity
+  is intentionally deferred, the PR body must acknowledge it and reference a
+  follow-up task).
+
+**Lighting** (if the diff touches `system_*ao*`, `system_*shadow*`,
+`system_*flood*`, `system_*fog*`, `system_build_occupancy_grid*`, or any
+`c_compute_*shadow*.glsl` / `.metal`)
+- Check 1 (grid coverage): `system_build_occupancy_grid.hpp` iterates the
+  full voxel pool — it does **not** include `cull_viewport_state.hpp` and
+  does not call `visibleIsoViewport`. Off-screen geometry participates in
+  lighting by design.
+- Check 2 (shadow-ring extent): if chunk streaming is involved, the
+  resident-chunk set extends past the view frustum by
+  `maxCasterHeight × cot(sunAltitude)` in the sun-projection direction.
+- Check 3 (light-seed expansion): the flood-fill seed gather does not filter
+  by `visibleIsoViewport` without expanding by `C_LightSource::radius_`.
+  Off-screen light sources within radius must still seed on-screen tiles.
+- Check 4 (AO/shadow guard band): when chunk streaming is active, the
+  resident chunk set includes a 1-chunk guard band in all six directions for
+  correct AO neighbor-voxel sampling.
 
 **Math / coordinates**
 - ❌ Mixing 3D world coords with iso 2D coords without going through
@@ -230,7 +274,13 @@ compliance or raise an issue.
   `CLAUDE.md` for the review-specific rules (some creations split the
   two). If neither exists, the engine-level checklist is the only bar.
 
-### 5. Write the review
+### 5. Write the review and set the verdict label
+
+**These are one indivisible action.** Post the review comment and set
+the verdict label in immediate succession — no intervening bash calls,
+no context switches. A review without a verdict label is invisible to
+the human's merge queue (observed on PR #230 where both passes approved
+but the label was never set — PR sat unlabeled for hours).
 
 Post the review as a PR comment via `gh pr review`. **Do NOT use
 `--body "$(cat <<'EOF'...)"` or any `$(...)` command substitution** —
@@ -317,34 +367,17 @@ review actions on your own PRs. The `--comment` review above is sufficient;
 the verdict line in the body is what the human reads to decide whether to
 merge. Merging is always the user's call.
 
-### 5b. Set the PR label to match the verdict
+### 5b. Set the verdict label (step 5 sequence, continued)
 
-**This step is non-negotiable.** A review without a verdict label is
-invisible to the human's merge queue — they filter PRs by label, not
-by review body. Posting a review and then exiting without setting the
-label leaves the PR in limbo (observed in production on PR #230, where
-both first-pass and re-review approved but the agent only described
-the label in the body and never ran the gh command — PR sat unlabeled
-for hours).
-
-Your VERY NEXT bash call after `gh pr review --comment ...` MUST be
-the `gh pr edit ... --add-label` below. Don't move on to the next PR
-or invoke any other skill until you've confirmed the label is set
-(verify with `gh pr view <N> --json labels --jq '.labels[].name'` if
-you need to be sure).
-
-**Always remove stale verdict labels before adding the new one** —
-a PR should have exactly one verdict label (`fleet:approved` /
-`fleet:needs-fix` / `fleet:blocker`) at any time. The
-`fleet:has-nits` label is orthogonal — it can ride on top of
-`fleet:approved`. The remove list also clears
-`fleet:awaiting-upstream-review` so a previously-gated stacked PR
-exits the gate cleanly when the reviewer finally proceeds.
-
-Each verdict also clears `fleet:stacked-rebase` (set by the merger
-when a stacked PR's base just merged and got re-targeted to master)
-— the re-eval after the re-target IS the action that label is
-waiting for, regardless of which verdict you reach.
+**Immediately after** `gh pr review --comment --body-file .review-body.md`,
+run the verdict label command — your very next bash call. No intervening
+calls. Always remove stale verdict labels before adding the new one — a PR
+should have exactly one verdict label (`fleet:approved` / `fleet:needs-fix`
+/ `fleet:blocker`) at any time. `fleet:has-nits` is orthogonal — it rides
+on top of `fleet:approved`. The remove list also clears
+`fleet:awaiting-upstream-review` (previously-gated stacked PR exits cleanly)
+and `fleet:stacked-rebase` (re-eval after a stacked-PR retarget completes
+the label's intent).
 
 ```bash
 # For approve, no nits in body:
@@ -518,6 +551,13 @@ comments:
    step 2a) is the cutoff. Commits older than that were already reviewed; commits
    newer than that are the delta to inspect. Avoid re-examining already-reviewed
    code — focus the checklist on what changed.
+
+   **Re-apply guard:** If new commits are present since the last review, you MUST
+   work through every previously-flagged item in the resolution table (step 2e)
+   before confirming the old verdict. Never re-apply `fleet:needs-fix` or
+   `fleet:blocker` without checking whether the new commits actually address the
+   issue. If new commits clearly fix all flagged items, the verdict may improve
+   to `approve` even if prior iterations set `fleet:needs-fix`.
 
 4. **Run the full fresh-eyes checklist** (Step 4 of the main flow) against the
    new commits. Carry forward any "Still open" or "Location changed" items from
