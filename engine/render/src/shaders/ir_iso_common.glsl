@@ -130,3 +130,57 @@ ivec3 roundHalfUp(vec3 v) {
 int roundHalfUp(float v) {
     return int(floor(v + 0.5));
 }
+
+// Cardinal Z-yaw helpers (T-055).
+// FrameDataVoxelToTrixel.rasterYaw is guaranteed to be a multiple of pi/2 by
+// the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
+// renderer uses one of four basis-vector permutations selected by an integer
+// index in [0, 3] so integer voxel positions still land on integer trixel
+// pixels post-rotation. residualYaw is consumed by a downstream screen-space
+// composite pass; these helpers ignore it.
+//
+// Sign convention: rotateCardinalZ is world->view = R_z(-rasterYaw) — same as
+// the continuous-yaw matrix in c_shapes_to_trixel.glsl (T-056). At
+// visualYaw=+pi/2 the camera turns +90 deg around +Z; from the view's POV the
+// world appears to spin -90 deg, so world (+X,0,0) lands at view (0,-Y,0) and
+// projects to iso (-1,+1). Voxels (this helper) and shapes (T-056) MUST share
+// this convention or they desync at non-zero yaw.
+
+int rasterYawCardinalIndex(float rasterYaw) {
+    // CPU snaps visualYaw to a multiple of pi/2 (Camera::computeYawSplit) so
+    // this index pick is exact at floats that survived the UBO upload. The
+    // round() defends against bit-wise drift only; it is not the cardinal-snap
+    // policy itself. Negative inputs (yaw=-pi/2 -> q=-1) fold via the (mod 4 +
+    // 4) mod 4 clamp.
+    const float kHalfPi = 1.5707963267948966f;
+    int q = int(round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return ivec3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    return v;
+}
+
+vec3 rotateCardinalZInv(vec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);    // R_z(+pi/2)
+    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);    // R_z(+/-pi)
+    if (cardinalIndex == 3) return vec3( v.y, -v.x, v.z);    // R_z(-pi/2)
+    return v;
+}
+
+ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return ivec3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    return v;
+}
+
+// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
+// can reference it from ir_iso_common directly.
+vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
+    return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}

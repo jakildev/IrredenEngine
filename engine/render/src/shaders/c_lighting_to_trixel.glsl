@@ -142,15 +142,24 @@ void main() {
     if (lightVolumeEnabled != 0) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
+        // Subdivision-aware canvasOffset matches c_compute_voxel_ao.glsl.
+        // At cardinalIndex==0 the path collapses to master so yaw=0 stays
+        // byte-identical; non-zero cardinal yaw composes R(-rasterYaw)
+        // afterward to recover world coordinates.
         const int subdivisions = max(voxelRenderOptions.y, 1);
         const vec2 canvasOffset = (voxelRenderOptions.x != 0)
             ? frameCanvasOffset * float(subdivisions)
             : frameCanvasOffset;
         const ivec2 isoRel =
             pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
+        const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
         vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+
         if (voxelRenderOptions.x != 0) {
             pos3D /= float(subdivisions);
+        }
+        if (cardinalIndex != 0) {
+            pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
         }
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE

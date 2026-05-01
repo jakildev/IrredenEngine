@@ -46,6 +46,7 @@ kernel void c_voxel_visibility_compact(
     uint3 localId [[thread_position_in_threadgroup]],
     uint localIndex [[thread_index_in_threadgroup]]
 ) {
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const uint workGroupIndex = groupId.x + groupId.y * groupCount.x;
     const uint idx = workGroupIndex * 64u + localId.x;
 
@@ -55,7 +56,10 @@ kernel void c_voxel_visibility_compact(
             const uint packedColor = colors[idx];
             const uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
-                const int3 voxelPos = int3(round(positions[idx].xyz));
+                int3 voxelPos = int3(round(positions[idx].xyz));
+                if (cardinalIndex != 0) {
+                    voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                }
                 const int2 isoPos = pos3DtoPos2DIso(voxelPos);
                 if (isoPos.x >= frameData.cullIsoMin.x &&
                     isoPos.x <= frameData.cullIsoMax.x &&

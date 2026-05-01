@@ -73,11 +73,20 @@ kernel void c_voxel_to_trixel_stage_2(
     const uint2 localId = localId3.xy;
     const int face = localIDToFace_2x3(localId);
 
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
+    // At cardinalIndex==0 the rotation is the identity; gating it behind a
+    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
+    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
+    // pixel-for-pixel against master.
+
     if (frameData.voxelRenderOptions.x == 0) {
-        const int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face
         );
@@ -110,8 +119,11 @@ kernel void c_voxel_to_trixel_stage_2(
         frameData.trixelCanvasOffsetZ1 +
         int2(floor(frameData.frameCanvasOffset * float(subdivisions)));
 
-    const int3 microPositionFixed =
+    int3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+    if (cardinalIndex != 0) {
+        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);

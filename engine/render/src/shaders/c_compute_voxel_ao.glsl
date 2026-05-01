@@ -101,6 +101,14 @@ void main() {
     // encoding ever shifts, update c_voxel_to_trixel_stage_1.glsl and
     // c_voxel_to_trixel_stage_2.glsl in lockstep — all three shaders
     // must agree on rawDepth scaling.
+    //
+    // At yaw=0 (cardinalIndex==0) the path below collapses to the original
+    // master code so AO output stays byte-identical. At non-zero cardinal
+    // yaw the raster shaders write canvas pixels at iso(M . R(rasterYaw) .
+    // world); compose R(-rasterYaw) onto the iso inverse to recover world
+    // coords, and rotate the raster-frame outward / tangent vectors so the
+    // occupancy grid sampling walks the world axes.
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int subdivisions = max(voxelRenderOptions.y, 1);
     vec2 canvasOffset = (voxelRenderOptions.x != 0)
         ? frameCanvasOffset * float(subdivisions)
@@ -111,6 +119,9 @@ void main() {
     vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
     if (voxelRenderOptions.x != 0) {
         pos3D /= float(subdivisions);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
     // `IRMath::roundHalfUp` on the CPU side (see
@@ -136,6 +147,11 @@ void main() {
     } else {
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
+    }
+    if (cardinalIndex != 0) {
+        outward = rotateCardinalZInvI(outward, cardinalIndex);
+        t1 = rotateCardinalZInvI(t1, cardinalIndex);
+        t2 = rotateCardinalZInvI(t2, cardinalIndex);
     }
 
     ivec3 baseOut = surfaceVoxel + outward;
