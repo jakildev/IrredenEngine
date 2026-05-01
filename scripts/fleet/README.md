@@ -27,8 +27,19 @@ fleet workflow.
   `scripts/fleet/fleet-*` script into `~/bin/` and symlinks each
   `.claude/commands/role-*.md` into `~/.claude/commands/`. Picks up
   the game-architect role from `creations/game/` if that repo is
-  cloned. Warns (but does not edit) if `~/bin` is not on PATH.
-  Idempotent — re-run after every `git pull` that touches fleet tooling.
+  cloned. Installs shell completions; for zsh, **idempotently appends**
+  a marked two-line block to `~/.zshrc` that sources
+  `~/.zsh/completions/irreden-fleet.zsh` (skip duplicate if the marker
+  is already there). Use **`--no-zshrc`** or **`IRREDEN_INSTALL_SKIP_ZSHRC=1`**
+  to only symlink completions without editing `~/.zshrc` (e.g. CI).
+  Run **`install.sh --help`** for options. Warns (but does not edit PATH) if `~/bin` is
+  not on your PATH. **Ubuntu / WSL:** same script; bash completion uses
+  `~/.local/share/bash-completion/completions/` (needs the
+  `bash-completion` package and the usual `~/.bashrc` hook). The
+  `~/.zshrc` snippet is added only when you already use zsh (or macOS);
+  pure-bash setups are not given a new `~/.zshrc`.
+  Idempotent — re-run after every `git pull` that
+  touches fleet tooling.
 - **`fleet-run --targets`** (also the `fleet-run-targets` script in this
   directory) — lists names you can pass to `fleet-run`: built executables
   under `creations/` and `test/` by default, or `--plan` for CMake
@@ -37,6 +48,17 @@ fleet workflow.
 - **`fleet-help`** — prints an index of all `fleet-*` tools (build, run,
   tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
   forwards to `--help` when the tool supports it (or a short summary).
+- **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`
+  (built exe names when the word does not start with `-`) and
+  `fleet-build` (CMake demo names after `--target`). `install.sh`
+  symlinks it into `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
+  for bash-completion / Homebrew `bash-completion@2`.
+- **`completions/irreden-fleet.zsh`** — zsh entry: ensures `compinit` (if
+  needed), runs `bashcompinit`, then sources `fleet-run.bash`. **macOS
+  default shell is zsh**; the bash-completion directory is not used.
+  `install.sh` symlinks this and `fleet-run.bash` into `~/.zsh/completions/`
+  and may append a marked `source` line to `~/.zshrc` when zsh is likely in
+  use (see `install.sh`); safe to re-run.
 
 All files are portable across Linux (WSL/Ubuntu) and macOS. None
 requires sudo.

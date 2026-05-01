@@ -9,10 +9,42 @@
 # any git pull that touched scripts/fleet/ or .claude/commands/.
 #
 # Portable across Linux (WSL/Ubuntu) and macOS. Does not require sudo.
-# Does not edit shell startup files — if ~/bin is not on PATH, this
-# script prints the exact line to add for each common shell.
+# Optionally appends a marked snippet to ~/.zshrc for fleet-run tab
+# completion (see --no-zshrc). If ~/bin is not on PATH, prints the line
+# to add for each common shell.
 
 set -euo pipefail
+
+INSTALL_APPEND_ZSHRC=1
+[[ -n "${IRREDEN_INSTALL_SKIP_ZSHRC:-}" ]] && INSTALL_APPEND_ZSHRC=0
+for arg in "$@"; do
+    case "$arg" in
+        --no-zshrc)
+            INSTALL_APPEND_ZSHRC=0
+            ;;
+        -h | --help)
+            cat <<'EOF'
+Usage: install.sh [--no-zshrc]
+
+  Symlinks fleet scripts to ~/bin/, role slash commands to
+  ~/.claude/commands/, and shell completions (bash + zsh helpers).
+
+  For zsh, may append a marked two-line block to ~/.zshrc that sources
+  ~/.zsh/completions/irreden-fleet.zsh (only if macOS, or login shell is
+  zsh, or ~/.zshrc already exists — avoids creating ~/.zshrc on bash-only
+  Linux). Skips if the marker is already present (safe to re-run).
+
+  --no-zshrc   Do not modify ~/.zshrc (still symlinks ~/.zsh/completions/).
+               Same effect: IRREDEN_INSTALL_SKIP_ZSHRC=1 install.sh
+EOF
+            exit 0
+            ;;
+        *)
+            echo "install.sh: unknown option: $arg (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # Locate the repo root from the script's own path — this works whether
 # install.sh is invoked directly, via a relative path, or via a symlink
@@ -176,6 +208,73 @@ if [[ -f "$WITNESS_SRC" ]]; then
     echo "symlinked $WITNESS_DEST -> $WITNESS_SRC"
 fi
 
+# Bash programmable completion (fleet-run / fleet-build). Loaded by the
+# bash-completion package from XDG path on many Linux setups and
+# Homebrew bash-completion@2 on macOS.
+FLEET_COMP_SRC="$SCRIPT_DIR/completions/fleet-run.bash"
+BASH_COMP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+if [[ -f "$FLEET_COMP_SRC" ]]; then
+    mkdir -p "$BASH_COMP_DIR"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-run"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-build"
+    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build)"
+fi
+
+# Zsh: bash-completion dirs are not read by zsh; irreden-fleet.zsh uses
+# bashcompinit. Same files on every OS; ~/.zshrc is only touched when this
+# machine likely uses zsh (see _irreden_install_wants_zsh_rc).
+FLEET_ZSH_COMP_SRC="$SCRIPT_DIR/completions/irreden-fleet.zsh"
+ZSH_COMP_DIR="$HOME/.zsh/completions"
+_irreden_install_wants_zsh_rc() {
+    # macOS default login shell is zsh; many users have no ~/.zshrc yet.
+    [[ "$(uname -s 2>/dev/null)" == Darwin ]] && return 0
+    [[ -f "$HOME/.zshrc" ]] && return 0
+    [[ "${SHELL:-}" == */zsh ]] && return 0
+    return 1
+}
+
+if [[ -f "$FLEET_ZSH_COMP_SRC" && -f "$FLEET_COMP_SRC" ]]; then
+    mkdir -p "$ZSH_COMP_DIR"
+    ln -sf "$FLEET_COMP_SRC" "$ZSH_COMP_DIR/fleet-run.bash"
+    ln -sf "$FLEET_ZSH_COMP_SRC" "$ZSH_COMP_DIR/irreden-fleet.zsh"
+    echo "symlinked zsh completion helper -> $ZSH_COMP_DIR/irreden-fleet.zsh (+ fleet-run.bash)"
+
+    # Idempotent: one marked block in ~/.zshrc sources the symlinked helper.
+    ZSH_RC="$HOME/.zshrc"
+    ZSH_COMP_MARKER="# IRREDEN_ENGINE: fleet-run tab completion (install.sh)"
+    if ((INSTALL_APPEND_ZSHRC)) && ! _irreden_install_wants_zsh_rc; then
+        echo "note: skipped ~/.zshrc (not macOS, login shell is not zsh, and no ~/.zshrc yet)."
+        echo "      zsh helpers are in $ZSH_COMP_DIR — add the source line when you use zsh."
+    elif ((INSTALL_APPEND_ZSHRC)); then
+        if [[ -e "$ZSH_RC" && -d "$ZSH_RC" ]]; then
+            echo "install.sh: $ZSH_RC is a directory — not appending zsh snippet." >&2
+        elif [[ -f "$ZSH_RC" ]] && grep -qF "$ZSH_COMP_MARKER" "$ZSH_RC" 2>/dev/null; then
+            echo "note: zsh completion snippet already present in $ZSH_RC (marker unchanged)."
+        else
+            had_zshrc=0
+            [[ -f "$ZSH_RC" ]] && had_zshrc=1
+            if {
+                echo ""
+                echo "$ZSH_COMP_MARKER"
+                echo "[[ -r $ZSH_COMP_DIR/irreden-fleet.zsh ]] && source $ZSH_COMP_DIR/irreden-fleet.zsh"
+            } >>"$ZSH_RC" 2>/dev/null; then
+                if ((had_zshrc)); then
+                    echo "appended zsh completion snippet to $ZSH_RC"
+                else
+                    echo "created $ZSH_RC with zsh completion snippet"
+                fi
+            else
+                echo "install.sh: could not write to $ZSH_RC — add this block manually:" >&2
+                echo "" >&2
+                echo "$ZSH_COMP_MARKER" >&2
+                echo "[[ -r $ZSH_COMP_DIR/irreden-fleet.zsh ]] && source $ZSH_COMP_DIR/irreden-fleet.zsh" >&2
+            fi
+        fi
+    else
+        echo "note: skipped ~/.zshrc (--no-zshrc or IRREDEN_INSTALL_SKIP_ZSHRC)."
+    fi
+fi
+
 # ----------------------------------------------------------------------
 # Step 2: symlink engine role slash commands into ~/.claude/commands
 # ----------------------------------------------------------------------
@@ -247,6 +346,29 @@ Then run 'fleet-up dry-run' to bring the fleet up.
 EOF
         ;;
 esac
+
+if [[ -f "$FLEET_COMP_SRC" ]]; then
+    echo
+    echo "Bash tab-completion for fleet-run / fleet-build (built targets and"
+    echo "  fleet-build --target names) installs under:"
+    echo "    $BASH_COMP_DIR"
+    echo "  Open a new bash login shell (or: source your bash-completion init)"
+    echo "  so it loads. Ubuntu/Debian: install the \`bash-completion\` package;"
+    echo "  many images already source /usr/share/bash-completion/bash_completion from ~/.bashrc."
+fi
+
+if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
+    echo
+    echo "zsh: tab completion for fleet-run / fleet-build uses ~/.zsh/completions/"
+    echo "  (bash-completion paths are not loaded by zsh by default.)"
+    if ((INSTALL_APPEND_ZSHRC)); then
+        echo "  If ~/.zshrc was updated, open a new terminal or \`source ~/.zshrc\`."
+    else
+        echo "  Add to ~/.zshrc (or re-run without --no-zshrc):"
+        echo "    [[ -r $ZSH_COMP_DIR/irreden-fleet.zsh ]] && source $ZSH_COMP_DIR/irreden-fleet.zsh"
+    fi
+    echo "  Then \`fleet-run IR<Tab>\` lists built executables, not cwd files."
+fi
 
 echo
 echo "install.sh: done."

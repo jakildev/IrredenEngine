@@ -524,7 +524,13 @@ The fleet launcher and its installer live in the engine repo under
   Symlinks `scripts/fleet/fleet-up` into `~/bin/fleet-up` and symlinks
   each `.claude/commands/role-*.md` into `~/.claude/commands/`. Picks
   up `creations/game/.claude/commands/role-game-architect.md` too if
-  the game repo is cloned.
+  the game repo is cloned. Also installs shell completions and, for zsh,
+  idempotently appends a marked block to `~/.zshrc` that sources
+  `~/.zsh/completions/irreden-fleet.zsh` when zsh is likely in use (macOS,
+  login shell `zsh`, or existing `~/.zshrc`); skipped on typical bash-only
+  Linux so `~/.zshrc` is not created spuriously. Use `--no-zshrc` or
+  `IRREDEN_INSTALL_SKIP_ZSHRC=1` to skip editing `~/.zshrc` anyway (e.g. CI).
+  See `install.sh --help`.
 
 First-time setup on this machine:
 
