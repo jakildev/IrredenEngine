@@ -31,6 +31,7 @@
 #include <irreden/common/modifier.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <list>
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ constexpr float kRowSpacingY = 8.0f;
 IRComponents::FieldBindingId g_speedField = IRComponents::kInvalidFieldId;
 IREntity::EntityId g_cubes[kNumCubes + 1] = {};  // 1-indexed [1..8]
 IREntity::EntityId g_sourceEntity7 = IREntity::kNullEntity;
+IREntity::EntityId g_hudSpeedEntity = IREntity::kNullEntity;
 
 bool g_lambda6Active = false;
 bool g_source7Killed = false;
@@ -214,6 +216,28 @@ void initSystems() {
         }
     );
 
+    // Must run after resolver + consume to show current-frame resolved values.
+    // Typed on C_TextSegment (one archetype) so beginTick fires exactly once per tick.
+    auto hudId = IRSystem::createSystem<C_TextSegment>(
+        "ModDemo_HudUpdate",
+        [](const C_TextSegment &) {},
+        []() {
+            if (IRModifierDemo::g_hudSpeedEntity == IREntity::kNullEntity) return;
+            char buf[256];
+            int n = std::snprintf(buf, sizeof(buf), "Resolved speed (base=%.3f):\n",
+                IRModifierDemo::kBaseSpeed);
+            for (int i = 1; i <= IRModifierDemo::kNumCubes; ++i) {
+                const auto &rf = IREntity::getComponent<C_ResolvedFields>(
+                    IRModifierDemo::g_cubes[i]);
+                float spd = rf.get(IRModifierDemo::g_speedField, IRModifierDemo::kBaseSpeed);
+                if (n > 0 && n < (int)sizeof(buf))
+                    n += std::snprintf(buf + n, sizeof(buf) - n, " [%d] %.3f\n", i, spd);
+            }
+            IREntity::getComponent<C_TextSegment>(
+                IRModifierDemo::g_hudSpeedEntity).text_ = buf;
+        }
+    );
+
     IRSystem::registerPipeline(IRTime::Events::UPDATE, {
         seedId,
         resolver.modifierDecay_,
@@ -222,6 +246,7 @@ void initSystems() {
         resolver.modifierResolveExempt_,
         resolver.modifierResolveLambda_,
         consumeId,
+        hudId,
         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
     });
 
@@ -308,6 +333,13 @@ void initEntities() {
             "[8] Clamp       x2 capped at base"
         },
         C_GuiPosition{4, 4},
+        C_TextStyle{}
+    );
+
+    // HUD: resolved speed readout, updated each tick by ModDemo_HudUpdate.
+    IRModifierDemo::g_hudSpeedEntity = IREntity::createEntity(
+        C_TextSegment{""},
+        C_GuiPosition{4, 160},
         C_TextStyle{}
     );
 }

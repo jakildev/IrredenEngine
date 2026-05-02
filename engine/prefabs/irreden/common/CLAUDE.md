@@ -86,6 +86,12 @@ and decomposition — is in `docs/design/modifiers.md`. Read that
 before adding to the framework or migrating an existing
 `base + offset` pattern onto it.
 
+The canonical visual reference is `creations/demos/modifier_demo/`:
+run `fleet-run IRModifierDemo` and press keys 1–8 to see each
+capability (Haste, Stun, Slow, Stack, GlobalSlow, LambdaSine,
+SourceKill, Clamp) live. The HUD shows per-cube resolved speed
+each tick.
+
 Key invariants the design rests on:
 
 - `Modifier` stays **trivially-copyable**. Anything needing inline
