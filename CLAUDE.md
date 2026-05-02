@@ -575,11 +575,16 @@ Specifically, **never pass these via `--label` when filing**:
     longer valid until the reviewer re-approves the amended diff).
     **Read as: "hold merge, fixes pending."**
   - `fleet:human-deferred` — worker filed the human's concerns as
-    a follow-up issue rather than amending this PR. Set when the
-    worker removes `human:needs-fix`; **kept** until the human
-    either accepts the deferral (PR merges with this label) or
-    re-adds `human:needs-fix` to force AMEND mode on the next
+    a follow-up issue rather than amending this PR. Set atomically
+    with `fleet:changes-made` when the worker removes `human:needs-fix`
+    (both in one `gh pr edit` call to prevent a labeless gap where
+    the reviewer could re-apply `fleet:needs-fix`). **Kept** until
+    the human either accepts the deferral (PR merges with this label)
+    or re-adds `human:needs-fix` to force AMEND mode on the next
     iteration. `fleet:approved` is kept (PR is internally OK).
+    **Reviewer agents skip PRs with this label** — the human is the
+    decision-maker; do NOT re-apply `fleet:needs-fix` for deferred
+    concerns.
     **Read as: "agent acknowledged your concerns, linked issue
     tracks them, you decide whether to merge as-is or re-flag."**
 - `fleet:design-blocked` / `fleet:design-unblocked` — paired
