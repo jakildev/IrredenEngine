@@ -97,29 +97,23 @@ ivec2 mouseTrixelPositionWorld() {
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
-    static void *s_mappedPtr = nullptr;
-
     auto *buf = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
     if (!buf)
         return IREntity::kNullEntity;
 
-    if (!s_mappedPtr) {
-        struct HoveredLayout {
-            uvec2 entityId;
-            float depth;
-            float _pad;
-        };
-        s_mappedPtr = buf->mapRange(
-            0,
-            sizeof(HoveredLayout),
-            BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
-        );
-    }
-    if (!s_mappedPtr)
+    // Re-fetch every frame: on Metal, subData orphans the MTL::Buffer on
+    // write (metal_buffer.cpp:58–79); a statically-cached pointer from
+    // mapRange would be stale by the next frame.
+    void *mappedPtr = buf->mapRange(
+        0,
+        sizeof(HoveredEntityIdLayout),
+        BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
+    );
+    if (!mappedPtr)
         return IREntity::kNullEntity;
 
     uvec2 packed;
-    std::memcpy(&packed, s_mappedPtr, sizeof(uvec2));
+    std::memcpy(&packed, mappedPtr, sizeof(uvec2));
 
     return static_cast<IREntity::EntityId>(packed.x) |
            (static_cast<IREntity::EntityId>(packed.y) << 32);
