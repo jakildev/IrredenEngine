@@ -98,21 +98,34 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                     if (!behavior.useCameraPositionIso_) {
                         return;
                     }
-                    if (p->frameData_.useScreenSpaceShadow_ == 0 ||
-                        p->frameData_.shadowsEnabled_ == 0) {
-                        return;
-                    }
-                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-                    // BAKE-owned region only; LOOKUP overwrites the legacy
-                    // prefix later this frame. Non-overlapping byte ranges.
+                    // BAKE-owned region: when active, upload flag + basis +
+                    // AABB; when gated off, upload just the flag (+ padding)
+                    // so COMPUTE sees the live toggle without reading stale
+                    // basis. COMPUTE overwrites the legacy prefix later this
+                    // frame — non-overlapping byte ranges.
                     constexpr std::size_t kBakeFieldsOffset =
                         offsetof(FrameDataSun, useScreenSpaceShadow_);
+                    constexpr std::size_t kBasisOffset =
+                        offsetof(FrameDataSun, sunBasisU_);
+                    constexpr std::size_t kFlagFieldsSize =
+                        kBasisOffset - kBakeFieldsOffset;
                     constexpr std::size_t kBakeFieldsSize =
                         sizeof(FrameDataSun) - kBakeFieldsOffset;
+
+                    const bool bakeActive =
+                        p->frameData_.useScreenSpaceShadow_ != 0 &&
+                        p->frameData_.shadowsEnabled_ != 0;
+                    const std::size_t uploadSize =
+                        bakeActive ? kBakeFieldsSize : kFlagFieldsSize;
                     const auto *base = reinterpret_cast<const std::byte *>(&p->frameData_);
                     p->sunShadowFrameDataBuf_
-                        ->subData(kBakeFieldsOffset, kBakeFieldsSize, base + kBakeFieldsOffset);
+                        ->subData(kBakeFieldsOffset, uploadSize, base + kBakeFieldsOffset);
+                    if (!bakeActive) {
+                        return;
+                    }
+
+                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
                     // Pass 1: clear the sun depth map to 0xFFFFFFFF.
                     p->clearProgram_->use();

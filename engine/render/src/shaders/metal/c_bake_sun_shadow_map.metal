@@ -84,7 +84,6 @@ kernel void c_bake_sun_shadow_map(
         return;
     }
 
-
     uint packed = packSunDepth(sunZ);
     atomic_fetch_min_explicit(
         &sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x],
