@@ -200,6 +200,17 @@ Avoid:
   - **Links:**
 
 
+- [ ] **Fleet: queue-manager bidirectional consistency pass** — add a label↔TASKS.md cross-check step to detect stranded `fleet:queued` issues and orphaned open tasks whose linked issues closed
+  - **ID:** T-090
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-queue-manager.md` includes a new consistency step that (a) for each open `fleet:queued` issue verifies TASKS.md has a matching `Issue: #N` entry — if not, strips `fleet:queued` so the next pass picks it up; (b) for each `[ ]`/`[~]` TASKS.md task with `Issue: #N`, verifies the issue is still open — if closed without a referencing PR, removes the entry from `## Open` and posts a note; (2) both engine and game repos covered; (3) step is idempotent; (4) queue-manager iteration summary reflects any labels stripped or tasks pruned
+  - **Issue:** #422
+  - **Notes:** Audit 2026-05-02 found three stranded issues (#341, #307, #386) with `fleet:queued` but no TASKS.md entry, and T-067 lingering in Open after its issue (#337) closed. Manual cleanup landed in PR #421 and via direct issue edits. This task adds the systematic guard to prevent recurrence. Both failure modes described in the issue body should be addressed.
+  - **Links:**
+
 - [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
   - **ID:** T-089
   - **Area:** engine/prefabs/irreden/common
