@@ -188,6 +188,30 @@ Avoid:
   - **Links:**
 
 
+- [ ] **Modifier demo creation: modifier_demo visual showcase** — scaffold `creations/demos/modifier_demo/` and implement an 8-cube interactive demo exercising every modifier framework capability via keyboard + HUD
+  - **ID:** T-088
+  - **Area:** creations/demos/modifier_demo
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key (1–8) triggers the corresponding modifier capability with an obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (manual verify on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces the committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #307
+  - **Notes:** Child 5 of 5 of modifier-framework epic #302. Children 1–4 (design doc #303, core runtime #304, pattern migration #305, Lua bindings #306) are all shipped. Full plan: `.fleet/plans/T-088.md`. Use `create-creation` skill for scaffolding. Lua wiring: register fields, spawn cubes, key handlers, HUD via trixel-text rendering. Key 5 global-slow needs `C_NoGlobalModifiers` tag binding (add in Lua binding layer if missing). Key 6 sinusoidal lambda needs `ir.time()` (plumb if absent). Key 7 source-kill verifies framework's entity-destruction sweep removes only the right source's modifiers. Keep cube count and Lua complexity low — ~200 lines of Lua is enough.
+  - **Links:**
+
+
+- [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
+  - **ID:** T-089
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test covers basic decay case (push lambda modifier with ticksRemaining=60, advance 60 ticks, assert removed); (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance to be defined by architect after design is locked.
+  - **Issue:** #341
+  - **Notes:** Part 1 is mechanical — mirrors `system_modifier_decay.hpp` but targets `C_LambdaModifiers`. Part 2 (stateful lambdas) is architectural: architect prefers option (c) — lambda + companion component — where state lives on entity in its own component and the lambda receives entity ID. Part 2 should be its own dedicated PR after Part 1 lands and design is locked; worker can do Part 1 standalone. Surfaced during architect review of PR #332; documented in `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups."
+  - **Links:**
+
+
 
 
 ---
