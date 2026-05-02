@@ -167,13 +167,13 @@ bool InputManager::checkGamepadButton(
         status == ButtonStatuses::RELEASED,
         "Invalid button status to check"
     );
-    IR_ASSERT(irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    IR_ASSERT(irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
     return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
         .checkButton(button, status);
 }
 
 float InputManager::getGamepadAxis(GamepadAxes axis, int irGamepadId) const {
-    IR_ASSERT(irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    IR_ASSERT(irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
     return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
         .getAxisValue(axis);
 }
