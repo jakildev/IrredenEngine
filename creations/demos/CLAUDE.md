@@ -19,6 +19,12 @@ No opt-outs.
   at varying subdivisions / zoom. Useful for chasing rendering glitches.
 - `midi_keyboard/` — keyboard-driven MIDI input demo.
 - `metal_clear_test/` — Metal-backend smoke test (clear-color only).
+- `lighting/` — lighting pipeline showcase (emissive voxels, light volume).
+- `modifier_demo/` — interactive modifier framework showcase. Eight cubes
+  each demonstrate one framework capability (Haste, Stun, Slow, Stack,
+  GlobalSlow, LambdaSine, SourceKill, Clamp) via number keys 1–8. Live
+  per-cube resolved-speed HUD. Canonical visual reference for the modifier
+  framework — see `engine/prefabs/irreden/common/CLAUDE.md`.
 
 ## Adding a new demo
 
