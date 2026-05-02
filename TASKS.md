@@ -152,16 +152,16 @@ Avoid:
 <!-- Add tasks below this line. -->
 
 
-- [~] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
+- [ ] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
   - **ID:** T-057
   - **Area:** engine/render, engine/input
   - **Model:** opus
-  - **Owner:** claude/T-057-picking-yaw-inverse
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
   - **Issue:** #313
-  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`.
+  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`. Prior PR #418 was closed without merging.
   - **Links:**
 
 
@@ -177,23 +177,13 @@ Avoid:
   - **Links:**
 
 
-- [~] **Render: screen-space sun shadow map — add bake pass (flag-guarded)** — implement `system_bake_sun_shadow_map` + GLSL/Metal compute shaders that project rasterized iso pixels into a sun-aligned 2D buffer via `imageAtomicMin`; gate behind `useScreenSpaceShadow_` flag
-  - **ID:** T-070
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-070-screen-space-sun-shadow-bake
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) new `system_bake_sun_shadow_map.hpp` + GLSL + Metal compute shaders committed; (2) `c_compute_sun_shadow.glsl` and Metal counterpart branch on `useScreenSpaceShadow_` flag; both paths produce equivalent shadow silhouettes; (3) `render-debug-loop` comparison screenshots show side-by-side parity; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) shadow silhouettes within ≤1 sun-space texel of existing implementation when flag disabled; (6) per-pixel cost drops from O(canvasPixels×64) to O(canvasPixels) when flag enabled
-  - **Issue:** #358
-  - **Notes:** PR 1 of 2 from issue #358. Full design at `docs/design/screen-space-sun-shadow-map.md`. Bake pass projects `trixelDistances` pixels into sun-aligned 2D buffer via `imageAtomicMin` on packed depth; lookup pass reads one texel per pixel. PR 1 adds new system alongside existing paths — no deletion yet. PR 2 (T-071) deletes occupancy grid + analytic caster paths; blocked on T-065 landing first.
-  - **Links:**
 
 - [ ] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
   - **ID:** T-071
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-070
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers removed; (2) `system_bake_sun_shadow_map` is the sole shadow producer; (3) `engine/render/CLAUDE.md` and `engine/prefabs/irreden/render/CLAUDE.md` updated to drop occupancy/analytic-caster sections; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; shadow renders correctly; (5) revisit `C_CanvasAOTexture`/`C_CanvasSunShadow` construction per #367 during deletion pass
   - **Issue:** #358
   - **Notes:** PR 2 of 2 from issue #358. Must wait for T-065 (12-file render-system-params migration) to land first — `system_compute_sun_shadow.hpp` and `system_build_occupancy_grid.hpp` are the exact files T-065 migrates; if PR 2 races T-065, both sides conflict on every line. PR 1 (T-070) adds new path; this PR deletes the old one. Several closed issues (pre-existing size mismatch, multi-canvas SSBO collision, SDF shadow artifacts) resolved by construction once old paths are removed.
@@ -212,27 +202,6 @@ Avoid:
 
 
 
-- [~] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
-  - **ID:** T-086
-  - **Area:** engine/input
-  - **Model:** sonnet
-  - **Owner:** claude/T-086-gamepad-audit
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) audit of existing gamepad code documented (coverage gap or "already complete"); (2) Xbox-compatible and PlayStation-compatible controller input works on Linux — button/stick/trigger events plus polled state; (3) hot-plug detection works; (4) gamepad API exposed via `ir_input.hpp` with doc comments alongside keyboard/mouse APIs; (5) small test creation or extended demo reads controller input end-to-end; (6) `fleet-build --target IRShapeDebug` clean
-  - **Issue:** #280
-  - **Notes:** Human comment: "pretty sure already implemented — worth a pass to see if there are any improvements." Audit first; add and document only where gaps exist. macOS support is nice-to-have. No per-controller-type special-casing in consumer code. Escalate to [opus] if input architecture needs structural changes to support gamepads cleanly.
-  - **Links:**
-
-- [~] **Sprite rendering: C_Sprite / C_SpriteSheet components + design note** — define component types, register in ECS enum, write sprite design note, and commit Lua-binding stub header (child 1 of 5 of epic #14)
-  - **ID:** T-087
-  - **Area:** engine/prefabs/irreden/render/, docs
-  - **Model:** opus
-  - **Owner:** claude/T-087-sprite-components
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) design note checked into repo and cross-linked from `engine/prefabs/irreden/render/CLAUDE.md`; (2) `C_Sprite` and `C_SpriteSheet` compile and are registered in the ECS component enum; (3) Lua-binding stub header committed (reflection-only, no behavior); (4) `fleet-build --target IRShapeDebug` clean on the active preset
-  - **Issue:** #282
-  - **Notes:** Child 1 of 5 of epic #14 (2D sprite rendering). Full plan at `.fleet/plans/T-087.md`. Sprites are screen-composite at `FRAMEBUFFER_TO_SCREEN` stage — not trixel content. Flat-depth semantics; v1 depth = iso-projection of `C_Position3D` anchor. Bottom-center anchor default (`vec2{0.5f, 0.0f}`). Z-sort among sprites only in v1; cross-layer sort is Part 2. Sprites bypass all lighting (by design). Follow `IRPrefab::Sprite::` namespace per #266. Existing `system_sprites_to_screen.hpp` stub and `entity_voxel_sprite.hpp` are out of scope for this task.
-  - **Links:**
 
 ---
 
@@ -247,6 +216,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
+- [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
+- [x] **T-070** — Render: screen-space sun shadow map — add bake pass (flag-guarded) · Owner: claude/T-070-screen-space-sun-shadow-bake · PR: https://github.com/jakildev/IrredenEngine/pull/406
 - [x] **T-083** — render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write · Owner: claude/T-083-metal-uaf-stale-pointer · PR: https://github.com/jakildev/IrredenEngine/pull/416
 - [x] **T-085** — fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix · Owner: claude/T-085-changes-made-sequencing · PR: https://github.com/jakildev/IrredenEngine/pull/414
 - [x] **T-084** — merger: dedupe semantic-conflict re-comments when sha pair unchanged · Owner: claude/T-084-merger-dedupe-conflict-comments · PR: https://github.com/jakildev/IrredenEngine/pull/413
@@ -264,6 +236,3 @@ Avoid:
 - [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392
 - [x] **T-076** — Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3) · Owner: claude/T-076-worker-doc-tweaks · PR: https://github.com/jakildev/IrredenEngine/pull/391
 - [x] **T-077** — Fleet: label discipline — verdict-without-label, has-nits stripping, changes-made handoff · Owner: claude/T-077-label-discipline · PR: https://github.com/jakildev/IrredenEngine/pull/393
-- [x] **T-074** — Fleet docs: add silent-correctness rule coverage to review-pr + simplify (Tier 1) · Owner: claude/T-074-review-simplify-checks · PR: https://github.com/jakildev/IrredenEngine/pull/390
-- [x] **T-056** — Render: SDF shape rasterization under arbitrary Z-yaw · Owner: claude/T-056-sdf-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/334
-- [x] **T-055** — Render: trixel rasterization under cardinal-snap Z-yaw · Owner: claude/T-055-trixel-cardinal-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/333
