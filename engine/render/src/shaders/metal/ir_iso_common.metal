@@ -158,6 +158,18 @@ inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOff
     ) & 1;
 }
 
+// Clamp a float canvas-pixel position into a valid `texture.read()` index.
+// Mirrors the `clamp(originIndex, ivec2(0), textureSize - 1)` pattern in
+// the GLSL fragment.
+inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
+    return uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
+}
+
+// Mirror of `trixelFramebufferSamplePosition` in `ir_iso_common.glsl`. The
+// parity bit + fract sub-pixel test pick which row of the iso quad cell's
+// two trixels this fragment maps to. Identical math to GLSL/CPU
+// `pos2DIsoToTriangleIndex` so the same canvas data reads back the same
+// way on both backends.
 inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
     const float2 originFloored = floor(origin);
     const float2 fractComp = fract(origin);
