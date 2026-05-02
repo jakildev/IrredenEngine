@@ -621,7 +621,7 @@ layout (two windows):
     bottom — witness        terminal (\$HOME, free-form shell)
 
 effort levels:
-  opus agents (architects, opus-workers, opus-reviewer, merger) — max
+  opus agents (architects, opus-workers, opus-reviewer, merger) — xhigh
   sonnet agents (sonnet-fleet-1/2, sonnet-reviewer, queue-manager) — high
   override globally by exporting FLEET_EFFORT=<level> before fleet-up.
   (to change one pane, edit fleet-babysit's case statement — fleet-up

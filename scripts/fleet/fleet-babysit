@@ -61,12 +61,14 @@ ROLE="${2:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 MODE="${3:-dry-run}"
 LOOP_INTERVAL="${4:-}"
 
-# Effort level — derived from model. Opus agents get max thinking
-# budget (architects + workers do the hard reasoning). Sonnet agents
-# get high (good output without burning the budget on tasks where
+# Effort level — derived from model. Opus agents get xhigh (one notch
+# below `max`); architects, opus-workers, opus-reviewer, and merger
+# all do the hard reasoning, but `max` was burning budget faster than
+# the marginal quality justified on routine fleet iterations. Sonnet
+# agents get high (good output without burning budget on tasks where
 # diminishing returns kick in).
 case "$MODEL" in
-    opus|claude-opus*) EFFORT="max" ;;
+    opus|claude-opus*) EFFORT="xhigh" ;;
     sonnet|claude-sonnet*) EFFORT="high" ;;
     *) EFFORT="high" ;;
 esac
