@@ -456,9 +456,12 @@ exit cleanly:
            2. `git rev-parse origin/<headRefName>` — PR head sha
               (ref already fetched in step a)
            3. Fetch the most recent merger comment body (single command):
-              `gh pr view <N> --repo <engine-repo> --json comments --jq '[.comments[] | select(.body | test("fleet merger"))] | last | .body'`
+              `gh pr view <N> --repo <engine-repo> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
            4. Scan the returned body for a `SHA pair:` line (added to
-              the comment template below). Extract the two SHAs.
+              the comment template below). Extract the two SHAs. (If the
+              returned body is null or empty — jq `| last` on an empty
+              array — treat as "no prior merger comment found" and
+              proceed to step 6.)
            5. If both SHAs match the current values:
               - Skip the comment and label additions below.
               - Re-add the cooldown label only:
