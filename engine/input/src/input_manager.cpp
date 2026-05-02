@@ -158,8 +158,23 @@ bool InputManager::hasAnyButtonPressedThisFrame() const {
     return false;
 }
 
-float InputManager::getAxisValue(GamepadAxes axis, int irGamepadId) const {
-    return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities.at(irGamepadId))
+bool InputManager::checkGamepadButton(
+    GamepadButtons button, ButtonStatuses status, int irGamepadId
+) const {
+    IR_ASSERT(
+        status == ButtonStatuses::PRESSED ||
+        status == ButtonStatuses::HELD ||
+        status == ButtonStatuses::RELEASED,
+        "Invalid button status to check"
+    );
+    IR_ASSERT(irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
+        .checkButton(button, status);
+}
+
+float InputManager::getGamepadAxis(GamepadAxes axis, int irGamepadId) const {
+    IR_ASSERT(irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
         .getAxisValue(axis);
 }
 

@@ -74,4 +74,12 @@ bool hasAnyButtonPressedThisFrame() {
     return getInputManager().hasAnyButtonPressedThisFrame();
 }
 
+bool checkGamepadButton(GamepadButtons button, ButtonStatuses buttonStatus, int irGamepadId) {
+    return getInputManager().checkGamepadButton(button, buttonStatus, irGamepadId);
+}
+
+float getGamepadAxis(GamepadAxes axis, int irGamepadId) {
+    return getInputManager().getGamepadAxis(axis, irGamepadId);
+}
+
 } // namespace IRInput
