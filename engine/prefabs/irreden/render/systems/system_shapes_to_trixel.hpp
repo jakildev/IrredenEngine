@@ -180,8 +180,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     IRPrefab::Camera::computeYawSplit(p->visualYaw_);
                 p->rasterYaw_ = rasterYaw;
                 p->residualYaw_ = residualYaw;
-                p->yawCos_ = IRMath::cos(p->rasterYaw_);
-                p->yawSin_ = IRMath::sin(p->rasterYaw_);
+                static constexpr float kCardinalCos[4] = {1.f, 0.f, -1.f, 0.f};
+                static constexpr float kCardinalSin[4] = {0.f, 1.f, 0.f, -1.f};
+                constexpr float kHalfPi = 1.5707963267948966f;
+                const int q = IRMath::round(rasterYaw / kHalfPi);
+                const int cardinalIdx = ((q % 4) + 4) % 4;
+                p->yawCos_ = kCardinalCos[cardinalIdx];
+                p->yawSin_ = kCardinalSin[cardinalIdx];
                 p->yawZero_ = (p->rasterYaw_ == 0.0f);
 
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
