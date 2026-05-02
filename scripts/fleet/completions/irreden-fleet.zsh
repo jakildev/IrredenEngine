@@ -1,4 +1,4 @@
-# Zsh: fleet-run / fleet-build tab completion via bashcompinit + fleet-run.bash
+# Zsh: fleet-run / fleet-build / fleet-debug completion via bashcompinit + fleet-run.bash
 #
 # Install: scripts/fleet/install.sh symlinks this file and fleet-run.bash into
 #   ~/.zsh/completions/ and idempotently appends a marked source line to

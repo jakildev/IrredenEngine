@@ -100,6 +100,8 @@ FLEET_CLAIM_SRC="$SCRIPT_DIR/fleet-claim"
 FLEET_CLAIM_DEST="$HOME/bin/fleet-claim"
 FLEET_BUILD_SRC="$SCRIPT_DIR/fleet-build"
 FLEET_BUILD_DEST="$HOME/bin/fleet-build"
+FLEET_DEBUG_SRC="$SCRIPT_DIR/fleet-debug"
+FLEET_DEBUG_DEST="$HOME/bin/fleet-debug"
 FLEET_RUN_SRC="$SCRIPT_DIR/fleet-run"
 FLEET_RUN_DEST="$HOME/bin/fleet-run"
 FLEET_RUN_TARGETS_SRC="$SCRIPT_DIR/fleet-run-targets"
@@ -131,7 +133,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -158,6 +160,11 @@ fi
 if [[ -f "$FLEET_BUILD_SRC" ]]; then
     ln -sf "$FLEET_BUILD_SRC" "$FLEET_BUILD_DEST"
     echo "symlinked $FLEET_BUILD_DEST -> $FLEET_BUILD_SRC"
+fi
+
+if [[ -f "$FLEET_DEBUG_SRC" ]]; then
+    ln -sf "$FLEET_DEBUG_SRC" "$FLEET_DEBUG_DEST"
+    echo "symlinked $FLEET_DEBUG_DEST -> $FLEET_DEBUG_SRC"
 fi
 
 if [[ -f "$FLEET_RUN_SRC" ]]; then
@@ -224,7 +231,8 @@ if [[ -f "$FLEET_COMP_SRC" ]]; then
     mkdir -p "$BASH_COMP_DIR"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-run"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-build"
-    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build)"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-debug"
+    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug)"
 fi
 
 # Zsh: bash-completion dirs are not read by zsh; irreden-fleet.zsh uses
@@ -356,7 +364,7 @@ esac
 
 if [[ -f "$FLEET_COMP_SRC" ]]; then
     echo
-    echo "Bash tab-completion for fleet-run / fleet-build (built targets and"
+    echo "Bash tab-completion for fleet-run / fleet-build / fleet-debug (built targets and"
     echo "  fleet-build --target names) installs under:"
     echo "    $BASH_COMP_DIR"
     echo "  Open a new bash login shell (or: source your bash-completion init)"
