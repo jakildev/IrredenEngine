@@ -152,11 +152,11 @@ Avoid:
 <!-- Add tasks below this line. -->
 
 
-- [ ] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
+- [~] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
   - **ID:** T-057
   - **Area:** engine/render, engine/input
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-057-picking-yaw-inverse
   - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
@@ -165,11 +165,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
+- [~] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
   - **ID:** T-071
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-071-delete-occupancy-grid
   - **Blocked by:** (none)
   - **Acceptance:** (1) `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers removed; (2) `system_bake_sun_shadow_map` is the sole shadow producer; (3) `engine/render/CLAUDE.md` and `engine/prefabs/irreden/render/CLAUDE.md` updated to drop occupancy/analytic-caster sections; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; shadow renders correctly; (5) revisit `C_CanvasAOTexture`/`C_CanvasSunShadow` construction per #367 during deletion pass
   - **Issue:** #358
@@ -188,11 +188,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Modifier demo creation: modifier_demo visual showcase** — scaffold `creations/demos/modifier_demo/` and implement an 8-cube interactive demo exercising every modifier framework capability via keyboard + HUD
+- [~] **Modifier demo creation: modifier_demo visual showcase** — scaffold `creations/demos/modifier_demo/` and implement an 8-cube interactive demo exercising every modifier framework capability via keyboard + HUD
   - **ID:** T-088
   - **Area:** creations/demos/modifier_demo
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-088-modifier-demo
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key (1–8) triggers the corresponding modifier capability with an obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (manual verify on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces the committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
   - **Issue:** #307
@@ -200,16 +200,6 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Fleet: queue-manager bidirectional consistency pass** — add a label↔TASKS.md cross-check step to detect stranded `fleet:queued` issues and orphaned open tasks whose linked issues closed
-  - **ID:** T-090
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-queue-manager.md` includes a new consistency step that (a) for each open `fleet:queued` issue verifies TASKS.md has a matching `Issue: #N` entry — if not, strips `fleet:queued` so the next pass picks it up; (b) for each `[ ]`/`[~]` TASKS.md task with `Issue: #N`, verifies the issue is still open — if closed without a referencing PR, removes the entry from `## Open` and posts a note; (2) both engine and game repos covered; (3) step is idempotent; (4) queue-manager iteration summary reflects any labels stripped or tasks pruned
-  - **Issue:** #422
-  - **Notes:** Audit 2026-05-02 found three stranded issues (#341, #307, #386) with `fleet:queued` but no TASKS.md entry, and T-067 lingering in Open after its issue (#337) closed. Manual cleanup landed in PR #421 and via direct issue edits. This task adds the systematic guard to prevent recurrence. Both failure modes described in the issue body should be addressed.
-  - **Links:**
 
 - [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
   - **ID:** T-089
@@ -222,8 +212,38 @@ Avoid:
   - **Notes:** Part 1 is mechanical — mirrors `system_modifier_decay.hpp` but targets `C_LambdaModifiers`. Part 2 (stateful lambdas) is architectural: architect prefers option (c) — lambda + companion component — where state lives on entity in its own component and the lambda receives entity ID. Part 2 should be its own dedicated PR after Part 1 lands and design is locked; worker can do Part 1 standalone. Surfaced during architect review of PR #332; documented in `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups."
   - **Links:**
 
+- [ ] **Render: AO via trixelDistances (drop OccupancyGridBuffer)** — migrate `c_compute_voxel_ao.{glsl,metal}` off `OccupancyGridBuffer`; sample 4 face-tangent neighbour pixels in `trixelDistances` instead
+  - **ID:** T-091
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-071
+  - **Acceptance:** (1) `c_compute_voxel_ao.{glsl,metal}` no longer reads `OccupancyGridBuffer` / slot 28; (2) `system_compute_voxel_ao.hpp` no longer binds `OccupancyGridBuffer`; (3) AO crease-darkening within ~1 iso pixel of edge migration vs pre-migration reference (capture before PR, compare via `render-debug-loop`); (4) SDF shapes get crease AO on adjacent surfaces (regression-fix — SDF-into-occupancy step deleted in T-071); (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #428
+  - **Notes:** Architect direction in `.fleet/plans/T-091.md` (derived from `~/.fleet/plans/issue-358.md` T-09X section). Blocks final occupancy teardown T-092. Approach: project world-space face tangents through iso transform once on CPU, ship in `FrameDataVoxelToTrixel` UBO; compare receiver `pos3D'` vs face-outward plane per pixel. Cost stays O(canvasPixels) with 4 texel reads per pixel.
+  - **Links:**
 
+- [ ] **Render: final occupancy-grid teardown (drop BUILD_OCCUPANCY_GRID + C_OccupancyGrid)** — pure deletion after T-091 (AO) and T-072 (light-volume) land; remove grid system, component, SSBO, constants, and CLAUDE.md phased-out sections
+  - **ID:** T-092
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-091, T-072
+  - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
+  - **Issue:** #429
+  - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
+  - **Links:**
 
+- [ ] **Input: fix system_hitbox_mouse_test projection under non-zero camera yaw** — compose `R_z(rasterYaw)` and `R2D(residualYaw)` in `HITBOX_MOUSE_TEST` forward-projection (or inverse-project mouse once in `beforeTick`) so hitbox hover tracks correctly at all visualYaw values
+  - **ID:** T-093
+  - **Area:** engine/prefabs/irreden/input, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) mouse hover triggers `onHovered` for entities under cursor at `visualYaw` ∈ {0, π/8, π/4, π/2 + π/16} when entity is on-screen and within hitbox half-extents; (2) hitbox-only hover shows no regression vs master at `visualYaw=0`; (3) test synthesizes known mouse position + camera yaw and asserts `HITBOX_MOUSE_TEST` flips `hovered_` correctly under at least two non-cardinal yaws
+  - **Issue:** #430
+  - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
+  - **Links:**
 
 ---
 
@@ -238,6 +258,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
 - [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
 - [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
 - [x] **T-070** — Render: screen-space sun shadow map — add bake pass (flag-guarded) · Owner: claude/T-070-screen-space-sun-shadow-bake · PR: https://github.com/jakildev/IrredenEngine/pull/406
@@ -257,4 +278,3 @@ Avoid:
 - [x] **T-075** — Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2) · Owner: claude/T-075-opus-only-checklist · PR: https://github.com/jakildev/IrredenEngine/pull/395
 - [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392
 - [x] **T-076** — Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3) · Owner: claude/T-076-worker-doc-tweaks · PR: https://github.com/jakildev/IrredenEngine/pull/391
-- [x] **T-077** — Fleet: label discipline — verdict-without-label, has-nits stripping, changes-made handoff · Owner: claude/T-077-label-discipline · PR: https://github.com/jakildev/IrredenEngine/pull/393
