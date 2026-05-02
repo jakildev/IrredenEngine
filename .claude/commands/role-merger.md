@@ -455,6 +455,31 @@ exit cleanly:
            worktree at .../merger" and the conflict-resolution lane is
            unreachable until the merger reboots:
            `git switch claude/merger-scratch`
+         - **Dedup check.** If `fleet:semantic-conflict` is already in
+           this PR's cached labels (from step 2), the merger may have
+           posted an identical comment in a prior iteration. Before
+           building and posting, check whether the sha pair changed:
+           1. `git rev-parse origin/master` — master tip sha
+           2. `git rev-parse origin/<headRefName>` — PR head sha
+              (ref already fetched in step a)
+           3. Fetch the most recent merger comment body (single command):
+              `gh pr view <N> --repo <engine-repo> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
+           4. Scan the returned body for a `SHA pair:` line (added to
+              the comment template below). Extract the two SHAs. (If the
+              returned body is null or empty — jq `| last` on an empty
+              array — treat as "no prior merger comment found" and
+              proceed to step 6.)
+           5. If both SHAs match the current values:
+              - Skip the comment and label additions below.
+              - Re-add the cooldown label only:
+                `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+              - Log: `[<timestamp>] PR #<N> <headRefName>: recurring semantic-conflict — sha pair unchanged, comment skipped`
+              - Jump to step f.
+           6. If the sha pair differs, or no prior merger comment is
+              found: proceed with the full comment below, embedding
+              the current sha pair in the `SHA pair:` line.
+           If `fleet:semantic-conflict` is NOT in the cached labels,
+           skip this check and proceed with the full comment.
          - Build a description of the conflict. Cap the file list at
            5; if more files conflict, append `… and N more` so the
            comment stays readable. For each listed file, run
@@ -482,6 +507,8 @@ exit cleanly:
 
            The `fleet:approved` label has been removed if it was set
            — the PR no longer represents a reviewed state.
+
+           SHA pair: master=<master-tip-sha> × PR=<pr-head-sha>
 
            — fleet merger
            ```
