@@ -235,6 +235,17 @@ Avoid:
   - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
   - **Links:**
 
+- [ ] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
+  - **ID:** T-094
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-072
+  - **Acceptance:** (1) lighting demos render with full fidelity when camera is panned far from origin (e.g. ~1000 voxels away); (2) at-origin scenes produce screenshot diff within sampling noise of T-072 reference — no regression; (3) light-volume texture memory footprint unchanged (128³ RGB); (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) GLSL and Metal shaders both read new origin uniform; `render-debug-loop` shows no parity drift
+  - **Issue:** #360
+  - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
+  - **Links:**
+
 ---
 
 ## In progress
