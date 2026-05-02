@@ -217,22 +217,24 @@ void initSystems() {
     );
 
     // Must run after resolver + consume to show current-frame resolved values.
-    auto hudId = IRSystem::createSystem<C_ResolvedFields>(
+    // Typed on C_TextSegment (one archetype) so beginTick fires exactly once per tick.
+    auto hudId = IRSystem::createSystem<C_TextSegment>(
         "ModDemo_HudUpdate",
-        [](C_ResolvedFields &) {},
+        [](const C_TextSegment &) {},
         []() {
             if (IRModifierDemo::g_hudSpeedEntity == IREntity::kNullEntity) return;
-            char buf[512];
-            int n = snprintf(buf, sizeof(buf),
-                "Resolved speed (base=%.3f):\n", IRModifierDemo::kBaseSpeed);
+            char buf[256];
+            int n = std::snprintf(buf, sizeof(buf), "Resolved speed (base=%.3f):\n",
+                IRModifierDemo::kBaseSpeed);
             for (int i = 1; i <= IRModifierDemo::kNumCubes; ++i) {
                 const auto &rf = IREntity::getComponent<C_ResolvedFields>(
                     IRModifierDemo::g_cubes[i]);
                 float spd = rf.get(IRModifierDemo::g_speedField, IRModifierDemo::kBaseSpeed);
-                n += snprintf(buf + n, sizeof(buf) - n, " [%d] %.3f\n", i, spd);
+                if (n > 0 && n < (int)sizeof(buf))
+                    n += std::snprintf(buf + n, sizeof(buf) - n, " [%d] %.3f\n", i, spd);
             }
             IREntity::getComponent<C_TextSegment>(
-                IRModifierDemo::g_hudSpeedEntity).text_ = std::string(buf, n);
+                IRModifierDemo::g_hudSpeedEntity).text_ = buf;
         }
     );
 
