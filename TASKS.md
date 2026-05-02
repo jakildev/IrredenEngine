@@ -165,19 +165,6 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Metal: sync FrameDataVoxelToTrixel struct and C++ feeder with GLSL yaw fields** — add `visualYaw`, `rasterYaw`, `residualYaw`, `_yawPadding` to the Metal struct in `ir_iso_common.metal` and to the C++ `FrameDataVoxelToCanvas` struct in `ir_render_types.hpp`
-  - **ID:** T-067
-  - **Area:** engine/render, shaders/metal
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) four yaw fields added to Metal `FrameDataVoxelToTrixel` in `ir_iso_common.metal` matching std140 layout; (2) four fields added to C++ `FrameDataVoxelToCanvas` in `ir_render_types.hpp`; populated each frame from camera-state component; (3) `c_voxel_visibility_compact.metal`, `c_voxel_to_trixel_stage_1.metal`, `c_voxel_to_trixel_stage_2.metal`, `c_lighting_to_trixel.metal` all compile clean; (4) `fleet-build --target IRShapeDebug` (or any voxel-pipeline creation) clean on `macos-debug`; GLSL pipeline still renders correctly with initialized yaw values
-  - **Issue:** #337
-  - **Notes:** Metal shaders crash at runtime referencing `frameData.rasterYaw` which doesn't exist in the Metal struct. The C++ struct is also missing the four fields (GLSL has been reading garbage/zero-padding). Default value when no rotation is happening is 0 for all three yaws — forward-compatible. macOS/Metal only crash; WSL/Linux (OpenGL) is unaffected.
-  - **Links:**
-
-
-
 - [ ] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
   - **ID:** T-071
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
