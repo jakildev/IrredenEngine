@@ -127,23 +127,25 @@ vec2 mousePosition2DIsoWorldRender() {
     return mousePosition2DIsoScreenRender() - IRRender::getCameraPosition2DIso();
 }
 
-vec3 mouseWorldPos3DAtIsoDepth(float isoDepth) {
+vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     // Full screen→world picking inverse per `.fleet/plans/T-054.md` (epic
     // #310, Option B):
     //   world = R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen
     // The chain mirrors mousePosition2DIsoWorldRender (canvas-frame iso =
     // M · R_z(rasterYaw) · world); isoPixelToPos3D recovers the unique 3D
-    // point at the requested iso depth (= x+y+z), and rotateCardinalZInv
-    // undoes the cardinal raster rotation. Pulling both yaw halves via
-    // getYawSplit() amortizes the camera-component lookup vs going
-    // through the two-step public helpers.
+    // point in the canvas frame at the requested canvas-frame iso depth
+    // (= rotated.x + rotated.y + rotated.z, which equals world.x+y+z only
+    // at rasterYaw=0 — see header doc), and rotateCardinalZInv undoes the
+    // cardinal raster rotation to lift back to the world frame. Pulling
+    // both yaw halves via getYawSplit() amortizes the camera-component
+    // lookup vs going through the two-step public helpers.
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
     const vec2 canvasIso = mouseCanvasIsoFromResidualYaw(residualYaw) -
                            IRRender::getCameraPosition2DIso();
     const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
         static_cast<int>(glm::floor(canvasIso.x)),
         static_cast<int>(glm::floor(canvasIso.y)),
-        isoDepth);
+        canvasIsoDepth);
     return IRMath::rotateCardinalZInv(rotatedWorld,
                                       IRMath::rasterYawCardinalIndex(rasterYaw));
 }

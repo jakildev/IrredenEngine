@@ -179,11 +179,34 @@ vec2 mousePosition2DIsoWorldRender();
 /// cursor at any visualYaw.
 ivec2 mouseTrixelPositionWorld();
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
-/// at the given iso depth (= x+y+z). Composes the full picking inverse
-/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`. Use
-/// this when world-frame coordinates are needed (e.g. spawning an entity
-/// at the click location).
-vec3 mouseWorldPos3DAtIsoDepth(float isoDepth);
+/// at the given **canvas-frame** iso depth. Composes the full picking inverse
+/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`.
+///
+/// @p canvasIsoDepth is iso depth in the **rasterYaw-rotated canvas frame**
+/// (= `rotated.x + rotated.y + rotated.z`), NOT in the unrotated world frame
+/// (= `world.x + world.y + world.z`). At @c rasterYaw=0 the two coincide;
+/// at non-zero @c rasterYaw they differ because the cardinal Z-rotation
+/// permutes (x,y) without preserving the sum (e.g. index 1 maps
+/// `(x,y,z)→(y,-x,z)`, so `y - x + z ≠ x + y + z` in general). The depth
+/// is canvas-frame because @c isoPixelToPos3D recovers a 3D point in the
+/// same frame as the iso pixel — the rotated canvas frame.
+///
+/// To target the iso-depth plane through a known world-frame reference
+/// point (e.g. an entity's `C_PositionGlobal3D`), rotate it into the
+/// canvas frame and take its iso depth:
+/// @code
+///   const ivec3 worldRef = ... ;  // e.g. entity world position
+///   const int idx = IRMath::rasterYawCardinalIndex(
+///       IRPrefab::Camera::getRasterYaw());
+///   const float canvasIsoDepth = static_cast<float>(
+///       IRMath::pos3DtoDistance(IRMath::rotateCardinalZ(worldRef, idx)));
+///   const vec3 worldClick =
+///       IRRender::mouseWorldPos3DAtIsoDepth(canvasIsoDepth);
+/// @endcode
+///
+/// Use this when world-frame coordinates are needed (e.g. spawning an
+/// entity at the click location).
+vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.
