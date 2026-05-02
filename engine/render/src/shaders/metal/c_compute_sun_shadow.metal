@@ -29,10 +29,28 @@ struct FrameDataSun {
     int shadowsEnabled;
     int shapeCasterCount;
     int occupancyBoundsCount;
-    int padding0;
-    int padding1;
-    int padding2;
+    int aoEnabled;
+    int useScreenSpaceShadow;
+    int _sunPadding0;
+    float4 sunBasisU;
+    float4 sunBasisV;
+    float2 sunBufferOriginUV;
+    float2 sunBufferTexelSize;
 };
+
+// Mirrors shaders/c_bake_sun_shadow_map.metal. `occupancyBits` holds the
+// sun depth array when useScreenSpaceShadow=1 (slot 28 is rebound by the
+// C++ tick).
+constant int kSunShadowMapDim = 1024;
+constant float kSunDepthScale = 1024.0;
+constant float kSunDepthOffset = 512.0;
+constant float kShadowBiasTexelScale = 1.0;
+constant float kShadowBiasSlopeMin = 0.05;
+constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
+
+inline float unpackSunDepth(uint packed) {
+    return float(packed) / kSunDepthScale - kSunDepthOffset;
+}
 
 struct ShapeDescriptor {
     float4 worldPosition;
@@ -201,6 +219,41 @@ kernel void c_compute_sun_shadow(
     }
     if (cardinalIndex != 0) {
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
+    }
+
+    // Screen-space lookup; mirrors c_compute_sun_shadow.glsl.
+    if (sunFrameData.useScreenSpaceShadow != 0) {
+        float3 sunDirSS = sunFrameData.sunDirection.xyz;
+        float3 uHat = sunFrameData.sunBasisU.xyz;
+        float3 vHat = sunFrameData.sunBasisV.xyz;
+        float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
+        float sunZ = -dot(pos3D, sunDirSS);
+
+        int2 sunPx = int2(round(
+            (sunUV - sunFrameData.sunBufferOriginUV) /
+            sunFrameData.sunBufferTexelSize
+        ));
+        bool ssShadowed = false;
+        if (sunPx.x >= 0 && sunPx.x < kSunShadowMapDim &&
+            sunPx.y >= 0 && sunPx.y < kSunShadowMapDim) {
+            uint storedPacked = occupancyBits[sunPx.y * kSunShadowMapDim + sunPx.x];
+            if (storedPacked != 0xFFFFFFFFu) {
+                float nearestZ = unpackSunDepth(storedPacked);
+                int face = encoded & 3;
+                float3 normal = faceOutwardNormal(face);
+                float slope = max(kShadowBiasSlopeMin, dot(normal, sunDirSS));
+                float texelSize = max(
+                    sunFrameData.sunBufferTexelSize.x,
+                    sunFrameData.sunBufferTexelSize.y
+                );
+                float bias =
+                    texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+                ssShadowed = (sunZ - nearestZ) > bias;
+            }
+        }
+        float ssFactor = ssShadowed ? kShadowDarken : 1.0;
+        canvasSunShadow.write(float4(ssFactor, 0.0, 0.0, 0.0), uint2(pixel));
+        return;
     }
 
     float3 sunDir = sunFrameData.sunDirection.xyz;

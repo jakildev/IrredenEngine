@@ -75,6 +75,8 @@ class RenderManager {
     float getSunAmbient() const;
     void setSunShadowsEnabled(bool enabled);
     bool getSunShadowsEnabled() const;
+    void setScreenSpaceShadowsEnabled(bool enabled);
+    bool getScreenSpaceShadowsEnabled() const;
     void setAOEnabled(bool enabled);
     bool getAOEnabled() const;
 
@@ -149,6 +151,7 @@ class RenderManager {
     float m_sunIntensity = 1.0f;
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
+    bool m_screenSpaceShadowsEnabled = false;
     bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 

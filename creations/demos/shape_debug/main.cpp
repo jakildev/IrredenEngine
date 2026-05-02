@@ -32,6 +32,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
@@ -67,6 +68,7 @@ float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
+bool g_screenSpaceShadow = false;
 
 } // namespace
 
@@ -110,6 +112,8 @@ int main(int argc, char **argv) {
                 g_initialYawSet = true;
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--screen-space-shadow") == 0) {
+            g_screenSpaceShadow = true;
         }
     }
 
@@ -133,11 +137,17 @@ int main(int argc, char **argv) {
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
     }
+    if (g_screenSpaceShadow) {
+        IRRender::setScreenSpaceShadowsEnabled(true);
+        IR_LOG_INFO("Screen-space sun-shadow lookup enabled");
+    }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);
-        IR_LOG_INFO("Initial camera Z-yaw: {} rad ({} deg)",
-                    g_initialYawRadians,
-                    g_initialYawRadians * (180.0f / std::numbers::pi_v<float>));
+        IR_LOG_INFO(
+            "Initial camera Z-yaw: {} rad ({} deg)",
+            g_initialYawRadians,
+            g_initialYawRadians * (180.0f / std::numbers::pi_v<float>)
+        );
     }
     if (g_initialYawSet) {
         IRPrefab::Camera::setYaw(g_initialYaw);
@@ -166,6 +176,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
         IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
         IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),

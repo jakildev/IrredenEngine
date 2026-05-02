@@ -225,6 +225,14 @@ bool getSunShadowsEnabled() {
     return getRenderManager().getSunShadowsEnabled();
 }
 
+void setScreenSpaceShadowsEnabled(bool enabled) {
+    getRenderManager().setScreenSpaceShadowsEnabled(enabled);
+}
+
+bool getScreenSpaceShadowsEnabled() {
+    return getRenderManager().getScreenSpaceShadowsEnabled();
+}
+
 void setAOEnabled(bool enabled) {
     getRenderManager().setAOEnabled(enabled);
 }

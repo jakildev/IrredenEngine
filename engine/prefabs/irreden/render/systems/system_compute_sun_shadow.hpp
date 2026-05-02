@@ -203,6 +203,9 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         Buffer *occupancyBoundsSSBO_ = nullptr;
         Buffer *voxelFrameDataBuf_ = nullptr;
         Buffer *shapeCasterSSBO_ = nullptr;
+        // Created by BAKE_SUN_SHADOW_MAP. Resolved lazily so this lookup
+        // links even when the bake system isn't registered.
+        Buffer *sunShadowDepthMap_ = nullptr;
         FrameDataSun frameData_{};
         std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> shapeCastersByCanvas_;
     };
@@ -232,99 +235,119 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         auto paramsOwner = std::make_unique<Params>();
         Params *p = paramsOwner.get();
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowProgram");
-        p->sunShadowFrameDataBuf_ =
-            IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+        p->sunShadowFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         p->occupancySSBO_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
-        p->occupancyBoundsSSBO_ =
-            IRRender::getNamedResource<Buffer>("OccupancyEntityBoundsBuffer");
+        p->occupancyBoundsSSBO_ = IRRender::getNamedResource<Buffer>("OccupancyEntityBoundsBuffer");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->shapeCasterSSBO_ = IRRender::getNamedResource<Buffer>("SunShadowShapeCasterBuffer");
 
-        SystemId systemId = createSystem<
-            C_TriangleCanvasTextures,
-            C_CanvasSunShadow,
-            C_TrixelCanvasRenderBehavior>(
-            "ComputeSunShadow",
-            [p](IREntity::EntityId &canvasEntity,
-                const C_TriangleCanvasTextures &canvasTextures,
-                const C_CanvasSunShadow &shadow,
-                const C_TrixelCanvasRenderBehavior &behavior) {
-                // Skip GUI-only canvases — same rationale as the AO pass.
-                if (!behavior.useCameraPositionIso_)
-                    return;
-                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        SystemId systemId =
+            createSystem<C_TriangleCanvasTextures, C_CanvasSunShadow, C_TrixelCanvasRenderBehavior>(
+                "ComputeSunShadow",
+                [p](IREntity::EntityId &canvasEntity,
+                    const C_TriangleCanvasTextures &canvasTextures,
+                    const C_CanvasSunShadow &shadow,
+                    const C_TrixelCanvasRenderBehavior &behavior) {
+                    // Skip GUI-only canvases — same rationale as the AO pass.
+                    if (!behavior.useCameraPositionIso_)
+                        return;
+                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-                auto &shapeCasters = p->shapeCastersByCanvas_[canvasEntity];
-                {
-                    IR_PROFILE_BLOCK("ComputeSunShadow::CollectCasters", IR_PROFILER_COLOR_RENDER);
-                    detail::collectShapeCastersForCanvas(
-                        canvasEntity,
-                        canvasTextures.size_,
-                        vec3(p->frameData_.sunDirection_),
-                        shapeCasters
+                    auto &shapeCasters = p->shapeCastersByCanvas_[canvasEntity];
+                    {
+                        IR_PROFILE_BLOCK(
+                            "ComputeSunShadow::CollectCasters",
+                            IR_PROFILER_COLOR_RENDER
+                        );
+                        detail::collectShapeCastersForCanvas(
+                            canvasEntity,
+                            canvasTextures.size_,
+                            vec3(p->frameData_.sunDirection_),
+                            shapeCasters
+                        );
+                    }
+                    p->frameData_.shapeCasterCount_ = static_cast<int>(shapeCasters.size());
+
+                    canvasTextures.getTextureDistances()
+                        ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                    shadow.getTexture()
+                        ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    canvasTextures.getTextureEntityIds()
+                        ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+                    // Slot 28 holds the occupancy grid in legacy mode and the
+                    // sun depth map in screen-space mode; the shader's
+                    // `slot28Buf[]` reinterprets the contents per path.
+                    if (IRRender::getScreenSpaceShadowsEnabled()) {
+                        if (p->sunShadowDepthMap_ == nullptr) {
+                            p->sunShadowDepthMap_ =
+                                IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+                        }
+                        p->sunShadowDepthMap_->bindBase(
+                            BufferTarget::SHADER_STORAGE,
+                            kBufferIndex_SunShadowDepthMap
+                        );
+                    } else {
+                        p->occupancySSBO_->bindBase(
+                            BufferTarget::SHADER_STORAGE,
+                            kBufferIndex_OccupancyGrid
+                        );
+                    }
+                    p->occupancyBoundsSSBO_->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_OccupancyEntityBounds
                     );
-                }
-                p->frameData_.shapeCasterCount_ = static_cast<int>(shapeCasters.size());
-
-                canvasTextures.getTextureDistances()
-                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                shadow.getTexture()
-                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                canvasTextures.getTextureEntityIds()
-                    ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-                p->occupancySSBO_->bindBase(
-                    BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid
-                );
-                p->occupancyBoundsSSBO_->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_OccupancyEntityBounds
-                );
-                p->shapeCasterSSBO_->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_SunShadowShapeCasters
-                );
-                p->voxelFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_FrameDataVoxelToCanvas
-                );
-                p->sunShadowFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataSun
-                );
-
-                if (!shapeCasters.empty()) {
-                    p->shapeCasterSSBO_->subData(
-                        0,
-                        shapeCasters.size() * sizeof(GPUShapeDescriptor),
-                        shapeCasters.data()
+                    p->shapeCasterSSBO_->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_SunShadowShapeCasters
                     );
-                }
-                p->sunShadowFrameDataBuf_->subData(0, sizeof(FrameDataSun), &p->frameData_);
+                    p->voxelFrameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_FrameDataVoxelToCanvas
+                    );
+                    p->sunShadowFrameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_FrameDataSun
+                    );
 
-                const int groupsX =
-                    IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
-                const int groupsY =
-                    IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
-                IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            },
-            [p]() {
-                p->program_->use();
-                for (auto &[_, casters] : p->shapeCastersByCanvas_) {
-                    casters.clear();
+                    if (!shapeCasters.empty()) {
+                        p->shapeCasterSSBO_->subData(
+                            0,
+                            shapeCasters.size() * sizeof(GPUShapeDescriptor),
+                            shapeCasters.data()
+                        );
+                    }
+                    // BAKE owns FrameDataSun fields from useScreenSpaceShadow_
+                    // onward; upload only the legacy prefix to avoid clobbering
+                    // the basis/origin/texel fields BAKE wrote earlier this frame.
+                    constexpr std::size_t kLegacyFieldsSize =
+                        offsetof(FrameDataSun, useScreenSpaceShadow_);
+                    p->sunShadowFrameDataBuf_->subData(0, kLegacyFieldsSize, &p->frameData_);
+
+                    const int groupsX =
+                        IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
+                    const int groupsY =
+                        IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
+                    IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                },
+                [p]() {
+                    p->program_->use();
+                    for (auto &[_, casters] : p->shapeCastersByCanvas_) {
+                        casters.clear();
+                    }
+                    const detail::ResolvedSun sun = detail::resolveSun();
+                    p->frameData_.sunDirection_ = vec4(sun.direction_, 0.0f);
+                    p->frameData_.sunIntensity_ = sun.intensity_;
+                    p->frameData_.sunAmbient_ = sun.ambient_;
+                    p->frameData_.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
+                    p->frameData_.aoEnabled_ = sun.aoEnabled_ ? 1 : 0;
+                    // Picked up from the occupancy grid build that ran earlier
+                    // this frame. The bounds buffer is also bound globally by
+                    // BUILD_OCCUPANCY_GRID, so no per-canvas rebind needed.
+                    p->frameData_.occupancyBoundsCount_ =
+                        IRSystem::detail::occupancyEntityBoundsCount();
                 }
-                const detail::ResolvedSun sun = detail::resolveSun();
-                p->frameData_.sunDirection_ = vec4(sun.direction_, 0.0f);
-                p->frameData_.sunIntensity_ = sun.intensity_;
-                p->frameData_.sunAmbient_ = sun.ambient_;
-                p->frameData_.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
-                p->frameData_.aoEnabled_ = sun.aoEnabled_ ? 1 : 0;
-                // Picked up from the occupancy grid build that ran earlier
-                // this frame. The bounds buffer is also bound globally by
-                // BUILD_OCCUPANCY_GRID, so no per-canvas rebind needed.
-                p->frameData_.occupancyBoundsCount_ =
-                    IRSystem::detail::occupancyEntityBoundsCount();
-            }
-        );
+            );
 
         setSystemParams(systemId, std::move(paramsOwner));
         IRRender::tagGpuStage(systemId, "computeSunShadow");

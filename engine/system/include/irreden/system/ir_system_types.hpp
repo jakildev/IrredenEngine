@@ -100,6 +100,7 @@ enum SystemName {
     SHAPES_TO_TRIXEL,
     BUILD_OCCUPANCY_GRID,
     COMPUTE_VOXEL_AO,
+    BAKE_SUN_SHADOW_MAP,
     COMPUTE_SUN_SHADOW,
     COMPUTE_LIGHT_VOLUME,
     LIGHTING_TO_TRIXEL,
@@ -146,15 +147,13 @@ template <typename... Tags> struct ExtractFromExclude<Exclude<Tags...>> {
 };
 
 template <typename A, typename B> struct ConcatTypeList;
-template <typename... A, typename... B>
-struct ConcatTypeList<TypeList<A...>, TypeList<B...>> {
+template <typename... A, typename... B> struct ConcatTypeList<TypeList<A...>, TypeList<B...>> {
     using Type = TypeList<A..., B...>;
 };
 
 template <typename Acc, typename... Pack> struct PartitionImpl;
 
-template <typename Inc, typename Exc>
-struct PartitionImpl<TypeList<Inc, Exc>> {
+template <typename Inc, typename Exc> struct PartitionImpl<TypeList<Inc, Exc>> {
     using Included = Inc;
     using Excluded = Exc;
 };

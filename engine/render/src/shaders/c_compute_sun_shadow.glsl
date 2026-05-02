@@ -57,9 +57,13 @@ struct ShapeDescriptor {
     uint _pad1;
 };
 
-layout(std430, binding = 28) readonly buffer OccupancyGrid {
-    uint occupancyBits[];
+// Holds either the occupancy grid (legacy) or the sun depth map (screen-
+// space). The C++ tick rebinds slot 28 to whichever the active path needs;
+// both buffers are `uint[]` so a single declaration covers both consumers.
+layout(std430, binding = 28) readonly buffer Slot28Buffer {
+    uint slot28Buf[];
 };
+#define occupancyBits slot28Buf
 
 // Mirrors GPUOccupancyEntityBounds in ir_render_types.hpp. Filled by
 // system_build_occupancy_grid each frame: one entry per voxel-pool
@@ -101,9 +105,13 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int shadowsEnabled;
     uniform int shapeCasterCount;
     uniform int occupancyBoundsCount;
+    uniform int aoEnabled;
+    uniform int useScreenSpaceShadow;
     uniform int _sunPadding0;
-    uniform int _sunPadding1;
-    uniform int _sunPadding2;
+    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisV;
+    uniform vec2 sunBufferOriginUV;
+    uniform vec2 sunBufferTexelSize;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
@@ -113,6 +121,22 @@ layout(rg32ui, binding = 2) readonly uniform uimage2D trixelEntityIds;
 layout(std430, binding = 20) readonly buffer SunShadowShapeCasterBuffer {
     ShapeDescriptor shapeCasters[];
 };
+
+// Must match c_bake_sun_shadow_map.glsl.
+const int kSunShadowMapDim = 1024;
+const float kSunDepthScale = 1024.0;
+const float kSunDepthOffset = 512.0;
+
+float unpackSunDepth(uint packed) {
+    return float(packed) / kSunDepthScale - kSunDepthOffset;
+}
+
+// Bias must cover the worst-case sunZ variation between iso pixels that
+// share a sun-space texel — roughly `texelSize / slope` voxels for slope =
+// dot(faceNormal, sunDir). Below that, a flat surface self-shadows.
+const float kShadowBiasTexelScale = 1.0;
+const float kShadowBiasSlopeMin = 0.05;
+const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
 bool occupancyGetBit(int wx, int wy, int wz) {
     int he = kOccupancyGridHalfExtent;
@@ -232,6 +256,37 @@ void main() {
     }
     if (cardinalIndex != 0) {
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
+    }
+
+    // Screen-space lookup: replaces the inner march with one texel read
+    // against the bake output. sunZ is negated (smaller = closer to sun)
+    // so the bake's atomicMin stores the nearest blocker per texel.
+    if (useScreenSpaceShadow != 0) {
+        vec3 sunDirSS = sunDirection.xyz;
+        vec3 uHat = sunBasisU.xyz;
+        vec3 vHat = sunBasisV.xyz;
+        vec2 sunUV = vec2(dot(pos3D, uHat), dot(pos3D, vHat));
+        float sunZ = -dot(pos3D, sunDirSS);
+
+        ivec2 sunPx = ivec2(round((sunUV - sunBufferOriginUV) / sunBufferTexelSize));
+        bool ssShadowed = false;
+        if (sunPx.x >= 0 && sunPx.x < kSunShadowMapDim &&
+            sunPx.y >= 0 && sunPx.y < kSunShadowMapDim) {
+            uint storedPacked = slot28Buf[sunPx.y * kSunShadowMapDim + sunPx.x];
+            if (storedPacked != 0xFFFFFFFFu) {
+                float nearestZ = unpackSunDepth(storedPacked);
+                int face = encoded & 3;
+                vec3 normal = faceOutwardNormal(face);
+                float slope = max(kShadowBiasSlopeMin, dot(normal, sunDirSS));
+                float texelSize = max(sunBufferTexelSize.x, sunBufferTexelSize.y);
+                float bias =
+                    texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+                ssShadowed = (sunZ - nearestZ) > bias;
+            }
+        }
+        float ssFactor = ssShadowed ? kShadowDarken : 1.0;
+        imageStore(canvasSunShadow, pixel, vec4(ssFactor, 0.0, 0.0, 0.0));
+        return;
     }
 
     uint selfEntityId = imageLoad(trixelEntityIds, pixel).x;

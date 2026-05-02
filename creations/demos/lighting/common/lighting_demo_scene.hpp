@@ -28,6 +28,7 @@
 #include <irreden/render/systems/system_build_occupancy_grid.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
@@ -148,8 +149,7 @@ inline void parseArgs(int argc, char **argv) {
                 g_cliOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
                 ++i;
             }
-        } else if (std::strcmp(argv[i], "--no-ao") == 0 ||
-                   std::strcmp(argv[i], "--ao-off") == 0) {
+        } else if (std::strcmp(argv[i], "--no-ao") == 0 || std::strcmp(argv[i], "--ao-off") == 0) {
             g_cliDisableAO = true;
         }
     }
@@ -360,6 +360,7 @@ inline void initSystems(const DemoConfig &config) {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
         IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
         IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
