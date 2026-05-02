@@ -101,6 +101,13 @@ MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failure
 # Set via env to override.
 LONG_BACKOFF_SECONDS="${FLEET_LONG_BACKOFF:-1800}"
 
+# Suppress trigger wakes until this many seconds have elapsed since the iteration
+# started. Prevents the scout's own trigger (fired ~60s after state change) from
+# immediately relaunching an agent that just exited cleanly. Set to 0 (default)
+# to preserve trigger-driven immediacy; fleet-up sets FLEET_MIN_BACKOFF=1800 for
+# opus-reviewer to enforce the 30-min budget window.
+MIN_BACKOFF_SECONDS="${FLEET_MIN_BACKOFF:-0}"
+
 # Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds.
 # This replaces what /loop used to do internally, so that babysit can
 # enforce the between-iteration delay at the *process* level (each
@@ -160,22 +167,32 @@ consume_trigger_if_present() {
 #   2 = trigger file appeared mid-sleep (caller should consume + relaunch)
 #
 # Pass the trigger path as $2 to enable trigger watching; omit to keep
-# the legacy shutdown-only behavior. Polls every 5s.
+# the legacy shutdown-only behavior. Pass min_floor as $3 to suppress
+# trigger wakes until at least that many seconds have elapsed — prevents
+# the agent's own actions from immediately waking it via the scout
+# (see FLEET_MIN_BACKOFF / MIN_BACKOFF_SECONDS). Polls every 5s.
 interruptible_sleep() {
     local seconds="$1"
     local trigger_path="${2:-}"
-    local end=$(( $(date +%s) + seconds ))
-    while [[ $(date +%s) -lt $end ]]; do
+    local min_floor="${3:-0}"
+    local started_at
+    started_at=$(date +%s)
+    local end=$(( started_at + seconds ))
+    local now
+    while now=$(date +%s); [[ $now -lt $end ]]; do
         if [[ -f "$SHUTDOWN_FLAG" ]]; then
             return 1
         fi
         if [[ -n "$trigger_path" && -f "$trigger_path" ]]; then
-            return 2
+            local elapsed=$(( now - started_at ))
+            if [[ $elapsed -ge $min_floor ]]; then
+                return 2
+            fi
         fi
         # Keep heartbeat fresh during between-iteration wait.
         [[ -n "$HEARTBEAT_FILE" ]] && touch "$HEARTBEAT_FILE" 2>/dev/null || true
         # Sleep at most 5s at a time, but never longer than what's left.
-        local remaining=$(( end - $(date +%s) ))
+        local remaining=$(( end - now ))
         local chunk=5
         [[ "$remaining" -lt "$chunk" ]] && chunk="$remaining"
         [[ "$chunk" -lt 1 ]] && chunk=1  # Minimum 1s to avoid zero-sleep busyloop on sub-second remaining time.
@@ -528,7 +545,7 @@ while true; do
                     log "worker clean exit (attempt $attempt) — bootstrap relaunch in ${sleep_dur}s (no trigger consumed yet)"
                 fi
                 rc=0
-                interruptible_sleep "$sleep_dur" "$TRIGGER_FILE" || rc=$?
+                interruptible_sleep "$sleep_dur" "$TRIGGER_FILE" "$MIN_BACKOFF_SECONDS" || rc=$?
                 case $rc in
                     1)
                         log "shutdown signaled during between-iteration wait — exiting"

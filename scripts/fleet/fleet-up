@@ -28,6 +28,10 @@ SESSION="fleet"
 OPUS_MODEL="claude-opus-4-7"
 SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
 
+# Minimum seconds between opus-reviewer relaunches (cooldown floor).
+# fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
+OPUS_MIN_BACKOFF=1800
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -561,7 +565,7 @@ label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+    "FLEET_MIN_BACKOFF=$OPUS_MIN_BACKOFF $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
 
 # --- Window 2: "ops" — 2x2 grid ---------------------------------------

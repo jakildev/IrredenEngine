@@ -121,12 +121,13 @@ with open(tasks_file) as f:
     content = f.read()
 
 # Parse task entries: find each "- [x]/[ ]/[~]/[!] **Title**" block
-# and extract its ID, title, and Blocked by fields.
+# and extract its ID, title, Blocked by, and Owner fields.
 tasks = {}
 current_id = None
 current_status = None
 current_blocked = None
 current_title = None
+current_owner = None
 
 for line in content.splitlines():
     # Task header line: - [x] **Title** — ...
@@ -136,12 +137,14 @@ for line in content.splitlines():
             tasks[current_id] = {
                 'status': current_status,
                 'blocked_by': current_blocked or '(none)',
-                'title': current_title or ''
+                'title': current_title or '',
+                'owner': current_owner or 'free',
             }
         current_status = m.group(1)
         current_title = m.group(2)
         current_id = None
         current_blocked = None
+        current_owner = None
         continue
 
     # Sub-field lines (indented under the task)
@@ -155,12 +158,18 @@ for line in content.splitlines():
         current_blocked = m_blocked.group(1).strip()
         continue
 
+    m_owner = re.match(r'^\s+- \*\*Owner:\*\*\s*(.+)', line)
+    if m_owner:
+        current_owner = m_owner.group(1).strip()
+        continue
+
 # Don't forget the last task
 if current_id:
     tasks[current_id] = {
         'status': current_status,
         'blocked_by': current_blocked or '(none)',
-        'title': current_title or ''
+        'title': current_title or '',
+        'owner': current_owner or 'free',
     }
 
 # Find our task
@@ -187,7 +196,27 @@ for blocker in blockers:
             continue
         if blocker in tasks:
             if tasks[blocker]['status'] != 'x':
-                failed.append(f"{blocker} (status: [{tasks[blocker]['status']}], need: [x])")
+                # TASKS.md says not done, but the branch may already be merged
+                # into origin/master (queue-manager hasn't run its flip yet).
+                # git merge-base --is-ancestor catches this gap.
+                branch = tasks[blocker].get('owner', 'free')
+                resolved_via_git = False
+                if branch and branch not in ('free', '(none)', ''):
+                    try:
+                        # No `git fetch origin` here intentionally: stale refs
+                        # produce false-negatives (claim fails until next fetch),
+                        # never false-positives (unmerged branch treated as done).
+                        r = subprocess.run(
+                            ['git', 'merge-base', '--is-ancestor',
+                             f'origin/{branch}', 'origin/master'],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            timeout=10
+                        )
+                        resolved_via_git = (r.returncode == 0)
+                    except (subprocess.SubprocessError, OSError):
+                        pass
+                if not resolved_via_git:
+                    failed.append(f"{blocker} (status: [{tasks[blocker]['status']}], need: [x])")
         else:
             # Blocker not found in this TASKS.md — might be cross-repo.
             # Check the other TASKS.md (engine ↔ game).

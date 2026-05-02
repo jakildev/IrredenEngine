@@ -568,6 +568,32 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `git -C <repo> show origin/master:.fleet/plans/T-<NNN>.md` per
    the role-opus-worker startup actions).
 
+5d. **Auto-flip stale `[~]` tasks whose branch merged to master.**
+   Step 4 flips tasks by matching merged PR titles/branches. A gap
+   exists when the PR was merged but the title match failed (e.g.
+   title drift, task-ID prefix missing, multi-task legacy PRs) — the
+   task stays `[~]` indefinitely until a human fixes it.
+
+   For each `[~]` (in-progress) task in each TASKS.md whose `Owner:`
+   field contains a branch name (starts with `claude/`):
+   a. Check whether the branch tip is an ancestor of `origin/master`:
+      `git -C <repo> fetch origin --quiet`
+      `git -C <repo> merge-base --is-ancestor origin/<branch> origin/master`
+      Exit 0 = branch is merged; exit non-zero = branch still open or
+      unknown.
+   b. If merged (exit 0) AND the task has no PR URL in its `**Links:**`
+      field yet, find the merged PR:
+      `gh pr list --repo <repo> --state merged --head <branch> --json number,url --jq '.[0].url'`
+   c. If merged: flip the task to `[x]`, add the PR URL (if found)
+      to **Links:**, move to `## Done — last 20`, and delete plan
+      files (same cleanup as step 4).
+
+   Skip tasks whose `Owner:` is `free` or does not start with
+   `claude/` — there's no branch to check.
+
+   Run this pass BEFORE step 6 so the blocker-resolution pass
+   sees up-to-date `[x]` status for freshly-flipped tasks.
+
 6. **Resolve stale blocker references.** Scan all `## Open` entries in
    each TASKS.md. For any `Blocked by:` field that contains:
    - A free-text title that now matches an existing task → replace
