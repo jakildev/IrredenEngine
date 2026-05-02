@@ -58,8 +58,13 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
 │    COMPUTE_VOXEL_AO                                              │
 │      • c_compute_voxel_ao.glsl → per-pixel AO factor             │
+│    BAKE_SUN_SHADOW_MAP                                           │
+│      • c_clear_sun_shadow_map.glsl + c_bake_sun_shadow_map.glsl  │
+│      • atomicMin-projects iso pixels into a sun-aligned depth    │
+│        map at slot 28 (aliases the occupancy grid; rebind)       │
 │    COMPUTE_SUN_SHADOW                                            │
-│      • c_compute_sun_shadow.glsl → per-pixel directional shadow  │
+│      • c_compute_sun_shadow.glsl → single-texel lookup against   │
+│        the baked sun depth map → per-pixel shadow brightness     │
 │    COMPUTE_LIGHT_VOLUME                                          │
 │      • CPU flood-fill BFS from C_LightSource emitters into the   │
 │        canvas's C_CanvasLightVolume 3D texture (8 MiB upload)    │
@@ -246,18 +251,38 @@ The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
 rendering path. It governs which voxels/shapes are written into canvas
 textures — nothing else.
 
-Lighting (occupancy grid, AO, shadows, flood-fill, fog-of-war) operates
-against a **camera-independent world-space occupancy grid**. Shadow sweeps
-march along the world-space sun axis; flood-fill BFS propagates through
-world-space voxels; fog-of-war DDA rays trace through the same grid.
-Off-screen geometry participates in lighting by design — an off-screen
-building that casts a shadow onto on-screen tiles is the common case, not an
-edge case.
+Lighting splits across two sampling spaces:
+
+- **Screen-space**: sun shadows use a sun-aligned depth map baked from
+  `trixelDistances`. Off-screen geometry participates because the bake's
+  iso-frustum AABB is swept along `-sunDir` by `kSunShadowMaxDistance`
+  (64 voxels), so shadow casters within that range project correctly
+  even when their iso position is outside the visible rect.
+- **World-space**: AO, flood-fill, and fog-of-war read the
+  **camera-independent world-space occupancy grid**. Off-screen
+  geometry participates in lighting by design — an off-screen
+  building's voxels still occlude AO crease darkening on adjacent
+  on-screen tiles, and a torch off-screen still floods light into
+  on-screen voxels.
+
+**Phased-out producer:** `BUILD_OCCUPANCY_GRID` and the `OccupancyGrid`
+SSBO are scheduled for removal in T-09Y once AO migrates to screen-space
+neighbour sampling (T-09X) and light-volume LOS moves to the GPU
+(T-072). The single source of truth for "is there geometry along ray R"
+in the long run is `trixelDistances` (and the depth-map bakes derived
+from it); the world-space bitfield is an intermediate that survives only
+because two consumers haven't yet been ported.
 
 The four invariants below exist because these are the places easiest to break
 silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
 fog-of-war #170) reviewer should run this checklist. See #196 for the
 architect review that originated them.
+
+The sun-shadow path reads the screen-space sun depth map (baked from
+`trixelDistances`), not the occupancy grid; invariants 1, 2, and 4
+below apply to AO + light-volume only. The shadow-ring (invariant 2)
+is implicitly enforced by the bake AABB sweep — see "Sun shadow bake
+AABB sweep" below.
 
 ### 1. Grid-build iterates the full voxel pool, not the render-culled subset
 
@@ -310,11 +335,22 @@ streaming activates, the chunk containing each neighbor must be resident. A
 face at the view edge whose neighbor chunk is unloaded produces wrong AO.
 
 **Invariant:** resident chunk set = view-chunk set ∪ 1-chunk guard band (in
-all six directions) for AO/shadow sampling correctness, in addition to the
+all six directions) for AO sampling correctness, in addition to the
 shadow-ring from invariant #2.
 
 **Check:** resident chunk set calculation includes this guard band when chunk
 streaming is introduced.
+
+## Sun shadow bake AABB sweep
+
+`BAKE_SUN_SHADOW_MAP` derives its sun-space AABB from the iso-frustum
+corners and a sweep of `kSunShadowMaxDistance` (64 voxels) along
+`-sunDir`. That sweep is what guarantees off-screen casters within
+shadow range project into the depth map even when their iso position
+is outside the visible rect — same role invariant #2 plays for the
+old occupancy march. Bumping `kSunShadowMaxDistance` is the lever for
+longer shadows; expect proportionally larger sun-space texels (the
+1024² depth map is fixed) and softer shadow boundaries.
 
 ## Lighting debug overlay
 

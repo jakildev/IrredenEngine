@@ -500,14 +500,6 @@ bool RenderManager::getSunShadowsEnabled() const {
     return m_sunShadowsEnabled;
 }
 
-void RenderManager::setScreenSpaceShadowsEnabled(bool enabled) {
-    m_screenSpaceShadowsEnabled = enabled;
-}
-
-bool RenderManager::getScreenSpaceShadowsEnabled() const {
-    return m_screenSpaceShadowsEnabled;
-}
-
 void RenderManager::setAOEnabled(bool enabled) {
     m_aoEnabled = enabled;
 }

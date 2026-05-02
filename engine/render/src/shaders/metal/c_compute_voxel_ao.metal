@@ -9,19 +9,18 @@ constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 
 // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
-// consumed here; the rest of the layout must match so the same UBO can
-// be bound by sun-shadow and lighting passes. Kept in lockstep with the
-// GLSL counterpart at binding 29.
+// consumed here; the layout must match so the shared UBO at binding 29
+// can be read by every consumer (BAKE_SUN_SHADOW_MAP owns the upload).
 struct FrameDataSun {
     float4 sunDirection;
     float sunIntensity;
     float sunAmbient;
     int shadowsEnabled;
-    int shapeCasterCount;
-    int occupancyBoundsCount;
     int aoEnabled;
-    int padding1;
-    int padding2;
+    float4 sunBasisU;
+    float4 sunBasisV;
+    float2 sunBufferOriginUV;
+    float2 sunBufferTexelSize;
 };
 
 inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {

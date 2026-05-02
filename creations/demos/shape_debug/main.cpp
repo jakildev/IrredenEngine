@@ -68,7 +68,6 @@ float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-bool g_screenSpaceShadow = false;
 
 } // namespace
 
@@ -112,8 +111,6 @@ int main(int argc, char **argv) {
                 g_initialYawSet = true;
                 ++i;
             }
-        } else if (std::strcmp(argv[i], "--screen-space-shadow") == 0) {
-            g_screenSpaceShadow = true;
         }
     }
 
@@ -136,10 +133,6 @@ int main(int argc, char **argv) {
     }
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
-    }
-    if (g_screenSpaceShadow) {
-        IRRender::setScreenSpaceShadowsEnabled(true);
-        IR_LOG_INFO("Screen-space sun-shadow lookup enabled");
     }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);

@@ -28,7 +28,6 @@ TEST(SunLightingConfig, FrameDataDefaultsKeepShadowsEnabled) {
     EXPECT_FLOAT_EQ(frameData.sunIntensity_, 1.0f);
     EXPECT_FLOAT_EQ(frameData.sunAmbient_, 0.4f);
     EXPECT_EQ(frameData.shadowsEnabled_, 1);
-    EXPECT_EQ(frameData.shapeCasterCount_, 0);
     EXPECT_EQ(frameData.aoEnabled_, 1);
 }
 
