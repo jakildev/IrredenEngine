@@ -44,6 +44,8 @@ struct FrameDataFramebuffer {
 /// a 2D rotation in pixel space around the framebuffer center.
 struct FrameDataScreenResidualRotate {
     mat4 mvpMatrix;
+    // Always zero today; if non-zero, adjust the rotation center in the fragment
+    // shader (currently anchored at ts * 0.5) to account for the scroll offset.
     vec2 textureOffset;
     float residualYaw = 0.0f;
     float _pad0 = 0.0f;
@@ -269,6 +271,9 @@ constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
 constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
+// Slot 16 is also used by Metal compute shaders (c_voxel_to_trixel_stage_*, c_shapes_to_trixel)
+// for the distanceScratch SSBO; the reuse is safe because compute and render encoders maintain
+// independent argument tables.
 constexpr std::uint32_t kBufferIndex_FrameDataScreenResidualRotate = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;

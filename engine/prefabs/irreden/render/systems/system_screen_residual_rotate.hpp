@@ -94,7 +94,8 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
     // header is intentionally deferred: the helpers will diverge once the
     // residual-rotate pass starts handling rotation-induced canvas
     // overscan, at which point the contract is no longer "identical to
-    // FRAMEBUFFER_TO_SCREEN".
+    // FRAMEBUFFER_TO_SCREEN". Any timing instrumentation added here should
+    // use T-066's SystemManager::TickObserver pattern, not per-system code.
     static mat4 calcModelMatrix(
         ivec2 resolution,
         ivec2 resolutionPlusBuffer,

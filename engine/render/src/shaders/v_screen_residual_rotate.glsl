@@ -5,7 +5,6 @@ layout (location = 1) in vec2 aTexCoords;
 out vec2 TexCoords;
 
 layout (binding = 0) uniform sampler2D screenTexture;
-layout (binding = 1) uniform sampler2D depthTexture;
 
 layout (std140, binding = 16) uniform FrameData {
     mat4 mvpMatrix;

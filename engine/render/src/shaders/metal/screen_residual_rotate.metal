@@ -34,6 +34,9 @@ vertex VertexOut v_screen_residual_rotate(
     return out;
 }
 
+// NOTE: depth is not written by this fragment function (no depth texture parameter).
+// The GLSL equivalent writes gl_FragDepth via sampleBilinearClamped(depthTexture, sampleUV).r,
+// but picking under non-zero residualYaw is broken on both backends anyway; see T-057.
 fragment float4 f_screen_residual_rotate(
     VertexOut in [[stage_in]],
     texture2d<float> screenTexture [[texture(0)]],
