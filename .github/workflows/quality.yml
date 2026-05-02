@@ -38,3 +38,32 @@ jobs:
 
       - name: Run tests
         run: ctest --preset windows-default-tests
+
+  linux-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 cmake ninja-build pkg-config \
+            libgl1-mesa-dev libglu1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libasound2-dev libpulse-dev libjack-jackd2-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libavdevice-dev libavfilter-dev
+
+      - name: Configure
+        run: cmake --preset linux-debug
+
+      - name: Build tests
+        run: cmake --build --preset linux-tests --parallel
+
+      - name: Run tests
+        run: ctest --preset linux-default-tests
+
+      - name: Build smoke target (IRShapeDebug)
+        run: cmake --build build --target IRShapeDebug -j $(nproc)

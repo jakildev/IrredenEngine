@@ -1,4 +1,5 @@
 set(VIDEO_CORE_SRC
+    src/auto_screenshot.cpp
     src/ir_video.cpp
     src/video_manager.cpp
     src/video_recorder.cpp

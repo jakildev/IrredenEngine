@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
+#include "ir_sdf_common.metal"
 
 // Iso-projected SDF surface finding for analytical shapes.  Mirrors
 // shaders/c_shapes_to_trixel.glsl.  Each workgroup handles one 8x8
@@ -18,6 +19,16 @@ struct ShapesFrameData {
     int2 voxelRenderOptions;
     int2 cullIsoMin;
     int2 cullIsoMax;
+    // Continuous Z-yaw is split into a cardinal-snap component (rasterYaw,
+    // exact multiple of pi/2) and a residual component (residualYaw, in
+    // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw so its output lines up
+    // with the voxel pool's cardinal-snap raster (T-055); the screen-space
+    // residual composite pass (T-058) rotates the framebuffer by residualYaw
+    // to recover continuous yaw.
+    float visualYaw;
+    float rasterYaw;
+    float residualYaw;
+    float _yawPadding;
 };
 
 struct ShapeDescriptor {
@@ -39,20 +50,31 @@ struct ShapeTileDescriptor {
     int2 tileIsoOrigin;
 };
 
-constant uint SHAPE_BOX          = 0u;
-constant uint SHAPE_SPHERE       = 1u;
-constant uint SHAPE_CYLINDER     = 2u;
-constant uint SHAPE_ELLIPSOID    = 3u;
-constant uint SHAPE_CURVED_PANEL = 4u;
-constant uint SHAPE_WEDGE        = 5u;
-constant uint SHAPE_TAPERED_BOX  = 6u;
-constant uint SHAPE_CONE         = 8u;
-constant uint SHAPE_TORUS        = 9u;
+// Shape-type constants (SHAPE_BOX, SHAPE_SPHERE, …) and the SDF primitive
+// functions live in ir_sdf_common.metal, shared with the sun-shadow shader.
 
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_CHECKERBOARD = 32u;
 constant uint FLAG_DEPTH_COLOR  = 64u;
+
+// FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
+// FMA-reordered across GPU scheduling, so a mathematically-integer entry
+// of 5.0 can arrive as 4.9999999 or 5.0000001 on different frames, and
+// ceil() flips between 5 and 6 → ±1 surfaceD jitter → static-scene flicker
+// along shape silhouettes and checker cell boundaries. Biasing the ceil
+// input by a small negative epsilon collapses both noise neighborhoods
+// into the same integer output.
+constant float kCeilBiasEpsilon = 1.0e-3;
+inline int stableCeilToInt(float x) {
+    return int(ceil(x - kCeilBiasEpsilon));
+}
+// SDF carve-threshold jitter guard. The "sdf <= 0.5" carve test flips
+// in/out on FMA noise when the evaluated SDF lands exactly at ±0.5.
+// Biasing thresholds outward makes borderline voxels consistently included
+// across frames, eliminating parity flips on checker cells on a surface-d
+// boundary.
+constant float kSdfBiasEpsilon = 1.0e-3;
 
 // ---------- Color helpers ----------
 
@@ -62,95 +84,8 @@ inline float3 hsvToRgb(float3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-// ---------- Generic SDF evaluators (fallback path) ----------
-
-inline float sdfBox(float3 p, float3 halfExtents) {
-    const float3 d = abs(p) - halfExtents;
-    return max(d.x, max(d.y, d.z));
-}
-
-inline float sdfSphere(float3 p, float radius) {
-    return length(p) - radius;
-}
-
-inline float sdfCylinder(float3 p, float radius, float halfHeight) {
-    const float2 d = abs(float2(length(p.xy), p.z)) - float2(radius, halfHeight);
-    return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0)));
-}
-
-inline float sdfEllipsoid(float3 p, float3 radii) {
-    if (radii.x <= 0.0 || radii.y <= 0.0 || radii.z <= 0.0) {
-        return 1.0;
-    }
-    const float k0 = length(p / radii);
-    if (k0 < 1e-6) {
-        return -min(radii.x, min(radii.y, radii.z));
-    }
-    const float k1 = length(p / (radii * radii));
-    return k0 * (k0 - 1.0) / k1;
-}
-
-inline float sdfTaperedBox(float3 p, float3 halfExtents, float taper) {
-    const float taperFactor =
-        mix(1.0, taper,
-            clamp((p.z + halfExtents.z) / (2.0 * halfExtents.z), 0.0, 1.0));
-    const float3 scaled =
-        float3(p.xy / max(taperFactor, 0.001), p.z);
-    return sdfBox(scaled, halfExtents);
-}
-
-inline float sdfCone(float3 p, float baseRadius, float halfHeight) {
-    const float t =
-        clamp((p.z + halfHeight) / (2.0 * halfHeight), 0.0, 1.0);
-    const float radiusAtZ = baseRadius * (1.0 - t);
-    const float dRadial = length(p.xy) - radiusAtZ;
-    const float dZ = abs(p.z) - halfHeight;
-    const float dOutside =
-        length(max(float2(dRadial, dZ), float2(0.0)));
-    const float dInside = min(max(dRadial, dZ), 0.0);
-    return dOutside + dInside;
-}
-
-inline float sdfTorus(float3 p, float majorR, float minorR) {
-    const float q = length(p.xy) - majorR;
-    return length(float2(q, p.z)) - minorR;
-}
-
-inline float sdfWedge(float3 p, float3 halfExtents) {
-    const float boxD = sdfBox(p, halfExtents);
-    const float planeD =
-        p.z - halfExtents.z * (1.0 - p.x / max(halfExtents.x, 0.001));
-    return max(boxD, planeD);
-}
-
-inline float sdfCurvedPanel(float3 p, float3 halfExtents, float curvature) {
-    const float nx = p.x / max(halfExtents.x, 0.001);
-    const float ny = p.y / max(halfExtents.y, 0.001);
-    const float zMid = curvature * halfExtents.x * nx * nx;
-    const float dThickness = abs(p.z - zMid) - halfExtents.z;
-    const float dX = abs(p.x) - halfExtents.x;
-    const float dY = abs(p.y) - halfExtents.y;
-    const float dOutside =
-        length(max(float3(dX, dY, dThickness), float3(0.0)));
-    const float dInside = min(max(dX, max(dY, dThickness)), 0.0);
-    return dOutside + dInside;
-}
-
-inline float evaluateSDF(float3 localPos, uint shapeType, float4 params) {
-    const float3 halfSize = params.xyz * 0.5;
-    switch (shapeType) {
-        case SHAPE_BOX:          return sdfBox(localPos, halfSize);
-        case SHAPE_SPHERE:       return sdfSphere(localPos, params.x);
-        case SHAPE_CYLINDER:     return sdfCylinder(localPos, params.x, halfSize.z);
-        case SHAPE_ELLIPSOID:    return sdfEllipsoid(localPos, halfSize);
-        case SHAPE_TAPERED_BOX:  return sdfTaperedBox(localPos, halfSize, params.w);
-        case SHAPE_CONE:         return sdfCone(localPos, params.x, halfSize.z);
-        case SHAPE_TORUS:        return sdfTorus(localPos, params.x, params.y);
-        case SHAPE_WEDGE:        return sdfWedge(localPos, halfSize);
-        case SHAPE_CURVED_PANEL: return sdfCurvedPanel(localPos, halfSize, params.w);
-        default:                 return sdfBox(localPos, halfSize);
-    }
-}
+// SDF primitives and `evaluateSDF` live in ir_sdf_common.metal, shared with
+// the sun-shadow shader.
 
 // ---------- O(1) analytical depth-axis intersections ----------
 
@@ -200,6 +135,80 @@ inline bool circleDepthInterval(
     return true;
 }
 
+// |a*d + b| <= H solved for d. Degenerate (a == 0) returns either an empty
+// or all-d slab depending on |b| vs H. Used by yaw-aware box and ellipsoid
+// analytical depth searches where each axis has its own slope/offset.
+//
+// Threshold 1e-6 catches FP near-degenerate at irrational yaws near pi/4
+// where (cos-sin)/3 is tiny but nonzero (the exact pi/4 case has cos==sin
+// in IEEE-754 so (c-s)/3 == 0 already). 1e-10 missed the cluster around
+// it where 1/|a| blows up past 1e6; the explicit +/-1e18 sentinel reads
+// more clearly than the centered-far slab the downstream min/max swallows.
+inline bool slabFromLinear(
+    float a,
+    float b,
+    float H,
+    thread float& dLo,
+    thread float& dHi
+) {
+    if (fabs(a) < 1e-6) {
+        if (fabs(b) <= H) {
+            dLo = -1e18;
+            dHi = 1e18;
+            return true;
+        }
+        return false;
+    }
+    const float invA = 1.0 / a;
+    const float t1 = (-H - b) * invA;
+    const float t2 = ( H - b) * invA;
+    dLo = min(t1, t2);
+    dHi = max(t1, t2);
+    return true;
+}
+
+// Yaw-aware box slab. pLocal_i(d) = a_i*d + b_i in shape-local coords, with
+// pLocal = R_z(+yaw) . pView, where yaw is the cardinal-snap rasterYaw the
+// shader rasterizes at. z-axis is rotation-invariant under z-yaw.
+inline bool boxSlabIntersectYaw(
+    int2 isoRel,
+    float3 hExt,
+    float yawC,
+    float yawS,
+    thread float& dEntry,
+    thread float& dExit
+) {
+    const float iX = float(isoRel.x);
+    const float iY = float(isoRel.y);
+
+    const float ax = (yawC - yawS) / 3.0;
+    const float bx = -(yawC + yawS) * 0.5 * iX - (yawC - yawS) * iY / 6.0;
+    const float ay = (yawC + yawS) / 3.0;
+    const float by =  (yawC - yawS) * 0.5 * iX - (yawC + yawS) * iY / 6.0;
+    const float az = 1.0 / 3.0;
+    const float bz = iY / 3.0;
+
+    float dxLo, dxHi, dyLo, dyHi, dzLo, dzHi;
+    if (!slabFromLinear(ax, bx, hExt.x, dxLo, dxHi)) return false;
+    if (!slabFromLinear(ay, by, hExt.y, dyLo, dyHi)) return false;
+    if (!slabFromLinear(az, bz, hExt.z, dzLo, dzHi)) return false;
+
+    dEntry = max(dxLo, max(dyLo, dzLo));
+    dExit  = min(dxHi, min(dyHi, dzHi));
+    return dEntry <= dExit;
+}
+
+// Transform pView (view space) to pLocal (shape-local). Camera yaws by
+// +yaw around +Z so world appears rotated by -yaw from view's POV; the
+// inverse R_z(+yaw) rotates back to shape-local coords. yaw here is the
+// cardinal-snap rasterYaw — yawC/yawS come from the cos/sin tables in
+// the kernel, so they are exactly ±1/0.
+inline float3 viewToLocalYaw(float3 pView, float yawC, float yawS) {
+    return float3(yawC * pView.x - yawS * pView.y,
+                  yawS * pView.x + yawC * pView.y,
+                  pView.z);
+}
+
 inline int boxDepthIntersect(int2 isoRel, float3 halfExtents, bool hollow) {
     const float isoX = float(isoRel.x);
     const float isoY = float(isoRel.y);
@@ -210,12 +219,12 @@ inline int boxDepthIntersect(int2 isoRel, float3 halfExtents, bool hollow) {
     }
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfBox(p, halfExtents) <= 0.5) {
+        if (sdfBox(p, halfExtents) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= dExit) {
@@ -231,14 +240,67 @@ inline int boxDepthIntersect(int2 isoRel, float3 halfExtents, bool hollow) {
         boxSlabIntersect(isoX, isoY, hInt, dIntEntry, dIntExit);
     }
 
-    int candidate = int(ceil(dEntry));
+    int candidate = stableCeilToInt(dEntry);
     if (float(candidate) > dExit) {
         return kInvalidDepth;
     }
     if (dIntEntry > dIntExit || float(candidate) <= dIntEntry) {
         return candidate;
     }
-    candidate = int(ceil(dIntExit));
+    candidate = stableCeilToInt(dIntExit);
+    if (float(candidate) <= dExit) {
+        return candidate;
+    }
+    return kInvalidDepth;
+}
+
+// Yaw-aware box depth intersection. Same structure as boxDepthIntersect, but
+// the slab and SDF eval are evaluated in shape-local coords (after rotating
+// pView by R_z(+yaw)). At yaw=0 the formulas collapse to the unrotated path.
+inline int boxDepthIntersectYaw(
+    int2 isoRel,
+    float3 halfExtents,
+    bool hollow,
+    float yawC,
+    float yawS
+) {
+    float dEntry, dExit;
+    if (!boxSlabIntersectYaw(isoRel, halfExtents + float3(0.5),
+                             yawC, yawS, dEntry, dExit)) {
+        return kInvalidDepth;
+    }
+
+    if (!hollow) {
+        int candidate = stableCeilToInt(dEntry);
+        if (float(candidate) > dExit) {
+            return kInvalidDepth;
+        }
+        const float3 pLocal = viewToLocalYaw(
+            isoToLocal3D(isoRel, float(candidate)), yawC, yawS);
+        if (sdfBox(pLocal, halfExtents) <= 0.5 + kSdfBiasEpsilon) {
+            return candidate;
+        }
+        if (float(candidate + 1) <= dExit) {
+            return candidate + 1;
+        }
+        return kInvalidDepth;
+    }
+
+    const float3 hInt = halfExtents - float3(0.5);
+    float dIntEntry = 1.0;
+    float dIntExit = 0.0;
+    if (hInt.x > 0.0 && hInt.y > 0.0 && hInt.z > 0.0) {
+        boxSlabIntersectYaw(isoRel, hInt, yawC, yawS, dIntEntry, dIntExit);
+    }
+
+    int candidate = stableCeilToInt(dEntry);
+    if (float(candidate) > dExit) {
+        return kInvalidDepth;
+    }
+    if (dIntEntry > dIntExit || float(candidate) <= dIntEntry) {
+        return candidate;
+    }
+    candidate = stableCeilToInt(dIntExit);
     if (float(candidate) <= dExit) {
         return candidate;
     }
@@ -261,12 +323,12 @@ inline int sphereDepthIntersect(int2 isoRel, float radius, bool hollow) {
     const float tExit  = tClosest + halfChord;
 
     if (!hollow) {
-        int candidate = int(ceil(tEntry));
+        int candidate = stableCeilToInt(tEntry);
         if (float(candidate) > tExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfSphere(p, radius) <= 0.5) {
+        if (sdfSphere(p, radius) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= tExit) {
@@ -284,25 +346,27 @@ inline int sphereDepthIntersect(int2 isoRel, float radius, bool hollow) {
         tIntExit  = tClosest + intHalfChord;
     }
 
+    const int entryBase = stableCeilToInt(tEntry);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(tEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(tIntEntry, tExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(tIntExit);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(tIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > tExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfSphere(p, radius);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -332,12 +396,12 @@ inline int cylinderDepthIntersect(
     }
 
     if (!hollow) {
-        int candidate = int(ceil(dEntry));
+        int candidate = stableCeilToInt(dEntry);
         if (float(candidate) > dExit) {
             return kInvalidDepth;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
-        if (sdfCylinder(p, radius, halfHeight) <= 0.5) {
+        if (sdfCylinder(p, radius, halfHeight) <= 0.5 + kSdfBiasEpsilon) {
             return candidate;
         }
         if (float(candidate + 1) <= dExit) {
@@ -360,25 +424,27 @@ inline int cylinderDepthIntersect(
         }
     }
 
+    const int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(dEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 2; ++i) {
-        const int candidate = int(ceil(dIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > dExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfCylinder(p, radius, halfHeight);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -412,13 +478,14 @@ inline int ellipsoidDepthIntersect(int2 isoRel, float3 radii, bool hollow) {
     const float dExit  = (-B + sqrtDisc) * inv2A;
 
     if (!hollow) {
+        const int entryBase = stableCeilToInt(dEntry);
         for (int i = 0; i < 3; ++i) {
-            const int candidate = int(ceil(dEntry)) + i;
+            const int candidate = entryBase + i;
             if (float(candidate) > dExit) {
                 return kInvalidDepth;
             }
             const float3 p = isoToLocal3D(isoRel, float(candidate));
-            if (sdfEllipsoid(p, radii) <= 0.5) {
+            if (sdfEllipsoid(p, radii) <= 0.5 + kSdfBiasEpsilon) {
                 return candidate;
             }
         }
@@ -449,25 +516,132 @@ inline int ellipsoidDepthIntersect(int2 isoRel, float3 radii, bool hollow) {
         }
     }
 
+    const int entryBase = stableCeilToInt(dEntry);
     for (int i = 0; i < 3; ++i) {
-        const int candidate = int(ceil(dEntry)) + i;
+        const int candidate = entryBase + i;
         if (float(candidate) > min(dIntEntry, dExit)) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
+    const int exitBase = stableCeilToInt(dIntExit);
     for (int i = 0; i < 3; ++i) {
-        const int candidate = int(ceil(dIntExit)) + i;
+        const int candidate = exitBase + i;
         if (float(candidate) > dExit) {
             break;
         }
         const float3 p = isoToLocal3D(isoRel, float(candidate));
         const float sdf = sdfEllipsoid(p, radii);
-        if (sdf <= 0.5 && sdf >= -0.5) {
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
+            return candidate;
+        }
+    }
+    return kInvalidDepth;
+}
+
+// Yaw-aware ellipsoid depth intersection. Each axis's pLocal_i(d) = a_i*d+b_i
+// is scaled by 1/R_i to feed the same |q|^2 = 1 quadratic in d as the
+// unrotated path. The per-axis numerators are independent of R, so the outer
+// shell (R = radii + 0.5) and inner shell (R = radii - 0.5) reuse them. At
+// yaw=0 the per-axis (a, b) collapse to the unrotated formulas exactly.
+inline int ellipsoidDepthIntersectYaw(
+    int2 isoRel,
+    float3 radii,
+    bool hollow,
+    float yawC,
+    float yawS
+) {
+    const float iX = float(isoRel.x);
+    const float iY = float(isoRel.y);
+
+    const float3 aNum = float3((yawC - yawS) / 3.0,
+                               (yawC + yawS) / 3.0,
+                               1.0 / 3.0);
+    const float3 bNum = float3(-(yawC + yawS) * 0.5 * iX - (yawC - yawS) * iY / 6.0,
+                                (yawC - yawS) * 0.5 * iX - (yawC + yawS) * iY / 6.0,
+                                iY / 3.0);
+
+    const float3 R = radii + float3(0.5);
+    const float3 a = aNum / R;
+    const float3 b = bNum / R;
+
+    const float A = dot(a, a);
+    const float B = 2.0 * dot(a, b);
+    const float C = dot(b, b) - 1.0;
+
+    const float disc = B * B - 4.0 * A * C;
+    if (disc < 0.0) {
+        return kInvalidDepth;
+    }
+
+    const float sqrtDisc = sqrt(disc);
+    const float inv2A = 0.5 / A;
+    const float dEntry = (-B - sqrtDisc) * inv2A;
+    const float dExit  = (-B + sqrtDisc) * inv2A;
+
+    if (!hollow) {
+        const int entryBase = stableCeilToInt(dEntry);
+        for (int i = 0; i < 3; ++i) {
+            const int candidate = entryBase + i;
+            if (float(candidate) > dExit) {
+                return kInvalidDepth;
+            }
+            const float3 pLocal = viewToLocalYaw(
+                isoToLocal3D(isoRel, float(candidate)), yawC, yawS);
+            if (sdfEllipsoid(pLocal, radii) <= 0.5 + kSdfBiasEpsilon) {
+                return candidate;
+            }
+        }
+        return kInvalidDepth;
+    }
+
+    const float3 Rint = radii - float3(0.5);
+    float dIntEntry = dExit + 1.0;
+    float dIntExit = dEntry - 1.0;
+    if (Rint.x > 0.0 && Rint.y > 0.0 && Rint.z > 0.0) {
+        const float3 ia = aNum / Rint;
+        const float3 ib = bNum / Rint;
+
+        const float iA = dot(ia, ia);
+        const float iB = 2.0 * dot(ia, ib);
+        const float iC = dot(ib, ib) - 1.0;
+
+        const float iDisc = iB * iB - 4.0 * iA * iC;
+        if (iDisc >= 0.0) {
+            const float iSqrt = sqrt(iDisc);
+            const float iInv2A = 0.5 / iA;
+            dIntEntry = (-iB - iSqrt) * iInv2A;
+            dIntExit  = (-iB + iSqrt) * iInv2A;
+        }
+    }
+
+    const int entryBase = stableCeilToInt(dEntry);
+    for (int i = 0; i < 3; ++i) {
+        const int candidate = entryBase + i;
+        if (float(candidate) > min(dIntEntry, dExit)) {
+            break;
+        }
+        const float3 pLocal = viewToLocalYaw(
+            isoToLocal3D(isoRel, float(candidate)), yawC, yawS);
+        const float sdf = sdfEllipsoid(pLocal, radii);
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
+            return candidate;
+        }
+    }
+    const int exitBase = stableCeilToInt(dIntExit);
+    for (int i = 0; i < 3; ++i) {
+        const int candidate = exitBase + i;
+        if (float(candidate) > dExit) {
+            break;
+        }
+        const float3 pLocal = viewToLocalYaw(
+            isoToLocal3D(isoRel, float(candidate)), yawC, yawS);
+        const float sdf = sdfEllipsoid(pLocal, radii);
+        if (sdf <= 0.5 + kSdfBiasEpsilon && sdf >= -0.5 - kSdfBiasEpsilon) {
             return candidate;
         }
     }
@@ -481,41 +655,143 @@ inline int generalDepthSearch(
     bool hollow,
     float dExtent
 ) {
-    const float dMin = floor(-dExtent);
-    const float dMax = ceil(dExtent);
-    for (float d = dMin; d <= dMax; d += 1.0) {
-        const float3 p = isoToLocal3D(isoRel, d);
+    const int dMin = int(floor(-dExtent));
+    const int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        const float3 p = isoToLocal3D(isoRel, float(d));
         const float sdf = evaluateSDF(p, shapeType, params);
-        if (sdf <= 0.5 && (!hollow || sdf >= -0.5)) {
-            return int(round(d));
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
         }
     }
     return kInvalidDepth;
 }
 
+// Yaw-aware general SDF depth search. Mirrors the GLSL counterpart in
+// c_shapes_to_trixel.glsl. The iso projection is fixed in view space, but
+// the SDF's local frame is world-aligned. Camera yaw rotates the world by
+// -yaw from the view's POV (yaw is the cardinal-snap rasterYaw), so the
+// world-local query point is the view-local point rotated by +yaw around
+// Z. Used in smooth-mode for shape types without an O(1) analytical path
+// (cone, torus, curved_panel); those shapes have no yaw=0 fast path
+// either, so this is the per-step-SDF brute-force search. Snap-mode uses
+// snapLatticeWalk instead, which aligns with the integer voxel pool.
+inline int generalDepthSearchYaw(
+    int2 isoRel,
+    uint shapeType,
+    float4 params,
+    bool hollow,
+    float dExtent,
+    float yawC,
+    float yawS
+) {
+    const int dMin = int(floor(-dExtent));
+    const int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        const float3 pView = isoToLocal3D(isoRel, float(d));
+        const float3 p = float3(yawC * pView.x - yawS * pView.y,
+                                yawS * pView.x + yawC * pView.y,
+                                pView.z);
+        const float sdf = evaluateSDF(p, shapeType, params);
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
+        }
+    }
+    return kInvalidDepth;
+}
+
+// Snap-mode lattice walk. At sub=1 the analytical SDF entry point isn't on
+// the integer lattice, which can miss the true front-most voxel; so we walk
+// the (isoX + isoY) even sublattice in steps of 3 along the iso column and
+// take the first hit. Matches CPU voxel-pool carving exactly.
+//
+// rasterYaw is always an exact multiple of pi/2, and R_z(+rasterYaw)
+// maps integer voxels to integer voxels — so the iso lattice still
+// aligns with world voxels at any cardinal yaw. We rotate the recovered
+// view-space integer voxel into shape-local (= world) coords before
+// evaluating the SDF. At cardinalIndex==0 the rotation is identity and
+// the body collapses to the bit-exact integer-only yaw=0 walk.
+inline int snapLatticeWalk(
+    int2 isoPixelRel,
+    uint shapeType,
+    float4 paramsScaled,
+    float dExtent,
+    int cardinalIndex
+) {
+    if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) {
+        return kInvalidDepth;
+    }
+    const int isoY = isoPixelRel.y;
+    const int dMin = int(floor(-dExtent)) - 3;
+    const int dMax = int(ceil(dExtent)) + 3;
+    const int rem = ((dMin + isoY) % 3 + 3) % 3;
+    const int dStart = dMin + ((3 - rem) % 3);
+    for (int d = dStart; d <= dMax; d += 3) {
+        const float3 p = isoToLocal3D(isoPixelRel, float(d));
+        const int3 voxelPos = roundHalfUp(p);
+        const int2 projected = pos3DtoPos2DIso(voxelPos);
+        if (projected.x != isoPixelRel.x || projected.y != isoPixelRel.y) {
+            continue;
+        }
+        // voxelPos lives in VIEW frame; the SDF is parametric in shape-local
+        // (= world) coords. R_z(+rasterYaw) is integer-valued at cardinal
+        // yaws, so the rotated point is still a lattice voxel.
+        const int3 voxelLocal = rotateCardinalZInvI(voxelPos, cardinalIndex);
+        if (evaluateSDF(float3(voxelLocal), shapeType, paramsScaled) <= 0.5) {
+            return voxelPos.x + voxelPos.y + voxelPos.z;
+        }
+    }
+    return kInvalidDepth;
+}
+
+// O(1) surface depth dispatcher. Smooth-mode path; snap-mode bypasses this
+// via snapLatticeWalk. yawC/yawS come from cos/sin tables indexed by
+// rasterYawCardinalIndex(rasterYaw), so they are exactly ±1/0 — the
+// near-degenerate guards in the yaw-aware variants are protective at
+// runtime but never trip on this caller.
+// - Sphere: rotation-invariant (|p| under z-yaw unchanged); analytical works
+//   at any yaw without modification.
+// - Cylinder: z-axis aligned, |p.xy| invariant under z-yaw; same.
+// - Box, ellipsoid: shape-axes don't align with view-axes under yaw; the
+//   yaw-aware variant re-derives the per-axis linear coefficients.
+// - All other shapes: general SDF search (yaw-aware via R_z(+rasterYaw) on
+//   the query point). At yaw=0 each branch collapses to the original code
+//   path, keeping reference renders pixel-stable.
 inline int findSurfaceDepth(
     int2 isoRel,
     uint shapeType,
     float4 params,
     uint flags,
-    float dExtent
+    float dExtent,
+    float yawC,
+    float yawS
 ) {
     const bool hollow = (flags & FLAG_HOLLOW) != 0u;
     const float3 halfSize = params.xyz * 0.5;
+    const bool yawZero = (yawC == 1.0 && yawS == 0.0);
 
-    if (shapeType == SHAPE_BOX) {
-        return boxDepthIntersect(isoRel, halfSize, hollow);
-    }
     if (shapeType == SHAPE_SPHERE) {
         return sphereDepthIntersect(isoRel, params.x, hollow);
     }
     if (shapeType == SHAPE_CYLINDER) {
         return cylinderDepthIntersect(isoRel, params.x, halfSize.z, hollow);
     }
-    if (shapeType == SHAPE_ELLIPSOID) {
-        return ellipsoidDepthIntersect(isoRel, halfSize, hollow);
+    if (shapeType == SHAPE_BOX) {
+        return yawZero
+            ? boxDepthIntersect(isoRel, halfSize, hollow)
+            : boxDepthIntersectYaw(isoRel, halfSize, hollow, yawC, yawS);
     }
-    return generalDepthSearch(isoRel, shapeType, params, hollow, dExtent);
+    if (shapeType == SHAPE_ELLIPSOID) {
+        return yawZero
+            ? ellipsoidDepthIntersect(isoRel, halfSize, hollow)
+            : ellipsoidDepthIntersectYaw(isoRel, halfSize, hollow, yawC, yawS);
+    }
+    return yawZero
+        ? generalDepthSearch(isoRel, shapeType, params, hollow, dExtent)
+        : generalDepthSearchYaw(isoRel, shapeType, params, hollow, dExtent,
+                                yawC, yawS);
 }
 
 // ---------- Kernel ----------
@@ -536,8 +812,33 @@ kernel void c_shapes_to_trixel(
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
 
+    // Cardinal-snap Z-yaw consumed by the SDF path. Mirrors the GLSL shader
+    // in c_shapes_to_trixel.glsl. The shapes shader rasterizes at rasterYaw
+    // (cardinal-snap multiple of pi/2 nearest visualYaw) so its output
+    // lines up trixel-for-trixel with the voxel pool's cardinal-snap
+    // raster (T-055); the screen-space residual composite pass (T-058)
+    // rotates the framebuffer by residualYaw to recover continuous yaw.
+    // cos/sin tables are bit-exact at cardinal yaws — safer than
+    // cos(rasterYaw), which drifts by ULP from an exact pi/2 multiple
+    // after the UBO upload. At cardinalIndex==0 the rotation is identity,
+    // every line below collapses to the integer-only yaw=0 path, and the
+    // existing reference renders stay pixel-exact.
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    constexpr float cardinalCos[4] = { 1.0,  0.0, -1.0,  0.0};
+    constexpr float cardinalSin[4] = { 0.0,  1.0,  0.0, -1.0};
+    const float yawC = cardinalCos[cardinalIndex];
+    const float yawS = cardinalSin[cardinalIndex];
+    const bool yawZero = (cardinalIndex == 0);
+
     const float3 worldPos = shape.worldPosition.xyz;
-    const int3 origin = int3(round(worldPos));
+    // viewPos = R_z(-rasterYaw) · worldPos. Camera yaws by +rasterYaw, so
+    // world coords appear rotated by -rasterYaw from the view's POV.
+    const float3 viewPos = yawZero
+        ? worldPos
+        : float3( yawC * worldPos.x + yawS * worldPos.y,
+                 -yawS * worldPos.x + yawC * worldPos.y,
+                  worldPos.z);
+    const int3 origin = roundHalfUp(viewPos);
 
     const int renderMode = frameData.voxelRenderOptions.x;
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
@@ -573,7 +874,21 @@ kernel void c_shapes_to_trixel(
     } else {
         boundingHalf = paramsScaled.xyz * 0.5;
     }
-    const int3 extentScaled = int3(ceil(boundingHalf)) + int3(1);
+    // After Z-yaw the shape's view-space AABB grows in XY by |c|·hX + |s|·hY
+    // (and symmetrically for Y). Use this expanded half-extent for the iso
+    // footprint check and the generalDepthSearch range so the full rotated
+    // shape stays inside the search window.
+    float3 boundingHalfView;
+    if (yawZero) {
+        boundingHalfView = boundingHalf;
+    } else {
+        const float absC = abs(yawC);
+        const float absS = abs(yawS);
+        boundingHalfView = float3(boundingHalf.x * absC + boundingHalf.y * absS,
+                                  boundingHalf.x * absS + boundingHalf.y * absC,
+                                  boundingHalf.z);
+    }
+    const int3 extentScaled = int3(ceil(boundingHalfView)) + int3(1);
 
     const int2 originIsoScaled = pos3DtoPos2DIso(originScaled);
     const int2 isoExtentScaled = int2(
@@ -585,9 +900,11 @@ kernel void c_shapes_to_trixel(
 
     const int2 pixelCoord = isoOrigin + int2(localId.xy);
 
-    const int2 frameOffset =
-        frameData.trixelCanvasOffsetZ1 +
-        int2(floor(frameData.frameCanvasOffset * float(sub)));
+    const int2 frameOffset = trixelFrameOffset(
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions
+    );
 
     const int2 baseCanvasPixel = frameOffset + pixelCoord;
     if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= frameData.canvasSize.x + 3 ||
@@ -602,45 +919,21 @@ kernel void c_shapes_to_trixel(
         return;
     }
 
-    int surfaceD;
-
-    if (!smoothMode) {
-        if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) {
-            return;
-        }
-
-        const int isoY = isoPixelRel.y;
-        const int dMin = int(floor(-dExtent)) - 3;
-        const int dMax = int(ceil(dExtent)) + 3;
-        const int rem = ((dMin + isoY) % 3 + 3) % 3;
-        const int dStart = dMin + ((3 - rem) % 3);
-
-        bool found = false;
-        int validD = 0;
-        for (int d = dStart; d <= dMax; d += 3) {
-            const float3 p = isoToLocal3D(isoPixelRel, float(d));
-            const int3 voxelPos = int3(round(p));
-            if (pos3DtoPos2DIso(voxelPos).x != isoPixelRel.x ||
-                pos3DtoPos2DIso(voxelPos).y != isoPixelRel.y) {
-                continue;
-            }
-            if (evaluateSDF(float3(voxelPos), shape.shapeType, paramsScaled) <= 0.5) {
-                validD = voxelPos.x + voxelPos.y + voxelPos.z;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            return;
-        }
-        surfaceD = validD;
-    } else {
-        surfaceD = findSurfaceDepth(
-            isoPixelRel, shape.shapeType, paramsScaled, shape.flags, dExtent
-        );
-        if (surfaceD == kInvalidDepth) {
-            return;
-        }
+    // Snap mode runs at every cardinal rasterYaw, not just yaw=0: rasterYaw
+    // is k*pi/2 by construction so R_z(+rasterYaw) is an integer
+    // permutation, and the iso lattice still aligns with world voxels
+    // post-rotation. Smooth mode goes through findSurfaceDepth where the
+    // analytical fast paths (sphere, cylinder, box, ellipsoid) and the
+    // general SDF search still operate at rasterYaw — residualYaw is
+    // handled downstream by the screen-space residual composite pass
+    // (T-058).
+    const int surfaceD = !smoothMode
+        ? snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
+                          dExtent, cardinalIndex)
+        : findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
+                           shape.flags, dExtent, yawC, yawS);
+    if (surfaceD == kInvalidDepth) {
+        return;
     }
 
     const int originDistance = originScaled.x + originScaled.y + originScaled.z;
@@ -648,21 +941,55 @@ kernel void c_shapes_to_trixel(
     float4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
-        const float dColor = boundingHalf.x + boundingHalf.y + boundingHalf.z;
+        // dExtent above includes a +1 per-axis safety margin for the
+        // lattice walk; use the unpadded view-space half-extent sum
+        // (boundingHalfView) so the hue range matches the rotated
+        // shape's actual iso-depth extent at any yaw.  Identical to
+        // the unrotated boundingHalf sum at yaw=0.
+        const float dColor = boundingHalfView.x + boundingHalfView.y + boundingHalfView.z;
         const float denomC = max((4.0 / 3.0) * dColor, 1.0);
         const float t = clamp((float(surfaceD) + dColor) / denomC, 0.0, 1.0);
         baseColor.rgb = hsvToRgb(float3(0.66 * t, 1.0, 1.0));
     } else if ((shape.flags & FLAG_CHECKERBOARD) != 0u) {
-        const int3 voxelCell =
-            int3(round(isoToLocal3D(isoPixelRel, float(surfaceD))));
-        if (((voxelCell.x + voxelCell.y + voxelCell.z) & 1) != 0) {
+        // Checker at EFFECTIVE-voxel (scaled-integer) granularity — as
+        // sub grows (zoom/subdivision), the cube gets more cells, no
+        // collapse to physical voxels. Integer ops are bit-exact across
+        // frames (no FMA flicker).
+        const int iX = isoPixelRel.x;
+        const int iY = isoPixelRel.y;
+        const int d  = surfaceD;
+        const int nx6 = 2 * d - 3 * iX - iY;
+        const int ny6 = 2 * d + 3 * iX - iY;
+        const int nz6 = 2 * d + 2 * iY;
+        const int sx = (nx6 >= 0) ? (nx6 + 3) / 6 : -((-nx6 + 3) / 6);
+        const int sy = (ny6 >= 0) ? (ny6 + 3) / 6 : -((-ny6 + 3) / 6);
+        const int sz = (nz6 >= 0) ? (nz6 + 3) / 6 : -((-nz6 + 3) / 6);
+        // (sx, sy, sz) above is the recovered cell index in VIEW coords.
+        // Under camera yaw the shape's checker pattern is in world coords
+        // (it lives on the SDF, which we evaluated at the rotated point),
+        // so rotate (sx, sy) by +rasterYaw to recover the world-coord cell
+        // before the parity test. At cardinal rasterYaw the cos/sin table
+        // entries are exactly ±1/0, so wx/wy are integer and the
+        // floor(... + 0.5) recovery is bit-exact. At yaw=0 this is
+        // identity and the existing integer-only path is preserved
+        // bit-exact.
+        int parity;
+        if (yawZero) {
+            parity = (sx + sy + sz) & 1;
+        } else {
+            const float wx = yawC * float(sx) - yawS * float(sy);
+            const float wy = yawS * float(sx) + yawC * float(sy);
+            const int wxi = int(floor(wx + 0.5));
+            const int wyi = int(floor(wy + 0.5));
+            parity = (wxi + wyi + sz) & 1;
+        }
+        if (parity != 0) {
             baseColor.rgb *= 0.55;
         }
     }
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
-        const float4 col = adjustColorForFace(baseColor, face);
 
         for (int subPixel = 0; subPixel < 2; ++subPixel) {
             const int2 offset = faceOffset_2x3(face, subPixel);
@@ -689,7 +1016,7 @@ kernel void c_shapes_to_trixel(
                 );
                 if (depthEncoded == stored) {
                     const uint2 pix = uint2(canvasPixel);
-                    triangleCanvasColors.write(col, pix);
+                    triangleCanvasColors.write(baseColor, pix);
                     triangleCanvasDistances.write(
                         int4(depthEncoded, 0, 0, 0), pix);
                     triangleCanvasEntityIds.write(

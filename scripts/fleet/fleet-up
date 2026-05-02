@@ -3,9 +3,9 @@
 #
 # Idempotent. Creates any missing worktrees, resets each to a fresh
 # branch off origin/master (skipping any that have uncommitted work),
-# then builds a single tmux session "fleet" with one window "agents"
-# containing 7 tiled panes — each launching `claude` with the right
-# model and the matching role slash command in dry-run mode.
+# then builds two tmux windows — "fleet" (3×3 grid) and "ops" (2×2
+# meta panes) — each pane launching `claude` with the right model and
+# the matching role slash command in dry-run mode.
 #
 # Source of truth: scripts/fleet/fleet-up in the engine repo.
 # Installed to ~/bin/fleet-up (as a symlink) by scripts/fleet/install.sh.
@@ -21,6 +21,16 @@ set -euo pipefail
 ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
+
+# Model versions — change these when bumping the fleet to a new release.
+# Use full model names (not aliases) so the fleet is pinned to a known
+# version. The alias "opus" tracks latest and would silently upgrade.
+OPUS_MODEL="claude-opus-4-7"
+SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
+
+# Minimum seconds between opus-reviewer relaunches (cooldown floor).
+# fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
+OPUS_MIN_BACKOFF=1800
 
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
@@ -62,21 +72,41 @@ ensure_worktree() {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker       fleet/opus-worker
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-1     fleet/opus-worker-1
+ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-2     fleet/opus-worker-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
+ensure_worktree "$ENGINE" .claude/worktrees/merger            fleet/merger
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
-    ensure_worktree "$GAME" .claude/worktrees/game-sonnet     fleet/game-sonnet
+    # Engine opus-workers also pick up game-side `Model: opus` tasks.
+    # Each opus-worker pane has its own game worktree so it can `cd` over
+    # for game tasks and use commit-and-push there cleanly. The pane's
+    # cwd at launch is the engine worktree; the agent cd's per task.
+    ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
+    ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
+
+# Warn about legacy worktrees from the pre-restructure layout.
+# We don't auto-remove them (they may have uncommitted work) — just
+# point the human at them.
+warn_legacy_worktree() {
+    local wt="$1"
+    if [[ -d "$wt" ]]; then
+        echo "fleet-up: legacy worktree at $wt is no longer used."
+        echo "          remove with: git worktree remove $wt (after committing/stashing any work)"
+    fi
+}
+warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
+warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 
 # ----------------------------------------------------------------------
 # Step 2: reset each worktree to a fresh branch off origin/master
@@ -108,18 +138,23 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker"     claude/opus-worker-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker-1"   claude/opus-worker-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/opus-worker-2"   claude/opus-worker-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
+reset_worktree "$ENGINE/.claude/worktrees/merger"          claude/merger-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
 fi
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/game-sonnet" claude/game-sonnet-scratch
+if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/opus-worker-1" claude/game-opus-worker-1-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/opus-worker-2" claude/game-opus-worker-2-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -166,6 +201,7 @@ baseline = [
     "Bash(cp:*)",
     "Bash(mv:*)",
     "Bash(chmod:*)",
+    "Bash(touch:*)",   # heartbeat updates (witness reads file mtime)
     "Bash(sort:*)",
     "Bash(uniq:*)",
     "Bash(tr:*)",
@@ -183,6 +219,22 @@ baseline = [
     "Bash(fleet-claim:*)",
     "Bash(fleet-build:*)",
     "Bash(fleet-run:*)",
+    "Bash(fleet-run-targets:*)",
+    "Bash(fleet-help:*)",
+    "Bash(fleet-heartbeat:*)",
+    # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
+    # in the user-level allowlist matches commands STARTING with `git`,
+    # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an
+    # explicit entry so `git rebase --continue` works without a prompt.
+    "Bash(GIT_EDITOR=true git:*)",
+    # Temp-dir lifecycle for agents that need isolated scratch space
+    # (e.g. testing fleet-claim with FLEET_CLAIMS_DIR=/tmp/fleet-...).
+    # The `rm -rf` pattern is intentionally narrowed to the `/tmp/fleet-`
+    # prefix — covers `mktemp -d -t fleet-...` outputs without giving
+    # blanket rm rights. Convention: fleet-owned temp dirs MUST live
+    # under `/tmp/fleet-<purpose>.<suffix>` so this allowlist works.
+    "Bash(mktemp:*)",
+    "Bash(rm -rf /tmp/fleet-:*)",
 ]
 
 # Preserve any user-granted "always allow" entries from previous sessions,
@@ -202,10 +254,34 @@ if os.path.isfile(settings_file):
 
 all_allows = baseline + existing_extra
 
+# additionalDirectories scopes file-system access. The worktree path
+# is automatic; we add:
+#   - repo_root: the main clone, so the agent can read engine/ build/
+#     etc. from inside a worktree without triggering path-scope
+#     prompts on every cross-reference.
+#   - ~/.fleet/: heartbeats, plans, claims, logs, sessions, summaries,
+#     molecules, alerts. Every fleet role writes into one of these
+#     subdirs; without this entry every heartbeat write prompts.
+#   - /tmp/: fleet-claim test patterns, mktemp scratch dirs, generic
+#     scratch usage. Already partially allowlisted via Bash entries
+#     for mktemp/rm; adding the directory closes the path-scope side.
+#   - /private/tmp/: macOS canonical form of /tmp (it's a symlink to
+#     /private/tmp). Shell redirects like `cmd > /tmp/foo` and bash
+#     `mktemp` invocations get path-resolved by the kernel before
+#     Claude Code sees them, so the permission check sees the
+#     canonical /private/tmp/... and rejects unless that path is
+#     also in the allowlist. Observed in production: workers' attempts
+#     to redirect `git show > /tmp/tasks-master.md` were blocked with
+#     "may only write to files in the allowed working directories"
+#     even though /tmp was listed. Adding both forms is the simplest
+#     cross-platform fix (Linux ignores the /private/tmp entry since
+#     no such path exists there).
+home = os.path.expanduser("~")
 out = {
     "permissions": {
-        "additionalDirectories": [repo_root],
+        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp", "/private/tmp"],
         "allow": all_allows,
+        "defaultMode": "auto",
     }
 }
 
@@ -215,15 +291,22 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
 fi
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/game-sonnet" "$GAME"
+# Game-side opus-worker worktrees (used by engine opus-worker panes when
+# they cd over for game tasks). Allow access to BOTH the game tree (the
+# worktree's own scope) and the engine tree (so engine helper scripts +
+# CLAUDE.md are reachable from a game cd).
+if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-1" "$ENGINE"
+fi
+if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-2" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------
@@ -245,14 +328,96 @@ fi
 # Ensure the plans directory exists for opus-worker and architect to write to.
 mkdir -p "$HOME/.fleet/plans"
 
+# Ensure witness directories exist before the witness pane starts.
+mkdir -p "$HOME/.fleet/heartbeats"
+mkdir -p "$HOME/.fleet/alerts"
+
+# Clear any stale shutdown sentinel left behind by a crashed fleet-down
+# (or one that was kill -9'd). fleet-down normally cleans this up via
+# its EXIT trap, but if the process died abnormally the file persists,
+# and every babysit launched below would see it and exit immediately
+# without ever running an iteration. Clearing here is belt-and-
+# suspenders against that "fleet appears up but no agent ever runs"
+# failure mode.
+rm -f "${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
+
+# ----------------------------------------------------------------------
+# Step 3c: ensure GitHub labels referenced by agents exist
+# ----------------------------------------------------------------------
+#
+# The merger surfaced this in a session summary: its first attempt to
+# add `fleet:merger-cooldown` failed because the label didn't exist on
+# the engine repo, and it had to side-trip into `gh label create` mid-
+# loop. Pre-create here so no agent ever has to lazily create labels.
+#
+# Best-effort: if `gh` isn't authenticated, or the user is offline,
+# skip with a warning rather than failing the entire fleet-up.
+
+# Resolve which fleet-labels command we'll use (PATH first, repo
+# fallback for fleets brought up before install.sh has run).
+labels_cmd=""
+if command -v fleet-labels >/dev/null 2>&1; then
+    labels_cmd="fleet-labels"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-labels" ]]; then
+    labels_cmd="$ENGINE/scripts/fleet/fleet-labels"
+fi
+
+if [[ -z "$labels_cmd" ]]; then
+    echo "fleet-up: fleet-labels not found — skipping label sync"
+    echo "          (run scripts/fleet/install.sh to install it)"
+elif ! gh auth status >/dev/null 2>&1; then
+    echo "fleet-up: gh not authenticated — skipping label sync"
+    echo "          (run 'gh auth login' then '$labels_cmd' to backfill)"
+else
+    "$labels_cmd" || echo "fleet-up: fleet-labels exited non-zero — continuing anyway"
+fi
+
+# ----------------------------------------------------------------------
+# Step 3d: launch fleet-state-scout daemon
+# ----------------------------------------------------------------------
+#
+# Polls GitHub + git every 60s and writes `~/.fleet/state/state.json`
+# plus per-role trigger files under `~/.fleet/state/triggers/`. Roles
+# (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
+# queue-manager, merger) read state.json instead of running their own
+# `gh pr list` / `git show` calls — see each role's "Shared fleet
+# state cache" section. The trigger files are emitted and consumed by
+# babysit — trigger-aware back-off is live (T-040 / PR #300).
+# Backgrounded with nohup, PID written to scout.pid
+# for fleet-down to terminate cleanly.
+scout_cmd=""
+if command -v fleet-state-scout >/dev/null 2>&1; then
+    scout_cmd="fleet-state-scout"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-state-scout" ]]; then
+    scout_cmd="$ENGINE/scripts/fleet/fleet-state-scout"
+fi
+if [[ -z "$scout_cmd" ]]; then
+    echo "fleet-up: fleet-state-scout not found — skipping state cache daemon"
+else
+    scout_pid_file="$HOME/.fleet/state/scout.pid"
+    # If a previous scout left a PID file behind, kill that PID first
+    # to avoid two scouts polling against each other.
+    if [[ -f "$scout_pid_file" ]]; then
+        old_pid=$(cat "$scout_pid_file" 2>/dev/null || true)
+        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+            kill -TERM "$old_pid" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$scout_pid_file"
+    fi
+    mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
+    scout_log="$HOME/.fleet/logs/state-scout.log"
+    nohup "$scout_cmd" >>"$scout_log" 2>&1 &
+    disown
+    echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
+fi
+
 # ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #
-# Layout: single window with three rows.
-#   top    — sonnet-fleet-1, sonnet-fleet-2, game-sonnet  (authors)
-#   middle — opus-architect, opus-worker, game-architect  (architects + worker)
-#   bottom — sonnet-reviewer, opus-reviewer, queue-manager (ops)
+# Layout: see the canonical description at the launch_cmd comment
+# block below (two windows: fleet 3×3, ops 2×2).
 #
 # Cycle windows: Ctrl-b n / Ctrl-b p, or Ctrl-b <number>.
 #
@@ -265,8 +430,26 @@ mkdir -p "$HOME/.fleet/plans"
 # Default mode: dry-run. The agents do their startup actions and then
 # stand by for human instruction. Promote a pane to full operation by
 # typing in it: "you can stop dry-run mode and start working".
+#
+# Argument parsing:
+#   fleet-up [mode] [--no-attach]
+#     mode = dry-run | live | review-only (default: dry-run)
+#     --no-attach: skip the auto-attach (live mode only). Useful for
+#                  headless runs / CI / tests that just need the panes
+#                  spawned but don't want to attach.
+#
+# See the heredoc below ("mode review-only ...") for the user-facing
+# description of each mode.
 
-MODE="${1:-dry-run}"
+MODE="dry-run"
+ATTACH_LIVE=1   # in live mode, attach to the tmux session at the end
+for arg in "$@"; do
+    case "$arg" in
+        dry-run|live|review-only) MODE="$arg" ;;
+        --no-attach)  ATTACH_LIVE=0 ;;
+        *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
@@ -283,13 +466,38 @@ launch_cmd() {
     fi
 }
 
-# Single window, three rows:
-#   Top    (~45% height): sonnet authors + game-sonnet  — biggest panes
-#   Middle (~30% height): architects                    — medium panes
-#   Bottom (~25% height): reviewers + queue-manager     — small panes
+# Two windows:
 #
-# Navigate without a prefix key: Option+arrow (see ~/.tmux.conf).
-# Ctrl-a o = cycle next pane, Ctrl-a ; = jump to last-used pane.
+# Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
+#   Top    (~33%): sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+#   Middle (~33%): opus-architect            [game-architect]
+#   Bottom (~33%): opus-worker-1   opus-worker-2   opus-reviewer
+#
+# Window 2 ("ops") — 2x2 grid, 4 panes:
+#   queue-manager  merger
+#   witness        terminal (interactive shell in $HOME)
+#
+# Reviewers sit at the right end of each worker row so the verdict
+# pane is adjacent to the work it reviews. Architects span the
+# middle row at full width — that's where interactive design work
+# happens.
+#
+# Worker mix: 2× sonnet + 2× opus. Sonnet covers tests, docs, and
+# mechanical refactors (most of the queue). Opus covers core/perf-
+# sensitive engine work and plans needs-plan issues. Each tier has
+# its own dedicated reviewer.
+#
+# The "ops" window holds the meta panes — queue-manager (intake +
+# maintenance), merger (auto-rebase), witness (heartbeat monitor),
+# and a free-form terminal for ad-hoc commands. These don't need
+# constant visibility; jump to ops with Alt+n when you want to
+# check on them, then Alt+p back to the fleet view.
+#
+# Navigate without a prefix key:
+#   Option+arrow              — pane navigation within current window
+#   Alt+n / Alt+p             — next / previous window (added by this script)
+#   Ctrl-a o                  — cycle to next pane
+#   Ctrl-a ;                  — jump to last-used pane
 
 # Label a pane by its tmux pane ID using @role.
 # Using @role instead of pane_title makes it immune to application
@@ -298,121 +506,199 @@ label_pane_id() {
     tmux set-option -t "$1" -p @role "$2"
 }
 
-# Return the active pane ID in the fleet window.
-# split-window selects the new pane, so calling this right after a
-# split-window returns the newly created pane's ID.
-active_pane_id() {
-    tmux display-message -t "$SESSION:fleet" -p "#{pane_id}"
-}
+# --- Window 1: "fleet" — 3 rows × 3 columns ---------------------------
+#
+# Build top-down: create initial pane (will become top-left), split
+# vertically twice for middle and bottom rows, then split each row
+# horizontally to add columns. `-P -F "#{pane_id}"` makes split-window
+# print the new pane's ID so we can target it for the next split.
 
-# --- Row 1: authors (starts full-screen; will become top ~45%) ----------
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd sonnet sonnet-author)"
-TOP1=$(active_pane_id)
-label_pane_id "$TOP1" "sonnet-fleet-1 [sonnet]"
+    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
+TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
+label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
 
-# --- Row 3 (bottom, ~25%): reviewers + queue-manager -------------------
-# Split off the bottom strip first. The percentage is relative to the
-# full window height at this point — 25% bottom, 75% top.
-tmux split-window -v -t "$TOP1" -p 25 \
-    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd sonnet sonnet-reviewer 3m)"
-BOT1=$(active_pane_id)
-label_pane_id "$BOT1" "sonnet-reviewer [sonnet]"
-
-tmux split-window -h -t "$BOT1" \
-    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "$(launch_cmd opus opus-reviewer 30m)"
-BOT2=$(active_pane_id)
-label_pane_id "$BOT2" "opus-reviewer [opus]"
-
-tmux split-window -h -t "$BOT2" \
-    -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd sonnet queue-manager 5m)"
-BOT3=$(active_pane_id)
-label_pane_id "$BOT3" "queue-manager [sonnet]"
-
-# --- Row 2 (middle, ~30%): architects + opus-worker --------------------
-# Split off the middle row from TOP1. TOP1 is currently 75% of the
-# window. Splitting 40% off the bottom of that gives:
-#   TOP1 = 75% * 60% = ~45% of window  (authors)
-#   MID1 = 75% * 40% = ~30% of window  (architects + opus-worker)
-tmux split-window -v -t "$TOP1" -p 40 \
+# Split bottom 2/3 off — that becomes the middle row's leftmost pane.
+MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd opus opus-architect)"
-MID1=$(active_pane_id)
-label_pane_id "$MID1" "opus-architect [opus]"
+    "$(launch_cmd "$OPUS_MODEL" opus-architect)")
+label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
 
-tmux split-window -h -t "$MID1" \
-    -c "$ENGINE/.claude/worktrees/opus-worker" \
-    "$(launch_cmd opus opus-worker 20m)"
-MID2=$(active_pane_id)
-label_pane_id "$MID2" "opus-worker [opus]"
+# Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
+BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
 
-if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    tmux split-window -h -t "$MID2" \
-        -c "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd opus game-architect)"
-    MID3=$(active_pane_id)
-    label_pane_id "$MID3" "game-architect [opus]"
-fi
-
-# --- Expand Row 1 (top) with remaining authors -------------------------
-tmux split-window -h -t "$TOP1" \
+# Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
+# sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
+# of the original TOP_LEFT region); the second split halves what's
+# left, giving three equal columns.
+TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd sonnet sonnet-author)"
-TOP2=$(active_pane_id)
-label_pane_id "$TOP2" "sonnet-fleet-2 [sonnet]"
+    "$(launch_cmd "$SONNET_MODEL" sonnet-author)")
+label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
 
-if [[ -d "$GAME/.claude/worktrees/game-sonnet" ]]; then
-    tmux split-window -h -t "$TOP2" \
-        -c "$GAME/.claude/worktrees/game-sonnet" \
-        "$(launch_cmd sonnet game-sonnet)"
-    TOP3=$(active_pane_id)
-    label_pane_id "$TOP3" "game-sonnet [sonnet]"
+TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)")
+label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+
+# Middle row: split MID_LEFT horizontally for game-architect (only if
+# the game worktree exists). 50/50 split since architects coexist as
+# equals (engine + game).
+if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+        -c "$GAME/.claude/worktrees/game-architect" \
+        "$(launch_cmd "$OPUS_MODEL" game-architect)")
+    label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
 fi
 
-# Enable pane border labels using @role (immune to program overrides)
+# Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
+# opus-reviewer. Same 67/50 pattern as the top row to get three
+# equal columns.
+BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/opus-worker-2" \
+    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+
+BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
+    "FLEET_MIN_BACKOFF=$OPUS_MIN_BACKOFF $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+
+# --- Window 2: "ops" — 2x2 grid ---------------------------------------
+#
+# queue-manager (top-left), merger (top-right),
+# witness (bottom-left), terminal (bottom-right, $HOME, free-form shell).
+
+# Anchor explicitly after the fleet window with `-a -t fleet`. Without
+# the anchor, `new-window -t "$SESSION"` picks the lowest unused index
+# starting at base-index — which collides on tmux configs with
+# `base-index 1` (fleet itself sits at 1, and `-t "$SESSION"` retries
+# 1 instead of advancing to 2). `-a -t fleet:fleet` always lands ops
+# at fleet-index + 1 regardless of base-index.
+OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/queue-manager" \
+    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
+label_pane_id "$OPS_TL" "queue-manager [sonnet]"
+
+OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/merger" \
+    "$(launch_cmd "$OPUS_MODEL" merger 10m)")
+label_pane_id "$OPS_TR" "merger [opus 4.7]"
+
+OPS_BL=$(tmux split-window -v -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+    -c "$HOME/.fleet" \
+    "witness; exec $SHELL")
+label_pane_id "$OPS_BL" "witness"
+
+OPS_BR=$(tmux split-window -v -t "$OPS_TR" -p 50 -P -F "#{pane_id}" \
+    -c "$HOME" \
+    "exec $SHELL")
+label_pane_id "$OPS_BR" "terminal"
+
+# Enable pane border labels using @role (immune to program overrides).
+# Apply at session level so it covers both windows.
 tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_index}: #{@role} "
 
-# Focus sonnet-fleet-1 on attach
-tmux select-pane -t "$TOP1"
+# Focus opus-architect in the fleet window on attach (the human's main
+# interactive pane). Also select the fleet window so attach lands
+# there rather than ops.
+tmux select-window -t "$SESSION:fleet"
+tmux select-pane -t "$MID_LEFT"
 
 cat <<EOF
 
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-layout (single window, three rows):
-  top (big)    — sonnet-fleet-1  sonnet-fleet-2  [game-sonnet]   (authors)
-  middle (med) — opus-architect  opus-worker  [game-architect]   (architects + worker)
-  bottom (sm)  — sonnet-reviewer  opus-reviewer  queue-manager   (ops)
+layout (two windows):
+  window 1 "fleet" (3x3 grid, ~33% per row):
+    top    — sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+    middle — opus-architect            [game-architect]
+    bottom — opus-worker-1   opus-worker-2   opus-reviewer
+  window 2 "ops" (2x2 grid):
+    top    — queue-manager  merger
+    bottom — witness        terminal (\$HOME, free-form shell)
+
+effort levels:
+  opus agents (architects, opus-workers, opus-reviewer, merger) — xhigh
+  sonnet agents (sonnet-fleet-1/2, sonnet-reviewer, queue-manager) — high
+  override globally by exporting FLEET_EFFORT=<level> before fleet-up.
+  (to change one pane, edit fleet-babysit's case statement — fleet-up
+  does not thread env per-pane.)
+
+permission mode: auto (model decides when to ask vs proceed)
 
 navigation (no prefix needed):
   Option+Up/Down/Left/Right — move to pane in that direction
+  Alt+n / Alt+p             — next / previous window (fleet ↔ ops)
   Ctrl-a o                  — cycle to next pane
   Ctrl-a ;                  — jump to last-used pane
+
+  Alt+n/p requires the matching bind-key lines in ~/.tmux.conf:
+    bind-key -n M-n next-window
+    bind-key -n M-p previous-window
+  (Run \`tmux source-file ~/.tmux.conf\` after adding to apply
+  without restarting tmux.)
 
 mode "dry-run" means each agent does its startup actions and then
 waits. promote a pane to full operation by typing in it:
   "exit dry-run mode and begin your normal loop"
 
+mode "review-only" keeps the loop running but the role docs skip
+new-task pickup and new-issue ingestion. Reviewers review, mergers
+merge, smoke runs, feedback gets addressed, in-flight molecules
+finish — but no NEW work enters the queue. Use this to close out
+open PRs without expanding the queue (e.g. before a session
+boundary or to conserve credits).
+
 babysit: each agent is wrapped in fleet-babysit, which auto-resumes
 the session if claude exits (crash, usage limit, network drop).
-  dry-run — auto-resumes on crash, stops on clean exit
-  live    — auto-resumes on any exit (runs indefinitely)
+  dry-run     — auto-resumes on crash, stops on clean exit
+  live        — auto-resumes on any exit (runs indefinitely)
+  review-only — same as live; the role docs gate new-work pickup
 
-scheduling (live mode): polling roles use Claude's /loop for managed intervals:
-  sonnet-reviewer — /loop 3m     opus-reviewer — /loop 30m
-  opus-worker     — /loop 20m   queue-manager  — /loop 5m
-  authors — continuous (no /loop)
-  opus-architect — interactive (no /loop, human's design partner)
+scheduling (live mode): each worker iteration is a fresh \`claude\` process
+  (no context carry-over between tasks). babysit relaunches per role's
+  configured interval:
+  sonnet-reviewer    — every ~3m     opus-reviewer — every ~30m
+  opus-worker-1/2    — every ~20m    queue-manager — every ~5m
+  merger             — every ~10m
+  sonnet-fleet-1/2   — back-to-back (60s pause between iterations)
+  opus-architect, game-architect — interactive, persistent session
+                                   (--resume across crashes + fleet-down/up)
 
 logs: crash diagnostics written to ~/.fleet/logs/<role>.log
 
 other modes you can pass to fleet-up:
-  fleet-up dry-run   # default — startup + stand-by
-  fleet-up live      # full loop from the start (use after a clean dry run)
+  fleet-up dry-run               # default — startup + stand-by, no auto-attach
+  fleet-up live                  # full loop from the start, auto-attaches tmux
+  fleet-up live --no-attach      # full loop, leave detached (CI / headless)
+  fleet-up review-only           # close-out mode — no new work, finish in-flight
+
+graceful shutdown:
+  fleet-down                     # graceful: send "exit", wait, kill, clear claims
+  fleet-down --wait              # wait for active claims to drain first
+  fleet-down --summary           # ask each pane to write a session summary
+  fleet-down --force             # immediate: just kill the tmux session
+
+architect session resume:
+  ~/.fleet/sessions/<role>.session-id is preserved across fleet-down/up
+  cycles. opus-architect and game-architect will resume their previous
+  conversation on the next fleet-up. To force a fresh architect session
+  next time, delete the corresponding .session-id file.
 EOF
+
+# In live or review-only mode, attach to tmux so the user lands in
+# the fleet without a separate `tmux attach`. dry-run leaves the
+# session detached so the user can confirm panes spawned cleanly
+# before opting in.
+if [[ ( "$MODE" == "live" || "$MODE" == "review-only" ) && "$ATTACH_LIVE" -eq 1 ]]; then
+    echo
+    echo "fleet-up: attaching to tmux session 'fleet' (Ctrl-a d to detach)..."
+    exec tmux attach-session -t "$SESSION"
+fi

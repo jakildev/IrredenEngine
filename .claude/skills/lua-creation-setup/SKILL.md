@@ -222,7 +222,7 @@ Add custom commands to copy Lua files into the build directory. See the `create-
 ## Reference Creations
 
 - **Full example:** `creations/demos/default/lua_bindings.cpp` (types, enums, components, API tables)
-- **MIDI + Lua:** `creations/demos/midi_polyrhythm/lua_bindings.cpp` (music theory, batch factories)
+- **MIDI + Lua:** MIDI-specific bindings have moved to the game repo; see the game-side Lua examples for music theory/batch factories
 - **Component pack:** `creations/demos/default/lua_component_pack.hpp`
 
 ## Exposed Lua Namespaces

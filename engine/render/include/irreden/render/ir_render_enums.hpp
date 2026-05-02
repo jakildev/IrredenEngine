@@ -2,6 +2,7 @@
 #define IR_RENDER_ENUMS_H
 
 #include <cstdint>
+#include <cstring>
 
 namespace IRRender {
 
@@ -127,6 +128,34 @@ enum class DrawMode : std::uint8_t {
     TRIANGLES,
     LINES
 };
+
+/// False-color visualization of lighting buffers, applied during the
+/// @c LIGHTING_TO_TRIXEL pass. When set to anything other than @c NONE the
+/// final composite color is replaced by the selected debug visualization;
+/// upstream lighting passes (AO, sun shadow) still run unchanged so the
+/// values being visualized are exactly what the artistic path consumes.
+/// - @c NONE        — no overlay; normal artistic lighting/composite.
+/// - @c AO          — ambient-occlusion factor as red→green
+///                    (red = fully occluded, green = fully unoccluded).
+/// - @c LIGHT_LEVEL — combined AO × sun-shadow scalar painted as
+///                    blue→white (blue = dark, white = bright).
+/// - @c SHADOW      — directional sun-shadow occupancy (black = lit,
+///                    magenta = shadowed).
+enum class DebugOverlayMode : std::uint8_t {
+    NONE = 0,
+    AO = 1,
+    LIGHT_LEVEL = 2,
+    SHADOW = 3
+};
+
+/// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
+/// "light_level", "shadow". Returns @c NONE for unrecognized input.
+inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
+    if (std::strcmp(s, "ao") == 0)          return DebugOverlayMode::AO;
+    if (std::strcmp(s, "light_level") == 0) return DebugOverlayMode::LIGHT_LEVEL;
+    if (std::strcmp(s, "shadow") == 0)      return DebugOverlayMode::SHADOW;
+    return DebugOverlayMode::NONE;  // covers "none" and unrecognized input
+}
 
 /// Index buffer element size. Only @c UNSIGNED_SHORT (uint16) is used.
 enum class IndexType : std::uint8_t {

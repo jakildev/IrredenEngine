@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""fleet-feedback — read structured agent-to-human feedback files.
+
+Each role appends entries to ~/.fleet/feedback/<role>.md when it
+notices something the human should know about (fleet bugs, missing
+permissions, surprising state, suggestions). This script reads
+those files, filters by recency, and prints a digest.
+
+The channel is one-way: agents write, humans read in interactive
+sessions. There's no return path; humans address feedback by
+editing the fleet (role docs, scripts, settings) directly.
+
+Usage:
+  fleet-feedback                     # last 24h, all roles, chronological
+  fleet-feedback --since 1h          # last 1 hour
+  fleet-feedback --since 7d          # last 7 days
+  fleet-feedback --role merger       # filter to one role
+  fleet-feedback --headlines         # first line of each entry only
+  fleet-feedback --clear             # archive all feedback files
+
+Entry format (in ~/.fleet/feedback/<role>.md):
+  ## YYYY-MM-DD HH:MM
+  <one-line headline>
+
+  <optional 1-3 lines of context>
+
+Source of truth: scripts/fleet/fleet-feedback in the engine repo.
+Installed to ~/bin/fleet-feedback by scripts/fleet/install.sh.
+"""
+
+import argparse
+import re
+import shutil
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+
+FEEDBACK_DIR = Path.home() / ".fleet" / "feedback"
+ARCHIVE_DIR = FEEDBACK_DIR / ".archive"
+
+# `## YYYY-MM-DD HH:MM` (24h time, optional seconds, optional TZ suffix
+# we ignore). The agent writes this when it appends an entry — see
+# CLAUDE.md "Fleet feedback channel" for the format.
+HEADER_RE = re.compile(
+    r"^## (\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)(?:\s+\S+)?\s*$"
+)
+
+
+@dataclass
+class Entry:
+    role: str
+    timestamp: datetime
+    headline: str
+    body: str  # may be empty
+
+
+def parse_duration(s: str) -> timedelta:
+    """Parse `1h`, `30m`, `2d`, `45s` into a timedelta."""
+    if not s or not s[:-1].isdigit():
+        raise ValueError(f"bad duration: {s!r} (use e.g. 1h, 30m, 2d)")
+    n = int(s[:-1])
+    unit = s[-1]
+    if unit == "s":
+        return timedelta(seconds=n)
+    if unit == "m":
+        return timedelta(minutes=n)
+    if unit == "h":
+        return timedelta(hours=n)
+    if unit == "d":
+        return timedelta(days=n)
+    raise ValueError(f"unknown duration unit: {unit!r} (use s/m/h/d)")
+
+
+def parse_role_file(path: Path) -> list[Entry]:
+    """Read one role's feedback file, split into entries.
+
+    Tolerates malformed timestamps (skips the entry, prints a warning).
+    Body lines are everything between this header and the next
+    header (or EOF), with surrounding blank lines stripped.
+    """
+    role = path.stem
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+
+    entries: list[Entry] = []
+    cur_ts: datetime | None = None
+    cur_body: list[str] = []
+
+    def flush() -> None:
+        if cur_ts is None:
+            return
+        # First non-blank line of body is the headline; rest is context.
+        non_blank_idx = next(
+            (i for i, ln in enumerate(cur_body) if ln.strip()), None
+        )
+        if non_blank_idx is None:
+            headline = "(no headline)"
+            body = ""
+        else:
+            headline = cur_body[non_blank_idx].strip()
+            rest = cur_body[non_blank_idx + 1 :]
+            body = "\n".join(rest).strip()
+        entries.append(Entry(role=role, timestamp=cur_ts, headline=headline, body=body))
+
+    for line in lines:
+        match = HEADER_RE.match(line)
+        if match:
+            flush()
+            cur_body = []
+            ts_str = match.group(1).replace("T", " ")
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                try:
+                    cur_ts = datetime.strptime(ts_str, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                print(
+                    f"fleet-feedback: skipping bad timestamp {ts_str!r} in {path.name}",
+                    file=sys.stderr,
+                )
+                cur_ts = None
+        else:
+            cur_body.append(line)
+    flush()
+
+    return entries
+
+
+def collect_entries(role_filter: str | None) -> list[Entry]:
+    if not FEEDBACK_DIR.is_dir():
+        return []
+    entries: list[Entry] = []
+    for path in sorted(FEEDBACK_DIR.glob("*.md")):
+        # Skip files in the .archive subdir (glob doesn't recurse, but
+        # be explicit in case the user drops a file at the top level).
+        if path.parent != FEEDBACK_DIR:
+            continue
+        if role_filter and path.stem != role_filter:
+            continue
+        entries.extend(parse_role_file(path))
+    return entries
+
+
+def cmd_clear() -> int:
+    if not FEEDBACK_DIR.is_dir():
+        print("fleet-feedback: nothing to clear (no feedback dir).")
+        return 0
+    files = sorted(p for p in FEEDBACK_DIR.glob("*.md") if p.parent == FEEDBACK_DIR)
+    if not files:
+        print("fleet-feedback: nothing to clear (no feedback files).")
+        return 0
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    dest = ARCHIVE_DIR / stamp
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in files:
+        shutil.move(str(path), str(dest / path.name))
+    print(f"fleet-feedback: archived {len(files)} file(s) to {dest}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Read agent-to-human feedback files.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__.split("Usage:")[1].rstrip() if __doc__ else None,
+    )
+    parser.add_argument(
+        "--since", default="24h",
+        help="Filter to entries newer than this (e.g. 1h, 30m, 7d). Default: 24h.",
+    )
+    parser.add_argument(
+        "--role", default=None,
+        help="Filter to one role (e.g. merger, sonnet-author). For multi-instance roles use the full per-worktree name (e.g. sonnet-author-1, opus-worker-2).",
+    )
+    parser.add_argument(
+        "--headlines", action="store_true",
+        help="Print only the headline line of each entry.",
+    )
+    parser.add_argument(
+        "--clear", action="store_true",
+        help="Archive ALL feedback files to ~/.fleet/feedback/.archive/<timestamp>/. Ignores --role; clears all agents.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.clear:
+        return cmd_clear()
+
+    try:
+        cutoff = datetime.now() - parse_duration(args.since)
+    except ValueError as e:
+        print(f"fleet-feedback: {e}", file=sys.stderr)
+        return 2
+
+    entries = [e for e in collect_entries(args.role) if e.timestamp >= cutoff]
+    if not entries:
+        suffix = f" for role {args.role!r}" if args.role else ""
+        print(f"fleet-feedback: no entries in the last {args.since}{suffix}.")
+        return 0
+
+    # Chronological, oldest first — newest at the bottom is what you
+    # want when you're scrolling for "what happened recently."
+    entries.sort(key=lambda e: e.timestamp)
+
+    for entry in entries:
+        ts = entry.timestamp.strftime("%Y-%m-%d %H:%M")
+        print(f"[{ts}] [{entry.role}] {entry.headline}")
+        if not args.headlines and entry.body:
+            for line in entry.body.splitlines():
+                print(f"    {line}")
+            print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

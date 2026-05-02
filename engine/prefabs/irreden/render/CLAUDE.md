@@ -16,11 +16,17 @@ the ECS surface.
 - `C_Camera` — tag.
 - `C_CameraPosition2DIso` — iso-space position.
 - `C_ZoomLevel` — float zoom.
+- `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
+  `camera.hpp` for the cardinal/residual split API.
 - `C_TextSegment` — UTF-8 string for text-to-trixel.
 - `C_TextStyle` — font, size, color.
 - `C_GeometricShape` — 2D overlay shape descriptor.
 - `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
   distance offset).
+- `C_Sprite` / `C_SpriteSheet` — 2D screen-composite sprite + atlas
+  metadata. Sprites bypass the trixel pipeline and draw at the
+  `FRAMEBUFFER_TO_SCREEN` stage. See [`docs/design/sprites.md`](../../../../docs/design/sprites.md)
+  for the full data model, depth semantics, and cross-task scope.
 
 ## Key systems (all RENDER pipeline)
 
@@ -35,6 +41,43 @@ the ECS surface.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
+
+## Exposing system public API from the prefab layer
+
+Feature systems in this directory may need a public API surface so creations
+and Lua bindings can drive their behavior. Two patterns:
+
+**Pattern A — direct component access.** Caller grabs the relevant entity via
+an ECS query and reads or writes the component directly. Best when the API
+surface is small and callers already hold the entity id.
+
+```cpp
+// Caller holds the canvas entity and writes the fog component directly.
+auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(canvasEntity);
+fog.setState(worldX, worldY, kFogStateVisible);
+```
+
+**Pattern B — prefab-scoped free-function namespace.** A header in this
+directory (e.g. `fog_of_war.hpp`) exposes a namespace such as `IRPrefab::Fog::`
+(declared in the feature's own header; name it anything that doesn't collide
+with `IRRender::`) that internally performs the entity-lookup logic. Keeps an
+ergonomic free-function shape without putting the feature into `IRRender::` or
+adding fields to `RenderManager`.
+
+```cpp
+// Header exposes a namespace; callers do not need to hold the entity.
+namespace IRPrefab::Fog {
+    void setCell(int worldX, int worldY, std::uint8_t state);
+    void revealRadius(int cx, int cy, int radius);
+    void clear();
+}
+```
+
+**What not to do.** Do not add a feature setter/getter to `IRRender::` or a
+backing field to `RenderManager`. See `engine/render/CLAUDE.md`
+§"What belongs in engine/render/ vs engine/prefabs/irreden/render/" for the
+full principle, the rule of thumb, and the list of existing violations being
+cleaned up.
 
 ## Gotchas
 

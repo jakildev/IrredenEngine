@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# fleet-help — index of Irreden Engine scripts/fleet/ tools.
+#
+# Installed to ~/bin/fleet-help by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+resolve_tool() {
+    local name=$1
+    if command -v "$name" >/dev/null 2>&1; then
+        command -v "$name"
+        return 0
+    fi
+    if [[ -f "$SCRIPT_DIR/$name" ]]; then
+        echo "$SCRIPT_DIR/$name"
+        return 0
+    fi
+    return 1
+}
+
+print_tool_help() {
+    local name=$1
+    local path
+    if [[ "$name" == "fleet-help" ]]; then
+        exec "$0" --help
+    fi
+    if ! path=$(resolve_tool "$name"); then
+        echo "fleet-help: unknown or missing tool '$name' (expected under $SCRIPT_DIR/)" >&2
+        exit 1
+    fi
+
+    case "$name" in
+        fleet-build)
+            cat <<'EOF'
+fleet-build — forwards to cmake --build with auto -j and worktree build/.
+
+  fleet-build --target IRShapeDebug
+  fleet-build --target IrredenEngineTest -- --clean-first   # extra cmake args
+
+No --help flag. List CMake targets:
+  cmake --build <build-dir> --target help
+Or (curated demo names):
+  fleet-run --targets --plan
+EOF
+            ;;
+        fleet-debug)
+            bash "$path" --help
+            ;;
+        fleet-up)
+            cat <<'EOF'
+fleet-up — multi-pane tmux fleet + optional scout daemon.
+
+  fleet-up [dry-run | live | review-only] [--no-attach]
+    dry-run     default; agents start then stand by
+    live        full loop; auto-attaches unless --no-attach
+    review-only reviewers/mergers/smoke; workers skip new task pickup
+
+No --help flag. Full narrative: scripts/fleet/fleet-up (header) and docs/AGENT_FLEET_SETUP.md
+EOF
+            ;;
+        fleet-babysit)
+            cat <<'EOF'
+fleet-babysit — auto-resume wrapper around `claude` for fleet roles.
+
+  fleet-babysit <model-alias> <role-slug> <mode> [loop-interval]
+
+Invoked from tmux panes by fleet-up, not usually run by hand.
+
+No --help flag. See scripts/fleet/fleet-babysit header.
+EOF
+            ;;
+        fleet-heartbeat)
+            cat <<'EOF'
+fleet-heartbeat <agent-name>
+
+Touches ~/.fleet/heartbeats/<name> so witness knows the agent is alive.
+
+No --help flag. See scripts/fleet/fleet-heartbeat header.
+EOF
+            ;;
+        witness)
+            cat <<'EOF'
+witness — polls ~/.fleet/heartbeats for stale mtimes.
+
+  witness          run continuously (normal fleet pane)
+  witness --once   one pass then exit
+
+See scripts/fleet/witness header.
+EOF
+            ;;
+        fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels)
+            bash "$path" --help
+            ;;
+        fleet-claude-stream | fleet-state-scout | fleet-feedback)
+            if ! "$path" --help 2>/dev/null; then
+                "$path" -h 2>/dev/null || {
+                    echo "fleet-help: $name has no --help; open $path" >&2
+                    exit 1
+                }
+            fi
+            ;;
+        *)
+            if "$path" --help 2>/dev/null; then
+                :
+            else
+                echo "fleet-help: no --help for $name; see $path" >&2
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+usage: fleet-help              print the full tool index
+   or: fleet-help <command>    detailed help when the tool supports it
+                               e.g. fleet-help fleet-run
+EOF
+    exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+    print_tool_help "$1"
+    exit 0
+fi
+
+cat <<'EOF'
+Irreden Engine — fleet tooling index
+=====================================
+
+One-time PATH setup (symlinks ~/bin/fleet-* and friends):
+  scripts/fleet/install.sh
+  (ensure ~/bin is on your PATH — install.sh prints a hint if not)
+  Same script installs tab completion for fleet-run / fleet-build (bash +
+  zsh); install.sh --help
+
+More context:
+  scripts/fleet/README.md
+  docs/AGENT_FLEET_SETUP.md
+
+----------------------------------------------------------------------
+Engine build / run (everyday dev)
+----------------------------------------------------------------------
+  fleet-build [--target <name>] [...]
+      cmake --build wrapper; auto -j; auto-configures <worktree>/build
+      on first run. Same build directory as fleet-run.
+
+  fleet-debug [--batch] <target-or-exe> [-- program-args...]
+      Builds with fleet-build, cd's beside data/shaders/scripts, then starts
+      lldb/gdb. Use --batch to run once and print all thread backtraces.
+
+  fleet-run [--build-dir <dir>] [--timeout N] <exe-name> [args...]
+      Finds the built binary under build/, cd's beside data/shaders/scripts.
+
+  fleet-run --targets [...]    alias of fleet-run-targets (list names)
+  fleet-run-targets [...]        --built | --plan | --plain | --build-dir
+
+  Per-tool:  fleet-help fleet-run
+              fleet-help fleet-build
+              fleet-help fleet-debug
+
+  Tab completion: see scripts/fleet/README.md (Files › completions).
+
+----------------------------------------------------------------------
+Parallel-agent fleet (tmux + Claude)
+----------------------------------------------------------------------
+  fleet-up [dry-run | live | review-only] [--no-attach]
+  fleet-down [--force] [--keep-claims] [--wait] [--summary]
+  fleet-babysit …                (normally launched by fleet-up)
+  fleet-claim …                  task claims under ~/.fleet/claims/
+  fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
+  fleet-claude-stream            format claude stream-json for tmux
+  fleet-heartbeat <agent>        bump heartbeat mtime
+  witness [--once]               detect stale heartbeats
+
+  fleet-help fleet-up            short summary (fleet-up has no --help)
+
+----------------------------------------------------------------------
+Meta / housekeeping
+----------------------------------------------------------------------
+  fleet-labels [--repo …] [--dry-run]    ensure GitHub fleet labels exist
+  fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
+
+----------------------------------------------------------------------
+This index
+----------------------------------------------------------------------
+  fleet-help --help
+
+EOF

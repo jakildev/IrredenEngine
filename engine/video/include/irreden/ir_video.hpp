@@ -1,6 +1,7 @@
 #ifndef IR_VIDEO_H
 #define IR_VIDEO_H
 
+#include <irreden/video/auto_screenshot.hpp>
 #include <irreden/video/ir_video_types.hpp>
 #include <irreden/video/video_recorder.hpp>
 #include <string>

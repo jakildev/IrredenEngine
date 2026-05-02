@@ -1,7 +1,5 @@
 #version 460 core
 
-// TODO: Needs review
-
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
@@ -17,6 +15,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
+    uniform float visualYaw;
+    uniform float rasterYaw;
+    uniform float residualYaw;
+    uniform float _yawPadding;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -44,6 +46,7 @@ layout(std430, binding = 26) buffer IndirectDispatchParams {
 };
 
 void main() {
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     uint idx = workGroupIndex * 64u + gl_LocalInvocationID.x;
 
@@ -54,6 +57,9 @@ void main() {
             uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
+                if (cardinalIndex != 0) {
+                    voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                }
                 ivec2 isoPos = pos3DtoPos2DIso(voxelPos);
                 if (isoPos.x >= cullIsoMin.x && isoPos.x <= cullIsoMax.x &&
                     isoPos.y >= cullIsoMin.y && isoPos.y <= cullIsoMax.y) {

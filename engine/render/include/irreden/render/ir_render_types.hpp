@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/math/sdf.hpp>
 
 #include <cstdint>
 
@@ -36,13 +37,39 @@ struct FrameDataFramebuffer {
     // a frame data component as well or add as field for shader program
 };
 
+/// Per-frame UBO for the SCREEN_SPACE_RESIDUAL_ROTATE pass. The model+offset
+/// pair mirrors FrameDataFramebuffer so this stage can act as a drop-in
+/// replacement for FRAMEBUFFER_TO_SCREEN; residualYaw_ is the leftover yaw
+/// (visualYaw - rasterYaw, in [-pi/4, pi/4]) the fragment shader applies as
+/// a 2D rotation in pixel space around the framebuffer center.
+struct FrameDataScreenResidualRotate {
+    mat4 mvpMatrix;
+    // Always zero today; if non-zero, adjust the rotation center in the fragment
+    // shader (currently anchored at ts * 0.5) to account for the scroll offset.
+    vec2 textureOffset;
+    float residualYaw = 0.0f;
+    float _pad0 = 0.0f;
+};
+
+/// CPU mirror of the @c HoveredEntityIdBuffer SSBO layout (binding 14).
+/// The fragment shader writes the hovered entity id + depth here every frame;
+/// @c IRRender::getEntityIdAtMouseTrixel reads it back via persistent map.
+/// The binary layout must stay byte-identical to the GLSL/MSL @c std430 block
+/// declared in @c f_trixel_to_framebuffer.glsl and @c trixel_to_framebuffer.metal.
+struct HoveredEntityIdLayout {
+    uvec2 entityId_{0u, 0u};
+    float depth_{1.0f};
+    float _pad_{0.0f};
+};
+
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
     vec2 canvasZoomLevel_;
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
-    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions, y=unused.
+    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions,
+    /// y=unused.
     vec2 effectiveSubdivisionsForHover_;
     /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
     float showHoverHighlight_;
@@ -65,6 +92,16 @@ struct FrameDataVoxelToCanvas {
     // Derived from the cull camera (frozen or live) and zoom.
     ivec2 cullIsoMin_ = ivec2(0);
     ivec2 cullIsoMax_ = ivec2(0);
+    // Z-yaw camera rotation, in radians. visualYaw_ is the canonical
+    // continuous angle written by gameplay; rasterYaw_ is the cardinal-snap
+    // multiple of pi/2 nearest visualYaw_; residualYaw_ = visualYaw_ -
+    // rasterYaw_. The integer trixel rasterizer picks a basis permutation
+    // from rasterYaw_; the screen-space residual composite pass consumes
+    // residualYaw_.
+    float visualYaw_ = 0.0f;
+    float rasterYaw_ = 0.0f;
+    float residualYaw_ = 0.0f;
+    float _yawPadding_ = 0.0f;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -75,9 +112,9 @@ struct FrameDataTrixelToTrixel {
 };
 
 struct GlyphDrawCommand {
-    uint32_t positionPacked;  // x | (y << 16)
+    uint32_t positionPacked; // x | (y << 16)
     uint32_t glyphIndex;
-    uint32_t colorPacked;     // RGBA as packed uint
+    uint32_t colorPacked; // RGBA as packed uint
     uint32_t distance;
     uint32_t styleFlags = 0;
 };
@@ -85,19 +122,18 @@ struct GlyphDrawCommand {
 /// How the output canvas is scaled to fill the window.
 enum class FitMode { FIT, STRETCH, UNKNOWN };
 
-/// Controls sub-voxel positioning in the voxel→trixel compute pass.
-/// - @c SNAPPED — voxels snap to the nearest trixel grid cell. Fast, pixel-perfect.
-/// - @c SMOOTH  — sub-trixel offsets are applied using @c subdivisions × zoom.
-///   Produces smoother camera panning but costs more GPU time. Changing mode or
-///   subdivisions mid-frame stalls the pipeline.
-enum class VoxelRenderMode { SNAPPED = 0, SMOOTH = 1 };
-enum class LodLevel : std::uint32_t {
-    LOD_0 = 0,
-    LOD_1 = 1,
-    LOD_2 = 2,
-    LOD_3 = 3,
-    LOD_4 = 4
-};
+/// Controls how the voxel→trixel compute pass subdivides trixel cells.
+/// - @c NONE          — no subdivision; voxels snap to the nearest trixel
+///   grid cell. Fast, pixel-perfect. Equivalent to the old SNAPPED mode.
+/// - @c POSITION_ONLY — positions are subdivided by @c subdivisions (no zoom
+///   scaling), but SDF/shape evaluation stays at base resolution. Gives
+///   smooth entity movement without the GPU cost of full zoom subdivision.
+/// - @c FULL          — positions subdivided by @c subdivisions × zoom.
+///   Smoothest camera panning but highest GPU cost. Equivalent to the old
+///   SMOOTH mode. Changing mode or subdivisions mid-frame stalls the pipeline.
+/// @note Currently global (per-frame). Per-entity subdivision modes are future work.
+enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
+enum class LodLevel : std::uint32_t { LOD_0 = 0, LOD_1 = 1, LOD_2 = 2, LOD_3 = 3, LOD_4 = 4 };
 
 struct GPUEntityTransform {
     vec4 worldPosition;
@@ -113,32 +149,23 @@ struct GPUUpdateParams {
 };
 
 /// SDF primitive type dispatched to the shapes→trixel compute shader.
-/// Each value corresponds to a branch in the shader's SDF evaluation function.
-enum class ShapeType : std::uint32_t {
-    BOX = 0,
-    SPHERE = 1,
-    CYLINDER = 2,
-    ELLIPSOID = 3,
-    CURVED_PANEL = 4,
-    WEDGE = 5,
-    TAPERED_BOX = 6,
-    CUSTOM_SDF = 7,  ///< User-supplied SDF; requires a matching shader specialization.
-    CONE = 8,
-    TORUS = 9
-};
+/// Canonical definition lives in @ref IRMath::SDF::ShapeType so the math-side
+/// SDF helpers (`IRMath::SDF::evaluate`, `boundingHalf`, …) and the renderer
+/// stay in lockstep without two parallel enums to keep synchronized.
+using ShapeType = IRMath::SDF::ShapeType;
 
 /// Bit-combinable rendering flags stored in @c GPUShapeDescriptor::flags.
 /// Combine with @c |.
 enum ShapeFlags : std::uint32_t {
-    SHAPE_FLAG_NONE       = 0,
-    SHAPE_FLAG_HOLLOW     = 1u << 0,  ///< Render only the shell; skip interior voxels.
-    SHAPE_FLAG_MIRROR_X   = 1u << 1,
-    SHAPE_FLAG_MIRROR_Y   = 1u << 2,
-    SHAPE_FLAG_VISIBLE    = 1u << 3,
+    SHAPE_FLAG_NONE = 0,
+    SHAPE_FLAG_HOLLOW = 1u << 0, ///< Render only the shell; skip interior voxels.
+    SHAPE_FLAG_MIRROR_X = 1u << 1,
+    SHAPE_FLAG_MIRROR_Y = 1u << 2,
+    SHAPE_FLAG_VISIBLE = 1u << 3,
     /// Forward-looking: snap joint rotation to nearest 90° in iso-adjusted space.
     /// Not yet implemented.
     SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
-    SHAPE_FLAG_CHECKERBOARD      = 1u << 5,
+    SHAPE_FLAG_CHECKERBOARD = 1u << 5,
     /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
     /// normalized to [0, 1] over the shape's own depth extent. Useful for
     /// visually distinguishing individual shapes regardless of world position.
@@ -181,7 +208,79 @@ struct GPUShapesFrameData {
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;
+    // Z-yaw camera rotation, in radians. Mirrors FrameDataVoxelToCanvas:
+    // visualYaw is the canonical continuous angle, rasterYaw is the cardinal
+    // multiple of pi/2 nearest visualYaw, residualYaw = visualYaw - rasterYaw.
+    // The shapes shader rasterizes at rasterYaw so the SDF surface lands on
+    // the same integer voxel lattice as the voxel pool's cardinal-snap raster
+    // (T-055); the screen-space residual composite pass (T-058) then rotates
+    // the trixel framebuffer by residualYaw to recover continuous yaw.
+    float visualYaw = 0.0f;
+    float rasterYaw = 0.0f;
+    float residualYaw = 0.0f;
+    float _yawPadding = 0.0f;
 };
+
+struct FrameDataSun {
+    // xyz = unit vector pointing from surfaces toward the sun; w unused.
+    // Default mirrors RenderManager::m_sunDirection (overhead with small
+    // -X / -Y tilt — those match the outward-normal signs of the visible
+    // X_FACE / Y_FACE so dot-product shading produces Z > X > Y).
+    // Live frame data is overwritten from resolveSun() each tick — this
+    // default only matters before the first tick.
+    vec4 sunDirection_ = vec4(-0.3f, -0.2f, -0.93f, 0.0f);
+    float sunIntensity_ = 1.0f;
+    float sunAmbient_ = 0.4f;
+    int shadowsEnabled_ = 1;
+    int shapeCasterCount_ = 0;
+    // Number of valid entries in the OccupancyEntityBounds SSBO. The shadow
+    // compute shader linear-scans this many entries to look up the surface
+    // entity's voxel bbox so it can skip self-cells during occupancy march
+    // (the parity equivalent of analytic-path selfEntityId exclusion).
+    int occupancyBoundsCount_ = 0;
+    // Mirrors `RenderManager::m_aoEnabled`. When 0 the AO compute shader
+    // short-circuits with a constant 1.0 (no darkening) so the lighting
+    // pass treats AO as a no-op. Wired in here rather than in its own UBO
+    // because every consumer (AO compute, lighting) already binds
+    // FrameDataSun.
+    int aoEnabled_ = 1;
+    // When 1 the lookup reads from the BAKE-populated sun depth map;
+    // when 0 the legacy DDA + analytic-caster path runs unchanged.
+    int useScreenSpaceShadow_ = 0;
+    int _padding0_ = 0;
+    // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
+    // each frame in system_bake_sun_shadow_map. .w is std140 padding.
+    vec4 sunBasisU_ = vec4(0.0f);
+    vec4 sunBasisV_ = vec4(0.0f);
+    // sunPx = round((dot(p, uHat/vHat) - sunBufferOriginUV_) / sunBufferTexelSize_).
+    // Sized to the visible iso AABB swept along -sunDir by kSunShadowMaxDistance.
+    vec2 sunBufferOriginUV_ = vec2(0.0f);
+    vec2 sunBufferTexelSize_ = vec2(1.0f);
+};
+static_assert(sizeof(FrameDataSun) == 96, "FrameDataSun must match std140 layout");
+static_assert(offsetof(FrameDataSun, sunBasisU_) == 48, "sunBasisU_ must align after _padding0_");
+static_assert(
+    offsetof(FrameDataSun, sunBufferOriginUV_) == 80,
+    "sunBufferOriginUV_ must align after sunBasisV_"
+);
+
+/// Per-entity occupancy bbox passed to the sun shadow shader so it can
+/// exclude self-cells from the occupancy march. Built each frame in
+/// `system_build_occupancy_grid` from the per-voxel entity IDs that
+/// `system_update_voxel_set_children` writes into the voxel pool. One entry
+/// per voxel-pool entity that contributed at least one in-bounds voxel.
+///
+/// std430 layout: each member is naturally aligned to 16 bytes via the
+/// uvec4 / ivec4 wrappers. Total 48 bytes per entry.
+struct GPUOccupancyEntityBounds {
+    /// .x = entity id; .yzw padding to keep the next member 16-byte aligned.
+    uvec4 entityId = uvec4(0u);
+    /// Inclusive minimum cell coordinates (signed world-voxel space).
+    ivec4 minCell = ivec4(0);
+    /// Inclusive maximum cell coordinates.
+    ivec4 maxCell = ivec4(0);
+};
+static_assert(sizeof(GPUOccupancyEntityBounds) == 48, "GPUOccupancyEntityBounds std430 layout");
 
 /// @{
 /// @name GPU buffer binding points
@@ -205,6 +304,10 @@ constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
 constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
+// Slot 16 is also used by Metal compute shaders (c_voxel_to_trixel_stage_*, c_shapes_to_trixel)
+// for the distanceScratch SSBO; the reuse is safe because compute and render encoders maintain
+// independent argument tables.
+constexpr std::uint32_t kBufferIndex_FrameDataScreenResidualRotate = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
@@ -214,7 +317,21 @@ constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
+constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
+constexpr std::uint32_t kBufferIndex_OccupancyGrid = 28;
+constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
+// Metal caps buffer slots at 30; the sun-shadow pass runs after
+// SHAPES_TO_TRIXEL, so it can reuse the shape descriptor slot as long as each
+// pass explicitly binds the buffer it needs before dispatch.
+constexpr std::uint32_t kBufferIndex_SunShadowShapeCasters = kBufferIndex_ShapeDescriptors;
+// Reuses slot 4 (otherwise unassigned). The sun-shadow pass binds this
+// before dispatch; no other pass uses slot 4 today.
+constexpr std::uint32_t kBufferIndex_OccupancyEntityBounds = 4;
+// Aliases the occupancy-grid slot. The bake (writes) and the screen-space
+// lookup (reads) never need the occupancy SSBO at the same time, and the
+// legacy lookup rebinds the slot back to OccupancyGrid before its dispatch.
+constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
 /// @}
 
 // One entry per dispatched tile in the batched shapes→trixel pass.

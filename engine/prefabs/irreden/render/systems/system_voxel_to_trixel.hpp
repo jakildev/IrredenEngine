@@ -17,8 +17,10 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -69,8 +71,7 @@ inline void buildVoxelFrameData(
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount
 ) {
-    const auto renderMode = IRRender::getVoxelRenderMode();
-    const int baseSubdivisions = IRRender::getVoxelRenderSubdivisions();
+    const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
     const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
 
@@ -82,23 +83,12 @@ inline void buildVoxelFrameData(
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
 
-    static int previousRenderMode = -1;
-    static int previousEffectiveSubdivisions = -1;
-    if (static_cast<int>(renderMode) != previousRenderMode ||
-        effectiveSubdivisions != previousEffectiveSubdivisions) {
-        IRE_LOG_INFO(
-            "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
-            "effective_subdivisions={}",
-            static_cast<int>(renderMode),
-            baseSubdivisions,
-            static_cast<int>(IRMath::round(
-                IRMath::max(IRRender::getCameraZoom().x, IRRender::getCameraZoom().y)
-            )),
-            effectiveSubdivisions
-        );
-        previousRenderMode = static_cast<int>(renderMode);
-        previousEffectiveSubdivisions = effectiveSubdivisions;
-    }
+    // visualYaw_, residualYaw_, and _yawPadding_ not consumed in T-055; scaffolded for T-058 (screen-space residual composite)
+    frameData.visualYaw_ = IRPrefab::Camera::getYaw();
+    const auto [rasterYaw, residualYaw] =
+        IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
+    frameData.rasterYaw_ = rasterYaw;
+    frameData.residualYaw_ = residualYaw;
 }
 
 inline void clearCanvasAndDistances(
@@ -129,8 +119,23 @@ inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf)
 }
 
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+    struct Params {
+        ShaderProgram *compactProgram_ = nullptr;
+        ShaderProgram *stage1Program_ = nullptr;
+        Buffer *frameDataBuf_ = nullptr;
+        Buffer *voxelPosBuf_ = nullptr;
+        Buffer *voxelColorBuf_ = nullptr;
+        Buffer *voxelEntityIdBuf_ = nullptr;
+        Buffer *chunkVisBuf_ = nullptr;
+        Buffer *indirectBuf_ = nullptr;
+        FrameDataVoxelToCanvas frameData_{};
+        // Log-throttle state — emit the render-mode log line only when
+        // mode or effective subdivisions change.
+        int previousRenderMode_ = -1;
+        int previousEffectiveSubdivisions_ = -1;
+    };
+
     static SystemId create() {
-        static FrameDataVoxelToCanvas frameData{};
         IRRender::createNamedResource<ShaderProgram>(
             "VoxelCompactProgram",
             std::vector{
@@ -202,31 +207,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
-        static ShaderProgram *s_compactProgram =
-            IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
-        static ShaderProgram *s_stage1Program =
-            IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
-        static Buffer *s_frameDataBuf =
-            IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        static Buffer *s_voxelPosBuf =
-            IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
-        static Buffer *s_voxelColorBuf =
-            IRRender::getNamedResource<Buffer>("VoxelColorBuffer");
-        static Buffer *s_voxelEntityIdBuf =
-            IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
-        static Buffer *s_chunkVisBuf =
-            IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
-        static Buffer *s_indirectBuf =
-            IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
+        p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        p->voxelPosBuf_ = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
+        p->voxelColorBuf_ = IRRender::getNamedResource<Buffer>("VoxelColorBuffer");
+        p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
+        p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
+        p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
 
-        return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
+        SystemId systemId = createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasFirst",
-            [](IREntity::EntityId &entity,
-               C_VoxelPool &voxelPool,
-               C_TriangleCanvasTextures &triangleCanvasTextures) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0, t1;
-
+            [p](IREntity::EntityId &entity,
+                C_VoxelPool &voxelPool,
+                C_TriangleCanvasTextures &triangleCanvasTextures) {
                 const int liveVoxelCount = voxelPool.getLiveVoxelCount();
                 if (liveVoxelCount == 0) return;
 
@@ -237,17 +233,34 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 const auto &cull = IRRender::getCullViewport();
 
-                buildVoxelFrameData(frameData, triangleCanvasTextures, liveVoxelCount);
+                buildVoxelFrameData(
+                    p->frameData_, triangleCanvasTextures, liveVoxelCount
+                );
 
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
+                const int renderMode = p->frameData_.voxelRenderOptions_.x;
+                const int effectiveSub = p->frameData_.voxelRenderOptions_.y;
+                if (renderMode != p->previousRenderMode_ ||
+                    effectiveSub != p->previousEffectiveSubdivisions_) {
+                    const vec2 zoom = IRRender::getCameraZoom();
+                    IRE_LOG_INFO(
+                        "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
+                        "effective_subdivisions={}",
+                        renderMode,
+                        IRRender::getVoxelRenderSubdivisions(),
+                        static_cast<int>(IRMath::round(IRMath::max(zoom.x, zoom.y))),
+                        effectiveSub
+                    );
+                    p->previousRenderMode_ = renderMode;
+                    p->previousEffectiveSubdivisions_ = effectiveSub;
+                }
+
                 clearCanvasAndDistances(entity, triangleCanvasTextures);
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.canvasClearMs_ = IRRender::elapsedMs(t0, t1); }
 
                 ivec2 cullOffsetZ1 = IRMath::trixelOriginOffsetZ1(cull.canvasSize_);
                 const auto &uploadMask = buildChunkVisibilityMask(
                     voxelPool, cull.cameraIso_, cullOffsetZ1, cull.canvasSize_, cull.zoom_
                 );
-                s_chunkVisBuf->subData(
+                p->chunkVisBuf_->subData(
                     0,
                     uploadMask.size() * sizeof(std::uint32_t),
                     uploadMask.data()
@@ -255,29 +268,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
                 constexpr int kGpuMargin = 4;
                 auto cullVp = cull.isoViewport(kGpuMargin);
-                frameData.cullIsoMin_ = ivec2(glm::floor(cullVp.min_));
-                frameData.cullIsoMax_ = ivec2(glm::ceil(cullVp.max_));
-                s_frameDataBuf->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData);
+                p->frameData_.cullIsoMin_ = ivec2(glm::floor(cullVp.min_));
+                p->frameData_.cullIsoMax_ = ivec2(glm::ceil(cullVp.max_));
+                p->frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &p->frameData_);
 
-                s_voxelPosBuf->subData(
+                p->voxelPosBuf_->subData(
                     0,
                     liveVoxelCount * sizeof(C_PositionGlobal3D),
                     voxelPool.getPositionGlobals().data()
                 );
-                s_voxelColorBuf->subData(
+                p->voxelColorBuf_->subData(
                     0,
                     liveVoxelCount * sizeof(C_Voxel),
                     voxelPool.getColors().data()
                 );
-                syncEntityIds(voxelPool, liveVoxelCount, s_voxelEntityIdBuf);
+                syncEntityIds(voxelPool, liveVoxelCount, p->voxelEntityIdBuf_);
 
-                // --- GPU visibility compaction ---
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
+                const VoxelIndirectDispatchParams zeroed{};
+                p->indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
 
-                static const VoxelIndirectDispatchParams zeroed{};
-                s_indirectBuf->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
-
-                s_compactProgram->use();
+                p->compactProgram_->use();
                 constexpr int kCompactLocalSize = 64;
                 const int compactGroups = IRMath::divCeil(liveVoxelCount, kCompactLocalSize);
                 const ivec2 compactGrid = voxelDispatchGridForCount(compactGroups);
@@ -285,19 +295,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.voxelCompactMs_ = IRRender::elapsedMs(t0, t1); }
-
-                // --- Stage 1: indirect dispatch from compacted visible set ---
-                if (timing.enabled_) { t0 = IRRender::SteadyClock::now(); }
-
-                s_stage1Program->use();
+                p->stage1Program_->use();
                 triangleCanvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::READ_ONLY, TextureFormat::R32I
                 );
-                IRRender::device()->dispatchComputeIndirect(s_indirectBuf, 0);
+                IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                if (timing.enabled_) { IRRender::device()->finish(); t1 = IRRender::SteadyClock::now(); timing.voxelStage1Ms_ = IRRender::elapsedMs(t0, t1); }
             },
             []() {
                 IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
@@ -311,10 +314,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             },
             []() {}
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        // The observer-based timing brackets the entire system tick. The
+        // formerly-separate canvasClear and voxelCompact sub-stages now
+        // collapse into voxelStage1's measurement; their registry slots
+        // remain at 0.0f for API-compatibility.
+        IRRender::tagGpuStage(systemId, "voxelStage1");
+        return systemId;
     }
 };
 
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
+    struct Params {
+        ShaderProgram *stage2Program_ = nullptr;
+        Buffer *indirectBuf_ = nullptr;
+    };
+
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
@@ -323,19 +339,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
             }
         );
 
-        static ShaderProgram *s_stage2Program =
-            IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
-        static Buffer *s_indirectBuf =
-            IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
+        p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
 
-        return createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
+        SystemId systemId = createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasSecond",
-            [](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
+            [p](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
                 if (voxelPool.getLiveVoxelCount() == 0) return;
-
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
 
                 triangleCanvasTextures.getTextureColors()->bindAsImage(
                     0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
@@ -347,13 +359,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                     2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI
                 );
 
-                IRRender::device()->dispatchComputeIndirect(s_indirectBuf, 0);
+                IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.voxelStage2Ms_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             },
-            []() { s_stage2Program->use(); }
+            [p]() { p->stage2Program_->use(); }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "voxelStage2");
+        return systemId;
     }
 };
 

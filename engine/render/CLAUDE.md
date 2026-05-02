@@ -21,7 +21,7 @@ Key exposed surface:
   `setActiveCanvas(name)`.
 - Camera and viewport: `getCameraPosition2DIso()`, `getCameraZoom()`,
   `getViewport()`, `getOutputScaleFactor()`, `mousePosToWorldPos()`.
-- Render mode: `setVoxelRenderMode(SNAPPED|SMOOTH)`,
+- Subdivision mode: `setSubdivisionMode(NONE|POSITION_ONLY|FULL)`,
   `setVoxelRenderSubdivisions(n)`.
 - GUI state: `setGuiVisible`, `setGuiScale`, `setHoveredTrixelVisible`.
 
@@ -56,6 +56,20 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    VOXEL_TO_TRIXEL_STAGE_2                                       │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
+│    COMPUTE_VOXEL_AO                                              │
+│      • c_compute_voxel_ao.glsl → per-pixel AO factor             │
+│    COMPUTE_SUN_SHADOW                                            │
+│      • c_compute_sun_shadow.glsl → per-pixel directional shadow  │
+│    COMPUTE_LIGHT_VOLUME                                          │
+│      • CPU flood-fill BFS from C_LightSource emitters into the   │
+│        canvas's C_CanvasLightVolume 3D texture (8 MiB upload)    │
+│    LIGHTING_TO_TRIXEL                                            │
+│      • c_lighting_to_trixel.glsl → modulates canvas colors       │
+│        by (AO × sun-shadow), then adds the light-volume          │
+│        contribution sampled at the trixel's recovered pos3D      │
+│    FOG_TO_TRIXEL                                                 │
+│      • c_fog_to_trixel.glsl → masks per-pixel by fog state       │
+│        (visible/explored/unexplored) from C_CanvasFogOfWar       │
 │    TRIXEL_TO_TRIXEL  (compositing/post)                          │
 │    TRIXEL_TO_FRAMEBUFFER                                         │
 │      • v_/f_trixel_to_framebuffer.glsl                           │
@@ -104,6 +118,199 @@ header when you add or rename a shader.
 `render/opengl/` and `render/metal/` each implement the `RenderImpl` /
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
+
+## What belongs in engine/render/ vs engine/prefabs/irreden/render/
+
+`engine/render/` is a graphics primitive library. It owns what the pipeline
+itself needs regardless of which features a creation enables:
+
+- Device abstraction and context (`RenderManager`, `RenderImpl`, `RenderDevice`).
+- GPU resource CRUD (`RenderingResourceManager`).
+- Pipeline execution (frame loop, canvas dispatch, framebuffer flip).
+- Camera, viewport, subdivision mode — the pipeline reads these every frame.
+- Voxel pool allocation (the pool is a device-level concept).
+
+Feature state — anything a creation opts into — belongs in
+`engine/prefabs/irreden/render/`. If the renderer can ship without the feature
+(fog-of-war is optional per-creation; debug overlay is dev-only), that feature
+does not belong in `engine/render/`.
+
+**Rule of thumb.** If you are about to add a field to `RenderManager`, ask:
+is this a per-feature concern? If so, it belongs on a component owned by the
+feature's system, exposed from a prefab-scoped surface. `RenderManager` should
+not grow fields for features that individual creations may not use.
+
+For the two viable patterns for exposing feature API from the prefab layer, see
+`engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API from
+the prefab layer".
+
+### Current deviations
+
+See `.fleet/status/render-api-relocations.md` (queue-manager-owned;
+feature PRs do not edit) for in-flight relocations of feature-specific
+API off `IRRender::` and onto feature-scoped prefab namespaces.
+
+## Verifying render changes
+
+Rendering bugs rarely show up in the type checker or the test suite. Any
+PR that touches:
+
+- `engine/render/src/shaders/` (GLSL or MSL)
+- `engine/prefabs/irreden/render/systems/` (pipeline systems)
+- anything affecting pipeline ordering, canvas textures, or the voxel pool
+
+must run the **`render-debug-loop`** skill after the change and attach at
+least one before/after screenshot pair to the PR body. The skill drives
+any creation that supports `--auto-screenshot` (today: `shape_debug`;
+reference implementation is `creations/demos/shape_debug/main.cpp`) and
+carries topic-indexed diagnosis tables for trixel / SDF shapes, lighting
+phases, and backend-parity symptoms.
+
+For changes that touch only one graphics backend (GLSL without MSL
+counterpart, or vice versa), follow up with the **`backend-parity`**
+skill on the lagging-side host — the rule is in the top-level CLAUDE.md
+under "Cross-platform parity". `render-debug-loop` captures the
+evidence; `backend-parity` drives the port.
+
+Exceptions: pure header-doc edits, string-literal fixes, and internal
+refactors with provably no runtime effect can skip the loop. When in
+doubt, run it — a missing screenshot pair is a fast reviewer-rejection.
+
+### Cross-host smoke validation
+
+Render PRs are almost always authored on only one host (Linux/OpenGL
+via the fleet, or macOS/Metal). The other backend's build and smoke
+are not exercised until a fleet agent on that host picks the PR up.
+The `fleet:needs-linux-smoke` and `fleet:needs-macos-smoke` labels
+tally outstanding cross-host validation so no render PR merges
+unvalidated on either backend.
+
+**Tagging.** When a fleet reviewer (sonnet-reviewer or opus-reviewer)
+approves an engine PR whose diff touches `engine/render/`,
+`engine/prefabs/irreden/render/`, `engine/render/src/shaders/`, or
+any `*.glsl` / `*.metal` file, it adds BOTH labels alongside the
+verdict label. The reviewer cannot tell which host the PR was
+authored on, so it tags both and lets each host's agents clear
+their own.
+
+**Validation.** Each host's author agents (opus-worker, sonnet-author)
+poll for the label matching their host at the start of each loop
+iteration, before picking new work. They check out the PR, run
+`fleet-build --target IRShapeDebug`, run
+`fleet-run IRShapeDebug --auto-screenshot 10`, and on success remove
+their label and post a confirmation comment. On failure they add
+`fleet:needs-fix` and leave the smoke label in place.
+
+**Merge gating.** The human holds the merge while either label
+persists. Both labels must be gone for the PR to be safe to merge.
+
+Skip the smoke flow for game-repo PRs (the game's render pipeline
+uses the engine's backend — cross-host applies at engine level) and
+for non-render engine PRs (tooling, docs, non-render modules — these
+don't exercise backends and don't benefit from cross-host smoke).
+
+## Lighting culling invariants
+
+The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
+`system_voxel_to_trixel.hpp`, and the per-shape iso-bounds check in
+`system_shapes_to_trixel.hpp`) is a strict camera-frustum cull on the
+rendering path. It governs which voxels/shapes are written into canvas
+textures — nothing else.
+
+Lighting (occupancy grid, AO, shadows, flood-fill, fog-of-war) operates
+against a **camera-independent world-space occupancy grid**. Shadow sweeps
+march along the world-space sun axis; flood-fill BFS propagates through
+world-space voxels; fog-of-war DDA rays trace through the same grid.
+Off-screen geometry participates in lighting by design — an off-screen
+building that casts a shadow onto on-screen tiles is the common case, not an
+edge case.
+
+The four invariants below exist because these are the places easiest to break
+silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
+fog-of-war #170) reviewer should run this checklist. See #196 for the
+architect review that originated them.
+
+### 1. Grid-build iterates the full voxel pool, not the render-culled subset
+
+`buildChunkVisibilityMask` is a render-pipeline-local mask inside
+`system_voxel_to_trixel`. The occupancy-grid-build system must use its own
+iteration path and must **not** consult that mask. The failure mode is
+sharing a helper that accidentally applies the render cull to the grid build.
+
+**Check:** `system_build_occupancy_grid.hpp` does not include
+`cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
+
+**Status (T-010, PR #188):** compliant — `System<BUILD_OCCUPANCY_GRID>`
+iterates `pool.getLiveVoxelCount()` on the full pool with no viewport filter.
+
+### 2. Shadow-ring extent when chunk streaming activates
+
+T-010's grid is full-world today, so this is not yet triggered. When
+per-chunk streaming is introduced (resident chunk set controlled by camera
+position), the loaded set must extend past the view frustum in the
+sun-projection direction by at least:
+
+```
+shadowRingDistance = maxCasterHeight × cot(sunAltitude)
+```
+
+For a 256-tall world at 45° sun that is one chunk; at a shallow 20° sun it
+is 3+ chunks.
+
+**Check:** whenever chunk streaming lands, the resident-chunk-set calculation
+includes this expansion. Document the formula next to the streaming code.
+
+### 3. Light-seed set — off-screen sources must still seed flood-fill
+
+A torch 10 tiles off-screen with radius 15 should still glow the on-screen
+tiles nearest it. T-014 seeds BFS from all `C_LightSource` entities, which is
+correct as-specced. The failure mode is a later optimizer adding "only seed
+lights within the view frustum" without the radius expansion — that silently
+drops the overflow case.
+
+**Invariant:** seed from all `C_LightSource` entities within
+**view frustum + max(radius) expansion**, not view frustum alone.
+
+**Check:** the flood-fill seed-gather tick does not filter by
+`visibleIsoViewport` without expanding by `C_LightSource::radius_`.
+
+### 4. AO and shadow neighbor-lookup guard band
+
+T-012 AO reads 3-diagonal neighbors per visible face. Once T-010's chunk
+streaming activates, the chunk containing each neighbor must be resident. A
+face at the view edge whose neighbor chunk is unloaded produces wrong AO.
+
+**Invariant:** resident chunk set = view-chunk set ∪ 1-chunk guard band (in
+all six directions) for AO/shadow sampling correctness, in addition to the
+shadow-ring from invariant #2.
+
+**Check:** resident chunk set calculation includes this guard band when chunk
+streaming is introduced.
+
+## Lighting debug overlay
+
+`IRRender::setDebugOverlay(DebugOverlayMode)` swaps the artistic
+composite in `LIGHTING_TO_TRIXEL` for a false-color visualization of
+the underlying lighting buffer. Use it when triaging a lighting bug
+where the per-pixel input value is suspect — the overlay exposes the
+exact scalar that the artistic path would multiply, so you can tell
+whether the issue is in the buffer producer (`COMPUTE_VOXEL_AO`,
+`COMPUTE_SUN_SHADOW`) or in the composite itself.
+
+Modes:
+
+- `AO` — red→green gradient of the AO factor (red = fully occluded,
+  green = fully unoccluded).
+- `LIGHT_LEVEL` — combined `ao × shadow` scalar painted blue→white
+  (blue = dark, white = bright).
+- `SHADOW` — directional sun-shadow occupancy (black = lit, magenta
+  = shadowed).
+
+Upstream passes keep running; only the final composite is replaced.
+GUI pixels are unaffected because the GUI canvas early-returns out
+of the lighting pass. Invoke from a creation via the engine API
+(`IRRender::setDebugOverlay`) or in `shape_debug` via
+`--debug-overlay <none|ao|light_level|shadow>`.
 
 ## Gotchas
 

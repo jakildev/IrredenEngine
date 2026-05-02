@@ -1,6 +1,25 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_entity.hpp>
 
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
+
+#include <type_traits>
+
+// Issue #367: these canvas components must require an explicit size at
+// construction. Default-construction must be a compile error so a missing
+// size shows up at the call site rather than as a runtime null-texture.
+static_assert(
+    !std::is_default_constructible_v<IRComponents::C_CanvasAOTexture>,
+    "C_CanvasAOTexture must remain non-default-constructible — "
+    "size argument is required."
+);
+static_assert(
+    !std::is_default_constructible_v<IRComponents::C_CanvasSunShadow>,
+    "C_CanvasSunShadow must remain non-default-constructible — "
+    "size argument is required."
+);
+
 namespace {
 struct TestMarker {
 };
@@ -13,6 +32,14 @@ struct TestPayload {
 
     TestPayload() = default;
     explicit TestPayload(int value)
+        : value_{value} {}
+};
+
+struct TestNonDefaultConstructible {
+    int value_;
+
+    TestNonDefaultConstructible() = delete;
+    explicit TestNonDefaultConstructible(int value)
         : value_{value} {}
 };
 
@@ -95,5 +122,87 @@ TEST_F(IREntityTest, RemoveComponentsSimpleRemovesImmediatelyFromSnapshot) {
     EXPECT_FALSE(IREntity::getComponentOptional<TestRemovable>(entityB).has_value());
     EXPECT_TRUE(IREntity::getComponentOptional<TestMarker>(entityA).has_value());
     EXPECT_TRUE(IREntity::getComponentOptional<TestMarker>(entityB).has_value());
+}
+
+TEST_F(IREntityTest, PreDestroyHookFiresWithEntityIdBeforeDestruction) {
+    IREntity::EntityId entity = IREntity::createEntity(TestMarker{});
+    IREntity::EntityId observed = IREntity::kNullEntity;
+    bool componentVisibleInHook = false;
+    auto id = m_entity_manager.registerPreDestroyHook(
+        [&, entity](IREntity::EntityId destroyed) {
+            observed = destroyed;
+            // The entity must still be queryable at hook time — that's
+            // the whole point of "pre-destroy", as opposed to post-.
+            componentVisibleInHook =
+                IREntity::getComponentOptional<TestMarker>(destroyed).has_value();
+            EXPECT_EQ(destroyed, entity);
+        }
+    );
+    EXPECT_NE(id, IREntity::kInvalidPreDestroyHookId);
+
+    m_entity_manager.destroyEntity(entity);
+
+    EXPECT_EQ(observed, entity);
+    EXPECT_TRUE(componentVisibleInHook);
+}
+
+TEST_F(IREntityTest, PreDestroyHooksFireInRegistrationOrder) {
+    std::vector<int> order;
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(1); }
+    );
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(2); }
+    );
+    m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { order.push_back(3); }
+    );
+
+    auto entity = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entity);
+
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
+}
+
+TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
+    int fireCount = 0;
+    auto id = m_entity_manager.registerPreDestroyHook(
+        [&](IREntity::EntityId) { ++fireCount; }
+    );
+
+    auto entityA = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entityA);
+    EXPECT_EQ(fireCount, 1);
+
+    m_entity_manager.unregisterPreDestroyHook(id);
+
+    auto entityB = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entityB);
+    EXPECT_EQ(fireCount, 1);
+}
+
+// setComponent must construct the new archetype slot directly from the
+// caller's value rather than default-construct + assign — components like
+// C_CanvasAOTexture rely on this so they can `= delete` their default ctor.
+TEST_F(IREntityTest, SetComponentSupportsNonDefaultConstructibleType) {
+    static_assert(
+        !std::is_default_constructible_v<TestNonDefaultConstructible>,
+        "Test component must remain non-default-constructible to be a "
+        "meaningful regression guard."
+    );
+
+    auto entity = IREntity::createEntity(TestMarker{});
+
+    IREntity::setComponent(entity, TestNonDefaultConstructible{7});
+
+    auto opt = IREntity::getComponentOptional<TestNonDefaultConstructible>(entity);
+    ASSERT_TRUE(opt.has_value());
+    EXPECT_EQ((*opt)->value_, 7);
+
+    IREntity::setComponent(entity, TestNonDefaultConstructible{42});
+    EXPECT_EQ(IREntity::getComponent<TestNonDefaultConstructible>(entity).value_, 42);
 }
 } // namespace

@@ -41,14 +41,34 @@ class ArchetypeGraph {
         std::vector<ArchetypeNode *> nodes;
         nodes.reserve(m_nodes.size());
         for (auto &node : m_nodes) {
-            if (node->length_ > 0 && std::includes(
-                                         node->type_.begin(),
-                                         node->type_.end(),
-                                         includeComponents.begin(),
-                                         includeComponents.end()
-                                     )) {
-                nodes.push_back(node.get());
+            if (node->length_ <= 0) continue;
+            if (!std::includes(
+                    node->type_.begin(),
+                    node->type_.end(),
+                    includeComponents.begin(),
+                    includeComponents.end()
+                )) continue;
+            // Reject any node that contains a component the caller asked
+            // to exclude. Both sets are sorted (std::set), so an empty
+            // intersection is what we want — std::set_intersection isn't
+            // needed; a one-pass disjointness check is sufficient.
+            if (!excludeComponents.empty()) {
+                auto itNode = node->type_.begin();
+                auto itExc = excludeComponents.begin();
+                bool intersects = false;
+                while (itNode != node->type_.end() && itExc != excludeComponents.end()) {
+                    if (*itNode < *itExc) {
+                        ++itNode;
+                    } else if (*itExc < *itNode) {
+                        ++itExc;
+                    } else {
+                        intersects = true;
+                        break;
+                    }
+                }
+                if (intersects) continue;
             }
+            nodes.push_back(node.get());
         }
         return nodes;
     }

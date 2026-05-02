@@ -2,21 +2,47 @@
 # fleet-babysit — auto-resume wrapper for fleet Claude Code agents.
 #
 # Runs claude interactively with a role slash command, then auto-resumes
-# the session if claude exits (usage limit, crash, network drop, etc.).
-# Works identically for engine and game worktrees — the cwd determines
-# which repo/session context claude uses.
+# on exit. Two distinct lifecycles:
+#
+#   Workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
+#   queue-manager, merger): each task iteration is a *fresh* claude
+#   invocation, so context doesn't accumulate across tasks. After a
+#   clean exit (task done), babysit picks one of two between-iteration
+#   waits depending on whether the worker has ever consumed a trigger
+#   from fleet-state-scout:
+#
+#     - Bootstrap (no trigger consumed yet): wait LOOP_INTERVAL (or
+#       CLEAN_DELAY) and relaunch. Preserves legacy behavior so the
+#       fleet still works when scout is absent or cold.
+#     - Trigger-driven (sticky once any trigger consumed): wait
+#       LONG_BACKOFF_SECONDS (default 30 min). The long sleep is
+#       interruptible — a fresh trigger appearing mid-sleep wakes the
+#       loop within ~5s and relaunches immediately. The timeout is a
+#       safety net so the worker still iterates if scout dies or
+#       misses an event.
+#
+#   Either way the relaunch is fresh (no --continue, no --resume), so the
+#   new task starts with a clean conversation. Mid-task crashes still use
+#   --continue so partial work isn't lost.
+#
+#   Architects (opus-architect, game-architect): one long conversation,
+#   preserved across crashes AND across fleet-down/fleet-up cycles via
+#   ~/.fleet/sessions/<role>.session-id. Always --resume on relaunch
+#   so the human's interactive design conversation never resets.
+#   Architects are human-driven, NOT scout-trigger-driven — their sleep
+#   path ignores the trigger file.
 #
 # Usage:
 #   fleet-babysit <model> <role> [mode] [loop-interval]
 #
 # Examples:
 #   fleet-babysit sonnet sonnet-author dry-run
-#   fleet-babysit sonnet sonnet-author live          # continuous, no /loop
-#   fleet-babysit sonnet sonnet-reviewer live 10m    # /loop every 10 min
-#   fleet-babysit opus  opus-reviewer live 30m       # /loop every 30 min
-#   fleet-babysit sonnet queue-manager live 15m      # /loop every 15 min
-#   fleet-babysit opus  opus-architect live           # on-demand, no /loop
-#   fleet-babysit sonnet game-sonnet live             # game worktree cwd
+#   fleet-babysit sonnet sonnet-author live          # fresh per task, no interval
+#   fleet-babysit sonnet sonnet-reviewer live 3m     # fresh per task, 3m between
+#   fleet-babysit opus  opus-reviewer live 30m       # fresh per task, 30m between
+#   fleet-babysit sonnet queue-manager live 5m       # fresh per task, 5m between
+#   fleet-babysit opus  opus-architect live          # interactive, no interval, --resume
+#   fleet-babysit opus  game-architect live          # game worktree cwd, --resume
 #
 # Behavior by mode:
 #   dry-run  — start the agent, auto-resume on crash, but do NOT
@@ -24,9 +50,6 @@
 #              when to promote to live.
 #   live     — auto-resume on any exit. Keeps the agent running
 #              indefinitely until the fleet session is killed.
-#
-# On resume, sends "resume your work from where you left off" so the
-# agent auto-continues without human intervention.
 #
 # Source of truth: scripts/fleet/fleet-babysit in the engine repo.
 # Installed to ~/bin/fleet-babysit by scripts/fleet/install.sh.
@@ -38,16 +61,145 @@ ROLE="${2:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 MODE="${3:-dry-run}"
 LOOP_INTERVAL="${4:-}"
 
+# Effort level — derived from model. Opus agents get xhigh (one notch
+# below `max`); architects, opus-workers, opus-reviewer, and merger
+# all do the hard reasoning, but `max` was burning budget faster than
+# the marginal quality justified on routine fleet iterations. Sonnet
+# agents get high (good output without burning budget on tasks where
+# diminishing returns kick in).
+case "$MODEL" in
+    opus|claude-opus*) EFFORT="xhigh" ;;
+    sonnet|claude-sonnet*) EFFORT="high" ;;
+    *) EFFORT="high" ;;
+esac
+# Global override from env if set. Note: FLEET_EFFORT applies to
+# every pane in the fleet — fleet-up does not thread env per-pane.
+# To change one pane's effort, edit the case statement above.
+EFFORT="${FLEET_EFFORT:-$EFFORT}"
+
+# Architects boot with auto-memory disabled. The project-wide
+# MEMORY.md auto-injects past-session notes into every Claude Code
+# session — useful continuity for autonomous workers/reviewers, but
+# noise for the architects' interactive design conversations, where
+# stale notes from unrelated prior sessions bias the discussion
+# before the human types anything. Persistent design memory belongs
+# on the issue thread, not in a project-wide file. Glob matches the
+# `*architect*` convention used by ARCHITECT_RESUME below.
+case "$ROLE" in
+    *architect*)
+        export CLAUDE_CODE_DISABLE_AUTO_MEMORY="${CLAUDE_CODE_DISABLE_AUTO_MEMORY:-1}"
+        ;;
+esac
+
 # Timing
 CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
-CLEAN_DELAY=60        # seconds to wait after clean exit
+CLEAN_DELAY=60        # seconds to wait after clean exit (no LOOP_INTERVAL)
 MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
+
+# Seconds to sleep between iterations when in trigger-driven mode (default 30 min).
+# Set via env to override.
+LONG_BACKOFF_SECONDS="${FLEET_LONG_BACKOFF:-1800}"
+
+# Suppress trigger wakes until this many seconds have elapsed since the iteration
+# started. Prevents the scout's own trigger (fired ~60s after state change) from
+# immediately relaunching an agent that just exited cleanly. Set to 0 (default)
+# to preserve trigger-driven immediacy; fleet-up sets FLEET_MIN_BACKOFF=1800 for
+# opus-reviewer to enforce the 30-min budget window.
+MIN_BACKOFF_SECONDS="${FLEET_MIN_BACKOFF:-0}"
+
+# Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds.
+# This replaces what /loop used to do internally, so that babysit can
+# enforce the between-iteration delay at the *process* level (each
+# iteration is a fresh `claude` invocation with cleared context).
+parse_interval_seconds() {
+    local s="$1"
+    [[ -z "$s" ]] && { echo 0; return; }
+    case "$s" in
+        *s) echo "${s%s}" ;;
+        *m) echo $(( ${s%m} * 60 )) ;;
+        *h) echo $(( ${s%h} * 3600 )) ;;
+        *)  echo "$s" ;;  # bare number = seconds
+    esac
+}
 
 # Logging
 LOG_DIR="${FLEET_LOG_DIR:-$HOME/.fleet/logs}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$ROLE.log"
+
+# Shutdown sentinel — fleet-down creates this file at the start of its
+# wait/summary phase to signal that no agent should be relaunched.
+# Without it, an agent that exits cleanly DURING fleet-down (worker
+# finishing its iteration, architect responding to the summary prompt
+# and exiting) gets immediately relaunched into a fresh claude — which
+# then gets killed mid-startup when tmux kill-session lands. Wasteful,
+# confusing in scrollback, and observed in production.
+#
+# With the sentinel: any sleep-then-relaunch in the loop below polls
+# for the file and bails out immediately if it appears. The pane's
+# bash shell then sees the buffered "exit" command from fleet-down's
+# graceful shutdown, exits, and kill-session has nothing to do.
+SHUTDOWN_FLAG="${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
+
+# Per-role trigger file written by fleet-state-scout. Architects don't
+# have projectors in scout, so this path stays untouched for them.
+TRIGGER_FILE="${FLEET_TRIGGER_DIR:-$HOME/.fleet/state/triggers}/$ROLE"
+
+# Sticky: once we've ever consumed a trigger, future post-iteration
+# sleeps use LONG_BACKOFF_SECONDS. Sticky (rather than per-iteration)
+# so a single safety-timeout wake in a quiet fleet doesn't drop us
+# back into legacy short-delay thrashing — defeating the cost-saving
+# win of "1 iteration per state change, idle otherwise."
+WORKER_HAD_TRIGGER=0
+
+consume_trigger_if_present() {
+    if [[ -f "$TRIGGER_FILE" ]]; then
+        rm -f "$TRIGGER_FILE"
+        WORKER_HAD_TRIGGER=1
+    fi
+}
+
+# Sleep that exits early on either the shutdown sentinel or (optionally)
+# a trigger file appearing. Returns:
+#   0 = full duration elapsed
+#   1 = shutdown sentinel detected (caller should break the loop)
+#   2 = trigger file appeared mid-sleep (caller should consume + relaunch)
+#
+# Pass the trigger path as $2 to enable trigger watching; omit to keep
+# the legacy shutdown-only behavior. Pass min_floor as $3 to suppress
+# trigger wakes until at least that many seconds have elapsed — prevents
+# the agent's own actions from immediately waking it via the scout
+# (see FLEET_MIN_BACKOFF / MIN_BACKOFF_SECONDS). Polls every 5s.
+interruptible_sleep() {
+    local seconds="$1"
+    local trigger_path="${2:-}"
+    local min_floor="${3:-0}"
+    local started_at
+    started_at=$(date +%s)
+    local end=$(( started_at + seconds ))
+    local now
+    while now=$(date +%s); [[ $now -lt $end ]]; do
+        if [[ -f "$SHUTDOWN_FLAG" ]]; then
+            return 1
+        fi
+        if [[ -n "$trigger_path" && -f "$trigger_path" ]]; then
+            local elapsed=$(( now - started_at ))
+            if [[ $elapsed -ge $min_floor ]]; then
+                return 2
+            fi
+        fi
+        # Keep heartbeat fresh during between-iteration wait.
+        [[ -n "$HEARTBEAT_FILE" ]] && touch "$HEARTBEAT_FILE" 2>/dev/null || true
+        # Sleep at most 5s at a time, but never longer than what's left.
+        local remaining=$(( end - now ))
+        local chunk=5
+        [[ "$remaining" -lt "$chunk" ]] && chunk="$remaining"
+        [[ "$chunk" -lt 1 ]] && chunk=1  # Minimum 1s to avoid zero-sleep busyloop on sub-second remaining time.
+        sleep "$chunk" || true
+    done
+    return 0
+}
 
 attempt=0
 
@@ -66,19 +218,269 @@ rotate_log() {
     fi
 }
 
-log "starting ($MODEL) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
+log "starting ($MODEL effort=$EFFORT) mode=$MODE loop=${LOOP_INTERVAL:-none} in $(pwd)"
 
-# --- First run: send the role slash command --------------------------------
-# If a loop interval is set and mode is live, wrap the role invocation in
-# /loop so Claude's runtime handles the scheduling (replaces sleep-based
-# polling and external tmux timers).
-if [[ -n "$LOOP_INTERVAL" && "$MODE" == "live" ]]; then
-    log "using /loop $LOOP_INTERVAL for scheduling"
-    claude --model "$MODEL" "/loop $LOOP_INTERVAL /role-$ROLE"
-else
-    claude --model "$MODEL" "/role-$ROLE $MODE"
+# --- Cross-restart session resume (architects only) ------------------------
+#
+# Architects (opus-architect, game-architect) are the human's interactive
+# design partners — their conversation context is the most valuable
+# state in the fleet. Other roles (workers, reviewers, queue-manager)
+# are loop-based and benefit from a fresh start each iteration.
+#
+# To preserve architect context across `fleet-down` -> `fleet-up`
+# cycles, we save a stable session UUID per architect role to
+# ~/.fleet/sessions/<role>.session-id. On first launch, generate the
+# UUID and pass --session-id; on subsequent launches, use --resume
+# instead of re-firing the role slash command.
+#
+# fleet-down does NOT delete these files — that's how resume survives
+# restarts. To reset an architect's context (start fresh next time),
+# delete ~/.fleet/sessions/<role>.session-id manually.
+
+SESSIONS_DIR="$HOME/.fleet/sessions"
+mkdir -p "$SESSIONS_DIR"
+SESSION_FILE="$SESSIONS_DIR/$ROLE.session-id"
+
+# Architects qualify for cross-restart resume; everyone else gets a
+# fresh session each fleet-up.
+ARCHITECT_RESUME=0
+case "$ROLE" in
+    *architect*) ARCHITECT_RESUME=1 ;;
+esac
+
+# Heartbeat file (workers/reviewers only — architects aren't witness-
+# tracked). The convention every role file uses is
+# `fleet-heartbeat <worktree-basename>`, which writes to
+# `~/.fleet/heartbeats/<worktree-basename>`. Babysit derives the same
+# name from `pwd` so it can re-touch the file during long sleeps and
+# during long agent iterations — without that, the witness sees a
+# heartbeat go stale during normal between-iteration sleeps (the
+# 1200s opus-worker LOOP_INTERVAL plus a 33-min iteration easily
+# blows past the 30m staleness threshold even when the fleet is
+# functioning correctly — observed in production 2026-04-22).
+HEARTBEAT_FILE=""
+if [[ "$ARCHITECT_RESUME" -eq 0 ]]; then
+    HEARTBEAT_FILE="$HOME/.fleet/heartbeats/$(basename "$(pwd)")"
+    mkdir -p "$(dirname "$HEARTBEAT_FILE")"
 fi
-last_exit=$?
+
+# Background heartbeat-keeper — touches HEARTBEAT_FILE every 60s while
+# the agent (claude) is running. Caller starts it before each launch_*
+# call and stops it after the call returns, so the heartbeat stays
+# fresh even during agent iterations longer than the witness staleness
+# threshold (e.g. an opus refactor that takes 35 min of pure thinking
+# without hitting fleet-build / commit-and-push, the points where
+# role files explicitly re-heartbeat).
+#
+# Uses a global PID variable rather than returning the PID via stdout
+# capture (`hb_pid=$(start_heartbeat_keeper)`) — `$()` running a
+# function that backgrounds a subshell can hang waiting on the
+# subshell to close stdout, which doesn't reliably happen with
+# `( ... ) &` patterns on all bash versions. Side-effect global is
+# uglier but reliable.
+HB_KEEPER_PID=""
+start_heartbeat_keeper() {
+    [[ -z "$HEARTBEAT_FILE" ]] && return 0
+    while true; do touch "$HEARTBEAT_FILE" 2>/dev/null || true; sleep 60; done &
+    HB_KEEPER_PID=$!
+    # Disown the keeper so bash's job-control doesn't print
+    # `Terminated: 15` to stderr when we kill it later — that line
+    # would otherwise land in the pane scrollback every iteration.
+    disown "$HB_KEEPER_PID" 2>/dev/null || true
+}
+stop_heartbeat_keeper() {
+    [[ -z "$HB_KEEPER_PID" ]] && return 0
+    kill "$HB_KEEPER_PID" 2>/dev/null || true
+    HB_KEEPER_PID=""
+}
+
+# --- Stream-formatted claude wrapper ---------------------------------------
+#
+# Workers run claude with `--print` so each iteration exits cleanly
+# (PR #257). The downside: `--print` with the default text output
+# buffers EVERYTHING and only emits at the very end — the pane looks
+# dead the whole time the agent is thinking, reading files, calling
+# tools, etc. Humans watching the fleet can't tell "agent is working"
+# from "agent is wedged" until the final dump lands.
+#
+# Fix: pair `--print` with `--output-format stream-json
+# --include-partial-messages --verbose`, then pipe through
+# fleet-claude-stream which renders the JSON event stream as readable
+# terminal text. `set -o pipefail` (set at the top of this script)
+# preserves claude's exit code through the pipe so the babysit
+# `last_exit` dispatch still works.
+#
+# Resolve fleet-claude-stream from PATH (post-install.sh) or fall back
+# to a sibling next to this script (pre-install.sh, or a worktree
+# running an unreleased version). If neither is present, fall through
+# to plain text output — the live-pane visibility regresses but the
+# fleet still functions.
+#
+# We can't use `readlink -f` for the sibling lookup: BSD readlink on
+# macOS doesn't support `-f`, so it would silently return the
+# unresolved symlink path (e.g. ~/bin/fleet-babysit) and dirname would
+# point at ~/bin, not the real scripts/fleet/. Walk the symlink chain
+# manually — same pattern as fleet-labels' resolve_symlink_chain.
+__resolve_real_path() {
+    local path="$1"
+    while [[ -L "$path" ]]; do
+        local target
+        target=$(readlink "$path")
+        if [[ "$target" = /* ]]; then
+            path="$target"
+        else
+            path="$(cd "$(dirname "$path")" && pwd)/$target"
+        fi
+    done
+    echo "$path"
+}
+__BABYSIT_DIR="$(dirname "$(__resolve_real_path "${BASH_SOURCE[0]}")")"
+
+if command -v fleet-claude-stream >/dev/null 2>&1; then
+    STREAM_FORMATTER="fleet-claude-stream"
+elif [[ -x "$__BABYSIT_DIR/fleet-claude-stream" ]]; then
+    STREAM_FORMATTER="$__BABYSIT_DIR/fleet-claude-stream"
+else
+    STREAM_FORMATTER=""
+fi
+
+stream_claude() {
+    # Both callers pass --print themselves (workers must one-shot exit
+    # so babysit can relaunch — see launch_worker_fresh comment block).
+    # If a future caller forgets --print, the formatter branch will
+    # error out (`--include-partial-messages` requires `--print`),
+    # which is the right failure mode — better than silently entering
+    # interactive limbo like the pre-PR-#257 bug.
+    #
+    # `2>&1` merges claude's stderr into the same pipe as stdout so the
+    # formatter sees both. Without this, claude's post-result warnings
+    # (e.g. "API Error: Stream idle timeout - partial response received"
+    # printed during HTTP-client cleanup AFTER the result event was
+    # already received) bypass the formatter and land in the pane raw,
+    # reading like a fatal error even though claude actually exited 0.
+    # The formatter recognizes a small allowlist of these and annotates
+    # them as `⚠ [claude-warn]` instead of leaving them as raw red text.
+    if [[ -n "$STREAM_FORMATTER" ]]; then
+        claude --model "$MODEL" --effort "$EFFORT" \
+            --output-format stream-json --include-partial-messages --verbose \
+            "$@" 2>&1 | "$STREAM_FORMATTER"
+    else
+        # Fallback: plain claude with whatever the caller passed.
+        # `--print` from the caller stays put, so worker exit semantics
+        # are unchanged; only the live-pane visibility regresses.
+        claude --model "$MODEL" --effort "$EFFORT" "$@"
+    fi
+}
+
+# Wrap a launch_*/resume_* call with a backgrounded heartbeat-keeper
+# that touches HEARTBEAT_FILE every 60s while claude runs. Returns the
+# wrapped call's exit code without tripping `set -e` (the `|| rc=$?`
+# pattern). Architects skip the keeper (HEARTBEAT_FILE is empty for
+# them; start_heartbeat_keeper is a no-op).
+run_with_heartbeat() {
+    start_heartbeat_keeper
+    local rc=0
+    "$@" || rc=$?
+    stop_heartbeat_keeper
+    return "$rc"
+}
+
+# --- Launch helpers --------------------------------------------------------
+#
+# Two distinct lifecycles:
+#
+#   Architects (opus-architect, game-architect) — one long conversation,
+#     preserved across crashes AND across fleet-down/fleet-up cycles via
+#     a persisted session-id. Always use --resume on relaunch so the
+#     interactive design conversation never resets.
+#
+#   Workers (everyone else: sonnet-author, opus-worker, sonnet-reviewer,
+#     opus-reviewer, queue-manager) — one fresh `claude` invocation per
+#     task iteration. Between tasks, we relaunch with the role slash
+#     command (no --continue, no --resume), so the new task starts with
+#     a clean conversation. This stops a context built up over hours of
+#     prior task work from leaking into the next task's reasoning.
+#
+#     Mid-task crashes are still handled via --continue so partial work
+#     doesn't get lost — the LOOP_INTERVAL gating is the "ok, *task is
+#     done*, start fresh" signal, not "agent is unhealthy, retry".
+
+launch_architect_first() {
+    if [[ -f "$SESSION_FILE" ]]; then
+        SESSION_ID=$(cat "$SESSION_FILE")
+        log "resuming architect session $SESSION_ID (preserved across fleet restart)"
+        claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID" \
+            "fleet just restarted. resume our previous conversation; you don't need to re-run your startup banner. tell me what you were last working on so we can continue."
+    else
+        # Generate and persist a stable session ID so subsequent
+        # fleet-ups can resume this conversation. Persist BEFORE
+        # launching claude — if claude crashes during startup, we
+        # still want the next fleet-up to try resuming.
+        SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+        echo "$SESSION_ID" > "$SESSION_FILE"
+        log "starting architect session $SESSION_ID (saved to $SESSION_FILE)"
+        claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
+            "/role-$ROLE $MODE"
+    fi
+}
+
+launch_worker_fresh() {
+    # No --continue, no --resume — fresh conversation for each task
+    # iteration. Used both on first launch and between task iterations.
+    #
+    # `--print` is CRITICAL here. Without it, `claude "prompt"` starts
+    # INTERACTIVE mode and never exits — the agent finishes its work,
+    # emits a "standing by" message, then sits at the prompt forever
+    # waiting for more user input. Babysit only relaunches on process
+    # exit, so no-exit = no-relaunch = agent goes stale. Observed in
+    # production with sonnet-fleet-1 / sonnet-reviewer running once
+    # then stuck forever.
+    #
+    # `--print` means one-shot: run the prompt (including all tool use
+    # within it), emit the response, exit 0. That's exactly the
+    # "one iteration = one claude process" model the babysit header
+    # comment describes. Tool use still works under --print; the only
+    # difference is no interactive prompt after the response completes.
+    #
+    # The downside of `--print` alone is that text output is buffered
+    # to the very end — the pane looks dead the whole time the agent
+    # is thinking, calling tools, etc. We pipe through fleet-claude-stream
+    # to render the live event stream as readable text. `set -o pipefail`
+    # at the top of this script preserves claude's exit code through
+    # the pipe, so the babysit `last_exit` dispatch still works.
+    stream_claude --print "/role-$ROLE $MODE"
+}
+
+resume_mid_task() {
+    # Mid-task crash recovery. Architects always --resume their persisted
+    # session (interactive — they need the human's next input).
+    # Workers --continue + --print the most recent session in this cwd
+    # (one-shot — resume, finish what was interrupted, exit).
+    if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
+            "resume your work from where you left off"
+    else
+        stream_claude --print --continue "resume your work from where you left off"
+    fi
+}
+
+# --- First run -------------------------------------------------------------
+#
+# `|| last_exit=$?` is a `set -e` defuse: if the launch helper returns
+# non-zero (claude exited with an error code — observed in production
+# with "API Error: Stream idle timeout"), we want to capture the exit
+# code and let the resume loop dispatch on it, NOT have `set -e` kill
+# babysit before the loop ever runs. Without this, the pane would just
+# drop to bash and never relaunch — there's no log entry, no graceful
+# crash branch, just a silently dead pane until the next fleet-up.
+
+last_exit=0
+if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+    run_with_heartbeat launch_architect_first || last_exit=$?
+else
+    consume_trigger_if_present
+    run_with_heartbeat launch_worker_fresh || last_exit=$?
+fi
 
 # --- Resume loop -----------------------------------------------------------
 while true; do
@@ -100,27 +502,82 @@ while true; do
         break
     fi
 
-    # Pick a wait time based on exit code
-    case $last_exit in
+    # Shutdown signaled while claude was running (fleet-down created the
+    # sentinel). Don't even enter the sleep — exit straight away so the
+    # pane's bash can pick up the buffered `exit` from fleet-down's
+    # graceful shutdown.
+    if [[ -f "$SHUTDOWN_FLAG" ]]; then
+        log "shutdown sentinel detected — exiting babysit loop without relaunching"
+        break
+    fi
+
+    # Snapshot the previous attempt's exit code, then reset last_exit
+    # so the `|| last_exit=$?` captures below only see this attempt's
+    # exit. The `|| last_exit=$?` pattern itself defuses `set -e` —
+    # if claude exits non-zero (API timeout, network blip, etc.) and
+    # the launch helper returns that code, set -e would otherwise kill
+    # babysit silently, dropping the pane to bash with no log entry
+    # and no relaunch. Observed in production after Anthropic API
+    # stream-idle-timeout errors.
+    prev_exit="$last_exit"
+    last_exit=0
+
+    case $prev_exit in
         0)
-            log "exit_code=0 attempt=$attempt (clean)"
-            log "resuming in ${CLEAN_DELAY}s..."
-            sleep "$CLEAN_DELAY"
+            # Clean exit = task complete. Workers get a between-task
+            # delay and then relaunch *fresh*. Architects re-resume
+            # their preserved session immediately. Worker sleep
+            # duration depends on WORKER_HAD_TRIGGER — see header
+            # comment for the bootstrap vs trigger-driven split.
+            if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+                log "architect clean exit (attempt $attempt) — re-resuming preserved session in ${CLEAN_DELAY}s..."
+                if ! interruptible_sleep "$CLEAN_DELAY"; then
+                    log "shutdown signaled during between-iteration wait — exiting"
+                    break
+                fi
+                run_with_heartbeat launch_architect_first || last_exit=$?
+            else
+                if [[ "$WORKER_HAD_TRIGGER" -eq 1 ]]; then
+                    sleep_dur="$LONG_BACKOFF_SECONDS"
+                    log "worker clean exit (attempt $attempt) — trigger-driven, long back-off ${sleep_dur}s (waits for next trigger or safety timeout)"
+                else
+                    sleep_dur=$(parse_interval_seconds "${LOOP_INTERVAL:-${CLEAN_DELAY}s}")
+                    log "worker clean exit (attempt $attempt) — bootstrap relaunch in ${sleep_dur}s (no trigger consumed yet)"
+                fi
+                rc=0
+                interruptible_sleep "$sleep_dur" "$TRIGGER_FILE" "$MIN_BACKOFF_SECONDS" || rc=$?
+                case $rc in
+                    1)
+                        log "shutdown signaled during between-iteration wait — exiting"
+                        break
+                        ;;
+                    2)
+                        log "trigger fired during sleep — relaunching immediately"
+                        ;;
+                esac
+                consume_trigger_if_present
+                run_with_heartbeat launch_worker_fresh || last_exit=$?
+            fi
             ;;
         2)
-            # Exit code 2 often indicates usage limit
-            log "exit_code=2 attempt=$attempt (suspected usage limit)"
-            log "waiting ${LIMIT_DELAY}s..."
-            sleep "$LIMIT_DELAY"
+            # Exit code 2 often indicates usage limit.
+            log "exit_code=2 attempt=$attempt (suspected usage limit), waiting ${LIMIT_DELAY}s..."
+            if ! interruptible_sleep "$LIMIT_DELAY"; then
+                log "shutdown signaled during limit wait — exiting"
+                break
+            fi
+            log "resuming session (attempt $attempt)..."
+            run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
         *)
-            log "exit_code=$last_exit attempt=$attempt (crash)"
-            log "resuming in ${CRASH_DELAY}s..."
-            sleep "$CRASH_DELAY"
+            # Crash mid-task. --continue (workers) / --resume (architects)
+            # so partial work isn't lost.
+            log "exit_code=$prev_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
+            if ! interruptible_sleep "$CRASH_DELAY"; then
+                log "shutdown signaled during crash recovery wait — exiting"
+                break
+            fi
+            run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
     esac
-
-    log "resuming session (attempt $attempt)..."
-    claude --model "$MODEL" --continue "resume your work from where you left off"
-    last_exit=$?
 done

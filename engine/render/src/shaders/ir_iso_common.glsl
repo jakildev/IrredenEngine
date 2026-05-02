@@ -41,13 +41,6 @@ vec4 unpackColor(uint packedColor) {
     );
 }
 
-vec4 adjustColorForFace(vec4 color, int face) {
-    float b = 1.0;
-    if (face == kYFace) b = 0.75;
-    if (face == kZFace) b = 1.25;
-    return vec4(clamp(color.rgb * b, 0.0, 1.0), color.a);
-}
-
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 // (0,0),(1,0) -> Z_FACE; (1,1),(1,2) -> X_FACE; (0,1),(0,2) -> Y_FACE
 int localIDToFace_2x3() {
@@ -69,6 +62,26 @@ ivec2 faceOffset_2x3(int face, int subPixel) {
 // The *4 spacing ensures face indices never cross depth boundaries.
 int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
+}
+
+// Outward unit normal for the visible side of each iso-rendered face. The
+// iso projection has view direction (1,1,1), so the three faces a camera
+// at (-large, -large, -large) actually sees are the ones whose outward
+// normals point AGAINST the view direction — i.e. -X, -Y, -Z (+Z is down,
+// so -Z is up = the top face). Used by both the AO compute (to step OUT
+// of the surface and read neighbor occluders) and the lighting lambert
+// (dot with sun direction). Both consumers MUST share this so AO sampling
+// and shading agree on which way is "out".
+vec3 faceOutwardNormal(int face) {
+    if (face == kXFace) return vec3(-1.0, 0.0, 0.0);
+    if (face == kYFace) return vec3(0.0, -1.0, 0.0);
+    return vec3(0.0, 0.0, -1.0);
+}
+
+ivec3 faceOutwardNormalI(int face) {
+    if (face == kXFace) return ivec3(-1, 0, 0);
+    if (face == kYFace) return ivec3(0, -1, 0);
+    return ivec3(0, 0, -1);
 }
 
 ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
@@ -102,4 +115,143 @@ vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     vec3 voxelRounded = round(voxelPosition);
     bvec3 nearGrid = lessThanEqual(abs(voxelPosition - voxelRounded), vec3(0.0001));
     return mix(voxelPosition, voxelRounded, vec3(nearGrid));
+}
+
+// Round-half-up: rounds to the nearest integer, ties go UP. Mirrors
+// `IRMath::roundHalfUp` (engine/math/include/irreden/ir_math.hpp) so any
+// CPU↔GPU coordinate handshake (occupancy grid build, ray-march cell sampling)
+// resolves half-integer voxel positions to the same cell on both sides.
+// Hardware `round()` is implementation-defined at half-integers and cannot be
+// trusted for that handshake.
+ivec3 roundHalfUp(vec3 v) {
+    return ivec3(floor(v + vec3(0.5)));
+}
+
+int roundHalfUp(float v) {
+    return int(floor(v + 0.5));
+}
+
+ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
+    return trixelCanvasSize / ivec2(2);
+}
+
+ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
+    return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
+}
+
+int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
+    vec2 canvasOffsetFloored = floor(frameCanvasOffset);
+    return (trixelCanvasOffsetZ1.x + trixelCanvasOffsetZ1.y +
+            int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
+}
+
+vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
+    vec2 originFlooredComp = floor(origin);
+    vec2 fractComp = fract(origin);
+    if (mod(originFlooredComp.x + originFlooredComp.y + float(originModifier), 2.0) >= 1.0) {
+        if (fractComp.y < fractComp.x) {
+            origin.y -= 1.0;
+        }
+    } else if (fractComp.y < 1.0 - fractComp.x) {
+        origin.y -= 1.0;
+    }
+    return origin;
+}
+
+int effectiveTrixelSubdivisionScale(ivec2 voxelRenderOptions) {
+    return voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
+}
+
+ivec2 trixelFrameOffset(
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions
+) {
+    int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    return trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset * float(scale)));
+}
+
+ivec2 trixelCanvasPixelToIsoRel(
+    ivec2 pixel,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions
+) {
+    return pixel - trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+}
+
+// Cardinal Z-yaw helpers (T-055).
+// FrameDataVoxelToTrixel.rasterYaw is guaranteed to be a multiple of pi/2 by
+// the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
+// renderer uses one of four basis-vector permutations selected by an integer
+// index in [0, 3] so integer voxel positions still land on integer trixel
+// pixels post-rotation. residualYaw is consumed by a downstream screen-space
+// composite pass; these helpers ignore it.
+//
+// Sign convention: rotateCardinalZ is world->view = R_z(-rasterYaw) — same as
+// the continuous-yaw matrix in c_shapes_to_trixel.glsl (T-056). At
+// visualYaw=+pi/2 the camera turns +90 deg around +Z; from the view's POV the
+// world appears to spin -90 deg, so world (+X,0,0) lands at view (0,-Y,0) and
+// projects to iso (-1,+1). Voxels (this helper) and shapes (T-056) MUST share
+// this convention or they desync at non-zero yaw.
+
+int rasterYawCardinalIndex(float rasterYaw) {
+    // CPU snaps visualYaw to a multiple of pi/2 (Camera::computeYawSplit) so
+    // this index pick is exact at floats that survived the UBO upload. The
+    // round() defends against bit-wise drift only; it is not the cardinal-snap
+    // policy itself. Negative inputs (yaw=-pi/2 -> q=-1) fold via the (mod 4 +
+    // 4) mod 4 clamp.
+    const float kHalfPi = 1.5707963267948966f;
+    int q = int(round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return ivec3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    return v;
+}
+
+vec3 rotateCardinalZInv(vec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);    // R_z(+pi/2)
+    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);    // R_z(+/-pi)
+    if (cardinalIndex == 3) return vec3( v.y, -v.x, v.z);    // R_z(-pi/2)
+    return v;
+}
+
+ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3(-v.y,  v.x, v.z);   // R_z(+pi/2)
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);   // R_z(+/-pi)
+    if (cardinalIndex == 3) return ivec3( v.y, -v.x, v.z);   // R_z(-pi/2)
+    return v;
+}
+
+// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
+// can reference it from ir_iso_common directly.
+vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
+    return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
+
+vec3 trixelCanvasPixelToWorld3D(
+    ivec2 pixel,
+    int rawDepth,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions,
+    float rasterYaw
+) {
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    ivec2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    if (scale > 1) {
+        pos3D /= float(scale);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
+    }
+    return pos3D;
 }

@@ -56,8 +56,10 @@ vec2 getMousePositionOutputView() {
     const vec2 raw = IRInput::getMousePosition();
     const vec2 offset = getRenderManager().screenToOutputWindowOffset();
     const ivec2 scale = getRenderManager().getOutputScaleFactor();
-    // screenToOutputOffset assumes outputResolution (game res); actual quad uses resolution+extraPixelBuffer
-    const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
+    // screenToOutputOffset assumes outputResolution (game res); actual quad uses
+    // resolution+extraPixelBuffer
+    const vec2 bufferCorrection =
+        vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
     return raw - offset + bufferCorrection;
 }
 vec2 getGameResolution() {
@@ -69,8 +71,10 @@ vec2 getMainCanvasSizeTrixels() {
 }
 
 vec2 mousePosition2DIsoScreenRender() {
-    return IRMath::pos2DScreenToPos2DIso(IRRender::getMousePositionOutputView(),
-                                         IRRender::getTriangleStepSizeScreen()) -
+    return IRMath::pos2DScreenToPos2DIso(
+               IRRender::getMousePositionOutputView(),
+               IRRender::getTriangleStepSizeScreen()
+           ) -
            (getMainCanvasSizeTrixels()) / getCameraZoom() / vec2(2.0f);
 }
 
@@ -87,31 +91,29 @@ ivec2 mouseTrixelPositionWorld() {
     const vec2 scaledMousePos =
         IRRender::mousePosition2DIsoWorldRender() * static_cast<float>(subdivisions);
 
-    const vec2 triIndex =
-        IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
+    const vec2 triIndex = IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
     // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
     return ivec2(glm::floor(triIndex + vec2(1, 1)));
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
-    static void *s_mappedPtr = nullptr;
-
     auto *buf = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
-    if (!buf) return IREntity::kNullEntity;
+    if (!buf)
+        return IREntity::kNullEntity;
 
-    if (!s_mappedPtr) {
-        struct HoveredLayout { uvec2 entityId; float depth; float _pad; };
-        s_mappedPtr = buf->mapRange(
-            0, sizeof(HoveredLayout),
-            BUFFER_STORAGE_MAP_READ |
-                BUFFER_STORAGE_MAP_PERSISTENT |
-                BUFFER_STORAGE_MAP_COHERENT
-        );
-    }
-    if (!s_mappedPtr) return IREntity::kNullEntity;
+    // Re-fetch every frame: on Metal, subData orphans the MTL::Buffer on
+    // write (metal_buffer.cpp:58–79); a statically-cached pointer from
+    // mapRange would be stale by the next frame.
+    void *mappedPtr = buf->mapRange(
+        0,
+        sizeof(HoveredEntityIdLayout),
+        BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
+    );
+    if (!mappedPtr)
+        return IREntity::kNullEntity;
 
     uvec2 packed;
-    std::memcpy(&packed, s_mappedPtr, sizeof(uvec2));
+    std::memcpy(&packed, mappedPtr, sizeof(uvec2));
 
     return static_cast<IREntity::EntityId>(packed.x) |
            (static_cast<IREntity::EntityId>(packed.y) << 32);
@@ -125,12 +127,12 @@ void setCameraPosition2DIso(vec2 pos) {
     getRenderManager().setCameraPosition2DIso(pos);
 }
 
-void setVoxelRenderMode(VoxelRenderMode mode) {
-    getRenderManager().setVoxelRenderMode(mode);
+void setSubdivisionMode(SubdivisionMode mode) {
+    getRenderManager().setSubdivisionMode(mode);
 }
 
-VoxelRenderMode getVoxelRenderMode() {
-    return getRenderManager().getVoxelRenderMode();
+SubdivisionMode getSubdivisionMode() {
+    return getRenderManager().getSubdivisionMode();
 }
 
 void setVoxelRenderSubdivisions(int subdivisions) {
@@ -179,6 +181,66 @@ void setHoveredTrixelVisible(bool visible) {
 
 bool isHoveredTrixelVisible() {
     return getRenderManager().isHoveredTrixelVisible();
+}
+
+void setSunDirection(vec3 dir) {
+    IR_ASSERT(
+        dir.z <= 0.0f,
+        "Sun direction points from the world toward the sun; +Z is down, so z must be <= 0"
+    );
+    getRenderManager().setSunDirection(dir);
+}
+
+vec3 getSunDirection() {
+    return getRenderManager().getSunDirection();
+}
+
+void setSunIntensity(float intensity) {
+    getRenderManager().setSunIntensity(intensity);
+}
+
+float getSunIntensity() {
+    return getRenderManager().getSunIntensity();
+}
+
+void setSunAmbient(float ambient) {
+    getRenderManager().setSunAmbient(ambient);
+}
+
+float getSunAmbient() {
+    return getRenderManager().getSunAmbient();
+}
+
+void setSunShadowsEnabled(bool enabled) {
+    getRenderManager().setSunShadowsEnabled(enabled);
+}
+
+bool getSunShadowsEnabled() {
+    return getRenderManager().getSunShadowsEnabled();
+}
+
+void setScreenSpaceShadowsEnabled(bool enabled) {
+    getRenderManager().setScreenSpaceShadowsEnabled(enabled);
+}
+
+bool getScreenSpaceShadowsEnabled() {
+    return getRenderManager().getScreenSpaceShadowsEnabled();
+}
+
+void setAOEnabled(bool enabled) {
+    getRenderManager().setAOEnabled(enabled);
+}
+
+bool getAOEnabled() {
+    return getRenderManager().getAOEnabled();
+}
+
+void setDebugOverlay(DebugOverlayMode mode) {
+    getRenderManager().setDebugOverlay(mode);
+}
+
+DebugOverlayMode getDebugOverlay() {
+    return getRenderManager().getDebugOverlay();
 }
 
 } // namespace IRRender

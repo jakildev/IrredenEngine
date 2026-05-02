@@ -6,6 +6,11 @@ only creations checked into the engine repo — private creations (games,
 personal editors, experiments) live as gitignored subdirectories under
 `creations/`.
 
+## Inherits from engine baseline
+
+Applies the rules in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md).
+No opt-outs.
+
 ## Current demos
 
 - `default/` — minimal example showing how to spin up a `World`, register
@@ -13,14 +18,18 @@ personal editors, experiments) live as gitignored subdirectories under
 - `shape_debug/` — stress test for the shape renderer and voxel pipeline
   at varying subdivisions / zoom. Useful for chasing rendering glitches.
 - `midi_keyboard/` — keyboard-driven MIDI input demo.
-- `midi_polyrhythm/` — Lua-driven polyrhythm sequencer. Reference for
-  how `lua_component_pack.hpp` + `main_lua.cpp` are wired up.
 - `metal_clear_test/` — Metal-backend smoke test (clear-color only).
+- `lighting/` — lighting pipeline showcase (emissive voxels, light volume).
+- `modifier_demo/` — interactive modifier framework showcase. Eight cubes
+  each demonstrate one framework capability (Haste, Stun, Slow, Stack,
+  GlobalSlow, LambdaSine, SourceKill, Clamp) via number keys 1–8. Live
+  per-cube resolved-speed HUD. Canonical visual reference for the modifier
+  framework — see `engine/prefabs/irreden/common/CLAUDE.md`.
 
 ## Adding a new demo
 
 1. Copy the closest matching existing demo (Lua-driven →
-   `midi_polyrhythm`, C++-only → `shape_debug`, minimal → `default`).
+   `default`, C++-only → `shape_debug`, minimal → `default`).
 2. Rename the target (`IRShapeDebug` → `IRYourName`) and update
    `CMakeLists.txt`:
    - `set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})`

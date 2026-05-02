@@ -47,8 +47,8 @@ class RenderManager {
     vec2 getTriangleStepSizeGameResolution() const;
     ivec2 getMainCanvasSizeTriangles() const;
     vec2 screenToOutputWindowOffset() const;
-    void setVoxelRenderMode(VoxelRenderMode mode);
-    VoxelRenderMode getVoxelRenderMode() const;
+    void setSubdivisionMode(SubdivisionMode mode);
+    SubdivisionMode getSubdivisionMode() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -66,6 +66,22 @@ class RenderManager {
 
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
+
+    void setSunDirection(vec3 dir);
+    vec3 getSunDirection() const;
+    void setSunIntensity(float intensity);
+    float getSunIntensity() const;
+    void setSunAmbient(float ambient);
+    float getSunAmbient() const;
+    void setSunShadowsEnabled(bool enabled);
+    bool getSunShadowsEnabled() const;
+    void setScreenSpaceShadowsEnabled(bool enabled);
+    bool getScreenSpaceShadowsEnabled() const;
+    void setAOEnabled(bool enabled);
+    bool getAOEnabled() const;
+
+    void setDebugOverlay(DebugOverlayMode mode);
+    DebugOverlayMode getDebugOverlay() const;
 
     void beginFrame();
     void renderFrame();
@@ -88,10 +104,7 @@ class RenderManager {
     );
 
     EntityId createCanvas(
-        std::string name,
-        ivec3 voxelPoolSize,
-        ivec2 trixelSize,
-        EntityId framebuffer = EntityId{}
+        std::string name, ivec3 voxelPoolSize, ivec2 trixelSize, EntityId framebuffer = EntityId{}
     );
 
     bool hasCanvas(const std::string &name) const;
@@ -120,10 +133,27 @@ class RenderManager {
     std::unordered_map<std::string, EntityId> m_canvasMap;
     EntityId m_activeCanvas = kNullEntity;
     FitMode m_fitMode;
-    VoxelRenderMode m_voxelRenderMode = VoxelRenderMode::SNAPPED;
+    SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
+    // Unit vector pointing from surfaces toward the sun. Default is a
+    // mostly-overhead pose with a small -X / -Y tilt: those are the
+    // outward-normal directions of the visible X_FACE / Y_FACE in iso
+    // view (see `faceOutwardNormal` in ir_iso_common.glsl), so the dot
+    // product produces brightness Z > X > Y, recovering the visual feel
+    // of the old hardcoded per-face brightness multiplier (Z=1.25, X=1.0,
+    // Y=0.75). Creations override via setSunDirection() per frame or at
+    // init. Consumed by the COMPUTE_SUN_SHADOW pass each frame.
+    // Component breakdown after normalize: |z|≈0.93 (top brightest),
+    // |x|≈0.30, |y|≈0.20 — every face has at least 0.4 ambient floor.
+    vec3 m_sunDirection = vec3(-0.3f, -0.2f, -0.93f);
+    float m_sunIntensity = 1.0f;
+    float m_sunAmbient = 0.4f;
+    bool m_sunShadowsEnabled = true;
+    bool m_screenSpaceShadowsEnabled = false;
+    bool m_aoEnabled = true;
+    DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 
     void initRenderingSystems();
     void initRenderingResources();

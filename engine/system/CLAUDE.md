@@ -55,16 +55,60 @@ Go to (3) for bulk-processing opportunities (SIMD, sort, partition).
 ## Per-system parameters
 
 If a system needs persistent state beyond components (e.g. a GPU buffer
-handle, an accumulator), allocate a `SystemParams` subclass and attach:
+handle, an accumulator), allocate a `SystemParams` subclass. Call
+`setSystemParams` **after** `createSystem` — the system entity must exist
+first. See the canonical example in the section below.
 
 ```cpp
-setSystemParams(systemId, std::make_unique<MyParams>(...));
+// After createSystem returns systemId:
 auto& params = getSystemParams<MyParams>(systemId);
 ```
 
 The params are owned by the system entity and freed when the system is
 destroyed. **Do not store raw references to params across frames** — if the
 system is recreated (e.g. via reload), the pointer is invalid.
+
+### Don't use function-local `static` for system state
+
+Function-local `static` for system-owned state is an anti-pattern.
+Use `SystemParams` instead.
+
+**Why it's wrong:**
+- Hidden state — not visible to ECS inspectors or system-walking tools.
+- Lifetime mismatch — persists for program lifetime, doesn't free when the
+  system entity is destroyed.
+- Single-instance assumption — all instances of `System<X>` share the same
+  statics; future multi-instance use silently cross-talks.
+- Conflicts with the ECS "everything on an entity" philosophy.
+
+**Why the perf argument doesn't hold:** the canonical `SystemParams` pattern
+has the same per-tick access cost as `static`. Capture the pointer once at
+`create()` time and pass into lambdas by value — the pointer lookup happens
+once, not per tick.
+
+```cpp
+SystemId create() {
+    auto paramsOwner = std::make_unique<MyParams>();
+    auto* p = paramsOwner.get();    // capture raw ptr before move
+    SystemId myId = createSystem<...>(
+        "Name",
+        [p](C_Foo& foo) { p->bar += foo.x; },
+        [p]()           { p->bar = 0.0f; },
+        [p]()           { /* end-of-tick using p */ }
+    );
+    setSystemParams(myId, std::move(paramsOwner));
+    return myId;
+}
+```
+
+**Exception:** truly invariant data — `constexpr` integer constants,
+named-resource pointers fetched once at engine init that never change — is
+fine as `static`. Those are program constants, not system state. The rule
+applies to *mutable* or *system-owned* state.
+
+See `.fleet/status/system-static-deviations.md` (queue-manager-owned;
+feature PRs do not edit) for the current list of files still using
+function-local `static` for system state.
 
 ## Pipelines
 

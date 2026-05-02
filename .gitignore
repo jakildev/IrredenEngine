@@ -27,6 +27,10 @@ Thumbs.db
 
 # fleet agent temp files
 .review-body.md
+.review-body-*.md
+.pr-body.md
+.merger-body.md
+__pycache__/
 
 # creations: keep demos + top-level CLAUDE.md, ignore other folders
 creations/*

@@ -57,6 +57,27 @@ On Windows, the FFmpeg DLLs (`avcodec-*.dll`, `avformat-*.dll`,
 be on `PATH` when the executable runs. See the top-level CLAUDE.md for
 the PATH-fix wrapper.
 
+## Auto-screenshot helper
+
+`engine/video/include/irreden/video/auto_screenshot.hpp` — declarative
+shot-cycling helper that any creation can opt into with a shot table
+plus five lines of wire-up. Used by the `render-debug-loop` and
+`render-verify` skills.
+
+- `AutoScreenshotShot` — one shot: zoom, camera-iso position, label.
+- `AutoScreenshotConfig` — warmup/settle frame counts and a
+  caller-owned `const AutoScreenshotShot *` table.
+- `parseAutoScreenshotArgv` — CLI parser for
+  `--auto-screenshot [frames]`.
+- `createAutoScreenshotSystem` — RENDER-pipeline system that cycles
+  through shots, triggers one screenshot per shot, and calls
+  `IRWindow::closeWindow()` when done.
+
+Reference callers: `creations/demos/shape_debug/main.cpp` and
+`creations/demos/metal_clear_test/main.cpp`. The shot table must outlive
+the game loop — `constexpr AutoScreenshotShot kShots[]` at file scope
+is the idiomatic shape.
+
 ## Commands and components (prefabs/irreden/video)
 
 - `command_take_screenshot` → `requestScreenshot()`.

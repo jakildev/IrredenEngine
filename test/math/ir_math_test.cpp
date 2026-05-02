@@ -79,6 +79,58 @@ TEST(IsoProjectionTest, FloatOverloadMatchesIntOverload) {
 }
 
 // ---------------------------------------------------------------------------
+// isoPixelToPos3D
+// Inverse of pos3DtoPos2DIso on the depth plane (x+y+z == depth). CPU mirror
+// of `isoPixelToPos3D` in `shaders/ir_iso_common.glsl` — the BAKE pass uses
+// it to compute the sun-space AABB, so its formula must match exactly.
+// ---------------------------------------------------------------------------
+
+TEST(IsoPixelToPos3DTest, OriginRecoversOrigin) {
+    auto p = IRMath::isoPixelToPos3D(0, 0, 0.0f);
+    EXPECT_NEAR(p.x, 0.0f, kTolerance);
+    EXPECT_NEAR(p.y, 0.0f, kTolerance);
+    EXPECT_NEAR(p.z, 0.0f, kTolerance);
+}
+
+TEST(IsoPixelToPos3DTest, PureZAxisStep) {
+    // (0,0,1) → iso(0,2), depth=1; recover (0,0,1)
+    auto p = IRMath::isoPixelToPos3D(0, 2, 1.0f);
+    EXPECT_NEAR(p.x, 0.0f, kTolerance);
+    EXPECT_NEAR(p.y, 0.0f, kTolerance);
+    EXPECT_NEAR(p.z, 1.0f, kTolerance);
+}
+
+TEST(IsoPixelToPos3DTest, ArbitraryPoint) {
+    // (2,3,4) → iso(1,3), depth=9; recover (2,3,4)
+    auto p = IRMath::isoPixelToPos3D(1, 3, 9.0f);
+    EXPECT_NEAR(p.x, 2.0f, kTolerance);
+    EXPECT_NEAR(p.y, 3.0f, kTolerance);
+    EXPECT_NEAR(p.z, 4.0f, kTolerance);
+}
+
+TEST(IsoPixelToPos3DTest, RoundtripIntegerLattice) {
+    // For integer p, the iso projection is integer and the depth
+    // sum is exact, so isoPixelToPos3D ∘ pos3DtoPos2DIso recovers p
+    // bit-for-bit (within float rounding).
+    for (int x = -3; x <= 3; ++x) {
+        for (int y = -3; y <= 3; ++y) {
+            for (int z = -3; z <= 3; ++z) {
+                const IRMath::ivec3 p(x, y, z);
+                const auto iso = IRMath::pos3DtoPos2DIso(p);
+                const float depth = static_cast<float>(x + y + z);
+                const auto recovered = IRMath::isoPixelToPos3D(iso.x, iso.y, depth);
+                EXPECT_NEAR(recovered.x, static_cast<float>(x), kTolerance)
+                    << "p=(" << x << "," << y << "," << z << ")";
+                EXPECT_NEAR(recovered.y, static_cast<float>(y), kTolerance)
+                    << "p=(" << x << "," << y << "," << z << ")";
+                EXPECT_NEAR(recovered.z, static_cast<float>(z), kTolerance)
+                    << "p=(" << x << "," << y << "," << z << ")";
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // pos3DtoDistance
 // Formula: distance = x + y + z
 // ---------------------------------------------------------------------------

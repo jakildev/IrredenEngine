@@ -1,0 +1,23 @@
+=== PROFILE REPORT (300 frames) ===
+Frame time:   avg=9.90ms   p50=8.43ms   p95=16.46ms   p99=57.12ms   min=6.30ms   max=128.74ms
+Update ticks: avg=0.6/frame  max=7
+Entity count: 168 (27 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              0.94     0.005     0.002     0.027     178      22250
+UPDATE   UpdatePositionsGlobal                      1.73     0.010     0.007     0.029     178       3026
+UPDATE   UpdateVoxelSetChildren                     0.40     0.002     0.001     0.015     178       1424
+RENDER   SingleVoxelToCanvasFirst                1546.26     5.154     4.464     9.661     300        300
+RENDER   ShapesToTrixel                           142.09     0.474     0.278    24.366     300       2400
+RENDER   CanvasToFramebuffer                       18.53     0.062     0.038     0.718     300        900
+RENDER   FramebufferToScreen                        4.13     0.014     0.010     0.106     300        300
+RENDER   BuildOccupancyGrid                         2.59     0.009     0.003     0.556     300        300
+RENDER   CameraMousePan                             2.30     0.008     0.002     0.042     300        300
+RENDER   SingleVoxelToCanvasSecond                  2.06     0.007     0.004     0.086     300        300
+RENDER   Camera                                     1.47     0.005     0.002     0.016     300        300
+RENDER   LightingToTrixel                           0.57     0.002     0.001     0.004     300          0
+RENDER   AutoProfile                                0.47     0.002     0.001     0.042     300       2400
+RENDER   ComputeVoxelAO                             0.16     0.001     0.000     0.005     300          0
+
+=== END REPORT ===

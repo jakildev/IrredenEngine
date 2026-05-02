@@ -76,6 +76,7 @@ them in the creation's own `TASKS.md`.
   - **Model:** opus | sonnet  (which model should run this)
   - **Owner:** free | <worktree-name>
   - **Blocked by:** (none) | <title of blocking task>
+  - **Stack:** T-XXX..T-YYY <slug>  (optional — only for tasks in a stacked chain sharing a parent epic; omit for standalone tasks)
   - **Acceptance:** <concrete check: build passes, test X passes, PR merged, screenshot Y looks like Z>
   - **Issue:** (none) | #N  (GitHub issue number, if task originated from an issue)
   - **Notes:** <context, links, prior attempts>
@@ -87,6 +88,14 @@ task ID (e.g. `fleet-claim claim "T-003" sonnet-fleet-1`), **not** the
 free-text title. IDs are short and unambiguous — agents can't accidentally
 paraphrase them, which is the failure mode that free-text title slugification
 is vulnerable to.
+
+The **Stack** field groups child tasks of a shared parent epic so a
+human can follow the chain across `## Open`. Format:
+`T-<min>..T-<max> <slug>`; slug is a kebab-case identifier shared by
+all siblings. Informational only — `fleet-claim` and the scout cache
+ignore it. Standalone tasks omit the field entirely. The queue-manager
+populates it during ingestion when a child issue declares membership;
+see `role-queue-manager.md` for the detection rule.
 
 Status markers: `[ ]` open, `[~]` in progress, `[x]` done, `[!]` blocked/stuck.
 
@@ -123,7 +132,7 @@ Small and bounded is the target. Good shapes for this queue:
 - **FFmpeg / audio interface hardening** — "add bounds checks to
   `VideoRecorder::submitVideoFrame` stride handling"
 - **Compile-time cleanup** — "reduce `engine/render/` TU rebuild cascade by
-  moving X out of the hot header"
+  moving X out of the low header"
 - **Shader hygiene** — "extract repeated iso-projection math in
   `engine/render/src/shaders/` into `ir_iso_common.glsl`"
 
@@ -142,135 +151,99 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Linux build maturation: get `linux-debug` preset green end-to-end** —
-  fix every compile/link/runtime issue encountered when building the
-  engine against the new `linux-debug` CMake preset inside WSL2 Ubuntu
-  24.04. This is the umbrella epic — break it into smaller follow-up
-  tasks as concrete issues are found.
-  - **ID:** T-001
-  - **Area:** engine/* (anywhere the Linux path breaks)
-  - **Model:** opus (for anything touching core-engine invariants) /
-    sonnet (for mechanical port fixes like missing `#include`, case-
-    sensitive paths, EOL drift)
-  - **Owner:** free
+
+- [~] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
+  - **ID:** T-057
+  - **Area:** engine/render, engine/input
+  - **Model:** opus
+  - **Owner:** claude/T-057-picking-yaw-inverse
   - **Blocked by:** (none)
-  - **Acceptance:** from a fresh WSL2 Ubuntu 24.04 clone,
-    `cmake --preset linux-debug && cmake --build build -j$(nproc)`
-    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
-    with zero warnings escalated to errors, and `IRShapeDebug` launches
-    via WSLg without crashing on its first frame.
-  - **Notes:** the engine was originally written against Windows +
-    MSYS2. Expect missing Linux branches under `#ifdef _WIN32`, missing
-    system libs (update the apt list in `docs/AGENT_FLEET_SETUP.md` §1a
-    as you find them), case-sensitive include mismatches, and EOL
-    drift. Every real fix should land as its own dedicated PR — do
-    **not** bundle unrelated Linux-port fixes into feature work.
-    Reference `docs/AGENT_FLEET_SETUP.md` §10 for the list of known
-    first-time issues.
+  - **Stack:** T-054..T-058 z-yaw-pipeline
+  - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
+  - **Issue:** #313
+  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`. Prior PR #418 was closed without merging.
   - **Links:**
 
-- [ ] **Metal parity: port `c_shapes_to_trixel.glsl` to MSL** —
-  the GLSL compute for writing 2D shape SDFs into trixel canvases has
-  no Metal counterpart. Invoke the `backend-parity` skill on a macOS
-  host and port it.
-  - **ID:** T-004
-  - **Area:** engine/render/src/shaders/metal
+
+- [~] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
+  - **ID:** T-071
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** claude/T-071-delete-occupancy-grid
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers removed; (2) `system_bake_sun_shadow_map` is the sole shadow producer; (3) `engine/render/CLAUDE.md` and `engine/prefabs/irreden/render/CLAUDE.md` updated to drop occupancy/analytic-caster sections; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; shadow renders correctly; (5) revisit `C_CanvasAOTexture`/`C_CanvasSunShadow` construction per #367 during deletion pass
+  - **Issue:** #358
+  - **Notes:** PR 2 of 2 from issue #358. Must wait for T-065 (12-file render-system-params migration) to land first — `system_compute_sun_shadow.hpp` and `system_build_occupancy_grid.hpp` are the exact files T-065 migrates; if PR 2 races T-065, both sides conflict on every line. PR 1 (T-070) adds new path; this PR deletes the old one. Several closed issues (pre-existing size mismatch, multi-canvas SSBO collision, SDF shadow artifacts) resolved by construction once old paths are removed.
+  - **Links:**
+
+- [ ] **Render: GPU-side light-volume propagation (jump flooding / iterative dilation)** — replace CPU BFS + 8 MB subImage3D upload in `system_compute_light_volume.hpp` with GPU seed pass + jump-flood propagate pass(es)
+  - **ID:** T-072
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-071
+  - **Acceptance:** (1) `system_compute_light_volume.hpp` has no per-frame CPU `vector<>` or `std::fill` of volume-sized buffers; `subImage3D` upload for the volume texture removed; (2) GPU seed pass + propagate pass(es) replace CPU BFS; light sources seeded via compute dispatch; (3) `IRLightingCombined` and `IRLightingEmissive` outputs within sample-noise of pre-migration reference; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #359
+  - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
+  - **Links:**
+
+
+
+
+
+- [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
+  - **ID:** T-089
+  - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
   - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** `engine/render/src/shaders/metal/c_shapes_to_trixel.metal`
-    exists and matches the GLSL binding/uniform layout, the
-    `macos-debug` build is clean, and the shapes-rendering demo
-    (whichever creation exercises `SHAPES_TO_TRIXEL`) renders
-    visually identically to the OpenGL version.
-  - **Notes:** read `engine/render/CLAUDE.md` pipeline overview and
-    the GLSL source in full before porting. Use the cheatsheet in
-    `.claude/skills/backend-parity/SKILL.md`.
+  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test covers basic decay case (push lambda modifier with ticksRemaining=60, advance 60 ticks, assert removed); (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance to be defined by architect after design is locked.
+  - **Issue:** #341
+  - **Notes:** Part 1 is mechanical — mirrors `system_modifier_decay.hpp` but targets `C_LambdaModifiers`. Part 2 (stateful lambdas) is architectural: architect prefers option (c) — lambda + companion component — where state lives on entity in its own component and the lambda receives entity ID. Part 2 should be its own dedicated PR after Part 1 lands and design is locked; worker can do Part 1 standalone. Surfaced during architect review of PR #332; documented in `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups."
   - **Links:**
 
-- [ ] **Metal parity: port `c_update_voxel_positions.glsl` to MSL** —
-  GPU-side voxel-position update compute with no Metal counterpart.
-  Same skill flow as above.
-  - **ID:** T-005
-  - **Area:** engine/render/src/shaders/metal
+- [ ] **Render: AO via trixelDistances (drop OccupancyGridBuffer)** — migrate `c_compute_voxel_ao.{glsl,metal}` off `OccupancyGridBuffer`; sample 4 face-tangent neighbour pixels in `trixelDistances` instead
+  - **ID:** T-091
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-071
+  - **Acceptance:** (1) `c_compute_voxel_ao.{glsl,metal}` no longer reads `OccupancyGridBuffer` / slot 28; (2) `system_compute_voxel_ao.hpp` no longer binds `OccupancyGridBuffer`; (3) AO crease-darkening within ~1 iso pixel of edge migration vs pre-migration reference (capture before PR, compare via `render-debug-loop`); (4) SDF shapes get crease AO on adjacent surfaces (regression-fix — SDF-into-occupancy step deleted in T-071); (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
+  - **Issue:** #428
+  - **Notes:** Architect direction in `.fleet/plans/T-091.md` (derived from `~/.fleet/plans/issue-358.md` T-09X section). Blocks final occupancy teardown T-092. Approach: project world-space face tangents through iso transform once on CPU, ship in `FrameDataVoxelToTrixel` UBO; compare receiver `pos3D'` vs face-outward plane per pixel. Cost stays O(canvasPixels) with 4 texel reads per pixel.
+  - **Links:**
+
+- [ ] **Render: final occupancy-grid teardown (drop BUILD_OCCUPANCY_GRID + C_OccupancyGrid)** — pure deletion after T-091 (AO) and T-072 (light-volume) land; remove grid system, component, SSBO, constants, and CLAUDE.md phased-out sections
+  - **ID:** T-092
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-091, T-072
+  - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
+  - **Issue:** #429
+  - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
+  - **Links:**
+
+- [ ] **Input: fix system_hitbox_mouse_test projection under non-zero camera yaw** — compose `R_z(rasterYaw)` and `R2D(residualYaw)` in `HITBOX_MOUSE_TEST` forward-projection (or inverse-project mouse once in `beforeTick`) so hitbox hover tracks correctly at all visualYaw values
+  - **ID:** T-093
+  - **Area:** engine/prefabs/irreden/input, engine/render
   - **Model:** opus
   - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** `engine/render/src/shaders/metal/c_update_voxel_positions.metal`
-    exists and matches the GLSL binding/uniform layout, `macos-debug`
-    build is clean, and a voxel-animation demo (e.g. one of the
-    `creations/demos/*` that exercises moving voxels) animates
-    identically to the OpenGL version.
-  - **Notes:** dispatch size and buffer bindings must match exactly
-    — any mismatch will race or corrupt the voxel pool. This one is
-    higher-stakes than `c_shapes_to_trixel`; be thorough.
+  - **Acceptance:** (1) mouse hover triggers `onHovered` for entities under cursor at `visualYaw` ∈ {0, π/8, π/4, π/2 + π/16} when entity is on-screen and within hitbox half-extents; (2) hitbox-only hover shows no regression vs master at `visualYaw=0`; (3) test synthesizes known mouse position + camera yaw and asserts `HITBOX_MOUSE_TEST` flips `hovered_` correctly under at least two non-cardinal yaws
+  - **Issue:** #430
+  - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
   - **Links:**
 
-- [ ] **Metal parity: port `c_voxel_visibility_compact.glsl` to MSL** —
-  the voxel-visibility compaction pass (reduces visible-voxel indices
-  into a dense buffer) has no Metal counterpart. Same skill flow.
-  - **ID:** T-006
-  - **Area:** engine/render/src/shaders/metal
+- [ ] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
+  - **ID:** T-094
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal`
-    exists, matches the GLSL binding/uniform layout, `macos-debug`
-    build is clean, and `IRShapeDebug` on Metal gives the same
-    visible-voxel counts per frame as the OpenGL version.
-  - **Notes:** compaction shaders rely on atomic operations — pay
-    attention to the `atomicAdd` → `atomic_fetch_add_explicit`
-    translation and the memory-order argument (use `relaxed` unless
-    the GLSL source implies otherwise). See the cheatsheet in the
-    `backend-parity` skill.
-  - **Links:**
-
-- [ ] **Wire up a `backend-parity` dry run** — use the new
-  `backend-parity` skill end-to-end on a known-small parity gap
-  (pick one of the three MSL port tasks above, ideally
-  `c_shapes_to_trixel` as the least invasive). This is the equivalent
-  of the "example" tasks below — the goal is to exercise the skill's
-  flow and catch any workflow bugs before running it on real
-  production gaps.
-  - **ID:** T-007
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** one parity PR opened, reviewed by `review-pr`,
-    merged. Any workflow bugs in the `backend-parity` skill itself
-    are filed as follow-up `[sonnet]` tasks to fix the skill.
-  - **Notes:** treat any skill failure as a skill bug, not a task
-    failure. The point of this dry run is to uncover workflow
-    issues, not to ship the parity port (that happens as a natural
-    side effect).
-  - **Links:**
-
-- [ ] **Example: benchmark IRShapeDebug at zoom 4** — measure per-system
-  timing and file a report.
-  - **ID:** T-008
-  - **Area:** engine/profile
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** Linux build maturation (if running in the fleet;
-    the Windows-native clone can start this immediately)
-  - **Acceptance:** `docs/perf-reports/shape_debug_zoom4.md` exists with
-    per-system `easy_profiler` screenshots and a 1-paragraph summary of the
-    top 3 hotspots.
-  - **Notes:** use `IRShapeDebug` from `creations/demos/shape_debug/`. See
-    `engine/profile/CLAUDE.md` for the macros and how to enable the
-    profiler build flag.
-  - **Links:**
-
-- [~] **Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL)** — replace the two-value `VoxelRenderMode` with a three-value `SubdivisionMode` that decouples smooth positioning from shape-fidelity scaling
-  - **ID:** T-009
-  - **Area:** engine/render, engine/prefabs/irreden/render, engine/world
-  - **Model:** opus
-  - **Owner:** render-subdivision-mode
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `SubdivisionMode` enum with NONE/POSITION_ONLY/FULL replaces `VoxelRenderMode`; (2) Lua key `"subdivision_mode"` accepts `"none"` / `"position"` / `"full"`, default `"full"`; (3) all three modes build clean on active preset; (4) visual: NONE snaps to grid, POSITION_ONLY at zoom 2 shows identical silhouette to 2×-radius-at-zoom-1, FULL at zoom 2 is visibly smoother; (5) FULL mode (current SMOOTH behavior) has not regressed
-  - **Issue:** #156
-  - **Notes:** `POSITION_ONLY` is the new mode — subdivisions apply to positioning only; SDF evaluates at base-zoom coarse grid. Key files: `VoxelRenderMode` enum definition, RenderManager getters/setters, `system_shapes_to_trixel.hpp` ~line 284 (third branch for POSITION_ONLY), WorldConfig Lua wiring. Per-entity subdivision modes are future work — note in code but do not implement.
+  - **Blocked by:** T-072
+  - **Acceptance:** (1) lighting demos render with full fidelity when camera is panned far from origin (e.g. ~1000 voxels away); (2) at-origin scenes produce screenshot diff within sampling noise of T-072 reference — no regression; (3) light-volume texture memory footprint unchanged (128³ RGB); (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) GLSL and Metal shaders both read new origin uniform; `render-debug-loop` shows no parity drift
+  - **Issue:** #360
+  - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
   - **Links:**
 
 ---
@@ -279,7 +252,6 @@ Avoid:
 
 <!-- Tasks currently being worked on. Mirror of [~] items above. -->
 
-- [~] **T-009** — Render: add `SubdivisionMode` enum (NONE / POSITION_ONLY / FULL) · Owner: render-subdivision-mode · PR: https://github.com/jakildev/IrredenEngine/pull/160
 
 ---
 
@@ -287,97 +259,23 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-- [x] **macOS/Metal build maturation: get `macos-debug` preset green end-to-end** —
-  mirror of the Linux-maturation task, on the Mac side. Umbrella epic
-  for fixing every compile/link/runtime issue in the Metal backend
-  as the fleet surfaces them.
-  - **ID:** T-003
-  - **Area:** engine/render/src/metal, engine/render/src/shaders/metal,
-    anywhere the Metal path breaks
-  - **Model:** opus (backend/render work is Opus territory)
-  - **Owner:** metal-build-maturation
-  - **Blocked by:** (none)
-  - **Acceptance:** from a fresh macOS clone at `~/src/IrredenEngine`,
-    `cmake --preset macos-debug && cmake --build build -j$(sysctl -n hw.ncpu)`
-    builds `IRShapeDebug`, `IRCreationDefault`, and `IrredenEngineTest`
-    with zero warnings escalated to errors, and `IRShapeDebug` launches
-    and renders the same reference frame as the OpenGL backend.
-  - **Notes:** see `docs/AGENT_FLEET_SETUP.md` §10 (macOS subsection)
-    for the known first-time issues on macOS — Objective-C++ flags,
-    shader parity gaps, FFmpeg `pkg-config` path, Metal 3 target
-    version, Retina scaling.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/154
-
-- [x] **macOS FFmpeg: fix CMake/pkg-config wiring on `macos-debug`** — get FFmpeg headers and libs found and linked correctly on macOS so `engine/video/` compiles and links on the `macos-debug` preset.
-  - **ID:** T-002
-  - **Area:** build, engine/video
-  - **Model:** sonnet
-  - **Owner:** build-macos-ffmpeg-pkgconfig-2
-  - **Blocked by:** (none)
-  - **Acceptance:** `cmake --preset macos-debug && cmake --build build --target IRShapeDebug` completes with zero FFmpeg-related include or linker errors; `avcodec`, `avformat`, `avutil`, and `swscale` all appear in the final link line.
-  - **Notes:** Known macOS first-time issue per `docs/AGENT_FLEET_SETUP.md` §10 — Homebrew FFmpeg pkg-config path differs from Linux (`/opt/homebrew/lib/pkgconfig` on Apple Silicon, `/usr/local/lib/pkgconfig` on Intel).
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/128
-
-- [x] **Fix `engine/asset` extension mismatch: `.txl` vs `.irtxl`** —
-  `saveTrixelTextureData` writes files with `.txl` but `loadTrixelTextureData`
-  opens files expecting `.irtxl`. Standardize both on `.txl`.
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** asset-extension-fix
-  - **Blocked by:** (none)
-  - **Acceptance:** both `saveTrixelTextureData` and `loadTrixelTextureData`
-    use `.txl`; CMake build passes (`linux-debug` or `macos-debug`);
-    `C_TriangleCanvasTextures::saveToFile` followed by `loadFromFile` round-
-    trips a canvas without corruption.
-  - **Notes:** Bug in `engine/asset/src/ir_asset.cpp` line 32 — change
-    `.irtxl` → `.txl`. No `.irtxl` files exist in the repo so there is no
-    backward-compat concern.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/96
-
-- [x] **Docs: doc pass on `ir_math_types.hpp` and `color_palettes.hpp`** —
-  add `///` to every public declaration in both files; remove dead commented-
-  out code (the `kFaceCameraRotations` stub in `ir_math_types.hpp` and the
-  commented-out alternative color values in `color_palettes.hpp`).
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
-  - **Blocked by:** (none)
-  - **Acceptance:** every public enum, struct, field, and constant in both
-    files has a `///` doc comment; no `//`-commented-out dead code remains;
-    all existing `///` comments from prior passes are preserved.
-  - **Notes:** skip `kInvisable` typo rename — that affects a prefab header
-    in a different module and belongs in its own PR.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/90
-
-- [x] **Unit tests for iso-projection and math helpers in ir_math.hpp** —
-  add `test/math/ir_math_test.cpp` covering the untested `constexpr`/`inline`
-  helpers that `physics_test.cpp` does not exercise.
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
-  - **Blocked by:** (none)
-  - **Acceptance:** `test/math/ir_math_test.cpp` exists and is listed in
-    `test/CMakeLists.txt`; `IrredenEngineTest` builds and all new tests pass;
-    coverage includes `pos3DtoPos2DIso` (ivec3 and vec3 overloads),
-    `pos3DtoDistance`, `isoDepthShift`, `lerpByte`, `lerpColor`, `lerpHSV`,
-    `IsoBounds2D::contains`/`center`/`extent`/`fromCorners`, `entityIsoBounds`,
-    `divCeil`, `index2DtoIndex1D`, `index3DtoIndex1D`.
-  - **Notes:** skip `pos3DtoPos2DScreen` and `screenDeltaToIsoDelta` — they
-    depend on `IRPlatform::kGfx` compile-time constants and are platform-specific.
-    If a test uncovers a math bug, requeue the fix as `[opus]`.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
-
-- [x] **Example: unit tests for engine/math/physics.hpp** — exhaustive
-  tests for ballistic helpers.
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
-  - **Blocked by:** (none — unit tests don't care which platform builds them)
-  - **Acceptance:** new test binary builds, tests cover all four physics
-    helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`,
-    `isTunnelingSafe`) with edge cases, all pass.
-  - **Notes:** pattern-heavy; the function spec is in
-    `engine/math/CLAUDE.md` under "Physics". If a test uncovers a real bug
-    in the helpers, stop and requeue as `[opus]` with a bug report rather
-    than fixing inline.
-  - **Links:** https://github.com/jakildev/IrredenEngine/pull/79
+- [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
+- [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
+- [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
+- [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
+- [x] **T-070** — Render: screen-space sun shadow map — add bake pass (flag-guarded) · Owner: claude/T-070-screen-space-sun-shadow-bake · PR: https://github.com/jakildev/IrredenEngine/pull/406
+- [x] **T-083** — render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write · Owner: claude/T-083-metal-uaf-stale-pointer · PR: https://github.com/jakildev/IrredenEngine/pull/416
+- [x] **T-085** — fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix · Owner: claude/T-085-changes-made-sequencing · PR: https://github.com/jakildev/IrredenEngine/pull/414
+- [x] **T-084** — merger: dedupe semantic-conflict re-comments when sha pair unchanged · Owner: claude/T-084-merger-dedupe-conflict-comments · PR: https://github.com/jakildev/IrredenEngine/pull/413
+- [x] **T-068** — Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment · Owner: claude/T-068-sdf-cardinal-snap-align · PR: https://github.com/jakildev/IrredenEngine/pull/412
+- [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
+- [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
+- [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
+- [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
+- [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
+- [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
+- [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
+- [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
+- [x] **T-065** — Render systems: migrate 12 files off function-local static onto SystemParams · Owner: claude/T-065-render-system-params · PR: https://github.com/jakildev/IrredenEngine/pull/382
+- [x] **T-075** — Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2) · Owner: claude/T-075-opus-only-checklist · PR: https://github.com/jakildev/IrredenEngine/pull/395
+- [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392

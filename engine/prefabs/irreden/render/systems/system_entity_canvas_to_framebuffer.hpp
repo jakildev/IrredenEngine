@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
@@ -43,7 +44,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
-        return createSystem<C_EntityCanvas, C_PositionGlobal3D, C_PositionOffset3D>(
+        SystemId s = createSystem<C_EntityCanvas, C_PositionGlobal3D, C_PositionOffset3D>(
             "EntityCanvasToFramebuffer",
             [](IREntity::EntityId entityId,
                const C_EntityCanvas &entityCanvas,
@@ -124,18 +125,10 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             },
             []() {
                 getInstances().clear();
-                IRRender::gpuStageTiming().entityCanvasToFbMs_ = 0.0f;
             },
             []() {
                 auto &allInstances = getInstances();
                 if (allInstances.empty()) return;
-
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint drawStart;
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    drawStart = IRRender::SteadyClock::now();
-                }
 
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
@@ -160,14 +153,10 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 }
 
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    timing.entityCanvasToFbMs_ = IRRender::elapsedMs(
-                        drawStart, IRRender::SteadyClock::now());
-                }
             }
         );
+        IRRender::tagGpuStage(s, "entityCanvasToFb");
+        return s;
     }
 
     static mat4 calcProjectionMatrix(const vec2 &resolution) {

@@ -179,16 +179,16 @@ void setCameraPosition2DIso(vec2 pos);
 /// @}
 
 /// @{
-/// @name Voxel render mode
-/// @see VoxelRenderMode for SNAPPED vs SMOOTH trade-offs.
+/// @name Subdivision mode
+/// @see SubdivisionMode for NONE / POSITION_ONLY / FULL trade-offs.
 /// @see getVoxelRenderEffectiveSubdivisions for the value actually used by shaders.
-void setVoxelRenderMode(VoxelRenderMode mode);
-VoxelRenderMode getVoxelRenderMode();
-/// Set the subdivision count for @c SMOOTH mode. Higher values = smoother panning,
-/// more GPU work. Also multiplied by zoom in the compute pass.
+void setSubdivisionMode(SubdivisionMode mode);
+SubdivisionMode getSubdivisionMode();
+/// Set the base subdivision count. In @c FULL mode it is multiplied by zoom;
+/// in @c POSITION_ONLY it is used as-is; in @c NONE it is ignored (always 1).
 void setVoxelRenderSubdivisions(int subdivisions);
 int getVoxelRenderSubdivisions();
-/// The actual subdivisions value sent to the shader: @c subdivisions × zoom factor.
+/// The actual subdivisions value sent to the shader, accounting for mode and zoom.
 int getVoxelRenderEffectiveSubdivisions();
 void zoomMainBackgroundPatternIn();
 void zoomMainBackgroundPatternOut();
@@ -207,6 +207,51 @@ int getGuiScale();
 /// the cursor). Entity-id detection continues regardless of this flag.
 void setHoveredTrixelVisible(bool visible);
 bool isHoveredTrixelVisible();
+/// @}
+
+/// @{
+/// @name Directional sun lighting
+/// Unit vector pointing from surfaces toward the sun. Consumed each frame
+/// by the @c COMPUTE_SUN_SHADOW pass to ray-march the occupancy grid.
+///
+/// Irreden's isometric world uses +Z as the downward height axis, so a sun
+/// above the ground must have @c dir.z <= 0. Positive Z points below the
+/// world and makes top faces shadow themselves instead of casting shadows
+/// onto the floor. The setter asserts this convention and normalizes on write
+/// so callers can pass any non-zero vector.
+void setSunDirection(vec3 dir);
+vec3 getSunDirection();
+/// Global directional sun intensity used when no ECS DIRECTIONAL light exists.
+/// Values below zero are clamped to zero.
+void setSunIntensity(float intensity);
+float getSunIntensity();
+/// Ambient floor for sun face shading. 0 is pure Lambert, 1 is fully ambient.
+void setSunAmbient(float ambient);
+float getSunAmbient();
+/// When false, sun face shading remains active but projected shadows are disabled.
+void setSunShadowsEnabled(bool enabled);
+bool getSunShadowsEnabled();
+/// When true, the @c COMPUTE_SUN_SHADOW lookup reads the sun depth buffer baked
+/// by @c BAKE_SUN_SHADOW_MAP instead of marching the occupancy grid. The legacy
+/// path remains the default while both modes coexist.
+void setScreenSpaceShadowsEnabled(bool enabled);
+bool getScreenSpaceShadowsEnabled();
+/// When false, ambient occlusion crease darkening is skipped — the AO compute
+/// shader short-circuits with a constant 1.0 so the lighting pass treats AO
+/// as a no-op. Sun face shading and projected shadows are unaffected.
+void setAOEnabled(bool enabled);
+bool getAOEnabled();
+/// @}
+
+/// @{
+/// @name Lighting debug overlay
+/// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
+/// color visualization of the underlying lighting buffers. See
+/// @c DebugOverlayMode for the per-mode color encoding. Upstream lighting
+/// passes (@c COMPUTE_VOXEL_AO, @c COMPUTE_SUN_SHADOW) keep running so the
+/// values rendered are exactly what the artistic path would consume.
+void setDebugOverlay(DebugOverlayMode mode);
+DebugOverlayMode getDebugOverlay();
 /// @}
 
 } // namespace IRRender

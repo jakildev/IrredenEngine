@@ -14,6 +14,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
+    uniform float visualYaw;
+    uniform float rasterYaw;
+    uniform float residualYaw;
+    uniform float _yawPadding;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -66,15 +70,23 @@ void main() {
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(colors[voxelIndex]);
     int face = localIDToFace_2x3();
-    voxelColor = adjustColorForFace(voxelColor, face);
+
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+
+    // At cardinalIndex==0 the rotation is the identity; gating it behind a
+    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
+    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
+    // pixel-for-pixel against master.
 
     if (voxelRenderOptions.x == 0) {
-        const ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+        }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
-            trixelCanvasOffsetZ1 +
-            ivec2(floor(frameCanvasOffset)) +
+            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             ivec2(gl_LocalInvocationID.xy) +
             pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
@@ -88,11 +100,13 @@ void main() {
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = ivec3(round(voxelPositionAligned * float(subdivisions)));
     const ivec2 frameOffsetFixed =
-        trixelCanvasOffsetZ1 +
-        ivec2(floor(frameCanvasOffset * float(subdivisions)));
+        trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
-    const ivec3 microPositionFixed =
+    ivec3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
+    if (cardinalIndex != 0) {
+        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+    }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);

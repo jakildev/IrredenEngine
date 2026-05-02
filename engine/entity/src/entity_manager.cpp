@@ -70,6 +70,15 @@ void EntityManager::markEntityForDeletion(EntityId &entity) {
 /* TODO: destroy entities in batch after each frame */
 void EntityManager::destroyEntity(EntityId entity) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    // Pre-destroy hooks run before component teardown so callbacks see
+    // the entity (and its peers) in their final fully-valid state.
+    // Hooks must not unregister hooks during this loop — see the
+    // assert in unregisterPreDestroyHook.
+    m_preDestroyHookIterating = true;
+    for (std::size_t i = 0; i < m_preDestroyHooks.size(); ++i) {
+        m_preDestroyHooks[i].hook_(entity);
+    }
+    m_preDestroyHookIterating = false;
     EntityRecord &record = getRecord(entity);
     IRE_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
     ArchetypeNode *node = record.archetypeNode;
@@ -77,6 +86,30 @@ void EntityManager::destroyEntity(EntityId entity) {
     removeEntityFromArchetypeNode(node, record.row);
     returnEntityToPool(entity);
     IRE_LOG_DEBUG("Destroyed entity {}", entity & IR_ENTITY_ID_BITS);
+}
+
+PreDestroyHookId EntityManager::registerPreDestroyHook(PreDestroyHook hook) {
+    IR_ASSERT(static_cast<bool>(hook), "registerPreDestroyHook called with empty hook");
+    PreDestroyHookId id = m_nextPreDestroyHookId++;
+    m_preDestroyHooks.push_back(PreDestroyHookEntry{id, std::move(hook)});
+    return id;
+}
+
+void EntityManager::unregisterPreDestroyHook(PreDestroyHookId id) {
+    IR_ASSERT(
+        !m_preDestroyHookIterating,
+        "unregisterPreDestroyHook called from inside a pre-destroy hook callback — "
+        "this would silently skip a sibling hook. Defer the unregister until destroyEntity returns."
+    );
+    if (id == kInvalidPreDestroyHookId) return;
+    auto it = std::find_if(
+        m_preDestroyHooks.begin(),
+        m_preDestroyHooks.end(),
+        [id](const PreDestroyHookEntry &e) { return e.id_ == id; }
+    );
+    if (it != m_preDestroyHooks.end()) {
+        m_preDestroyHooks.erase(it);
+    }
 }
 
 void EntityManager::destroyComponents(EntityId entity) {

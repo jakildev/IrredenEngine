@@ -5,6 +5,9 @@ add_executable(IrredenEngineTest
   audio/music_theory_test.cpp
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp
+  ecs/modifier_runtime_test.cpp
+  ecs/modifier_types_test.cpp
+  ecs/system_exclude_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
   math/ir_math_viewport_helpers_test.cpp
@@ -13,6 +16,14 @@ add_executable(IrredenEngineTest
   math/ir_math_easing_color_sort_test.cpp
   math/ir_math_random_misc_test.cpp
   math/ir_math_trixel_index_test.cpp
+  math/sdf_test.cpp
+  render/camera_yaw_test.cpp
+  render/frame_data_sun_layout_test.cpp
+  render/light_volume_test.cpp
+  render/sun_direction_test.cpp
+  render/sun_lighting_test.cpp
+  render/sprite_components_test.cpp
+  script/modifier_lua_test.cpp
   utility/ir_utility_test.cpp
 )
 

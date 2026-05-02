@@ -69,20 +69,40 @@ class OpenGLBufferImpl final : public BufferImpl {
     void *mapRange(
         std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags
     ) override {
-        return ENG_API->glMapNamedBufferRange(
+        // Idempotent for the same range: glMapNamedBufferRange returns
+        // INVALID_OPERATION on an already-mapped buffer.
+        // Cache key omits accessFlags — callers on the same range must use consistent flags.
+        if (m_mappedPtr != nullptr && m_mappedOffset == offset && m_mappedLength == length) {
+            return m_mappedPtr;
+        }
+        if (m_mappedPtr != nullptr) {
+            ENG_API->glUnmapNamedBuffer(m_handle);
+            m_mappedPtr = nullptr;
+        }
+        m_mappedPtr = ENG_API->glMapNamedBufferRange(
             m_handle,
             static_cast<GLintptr>(offset),
             static_cast<GLsizeiptr>(length),
             toGLBufferStorageFlags(accessFlags)
         );
+        m_mappedOffset = offset;
+        m_mappedLength = length;
+        return m_mappedPtr;
     }
 
     void unmap() override {
+        if (m_mappedPtr == nullptr) {
+            return;
+        }
         ENG_API->glUnmapNamedBuffer(m_handle);
+        m_mappedPtr = nullptr;
     }
 
   private:
     GLuint m_handle = 0;
+    void *m_mappedPtr = nullptr;
+    std::ptrdiff_t m_mappedOffset = 0;
+    std::size_t m_mappedLength = 0;
 };
 
 std::unique_ptr<BufferImpl> createBufferImpl(const void *data, std::size_t size, std::uint32_t flags) {

@@ -12,6 +12,7 @@
 #   fleet-run IRShapeDebug
 #   fleet-run --timeout 5 IRShapeDebug       # auto-kill after 5 seconds
 #   fleet-run --build-dir /path/to/build IrredenEngineTest
+#   fleet-run --targets [--plain|--plan|--built] [--build-dir DIR]
 #
 # Fleet agents should always use --timeout for GUI executables to avoid
 # leaving windows open and stealing focus from the human.
@@ -25,45 +26,97 @@ BUILD_DIR=""
 TIMEOUT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --build-dir) BUILD_DIR="$2"; shift 2 ;;
-        --timeout|-t) TIMEOUT="$2"; shift 2 ;;
+        --build-dir)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-run: --build-dir requires a directory path" >&2
+                exit 2
+            fi
+            BUILD_DIR="$2"
+            shift 2
+            ;;
+        --timeout|-t)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-run: --timeout|-t requires a positive integer (seconds)" >&2
+                exit 2
+            fi
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        --targets)
+            shift
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            HELPER="$SCRIPT_DIR/fleet-run-targets"
+            if [[ ! -f "$HELPER" ]]; then
+                echo "fleet-run: missing $HELPER (expected next to fleet-run in the repo)" >&2
+                exit 1
+            fi
+            if [[ -n "$BUILD_DIR" ]]; then
+                exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
+            fi
+            exec "$HELPER" "$@"
+            ;;
         --help|-h)
             cat <<'USAGE'
 usage: fleet-run [options] <executable-name> [args...]
+   or: fleet-run [options] --targets [list-options...]
 
-Finds <executable-name> in the build tree, cd's into its directory,
-and runs it. Sibling data/shaders/scripts directories are on CWD.
+Run mode
+  Finds <executable-name> anywhere under the build tree, cd's to that
+  executable's directory, and runs it so sibling data/, shaders/, and
+  scripts/ are on the process cwd.
 
-Options:
-  --build-dir <dir>   Override the build directory (default: auto-detect)
-  --timeout|-t <secs> Auto-kill after N seconds (for fleet verification).
-                      Exit 0 if the process survived the timeout (healthy).
-                      Exit 1 if the process crashed before the timeout.
-                      Fleet agents should use this for GUI executables to
-                      avoid leaving windows open and stealing focus.
+  Arguments after <executable-name> are passed through to the program.
 
-Build directory resolution (in order):
-  1. --build-dir flag
-  2. $IRREDEN_BUILD_DIR environment variable
-  3. <git-worktree-root>/build
-  4. ~/src/IrredenEngine/build (fallback)
+  Options (run mode):
+    --build-dir <dir>   CMake build directory (must contain the built binary).
+                        Default: see "Build directory" below.
+    --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
+                        Exit 0 if still running at timeout (treat as healthy
+                        for smoke tests). Exit 1 if the process died early
+                        with non-zero status. Omit for normal interactive run
+                        (current shell is replaced by the program).
+
+  Build directory (when not using --build-dir):
+    1. $IRREDEN_BUILD_DIR if set
+    2. <git-worktree-root>/build from git rev-parse
+    3. $HOME/src/IrredenEngine/build if not in a git worktree
+
+Target listing mode
+  fleet-run --targets [list-options...]
+
+  Delegates to scripts/fleet/fleet-run-targets (same as running that script).
+  Full option reference is printed below.
+
+Other fleet tools (build, tmux fleet, claims, …): fleet-help
+
 USAGE
+            HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-run-targets"
+            if [[ -f "$HELPER" ]]; then
+                echo "---------- fleet-run --targets (full options) ----------"
+                bash "$HELPER" --help
+            else
+                echo "fleet-run: warning: $HELPER not found; target-listing help omitted." >&2
+            fi
             exit 0
             ;;
         --) shift; break ;;
-        -*) echo "fleet-run: unknown option $1" >&2; exit 2 ;;
+        -*) echo "fleet-run: unknown option '$1' (try fleet-run --help)" >&2; exit 2 ;;
         *) break ;;
     esac
 done
 
 if [[ $# -eq 0 ]]; then
     echo "usage: fleet-run [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
+    echo "       fleet-run --targets [--plain | --plan | --built] [--build-dir <dir>]" >&2
+    echo "       fleet-run --help" >&2
     exit 2
 fi
 
-if [[ -n "$TIMEOUT" ]] && ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$TIMEOUT" == "0" ]]; then
-    echo "fleet-run: --timeout must be a positive integer, got '$TIMEOUT'" >&2
-    exit 2
+if [[ -n "$TIMEOUT" ]]; then
+    if ! [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+        echo "fleet-run: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+        exit 2
+    fi
 fi
 
 EXE_NAME="$1"

@@ -55,6 +55,13 @@ struct C_GLFWGamepadState {
         return buttons_[static_cast<int>(button)] == ButtonStatuses::RELEASED;
     }
 
+    bool checkButton(GamepadButtons button, ButtonStatuses status) const {
+        if (status == ButtonStatuses::PRESSED)  return checkButtonPressed(button);
+        if (status == ButtonStatuses::HELD)     return checkButtonDown(button);
+        if (status == ButtonStatuses::RELEASED) return checkButtonReleased(button);
+        return false;
+    }
+
     float getAxisValue(GamepadAxes axis) const {
         return axes_[static_cast<int>(axis)];
     }

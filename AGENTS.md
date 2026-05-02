@@ -10,7 +10,7 @@ Irreden is an isometric "pixelatable" voxel content and game engine built around
 IrredenEngine/
 ├── cmake/                  # CMake utility scripts (ir_functions, ir_quality_tools, etc.)
 ├── creations/              # Applications and demos
-│   ├── demos/              # default, midi_polyrhythm, midi_keyboard, shape_debug, metal_clear_test
+│   ├── demos/              # default, midi_keyboard, shape_debug, metal_clear_test
 │   ├── editors/            # font_maker
 │   └── game/               # Conventional private game path (gitignored)
 ├── docs/                   # Style, dependencies, contributing
@@ -227,9 +227,20 @@ All vector/matrix types are GLM aliases defined in the `IRMath` namespace (`ir_m
 
 - **X axis** — points to the lower-left in the isometric view.
 - **Y axis** — points to the lower-right in the isometric view.
-- **Z axis** — points upward (vertical axis).
+- **Z axis** — vertical axis. **+Z points downward** in the rendered
+  view (gravity direction). Lower Z values render higher on screen.
 
 The ground plane is XY. Entities at the same Z level sit on the same horizontal plane.
+
+> **Why "+Z down"?** Empirically: a cone defined with `sdfCone` has its
+> narrow point at `+halfHeight` along Z, and that narrow point renders
+> at the *bottom* of the iso view; voxel-pool shapes anchored to the
+> floor place their `+halfExtent.z` face touching the floor's
+> `-halfExtent.z` face, with both at smaller Z than the floor's center.
+> Sun direction (`vec3 toward sun`) therefore always has `z <= 0`;
+> `IRRender::setSunDirection` asserts this. `Z_FACE` is the voxel's top
+> face visually, and its outward normal in face-shading code is
+> `(0, 0, -1)`.
 
 ### Isometric Projection
 
@@ -240,7 +251,9 @@ iso.x = -x + y
 iso.y = -x - y + 2z
 ```
 
-Screen coordinates are derived by scaling and negating the iso coordinates (`IRMath::pos3DtoPos2DScreen`).
+`pos3DtoPos2DScreen` scales the iso result by `triangleStepSizeScreen`
+and applies a backend-specific X / Y sign (`IRPlatform::kGfx.screenYDirection_`);
+the net result is the "+Z down" rendered view described above.
 
 ### Depth / Distance
 
@@ -364,7 +377,7 @@ creations/demos/your_demo/
 2. Add `CMakeLists.txt` with `add_executable(...)` and `target_link_libraries(... PUBLIC IrredenEngine)`.
 3. Add the subdirectory to the parent `CMakeLists.txt`.
 4. For C++-only creations: use `main.cpp`.
-5. For Lua-driven creations: use `main_lua.cpp` + `lua_bindings.*` + `lua_component_pack.hpp` + Lua scripts. See `creations/demos/midi_polyrhythm/` as the reference.
+5. For Lua-driven creations: use `main_lua.cpp` + `lua_bindings.*` + `lua_component_pack.hpp` + Lua scripts. See `creations/demos/default/` as the reference.
 6. Register pipelines in `IREngine::init`. Include only the components/systems your creation needs.
 
 ### Private Project Workflow

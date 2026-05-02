@@ -25,13 +25,16 @@ template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
 template <> struct C_SystemEvent<IRSystem::TICK> {
     std::function<void(IREntity::ArchetypeNode *)> functionTick_;
     IREntity::Archetype archetype_;
+    IREntity::Archetype excludeArchetype_;
 
     C_SystemEvent(
         const std::function<void(IREntity::ArchetypeNode *)> &tickFunctions,
-        const IREntity::Archetype &archetype
+        IREntity::Archetype archetype,
+        IREntity::Archetype excludeArchetype = {}
     )
         : functionTick_(tickFunctions)
-        , archetype_(archetype) {}
+        , archetype_(std::move(archetype))
+        , excludeArchetype_(std::move(excludeArchetype)) {}
 
     C_SystemEvent()
         : functionTick_() {}

@@ -20,6 +20,7 @@ RenderingResourceManager::RenderingResourceManager() {
     }
     registerResource<ShaderStage>();
     registerResource<Texture2D>();
+    registerResource<Texture3D>();
     registerResource<Framebuffer>();
     registerResource<ShaderProgram>();
     registerResource<Buffer>();

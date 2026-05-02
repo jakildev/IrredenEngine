@@ -42,7 +42,9 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
-        "IRREDEN_GRAPHICS_BACKEND": "OPENGL"
+        "IRREDEN_GRAPHICS_BACKEND": "OPENGL",
+        "CMAKE_C_COMPILER": "gcc-13",
+        "CMAKE_CXX_COMPILER": "g++-13"
       }
     }
   ],

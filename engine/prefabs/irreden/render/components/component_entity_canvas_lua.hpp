@@ -9,19 +9,15 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_EntityCanvas> =
 
 template <> inline void bindLuaType<IRComponents::C_EntityCanvas>(LuaScript &luaScript) {
     using IRComponents::C_EntityCanvas;
-    using IRMath::ivec2;
-    using IRMath::ivec3;
-    luaScript.registerType<
-        C_EntityCanvas,
-        C_EntityCanvas(ivec2),
-        C_EntityCanvas()>(
+    // Default ctor only — to create a live canvas-backed entity call IRPrefab::EntityCanvas::create() from C++; no Lua factory binding exists.
+    luaScript.registerType<C_EntityCanvas, C_EntityCanvas()>(
         "C_EntityCanvas",
         "canvasSize",
         &C_EntityCanvas::canvasSize_,
         "visible",
         &C_EntityCanvas::visible_,
-        "addVoxelPool",
-        &C_EntityCanvas::addVoxelPool
+        "canvasEntity",
+        &C_EntityCanvas::canvasEntity_
     );
 }
 } // namespace IRScript
