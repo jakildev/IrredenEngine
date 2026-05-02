@@ -71,6 +71,7 @@ class OpenGLBufferImpl final : public BufferImpl {
     ) override {
         // Idempotent for the same range: glMapNamedBufferRange returns
         // INVALID_OPERATION on an already-mapped buffer.
+        // Cache key omits accessFlags — callers on the same range must use consistent flags.
         if (m_mappedPtr != nullptr && m_mappedOffset == offset && m_mappedLength == length) {
             return m_mappedPtr;
         }
