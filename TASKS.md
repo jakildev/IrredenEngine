@@ -176,16 +176,6 @@ Avoid:
   - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
-- [~] **Render/system: centralize GPU stage probes via SystemManager TickObserver** — add a generic `TickObserver` hook to `SystemManager`, implement `GpuStageTimingObserver` in render layer, and remove the 15+ inlined probe blocks from render system headers
-  - **ID:** T-066
-  - **Area:** engine/system, engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-066-tick-observer
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `IRSystem::TickObserver` + `registerTickObserver`/`unregisterTickObserver` in `ir_system.hpp`/`system_manager.hpp`, fire pre/post in `SystemManager::executeSystem`; empty-observer-list path has no measurable overhead; (2) `GpuStageTimingObserver` + `IRRender::tagGpuStage` exist; observer installed once during render init; (3) all inlined GPU probe blocks under `engine/prefabs/irreden/render/systems/` removed; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; Lua `ir.render.getPassTimings()`/`getPassTiming()` returns same 15+ rows with same field semantics; (5) a creation with >1 matching canvas for a formerly-`=` system reports sum across entities, not the last one
-  - **Issue:** #261
-  - **Notes:** T-028 follow-up. The 3-line inline probe pattern is duplicated 15+ times (commenter notes more systems may have been added since the issue was filed). Fast-path rule: `m_observers.empty()` check compiles down to single branch. Follow the `optimize` skill before `commit-and-push`. Non-goals: real async GPU timer queries (Part 2, separate task); changing Lua API surface.
-  - **Links:**
 
 - [ ] **Metal: sync FrameDataVoxelToTrixel struct and C++ feeder with GLSL yaw fields** — add `visualYaw`, `rasterYaw`, `residualYaw`, `_yawPadding` to the Metal struct in `ir_iso_common.metal` and to the C++ `FrameDataVoxelToCanvas` struct in `ir_render_types.hpp`
   - **ID:** T-067
@@ -209,11 +199,11 @@ Avoid:
   - **Notes:** Escalated from sonnet-author after human:needs-fix on PR #334 (T-056). Three human concerns: (1) confusing nesting + redundant smoothMode check, (2) no analytical fast path at non-zero yaw (existing `boxDepthIntersect` etc. bake in yaw=0 iso direction), (3) voxel-pool carving not rotating with T-055. Blocked until both T-055 (cardinal-snap raster) and T-056 (SDF arbitrary yaw) land. Opus architectural decision required on whether to rederive analytical intersectors for rotated ray.
   - **Links:**
 
-- [ ] **Render: screen-space sun shadow map — add bake pass (flag-guarded)** — implement `system_bake_sun_shadow_map` + GLSL/Metal compute shaders that project rasterized iso pixels into a sun-aligned 2D buffer via `imageAtomicMin`; gate behind `useScreenSpaceShadow_` flag
+- [~] **Render: screen-space sun shadow map — add bake pass (flag-guarded)** — implement `system_bake_sun_shadow_map` + GLSL/Metal compute shaders that project rasterized iso pixels into a sun-aligned 2D buffer via `imageAtomicMin`; gate behind `useScreenSpaceShadow_` flag
   - **ID:** T-070
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-070-screen-space-sun-shadow-bake
   - **Blocked by:** (none)
   - **Acceptance:** (1) new `system_bake_sun_shadow_map.hpp` + GLSL + Metal compute shaders committed; (2) `c_compute_sun_shadow.glsl` and Metal counterpart branch on `useScreenSpaceShadow_` flag; both paths produce equivalent shadow silhouettes; (3) `render-debug-loop` comparison screenshots show side-by-side parity; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) shadow silhouettes within ≤1 sun-space texel of existing implementation when flag disabled; (6) per-pixel cost drops from O(canvasPixels×64) to O(canvasPixels) when flag enabled
   - **Issue:** #358
@@ -240,6 +230,39 @@ Avoid:
   - **Acceptance:** (1) `system_compute_light_volume.hpp` has no per-frame CPU `vector<>` or `std::fill` of volume-sized buffers; `subImage3D` upload for the volume texture removed; (2) GPU seed pass + propagate pass(es) replace CPU BFS; light sources seeded via compute dispatch; (3) `IRLightingCombined` and `IRLightingEmissive` outputs within sample-noise of pre-migration reference; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #359
   - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
+  - **Links:**
+
+- [ ] **render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write** — drop `static void *s_mappedPtr` cache in `ir_render.cpp`; call `buf->mapRange` per-frame to obtain current post-orphan buffer pointer
+  - **ID:** T-083
+  - **Area:** engine/render/src/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `s_mappedPtr` static cache removed from `getEntityIdAtMouseTrixel` in `ir_render.cpp`; (2) `buf->mapRange` called per-frame to retrieve current (post-orphan) buffer pointer — on Metal this is `m_buffer->contents() + offset` (cheap); (3) `fleet-build --target IRShapeDebug` clean on `macos-debug`; (4) `fleet-run IRShapeDebug` + hover cursor over a voxel/SDF shape for ~5s confirms `[HoverDetect] eid=...` logs fire; (5) OpenGL path unaffected
+  - **Issue:** #403
+  - **Notes:** Pre-existing UAF exposed by T-069 (Metal entity-id write). `MetalBufferImpl::subData` orphans `m_buffer` each frame; `s_mappedPtr` cached on first call now points into freed buffer. Option A (recommended): drop static cache, call `mapRange` per-frame. Option B: memcpy-under-fence for persistent-map buffers (larger scope). Bug was masked before T-069 because Metal wrote zeros, matching `kNullEntity`.
+  - **Links:**
+
+- [ ] **merger: dedupe semantic-conflict re-comments when sha pair unchanged** — before posting a semantic-conflict comment, check if PR already carries `fleet:semantic-conflict` and the master×PR sha pair matches the previously-posted comment; skip re-post if so
+  - **ID:** T-084
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-merger.md` step 5d-iii checks `fleet:semantic-conflict` label presence before posting; (2) if sha pair matches prior comment, post is skipped and cooldown reset + audit log entry written as `recurring detection — comment skipped`; (3) docs-only change, no build required; (4) verified in fleet: PR with unchanged conflict receives at most one comment per sha-pair change event
+  - **Issue:** #409
+  - **Notes:** Observed on PR #382: same comment posted 5× with identical sha pairs (master `cecedf7` × PR `3fe6f67`). Root cause: `fleet:semantic-conflict` absent from step 3 skip list caused every iteration to clear cooldown, retry rebase, hit conflict, and re-post. Adjacent: opus-worker not picking up `fleet:semantic-conflict` on #382 worth separate investigation.
+  - **Links:**
+
+- [ ] **fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix** — fix label sequencing so `fleet:changes-made` is set (atomically if possible) before `fleet:needs-fix` is removed; add defensive timeline check to reviewer role docs
+  - **ID:** T-085
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` option-B handoff (AMEND and DEFER modes): `fleet:changes-made` set BEFORE `fleet:needs-fix` removed, or atomically via single `gh pr edit --add-label ... --remove-label ...`; (2) `role-opus-reviewer.md` and `role-sonnet-reviewer.md`: before re-applying a missing verdict label, inspect timeline for UNLABELED events or `fleet:changes-made` presence; (3) docs-only change, no build required
+  - **Issue:** #410
+  - **Notes:** Stale-scout-cache race: 2m19s gap between removing `fleet:needs-fix` and adding `fleet:changes-made` caused opus-reviewer to re-apply `fleet:needs-fix`. Timeline check should cover (a) new commit, (b) new author comment, (c) UNLABELED event for `fleet:needs-fix`, (d) presence of `fleet:changes-made` — (c) is the novel signal, not covered by the existing 04-30 mitigation rule.
   - **Links:**
 
 - [~] **Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip** — enforce 30m floor between opus-reviewer relaunches; make fleet-claim resolve blockers via git merge-base; queue-manager detects stale [~] tasks merged to master and auto-flips to [x]
@@ -277,6 +300,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
 - [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
 - [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
 - [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
@@ -296,4 +320,3 @@ Avoid:
 - [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
 - [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
 - [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
-- [x] **T-051** — Modifier framework: migrate position + velocity-drag patterns · Owner: claude/T-051-modifier-position-velocity · PR: https://github.com/jakildev/IrredenEngine/pull/332
