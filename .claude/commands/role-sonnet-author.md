@@ -216,10 +216,11 @@ Each iteration:
           - **Suggested area** — module path
           - **Suggested approach** — bullets, for the picker to
             validate
-       2. Swap PR labels (one call combines remove+add safely
-          because `human:needs-fix` is guaranteed present — that
-          is what brought you here):
-          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred"`
+       2. Swap PR labels atomically — `fleet:changes-made` MUST be
+          added in the same call as `human:needs-fix` is removed to
+          prevent a labeless window the reviewer could mistake for a
+          missing verdict and re-apply `fleet:needs-fix` into:
+          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred" --add-label "fleet:changes-made"`
        3. **Keep `fleet:approved`** — the PR is internally
           consistent, the prior reviewer approval stands.
           `fleet:human-deferred` signals: "agent acknowledged the
@@ -299,9 +300,9 @@ Each iteration:
      re-verifies (whichever first; reviewer removes the label on
      pickup to avoid double-processing). Reviewer's re-approval
      re-sets `fleet:approved`.
-   - **ESCALATE**: agent files a follow-up issue, swaps
-     `human:needs-fix` for `fleet:human-deferred`, KEEPS
-     `fleet:approved`. Human reviews the linked issue and either
+   - **ESCALATE**: agent files a follow-up issue, atomically swaps
+     `human:needs-fix` for `fleet:human-deferred` + `fleet:changes-made`,
+     KEEPS `fleet:approved`. Human reviews the linked issue and either
      accepts the deferral (PR ready to merge) or re-adds
      `human:needs-fix` to force AMEND mode on the next iteration.
 

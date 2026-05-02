@@ -140,6 +140,10 @@ treat it as a hard rule for this role.
      feedback is being addressed.
    - `fleet:human-amending` — author agent is actively addressing
      human feedback. Hold review until `fleet:changes-made` appears.
+   - `fleet:human-deferred` — author chose DEFER mode: acknowledged
+     concerns, filed a follow-up issue, and the human decides to
+     merge as-is or re-add `human:needs-fix` to force inline fixes.
+     Do NOT re-apply `fleet:needs-fix` for deferred concerns.
    - `fleet:semantic-conflict` — merger detected a non-mechanical
      rebase conflict; the opus-worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
@@ -170,7 +174,7 @@ iteration of polling, reviewing, and exiting cleanly:
    `fleet:changes-made` (remove the label on pickup), or with a "re-review please"
    comment after the last fleet review. Skip PRs carrying any of
    `fleet:wip`, `human:wip`, `human:needs-fix`, `fleet:human-amending`,
-   `fleet:semantic-conflict`, or `fleet:fork-of-other-pr`. For each remaining candidate, in
+   `fleet:human-deferred`, `fleet:semantic-conflict`, or `fleet:fork-of-other-pr`. For each remaining candidate, in
    oldest-first order:
 
    **Engine PRs** (default repo): Invoke the `review-pr` skill with

@@ -158,12 +158,16 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
      `submittedAt`).
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
+   `fleet:human-amending`, `fleet:human-deferred`,
    `fleet:semantic-conflict`, or `fleet:fork-of-other-pr` — those are
-   either in-progress, human-owned, queued for conflict resolution
-   (diff against master is meaningless until the rebase lands), or
-   forked from another open PR (diff includes inherited commits that
-   don't belong to this PR's scope — skip until the human runs
-   `rebase --onto` and clears this label).
+   either in-progress, human-owned, under active author fixes
+   (`fleet:human-amending`), in DEFER mode where the human decides
+   to merge as-is or re-flag (`fleet:human-deferred` — do NOT
+   re-apply `fleet:needs-fix` for deferred concerns), queued for
+   conflict resolution (diff against master is meaningless until the
+   rebase lands), or forked from another open PR (diff includes
+   inherited commits that don't belong to this PR's scope — skip
+   until the human runs `rebase --onto` and clears this label).
 
 ## Loop behavior
 

@@ -314,10 +314,11 @@ Do the work, then exit cleanly:
           - **Suggested area** — module path
           - **Suggested approach** — bullets, for the picker to
             validate
-       2. Swap PR labels in one combine-safe call (the removed
-          label is guaranteed present — that is what brought you
-          here):
-          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred"`
+       2. Swap PR labels atomically — `fleet:changes-made` MUST be
+          added in the same call as `human:needs-fix` is removed to
+          prevent a labeless window the reviewer could mistake for a
+          missing verdict and re-apply `fleet:needs-fix` into:
+          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred" --add-label "fleet:changes-made"`
        3. **Keep `fleet:approved`** — the PR is internally
           consistent, the prior reviewer approval stands.
           `fleet:human-deferred` signals: "agent acknowledged the
