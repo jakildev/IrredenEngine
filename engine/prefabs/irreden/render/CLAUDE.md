@@ -23,6 +23,10 @@ the ECS surface.
 - `C_GeometricShape` — 2D overlay shape descriptor.
 - `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
   distance offset).
+- `C_Sprite` / `C_SpriteSheet` — 2D screen-composite sprite + atlas
+  metadata. Sprites bypass the trixel pipeline and draw at the
+  `FRAMEBUFFER_TO_SCREEN` stage. See [`docs/design/sprites.md`](../../../../docs/design/sprites.md)
+  for the full data model, depth semantics, and cross-task scope.
 
 ## Key systems (all RENDER pipeline)
 
