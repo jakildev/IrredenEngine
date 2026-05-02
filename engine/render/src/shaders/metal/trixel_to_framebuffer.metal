@@ -24,8 +24,8 @@ struct FrameDataIsoTriangles {
 // SSBO populated by the fragment shader when the mouse hovers over a
 // non-transparent trixel that wins the depth test. CPU side is
 // `HoveredEntityIdBuffer` (slot 14, kBufferIndex_HoveredEntityId);
-// readback layout matches the C++ `HoveredLayout` in
-// `getEntityIdAtMouseTrixel()` and the GLSL std430 buffer in
+// readback layout matches the C++ `HoveredEntityIdLayout` in
+// `ir_render_types.hpp` and the GLSL std430 buffer in
 // `f_trixel_to_framebuffer.glsl`.
 struct HoveredEntityIdBuffer {
     uint2 hoveredEntityId;
