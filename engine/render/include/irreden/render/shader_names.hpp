@@ -6,6 +6,9 @@ namespace IRRender {
 const char *const kFileVertFramebufferToScreen = "shaders/v_framebuffer_to_screen.glsl";
 const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_screen.glsl";
 
+const char *const kFileVertScreenResidualRotate = "shaders/v_screen_residual_rotate.glsl";
+const char *const kFileFragScreenResidualRotate = "shaders/f_screen_residual_rotate.glsl";
+
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
 

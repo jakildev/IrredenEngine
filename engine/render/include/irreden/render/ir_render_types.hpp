@@ -37,6 +37,18 @@ struct FrameDataFramebuffer {
     // a frame data component as well or add as field for shader program
 };
 
+/// Per-frame UBO for the SCREEN_SPACE_RESIDUAL_ROTATE pass. The model+offset
+/// pair mirrors FrameDataFramebuffer so this stage can act as a drop-in
+/// replacement for FRAMEBUFFER_TO_SCREEN; residualYaw_ is the leftover yaw
+/// (visualYaw - rasterYaw, in [-pi/4, pi/4]) the fragment shader applies as
+/// a 2D rotation in pixel space around the framebuffer center.
+struct FrameDataScreenResidualRotate {
+    mat4 mvpMatrix;
+    vec2 textureOffset;
+    float residualYaw = 0.0f;
+    float _pad0 = 0.0f;
+};
+
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
     vec2 canvasZoomLevel_;
@@ -257,6 +269,7 @@ constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
 constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
+constexpr std::uint32_t kBufferIndex_FrameDataScreenResidualRotate = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
