@@ -73,6 +73,8 @@ kernel void c_compute_voxel_ao(
     // outward / tangent vectors from the cardinal-rotated raster frame.
     // At cardinalIndex==0 the path collapses to master so yaw=0 stays
     // byte-identical.
+    // Also computed inside trixelCanvasPixelToWorld3D; retained here for the
+    // sampling-vector rotation below.
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     float3 pos3D = trixelCanvasPixelToWorld3D(
         pixel,

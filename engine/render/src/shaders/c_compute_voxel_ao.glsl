@@ -108,6 +108,8 @@ void main() {
     // world); compose R(-rasterYaw) onto the iso inverse to recover world
     // coords, and rotate the raster-frame outward / tangent vectors so the
     // occupancy grid sampling walks the world axes.
+    // Also computed inside trixelCanvasPixelToWorld3D; retained here for the
+    // sampling-vector rotation below.
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     vec3 pos3D = trixelCanvasPixelToWorld3D(
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
