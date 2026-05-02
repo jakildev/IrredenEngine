@@ -516,6 +516,19 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `rm -f ~/.fleet/plans/<task-ID>.md`
    `rm -f .fleet/plans/<task-ID>.md`
 
+   **Also scan `.fleet/status/*.md`** (engine repo) for references to
+   the merged PR or its task ID and update accordingly. Use the Grep
+   tool across `.fleet/status/` for the merged task's `T-NNN`, the PR
+   number `#<N>`, and the PR URL `pull/<N>`. For per-row references
+   (e.g., a table row in `render-api-relocations.md` listing the task)
+   delete the row. For whole-file references (e.g., the "Migration
+   tracked in T-NNN" framing in `system-static-deviations.md`) the
+   file's premise may dissolve when its tracking task ships — if the
+   remaining content is a stub, delete the file and remove its entry
+   from `.fleet/status/README.md`. Stage `.fleet/status/` edits in the
+   same maintenance commit as the TASKS.md flip; the bookkeeping
+   exception (Hard rules) covers them.
+
 5. **Sync open PRs → In-progress (both repos).** Use the cached
    `repos.engine.prs[]` and `repos.game.prs[]` for the open PR
    list — the title-to-task match below uses `title` and
@@ -567,6 +580,32 @@ You are the sole TASKS.md editor. Each maintenance pass:
    updated plan on their next iteration when they `git pull` (via
    `git -C <repo> show origin/master:.fleet/plans/T-<NNN>.md` per
    the role-opus-worker startup actions).
+
+5d. **Auto-flip stale `[~]` tasks whose branch merged to master.**
+   Step 4 flips tasks by matching merged PR titles/branches. A gap
+   exists when the PR was merged but the title match failed (e.g.
+   title drift, task-ID prefix missing, multi-task legacy PRs) — the
+   task stays `[~]` indefinitely until a human fixes it.
+
+   For each `[~]` (in-progress) task in each TASKS.md whose `Owner:`
+   field contains a branch name (starts with `claude/`):
+   a. Check whether the branch tip is an ancestor of `origin/master`:
+      `git -C <repo> fetch origin --quiet`
+      `git -C <repo> merge-base --is-ancestor origin/<branch> origin/master`
+      Exit 0 = branch is merged; exit non-zero = branch still open or
+      unknown.
+   b. If merged (exit 0) AND the task has no PR URL in its `**Links:**`
+      field yet, find the merged PR:
+      `gh pr list --repo <repo> --state merged --head <branch> --json number,url --jq '.[0].url'`
+   c. If merged: flip the task to `[x]`, add the PR URL (if found)
+      to **Links:**, move to `## Done — last 20`, and delete plan
+      files (same cleanup as step 4).
+
+   Skip tasks whose `Owner:` is `free` or does not start with
+   `claude/` — there's no branch to check.
+
+   Run this pass BEFORE step 6 so the blocker-resolution pass
+   sees up-to-date `[x]` status for freshly-flipped tasks.
 
 6. **Resolve stale blocker references.** Scan all `## Open` entries in
    each TASKS.md. For any `Blocked by:` field that contains:
@@ -672,7 +711,8 @@ You are the sole TASKS.md editor. Each maintenance pass:
    warning is informational — the push still succeeded if you don't
    see "rejected" or "failed". Don't try to "fix" it by opening a PR.
 
-10. Print the maintenance summary, queue summary, and next-run timing:
+10. Write a per-iteration summary, then print the maintenance summary:
+    `fleet-iteration-summary queue-manager "<X issues ingested, Y tasks flipped, Z claims cleaned. Snags if any. Under 100 words.>"`
     `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned, W epics closed`
     `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
     `[queue-manager] Iteration complete. Next run in ~5m.`
@@ -698,10 +738,17 @@ iterations write nothing).
   other agent should edit TASKS.md. If you see a PR that includes
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
+- You are also the **sole `.fleet/status/*.md` editor** — same rule
+  shape as TASKS.md. Update these files when a PR referenced from
+  one merges, either by appending to the next maintenance commit
+  (covered by the bookkeeping exception below) or via a regular
+  `queue: status update` PR through `commit-and-push`. Canonical
+  explanation in `.fleet/status/README.md`.
 - Never `gh pr merge` — the human merges.
 - **Bookkeeping exception:** you MAY push directly to master in
   **both** repos (engine and game) when the commit touches **only**
-  `TASKS.md` and/or `.fleet/plans/*.md`. These are bookkeeping files,
-  not code. Never push any other file to master in either repo.
+  `TASKS.md`, `.fleet/plans/*.md`, and/or `.fleet/status/*.md`.
+  These are bookkeeping files, not code. Never push any other file
+  to master in either repo.
 - Never `git push --force`.
 - Single-command Bash only (see CRITICAL section above).

@@ -181,10 +181,27 @@ exit cleanly:
    - `fleet:needs-info` — set in stacked-PR case iii (orphaned base).
      Durable human-handoff signal; only the human clears it by
      re-targeting or closing.
+   - `fleet:fork-of-other-pr` — PR's branch forked from another open PR; skip until the human clears this label after the upstream PR merges
 
    **Cap UNKNOWN-state refreshes at 2 per iteration.** If the
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
    refreshes to the next iteration.
+
+3.5. **Drop candidates whose head branch is held by another worktree.**
+   A branch can only be checked out in one worktree at a time. If an
+   opus-worker is mid-resolution of `fleet:semantic-conflict` on
+   `claude/T-NNN-foo`, step 5a's `git checkout -B claude/T-NNN-foo`
+   will fail with "branch is already used by worktree at …" and the
+   merger has no useful work it can do on that PR this iteration.
+
+   List the busy branches once (any path inside the engine clone
+   resolves to the same worktree set):
+   `fleet-worktree-busy-branches`
+
+   For each candidate from step 3, drop it if its `headRefName`
+   appears in that list. The dropped candidate stays in flight under
+   whichever worktree holds it; retry on the next iteration. Log:
+   `… N candidates dropped (branch held by another worktree)`.
 
 4. **Process at most 2 candidates per iteration.** Auto-resolution
    pushes a force-with-lease, which retriggers CI and reviewers.
@@ -274,6 +291,59 @@ exit cleanly:
       are derived-state convenience labels for human visibility. Author
       roles add `fleet:stacked` at PR creation; the merger maintains
       `fleet:awaiting-base` / `fleet:stacked-rebase` as above.
+
+   **a.6. Fork-of-other-PR check.** Before rebasing, detect whether this
+      PR's branch was forked from another open PR — even if `baseRefName`
+      shows `master`. A forked PR's diff carries inherited commits from
+      the other PR; rebasing onto master replays those commits and causes
+      massive conflicts that look semantic but are really a topology problem
+      (the commits already land on master via the upstream PR).
+
+      From the cached PR list (step 2), collect all other open PRs'
+      `headRefName`s (exclude the current candidate's own `headRefName`).
+      Run a single batch fetch to update all remote refs at once:
+      `git fetch origin`
+      Then for each other PR's `headRefName`:
+      `git merge-base --is-ancestor origin/<other-headRefName> HEAD`
+
+      `git merge-base --is-ancestor` exits 0 if the other PR's tip is an
+      ancestor of this PR's HEAD (fork confirmed), exits 1 otherwise.
+      (Exit 1 is the expected "not an ancestor" result; do not treat it
+      as a script error — the Bash tool reports non-zero exits but this
+      check intentionally returns 1 for the common "no fork" case.)
+      Each fetch + check is a separate Bash call (single-command rule).
+
+      If any check exits 0 for an "upstream PR" (`<upstream-N>`):
+      - Resolve the upstream tip SHA (needed for the rebase recipe below):
+        `git rev-parse origin/<upstream-headRefName>`
+        Store this output as `<upstream-tip-sha>`.
+      - Write `.merger-body.md` with:
+        ```
+        Merger: this PR's branch was forked from open PR #<upstream-N>
+        (`<upstream-headRefName>`). Its diff carries inherited commits
+        from that PR and cannot be cleanly rebased onto master until
+        #<upstream-N> merges.
+
+        Resolution after #<upstream-N> merges:
+          git fetch origin
+          git rebase --onto origin/master <upstream-tip-sha> <this-headRefName>
+          git push --force-with-lease
+
+        This drops #<upstream-N>'s inherited commits and leaves only
+        this PR's own changes on top of master.
+
+        Labeled `fleet:fork-of-other-pr` — the merger and opus-worker
+        skip this PR in their conflict-resolution sweeps.
+
+        — fleet merger
+        ```
+      - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:fork-of-other-pr"`
+      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+      - Log: `... forked from #<upstream-N> <upstream-headRefName>, labeled fleet:fork-of-other-pr`
+      - Jump to step f (reset to scratch); do NOT proceed to step b.
+
+      If all checks return non-zero (no fork detected), continue to step b.
 
    **b. Rebase guard pre-capture.** Before rebasing, snapshot the
       current diff so silently-dropped hunks can be detected
@@ -378,12 +448,22 @@ exit cleanly:
 
       **iii. Anything else (semantic conflict).**
          - `git rebase --abort`
+         - **Immediately switch back to scratch** so the PR's branch is
+           released even if the steps below crash or hit a usage limit
+           before step f runs. Otherwise the next agent that tries to
+           `gh pr checkout` this branch hits "branch is already used by
+           worktree at .../merger" and the conflict-resolution lane is
+           unreachable until the merger reboots:
+           `git switch claude/merger-scratch`
          - Build a description of the conflict. Cap the file list at
            5; if more files conflict, append `… and N more` so the
            comment stays readable. For each listed file, run
            `git log -1 --format="%h %s" origin/master -- <file>` to
            identify what touched it on master, and
-           `git log -1 --format="%h %s" -- <file>` for the PR side.
+           `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
+           for the PR side. The `origin/<headRefName>` ref is required
+           because `git switch claude/merger-scratch` left HEAD on
+           master — a bare `git log -- <file>` would log master twice.
            Write to `.merger-body.md`:
            ```
            Merger: cannot auto-resolve mechanically. The PR has
@@ -441,7 +521,9 @@ exit cleanly:
       checking out the same branch:
       `git checkout -B claude/merger-scratch origin/master`
 
-6. Print `[merger] Iteration complete. Next run in ~10m.`
+6. Write a per-iteration summary, then print completion:
+   `fleet-iteration-summary merger "<PRs processed, outcomes, snags — under 100 words.>"`
+   Then print `[merger] Iteration complete. Next run in ~10m.`
    Then exit cleanly. The `/loop` driver will re-invoke in 10
    minutes.
 

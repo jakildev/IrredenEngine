@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <vector>
 
@@ -172,10 +173,16 @@ inline void expandTextToCommands(
 }
 
 template <> struct System<TEXT_TO_TRIXEL> {
-    static SystemId create() {
-        static std::vector<GlyphDrawCommand> drawCommands;
-        static bool fontUploaded = false;
+    struct Params {
+        ShaderProgram *textProgram_ = nullptr;
+        Buffer *fontDataBuf_ = nullptr;
+        Buffer *glyphCmdBuf_ = nullptr;
+        std::vector<GlyphDrawCommand> drawCommands_;
+        std::string commandList_;
+        bool fontUploaded_ = false;
+    };
 
+    static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "TextToTrixelProgram",
             std::vector{
@@ -185,7 +192,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
         IRRender::createNamedResource<Buffer>(
             "FontDataBuffer",
             nullptr,
-kFontBufferSize * sizeof(uint32_t),
+            kFontBufferSize * sizeof(uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_FontData
@@ -193,31 +200,30 @@ kFontBufferSize * sizeof(uint32_t),
         IRRender::createNamedResource<Buffer>(
             "GlyphDrawCommandBuffer",
             nullptr,
-kMaxGlyphCommands * sizeof(GlyphDrawCommand),
+            kMaxGlyphCommands * sizeof(GlyphDrawCommand),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_GlyphDrawCommands
         );
 
-        static ShaderProgram *s_textProgram =
-            IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram");
-        static Buffer *s_fontDataBuf =
-            IRRender::getNamedResource<Buffer>("FontDataBuffer");
-        static Buffer *s_glyphCmdBuf =
-            IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->textProgram_ = IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram");
+        p->fontDataBuf_ = IRRender::getNamedResource<Buffer>("FontDataBuffer");
+        p->glyphCmdBuf_ = IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer");
 
-        return createSystem<C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
+        SystemId systemId = createSystem<C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
             "TextToTrixel",
-            [](const C_TextSegment &text,
-               const C_GuiPosition &guiPos,
-               const C_GuiElement &,
-               const C_TextStyle &style) {
+            [p](const C_TextSegment &text,
+                const C_GuiPosition &guiPos,
+                const C_GuiElement &,
+                const C_TextStyle &style) {
                 EntityId guiCanvas = IRRender::getCanvas("gui");
                 auto &canvasTextures =
                     IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
 
-expandTextToCommands(
-                    drawCommands,
+                expandTextToCommands(
+                    p->drawCommands_,
                     text.text_,
                     guiPos.pos_,
                     canvasTextures.size_,
@@ -230,14 +236,14 @@ expandTextToCommands(
                     style.fontSize_
                 );
             },
-            []() {
-                s_textProgram->use();
+            [p]() {
+                p->textProgram_->use();
 
-                if (!fontUploaded) {
+                if (!p->fontUploaded_) {
                     auto fontData = buildFontBuffer();
-                    s_fontDataBuf->subData(
+                    p->fontDataBuf_->subData(
                         0, fontData.size() * sizeof(uint32_t), fontData.data());
-                    fontUploaded = true;
+                    p->fontUploaded_ = true;
                 }
 
                 EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -245,13 +251,15 @@ expandTextToCommands(
                     IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
                 canvasTextures.clear();
 
-                drawCommands.clear();
+                p->drawCommands_.clear();
 
                 if (IRRender::isGuiVisible()) {
-                    static std::string commandList = IRCommand::buildCommandListText();
-expandTextToCommands(
-                        drawCommands,
-                        commandList,
+                    if (p->commandList_.empty()) {
+                        p->commandList_ = IRCommand::buildCommandListText();
+                    }
+                    expandTextToCommands(
+                        p->drawCommands_,
+                        p->commandList_,
                         kGuiOverlayPadding,
                         canvasTextures.size_,
                         IRMath::IRColors::kWhite,
@@ -259,21 +267,16 @@ expandTextToCommands(
                     );
                 }
             },
-            []() {
-                auto &timing = IRRender::gpuStageTiming();
-                timing.textToTrixelMs_ = 0.0f;
-                if (drawCommands.empty()) return;
+            [p]() {
+                if (p->drawCommands_.empty()) return;
 
-                int count = static_cast<int>(drawCommands.size());
+                int count = static_cast<int>(p->drawCommands_.size());
                 if (count > kMaxGlyphCommands) {
                     count = kMaxGlyphCommands;
                 }
 
-                IRRender::TimePoint t0;
-                if (timing.enabled_) { IRRender::device()->finish(); t0 = IRRender::SteadyClock::now(); }
-
-                IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer")
-                    ->subData(0, count * sizeof(GlyphDrawCommand), drawCommands.data());
+                p->glyphCmdBuf_->subData(
+                    0, count * sizeof(GlyphDrawCommand), p->drawCommands_.data());
 
                 EntityId guiCanvas = IRRender::getCanvas("gui");
                 auto &canvasTextures =
@@ -288,10 +291,12 @@ expandTextToCommands(
                 IRRender::device()->dispatchCompute(count, 1, 1);
                 // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
                 IRRender::device()->memoryBarrier(BarrierType::ALL);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.textToTrixelMs_ = IRRender::elapsedMs(t0, IRRender::SteadyClock::now()); }
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "textToTrixel");
+        return systemId;
     }
 };
 

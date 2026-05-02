@@ -144,6 +144,9 @@ treat it as a hard rule for this role.
      rebase conflict; the opus-worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
      the rebase lands, so reviewing now wastes a pass.
+   - `fleet:fork-of-other-pr` — PR branch forked from another open
+     PR; diff includes inherited commits — skip until the human runs
+     `rebase --onto` and clears this label.
 
 ## Loop behavior
 
@@ -166,8 +169,8 @@ iteration of polling, reviewing, and exiting cleanly:
    PRs with no fleet review, with `human:re-review`, with
    `fleet:changes-made` (remove the label on pickup), or with a "re-review please"
    comment after the last fleet review. Skip PRs carrying any of
-   `fleet:wip`, `human:wip`, `human:needs-fix`, `fleet:human-amending`, or
-   `fleet:semantic-conflict`. For each remaining candidate, in
+   `fleet:wip`, `human:wip`, `human:needs-fix`, `fleet:human-amending`,
+   `fleet:semantic-conflict`, or `fleet:fork-of-other-pr`. For each remaining candidate, in
    oldest-first order:
 
    **Engine PRs** (default repo): Invoke the `review-pr` skill with
@@ -350,7 +353,9 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/sonnet-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, print
+4. After the reset, write a per-iteration summary:
+   `fleet-iteration-summary sonnet-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   Then print
    `[sonnet-reviewer] Iteration complete. Next run in ~3m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
    ~3 minutes — no carry-over from this iteration.

@@ -98,6 +98,13 @@ inline void setTimingEnabled(bool enabled) { getSystemManager().setTimingEnabled
 inline bool isTimingEnabled() { return getSystemManager().isTimingEnabled(); }
 inline void resetTimingStats() { getSystemManager().resetTimingStats(); }
 
+inline TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer) {
+    return getSystemManager().registerTickObserver(std::move(observer));
+}
+inline void unregisterTickObserver(TickObserverId id) {
+    getSystemManager().unregisterTickObserver(id);
+}
+
 } // namespace IRSystem
 
 #endif /* IR_SYSTEM_H */

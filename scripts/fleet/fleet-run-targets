@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+# fleet-run-targets — list names you can pass to fleet-run (built binaries
+# under creations/ and test/, plus optional --plan for CMake target names).
+#
+# Preferred entry point: fleet-run --targets  (same flags; delegates here).
+#
+# Default (--built) mirrors fleet-run discovery: native executables only,
+# grouped by path under the build tree. Includes private creations/game
+# outputs when they are built.
+#
+# Usage:
+#   fleet-run --targets
+#   fleet-run --targets --plain
+#   fleet-run --targets --plan
+#   fleet-run-targets                  # direct (same as above)
+#   fleet-run-targets --build-dir /path/to/build
+#
+# Source of truth: scripts/fleet/fleet-run-targets in the engine repo.
+# Installed to ~/bin/fleet-run-targets by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+BUILD_DIR=""
+MODE="built" # built | plan
+PLAIN=false
+EXPLICIT_BUILT=false
+EXPLICIT_PLAN=false
+
+usage() {
+    cat <<'USAGE'
+usage: fleet-run-targets [options]
+   or: fleet-run [run-options] --targets [options below]
+
+List names you can pass to fleet-run <name> (after building), or show which
+CMake targets to build first. For all fleet-* tools: fleet-help
+
+
+Modes (--built and --plan are mutually exclusive)
+  --built   (default) Scan $BUILD_DIR/creations and $BUILD_DIR/test for native
+            executables (Mach-O / ELF / PE). Only lists files that already
+            exist — the same basenames fleet-run looks up with find(1).
+            Default output: grouped by directory under the build tree.
+  --plan    Read the CMake Makefile generator's target list via
+            "cmake --build <dir> --target help", then print a curated subset:
+            lighting demos (IRLighting* except IRLightingDemo*), IRCreationDefault,
+            IRShapeDebug, IRModifierDemo, IRMetalClearTest, IRMidiPolyrhythm,
+            IRGame, DemoMidiDevice, EditorFontMaker, IrredenEngineTest.
+            Requires a configured tree ($BUILD_DIR/CMakeCache.txt). Does not
+            require every binary to be built. This is NOT the same as
+            "fleet-run --help" — it queries CMake's internal help target.
+
+Output format
+  --plain   Print one executable/target name per line (sorted), no headers or
+            grouping. Useful for scripts, fzf, xargs.
+
+  With neither --plain nor --plan: human-readable tables (built mode groups
+  by subdirectory; plan mode groups lighting vs other).
+
+Other options
+  --build-dir <dir>   CMake build directory. Default resolution matches
+                      fleet-run / fleet-build:
+                        1. this flag
+                        2. $IRREDEN_BUILD_DIR
+                        3. git worktree root + /build
+                        4. $HOME/src/IrredenEngine/build
+
+  --help | -h         Show this text.
+
+Option order
+  Flags can be mixed; --build-dir may appear before or after --targets when
+  using fleet-run. Example:
+    fleet-run --build-dir /tmp/out --targets --plan --plain
+
+Typical workflow
+  1. Optional: scripts/fleet/install.sh — put fleet-run / fleet-build on PATH
+     (~/bin). Skip if you invoke scripts/fleet/* directly.
+  2. fleet-build --target <Name> — configures build/ on first use, then compiles.
+  3. fleet-run --targets — see what is built; fleet-run --targets --plan — see
+     what CMake can build; then fleet-run <Name>.
+
+Examples
+  fleet-run --targets
+  fleet-run --targets --plain | fzf
+  fleet-run --targets --plan
+  fleet-run --targets --built --plain
+  fleet-build --target IRShapeDebug && fleet-run IRShapeDebug
+
+Notes
+  --plan may print nothing if the generator's "help" output format changes or
+  your tree defines extra demos not in the filter — file an engine issue.
+  Private creations under creations/game/ appear in --built when built.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build-dir)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-run-targets: --build-dir requires a directory path" >&2
+                exit 2
+            fi
+            BUILD_DIR="$2"
+            shift 2
+            ;;
+        --built)
+            MODE="built"
+            EXPLICIT_BUILT=true
+            shift
+            ;;
+        --plan)
+            MODE="plan"
+            EXPLICIT_PLAN=true
+            shift
+            ;;
+        --plain) PLAIN=true; shift ;;
+        --help|-h) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) echo "fleet-run-targets: unknown option '$1' (try --help)" >&2; usage >&2; exit 2 ;;
+        *) echo "fleet-run-targets: unexpected argument '$1' (try --help)" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+if $EXPLICIT_BUILT && $EXPLICIT_PLAN; then
+    echo "fleet-run-targets: use only one of --built or --plan" >&2
+    exit 2
+fi
+
+if [[ -z "$BUILD_DIR" ]]; then
+    WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+fi
+
+if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "fleet-run-targets: build directory $BUILD_DIR does not exist." >&2
+    echo "           configure first (e.g. cmake --preset macos-debug) or set IRREDEN_BUILD_DIR." >&2
+    exit 1
+fi
+
+# True for Mach-O / ELF / PE native executables; false for dylib, .so, scripts.
+is_native_executable() {
+    local path=$1
+    local ft
+    ft=$(file -b "$path" 2>/dev/null || true)
+    [[ -z "$ft" ]] && return 1
+    case "$ft" in
+        *"ELF"*"shared object"*) return 1 ;;
+        *"ELF"*"pie executable"*) return 0 ;;
+        *"ELF"*"executable"*) return 0 ;;
+        *"Mach-O"*"dynamically linked shared library"*) return 1 ;;
+        *"Mach-O"*"bundle"*) return 1 ;;
+        *"Mach-O"*"executable"*) return 0 ;;
+        *"PE32 executable"*|*"PE32+ executable"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Windows: file(1) may be missing or unhelpful — treat *.exe as runnable.
+is_windowsish_executable() {
+    local path=$1
+    [[ "$path" == *.exe ]] || [[ "$path" == *.EXE ]]
+}
+
+list_built() {
+    local scan_dir
+    for scan_dir in "$BUILD_DIR/creations" "$BUILD_DIR/test"; do
+        [[ -d "$scan_dir" ]] || continue
+        find "$scan_dir" -type f \( -perm -u+x -o -perm -g+x -o -perm -o+x \) 2>/dev/null \
+            | while IFS= read -r f; do
+                if is_native_executable "$f"; then
+                    printf '%s\n' "$f"
+                    continue
+                fi
+                if is_windowsish_executable "$f"; then
+                    # Skip obvious DLLs mis-tagged as executable
+                    [[ "$f" == *.dll ]] && continue
+                    printf '%s\n' "$f"
+                fi
+            done
+    done
+}
+
+emit_built() {
+    local tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/fleet-run-targets.XXXXXX")
+    trap 'rm -f "$tmp"' RETURN
+
+    list_built | LC_ALL=C sort -u >"$tmp"
+    if [[ ! -s "$tmp" ]]; then
+        echo "fleet-run-targets: no built executables under creations/ or test/." >&2
+        echo "           try:  fleet-build --target IRShapeDebug   (auto-configures build/ on first run)" >&2
+        echo "           or:   cmake --preset macos-debug  # one-time setup if build/ not yet configured" >&2
+        echo "           or:   fleet-run --targets --plan   (CMake names; needs configure)" >&2
+        exit 0
+    fi
+
+    if $PLAIN; then
+        while IFS= read -r f; do basename "$f"; done <"$tmp" | LC_ALL=C sort -u
+        return 0
+    fi
+
+    echo "fleet-run-targets: built executables under $BUILD_DIR"
+    echo "(pass the name on the left to:  fleet-run <name>  [--args...])"
+    echo
+
+    while IFS= read -r f; do
+        local rel dir base
+        rel=${f#"$BUILD_DIR/"}
+        dir=$(dirname "$rel")
+        base=$(basename "$f")
+        printf '%s\t%s\n' "$dir" "$base"
+    done <"$tmp" | LC_ALL=C sort -t "$(printf '\t')" -k1,1 -k2,2 | awk -F "$(printf '\t')" '
+        BEGIN { prev = "" }
+        {
+            d = $1
+            b = $2
+            if (d != prev) {
+                if (NR > 1) print ""
+                print d
+                prev = d
+            }
+            print "  " b
+        }
+    '
+    echo
+    echo "More: fleet-run --targets --help   (all list options)"
+}
+
+emit_plan() {
+    if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+        echo "fleet-run-targets: $BUILD_DIR is not a configured CMake build tree." >&2
+        exit 1
+    fi
+
+    local help_lines
+    help_lines=$(
+        cmake --build "$BUILD_DIR" --target help 2>/dev/null \
+            | sed -n 's/^\.\.\. //p' \
+            | sed 's/ (the default if no target is provided).*//' \
+            || true
+    )
+
+    if [[ -z "$help_lines" ]]; then
+        echo "fleet-run-targets: could not read CMake target list (cmake --build --target help failed)." >&2
+        exit 1
+    fi
+
+    # Executable-style targets we ship: demos, editors, tests — not static
+    # libs (*Lib), not *Run/*Assets helpers, not the IRLightingDemos umbrella.
+    local matches
+    matches=$(
+        {
+            echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo' || true
+            echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRGame|IrredenEngineTest)$' || true
+        } | LC_ALL=C sort -u
+    )
+
+    if [[ -z "$matches" ]]; then
+        echo "fleet-run-targets: --plan produced no matching targets (CMake help empty or unrecognized format)." >&2
+        echo "           Presets in this repo use Unix Makefiles; other generators may not support" >&2
+        echo "           \"cmake --build <dir> --target help\" the same way." >&2
+        exit 1
+    fi
+
+    if $PLAIN; then
+        printf '%s\n' "$matches"
+        return 0
+    fi
+
+    echo "fleet-run-targets: CMake executable targets (build with fleet-build --target <name>)"
+    echo "These names match fleet-run once the binary exists in the build tree."
+    echo
+    printf '%s\n' "$matches" | awk '
+        /^IRLighting/ { lighting[++nl] = $0; next }
+        { other[++no] = $0 }
+        END {
+            if (nl) {
+                print "Lighting demos"
+                for (i = 1; i <= nl; i++) print "  " lighting[i]
+                print ""
+            }
+            if (no) {
+                print "Other creations / tests"
+                for (i = 1; i <= no; i++) print "  " other[i]
+            }
+        }
+    '
+    echo
+    echo "More: fleet-run --targets --help   (all list options)"
+}
+
+case "$MODE" in
+    built) emit_built ;;
+    plan) emit_plan ;;
+    *)
+        echo "fleet-run-targets: internal error (mode=$MODE)" >&2
+        exit 3
+        ;;
+esac

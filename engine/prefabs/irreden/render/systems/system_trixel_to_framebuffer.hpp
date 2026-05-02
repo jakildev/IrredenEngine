@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -25,6 +26,13 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
+    struct Params {
+        Buffer *frameDataBuf_ = nullptr;
+        Buffer *hoveredIdBuf_ = nullptr;
+        ShaderProgram *program_ = nullptr;
+        VAO *quadVao_ = nullptr;
+    };
+
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasToFramebufferProgram",
@@ -52,23 +60,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             kBufferIndex_HoveredEntityId
         );
 
-        static Buffer *s_frameDataBuf =
-            IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
-        static Buffer *s_hoveredIdBuf =
-            IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
-        static VAO *s_quadVao = IRRender::getNamedResource<VAO>("QuadVAO");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+        p->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        p->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
 
-        return createSystem<C_TriangleCanvasTextures, C_Name>(
+        SystemId systemId = createSystem<C_TriangleCanvasTextures, C_Name>(
             "CanvasToFramebuffer",
-            [](IREntity::EntityId &entity,
-               const C_TriangleCanvasTextures &triangleCanvasTextures,
-               const C_Name &) {
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint drawStart;
-                if (timing.enabled_) { IRRender::device()->finish(); drawStart = IRRender::SteadyClock::now(); }
-
+            [p](IREntity::EntityId &entity,
+                const C_TriangleCanvasTextures &triangleCanvasTextures,
+                const C_Name &) {
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 auto &frameData =
@@ -126,7 +129,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                         (IRRender::isHoveredTrixelVisible() ? 1.0f : 0.0f);
                 }
 
-                frameData.updateFrameData(s_frameDataBuf);
+                frameData.updateFrameData(p->frameDataBuf_);
 
                 triangleCanvasTextures.bind(0, 1, 2);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
@@ -136,21 +139,22 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     IndexType::UNSIGNED_SHORT
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-                if (timing.enabled_) { IRRender::device()->finish(); timing.trixelToFbMs_ += IRRender::elapsedMs(drawStart, IRRender::SteadyClock::now()); }
             },
-            []() {
-                IRRender::gpuStageTiming().trixelToFbMs_ = 0.0f;
+            [p]() {
                 struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;
-                s_hoveredIdBuf->subData(0, sizeof(resetData), &resetData);
-                s_program->use();
-                s_quadVao->bind();
+                p->hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
+                p->program_->use();
+                p->quadVao_->bind();
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 framebuffer.bindFramebuffer();
                 framebuffer.clear();
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "trixelToFb");
+        return systemId;
     }
 
     static mat4 calcProjectionMatrix(const vec2 &resolution) {

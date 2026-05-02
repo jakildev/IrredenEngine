@@ -158,10 +158,12 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
      `submittedAt`).
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
-   or `fleet:semantic-conflict` — those are either in-progress,
-   human-owned, or queued for the opus-worker's conflict-resolution
-   lane (the diff against master is meaningless until the rebase
-   lands).
+   `fleet:semantic-conflict`, or `fleet:fork-of-other-pr` — those are
+   either in-progress, human-owned, queued for conflict resolution
+   (diff against master is meaningless until the rebase lands), or
+   forked from another open PR (diff includes inherited commits that
+   don't belong to this PR's scope — skip until the human runs
+   `rebase --onto` and clears this label).
 
 ## Loop behavior
 
@@ -322,7 +324,9 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/opus-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, print
+4. After the reset, write a per-iteration summary:
+   `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   Then print
    `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
    ~30 minutes — no carry-over from this iteration.

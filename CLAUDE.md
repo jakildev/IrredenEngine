@@ -47,7 +47,9 @@ This repo runs a parallel-agent workflow. The rules:
    from there rather than inventing work. **Only the queue-manager agent
    edits `TASKS.md`** — author agents must never include TASKS.md changes
    in their feature PRs (this causes merge conflicts across all parallel
-   PRs). Reference the task title in your PR description instead.
+   PRs). Reference the task title in your PR description instead. The
+   same single-editor rule applies to `.fleet/status/*.md`; see
+   `.fleet/status/README.md`.
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
@@ -461,6 +463,15 @@ fleet-run IRShapeDebug
 fleet-run IrredenEngineTest --gtest_brief=1
 ```
 
+`fleet-run --targets` lists names you can pass to `fleet-run` (built
+executables under `creations/` and `test/` by default; add `--plan` for
+CMake demo/test targets from `cmake --build --target help`). Same as
+`fleet-run-targets` in `scripts/fleet/`.
+
+`fleet-help` prints an index of all `fleet-*` tools (after
+`scripts/fleet/install.sh`); `fleet-help <command>` opens per-tool help
+when available.
+
 `fleet-run` auto-detects the build directory using the same logic as
 `fleet-build` (worktree root → `<root>/build`).
 
@@ -527,8 +538,11 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` — owned by the
   **reviewer agents**, added after the verdict to request a cross-host
   build + run validation.
-- `fleet:wip` — owned by the **author agent** (set at PR creation
-  during a normal `commit-and-push` flow). Don't add to issues.
+- `fleet:wip` — owned by the **fleet author worker** while a **claimed /
+  in-progress** PR is not ready for fleet review (reviewers **skip** this
+  label). Set on claim / early fleet-worker PRs; remove when ready for
+  review. **Do not** add on **Cursor / human-ready** PRs to `master`
+  (those should be reviewable immediately). Don't add to issues.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the
@@ -542,6 +556,14 @@ Specifically, **never pass these via `--label` when filing**:
   can't auto-rebase). Cleared by the **opus-worker** after it
   resolves the conflict, or escalated to `human:needs-fix` if even
   Opus can't resolve.
+- `fleet:fork-of-other-pr` — owned by the **merger** (sets when it
+  detects this PR's branch was forked from another open PR's branch
+  rather than from master, meaning the diff carries inherited commits
+  from that PR). Signals: wait for the other PR to merge, then use
+  `rebase --onto` to drop the inherited commits. The merger skips
+  these in its CONFLICTING sweep; opus-worker excludes them from its
+  `fleet:semantic-conflict` step. Cleared by the **human** after the
+  upstream PR merges.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the

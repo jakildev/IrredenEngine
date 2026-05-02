@@ -202,6 +202,7 @@ sonnet-author or opus-worker picks it up
         │
         ▼
 work, then `commit-and-push`        ──►  PR opens with `fleet:wip`
+                                      (claim / WIP until ready for review)
         │
         ▼
 sonnet-reviewer fires (10-min poll)  ──►  posts review,
@@ -222,9 +223,11 @@ queue-manager closes loop on next maintenance pass
 ```
 
 In Cursor flow you collapse most of this into one chat — you author,
-you skim the diff, the agent runs `simplify`, and you merge. The same
-PR template and labels apply so a fleet reviewer **could** still pick
-it up if you wanted a second pair of eyes.
+you skim the diff, the agent runs `simplify`, and you merge. **Do not**
+put `fleet:wip` on those PRs if you want fleet review — reviewers skip
+that label. The same PR template applies so a fleet reviewer **could**
+still pick it up; use `fleet:authored-on-*` from `commit-and-push` when
+useful, not `fleet:wip`, unless you truly mean "hands off, still drafting."
 
 ---
 
@@ -272,7 +275,8 @@ This is a real foot-gun and the rule lives in
   filing time; doing so excludes the issue from triage and strands it.
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — reviewer agents'.
-- `fleet:wip` — author agent's, set automatically at PR creation.
+- `fleet:wip` — fleet author's **in-progress / claim** PRs only; omit on
+  Cursor-ready PRs (reviewers skip `fleet:wip`).
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — set by
   `commit-and-push` based on `uname`. Permanent, not a state label.
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` — reviewer's.

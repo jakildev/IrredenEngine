@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -58,9 +59,20 @@ struct FrameDataLightingToTrixel {
 // `C_TrixelCanvasRenderBehavior::useCameraPositionIso_ == false` early-
 // return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
-    static SystemId create() {
-        static FrameDataLightingToTrixel frameData{};
+    struct Params {
+        ShaderProgram *program_ = nullptr;
+        Buffer *frameDataBuf_ = nullptr;
+        // Reuse the voxel pipeline's per-frame UBO so we can recover the
+        // world voxel position of each pixel via the same iso math the AO
+        // pass uses. Created by VOXEL_TO_TRIXEL_STAGE_1; this system runs
+        // later in the pipeline so the buffer is always populated.
+        Buffer *voxelFrameDataBuf_ = nullptr;
+        Buffer *sunFrameDataBuf_ = nullptr;
+        Texture2D *paletteLUT_ = nullptr;
+        FrameDataLightingToTrixel frameData_{};
+    };
 
+    static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "LightingToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}}
@@ -92,20 +104,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             TextureFilter::LINEAR
         );
 
-        static ShaderProgram *s_program =
-            IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
-        static Buffer *s_frameDataBuf =
-            IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
-        // Reuse the voxel pipeline's per-frame UBO so we can recover the
-        // world voxel position of each pixel via the same iso math the AO
-        // pass uses. Created by VOXEL_TO_TRIXEL_STAGE_1; this system runs
-        // later in the pipeline so the buffer is always populated.
-        static Buffer *s_voxelFrameDataBuf =
-            IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        static Buffer *s_sunFrameDataBuf =
-            IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
-        static Texture2D *s_paletteLUT =
-            IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
+        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+        p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
         // Same data for both filter variants; the difference is sampling mode.
         {
@@ -120,7 +125,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     data[idx + 3] = 255u;
                 }
             }
-            s_paletteLUT->subImage2D(
+            p->paletteLUT_->subImage2D(
                 0,
                 0,
                 256,
@@ -141,27 +146,20 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 );
         }
 
-        return createSystem<
+        SystemId systemId = createSystem<
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
             C_CanvasAOTexture,
             C_CanvasSunShadow,
             C_CanvasLightVolume>(
             "LightingToTrixel",
-            [](const C_TriangleCanvasTextures &canvasTextures,
-               const C_TrixelCanvasRenderBehavior &behavior,
-               const C_CanvasAOTexture &ao,
-               const C_CanvasSunShadow &shadow,
-               const C_CanvasLightVolume &lightVolume) {
+            [p](const C_TriangleCanvasTextures &canvasTextures,
+                const C_TrixelCanvasRenderBehavior &behavior,
+                const C_CanvasAOTexture &ao,
+                const C_CanvasSunShadow &shadow,
+                const C_CanvasLightVolume &lightVolume) {
                 if (!behavior.useCameraPositionIso_) {
                     return;
-                }
-
-                auto &timing = IRRender::gpuStageTiming();
-                IRRender::TimePoint t0;
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    t0 = IRRender::SteadyClock::now();
                 }
 
                 canvasTextures.getTextureColors()
@@ -176,18 +174,18 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 // Metal flattens the sampler and image namespaces into a
                 // shared setTexture slot space, so all three slots must be
                 // unique across both kinds.
-                s_paletteLUT->bind(3);
+                p->paletteLUT_->bind(3);
                 shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                 lightVolume.getTexture()->bind(5);
-                s_frameDataBuf->bindBase(
+                p->frameDataBuf_->bindBase(
                     BufferTarget::UNIFORM,
                     kBufferIndex_FrameDataLightingToTrixel
                 );
-                s_voxelFrameDataBuf->bindBase(
+                p->voxelFrameDataBuf_->bindBase(
                     BufferTarget::UNIFORM,
                     kBufferIndex_FrameDataVoxelToCanvas
                 );
-                s_sunFrameDataBuf->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+                p->sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
                 const int groupsX =
                     IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
@@ -195,24 +193,21 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
                 IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                // Assumes a single matching canvas per frame. Switch to `+=`
-                // with a `beginTick` reset if the filter ever matches
-                // multiple entities — otherwise later entities overwrite.
-                if (timing.enabled_) {
-                    IRRender::device()->finish();
-                    timing.lightingToTrixelMs_ =
-                        IRRender::elapsedMs(t0, IRRender::SteadyClock::now());
-                }
             },
-            []() {
-                s_program->use();
-                frameData.lightingEnabled_ = 1;
-                frameData.lightVolumeEnabled_ = 1;
-                frameData.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
-                s_frameDataBuf->subData(0, sizeof(FrameDataLightingToTrixel), &frameData);
+            [p]() {
+                p->program_->use();
+                p->frameData_.lightingEnabled_ = 1;
+                p->frameData_.lightVolumeEnabled_ = 1;
+                p->frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+                p->frameDataBuf_->subData(
+                    0, sizeof(FrameDataLightingToTrixel), &p->frameData_
+                );
             }
         );
+
+        setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "lightingToTrixel");
+        return systemId;
     }
 };
 
