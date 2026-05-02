@@ -465,7 +465,18 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         fi
 
         # 2. Send the prompt.
-        prompt="Before exiting: use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — looping agents (sonnet-author, opus-worker-*, sonnet-reviewer, opus-reviewer, queue-manager, merger) cover just the current iteration's task / PRs; architects (opus-architect, game-architect) cover the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. Then continue your normal exit flow."
+        #
+        # Wording note: the prompt explicitly forbids running
+        # start-next-task, picking up new work, or continuing any
+        # remaining iteration steps. The fleet is shutting down — the
+        # only useful thing the agent can still do is write the summary
+        # and exit. Earlier wording ("continue your normal exit flow")
+        # was ambiguous: workers that received the prompt right after
+        # commit-and-push interpreted it as "finish iteration steps,
+        # which means run start-next-task next", burning cycles on a
+        # branch reset that the next fleet-up will redo from scratch
+        # anyway.
+        prompt="The fleet is shutting down. Use the Write tool to save a short summary to $summary_file. Cover what's in your *current* conversation context — looping agents (sonnet-author, opus-worker-*, sonnet-reviewer, opus-reviewer, queue-manager, merger) cover just the current iteration's task / PRs; architects (opus-architect, game-architect) cover the full session. Include: (1) what tasks/PRs are in your context, (2) any snags, surprises, or ergonomics issues worth fixing in the fleet tooling, (3) anything blocked or waiting. Keep under 500 words. Markdown headings welcome. After writing the summary, EXIT IMMEDIATELY. Do NOT run start-next-task. Do NOT pick up new tasks. Do NOT continue any remaining iteration steps (commit-and-push, branch reset, etc.) — leave that to the next fleet-up. The shutdown sentinel ($HOME/.fleet/shutdown-in-progress) is set, so fleet-babysit will not relaunch you."
         send_prompt_to_pane "$pane_id" "$prompt"
 
         # 3. Wait for the file to appear.
