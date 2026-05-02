@@ -244,10 +244,25 @@ struct FrameDataSun {
     // because every consumer (AO compute, lighting) already binds
     // FrameDataSun.
     int aoEnabled_ = 1;
-    int _padding1_ = 0;
-    int _padding2_ = 0;
+    // When 1 the lookup reads from the BAKE-populated sun depth map;
+    // when 0 the legacy DDA + analytic-caster path runs unchanged.
+    int useScreenSpaceShadow_ = 0;
+    int _padding0_ = 0;
+    // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
+    // each frame in system_bake_sun_shadow_map. .w is std140 padding.
+    vec4 sunBasisU_ = vec4(0.0f);
+    vec4 sunBasisV_ = vec4(0.0f);
+    // sunPx = round((dot(p, uHat/vHat) - sunBufferOriginUV_) / sunBufferTexelSize_).
+    // Sized to the visible iso AABB swept along -sunDir by kSunShadowMaxDistance.
+    vec2 sunBufferOriginUV_ = vec2(0.0f);
+    vec2 sunBufferTexelSize_ = vec2(1.0f);
 };
-static_assert(sizeof(FrameDataSun) == 48, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 96, "FrameDataSun must match std140 layout");
+static_assert(offsetof(FrameDataSun, sunBasisU_) == 48, "sunBasisU_ must align after _padding0_");
+static_assert(
+    offsetof(FrameDataSun, sunBufferOriginUV_) == 80,
+    "sunBufferOriginUV_ must align after sunBasisV_"
+);
 
 /// Per-entity occupancy bbox passed to the sun shadow shader so it can
 /// exclude self-cells from the occupancy march. Built each frame in
@@ -313,6 +328,10 @@ constexpr std::uint32_t kBufferIndex_SunShadowShapeCasters = kBufferIndex_ShapeD
 // Reuses slot 4 (otherwise unassigned). The sun-shadow pass binds this
 // before dispatch; no other pass uses slot 4 today.
 constexpr std::uint32_t kBufferIndex_OccupancyEntityBounds = 4;
+// Aliases the occupancy-grid slot. The bake (writes) and the screen-space
+// lookup (reads) never need the occupancy SSBO at the same time, and the
+// legacy lookup rebinds the slot back to OccupancyGrid before its dispatch.
+constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
 /// @}
 
 // One entry per dispatched tile in the batched shapes→trixel pass.

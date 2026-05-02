@@ -115,6 +115,24 @@ template <typename T> constexpr auto dot(const T &value1, const T &value2) {
     return glm::dot(value1, value2);
 }
 
+/// Cross product of two 3-vectors. GLM wrapper.
+template <typename VecType> constexpr VecType cross(const VecType &value1, const VecType &value2) {
+    return glm::cross(value1, value2);
+}
+
+/// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
+/// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
+/// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.
+/// CPU mirror of `isoPixelToPos3D` in `shaders/ir_iso_common.glsl`.
+constexpr vec3 isoPixelToPos3D(int isoX, int isoY, float depth) {
+    const float fx = static_cast<float>(isoX);
+    const float fy = static_cast<float>(isoY);
+    const float wx = (2.0f * depth - 3.0f * fx - fy) / 6.0f;
+    const float wy = wx + fx;
+    const float wz = (fy + 2.0f * wx + fx) / 2.0f;
+    return vec3(wx, wy, wz);
+}
+
 /// Component-wise less-than comparison. GLM wrapper.
 template <typename T> constexpr auto lessThan(const T &value1, const T &value2) {
     return glm::lessThan(value1, value2);

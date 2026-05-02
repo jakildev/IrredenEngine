@@ -21,6 +21,8 @@ const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
+const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
 
