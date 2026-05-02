@@ -154,18 +154,36 @@ vec2 getMainCanvasSizeTrixels();
 /// @name Mouse position (iso space)
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
+///
+/// All four helpers below invert the @c SCREEN_SPACE_RESIDUAL_ROTATE
+/// composite (`R2D(-residualYaw)` around the framebuffer center) so the
+/// returned coordinates match what the rasterizer wrote — under any
+/// visualYaw, not just yaw=0. The 2D variants stay in the **trixel canvas
+/// frame**: under non-zero rasterYaw the canvas iso position
+/// = `M · R_z(rasterYaw) · world`, not `M · world`. The trixel-index
+/// lookup path (@ref mouseTrixelPositionWorld → GPU comparison) requires
+/// this frame to match the rasterized canvas; for true world-frame
+/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
+/// additional `R_z(-rasterYaw)` lift.
 
 /// Mouse position in iso canvas coordinates **as seen on screen** — no camera offset.
 /// Use this to align UI overlays to the render output.
 vec2 mousePosition2DIsoScreenRender();
-/// Mouse position in iso canvas coordinates **in world space** — camera offset applied.
-/// Use this for world-space entity placement or selection.
+/// Mouse position in iso canvas coordinates with camera offset applied.
+/// Stays in the rasterYaw-rotated trixel canvas frame; not true world iso
+/// under non-zero yaw — see the namespace doc above.
 vec2 mousePosition2DIsoWorldRender();
-/// Mouse position in iso world space sampled during the UPDATE pipeline tick.
-/// Use this inside update systems; it may lag the render-pipeline variants by one frame.
-vec2 mousePosition2DIsoUpdate();
-/// Integer trixel coordinate of the mouse in world space.
+/// Integer trixel coordinate of the mouse in the trixel canvas frame.
+/// Matches what the voxel-to-trixel pass wrote, so a CPU-side trixel
+/// index here equals the GPU-side trixel index of the voxel under the
+/// cursor at any visualYaw.
 ivec2 mouseTrixelPositionWorld();
+/// Mouse position lifted to a 3D world point in the **unrotated world frame**
+/// at the given iso depth (= x+y+z). Composes the full picking inverse
+/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`. Use
+/// this when world-frame coordinates are needed (e.g. spawning an entity
+/// at the click location).
+vec3 mouseWorldPos3DAtIsoDepth(float isoDepth);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.
