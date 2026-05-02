@@ -45,12 +45,17 @@ fleet workflow.
   under `creations/` and `test/` by default, or `--plan` for CMake
   demo/test target names from `cmake --build --target help`. Use
   `fleet-run --targets --plain` for one name per line (e.g. pipe to `fzf`).
+- **`fleet-debug`** — builds a target through `fleet-build`, finds the
+  resulting executable under `build/`, changes to its runtime directory,
+  and launches it under `lldb` or `gdb`. Use `--batch` for non-interactive
+  crash triage that runs once and prints all thread backtraces.
 - **`fleet-help`** — prints an index of all `fleet-*` tools (build, run,
   tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
   forwards to `--help` when the tool supports it (or a short summary).
 - **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`
   (built exe names when the word does not start with `-`) and
-  `fleet-build` (CMake demo names after `--target`). `install.sh`
+  `fleet-build` (CMake demo names after `--target`) plus `fleet-debug`.
+  `install.sh`
   symlinks it into `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
   for bash-completion / Homebrew `bash-completion@2`.
 - **`completions/irreden-fleet.zsh`** — zsh entry: ensures `compinit` (if

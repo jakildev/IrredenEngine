@@ -1,4 +1,4 @@
-# Bash programmable completion for fleet-run and fleet-build.
+# Bash programmable completion for fleet-run, fleet-build, and fleet-debug.
 # Bash 3.2+ (macOS default). Uses compgen, not mapfile.
 #
 # fleet-run: words not starting with "-" complete built executable basenames
@@ -9,7 +9,7 @@
 # (same as "fleet-run-targets --plan --plain").
 #
 # install.sh symlinks this file into:
-#   ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/{fleet-run,fleet-build}
+#   ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/{fleet-run,fleet-build,fleet-debug}
 # Requires bash-completion to load ~/.local/share/bash-completion/completions/*
 # (many distros and Homebrew bash-completion@2 do). Otherwise: source this file.
 #
@@ -54,6 +54,13 @@ _irreden_fleet_plan_words() {
     cmd="$(_irreden_fleet_run_targets_cmd)"
     [[ -n "$cmd" ]] || return 0
     "$cmd" --plan --plain 2>/dev/null
+}
+
+_irreden_fleet_debug_words() {
+    {
+        _irreden_fleet_built_words
+        _irreden_fleet_plan_words
+    } | LC_ALL=C sort -u
 }
 
 _irreden_fleet_run_targets_mode() {
@@ -141,5 +148,49 @@ _irreden_fleet_build_complete() {
     return 1
 }
 
+_irreden_fleet_debug_first_target_slot() {
+    local i a skip=0
+    for ((i = 1; i < COMP_CWORD; i++)); do
+        a="${COMP_WORDS[i]}"
+        [[ -z "$a" ]] && continue
+        if ((skip)); then
+            skip=0
+            continue
+        fi
+        if [[ "$a" == -- ]]; then
+            return 1
+        fi
+        case "$a" in
+            --build-dir | --debugger) skip=1 ;;
+            --batch | --no-build) ;;
+            -*) ;;
+            *) return 1 ;;
+        esac
+    done
+    return 0
+}
+
+_irreden_fleet_debug_complete() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local prev="${COMP_WORDS[COMP_CWORD - 1]}"
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--help --batch --no-build --build-dir --debugger" -- "$cur"))
+        return 0
+    fi
+
+    case "$prev" in
+        --build-dir | --debugger) return 1 ;;
+    esac
+
+    if _irreden_fleet_debug_first_target_slot; then
+        COMPREPLY=($(compgen -W "$(_irreden_fleet_debug_words | tr '\n' ' ')" -- "$cur"))
+        return 0
+    fi
+
+    return 1
+}
+
 complete -F _irreden_fleet_run_complete fleet-run
 complete -F _irreden_fleet_build_complete fleet-build
+complete -F _irreden_fleet_debug_complete fleet-debug

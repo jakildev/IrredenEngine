@@ -45,6 +45,9 @@ Or (curated demo names):
   fleet-run --targets --plan
 EOF
             ;;
+        fleet-debug)
+            bash "$path" --help
+            ;;
         fleet-up)
             cat <<'EOF'
 fleet-up — multi-pane tmux fleet + optional scout daemon.
@@ -144,6 +147,10 @@ Engine build / run (everyday dev)
       cmake --build wrapper; auto -j; auto-configures <worktree>/build
       on first run. Same build directory as fleet-run.
 
+  fleet-debug [--batch] <target-or-exe> [-- program-args...]
+      Builds with fleet-build, cd's beside data/shaders/scripts, then starts
+      lldb/gdb. Use --batch to run once and print all thread backtraces.
+
   fleet-run [--build-dir <dir>] [--timeout N] <exe-name> [args...]
       Finds the built binary under build/, cd's beside data/shaders/scripts.
 
@@ -152,6 +159,7 @@ Engine build / run (everyday dev)
 
   Per-tool:  fleet-help fleet-run
               fleet-help fleet-build
+              fleet-help fleet-debug
 
   Tab completion: see scripts/fleet/README.md (Files › completions).
 

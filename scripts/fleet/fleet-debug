@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# fleet-debug — build and debug a target from its runtime directory.
+#
+# Mirrors fleet-run's cwd behavior so data/, shaders/, and scripts/ resolve
+# beside the executable, then launches the process under lldb or gdb.
+#
+# Usage:
+#   fleet-debug IRShapeDebug
+#   fleet-debug --batch IRLightingCombined
+#   fleet-debug --no-build --debugger lldb IRShapeDebug -- --auto-screenshot
+#
+# Source of truth: scripts/fleet/fleet-debug in the engine repo.
+# Installed to ~/bin/fleet-debug (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+BUILD_DIR=""
+DEBUGGER=""
+SHOULD_BUILD=true
+BATCH=false
+
+usage() {
+    cat <<'USAGE'
+usage: fleet-debug [options] <target-or-executable> [--] [program-args...]
+
+Builds <target-or-executable> with the current worktree's debug build tree,
+finds the built executable under build/, cd's beside it, and starts a debugger
+from that runtime directory.
+
+Options
+  --batch             Non-interactive crash triage: run immediately, then print
+                      all thread backtraces before exiting.
+  --no-build          Do not run fleet-build first. Useful if the binary is
+                      already built and you only want to re-run under debugger.
+  --build-dir <dir>   CMake build directory. Default resolution matches
+                      fleet-build / fleet-run:
+                        1. this flag
+                        2. $IRREDEN_BUILD_DIR
+                        3. git worktree root + /build
+                        4. $HOME/src/IrredenEngine/build
+  --debugger <name>   Debugger executable to use. Default:
+                        macOS: lldb, then gdb
+                        other: gdb, then lldb
+  --help | -h         Show this text.
+
+Examples
+  fleet-debug IRShapeDebug
+  fleet-debug --batch IRLightingCombined
+  fleet-debug --no-build --debugger lldb IRShapeDebug -- --auto-screenshot
+
+Notes
+  The repo's fleet presets are already debug builds (CMAKE_BUILD_TYPE=Debug).
+  This command builds via fleet-build unless --no-build is passed.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --batch)
+            BATCH=true
+            shift
+            ;;
+        --no-build)
+            SHOULD_BUILD=false
+            shift
+            ;;
+        --build-dir)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-debug: --build-dir requires a directory path" >&2
+                exit 2
+            fi
+            BUILD_DIR="$2"
+            shift 2
+            ;;
+        --debugger)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-debug: --debugger requires a command name" >&2
+                exit 2
+            fi
+            DEBUGGER="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "fleet-debug: unknown option '$1' (try fleet-debug --help)" >&2
+            exit 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ $# -eq 0 ]]; then
+    echo "usage: fleet-debug [--batch] [--no-build] [--build-dir <dir>] <target-or-executable> [--] [program-args...]" >&2
+    echo "       fleet-debug --help" >&2
+    exit 2
+fi
+
+TARGET_NAME="$1"
+shift
+if [[ "${1:-}" == "--" ]]; then
+    shift
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+BUILD_DIR="${BUILD_DIR:-${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}}"
+
+if $SHOULD_BUILD; then
+    FLEET_BUILD="$SCRIPT_DIR/fleet-build"
+    if [[ ! -x "$FLEET_BUILD" ]]; then
+        if command -v fleet-build >/dev/null 2>&1; then
+            FLEET_BUILD="$(command -v fleet-build)"
+        else
+            echo "fleet-debug: could not find fleet-build next to this script or on PATH" >&2
+            exit 1
+        fi
+    fi
+    echo "fleet-debug: building target $TARGET_NAME"
+    IRREDEN_BUILD_DIR="$BUILD_DIR" "$FLEET_BUILD" --target "$TARGET_NAME"
+fi
+
+if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "fleet-debug: build directory $BUILD_DIR does not exist." >&2
+    echo "             run 'fleet-build --target $TARGET_NAME' first, or omit --no-build." >&2
+    exit 1
+fi
+
+resolve_debugger() {
+    if [[ -n "$DEBUGGER" ]]; then
+        if command -v "$DEBUGGER" >/dev/null 2>&1; then
+            command -v "$DEBUGGER"
+            return 0
+        fi
+        echo "fleet-debug: debugger '$DEBUGGER' was not found on PATH" >&2
+        return 1
+    fi
+
+    case "$(uname -s)" in
+        Darwin)
+            command -v lldb >/dev/null 2>&1 && { command -v lldb; return 0; }
+            command -v gdb >/dev/null 2>&1 && { command -v gdb; return 0; }
+            ;;
+        *)
+            command -v gdb >/dev/null 2>&1 && { command -v gdb; return 0; }
+            command -v lldb >/dev/null 2>&1 && { command -v lldb; return 0; }
+            ;;
+    esac
+
+    echo "fleet-debug: no debugger found (install lldb or gdb, or pass --debugger <cmd>)" >&2
+    return 1
+}
+
+find_executable() {
+    local name=$1
+    local candidate
+
+    while IFS= read -r candidate; do
+        printf '%s\n' "$candidate"
+        return 0
+    done < <(find "$BUILD_DIR" -name "$name" -type f -perm -u=x 2>/dev/null)
+
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            while IFS= read -r candidate; do
+                printf '%s\n' "$candidate"
+                return 0
+            done < <(find "$BUILD_DIR" -name "${name}.exe" -type f 2>/dev/null)
+            ;;
+    esac
+
+    return 1
+}
+
+EXE_PATH=$(find_executable "$TARGET_NAME" || true)
+if [[ -z "$EXE_PATH" ]]; then
+    echo "fleet-debug: could not find executable '$TARGET_NAME' in $BUILD_DIR" >&2
+    echo "             build it first: fleet-build --target $TARGET_NAME" >&2
+    echo "             list targets:    fleet-run --targets --plan" >&2
+    exit 1
+fi
+
+DEBUGGER_PATH=$(resolve_debugger)
+DEBUGGER_NAME=$(basename "$DEBUGGER_PATH")
+EXE_DIR=$(dirname "$EXE_PATH")
+EXE_BASE=$(basename "$EXE_PATH")
+
+echo "fleet-debug: $DEBUGGER_NAME $EXE_PATH $*"
+cd "$EXE_DIR"
+
+case "$DEBUGGER_NAME" in
+    lldb|lldb-*)
+        if $BATCH; then
+            exec "$DEBUGGER_PATH" --batch -o run -o "thread backtrace all" -- "./$EXE_BASE" "$@"
+        fi
+        exec "$DEBUGGER_PATH" -- "./$EXE_BASE" "$@"
+        ;;
+    gdb|gdb-*)
+        if $BATCH; then
+            exec "$DEBUGGER_PATH" -q -ex run -ex "thread apply all bt" -ex quit --args "./$EXE_BASE" "$@"
+        fi
+        exec "$DEBUGGER_PATH" --args "./$EXE_BASE" "$@"
+        ;;
+    *)
+        if $BATCH; then
+            echo "fleet-debug: --batch only knows lldb and gdb command syntax (got $DEBUGGER_NAME)" >&2
+            exit 2
+        fi
+        exec "$DEBUGGER_PATH" "./$EXE_BASE" "$@"
+        ;;
+esac
