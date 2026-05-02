@@ -188,16 +188,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Modifier demo creation: modifier_demo visual showcase** — scaffold `creations/demos/modifier_demo/` and implement an 8-cube interactive demo exercising every modifier framework capability via keyboard + HUD
-  - **ID:** T-088
-  - **Area:** creations/demos/modifier_demo
-  - **Model:** sonnet
-  - **Owner:** claude/T-088-modifier-demo
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `fleet-run IRModifierDemo` launches and shows a row of moving cubes; (2) each numbered key (1–8) triggers the corresponding modifier capability with an obvious visual change; (3) on-screen HUD shows resolved values matching active modifiers (manual verify on ≥3 capabilities); (4) `fleet-run IRModifierDemo --auto-screenshot 12` produces the committed shot list; (5) builds clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #307
-  - **Notes:** Child 5 of 5 of modifier-framework epic #302. Children 1–4 (design doc #303, core runtime #304, pattern migration #305, Lua bindings #306) are all shipped. Full plan: `.fleet/plans/T-088.md`. Use `create-creation` skill for scaffolding. Lua wiring: register fields, spawn cubes, key handlers, HUD via trixel-text rendering. Key 5 global-slow needs `C_NoGlobalModifiers` tag binding (add in Lua binding layer if missing). Key 6 sinusoidal lambda needs `ir.time()` (plumb if absent). Key 7 source-kill verifies framework's entity-destruction sweep removes only the right source's modifiers. Keep cube count and Lua complexity low — ~200 lines of Lua is enough.
-  - **Links:**
 
 
 
@@ -258,6 +248,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
 - [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
 - [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
 - [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
@@ -277,4 +268,3 @@ Avoid:
 - [x] **T-065** — Render systems: migrate 12 files off function-local static onto SystemParams · Owner: claude/T-065-render-system-params · PR: https://github.com/jakildev/IrredenEngine/pull/382
 - [x] **T-075** — Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2) · Owner: claude/T-075-opus-only-checklist · PR: https://github.com/jakildev/IrredenEngine/pull/395
 - [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392
-- [x] **T-076** — Fleet docs: worker-doc process tweaks and tooling cleanup (Tier 3) · Owner: claude/T-076-worker-doc-tweaks · PR: https://github.com/jakildev/IrredenEngine/pull/391
