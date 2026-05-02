@@ -51,6 +51,17 @@ struct FrameDataScreenResidualRotate {
     float _pad0 = 0.0f;
 };
 
+/// CPU mirror of the @c HoveredEntityIdBuffer SSBO layout (binding 14).
+/// The fragment shader writes the hovered entity id + depth here every frame;
+/// @c IRRender::getEntityIdAtMouseTrixel reads it back via persistent map.
+/// The binary layout must stay byte-identical to the GLSL/MSL @c std430 block
+/// declared in @c f_trixel_to_framebuffer.glsl and @c trixel_to_framebuffer.metal.
+struct HoveredEntityIdLayout {
+    uvec2 entityId_{0u, 0u};
+    float depth_{1.0f};
+    float _pad_{0.0f};
+};
+
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
     vec2 canvasZoomLevel_;

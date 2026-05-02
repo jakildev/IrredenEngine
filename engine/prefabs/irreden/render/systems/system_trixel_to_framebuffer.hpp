@@ -49,7 +49,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataUniformIsoTriangles
         );
-        struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } initData;
+        HoveredEntityIdLayout initData;
         IRRender::createNamedResource<Buffer>(
             "HoveredEntityIdBuffer",
             &initData,
@@ -141,7 +141,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             },
             [p]() {
-                struct { uvec2 entityId{0u, 0u}; float depth{1.0f}; float _pad{0.0f}; } resetData;
+                HoveredEntityIdLayout resetData;
                 p->hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
                 p->program_->use();
                 p->quadVao_->bind();
