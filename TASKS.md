@@ -152,11 +152,11 @@ Avoid:
 <!-- Add tasks below this line. -->
 
 
-- [ ] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
+- [~] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
   - **ID:** T-057
   - **Area:** engine/render, engine/input
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-057-picking-yaw-inverse
   - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
@@ -176,16 +176,6 @@ Avoid:
   - **Notes:** Metal shaders crash at runtime referencing `frameData.rasterYaw` which doesn't exist in the Metal struct. The C++ struct is also missing the four fields (GLSL has been reading garbage/zero-padding). Default value when no rotation is happening is 0 for all three yaws — forward-compatible. macOS/Metal only crash; WSL/Linux (OpenGL) is unaffected.
   - **Links:**
 
-- [~] **Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment** — restructure SDF dispatch to eliminate confusing nesting, add analytical fast paths at non-zero yaw, and align snap-mode voxel-pool carving with rasterYaw from T-055
-  - **ID:** T-068
-  - **Area:** engine/render/src/shaders, engine/prefabs/irreden/render/systems
-  - **Model:** opus
-  - **Owner:** claude/T-068-sdf-cardinal-snap-align
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) SDF dispatch path has analytical fast paths at non-zero yaw OR the O(N) brute-force path is explicitly documented as intentional with the confusing multi-branch structure removed; (2) `smoothMode` gate restructured to eliminate redundancy; (3) snap-mode voxel-pool carving uses `rasterYaw` to align with cardinal-snap trixel raster from T-055; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) `render-debug-loop` screenshots at yaw=0 (byte-identical to master), yaw=π/6, yaw=π/4, yaw=π/2 verify no coverage gaps
-  - **Issue:** #345
-  - **Notes:** Escalated from sonnet-author after human:needs-fix on PR #334 (T-056). Three human concerns: (1) confusing nesting + redundant smoothMode check, (2) no analytical fast path at non-zero yaw (existing `boxDepthIntersect` etc. bake in yaw=0 iso direction), (3) voxel-pool carving not rotating with T-055. Blocked until both T-055 (cardinal-snap raster) and T-056 (SDF arbitrary yaw) land. Opus architectural decision required on whether to rederive analytical intersectors for rotated ray.
-  - **Links:**
 
 - [~] **Render: screen-space sun shadow map — add bake pass (flag-guarded)** — implement `system_bake_sun_shadow_map` + GLSL/Metal compute shaders that project rasterized iso pixels into a sun-aligned 2D buffer via `imageAtomicMin`; gate behind `useScreenSpaceShadow_` flag
   - **ID:** T-070
@@ -220,38 +210,6 @@ Avoid:
   - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
   - **Links:**
 
-- [~] **render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write** — drop `static void *s_mappedPtr` cache in `ir_render.cpp`; call `buf->mapRange` per-frame to obtain current post-orphan buffer pointer
-  - **ID:** T-083
-  - **Area:** engine/render/src/metal
-  - **Model:** opus
-  - **Owner:** claude/T-083-metal-uaf-stale-pointer
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `s_mappedPtr` static cache removed from `getEntityIdAtMouseTrixel` in `ir_render.cpp`; (2) `buf->mapRange` called per-frame to retrieve current (post-orphan) buffer pointer — on Metal this is `m_buffer->contents() + offset` (cheap); (3) `fleet-build --target IRShapeDebug` clean on `macos-debug`; (4) `fleet-run IRShapeDebug` + hover cursor over a voxel/SDF shape for ~5s confirms `[HoverDetect] eid=...` logs fire; (5) OpenGL path unaffected
-  - **Issue:** #403
-  - **Notes:** Pre-existing UAF exposed by T-069 (Metal entity-id write). `MetalBufferImpl::subData` orphans `m_buffer` each frame; `s_mappedPtr` cached on first call now points into freed buffer. Option A (recommended): drop static cache, call `mapRange` per-frame. Option B: memcpy-under-fence for persistent-map buffers (larger scope). Bug was masked before T-069 because Metal wrote zeros, matching `kNullEntity`.
-  - **Links:**
-
-- [~] **merger: dedupe semantic-conflict re-comments when sha pair unchanged** — before posting a semantic-conflict comment, check if PR already carries `fleet:semantic-conflict` and the master×PR sha pair matches the previously-posted comment; skip re-post if so
-  - **ID:** T-084
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-084-merger-dedupe-conflict-comments
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-merger.md` step 5d-iii checks `fleet:semantic-conflict` label presence before posting; (2) if sha pair matches prior comment, post is skipped and cooldown reset + audit log entry written as `recurring detection — comment skipped`; (3) docs-only change, no build required; (4) verified in fleet: PR with unchanged conflict receives at most one comment per sha-pair change event
-  - **Issue:** #409
-  - **Notes:** Observed on PR #382: same comment posted 5× with identical sha pairs (master `cecedf7` × PR `3fe6f67`). Root cause: `fleet:semantic-conflict` absent from step 3 skip list caused every iteration to clear cooldown, retry rebase, hit conflict, and re-post. Adjacent: opus-worker not picking up `fleet:semantic-conflict` on #382 worth separate investigation.
-  - **Links:**
-
-- [~] **fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix** — fix label sequencing so `fleet:changes-made` is set (atomically if possible) before `fleet:needs-fix` is removed; add defensive timeline check to reviewer role docs
-  - **ID:** T-085
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-085-changes-made-sequencing
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` option-B handoff (AMEND and DEFER modes): `fleet:changes-made` set BEFORE `fleet:needs-fix` removed, or atomically via single `gh pr edit --add-label ... --remove-label ...`; (2) `role-opus-reviewer.md` and `role-sonnet-reviewer.md`: before re-applying a missing verdict label, inspect timeline for UNLABELED events or `fleet:changes-made` presence; (3) docs-only change, no build required
-  - **Issue:** #410
-  - **Notes:** Stale-scout-cache race: 2m19s gap between removing `fleet:needs-fix` and adding `fleet:changes-made` caused opus-reviewer to re-apply `fleet:needs-fix`. Timeline check should cover (a) new commit, (b) new author comment, (c) UNLABELED event for `fleet:needs-fix`, (d) presence of `fleet:changes-made` — (c) is the novel signal, not covered by the existing 04-30 mitigation rule.
-  - **Links:**
 
 
 - [~] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
@@ -289,6 +247,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-083** — render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write · Owner: claude/T-083-metal-uaf-stale-pointer · PR: https://github.com/jakildev/IrredenEngine/pull/416
+- [x] **T-085** — fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix · Owner: claude/T-085-changes-made-sequencing · PR: https://github.com/jakildev/IrredenEngine/pull/414
+- [x] **T-084** — merger: dedupe semantic-conflict re-comments when sha pair unchanged · Owner: claude/T-084-merger-dedupe-conflict-comments · PR: https://github.com/jakildev/IrredenEngine/pull/413
+- [x] **T-068** — Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment · Owner: claude/T-068-sdf-cardinal-snap-align · PR: https://github.com/jakildev/IrredenEngine/pull/412
 - [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
 - [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
 - [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
@@ -305,7 +267,3 @@ Avoid:
 - [x] **T-074** — Fleet docs: add silent-correctness rule coverage to review-pr + simplify (Tier 1) · Owner: claude/T-074-review-simplify-checks · PR: https://github.com/jakildev/IrredenEngine/pull/390
 - [x] **T-056** — Render: SDF shape rasterization under arbitrary Z-yaw · Owner: claude/T-056-sdf-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/334
 - [x] **T-055** — Render: trixel rasterization under cardinal-snap Z-yaw · Owner: claude/T-055-trixel-cardinal-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/333
-- [x] **T-063** — Fleet: design-escalation flow — bidirectional labels + plan re-sync + role docs · Owner: claude/T-063-design-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/378
-- [x] **T-062** — Modifier framework: lambda decay system + stateful-lambda design · Owner: claude/T-062-lambda-decay · PR: https://github.com/jakildev/IrredenEngine/pull/351
-- [x] **T-053** — Modifier framework: modifier_demo creation (visual showcase) · Owner: claude/T-053-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/377
-- [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
