@@ -284,6 +284,7 @@ or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
   - Step 0 (heartbeat)
   - Step 1 (clean stale claims)
   - Step 1b (release timed-out claims)
+  - Step 1c (bidirectional consistency pass)
   - Step 4 (sync merged PRs → Done)
   - Step 5 (sync open PRs → In-progress)
   - Step 5b (clean stale `fleet:in-progress` labels)
@@ -324,6 +325,49 @@ You are the sole TASKS.md editor. Each maintenance pass:
     orphaned (agent crashed without releasing). This supplements
     the `cleanup` step above, which only catches claims whose PRs
     have already merged or closed.
+
+1c. **Bidirectional consistency pass (both repos).** Runs before
+    ingestion to repair label/TASKS.md drift.
+
+    **Check A — Label → TASKS.md (stranded `fleet:queued` issues):**
+    Run once for each repo (engine, then game if present):
+    `gh issue list --repo <engine-repo> --label "fleet:queued" --state open --json number --limit 100`
+    `gh issue list --repo <game-repo> --label "fleet:queued" --state open --json number --limit 100`
+    The working-tree TASKS.md files are already loaded at startup.
+    For each returned issue number `N`, scan the matching repo's
+    TASKS.md for a line matching `**Issue:** #N`. Use the Grep tool
+    (not grep Bash). If no match is found, the issue's TASKS.md entry
+    is missing — strip the stale label so the next intake pass
+    re-ingests it:
+    `gh issue edit <N> --repo <repo> --remove-label "fleet:queued"`
+    Record each stripped issue number in the iteration summary.
+
+    **Check B — TASKS.md → issue state (orphaned open tasks):**
+    Run once for each TASKS.md (engine TASKS.md against `<engine-repo>`,
+    game TASKS.md against `<game-repo>` if present). For every `[ ]`
+    or `[~]` task whose `**Issue:** #N` field is a number (not
+    `(none)`), verify the issue is still open using the matching repo:
+    `gh api repos/<engine-repo>/issues/<N> --jq '.state'`
+    If `gh api` exits non-zero or returns 404, treat the issue as
+    closed (matches step 7 behavior for deleted/transferred issues).
+    If `closed`:
+    a. Check whether an open PR already covers this task. Scan the
+       cached `repos.engine.prs[]` or `repos.game.prs[]` (already
+       read at startup — see cache schema above) for a PR whose
+       `headRefName` contains the task ID (e.g. `claude/T-090`
+       contains `T-090`). If an open PR exists, skip — the PR will
+       close the issue on merge and step 4 will flip the task then.
+    b. If no open PR covers the task: remove the task entry from
+       TASKS.md (delete the `- [ ]` or `- [~]` bullet and all its
+       sub-fields up to the next `- [ ]`/`- [~]`/section header).
+       Delete any plan files:
+       `rm -f ~/.fleet/plans/<task-ID>.md`
+       `rm -f .fleet/plans/<task-ID>.md`
+       Record the pruned task ID and closed issue number in the
+       iteration summary.
+
+    This step runs in **review-only mode** as well — it repairs
+    existing state without expanding the queue.
 
 2. **Ingest triaged issues (engine repo).** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
