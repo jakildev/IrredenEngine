@@ -766,6 +766,10 @@ the human can tell which sonnet pane observed what. See top-level
   finish the flow. Don't invoke `simplify` standalone — let
   `commit-and-push` invoke it for you, so the commit step is
   guaranteed to follow.
+- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
+  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one;
+  never include them in a feature PR's diff. Canonical explanation
+  in `.fleet/status/README.md`.
 - **Edit/Write paths must stay inside your worktree.** The parent
   clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
   in the path) and your worktree at

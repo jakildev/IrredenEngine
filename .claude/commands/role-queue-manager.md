@@ -516,6 +516,19 @@ You are the sole TASKS.md editor. Each maintenance pass:
    `rm -f ~/.fleet/plans/<task-ID>.md`
    `rm -f .fleet/plans/<task-ID>.md`
 
+   **Also scan `.fleet/status/*.md`** (engine repo) for references to
+   the merged PR or its task ID and update accordingly. Use the Grep
+   tool across `.fleet/status/` for the merged task's `T-NNN`, the PR
+   number `#<N>`, and the PR URL `pull/<N>`. For per-row references
+   (e.g., a table row in `render-api-relocations.md` listing the task)
+   delete the row. For whole-file references (e.g., the "Migration
+   tracked in T-NNN" framing in `system-static-deviations.md`) the
+   file's premise may dissolve when its tracking task ships — if the
+   remaining content is a stub, delete the file and remove its entry
+   from `.fleet/status/README.md`. Stage `.fleet/status/` edits in the
+   same maintenance commit as the TASKS.md flip; the bookkeeping
+   exception (Hard rules) covers them.
+
 5. **Sync open PRs → In-progress (both repos).** Use the cached
    `repos.engine.prs[]` and `repos.game.prs[]` for the open PR
    list — the title-to-task match below uses `title` and
@@ -725,10 +738,17 @@ iterations write nothing).
   other agent should edit TASKS.md. If you see a PR that includes
   TASKS.md changes from an author agent, flag it in your review or
   comment — the author should remove those changes.
+- You are also the **sole `.fleet/status/*.md` editor** — same rule
+  shape as TASKS.md. Update these files when a PR referenced from
+  one merges, either by appending to the next maintenance commit
+  (covered by the bookkeeping exception below) or via a regular
+  `queue: status update` PR through `commit-and-push`. Canonical
+  explanation in `.fleet/status/README.md`.
 - Never `gh pr merge` — the human merges.
 - **Bookkeeping exception:** you MAY push directly to master in
   **both** repos (engine and game) when the commit touches **only**
-  `TASKS.md` and/or `.fleet/plans/*.md`. These are bookkeeping files,
-  not code. Never push any other file to master in either repo.
+  `TASKS.md`, `.fleet/plans/*.md`, and/or `.fleet/status/*.md`.
+  These are bookkeeping files, not code. Never push any other file
+  to master in either repo.
 - Never `git push --force`.
 - Single-command Bash only (see CRITICAL section above).

@@ -47,7 +47,9 @@ This repo runs a parallel-agent workflow. The rules:
    from there rather than inventing work. **Only the queue-manager agent
    edits `TASKS.md`** — author agents must never include TASKS.md changes
    in their feature PRs (this causes merge conflicts across all parallel
-   PRs). Reference the task title in your PR description instead.
+   PRs). Reference the task title in your PR description instead. The
+   same single-editor rule applies to `.fleet/status/*.md`; see
+   `.fleet/status/README.md`.
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
