@@ -45,8 +45,18 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         std::optional<IsoBounds2D> cullBounds_;
         // Camera Z-yaw snapshotted at beginTick so the cull pass and the
         // per-tile dispatch share byte-identical values even if a script
-        // mutates yaw mid-frame. yawZero_ is the at-yaw-0 fast path.
+        // mutates yaw mid-frame. visualYaw_ is split via computeYawSplit
+        // into rasterYaw_ (cardinal multiple of pi/2) + residualYaw_; the
+        // shapes shader rasterizes at rasterYaw_ so its output aligns with
+        // the voxel pool's cardinal-snap raster, and yawCos_/yawSin_ are
+        // the cos/sin of rasterYaw_ (always exact ±1 / 0). yawZero_ is
+        // the rasterYaw==0 fast path; it stays true for visualYaw inside
+        // (-pi/4, +pi/4) where rasterYaw rounds to 0. residualYaw_ is
+        // mirrored into the UBO for shaders downstream of this pass; the
+        // CPU side of this system does not consume it.
         float visualYaw_ = 0.0f;
+        float rasterYaw_ = 0.0f;
+        float residualYaw_ = 0.0f;
         float yawCos_ = 1.0f;
         float yawSin_ = 0.0f;
         bool yawZero_ = true;
@@ -160,11 +170,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
                 // Snapshot camera yaw once for the whole tick so the cull
                 // pass and the per-tile dispatch share the same value, even
-                // if a script mutates yaw mid-frame.
+                // if a script mutates yaw mid-frame. The shape SDF
+                // rasterizes at rasterYaw (cardinal-snap) so it lines up
+                // trixel-for-trixel with the voxel pool's cardinal-snap
+                // raster (T-055); the screen-space residual rotate pass
+                // (T-058) handles the leftover residualYaw on screen.
                 p->visualYaw_ = IRPrefab::Camera::getYaw();
-                p->yawCos_ = IRMath::cos(p->visualYaw_);
-                p->yawSin_ = IRMath::sin(p->visualYaw_);
-                p->yawZero_ = (p->visualYaw_ == 0.0f);
+                const auto [rasterYaw, residualYaw] =
+                    IRPrefab::Camera::computeYawSplit(p->visualYaw_);
+                p->rasterYaw_ = rasterYaw;
+                p->residualYaw_ = residualYaw;
+                p->yawCos_ = IRMath::cos(p->rasterYaw_);
+                p->yawSin_ = IRMath::sin(p->rasterYaw_);
+                p->yawZero_ = (p->rasterYaw_ == 0.0f);
 
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
                 auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
@@ -183,6 +201,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             [p]() {
                 IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
                 const float visualYaw = p->visualYaw_;
+                const float rasterYaw = p->rasterYaw_;
+                const float residualYaw = p->residualYaw_;
 
                 for (auto &[canvasId, gpuShapes] : p->gpuShapesByCanvas_) {
                     if (gpuShapes.empty()) {
@@ -219,6 +239,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         p->frameData_.cullIsoMax = ivec2(999999);
                     }
                     p->frameData_.visualYaw = visualYaw;
+                    p->frameData_.rasterYaw = rasterYaw;
+                    p->frameData_.residualYaw = residualYaw;
 
                     p->shapeDescBuf_->subData(
                         0,
@@ -226,12 +248,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         gpuShapes.data()
                     );
 
+                    // Tile bounds are computed at rasterYaw — same rotation
+                    // the shader uses to rasterize each shape — so the
+                    // per-tile iso footprint matches the SDF surface that
+                    // pixel ends up writing.
                     const int tileCount = buildAndUploadTileDescriptors(
                         gpuShapes,
                         p->shapeTileDescBuf_,
                         effectiveSub,
                         renderMode,
-                        visualYaw,
+                        rasterYaw,
                         p->yawCos_,
                         p->yawSin_
                     );
@@ -294,11 +320,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // dispatch then runs once per pass, with gl_WorkGroupID.x indexing this
     // buffer — one workgroup per 8×8 pixel tile.
     //
-    // @p visualYaw is the camera Z-yaw (radians). Each shape's worldPos is
-    // rotated by R_z(-visualYaw) before iso projection, and its XY bounding
-    // half-extent is grown to cover the rotated AABB. At yaw=0 both
-    // operations are identity and the tile coverage is unchanged.
-    // @p yawCos/@p yawSin are cos/sin of visualYaw, snapshotted at frame
+    // @p rasterYaw is the cardinal-snap Z-yaw (radians, exact multiple of
+    // pi/2). Each shape's worldPos is rotated by R_z(-rasterYaw) before iso
+    // projection, and its XY bounding half-extent is grown to cover the
+    // rotated AABB. At rasterYaw=0 both operations are identity and the
+    // tile coverage is unchanged. The shader rasterizes at rasterYaw too,
+    // so the iso footprint of each tile matches the pixels the shader
+    // writes; residualYaw is handled downstream in screen space (T-058).
+    // @p yawCos/@p yawSin are cos/sin of rasterYaw, snapshotted at frame
     // start so the cull pass and the per-tile dispatch see byte-identical
     // values even if a script mutates yaw mid-frame.
     static int buildAndUploadTileDescriptors(
@@ -306,7 +335,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         Buffer *tileDescBuf,
         int effectiveSubdivisions,
         IRRender::SubdivisionMode renderMode,
-        float visualYaw,
+        float rasterYaw,
         float yawCos,
         float yawSin
     ) {
@@ -314,7 +343,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         tiles.clear();
 
         const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
-        const bool yawZero = (visualYaw == 0.0f);
+        const bool yawZero = (rasterYaw == 0.0f);
         const float absYawC = IRMath::abs(yawCos);
         const float absYawS = IRMath::abs(yawSin);
 

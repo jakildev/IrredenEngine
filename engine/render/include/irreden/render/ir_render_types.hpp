@@ -183,10 +183,17 @@ struct GPUShapesFrameData {
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;
-    // Z-yaw camera rotation (radians); SDF math is continuous so it consumes
-    // visualYaw directly.
+    // Z-yaw camera rotation, in radians. Mirrors FrameDataVoxelToCanvas:
+    // visualYaw is the canonical continuous angle, rasterYaw is the cardinal
+    // multiple of pi/2 nearest visualYaw, residualYaw = visualYaw - rasterYaw.
+    // The shapes shader rasterizes at rasterYaw so the SDF surface lands on
+    // the same integer voxel lattice as the voxel pool's cardinal-snap raster
+    // (T-055); the screen-space residual composite pass (T-058) then rotates
+    // the trixel framebuffer by residualYaw to recover continuous yaw.
     float visualYaw = 0.0f;
-    float _yawPadding[3] = {};
+    float rasterYaw = 0.0f;
+    float residualYaw = 0.0f;
+    float _yawPadding = 0.0f;
 };
 
 struct FrameDataSun {
