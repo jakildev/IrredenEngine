@@ -550,6 +550,12 @@ exit cleanly:
 
 6. Write a per-iteration summary, then print completion:
    `fleet-iteration-summary merger "<PRs processed, outcomes, snags — under 100 words.>"`
+   **Do NOT use backticks in the summary text.** Your bash shell
+   evaluates backticks within double-quoted args as command
+   substitution — `` `something` `` will be run as a command, fail,
+   and silently strip from the saved summary (observed on
+   opus-reviewer 2026-05-02). Write technical references in plain
+   prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
    Then print `[merger] Iteration complete. Next run in ~10m.`
    Then exit cleanly. The `/loop` driver will re-invoke in 10
    minutes.
