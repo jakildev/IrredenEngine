@@ -265,17 +265,6 @@ Avoid:
   - **Notes:** Stale-scout-cache race: 2m19s gap between removing `fleet:needs-fix` and adding `fleet:changes-made` caused opus-reviewer to re-apply `fleet:needs-fix`. Timeline check should cover (a) new commit, (b) new author comment, (c) UNLABELED event for `fleet:needs-fix`, (d) presence of `fleet:changes-made` — (c) is the novel signal, not covered by the existing 04-30 mitigation rule.
   - **Links:**
 
-- [~] **Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip** — enforce 30m floor between opus-reviewer relaunches; make fleet-claim resolve blockers via git merge-base; queue-manager detects stale [~] tasks merged to master and auto-flips to [x]
-  - **ID:** T-080
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-080-orchestration-calibration
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fleet-babysit enforces ~30m floor between opus-reviewer relaunches OR opus-reviewer does live `gh pr view <N> --json reviews` per candidate before reviewing; (2) `fleet-claim` blocker-check uses `git merge-base --is-ancestor <pred-branch-tip> origin/master` to resolve blockers independent of TASKS.md state; (3) queue-manager maintenance pass detects `[~]` tasks whose branch is an ancestor of master (empty diff) and auto-flips to `[x]` with merged-PR cross-reference; (4) script/doc changes; no engine build required
-  - **Issue:** #387
-  - **Notes:** Three issues: D2 opus-reviewer relaunched 2.4m after previous iteration (30m floor not enforced) burning ~5m context; D3 T-053 unclaimable 5–15m after T-051 merged because fleet-claim reads TASKS.md not git; D4 T-064 had stale `[~]` status after PR #383 merged — empty-diff PR #383 opened and immediately closed.
-  - **Links:**
-
 - [~] **Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts** — move rapidly-changing status prose from feature-PR-editable CLAUDE.md sections into queue-manager-owned file(s); update worker docs to restate only changed lines when editing shared status sections
   - **ID:** T-082
   - **Area:** tooling, docs
@@ -285,6 +274,28 @@ Avoid:
   - **Acceptance:** (1) rapidly-changing status prose (e.g. "Open follow-ups", "Runtime gaps", "ships X of Y systems") factored out of CLAUDE.md sections that feature PRs touch, into queue-manager-owned file(s); OR `simplify/SKILL.md` flags diffs touching >2 paragraphs of a shared status section as conflict-prone; (2) worker docs updated: when editing CLAUDE.md "Open follow-ups"/"Status" sections, restate only changed lines; (3) path chosen (option 1 or 2) documented in `CLAUDE.md` or relevant role doc
   - **Issue:** #389
   - **Notes:** Root cause: T-061/T-060/T-062 all authored against pre-T-061 master; all three rewrote rapidly-changing status prose in `engine/prefabs/irreden/common/CLAUDE.md`; both #348 and #351 got `fleet:semantic-conflict` for opus-worker resolution. Three fix options in issue; recommend option 1 (same shape as splitting per-task plans into `~/.fleet/plans/`). Option 2 is cheaper but relies on agent compliance.
+  - **Links:**
+
+- [ ] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
+  - **ID:** T-086
+  - **Area:** engine/input
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) audit of existing gamepad code documented (coverage gap or "already complete"); (2) Xbox-compatible and PlayStation-compatible controller input works on Linux — button/stick/trigger events plus polled state; (3) hot-plug detection works; (4) gamepad API exposed via `ir_input.hpp` with doc comments alongside keyboard/mouse APIs; (5) small test creation or extended demo reads controller input end-to-end; (6) `fleet-build --target IRShapeDebug` clean
+  - **Issue:** #280
+  - **Notes:** Human comment: "pretty sure already implemented — worth a pass to see if there are any improvements." Audit first; add and document only where gaps exist. macOS support is nice-to-have. No per-controller-type special-casing in consumer code. Escalate to [opus] if input architecture needs structural changes to support gamepads cleanly.
+  - **Links:**
+
+- [ ] **Sprite rendering: C_Sprite / C_SpriteSheet components + design note** — define component types, register in ECS enum, write sprite design note, and commit Lua-binding stub header (child 1 of 5 of epic #14)
+  - **ID:** T-087
+  - **Area:** engine/prefabs/irreden/render/, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) design note checked into repo and cross-linked from `engine/prefabs/irreden/render/CLAUDE.md`; (2) `C_Sprite` and `C_SpriteSheet` compile and are registered in the ECS component enum; (3) Lua-binding stub header committed (reflection-only, no behavior); (4) `fleet-build --target IRShapeDebug` clean on the active preset
+  - **Issue:** #282
+  - **Notes:** Child 1 of 5 of epic #14 (2D sprite rendering). Full plan at `.fleet/plans/T-087.md`. Sprites are screen-composite at `FRAMEBUFFER_TO_SCREEN` stage — not trixel content. Flat-depth semantics; v1 depth = iso-projection of `C_Position3D` anchor. Bottom-center anchor default (`vec2{0.5f, 0.0f}`). Z-sort among sprites only in v1; cross-layer sort is Part 2. Sprites bypass all lighting (by design). Follow `IRPrefab::Sprite::` namespace per #266. Existing `system_sprites_to_screen.hpp` stub and `entity_voxel_sprite.hpp` are out of scope for this task.
   - **Links:**
 
 ---
@@ -300,6 +311,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
 - [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
 - [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
 - [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
@@ -319,4 +331,3 @@ Avoid:
 - [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
 - [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
 - [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
-- [x] **T-059** — Fleet docs: dormancy-verification rule for private creations · Owner: claude/T-059-dormancy-check · PR: https://github.com/jakildev/IrredenEngine/pull/346
