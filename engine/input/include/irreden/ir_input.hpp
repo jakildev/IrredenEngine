@@ -28,6 +28,17 @@ IRMath::vec2 getMousePosition();
 /// Cursor position in screen (pixel) space for the current pipeline event's snapshot.
 IRMath::vec2 getMousePositionScreen();
 
+/// Returns `true` if gamepad @p button is currently in @p buttonStatus this frame.
+/// Only gamepad 0 is queried by default; pass @p irGamepadId to select another.
+/// Asserts if no gamepad was connected at engine startup.
+bool checkGamepadButton(GamepadButtons button, ButtonStatuses buttonStatus, int irGamepadId = 0);
+
+/// Current value of gamepad @p axis.
+/// Sticks report [-1, 1]. Triggers report -1.0 when unpressed, +1.0 fully pressed.
+/// Only gamepad 0 is queried by default; pass @p irGamepadId to select another.
+/// Asserts if no gamepad was connected at engine startup.
+float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0);
+
 /// @name Internal input counters (used by input systems, not for general use)
 /// @{
 int getNumButtonPressesThisFrame(KeyMouseButtons button);
