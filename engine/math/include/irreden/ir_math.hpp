@@ -215,6 +215,17 @@ constexpr ivec3 rotateCardinalZ(const ivec3 v, int cardinalIndex) {
     return v;
 }
 
+/// @overload Float variant for forward-projecting non-integer world
+/// positions (e.g. `C_PositionGlobal3D + C_PositionOffset3D`) into the
+/// rasterYaw-rotated canvas frame. Same R_z(-rasterYaw) sign convention
+/// as the integer overload.
+constexpr vec3 rotateCardinalZ(const vec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return vec3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return vec3(-v.y,  v.x, v.z);
+    return v;
+}
+
 /// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
 /// View→world = R_z(+rasterYaw). Use after `isoPixelToPos3D` to lift a
 /// reconstructed 3D position back to true world coordinates.

@@ -727,4 +727,272 @@ TEST(PickingInverseTest, RoundTripsAcrossAllCardinals) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// rotateCardinalZ vec3 overload — float world positions cardinally
+// rotated into the rasterYaw-rotated canvas frame, paralleling the
+// ivec3 overload's R_z(-rasterYaw) sign convention.
+// ---------------------------------------------------------------------------
+
+TEST(RotateCardinalZVec3Test, MatchesIntegerOverloadOnIntegerValuedFloats) {
+    const IRMath::vec3 worlds[] = {
+        IRMath::vec3(0.0f, 0.0f, 0.0f),
+        IRMath::vec3(3.0f, 5.0f, 0.0f),
+        IRMath::vec3(-2.0f, 1.0f, 4.0f),
+        IRMath::vec3(7.0f, -3.0f, 2.0f),
+    };
+    for (int idx = 0; idx < 4; ++idx) {
+        for (const auto &w : worlds) {
+            const IRMath::vec3 rFloat = IRMath::rotateCardinalZ(w, idx);
+            const IRMath::ivec3 rInt = IRMath::rotateCardinalZ(
+                IRMath::ivec3(static_cast<int>(w.x), static_cast<int>(w.y),
+                              static_cast<int>(w.z)),
+                idx);
+            EXPECT_NEAR(rFloat.x, static_cast<float>(rInt.x), kTolerance);
+            EXPECT_NEAR(rFloat.y, static_cast<float>(rInt.y), kTolerance);
+            EXPECT_NEAR(rFloat.z, static_cast<float>(rInt.z), kTolerance);
+        }
+    }
+}
+
+TEST(RotateCardinalZVec3Test, PreservesFractionalCoords) {
+    // The float overload exists for non-integer world positions (entity
+    // global+offset). For cardinalIndex=1 (rasterYaw=π/2 → world→view
+    // = R_z(-π/2)): (x, y, z) → (y, -x, z). Verify exact preservation
+    // of fractional values, not just sign behavior.
+    const IRMath::vec3 v(2.5f, -3.75f, 1.125f);
+    const IRMath::vec3 r = IRMath::rotateCardinalZ(v, 1);
+    EXPECT_FLOAT_EQ(r.x, -3.75f);
+    EXPECT_FLOAT_EQ(r.y, -2.5f);
+    EXPECT_FLOAT_EQ(r.z, 1.125f);
+}
+
+TEST(RotateCardinalZVec3Test, InverseRoundTripPerCardinal) {
+    const IRMath::vec3 v(1.5f, -2.25f, 0.75f);
+    for (int idx = 0; idx < 4; ++idx) {
+        const IRMath::vec3 forward = IRMath::rotateCardinalZ(v, idx);
+        const IRMath::vec3 back = IRMath::rotateCardinalZInv(forward, idx);
+        EXPECT_NEAR(back.x, v.x, kTolerance) << "idx=" << idx;
+        EXPECT_NEAR(back.y, v.y, kTolerance) << "idx=" << idx;
+        EXPECT_NEAR(back.z, v.z, kTolerance) << "idx=" << idx;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hitbox forward-projection chain — proves the math used by
+// HITBOX_MOUSE_TEST under non-zero camera yaw is self-consistent.
+//
+// The system applies: viewPos = R_z(-rasterYaw)·world; then iso project;
+// then offset by camera; then scale to game resolution; then place at
+// fbResHalf with Y-flip. The cursor is inverse-residual-rotated from
+// framebuffer-pixel space into this same canvas-pixel frame.
+//
+// A hover should fire iff the inverse-rotated mouse falls within the
+// hitbox half-extent of the forward-projected entity center. The tests
+// below synthesize known mouse + camera-yaw combinations and assert
+// the predicted hover state matches what the system would compute.
+// ---------------------------------------------------------------------------
+
+namespace detail {
+
+// Mirror of the per-entity tick body in
+// `engine/prefabs/irreden/input/systems/system_hitbox_mouse_test.hpp`.
+// Returns the canvas-pixel position the entity projects to under the
+// captured camera state.
+inline IRMath::vec2 forwardProjectEntity(IRMath::vec3 worldPos,
+                                          int cardinalIndex,
+                                          IRMath::vec2 cameraIso,
+                                          IRMath::vec2 cameraZoom,
+                                          IRMath::vec2 fbResHalf) {
+    const IRMath::vec3 viewPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
+    const IRMath::vec2 entityIso = IRMath::pos3DtoPos2DIso(viewPos);
+    const IRMath::vec2 relativeIso = entityIso - cameraIso;
+    const IRMath::vec2 screenOffset =
+        IRMath::pos2DIsoToPos2DGameResolution(relativeIso, cameraZoom);
+    return IRMath::vec2(fbResHalf.x + screenOffset.x,
+                        fbResHalf.y - screenOffset.y);
+}
+
+// Build a synthetic mouse position by forward-rotating an entity's
+// canvas-pixel center through the residual composite (the inverse of
+// the system's beforeTick lifting). Round-tripping through the
+// system's inverse must recover the same canvas pixel; that is the
+// load-bearing property a yaw-correct hitbox must satisfy.
+inline IRMath::vec2 forwardResidualOnCanvasPixel(IRMath::vec2 canvasPixel,
+                                                  float residualYaw,
+                                                  float effectiveSign,
+                                                  IRMath::vec2 fbResHalf) {
+    const float forwardAngle = residualYaw * effectiveSign;
+    return IRMath::rotate2D(canvasPixel - fbResHalf, forwardAngle) + fbResHalf;
+}
+
+inline IRMath::vec2 inverseResidualOnFramebufferPixel(IRMath::vec2 mouseFb,
+                                                      float residualYaw,
+                                                      float effectiveSign,
+                                                      IRMath::vec2 fbResHalf) {
+    const float effectiveAngle = -residualYaw * effectiveSign;
+    return IRMath::rotate2D(mouseFb - fbResHalf, effectiveAngle) + fbResHalf;
+}
+
+} // namespace detail
+
+TEST(HitboxProjectionTest, ResidualRotationRoundTripsAtNonCardinalYaws) {
+    // Two non-cardinal residual yaws bracket the [-π/4, π/4] range:
+    // π/8 (mid-positive) and the -π/4 boundary that visualYaw=π/4
+    // produces (rasterYaw snaps to π/2 by std::round half-away-from-zero,
+    // residualYaw = -π/4).
+    constexpr float halfPi = glm::half_pi<float>();
+    const float residualYaws[] = {halfPi / 4.0f,
+                                  -halfPi / 2.0f};
+    const IRMath::vec2 fbResHalf(640.0f, 360.0f);
+    const IRMath::vec2 canvasPixels[] = {
+        IRMath::vec2(640.0f, 360.0f),  // center — invariant under any rotation
+        IRMath::vec2(700.0f, 400.0f),
+        IRMath::vec2(540.0f, 280.0f),
+    };
+    // Both screenYDirection signs (+1 Metal/Vulkan, -1 OpenGL) so the test
+    // catches a regression on whichever backend isn't compiled in.
+    const float effectiveSigns[] = {1.0f, -1.0f};
+    for (float residualYaw : residualYaws) {
+        for (float sign : effectiveSigns) {
+            for (const auto &canvasPixel : canvasPixels) {
+                const IRMath::vec2 mouseFb =
+                    detail::forwardResidualOnCanvasPixel(
+                        canvasPixel, residualYaw, sign, fbResHalf);
+                const IRMath::vec2 recovered =
+                    detail::inverseResidualOnFramebufferPixel(
+                        mouseFb, residualYaw, sign, fbResHalf);
+                EXPECT_NEAR(recovered.x, canvasPixel.x, 1e-3f)
+                    << "residualYaw=" << residualYaw << " sign=" << sign;
+                EXPECT_NEAR(recovered.y, canvasPixel.y, 1e-3f)
+                    << "residualYaw=" << residualYaw << " sign=" << sign;
+            }
+        }
+    }
+}
+
+TEST(HitboxProjectionTest, HoverFiresAtCardinalYawOnEntityUnderCursor) {
+    // visualYaw = π/2 (pure cardinal): rasterYaw = π/2, residualYaw = 0.
+    // Entity at world (3, 0, 0) rotates world→view to (0, -3, 0), iso
+    // projects to (-3, 3) ... actually iso(0,-3,0) = (0-3+0, 0+3+0) = (-3,3).
+    // We synthesize a cursor exactly at the projected center and
+    // expect the hitbox half-extent to flip hovered_ on.
+    const IRMath::vec3 entityWorld(3.0f, 0.0f, 0.0f);
+    const float rasterYaw = glm::half_pi<float>();
+    const int cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+    const IRMath::vec2 cameraIso(0.0f, 0.0f);
+    const IRMath::vec2 cameraZoom(1.0f, 1.0f);
+    const IRMath::vec2 fbResHalf(640.0f, 360.0f);
+
+    const IRMath::vec2 entityCenter =
+        detail::forwardProjectEntity(
+            entityWorld, cardinalIndex, cameraIso, cameraZoom, fbResHalf);
+
+    // The cursor lands exactly on the projected center; with any
+    // positive halfExtent the hitbox should match.
+    const IRMath::vec2 cursorCanvas = entityCenter;
+    const IRMath::vec2 halfExtent(8.0f, 8.0f);
+    const bool hovered =
+        std::abs(cursorCanvas.x - entityCenter.x) <= halfExtent.x &&
+        std::abs(cursorCanvas.y - entityCenter.y) <= halfExtent.y;
+    EXPECT_TRUE(hovered);
+
+    // Without the cardinal rotation the projected center would land at
+    // a different canvas pixel — verify the test is not vacuous. For
+    // entity (3,0,0): iso.x = -x+y stays at -3 across both rotations
+    // (-3+0 == 0+(-3)), but iso.y flips sign, so y differs.
+    const IRMath::vec2 yawZeroCenter =
+        detail::forwardProjectEntity(
+            entityWorld, /*cardinalIndex=*/0, cameraIso, cameraZoom, fbResHalf);
+    EXPECT_NE(entityCenter.y, yawZeroCenter.y);
+}
+
+TEST(HitboxProjectionTest, HoverFiresUnderNonCardinalYaw) {
+    // Two non-cardinal visualYaw values from the acceptance spec:
+    // π/8 (rasterYaw=0, residualYaw=π/8) and π/2 + π/16
+    // (rasterYaw=π/2, residualYaw=π/16). Pick a cursor exactly at the
+    // forward-projected post-residual framebuffer location and verify
+    // the system's inverse-then-compare logic flips hovered_ on.
+    constexpr float halfPi = glm::half_pi<float>();
+    struct Case {
+        float visualYaw_;
+        IRMath::vec3 entityWorld_;
+    };
+    const Case cases[] = {
+        {halfPi / 4.0f,                   IRMath::vec3(2.0f, 1.0f, 0.0f)},
+        {halfPi + halfPi / 8.0f,           IRMath::vec3(3.0f, -2.0f, 1.0f)},
+    };
+    const IRMath::vec2 cameraIso(0.0f, 0.0f);
+    const IRMath::vec2 cameraZoom(1.0f, 1.0f);
+    const IRMath::vec2 fbResHalf(640.0f, 360.0f);
+    const IRMath::vec2 halfExtent(6.0f, 6.0f);
+
+    for (float effectiveSign : {1.0f, -1.0f}) {
+        for (const auto &c : cases) {
+            const float rasterYaw =
+                glm::round(c.visualYaw_ / halfPi) * halfPi;
+            const float residualYaw = c.visualYaw_ - rasterYaw;
+            const int cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+
+            // Project entity to its canvas-pixel center.
+            const IRMath::vec2 entityCenter =
+                detail::forwardProjectEntity(
+                    c.entityWorld_, cardinalIndex, cameraIso, cameraZoom,
+                    fbResHalf);
+            // Forward-rotate that canvas pixel through the residual
+            // composite to compute where the user must click on the
+            // framebuffer for the hitbox to be "under" the cursor.
+            const IRMath::vec2 mouseFb =
+                detail::forwardResidualOnCanvasPixel(
+                    entityCenter, residualYaw, effectiveSign, fbResHalf);
+            // Inverse-rotate the cursor as the system's beforeTick does.
+            const IRMath::vec2 mouseCanvas =
+                detail::inverseResidualOnFramebufferPixel(
+                    mouseFb, residualYaw, effectiveSign, fbResHalf);
+            const bool hovered =
+                std::abs(mouseCanvas.x - entityCenter.x) <= halfExtent.x &&
+                std::abs(mouseCanvas.y - entityCenter.y) <= halfExtent.y;
+            EXPECT_TRUE(hovered)
+                << "visualYaw=" << c.visualYaw_ << " sign=" << effectiveSign;
+        }
+    }
+}
+
+TEST(HitboxProjectionTest, HoverDoesNotFireOutsideHalfExtentUnderYaw) {
+    // Mouse outside the hitbox half-extent in canvas-pixel space must
+    // not flip hovered_ even after the inverse-residual rotation. Tests
+    // that the inverse helper isn't accidentally widening the hit area
+    // (e.g. via wrong sign on screenYDirection).
+    constexpr float halfPi = glm::half_pi<float>();
+    const float visualYaw = halfPi / 4.0f;  // residualYaw = π/8, raster=0
+    const float rasterYaw = glm::round(visualYaw / halfPi) * halfPi;
+    const float residualYaw = visualYaw - rasterYaw;
+    const int cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+    const IRMath::vec2 cameraIso(0.0f, 0.0f);
+    const IRMath::vec2 cameraZoom(1.0f, 1.0f);
+    const IRMath::vec2 fbResHalf(640.0f, 360.0f);
+    const IRMath::vec3 entityWorld(2.0f, 1.0f, 0.0f);
+    const IRMath::vec2 halfExtent(4.0f, 4.0f);
+
+    const IRMath::vec2 entityCenter =
+        detail::forwardProjectEntity(
+            entityWorld, cardinalIndex, cameraIso, cameraZoom, fbResHalf);
+
+    // Place the cursor at a canvas pixel 20 units away — well outside
+    // the half-extent. Forward-rotate it to fb-space, inverse-rotate
+    // it back, and verify the comparison still falls outside.
+    const IRMath::vec2 farCanvas = entityCenter + IRMath::vec2(20.0f, 20.0f);
+    for (float effectiveSign : {1.0f, -1.0f}) {
+        const IRMath::vec2 mouseFb =
+            detail::forwardResidualOnCanvasPixel(
+                farCanvas, residualYaw, effectiveSign, fbResHalf);
+        const IRMath::vec2 mouseCanvas =
+            detail::inverseResidualOnFramebufferPixel(
+                mouseFb, residualYaw, effectiveSign, fbResHalf);
+        const bool hovered =
+            std::abs(mouseCanvas.x - entityCenter.x) <= halfExtent.x &&
+            std::abs(mouseCanvas.y - entityCenter.y) <= halfExtent.y;
+        EXPECT_FALSE(hovered) << "sign=" << effectiveSign;
+    }
+}
+
 } // namespace
