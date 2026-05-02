@@ -157,23 +157,11 @@ Avoid:
   - **Area:** engine/render, engine/input
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-058
+  - **Blocked by:** (none)
   - **Stack:** T-054..T-058 z-yaw-pipeline
   - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
   - **Issue:** #313
   - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`.
-  - **Links:**
-
-- [~] **Render: screen-space 2D residual yaw composite pass** — add `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline stage that rotates the trixel canvas by `residualYaw`; GLSL + MSL parity
-  - **ID:** T-058
-  - **Area:** engine/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-058-screen-residual-rotate
-  - **Blocked by:** (none)
-  - **Stack:** T-054..T-058 z-yaw-pipeline
-  - **Acceptance:** (1) new GLSL + MSL shader pair committed under `engine/render/src/shaders/`; (2) new system registered at `SCREEN_SPACE_RESIDUAL_ROTATE` pipeline slot; (3) at `visualYaw=0°` the framebuffer is pixel-identical to canvas content (passthrough); (4) at `visualYaw=30°` with cardinal-snap raster from T-055, visible result rotates 30° in screen space without distortion beyond expected bilinear filtering; (5) `render-debug-loop` screenshots showing rotations at 0°, 30°, 60°, 90°, 120° demonstrating smooth continuity; (6) builds clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #322
-  - **Notes:** Child of epic #310 (z-yaw-pipeline). Slots between `TRIXEL_TO_TRIXEL` and `FRAMEBUFFER_TO_SCREEN` in the render pipeline. Reads `residualYaw` from T-054. Uses bilinear filtering; pivot is canvas center. At `residualYaw=0`, must be pixel-identical (add explicit epsilon early-out if needed). Blocks T-057 (picking must invert this pass AND the cardinal raster). Full plan: `.fleet/plans/T-054.md`.
   - **Links:**
 
 
@@ -232,11 +220,11 @@ Avoid:
   - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
   - **Links:**
 
-- [ ] **render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write** — drop `static void *s_mappedPtr` cache in `ir_render.cpp`; call `buf->mapRange` per-frame to obtain current post-orphan buffer pointer
+- [~] **render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write** — drop `static void *s_mappedPtr` cache in `ir_render.cpp`; call `buf->mapRange` per-frame to obtain current post-orphan buffer pointer
   - **ID:** T-083
   - **Area:** engine/render/src/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-083-metal-uaf-stale-pointer
   - **Blocked by:** (none)
   - **Acceptance:** (1) `s_mappedPtr` static cache removed from `getEntityIdAtMouseTrixel` in `ir_render.cpp`; (2) `buf->mapRange` called per-frame to retrieve current (post-orphan) buffer pointer — on Metal this is `m_buffer->contents() + offset` (cheap); (3) `fleet-build --target IRShapeDebug` clean on `macos-debug`; (4) `fleet-run IRShapeDebug` + hover cursor over a voxel/SDF shape for ~5s confirms `[HoverDetect] eid=...` logs fire; (5) OpenGL path unaffected
   - **Issue:** #403
@@ -266,22 +254,22 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
+- [~] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
   - **ID:** T-086
   - **Area:** engine/input
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-086-gamepad-audit
   - **Blocked by:** (none)
   - **Acceptance:** (1) audit of existing gamepad code documented (coverage gap or "already complete"); (2) Xbox-compatible and PlayStation-compatible controller input works on Linux — button/stick/trigger events plus polled state; (3) hot-plug detection works; (4) gamepad API exposed via `ir_input.hpp` with doc comments alongside keyboard/mouse APIs; (5) small test creation or extended demo reads controller input end-to-end; (6) `fleet-build --target IRShapeDebug` clean
   - **Issue:** #280
   - **Notes:** Human comment: "pretty sure already implemented — worth a pass to see if there are any improvements." Audit first; add and document only where gaps exist. macOS support is nice-to-have. No per-controller-type special-casing in consumer code. Escalate to [opus] if input architecture needs structural changes to support gamepads cleanly.
   - **Links:**
 
-- [ ] **Sprite rendering: C_Sprite / C_SpriteSheet components + design note** — define component types, register in ECS enum, write sprite design note, and commit Lua-binding stub header (child 1 of 5 of epic #14)
+- [~] **Sprite rendering: C_Sprite / C_SpriteSheet components + design note** — define component types, register in ECS enum, write sprite design note, and commit Lua-binding stub header (child 1 of 5 of epic #14)
   - **ID:** T-087
   - **Area:** engine/prefabs/irreden/render/, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-087-sprite-components
   - **Blocked by:** (none)
   - **Acceptance:** (1) design note checked into repo and cross-linked from `engine/prefabs/irreden/render/CLAUDE.md`; (2) `C_Sprite` and `C_SpriteSheet` compile and are registered in the ECS component enum; (3) Lua-binding stub header committed (reflection-only, no behavior); (4) `fleet-build --target IRShapeDebug` clean on the active preset
   - **Issue:** #282
@@ -301,6 +289,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
 - [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
 - [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
 - [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
@@ -320,4 +309,3 @@ Avoid:
 - [x] **T-062** — Modifier framework: lambda decay system + stateful-lambda design · Owner: claude/T-062-lambda-decay · PR: https://github.com/jakildev/IrredenEngine/pull/351
 - [x] **T-053** — Modifier framework: modifier_demo creation (visual showcase) · Owner: claude/T-053-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/377
 - [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
-- [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
