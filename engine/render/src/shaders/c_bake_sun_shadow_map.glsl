@@ -79,21 +79,9 @@ void main() {
 
     // Mirrors c_compute_sun_shadow.glsl pos3D reconstruction — divergence
     // here desyncs the bake/lookup texel handshake.
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    int subdivisions = max(voxelRenderOptions.y, 1);
-    vec2 canvasOffset = (voxelRenderOptions.x != 0)
-        ? frameCanvasOffset * float(subdivisions)
-        : frameCanvasOffset;
-    ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    vec3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+    );
 
     // sunZ is negated so smaller = closer to sun (engine's sunDirection
     // points TOWARD the sun, so a raw dot increases moving sunward; the

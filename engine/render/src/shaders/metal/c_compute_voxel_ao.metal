@@ -74,20 +74,14 @@ kernel void c_compute_voxel_ao(
     // At cardinalIndex==0 the path collapses to master so yaw=0 stays
     // byte-identical.
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
-        ? frameData.frameCanvasOffset * float(subdivisions)
-        : frameData.frameCanvasOffset;
-    int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
-
-    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (frameData.voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    float3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel,
+        rawDepth,
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions,
+        frameData.rasterYaw
+    );
     // `roundHalfUp` lives in ir_iso_common.metal and mirrors
     // `IRMath::roundHalfUp` on the CPU side (see
     // system_build_occupancy_grid.hpp). Both ends MUST agree on

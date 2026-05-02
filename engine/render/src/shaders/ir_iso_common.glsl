@@ -131,6 +131,55 @@ int roundHalfUp(float v) {
     return int(floor(v + 0.5));
 }
 
+ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
+    return trixelCanvasSize / ivec2(2);
+}
+
+ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
+    return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
+}
+
+int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
+    vec2 canvasOffsetFloored = floor(frameCanvasOffset);
+    return (trixelCanvasOffsetZ1.x + trixelCanvasOffsetZ1.y +
+            int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
+}
+
+vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
+    vec2 originFlooredComp = floor(origin);
+    vec2 fractComp = fract(origin);
+    if (mod(originFlooredComp.x + originFlooredComp.y + float(originModifier), 2.0) >= 1.0) {
+        if (fractComp.y < fractComp.x) {
+            origin.y -= 1.0;
+        }
+    } else if (fractComp.y < 1.0 - fractComp.x) {
+        origin.y -= 1.0;
+    }
+    return origin;
+}
+
+int effectiveTrixelSubdivisionScale(ivec2 voxelRenderOptions) {
+    return voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
+}
+
+ivec2 trixelFrameOffset(
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions
+) {
+    int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    return trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset * float(scale)));
+}
+
+ivec2 trixelCanvasPixelToIsoRel(
+    ivec2 pixel,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions
+) {
+    return pixel - trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+}
+
 // Cardinal Z-yaw helpers (T-055).
 // FrameDataVoxelToTrixel.rasterYaw is guaranteed to be a multiple of pi/2 by
 // the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
@@ -183,4 +232,26 @@ ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
 // can reference it from ir_iso_common directly.
 vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
     return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
+
+vec3 trixelCanvasPixelToWorld3D(
+    ivec2 pixel,
+    int rawDepth,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions,
+    float rasterYaw
+) {
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    ivec2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    if (scale > 1) {
+        pos3D /= float(scale);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
+    }
+    return pos3D;
 }

@@ -142,6 +142,58 @@ inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
 
+inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
+    return trixelCanvasSize / int2(2);
+}
+
+inline int2 trixelOriginOffsetZ1(int2 trixelCanvasSize) {
+    return trixelOriginOffsetX1(trixelCanvasSize) + int2(-1, -1);
+}
+
+inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOffset) {
+    const float2 canvasOffsetFloored = floor(frameCanvasOffset);
+    return (
+        trixelCanvasOffsetZ1.x + trixelCanvasOffsetZ1.y +
+        int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)
+    ) & 1;
+}
+
+inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
+    const float2 originFloored = floor(origin);
+    const float2 fractComp = fract(origin);
+    const int parity = (int(originFloored.x) + int(originFloored.y) + originModifier) & 1;
+    if (parity != 0) {
+        if (fractComp.y < fractComp.x) {
+            origin.y -= 1.0f;
+        }
+    } else if (fractComp.y < 1.0f - fractComp.x) {
+        origin.y -= 1.0f;
+    }
+    return origin;
+}
+
+inline int effectiveTrixelSubdivisionScale(int2 voxelRenderOptions) {
+    return voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
+}
+
+inline int2 trixelFrameOffset(
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions
+) {
+    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    return trixelCanvasOffsetZ1 + int2(floor(frameCanvasOffset * float(scale)));
+}
+
+inline int2 trixelCanvasPixelToIsoRel(
+    int2 pixel,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions
+) {
+    return pixel - trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+}
+
 // Cardinal Z-yaw helpers (T-055). Mirrors shaders/ir_iso_common.glsl.
 // Sign convention is documented there; bodies here match line-for-line.
 
@@ -182,6 +234,28 @@ inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
 // can reference it from ir_iso_common directly.
 inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
     return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
+}
+
+inline float3 trixelCanvasPixelToWorld3D(
+    int2 pixel,
+    int rawDepth,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    float rasterYaw
+) {
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    const int2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    if (scale > 1) {
+        pos3D /= float(scale);
+    }
+    if (cardinalIndex != 0) {
+        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
+    }
+    return pos3D;
 }
 
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the

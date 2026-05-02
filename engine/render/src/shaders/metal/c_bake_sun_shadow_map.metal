@@ -53,21 +53,14 @@ kernel void c_bake_sun_shadow_map(
     int rawDepth = encoded >> 2;
 
     // Mirrors c_compute_sun_shadow.metal pos3D reconstruction.
-    int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
-        ? frameData.frameCanvasOffset * float(subdivisions)
-        : frameData.frameCanvasOffset;
-    int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
-
-    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (frameData.voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    float3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel,
+        rawDepth,
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions,
+        frameData.rasterYaw
+    );
 
     // sunZ negated: see GLSL counterpart for the convention.
     float3 sunDir = sunFrameData.sunDirection.xyz;

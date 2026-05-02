@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "ir_iso_common.metal"
+
 struct VertexIn {
     float2 position [[attribute(0)]];
 };
@@ -31,14 +33,6 @@ struct HoveredEntityIdBuffer {
     uint2 hoveredEntityId;
     float hoveredDepth;
 };
-
-inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
-    return trixelCanvasSize / int2(2);
-}
-
-inline int2 trixelOriginOffsetZ1(int2 trixelCanvasSize) {
-    return trixelOriginOffsetX1(trixelCanvasSize) + int2(-1, -1);
-}
 
 struct VertexOut {
     float4 position [[position]];
@@ -83,27 +77,13 @@ fragment FragmentOut f_trixel_to_framebuffer(
 
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
-    const float2 canvasOffsetFloored = floor(frameData.canvasOffset);
-
     // Convert to pixel-space and apply the same parity-based row shift the
     // GLSL fragment uses (see `f_trixel_to_framebuffer.glsl`). Each iso
     // quad cell is split diagonally into two trixels; this picks which
     // row of the trixel canvas this fragment maps to.
     float2 origin = in.texCoords * textureSize;
-    const float2 originFloored = floor(origin);
-    const float2 fractComp = fract(origin);
-    const int originModifier =
-        (z1.x + z1.y + int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
-    const int parity = (int(originFloored.x) + int(originFloored.y) + originModifier) & 1;
-    if (parity != 0) {
-        if (fractComp.y < fractComp.x) {
-            origin.y -= 1.0f;
-        }
-    } else {
-        if (fractComp.y < 1.0f - fractComp.x) {
-            origin.y -= 1.0f;
-        }
-    }
+    const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
+    origin = trixelFramebufferSamplePosition(origin, originModifier);
 
     const float2 sampleUv = origin / textureSize;
     float4 color = triangleColors.sample(triangleSampler, sampleUv);

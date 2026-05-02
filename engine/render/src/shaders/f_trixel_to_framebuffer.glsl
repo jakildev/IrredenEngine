@@ -9,6 +9,8 @@
 
 #version 460 core
 
+#include "ir_iso_common.glsl"
+
 in vec2 TexCoords;
 
 layout (binding = 0) uniform sampler2D triangleColors;
@@ -43,34 +45,12 @@ float normalizeDistance(int dist) {
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
 
-ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
-    return ivec2(trixelCanvasSize) / ivec2(2);
-}
-
-ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
-    return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
-}
-
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
-    vec2 canvasOffsetFloored = floor(canvasOffset);
     vec2 origin = TexCoords * vec2(textureSize);
-    vec2 originFlooredComp = floor(origin);
-    vec2 fractComp = fract(origin);
-    int originModifier = (z1.x + z1.y + int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
-
-    // See IRMath::pos2DIsoToTriangleIndex
-    if(mod(originFlooredComp.x + originFlooredComp.y + originModifier, 2.0) >= 1) {
-        if(fractComp.y < fractComp.x) {
-            origin = vec2(origin.x, origin.y - 1);
-        }
-    }
-    else {
-        if(fractComp.y < 1 - fractComp.x) {
-            origin = vec2(origin.x, origin.y - 1);
-        }
-    }
+    int originModifier = trixelOriginModifier(z1, canvasOffset);
+    origin = trixelFramebufferSamplePosition(origin, originModifier);
 
     vec4 color = textureLod(triangleColors, origin / textureSize, 0);
     int rawDist = textureLod(triangleDistances, origin / textureSize, 0).r;

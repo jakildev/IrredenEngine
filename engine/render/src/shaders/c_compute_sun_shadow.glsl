@@ -242,21 +242,9 @@ void main() {
     // stays in world coordinates (camera-independent), so only the surface
     // position needs the R(-rasterYaw) compose. At cardinalIndex==0 the
     // path collapses to master so yaw=0 stays byte-identical.
-    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    int subdivisions = max(voxelRenderOptions.y, 1);
-    vec2 canvasOffset = (voxelRenderOptions.x != 0)
-        ? frameCanvasOffset * float(subdivisions)
-        : frameCanvasOffset;
-    ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    vec3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+    );
 
     // Screen-space lookup: replaces the inner march with one texel read
     // against the bake output. sunZ is negated (smaller = closer to sun)

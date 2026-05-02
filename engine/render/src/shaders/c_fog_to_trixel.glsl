@@ -78,21 +78,10 @@ void main() {
     // cardinalIndex==0 the path collapses to master so yaw=0 stays
     // byte-identical.
     const int rawDepth = encoded >> 2;
-    const int subdivisions = max(voxelRenderOptions.y, 1);
-    const vec2 canvasOffset = (voxelRenderOptions.x != 0)
-        ? frameCanvasOffset * float(subdivisions)
-        : frameCanvasOffset;
-    const ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
-    const ivec3 surfaceVoxel = ivec3(round(pos3D));
+    vec3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+    );
+    const ivec3 surfaceVoxel = roundHalfUp(pos3D);
 
     // Iso convention: X-Y is the floor plane, +Z is the downward height
     // axis, so the fog grid lookup is (x, y) with half-extent offset.

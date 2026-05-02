@@ -82,8 +82,7 @@ void main() {
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
-            trixelCanvasOffsetZ1 +
-            ivec2(floor(frameCanvasOffset)) +
+            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             ivec2(gl_LocalInvocationID.xy) +
             pos3DtoPos2DIso(voxelPositionInt);
         writeDistanceTap(canvasPixel, voxelDistance);
@@ -97,8 +96,7 @@ void main() {
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = ivec3(round(voxelPositionAligned * float(subdivisions)));
     const ivec2 frameOffsetFixed =
-        trixelCanvasOffsetZ1 +
-        ivec2(floor(frameCanvasOffset * float(subdivisions)));
+        trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
     ivec3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
