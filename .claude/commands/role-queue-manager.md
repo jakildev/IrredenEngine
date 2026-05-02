@@ -355,8 +355,12 @@ You are the sole TASKS.md editor. Each maintenance pass:
        cached `repos.engine.prs[]` or `repos.game.prs[]` (already
        read at startup — see cache schema above) for a PR whose
        `headRefName` contains the task ID (e.g. `claude/T-090`
-       contains `T-090`). If an open PR exists, skip — the PR will
-       close the issue on merge and step 4 will flip the task then.
+       contains `T-090`). If no `headRefName` match is found, also
+       check whether any open PR's `title` contains the task ID —
+       human-opened PRs may not follow the `claude/T-NNN-*` branch
+       naming convention. If a PR is found by either field, skip —
+       the PR will close the issue on merge and step 4 will flip the
+       task then.
     b. If no open PR covers the task: remove the task entry from
        TASKS.md (delete the `- [ ]` or `- [~]` bullet and all its
        sub-fields up to the next `- [ ]`/`- [~]`/section header).
@@ -365,6 +369,9 @@ You are the sole TASKS.md editor. Each maintenance pass:
        `rm -f .fleet/plans/<task-ID>.md`
        Record the pruned task ID and closed issue number in the
        iteration summary.
+
+    Note: `[!]` blocked tasks are not scanned here; if a blocked
+    task's issue closes, the entry remains until manually reviewed.
 
     This step runs in **review-only mode** as well — it repairs
     existing state without expanding the queue.
