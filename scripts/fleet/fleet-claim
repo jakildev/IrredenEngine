@@ -203,6 +203,9 @@ for blocker in blockers:
                 resolved_via_git = False
                 if branch and branch not in ('free', '(none)', ''):
                     try:
+                        # No `git fetch origin` here intentionally: stale refs
+                        # produce false-negatives (claim fails until next fetch),
+                        # never false-positives (unmerged branch treated as done).
                         r = subprocess.run(
                             ['git', 'merge-base', '--is-ancestor',
                              f'origin/{branch}', 'origin/master'],
