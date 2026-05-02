@@ -201,25 +201,18 @@ kernel void c_compute_sun_shadow(
 
     int rawDepth = encoded >> 2;
 
-    int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
-        ? frameData.frameCanvasOffset * float(subdivisions)
-        : frameData.frameCanvasOffset;
-    int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
-
     // sunDirection stays in world coordinates (camera-independent), so only
     // the surface position needs the R(-rasterYaw) compose. At
     // cardinalIndex==0 the path collapses to master so yaw=0 stays
     // byte-identical.
-    int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (frameData.voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    float3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel,
+        rawDepth,
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions,
+        frameData.rasterYaw
+    );
 
     // Screen-space lookup; mirrors c_compute_sun_shadow.glsl.
     if (sunFrameData.useScreenSpaceShadow != 0) {

@@ -730,7 +730,7 @@ inline int snapLatticeWalk(
     const int dStart = dMin + ((3 - rem) % 3);
     for (int d = dStart; d <= dMax; d += 3) {
         const float3 p = isoToLocal3D(isoPixelRel, float(d));
-        const int3 voxelPos = int3(round(p));
+        const int3 voxelPos = roundHalfUp(p);
         const int2 projected = pos3DtoPos2DIso(voxelPos);
         if (projected.x != isoPixelRel.x || projected.y != isoPixelRel.y) {
             continue;
@@ -838,7 +838,7 @@ kernel void c_shapes_to_trixel(
         : float3( yawC * worldPos.x + yawS * worldPos.y,
                  -yawS * worldPos.x + yawC * worldPos.y,
                   worldPos.z);
-    const int3 origin = int3(round(viewPos));
+    const int3 origin = roundHalfUp(viewPos);
 
     const int renderMode = frameData.voxelRenderOptions.x;
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
@@ -900,9 +900,11 @@ kernel void c_shapes_to_trixel(
 
     const int2 pixelCoord = isoOrigin + int2(localId.xy);
 
-    const int2 frameOffset =
-        frameData.trixelCanvasOffsetZ1 +
-        int2(floor(frameData.frameCanvasOffset * float(sub)));
+    const int2 frameOffset = trixelFrameOffset(
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions
+    );
 
     const int2 baseCanvasPixel = frameOffset + pixelCoord;
     if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= frameData.canvasSize.x + 3 ||

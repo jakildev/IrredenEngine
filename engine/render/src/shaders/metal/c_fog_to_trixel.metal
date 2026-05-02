@@ -38,21 +38,15 @@ kernel void c_fog_to_trixel(
     // frame; the fog grid is world-space (X-Y plane). At cardinalIndex==0
     // the path collapses to master so yaw=0 stays byte-identical.
     const int rawDepth = encoded >> 2;
-    const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    const float2 canvasOffset = (frameData.voxelRenderOptions.x != 0)
-        ? frameData.frameCanvasOffset * float(subdivisions)
-        : frameData.frameCanvasOffset;
-    const int2 isoRel =
-        pixel - frameData.trixelCanvasOffsetZ1 - int2(floor(canvasOffset));
-    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (frameData.voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
-    const int3 surfaceVoxel = int3(round(pos3D));
+    float3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel,
+        rawDepth,
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions,
+        frameData.rasterYaw
+    );
+    const int3 surfaceVoxel = roundHalfUp(pos3D);
 
     // Iso convention: X-Y is the floor plane, +Z is the downward height
     // axis, so the fog grid lookup is (x, y) with half-extent offset.

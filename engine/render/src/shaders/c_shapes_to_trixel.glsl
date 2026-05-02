@@ -640,7 +640,7 @@ int snapLatticeWalk(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
     int dStart = dMin + ((3 - rem) % 3);
     for (int d = dStart; d <= dMax; d += 3) {
         vec3 p = isoToLocal3D(isoPixelRel, float(d));
-        ivec3 voxelPos = ivec3(round(p));
+        ivec3 voxelPos = roundHalfUp(p);
         if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
         // voxelPos lives in VIEW frame; the SDF is parametric in shape-local
         // (= world) coords. R_z(+rasterYaw) is integer-valued at cardinal
@@ -727,7 +727,7 @@ void main() {
         : vec3( yawC * worldPos.x + yawS * worldPos.y,
                -yawS * worldPos.x + yawC * worldPos.y,
                 worldPos.z);
-    ivec3 origin = ivec3(round(viewPos));
+    ivec3 origin = roundHalfUp(viewPos);
 
     int renderMode = voxelRenderOptions.x;
     int subdivisions = max(voxelRenderOptions.y, 1);
@@ -793,8 +793,8 @@ void main() {
 
     ivec2 pixelCoord = isoOrigin + ivec2(gl_LocalInvocationID.xy);
 
-    ivec2 frameOffset = trixelCanvasOffsetZ1 +
-        ivec2(floor(frameCanvasOffset * float(sub)));
+    ivec2 frameOffset =
+        trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
     ivec2 baseCanvasPixel = frameOffset + pixelCoord;
     if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= canvasSize.x + 3 ||

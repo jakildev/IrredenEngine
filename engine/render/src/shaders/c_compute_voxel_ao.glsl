@@ -108,21 +108,12 @@ void main() {
     // world); compose R(-rasterYaw) onto the iso inverse to recover world
     // coords, and rotate the raster-frame outward / tangent vectors so the
     // occupancy grid sampling walks the world axes.
+    // Also computed inside trixelCanvasPixelToWorld3D; retained here for the
+    // sampling-vector rotation below.
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    int subdivisions = max(voxelRenderOptions.y, 1);
-    vec2 canvasOffset = (voxelRenderOptions.x != 0)
-        ? frameCanvasOffset * float(subdivisions)
-        : frameCanvasOffset;
-    ivec2 isoRel =
-        pixel - trixelCanvasOffsetZ1 - ivec2(floor(canvasOffset));
-
-    vec3 pos3D = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
-    if (voxelRenderOptions.x != 0) {
-        pos3D /= float(subdivisions);
-    }
-    if (cardinalIndex != 0) {
-        pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
-    }
+    vec3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+    );
     // `roundHalfUp` lives in ir_iso_common.glsl and mirrors
     // `IRMath::roundHalfUp` on the CPU side (see
     // system_build_occupancy_grid.hpp). Both ends MUST agree on

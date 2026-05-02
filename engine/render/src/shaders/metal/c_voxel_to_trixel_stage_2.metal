@@ -91,8 +91,11 @@ kernel void c_voxel_to_trixel_stage_2(
             pos3DtoDistance(voxelPositionInt), face
         );
         const int2 canvasPixel =
-            frameData.trixelCanvasOffsetZ1 +
-            int2(floor(frameData.frameCanvasOffset)) +
+            trixelFrameOffset(
+                frameData.trixelCanvasOffsetZ1,
+                frameData.frameCanvasOffset,
+                frameData.voxelRenderOptions
+            ) +
             int2(localId) +
             pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(
@@ -115,9 +118,11 @@ kernel void c_voxel_to_trixel_stage_2(
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 voxelPositionFixed = int3(round(voxelPositionAligned * float(subdivisions)));
-    const int2 frameOffsetFixed =
-        frameData.trixelCanvasOffsetZ1 +
-        int2(floor(frameData.frameCanvasOffset * float(subdivisions)));
+    const int2 frameOffsetFixed = trixelFrameOffset(
+        frameData.trixelCanvasOffsetZ1,
+        frameData.frameCanvasOffset,
+        frameData.voxelRenderOptions
+    );
 
     int3 microPositionFixed =
         faceMicroPositionFixed(face, voxelPositionFixed, u, v);
