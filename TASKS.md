@@ -188,11 +188,11 @@ Avoid:
   - **Notes:** Metal shaders crash at runtime referencing `frameData.rasterYaw` which doesn't exist in the Metal struct. The C++ struct is also missing the four fields (GLSL has been reading garbage/zero-padding). Default value when no rotation is happening is 0 for all three yaws — forward-compatible. macOS/Metal only crash; WSL/Linux (OpenGL) is unaffected.
   - **Links:**
 
-- [ ] **Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment** — restructure SDF dispatch to eliminate confusing nesting, add analytical fast paths at non-zero yaw, and align snap-mode voxel-pool carving with rasterYaw from T-055
+- [~] **Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment** — restructure SDF dispatch to eliminate confusing nesting, add analytical fast paths at non-zero yaw, and align snap-mode voxel-pool carving with rasterYaw from T-055
   - **ID:** T-068
   - **Area:** engine/render/src/shaders, engine/prefabs/irreden/render/systems
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-068-sdf-cardinal-snap-align
   - **Blocked by:** (none)
   - **Acceptance:** (1) SDF dispatch path has analytical fast paths at non-zero yaw OR the O(N) brute-force path is explicitly documented as intentional with the confusing multi-branch structure removed; (2) `smoothMode` gate restructured to eliminate redundancy; (3) snap-mode voxel-pool carving uses `rasterYaw` to align with cardinal-snap trixel raster from T-055; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) `render-debug-loop` screenshots at yaw=0 (byte-identical to master), yaw=π/6, yaw=π/4, yaw=π/2 verify no coverage gaps
   - **Issue:** #345
@@ -243,38 +243,28 @@ Avoid:
   - **Notes:** Pre-existing UAF exposed by T-069 (Metal entity-id write). `MetalBufferImpl::subData` orphans `m_buffer` each frame; `s_mappedPtr` cached on first call now points into freed buffer. Option A (recommended): drop static cache, call `mapRange` per-frame. Option B: memcpy-under-fence for persistent-map buffers (larger scope). Bug was masked before T-069 because Metal wrote zeros, matching `kNullEntity`.
   - **Links:**
 
-- [ ] **merger: dedupe semantic-conflict re-comments when sha pair unchanged** — before posting a semantic-conflict comment, check if PR already carries `fleet:semantic-conflict` and the master×PR sha pair matches the previously-posted comment; skip re-post if so
+- [~] **merger: dedupe semantic-conflict re-comments when sha pair unchanged** — before posting a semantic-conflict comment, check if PR already carries `fleet:semantic-conflict` and the master×PR sha pair matches the previously-posted comment; skip re-post if so
   - **ID:** T-084
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-084-merger-dedupe-conflict-comments
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-merger.md` step 5d-iii checks `fleet:semantic-conflict` label presence before posting; (2) if sha pair matches prior comment, post is skipped and cooldown reset + audit log entry written as `recurring detection — comment skipped`; (3) docs-only change, no build required; (4) verified in fleet: PR with unchanged conflict receives at most one comment per sha-pair change event
   - **Issue:** #409
   - **Notes:** Observed on PR #382: same comment posted 5× with identical sha pairs (master `cecedf7` × PR `3fe6f67`). Root cause: `fleet:semantic-conflict` absent from step 3 skip list caused every iteration to clear cooldown, retry rebase, hit conflict, and re-post. Adjacent: opus-worker not picking up `fleet:semantic-conflict` on #382 worth separate investigation.
   - **Links:**
 
-- [ ] **fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix** — fix label sequencing so `fleet:changes-made` is set (atomically if possible) before `fleet:needs-fix` is removed; add defensive timeline check to reviewer role docs
+- [~] **fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix** — fix label sequencing so `fleet:changes-made` is set (atomically if possible) before `fleet:needs-fix` is removed; add defensive timeline check to reviewer role docs
   - **ID:** T-085
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-085-changes-made-sequencing
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-sonnet-author.md` and `role-opus-worker.md` option-B handoff (AMEND and DEFER modes): `fleet:changes-made` set BEFORE `fleet:needs-fix` removed, or atomically via single `gh pr edit --add-label ... --remove-label ...`; (2) `role-opus-reviewer.md` and `role-sonnet-reviewer.md`: before re-applying a missing verdict label, inspect timeline for UNLABELED events or `fleet:changes-made` presence; (3) docs-only change, no build required
   - **Issue:** #410
   - **Notes:** Stale-scout-cache race: 2m19s gap between removing `fleet:needs-fix` and adding `fleet:changes-made` caused opus-reviewer to re-apply `fleet:needs-fix`. Timeline check should cover (a) new commit, (b) new author comment, (c) UNLABELED event for `fleet:needs-fix`, (d) presence of `fleet:changes-made` — (c) is the novel signal, not covered by the existing 04-30 mitigation rule.
   - **Links:**
 
-- [~] **Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts** — move rapidly-changing status prose from feature-PR-editable CLAUDE.md sections into queue-manager-owned file(s); update worker docs to restate only changed lines when editing shared status sections
-  - **ID:** T-082
-  - **Area:** tooling, docs
-  - **Model:** opus
-  - **Owner:** claude/T-082-status-prose-factor
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) rapidly-changing status prose (e.g. "Open follow-ups", "Runtime gaps", "ships X of Y systems") factored out of CLAUDE.md sections that feature PRs touch, into queue-manager-owned file(s); OR `simplify/SKILL.md` flags diffs touching >2 paragraphs of a shared status section as conflict-prone; (2) worker docs updated: when editing CLAUDE.md "Open follow-ups"/"Status" sections, restate only changed lines; (3) path chosen (option 1 or 2) documented in `CLAUDE.md` or relevant role doc
-  - **Issue:** #389
-  - **Notes:** Root cause: T-061/T-060/T-062 all authored against pre-T-061 master; all three rewrote rapidly-changing status prose in `engine/prefabs/irreden/common/CLAUDE.md`; both #348 and #351 got `fleet:semantic-conflict` for opus-worker resolution. Three fix options in issue; recommend option 1 (same shape as splitting per-task plans into `~/.fleet/plans/`). Option 2 is cheaper but relies on agent compliance.
-  - **Links:**
 
 - [ ] **Input: audit and document gamepad support** — verify existing engine gamepad coverage; fill gaps so button/stick/trigger events and polled state are exposed through `ir_input.hpp` on Linux (and Windows/macOS)
   - **ID:** T-086
@@ -311,6 +301,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
 - [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
 - [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
 - [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
@@ -330,4 +321,3 @@ Avoid:
 - [x] **T-053** — Modifier framework: modifier_demo creation (visual showcase) · Owner: claude/T-053-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/377
 - [x] **T-064** — engine/system docs: document 'no function-local static for system state' rule · Owner: claude/T-064-system-static-docs · PR: https://github.com/jakildev/IrredenEngine/pull/349
 - [x] **T-060** — Modifier framework: wire MODIFIER_RESOLVE_EXEMPT via archetype exclude-tag filter · Owner: claude/T-060-exclude-tag-filter · PR: https://github.com/jakildev/IrredenEngine/pull/348
-- [x] **T-061** — Modifier framework: pre-destroy hook for auto-sweep of source-attributed modifiers · Owner: claude/T-061-pre-destroy-hook · PR: https://github.com/jakildev/IrredenEngine/pull/347
