@@ -3,12 +3,13 @@ include(FetchContent)
 # stb is already declared by engine/render/CMakeLists.txt; the second
 # FetchContent_Declare with the same name is a no-op (CMake reuses the cache).
 # Declared here too so img_diff can build standalone if a future configure
-# ever excludes the engine subdir. GIT_TAG master intentionally matches
-# engine/render/CMakeLists.txt — both track the same floating ref.
+# ever excludes the engine subdir. SHA pinned so standalone builds are
+# reproducible; keep in sync with engine/render/CMakeLists.txt when that
+# dependency is updated.
 FetchContent_Declare(
     stbimage
     GIT_REPOSITORY https://github.com/nothings/stb/
-    GIT_TAG master
+    GIT_TAG 31c1ad37456438565541f4919958214b6e762fb4
 )
 FetchContent_MakeAvailable(stbimage)
 
