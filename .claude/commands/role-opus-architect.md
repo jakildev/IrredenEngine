@@ -220,6 +220,22 @@ conversation), use the same flow:
    - Whether it should be one task or broken into subtasks
    - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
    - Acceptance criteria
+   - **Cross-system audit (when planning a deletion or migration of
+     a shared resource — component, SSBO, GPU buffer, system,
+     coordinate convention, etc.).** List every consumer of the
+     resource being changed and a per-consumer migration plan.
+     Audit by grep on the type/symbol name and on slot/binding
+     numbers (some consumers reference resources by index, not
+     name). Without this section the worker discovers gaps mid-task
+     and escalates: T-071's design doc planned `BUILD_OCCUPANCY_GRID`
+     deletion based on the sun-shadow consumer alone, missing AO
+     (`c_compute_voxel_ao.glsl` slot 28) and light-volume
+     (`detail::hasLineOfSight`) which both also depend on it. T-072
+     then expected the grid to still exist as a GPU resource T-071
+     was deleting. Sign-convention drift between parallel PRs
+     (T-055 vs T-056 on `visualYaw`→world rotation) is the same
+     class of bug — name the convention and the consumers that
+     must agree on it.
 3. Save the plan to `~/.fleet/plans/issue-<N>.md` using the Write tool.
 4. Remove `fleet:needs-plan`. Do NOT touch `human:approved` —
    it's still on the issue from when the human triaged it, and

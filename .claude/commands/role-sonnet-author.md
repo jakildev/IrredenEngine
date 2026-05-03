@@ -232,7 +232,19 @@ Each iteration:
        5. **Skip steps b–g.** Jump to step h (move to next
           iteration). The PR's code is unchanged.
 
-   b. **(AMEND path)** **Immediately remove the feedback label** to
+   b. **(AMEND path)** **First, claim the branch by checking out the
+      PR.** `fleet-worktree-busy-branches` is a fast-path filter; git
+      is the source of truth and can change between the helper call
+      and the checkout (observed TOCTOU on PRs #402, #406, #425). Do
+      this BEFORE removing any label so a stale-busy-branch list
+      cannot leave the PR in a labeless state:
+      `gh pr checkout <N> --repo jakildev/IrredenEngine`
+      If checkout fails with `branch is already used by worktree at
+      ...`, **do NOT remove the feedback label**. Skip this PR and
+      move to the next iteration — the label stays on the PR so the
+      agent that does own the worktree can pick it up.
+
+      With checkout confirmed, **remove the feedback label** to
       prevent another agent from also picking it up:
       `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred"`
 
@@ -692,6 +704,11 @@ Each iteration:
    summary so `fleet-down --summary` has coverage even if the pane is
    between iterations at shutdown:
    `fleet-iteration-summary <your-worktree-basename> "T-NNN: <task title>. PR: #<N>. <Snags if any — under 100 words.>"`
+   **Do NOT use backticks in the summary text.** Your bash shell
+   evaluates backticks within double-quoted args as command
+   substitution — `` `something` `` will be run as a command, fail,
+   and silently strip from the saved summary. Write technical
+   references in plain prose.
 
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`. Print

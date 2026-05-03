@@ -330,6 +330,12 @@ iteration of polling, reviewing, and exiting cleanly:
    a worker agent tries to check out a PR branch you just reviewed.
 4. After the reset, write a per-iteration summary:
    `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   **Do NOT use backticks in the summary text.** Your bash shell
+   evaluates backticks within double-quoted args as command
+   substitution — `` `something` `` will be run as a command, fail,
+   and silently strip from the saved summary (observed on
+   opus-reviewer 2026-05-02). Write technical references in plain
+   prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
    Then print
    `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
@@ -378,6 +384,24 @@ iterations write nothing).
   `gh pr edit <N> ... --add-label "fleet:..."`. Describing the label
   change in the review body does NOT set the label — only the gh
   command does. Verify with `gh pr view <N> --json labels` if unsure.
+- **Never re-apply a verdict label without posting a new review in
+  the same iteration.** A PR with a prior Opus needs-fix verdict in
+  history but no current label is NOT automatically a label-fixup
+  candidate — the label may have been legitimately cleared by the
+  author's `commit-and-push` after a fix push, by an ESCALATE
+  handoff (swap of `fleet:needs-fix` for `fleet:changes-made`), or
+  by a worker mid-claim. Before re-stamping a "missing" verdict
+  label, do one live check for ANY of: (a) a new commit since your
+  last review's `submittedAt`, (b) a new author comment, (c) a
+  recent `fleet:needs-fix` / `fleet:approved` UNLABELED event, (d)
+  presence of `fleet:changes-made`. If any are present, the prior
+  verdict was author-acknowledged — treat the PR as a re-review
+  candidate and post a fresh review (which sets the label as part
+  of its own flow) rather than re-stamping the stale verdict.
+  `gh pr view <N> --json labels` alone does not show label-strip
+  events; use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
+  to see UNLABELED events. Observed bogus re-stamps: PRs #347,
+  #348, #394.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.

@@ -365,6 +365,11 @@ iteration of polling, reviewing, and exiting cleanly:
    a worker agent tries to check out a PR branch you just reviewed.
 4. After the reset, write a per-iteration summary:
    `fleet-iteration-summary sonnet-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   **Do NOT use backticks in the summary text.** Your bash shell
+   evaluates backticks within double-quoted args as command
+   substitution — `` `something` `` will be run as a command, fail,
+   and silently strip from the saved summary. Write technical
+   references in plain prose.
    Then print
    `[sonnet-reviewer] Iteration complete. Next run in ~3m (fresh context).`
    Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
@@ -420,4 +425,16 @@ iterations write nothing).
   If you described the label change in the review body but didn't
   run the gh command, the label is NOT set — describing isn't
   doing. Verify with `gh pr view <N> --json labels`.
+- **Never re-apply a verdict label without posting a new review in
+  the same iteration.** If a PR you previously verdicted is now
+  missing its verdict label, that is NOT a label-fixup trigger —
+  the label may have been legitimately cleared by the author's
+  `commit-and-push` after a fix push, by an ESCALATE handoff (which
+  swaps `fleet:needs-fix` for `fleet:changes-made`), or by a worker
+  mid-claim on a `fleet:has-nits` PR. Heuristically re-stamping a
+  stale verdict overwrites those transitions and produces
+  invisible-needs-fix states (observed: PRs #347, #348, #394, plus
+  the 65s `fleet:has-nits` re-stamp race on #402). If you decide to
+  re-review, post a new review and set the label as part of THAT
+  review's flow. Otherwise leave the label alone.
 - Single-command Bash only (see CRITICAL section above).

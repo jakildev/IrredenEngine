@@ -366,6 +366,33 @@ You are the sole TASKS.md editor. Each maintenance pass:
        Record the pruned task ID and closed issue number in the
        iteration summary.
 
+    **Check C — claim-release comment naming a merged PR (work shipped
+    elsewhere).** Workers occasionally pick up a task, discover the
+    engineering work already shipped under a different task ID, and
+    leave a release comment on the linked issue rather than opening a
+    new PR. Without this check, the row stays open forever (the issue
+    is still OPEN, so Check B doesn't fire) and every subsequent worker
+    pays the same pickup tax (observed: T-067 hit 4×, T-089 hit 2× by
+    different opus-workers). For each `[ ]` or `[~]` task whose
+    `**Issue:** #N` is a number, fetch the most recent few comments:
+    `gh issue view <N> --repo <repo> --json comments --jq '.comments[-5:]'`
+    Look for a comment body matching the release pattern — case-insensitive
+    substrings like `releasing the t-`, `already shipped`, `work shipped under pr #`,
+    `duplicate of pr #`, `already complete` — that names a specific PR
+    number. Verify that PR's state with `gh pr view <PR-N> --repo <repo>
+    --json state,mergedAt`. If state is `MERGED`:
+    a. Flip the TASKS.md row to `[x]` (use Edit; same rules as step 5
+       below for the done-row format).
+    b. Delete plan files: `rm -f ~/.fleet/plans/<task-ID>.md` and
+       `rm -f .fleet/plans/<task-ID>.md` (use the worktree-relative
+       form for the latter).
+    c. Comment on the issue requesting human-close (only if no such
+       comment is already present after the release comment):
+       `gh issue comment <N> --repo <repo> --body "Queue-manager: marked T-NNN done in TASKS.md (work shipped under PR #<PR-N>). Suggest closing this issue."`
+       This is intentionally non-destructive — workers don't close
+       issues, the human does.
+    Record each flipped task in the iteration summary.
+
     This step runs in **review-only mode** as well — it repairs
     existing state without expanding the queue.
 
@@ -757,6 +784,11 @@ You are the sole TASKS.md editor. Each maintenance pass:
 
 10. Write a per-iteration summary, then print the maintenance summary:
     `fleet-iteration-summary queue-manager "<X issues ingested, Y tasks flipped, Z claims cleaned. Snags if any. Under 100 words.>"`
+    **Do NOT use backticks in the summary text.** Your bash shell
+    evaluates backticks within double-quoted args as command
+    substitution — `` `something` `` will be run as a command, fail,
+    and silently strip from the saved summary. Write technical
+    references in plain prose.
     `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned, W epics closed`
     `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
     `[queue-manager] Iteration complete. Next run in ~5m.`
