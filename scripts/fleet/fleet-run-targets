@@ -21,6 +21,8 @@
 set -euo pipefail
 
 BUILD_DIR=""
+SCOPE_DIR=""
+SCOPE_ALL="${IRREDEN_SCOPE_ALL:-}"
 MODE="built" # built | plan
 PLAIN=false
 EXPLICIT_BUILT=false
@@ -36,15 +38,17 @@ CMake targets to build first. For all fleet-* tools: fleet-help
 
 
 Modes (--built and --plan are mutually exclusive)
-  --built   (default) Scan $BUILD_DIR/creations and $BUILD_DIR/test for native
-            executables (Mach-O / ELF / PE). Only lists files that already
-            exist — the same basenames fleet-run looks up with find(1).
-            Default output: grouped by directory under the build tree.
+  --built   (default) Scan the build subdirectory that mirrors the current
+            source directory for native executables (Mach-O / ELF / PE).
+            From the worktree root this keeps the historical whole-tree scan.
+            Only lists files that already exist — the same basenames fleet-run
+            looks up with find(1). Default output: grouped by directory under
+            the build tree.
   --plan    Read the CMake Makefile generator's target list via
-            "cmake --build <dir> --target help", then print a curated subset:
-            lighting demos (IRLighting* except IRLightingDemo*), IRCreationDefault,
-            IRShapeDebug, IRModifierDemo, IRMetalClearTest, IRMidiPolyrhythm,
-            IRGame, DemoMidiDevice, EditorFontMaker, IrredenEngineTest.
+            "cmake --build <dir> --target help". From scoped subdirectories,
+            <dir> is the mirrored build subdirectory and the output is filtered
+            to runnable/aggregate targets (not *Lib, *Run, *Assets helpers).
+            From the engine root, retains the historical curated subset.
             Requires a configured tree ($BUILD_DIR/CMakeCache.txt). Does not
             require every binary to be built. This is NOT the same as
             "fleet-run --help" — it queries CMake's internal help target.
@@ -63,6 +67,12 @@ Other options
                         2. $IRREDEN_BUILD_DIR
                         3. git worktree root + /build
                         4. $HOME/src/IrredenEngine/build
+
+  --scope <dir>       Use <dir> instead of $PWD to determine the source-relative
+                      scan scope.
+
+  --all               Ignore directory scope and list the whole build tree.
+                      Same effect: IRREDEN_SCOPE_ALL=1 fleet-run --targets.
 
   --help | -h         Show this text.
 
@@ -102,6 +112,18 @@ while [[ $# -gt 0 ]]; do
             BUILD_DIR="$2"
             shift 2
             ;;
+        --scope)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "fleet-run-targets: --scope requires a directory path" >&2
+                exit 2
+            fi
+            SCOPE_DIR="$2"
+            shift 2
+            ;;
+        --all)
+            SCOPE_ALL=1
+            shift
+            ;;
         --built)
             MODE="built"
             EXPLICIT_BUILT=true
@@ -125,10 +147,77 @@ if $EXPLICIT_BUILT && $EXPLICIT_PLAN; then
     exit 2
 fi
 
+detect_engine_root() {
+    local root
+    root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    if [[ ! -f "$root/CMakePresets.json" ]]; then
+        if [[ -f "$root/../../CMakePresets.json" ]]; then
+            root="$(cd "$root/../.." && pwd)"
+        elif [[ -f "$root/../CMakePresets.json" ]]; then
+            root="$(cd "$root/.." && pwd)"
+        fi
+    fi
+    echo "$root"
+}
+
 if [[ -z "$BUILD_DIR" ]]; then
-    WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    WORKTREE_ROOT=$(detect_engine_root)
     BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+else
+    WORKTREE_ROOT=$(detect_engine_root)
 fi
+
+realpath_portable() {
+    local path=$1
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$path"
+    else
+        python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$path"
+    fi
+}
+
+TARGET_HELP_DIR="$BUILD_DIR"
+SCOPE_REL=""
+SCOPE_LABEL="whole tree"
+resolve_scope() {
+    [[ -z "$SCOPE_DIR" ]] && SCOPE_DIR="$PWD"
+
+    if [[ -n "$SCOPE_ALL" && "$SCOPE_ALL" != 0 ]]; then
+        return 0
+    fi
+
+    local root build scope rel
+    root=$(realpath_portable "$WORKTREE_ROOT")
+    build=$(realpath_portable "$BUILD_DIR")
+    scope=$(realpath_portable "$SCOPE_DIR")
+
+    case "$scope" in
+        "$build"/*)
+            rel=${scope#"$build"/}
+            ;;
+        "$build")
+            rel=""
+            ;;
+        "$root"/*)
+            rel=${scope#"$root"/}
+            ;;
+        "$root")
+            rel=""
+            ;;
+        *)
+            echo "fleet-run-targets: scope $SCOPE_DIR is outside $WORKTREE_ROOT; showing whole tree." >&2
+            rel=""
+            ;;
+    esac
+
+    if [[ -n "$rel" ]]; then
+        SCOPE_REL="$rel"
+        SCOPE_LABEL="$rel"
+        TARGET_HELP_DIR="$BUILD_DIR/$SCOPE_REL"
+    fi
+}
+
+resolve_scope
 
 if [[ ! -d "$BUILD_DIR" ]]; then
     echo "fleet-run-targets: build directory $BUILD_DIR does not exist." >&2
@@ -160,8 +249,44 @@ is_windowsish_executable() {
     [[ "$path" == *.exe ]] || [[ "$path" == *.EXE ]]
 }
 
+list_declared_targets() {
+    local target_dirs_file="$BUILD_DIR/CMakeFiles/TargetDirectories.txt"
+    [[ -f "$target_dirs_file" ]] || return 0
+    while IFS= read -r d; do
+        [[ "$d" == "$BUILD_DIR/$SCOPE_REL"* ]] || continue
+        local target
+        target=$(basename "$d")
+        target=${target%.dir}
+        case "$target" in
+            *Lib|*Run|*Assets|edit_cache|rebuild_cache|install|install/local|install/strip|list_install_components)
+                continue
+                ;;
+        esac
+        case "$target" in
+            IR*|Demo*|Editor*|Irreden*) printf '%s\n' "$target" ;;
+        esac
+    done <"$target_dirs_file"
+}
+
 list_built() {
     local scan_dir
+    if [[ -n "$SCOPE_REL" ]]; then
+        scan_dir="$BUILD_DIR/$SCOPE_REL"
+        [[ -d "$scan_dir" ]] || return 0
+        find "$scan_dir" -type f \( -perm -u+x -o -perm -g+x -o -perm -o+x \) 2>/dev/null \
+            | while IFS= read -r f; do
+                if is_native_executable "$f"; then
+                    printf '%s\n' "$f"
+                    continue
+                fi
+                if is_windowsish_executable "$f"; then
+                    [[ "$f" == *.dll ]] && continue
+                    printf '%s\n' "$f"
+                fi
+            done
+        return 0
+    fi
+
     for scan_dir in "$BUILD_DIR/creations" "$BUILD_DIR/test"; do
         [[ -d "$scan_dir" ]] || continue
         find "$scan_dir" -type f \( -perm -u+x -o -perm -g+x -o -perm -o+x \) 2>/dev/null \
@@ -186,7 +311,7 @@ emit_built() {
 
     list_built | LC_ALL=C sort -u >"$tmp"
     if [[ ! -s "$tmp" ]]; then
-        echo "fleet-run-targets: no built executables under creations/ or test/." >&2
+        echo "fleet-run-targets: no built executables under $SCOPE_LABEL." >&2
         echo "           try:  fleet-build --target IRShapeDebug   (auto-configures build/ on first run)" >&2
         echo "           or:   cmake --preset macos-debug  # one-time setup if build/ not yet configured" >&2
         echo "           or:   fleet-run --targets --plan   (CMake names; needs configure)" >&2
@@ -198,7 +323,7 @@ emit_built() {
         return 0
     fi
 
-    echo "fleet-run-targets: built executables under $BUILD_DIR"
+    echo "fleet-run-targets: built executables under $BUILD_DIR ($SCOPE_LABEL)"
     echo "(pass the name on the left to:  fleet-run <name>  [--args...])"
     echo
 
@@ -231,9 +356,14 @@ emit_plan() {
         exit 1
     fi
 
+    local help_dir="$BUILD_DIR"
+    if [[ -n "$SCOPE_REL" && -d "$TARGET_HELP_DIR" ]]; then
+        help_dir="$TARGET_HELP_DIR"
+    fi
+
     local help_lines
     help_lines=$(
-        cmake --build "$BUILD_DIR" --target help 2>/dev/null \
+        cmake --build "$help_dir" --target help 2>/dev/null \
             | sed -n 's/^\.\.\. //p' \
             | sed 's/ (the default if no target is provided).*//' \
             || true
@@ -244,15 +374,26 @@ emit_plan() {
         exit 1
     fi
 
-    # Executable-style targets we ship: demos, editors, tests — not static
-    # libs (*Lib), not *Run/*Assets helpers, not the IRLightingDemos umbrella.
     local matches
-    matches=$(
-        {
-            echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo' || true
-            echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRGame|IrredenEngineTest)$' || true
-        } | LC_ALL=C sort -u
-    )
+    if [[ -n "$SCOPE_REL" ]]; then
+        matches=$(
+            {
+                echo "$help_lines" \
+                    | grep -E '^(IR|Demo|Editor|Irreden)' \
+                    | grep -Ev '(Lib|Run|Assets)$' || true
+                list_declared_targets || true
+                list_built | while IFS= read -r f; do basename "$f"; done || true
+            } | LC_ALL=C sort -u
+        )
+    else
+        # Historical root behavior: curated executable-style targets we ship.
+        matches=$(
+            {
+                echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo' || true
+                echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRMidiOp1Echo|IRMidiKeyboard|IRMidiAll|IRGame|IRGameAll|IrredenEngineTest)$' || true
+            } | LC_ALL=C sort -u
+        )
+    fi
 
     if [[ -z "$matches" ]]; then
         echo "fleet-run-targets: --plan produced no matching targets (CMake help empty or unrecognized format)." >&2
@@ -266,7 +407,7 @@ emit_plan() {
         return 0
     fi
 
-    echo "fleet-run-targets: CMake executable targets (build with fleet-build --target <name>)"
+    echo "fleet-run-targets: CMake targets under $SCOPE_LABEL (build with fleet-build --target <name>)"
     echo "These names match fleet-run once the binary exists in the build tree."
     echo
     printf '%s\n' "$matches" | awk '

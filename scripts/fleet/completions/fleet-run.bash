@@ -105,10 +105,10 @@ _irreden_fleet_run_complete() {
 
     if _irreden_fleet_run_targets_mode; then
         if [[ "$cur" == -* ]]; then
-            COMPREPLY=($(compgen -W "--help --plain --plan --built --build-dir" -- "$cur"))
+            COMPREPLY=($(compgen -W "--help --plain --plan --built --build-dir --scope --all" -- "$cur"))
             return 0
         fi
-        if [[ "$prev" == --build-dir ]]; then
+        if [[ "$prev" == --build-dir || "$prev" == --scope ]]; then
             return 1
         fi
         return 1
