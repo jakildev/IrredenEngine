@@ -183,6 +183,56 @@ constexpr float sqrt(float value) {
     return glm::sqrt(value);
 }
 
+/// 2D rotation of @p v by @p angle radians around the origin. The rotation
+/// is CCW for positive angle in a Y-up coordinate system; the visible
+/// direction reverses when applied in a Y-down system.
+constexpr vec2 rotate2D(const vec2 v, float angle) {
+    const float c = glm::cos(angle);
+    const float s = glm::sin(angle);
+    return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+/// CPU mirror of `rasterYawCardinalIndex` in `shaders/ir_iso_common.glsl`.
+/// `IRPrefab::Camera::computeYawSplit` snaps `rasterYaw` to a multiple of
+/// pi/2; the round() defends against bit-wise drift only. Negative inputs
+/// fold via `(q mod 4 + 4) mod 4` into [0, 3]. CPU and GPU MUST resolve
+/// the same cardinal index for any picking ↔ raster handshake.
+constexpr int rasterYawCardinalIndex(float rasterYaw) {
+    constexpr float kHalfPi = 1.5707963267948966f;
+    const int q = static_cast<int>(glm::round(rasterYaw / kHalfPi));
+    return ((q % 4) + 4) % 4;
+}
+
+/// CPU mirror of `rotateCardinalZ` in `shaders/ir_iso_common.glsl`.
+/// World→view = R_z(-rasterYaw) for cardinal index in [0, 3]. The voxel
+/// rasterizer applies this to world positions before iso projection, so
+/// any screen↔world picking inverse must compose its inverse on the
+/// recovered 3D position.
+constexpr ivec3 rotateCardinalZ(const ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return ivec3(-v.y,  v.x, v.z);
+    return v;
+}
+
+/// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
+/// View→world = R_z(+rasterYaw). Use after `isoPixelToPos3D` to lift a
+/// reconstructed 3D position back to true world coordinates.
+constexpr vec3 rotateCardinalZInv(const vec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return vec3( v.y, -v.x, v.z);
+    return v;
+}
+
+/// Integer view→world variant matching GLSL `rotateCardinalZInvI`.
+constexpr ivec3 rotateCardinalZInvI(const ivec3 v, int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3(-v.y,  v.x, v.z);
+    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == 3) return ivec3( v.y, -v.x, v.z);
+    return v;
+}
+
 /// Orthographic projection matrix.  Selects the depth range convention
 /// ([0,1] for Metal/Vulkan, [-1,1] for OpenGL) from IRPlatform::kGfx.
 inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {

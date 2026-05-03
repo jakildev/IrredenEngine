@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_math.hpp>
 
+#include <glm/gtc/constants.hpp>
+
 // Tests for the pure/constexpr helpers in ir_math.hpp.
 // Platform-dependent helpers (pos3DtoPos2DScreen, ortho) are excluded.
 
@@ -566,6 +568,161 @@ TEST(EntityIsoBoundsTest, BoundsEncloseAllCorners) {
                     << "corner (" << dx << "," << dy << "," << dz << ") iso=("
                     << iso.x << "," << iso.y << ") not in bounds";
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// rotate2D — used by the screen-space residual rotate inverse for picking.
+// ---------------------------------------------------------------------------
+
+TEST(Rotate2DTest, ZeroAngleIsIdentity) {
+    auto r = IRMath::rotate2D(IRMath::vec2(3.0f, -1.5f), 0.0f);
+    EXPECT_NEAR(r.x, 3.0f, kTolerance);
+    EXPECT_NEAR(r.y, -1.5f, kTolerance);
+}
+
+TEST(Rotate2DTest, HalfPiRotatesXIntoY) {
+    // (1, 0) rotated by +π/2 → (0, 1).
+    auto r = IRMath::rotate2D(IRMath::vec2(1.0f, 0.0f), glm::half_pi<float>());
+    EXPECT_NEAR(r.x, 0.0f, kTolerance);
+    EXPECT_NEAR(r.y, 1.0f, kTolerance);
+}
+
+TEST(Rotate2DTest, NegativeHalfPiRotatesYIntoX) {
+    // (0, 1) rotated by -π/2 → (1, 0).
+    auto r = IRMath::rotate2D(IRMath::vec2(0.0f, 1.0f), -glm::half_pi<float>());
+    EXPECT_NEAR(r.x, 1.0f, kTolerance);
+    EXPECT_NEAR(r.y, 0.0f, kTolerance);
+}
+
+TEST(Rotate2DTest, FullCircleRoundTrips) {
+    auto r = IRMath::rotate2D(IRMath::vec2(2.0f, 5.0f), glm::two_pi<float>());
+    EXPECT_NEAR(r.x, 2.0f, 1e-4f);
+    EXPECT_NEAR(r.y, 5.0f, 1e-4f);
+}
+
+TEST(Rotate2DTest, ForwardThenInverseIsIdentity) {
+    // Inverse of R(α) is R(-α); composition is the picking inverse pattern
+    // used by mousePosition2DIsoScreenRender.
+    constexpr float angle = 0.37f;
+    const IRMath::vec2 v(4.2f, -1.8f);
+    auto roundTrip = IRMath::rotate2D(IRMath::rotate2D(v, angle), -angle);
+    EXPECT_NEAR(roundTrip.x, v.x, kTolerance);
+    EXPECT_NEAR(roundTrip.y, v.y, kTolerance);
+}
+
+// ---------------------------------------------------------------------------
+// rasterYawCardinalIndex — must agree with the GLSL/Metal helper bitwise so
+// the CPU mouseTrixelPositionWorld and the GPU voxel rasterizer compare on
+// the same canvas frame.
+// ---------------------------------------------------------------------------
+
+TEST(RasterYawCardinalIndexTest, ZeroIsIndexZero) {
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(0.0f), 0);
+}
+
+TEST(RasterYawCardinalIndexTest, ExactCardinals) {
+    constexpr float halfPi = glm::half_pi<float>();
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(halfPi),       1);
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(2.0f * halfPi), 2);
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(3.0f * halfPi), 3);
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(4.0f * halfPi), 0);
+}
+
+TEST(RasterYawCardinalIndexTest, NegativeFoldsIntoRange) {
+    constexpr float halfPi = glm::half_pi<float>();
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(-halfPi),       3);
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(-2.0f * halfPi), 2);
+    EXPECT_EQ(IRMath::rasterYawCardinalIndex(-3.0f * halfPi), 1);
+}
+
+// ---------------------------------------------------------------------------
+// rotateCardinalZ / rotateCardinalZInv — must round-trip and match the GLSL
+// sign convention (rotateCardinalZ is world→view = R_z(-rasterYaw)).
+// ---------------------------------------------------------------------------
+
+TEST(RotateCardinalZTest, IdentityCardinalIsNoOp) {
+    IRMath::ivec3 v(3, -2, 5);
+    auto r = IRMath::rotateCardinalZ(v, 0);
+    EXPECT_EQ(r.x, v.x);
+    EXPECT_EQ(r.y, v.y);
+    EXPECT_EQ(r.z, v.z);
+}
+
+TEST(RotateCardinalZTest, MatchesGLSLPlusXMappings) {
+    // World +X (rasterYaw=π/2 → cardinalIndex=1) → view -Y, per the GLSL
+    // convention documented in ir_iso_common.glsl: world→view = R_z(-rasterYaw).
+    auto r = IRMath::rotateCardinalZ(IRMath::ivec3(1, 0, 0), 1);
+    EXPECT_EQ(r.x, 0);
+    EXPECT_EQ(r.y, -1);
+    EXPECT_EQ(r.z, 0);
+}
+
+TEST(RotateCardinalZTest, HalfTurnNegatesXY) {
+    // rasterYaw=π → cardinalIndex=2, world→view negates X and Y.
+    auto r = IRMath::rotateCardinalZ(IRMath::ivec3(3, -4, 7), 2);
+    EXPECT_EQ(r.x, -3);
+    EXPECT_EQ(r.y, 4);
+    EXPECT_EQ(r.z, 7);
+}
+
+TEST(RotateCardinalZTest, InverseRoundTripsAllCardinals) {
+    // For every cardinal index, rotateCardinalZInv ∘ rotateCardinalZ must
+    // be identity. This is the load-bearing property for the picking
+    // inverse: world → canvas → world recovers the original world coords.
+    const IRMath::vec3 worlds[] = {
+        IRMath::vec3(0.0f, 0.0f, 0.0f),
+        IRMath::vec3(1.0f, 0.0f, 0.0f),
+        IRMath::vec3(0.0f, 1.0f, 0.0f),
+        IRMath::vec3(0.0f, 0.0f, 1.0f),
+        IRMath::vec3(2.5f, -3.5f, 1.25f),
+        IRMath::vec3(-7.0f, 11.0f, -2.0f),
+    };
+    for (int idx = 0; idx < 4; ++idx) {
+        for (const auto &w : worlds) {
+            const IRMath::ivec3 wInt(static_cast<int>(w.x), static_cast<int>(w.y),
+                                     static_cast<int>(w.z));
+            const IRMath::ivec3 rotated = IRMath::rotateCardinalZ(wInt, idx);
+            const IRMath::vec3 back =
+                IRMath::rotateCardinalZInv(IRMath::vec3(rotated), idx);
+            EXPECT_NEAR(back.x, static_cast<float>(wInt.x), kTolerance) << "idx=" << idx;
+            EXPECT_NEAR(back.y, static_cast<float>(wInt.y), kTolerance) << "idx=" << idx;
+            EXPECT_NEAR(back.z, static_cast<float>(wInt.z), kTolerance) << "idx=" << idx;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Picking inverse — composition test that mirrors the on-device flow.
+// Forward: world → R_z(rasterYaw) → world_rotated → M → canvas iso.
+// Inverse: canvas iso → isoPixelToPos3D(depth) → R_z(-rasterYaw) → world.
+// At the original depth this round-trips exactly.
+// ---------------------------------------------------------------------------
+
+TEST(PickingInverseTest, RoundTripsAcrossAllCardinals) {
+    constexpr float halfPi = glm::half_pi<float>();
+    const float rasterYaws[] = {0.0f, halfPi, 2.0f * halfPi, 3.0f * halfPi};
+    const IRMath::ivec3 worlds[] = {
+        IRMath::ivec3(0, 0, 0),
+        IRMath::ivec3(3, 5, 0),
+        IRMath::ivec3(-2, 1, 4),
+        IRMath::ivec3(7, -3, 2),
+    };
+    for (float rasterYaw : rasterYaws) {
+        const int cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+        for (const auto &w : worlds) {
+            const IRMath::ivec3 wRotated = IRMath::rotateCardinalZ(w, cardinalIndex);
+            const IRMath::ivec2 canvasIso = IRMath::pos3DtoPos2DIso(wRotated);
+            const float depth = static_cast<float>(IRMath::pos3DtoDistance(wRotated));
+            const IRMath::vec3 recoveredRotated =
+                IRMath::isoPixelToPos3D(canvasIso.x, canvasIso.y, depth);
+            const IRMath::vec3 recoveredWorld =
+                IRMath::rotateCardinalZInv(recoveredRotated, cardinalIndex);
+            EXPECT_NEAR(recoveredWorld.x, static_cast<float>(w.x), kTolerance)
+                << "rasterYaw=" << rasterYaw << " w=(" << w.x << "," << w.y << "," << w.z << ")";
+            EXPECT_NEAR(recoveredWorld.y, static_cast<float>(w.y), kTolerance);
+            EXPECT_NEAR(recoveredWorld.z, static_cast<float>(w.z), kTolerance);
         }
     }
 }
