@@ -167,7 +167,7 @@ the following to the PR body:
    cube/voxel silhouette — a 128×128 native crop is small enough to
    embed inline and dense enough to surface 1-pixel drift that
    downscaled full-frames hide. ROI crops come for free with
-   `--auto-screenshot` once the demo's `kShots[]` table grows
+   `--auto-screenshot` once the demo's `kShots[]` table includes
    `RoiCrop` entries (see `creations/demos/shape_debug/main.cpp` for
    the canonical example).
 

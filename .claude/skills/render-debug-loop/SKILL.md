@@ -117,8 +117,10 @@ detail lives.
 #### 4b. Read the matching baseline crops (when available)
 
 If `engine/render/tests/render-baselines/<demo>/<SHA>/` exists for the
-target demo (captured per #433), Read each baseline crop alongside its
-current counterpart. Pairwise eyeballing catches drift that any single
+target demo, Read each baseline crop alongside its current counterpart.
+(`<SHA>` is the HEAD commit SHA at baseline-capture time; the capture
+procedure and directory convention are defined by #433.)
+Pairwise eyeballing catches drift that any single
 shot would not flag in isolation.
 
 Use **`tools/img_diff`** (built via `IRREDEN_BUILD_TOOLS=ON`) when a
@@ -129,7 +131,9 @@ build/tools/img_diff/img_diff <baseline.png> <current.png> /tmp/diff.png
 ```
 
 The output PNG renders drifted pixels solid red against a desaturated
-baseline. A single-pixel regression jumps out immediately. Companion
+baseline, written to `/tmp/diff.png` — use the **Read** tool
+(`Read /tmp/diff.png`) to inspect it directly in the agent context.
+A single-pixel regression jumps out immediately. Companion
 to `scripts/render-compare.py`, which gives aggregate metrics
 (PSNR, max delta, match%) — use the python tool for pass/fail gates
 and `img_diff` for "show me where the drift is".
