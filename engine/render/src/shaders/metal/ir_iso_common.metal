@@ -159,8 +159,9 @@ inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOff
 }
 
 // Clamp a float canvas-pixel position into a valid `texture.read()` index.
-// Mirrors the `clamp(originIndex, ivec2(0), textureSize - 1)` pattern in
-// the GLSL fragment.
+// Metal's `texture.read()` has no built-in edge handling, unlike GLSL's
+// `textureLod()` (implicit `clamp_to_edge` via sampler). See #442 for the
+// broader GLSL/Metal coord-shift reconciliation.
 inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
     return uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
 }
