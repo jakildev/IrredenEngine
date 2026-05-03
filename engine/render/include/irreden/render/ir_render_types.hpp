@@ -226,28 +226,18 @@ struct FrameDataSun {
     // Default mirrors RenderManager::m_sunDirection (overhead with small
     // -X / -Y tilt — those match the outward-normal signs of the visible
     // X_FACE / Y_FACE so dot-product shading produces Z > X > Y).
-    // Live frame data is overwritten from resolveSun() each tick — this
+    // Live frame data is uploaded by BAKE_SUN_SHADOW_MAP each tick — this
     // default only matters before the first tick.
     vec4 sunDirection_ = vec4(-0.3f, -0.2f, -0.93f, 0.0f);
     float sunIntensity_ = 1.0f;
     float sunAmbient_ = 0.4f;
     int shadowsEnabled_ = 1;
-    int shapeCasterCount_ = 0;
-    // Number of valid entries in the OccupancyEntityBounds SSBO. The shadow
-    // compute shader linear-scans this many entries to look up the surface
-    // entity's voxel bbox so it can skip self-cells during occupancy march
-    // (the parity equivalent of analytic-path selfEntityId exclusion).
-    int occupancyBoundsCount_ = 0;
     // Mirrors `RenderManager::m_aoEnabled`. When 0 the AO compute shader
     // short-circuits with a constant 1.0 (no darkening) so the lighting
     // pass treats AO as a no-op. Wired in here rather than in its own UBO
     // because every consumer (AO compute, lighting) already binds
     // FrameDataSun.
     int aoEnabled_ = 1;
-    // When 1 the lookup reads from the BAKE-populated sun depth map;
-    // when 0 the legacy DDA + analytic-caster path runs unchanged.
-    int useScreenSpaceShadow_ = 0;
-    int _padding0_ = 0;
     // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
     // each frame in system_bake_sun_shadow_map. .w is std140 padding.
     vec4 sunBasisU_ = vec4(0.0f);
@@ -257,30 +247,12 @@ struct FrameDataSun {
     vec2 sunBufferOriginUV_ = vec2(0.0f);
     vec2 sunBufferTexelSize_ = vec2(1.0f);
 };
-static_assert(sizeof(FrameDataSun) == 96, "FrameDataSun must match std140 layout");
-static_assert(offsetof(FrameDataSun, sunBasisU_) == 48, "sunBasisU_ must align after _padding0_");
+static_assert(sizeof(FrameDataSun) == 80, "FrameDataSun must match std140 layout");
+static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(
-    offsetof(FrameDataSun, sunBufferOriginUV_) == 80,
+    offsetof(FrameDataSun, sunBufferOriginUV_) == 64,
     "sunBufferOriginUV_ must align after sunBasisV_"
 );
-
-/// Per-entity occupancy bbox passed to the sun shadow shader so it can
-/// exclude self-cells from the occupancy march. Built each frame in
-/// `system_build_occupancy_grid` from the per-voxel entity IDs that
-/// `system_update_voxel_set_children` writes into the voxel pool. One entry
-/// per voxel-pool entity that contributed at least one in-bounds voxel.
-///
-/// std430 layout: each member is naturally aligned to 16 bytes via the
-/// uvec4 / ivec4 wrappers. Total 48 bytes per entry.
-struct GPUOccupancyEntityBounds {
-    /// .x = entity id; .yzw padding to keep the next member 16-byte aligned.
-    uvec4 entityId = uvec4(0u);
-    /// Inclusive minimum cell coordinates (signed world-voxel space).
-    ivec4 minCell = ivec4(0);
-    /// Inclusive maximum cell coordinates.
-    ivec4 maxCell = ivec4(0);
-};
-static_assert(sizeof(GPUOccupancyEntityBounds) == 48, "GPUOccupancyEntityBounds std430 layout");
 
 /// @{
 /// @name GPU buffer binding points
@@ -321,16 +293,12 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 constexpr std::uint32_t kBufferIndex_OccupancyGrid = 28;
 constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
-// Metal caps buffer slots at 30; the sun-shadow pass runs after
-// SHAPES_TO_TRIXEL, so it can reuse the shape descriptor slot as long as each
-// pass explicitly binds the buffer it needs before dispatch.
-constexpr std::uint32_t kBufferIndex_SunShadowShapeCasters = kBufferIndex_ShapeDescriptors;
-// Reuses slot 4 (otherwise unassigned). The sun-shadow pass binds this
-// before dispatch; no other pass uses slot 4 today.
-constexpr std::uint32_t kBufferIndex_OccupancyEntityBounds = 4;
-// Aliases the occupancy-grid slot. The bake (writes) and the screen-space
-// lookup (reads) never need the occupancy SSBO at the same time, and the
-// legacy lookup rebinds the slot back to OccupancyGrid before its dispatch.
+// Aliases the occupancy-grid slot. AO + light-volume read OccupancyGrid;
+// the sun bake writes / the sun shadow lookup reads SunShadowDepthMap.
+// Both consumers run on different stages and rebind slot 28 to whichever
+// resource they need before their own dispatch, so the alias is safe.
+// Phased-out producer: this aliasing goes away in T-09Y once AO migrates
+// off the occupancy SSBO and the light-volume GPU port (T-072) lands.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
 /// @}
 

@@ -1,8 +1,18 @@
 # Screen-space sun shadow map (O(1) replacement for the per-pixel march)
 
-**Status:** Proposed (not implemented). Replaces the 64-step per-pixel
-ray march in `c_compute_sun_shadow.glsl` / `.metal` with a two-pass
-screen-space shadow lookup.
+**Status:** Implemented. T-070 (PR #406) shipped the bake pass behind
+`fleet:flag` `setScreenSpaceShadowsEnabled`. T-071 (this PR) deleted
+the legacy DDA + analytic-caster paths, made screen-space the default
+and only path, and removed `BUILD_OCCUPANCY_GRID`'s SDF-rasterization
+step (which existed only to feed the legacy DDA). The occupancy grid
+itself remains as a phased-out producer for AO + light-volume; T-09Y
+will delete it once T-09X (AO migration) and T-072 (light-volume GPU
+port) land.
+
+**This document captures the design that shipped — keep it as a record
+of the algorithm and the migration math so a future agent doesn't have
+to re-derive it.** Items below referring to "before" / "today" describe
+the pre-T-070 state.
 
 **Problem owner:** rendering — `engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp`
 and the corresponding compute shaders.

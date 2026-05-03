@@ -41,22 +41,20 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float _yawPadding;
 };
 
-// Sun lighting state. Only `aoEnabled` is read by this shader; the rest of
-// the block is kept in lockstep with `FrameDataSun` in ir_render_types.hpp
-// so std140 layout matches when the same UBO is bound by sun-shadow and
-// lighting passes. Updated each frame by `system_compute_voxel_ao`'s
-// beginTick (so the value is fresh when this shader runs even though
-// COMPUTE_SUN_SHADOW comes later in the pipeline and overwrites it again).
+// Sun lighting state. Only `aoEnabled` is read by this shader; the block
+// is kept in lockstep with `FrameDataSun` in ir_render_types.hpp so the
+// shared UBO at binding 29 matches std140 layout for every consumer
+// (BAKE_SUN_SHADOW_MAP owns the upload each frame).
 layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec4 sunDirection;
     uniform float sunIntensity;
     uniform float sunAmbient;
     uniform int shadowsEnabled;
-    uniform int shapeCasterCount;
-    uniform int occupancyBoundsCount;
     uniform int aoEnabled;
-    uniform int _sunPadding1;
-    uniform int _sunPadding2;
+    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisV;
+    uniform vec2 sunBufferOriginUV;
+    uniform vec2 sunBufferTexelSize;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;

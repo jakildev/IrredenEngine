@@ -51,11 +51,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunIntensity;
     uniform float sunAmbient;
     uniform int shadowsEnabled;
-    uniform int shapeCasterCount;
-    uniform int occupancyBoundsCount;
     uniform int aoEnabled;
-    uniform int useScreenSpaceShadow;
-    uniform int _sunPadding0;
     uniform vec4 sunBasisU;
     uniform vec4 sunBasisV;
     uniform vec2 sunBufferOriginUV;

@@ -24,8 +24,11 @@ struct FrameDataSun {
     float sunIntensity;
     float sunAmbient;
     int shadowsEnabled;
-    int shapeCasterCount;
-    int4 padding;
+    int aoEnabled;
+    float4 sunBasisU;
+    float4 sunBasisV;
+    float2 sunBufferOriginUV;
+    float2 sunBufferTexelSize;
 };
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.

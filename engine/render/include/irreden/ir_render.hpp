@@ -272,11 +272,6 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
-/// When true, the @c COMPUTE_SUN_SHADOW lookup reads the sun depth buffer baked
-/// by @c BAKE_SUN_SHADOW_MAP instead of marching the occupancy grid. The legacy
-/// path remains the default while both modes coexist.
-void setScreenSpaceShadowsEnabled(bool enabled);
-bool getScreenSpaceShadowsEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute
 /// shader short-circuits with a constant 1.0 so the lighting pass treats AO
 /// as a no-op. Sun face shading and projected shadows are unaffected.

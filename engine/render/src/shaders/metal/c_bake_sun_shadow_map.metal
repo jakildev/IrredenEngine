@@ -19,11 +19,7 @@ struct FrameDataSun {
     float sunIntensity;
     float sunAmbient;
     int shadowsEnabled;
-    int shapeCasterCount;
-    int occupancyBoundsCount;
     int aoEnabled;
-    int useScreenSpaceShadow;
-    int _sunPadding0;
     float4 sunBasisU;
     float4 sunBasisV;
     float2 sunBufferOriginUV;

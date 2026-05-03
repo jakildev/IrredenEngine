@@ -53,8 +53,11 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunIntensity;
     uniform float sunAmbient;
     uniform int shadowsEnabled;
-    uniform int shapeCasterCount;
-    uniform ivec4 _sunPadding;
+    uniform int aoEnabled;
+    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisV;
+    uniform vec2 sunBufferOriginUV;
+    uniform vec2 sunBufferTexelSize;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
