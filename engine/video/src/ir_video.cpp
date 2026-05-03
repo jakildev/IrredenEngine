@@ -31,6 +31,14 @@ void requestScreenshot() {
     getVideoManager().requestScreenshot();
 }
 
+void requestScreenshotWithCrops(
+    const char *shotLabel,
+    const RoiCrop *crops,
+    int numCrops
+) {
+    getVideoManager().requestScreenshotWithCrops(shotLabel, crops, numCrops);
+}
+
 void requestCanvasScreenshot() {
     getVideoManager().requestCanvasScreenshot();
 }

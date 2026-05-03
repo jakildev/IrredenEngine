@@ -7,16 +7,39 @@
 
 namespace IRVideo {
 
+/// Optional sub-rectangle of a shot's framebuffer to dump as a small PNG
+/// alongside the full-frame screenshot. Used by render-debug agents to
+/// inspect pixel-level edge fidelity without re-rendering.
+///
+/// Coordinates are framebuffer pixels with the top-left origin used by
+/// PNG viewers (matching what @c captureScreenshot writes). Out-of-bounds
+/// rects are clamped; rects that clamp to zero area log a warning and skip.
+struct RoiCrop {
+    int x_ = 0;
+    int y_ = 0;
+    int w_ = 128;
+    int h_ = 128;
+    const char *label_ = "crop";
+};
+
 /// One entry in an auto-screenshot shot list. The cycling system applies
 /// @c zoom_ and @c cameraIso_ via @c IRRender before capture, waits the
 /// configured settle frames, then triggers a composite screenshot.
 ///
-/// @c label_ is printed to the log around each capture — it does not affect
-/// the on-disk filename (@c IRVideo uses a running counter for that).
+/// @c label_ is printed to the log around each capture and — when @c crops_
+/// is set — appears in each crop PNG's filename
+/// (@c screenshot_<n>_<label>__crop_<crop_label>.png). The full-frame PNG
+/// keeps the running-counter-only name for compatibility with downstream
+/// scripts.
+///
+/// @c crops_ / @c numCrops_ point at a caller-owned table that must
+/// outlive the game loop, same lifetime contract as @c shots_.
 struct AutoScreenshotShot {
     float zoom_ = 1.0f;
     vec2 cameraIso_ = vec2(0.0f);
     const char *label_ = "shot";
+    const RoiCrop *crops_ = nullptr;
+    int numCrops_ = 0;
 };
 
 /// Declarative config for @c createAutoScreenshotSystem. @c shots_ /

@@ -49,12 +49,35 @@
 
 namespace {
 
+// ROI crop tables are framebuffer-pixel coords; values below assume the
+// 1280x720 default game resolution (`kGameResolution`). On HiDPI hosts the
+// framebuffer is a power-of-two larger and the crops land in the upper-left
+// quadrant of the captured image — still useful for edge-fidelity inspection
+// at a given fixed offset. Pixel-precise crop placement is intentionally a
+// per-host iteration point; refine the coords as the demo's content evolves.
+constexpr IRVideo::RoiCrop kCropsZoom4Origin[] = {
+    {520, 280, 128, 128, "center_cube_top"},
+    {220, 280, 128, 128, "left_cube_silhouette"},
+    {820, 280, 128, 128, "right_cube_silhouette"},
+};
+
+constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
+    {520, 280, 128, 128, "center_cube_top"},
+    {300, 400, 128, 128, "lower_left_face"},
+};
+
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), "zoom1_origin"},
     {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
+    {
+        4.0f, vec2(0, 0), "zoom4_origin",
+        kCropsZoom4Origin, sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])
+    },
     {1.0f, vec2(1, 0), "zoom1_odd_offset"},
-    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {
+        8.0f, vec2(0, 0), "zoom8_origin",
+        kCropsZoom8Origin, sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])
+    },
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
 };
 
