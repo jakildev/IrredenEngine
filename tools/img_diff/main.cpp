@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -69,15 +70,18 @@ bool parseArgs(int argc, char **argv, Args &out) {
                 std::fprintf(stderr, "img_diff: --threshold requires an argument\n");
                 return false;
             }
-            out.threshold_ = std::atoi(argv[++i]);
+            try {
+                out.threshold_ = std::stoi(argv[++i]);
+            } catch (const std::exception &) {
+                std::fprintf(stderr, "img_diff: --threshold requires a numeric argument\n");
+                return false;
+            }
             if (out.threshold_ < 0) {
                 std::fprintf(stderr, "img_diff: --threshold must be >= 0\n");
                 return false;
             }
         } else if (std::strcmp(a, "--ignore-alpha") == 0) {
             out.ignoreAlpha_ = true;
-        } else if (std::strcmp(a, "-h") == 0 || std::strcmp(a, "--help") == 0) {
-            return false;
         } else if (a[0] == '-') {
             std::fprintf(stderr, "img_diff: unknown option '%s'\n", a);
             return false;
@@ -129,6 +133,12 @@ bool loadRgba(const std::string &path, Image &out) {
 } // namespace
 
 int main(int argc, char **argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "-h") == 0 || std::strcmp(argv[i], "--help") == 0) {
+            printUsage(argv[0]);
+            return 0;
+        }
+    }
     Args args;
     if (!parseArgs(argc, argv, args)) {
         printUsage(argv[0]);
