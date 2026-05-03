@@ -14,6 +14,11 @@ namespace IRVideo {
 /// Coordinates are framebuffer pixels with the top-left origin used by
 /// PNG viewers (matching what @c captureScreenshot writes). Out-of-bounds
 /// rects are clamped; rects that clamp to zero area log a warning and skip.
+///
+/// @c label_ is deep-copied by @c VideoManager when the crop request is
+/// queued — it need not outlive that call. The enclosing crop table
+/// referenced by @c AutoScreenshotShot::crops_ still must outlive the
+/// game loop.
 struct RoiCrop {
     int x_ = 0;
     int y_ = 0;

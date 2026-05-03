@@ -379,7 +379,8 @@ void VideoManager::writePendingRoiCrops(
     if (m_pendingScreenshotCrops.empty()) {
         return;
     }
-    const std::string indexStr = IRUtility::formatNumberedFilename("", shotIndex, 6, "");
+    const std::string indexedPrefix =
+        IRUtility::formatNumberedFilename("screenshot_", shotIndex, 6, "");
     const std::filesystem::path outputDir(m_screenshotOutputDirPath);
     for (const PendingCrop &crop : m_pendingScreenshotCrops) {
         const int x0 = std::max(0, crop.x_);
@@ -407,7 +408,7 @@ void VideoManager::writePendingRoiCrops(
             std::memcpy(cropData.data() + static_cast<std::size_t>(y) * rowBytes, src, rowBytes);
         }
         const std::string filename =
-            "screenshot_" + indexStr + "_" + m_pendingScreenshotShotLabel +
+            indexedPrefix + "_" + m_pendingScreenshotShotLabel +
             "__crop_" + crop.label_ + ".png";
         const std::string path = (outputDir / filename).string();
         IRRender::writePNG(path.c_str(), outW, outH, 4, cropData.data());
