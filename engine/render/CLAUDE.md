@@ -159,12 +159,41 @@ PR that touches:
 - `engine/prefabs/irreden/render/systems/` (pipeline systems)
 - anything affecting pipeline ordering, canvas textures, or the voxel pool
 
-must run the **`render-debug-loop`** skill after the change and attach at
-least one before/after screenshot pair to the PR body. The skill drives
-any creation that supports `--auto-screenshot` (today: `shape_debug`;
-reference implementation is `creations/demos/shape_debug/main.cpp`) and
-carries topic-indexed diagnosis tables for trixel / SDF shapes, lighting
-phases, and backend-parity symptoms.
+must run the **`render-debug-loop`** skill after the change and attach
+the following to the PR body:
+
+1. At least one full-frame before/after screenshot pair.
+2. **At least one ROI crop pair** (current + baseline) covering a
+   cube/voxel silhouette — a 128×128 native crop is small enough to
+   embed inline and dense enough to surface 1-pixel drift that
+   downscaled full-frames hide. ROI crops come for free with
+   `--auto-screenshot` once the demo's `kShots[]` table includes
+   `RoiCrop` entries (see `creations/demos/shape_debug/main.cpp` for
+   the canonical example).
+
+If the PR intentionally changes silhouettes / lighting / shading
+model, also refresh the affected directory under
+`engine/render/tests/render-baselines/` in the same PR and call out
+the intentional drift in the description so reviewers know the new
+crop is the new baseline rather than a regression.
+
+The skill drives any creation that supports `--auto-screenshot`
+(today: `shape_debug`; reference implementation is
+`creations/demos/shape_debug/main.cpp`) and carries topic-indexed
+diagnosis tables for trixel / SDF shapes, lighting phases, and
+backend-parity symptoms.
+
+For the "show me the drift" case — when two crops look identical at
+a glance but a regression actually moved one pixel — pipe them
+through **`tools/img_diff`**:
+
+```
+build/tools/img_diff/img_diff <baseline.png> <current.png> /tmp/diff.png
+```
+
+The output renders drifted pixels solid red against a desaturated
+baseline. Useful both for the agent's evaluation step and for
+reviewer-facing PR-body screenshots.
 
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
