@@ -73,22 +73,28 @@ fragment FragmentOut f_trixel_to_framebuffer(
     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
 ) {
     FragmentOut out;
-    constexpr sampler triangleSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
 
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
-    // Convert to pixel-space and apply the same parity-based row shift the
-    // GLSL fragment uses (see `f_trixel_to_framebuffer.glsl`). Each iso
-    // quad cell is split diagonally into two trixels; this picks which
-    // row of the trixel canvas this fragment maps to.
-    float2 origin = in.texCoords * textureSize;
-    const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
-    origin = trixelFramebufferSamplePosition(origin, originModifier);
 
-    const float2 sampleUv = origin / textureSize;
-    float4 color = triangleColors.sample(triangleSampler, sampleUv);
-    const uint2 readCoord = uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
-    const int rawDist = triangleDistances.read(readCoord).r;
+    // Color / depth read at the RAW interpolated canvas position — pre-#394
+    // Metal did this and rendered cleanly. Applying the GLSL-style
+    // `trixelFramebufferSamplePosition` row shift here introduced 1-pixel
+    // sawtooth notches along every iso diagonal under Metal regardless of
+    // shift sign or parity-branch swap. The shifted index is still computed
+    // and used for hover entity-id readback so it stays in lockstep with
+    // CPU-side `mouseTrixelPositionWorld()` (which routes through the same
+    // `pos2DIsoToTriangleIndex` formula).
+    const float2 originRaw = in.texCoords * textureSize;
+    const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
+    const float2 originShifted =
+        trixelFramebufferSamplePosition(originRaw, originModifier);
+
+    const uint2 sampleCoord = trixelCanvasReadCoord(originRaw, textureSize);
+    const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
+
+    float4 color = triangleColors.read(sampleCoord);
+    const int rawDist = triangleDistances.read(sampleCoord).r;
     float depth = normalizeDistance(rawDist + frameData.distanceOffset, globals);
 
     const int subdivisions = max(int(frameData.effectiveSubdivisionsForHover.x), 1);
@@ -96,12 +102,12 @@ fragment FragmentOut f_trixel_to_framebuffer(
         frameData.mouseHoveredTriangleIndex * float(subdivisions) +
         float2(z1) +
         frameData.canvasOffset;
-    const int2 originIndex = int2(floor(origin));
+    const int2 originIndex = int2(floor(originShifted));
     const int2 hoveredIndex = int2(floor(hoveredPosition));
     const bool isMouseHovered = all(hoveredIndex == originIndex);
     if (isMouseHovered) {
         if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
-            const uint2 entityId = triangleEntityIds.read(readCoord).rg;
+            const uint2 entityId = triangleEntityIds.read(hoverCoord).rg;
             if (any(entityId != uint2(0u))) {
                 hovered.hoveredEntityId = entityId;
                 hovered.hoveredDepth = depth;
