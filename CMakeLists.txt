@@ -5,6 +5,7 @@ project(BuildCreation VERSION 0.1.0)
 option(IRREDEN_BUILD_CREATIONS "Build engine-owned creations" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
+option(IRREDEN_BUILD_TOOLS "Build standalone tools (img_diff, etc.)" ${PROJECT_IS_TOP_LEVEL})
 set(
     IRREDEN_USER_PROJECTS
     ""
@@ -89,6 +90,10 @@ endif()
 
 if(IRREDEN_BUILD_TESTS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+endif()
+
+if(IRREDEN_BUILD_TOOLS)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/tools/img_diff)
 endif()
 
 if(IRREDEN_BUILD_QUALITY_TARGETS)
