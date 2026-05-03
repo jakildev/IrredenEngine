@@ -8,7 +8,7 @@ config = {
     monitor_index = -1,
     monitor_name = "",
     subdivision_mode = "full",
-    voxel_render_subdivisions = 1,
+    voxel_render_subdivisions = 2,
 
     video_capture_output_file = "capture.mp4",
     video_capture_fps = 60,
@@ -25,6 +25,6 @@ config = {
     start_updates_on_first_key_press = false,
     start_recording_on_first_key_press = false,
     profiling_enabled = false,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = false,
 }
