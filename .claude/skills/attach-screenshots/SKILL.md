@@ -359,7 +359,11 @@ What this skill does **not** do:
 - Pick game-creation run targets under `creations/game/` — the demo
   picker here only knows about `creations/demos/*/`.
 - Pixel-level regression diffing. Reviewers eyeball the paired PNGs;
-  an automated diff-gate would be a separate skill.
+  for "show me where the drift is" pipe a pair through
+  `tools/img_diff` (red-on-grey diff image) — and for aggregate
+  pass/fail metrics use `scripts/render-compare.py`. Both are
+  complementary read-only tools; this skill just produces the input
+  PNGs.
 
 ## Example
 

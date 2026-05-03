@@ -100,21 +100,56 @@ Use the **Glob** tool against
 your demo configures via `IRVideo::configureScreenshotOutputDir`). Sort
 by mtime and read the latest batch with the Read tool.
 
+#### 4a. Read the per-shot ROI crops (mandatory when present)
+
+Demos that opt into `IRVideo::RoiCrop` tables (added in #432) write
+small `screenshot_<n>_<shot>__crop_<crop_label>.png` files alongside
+each full-frame PNG. The Read tool downscales 1080p+ full-frames so
+1-pixel artifacts (cube-edge zigzag, single-pixel parity drift) sit
+below the agent's perceptual floor — exactly the failure mode behind
+the metal trixel-parity investigation. Crops are 128×128 native, so
+any drift is impossible to miss.
+
+For every shot that has crops, **Read every crop PNG** in addition to
+the full-frame. Don't skip them — that's where the silhouette-edge
+detail lives.
+
+#### 4b. Read the matching baseline crops (when available)
+
+If `engine/render/tests/render-baselines/<demo>/<SHA>/` exists for the
+target demo (captured per #433), Read each baseline crop alongside its
+current counterpart. Pairwise eyeballing catches drift that any single
+shot would not flag in isolation.
+
+Use **`tools/img_diff`** (built via `IRREDEN_BUILD_TOOLS=ON`) when a
+crop's drift is genuine but subtle:
+
+```
+build/tools/img_diff/img_diff <baseline.png> <current.png> /tmp/diff.png
+```
+
+The output PNG renders drifted pixels solid red against a desaturated
+baseline. A single-pixel regression jumps out immediately. Companion
+to `scripts/render-compare.py`, which gives aggregate metrics
+(PSNR, max delta, match%) — use the python tool for pass/fail gates
+and `img_diff` for "show me where the drift is".
+
 ### 5. Evaluate
 
-Check these **always-on** criteria across every screenshot — a bug may
-surface at only one zoom, one camera offset, or one render mode.
+Check these **always-on** criteria across every screenshot AND every
+ROI crop — a bug may surface at only one zoom, one camera offset, one
+render mode, or one specific edge.
 
-| Criterion              | What to look for                                         |
-|------------------------|----------------------------------------------------------|
-| All entities visible   | Expected shapes present, nothing missing                 |
-| Correct silhouettes    | Shape outlines match their type                          |
-| Consistent shading     | Face shades match expected lighting model                |
-| No gaps or overlaps    | Solid faces, no missing pixels or stray dots             |
-| Clean edges            | No sawtooth, bowtie, or zigzag along silhouettes         |
-| Parity stable          | Edges consistent across different camera offsets         |
-| Zoom stable            | No artifacts that appear only at higher zoom levels      |
-| Backend parity         | OpenGL and Metal produce visually matching frames        |
+| Criterion                  | What to look for                                                                                |
+|----------------------------|--------------------------------------------------------------------------------------------------|
+| All entities visible       | Expected shapes present, nothing missing                                                         |
+| Correct silhouettes        | Shape outlines match their type                                                                  |
+| Consistent shading         | Face shades match expected lighting model                                                        |
+| No gaps or overlaps        | Solid faces, no missing pixels or stray dots                                                     |
+| Pixel-level edge fidelity  | Per ROI crop, every pixel along cube/voxel silhouettes matches the baseline; no zigzag, single-pixel parity drift, or color shift |
+| Parity stable              | Compare each crop pixel-by-pixel across camera-offset shots — any visible drift on a silhouette is a regression unless the PR explicitly intended it |
+| Zoom stable                | Same crop position at zoom 4 and zoom 8 should show the *same* edge geometry, just larger; mismatched stairs are a subdivision/zoom-rounding bug |
+| Backend parity             | OpenGL and Metal produce visually matching frames; backend-only drift in a crop signals a parity port (handoff to `backend-parity` skill) |
 
 Then open whichever diagnosis section below applies to the surface you're
 changing.
