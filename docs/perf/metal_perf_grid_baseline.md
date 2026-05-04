@@ -82,6 +82,30 @@ Metal GPU-stage snapshot from the final frame:
 | Initial baseline | `sdf` | 93.97 ms | 71.674 ms | n/a | n/a | Legacy finish-bracketed GPU timing inflated stage attribution. |
 | Phase 0a-0c | `voxel_set` | 106.31 ms | 72.123 ms | 71.194 ms | 0.888 ms | Real Metal counter samples; bottleneck is CPU populate. |
 | Phase 0a-0c | `sdf` | 91.31 ms | 72.225 ms | 71.298 ms | 0.885 ms | Real Metal counter samples; bottleneck is CPU populate. |
+| Phase 1a | `voxel_set` | 12.28 ms | 0.039 ms | n/a (GPU) | 0.012 ms | GPU light-volume rewrite — CPU populate replaced by 32-iter compute dilation; 8.7x frame-time win. |
+| Phase 1a | `sdf` | 8.63 ms | 0.039 ms | n/a (GPU) | 0.012 ms | GPU light-volume rewrite — same dilation chain on the SDF path; 10.6x frame-time win. |
+
+### Phase 1a notes (GPU light volume rewrite)
+
+`ComputeLightVolume` is now driven by a three-pass GPU compute chain
+(`c_clear_light_volume` → `c_seed_light_volume` → 32 ×
+`c_propagate_light_volume`) operating on a ping-pong pair of 128³ RGBA8
+3D textures (`C_CanvasLightVolume`). Light sources are uploaded once per
+frame to a small `LightSourceBuffer` SSBO (capped at 256 lights, ~16 KiB
+per upload); propagation parameters live in a 16-byte
+`LightVolumeParams` UBO. Alpha tracks residual strength so the falloff
+stays linear and clamps cleanly at the radius edge — visual character
+matches the CPU BFS to a first approximation. The Metal `[[buffer(N)]]`
+slots for the new SSBO + UBO had to be moved into the 0–30 range
+(landed at 4 and 23) because Apple Silicon caps compute-shader buffer
+bindings at 31 slots; the C++ binding constants and both backends now
+agree.
+
+GPU `computeLightVolume` stage timing now reads ~0.04–0.05 ms — the
+work is wholly on the GPU and the CPU side is just SSBO upload +
+dispatch bookkeeping. Phase 1c will revisit the global radius cap
+(currently `1 / stepFalloff_` = 32 cells) to support per-light radius
+variation and channel-mixing for overlapping lights.
 
 ## Initial Read
 

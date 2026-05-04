@@ -134,10 +134,15 @@ kernel void c_lighting_to_trixel(
         constexpr sampler volumeSampler(
             filter::nearest, address::clamp_to_edge
         );
+        // The propagate pass stores unattenuated emit color in rgb and
+        // residual strength in alpha, so the visible contribution is
+        // `rgb * alpha` (linear falloff with Manhattan distance, zero
+        // past the light's radius).
         const float3 sampleCoord =
             (pos3D + float3(kLightVolumeHalfExtent) + float3(0.5)) /
             float3(kLightVolumeSize);
-        const float3 light = lightVolume.sample(volumeSampler, sampleCoord).rgb;
+        const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
+        const float3 light = lightSample.rgb * lightSample.a;
         baseRgb = clamp(baseRgb + src.rgb * light, 0.0f, 1.0f);
     }
 
