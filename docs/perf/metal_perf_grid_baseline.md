@@ -84,6 +84,8 @@ Metal GPU-stage snapshot from the final frame:
 | Phase 0a-0c | `sdf` | 91.31 ms | 72.225 ms | 71.298 ms | 0.885 ms | Real Metal counter samples; bottleneck is CPU populate. |
 | Phase 1a | `voxel_set` | 12.28 ms | 0.039 ms | n/a (GPU) | 0.012 ms | GPU light-volume rewrite — CPU populate replaced by 32-iter compute dilation; 8.7x frame-time win. |
 | Phase 1a | `sdf` | 8.63 ms | 0.039 ms | n/a (GPU) | 0.012 ms | GPU light-volume rewrite — same dilation chain on the SDF path; 10.6x frame-time win. |
+| Phase 1b | `voxel_set` | 13.04 ms | 0.042 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
+| Phase 1b | `sdf` | 8.62 ms | 0.041 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
 
 ### Phase 1a notes (GPU light volume rewrite)
 
@@ -106,6 +108,33 @@ work is wholly on the GPU and the CPU side is just SSBO upload +
 dispatch bookkeeping. Phase 1c will revisit the global radius cap
 (currently `1 / stepFalloff_` = 32 cells) to support per-light radius
 variation and channel-mixing for overlapping lights.
+
+### Phase 1b notes (OOB-light diagnostic for the extent mismatch)
+
+`C_OccupancyGrid` covers world voxels in `[-128, 128)` (256³) but
+`C_CanvasLightVolume` is 128³ at `[-64, 64)` — lights placed past
+`±64` were silently dropped at the seed shader's bounds check, with
+no diagnostic. An empirical port to a 256³ ping-pong volume measured
+~44 ms/frame on `IRPerfGrid voxel_set` (3.6× the Phase 1a number),
+because every propagate iteration now sweeps 8× the cells and bumps
+the ping-pong storage from 16 MiB → 128 MiB. The compute regression
+is unacceptable to ship before Phase 1c (#360) reworks the volume
+around a camera-anchored window that bounds storage independently
+of world extent.
+
+Phase 1b instead surfaces the silent clamping with a one-shot CPU
+warning per unique offending origin in `gatherLightSources`. Lights
+whose rounded origin falls outside `[-kLightVolumeHalfExtent,
++kLightVolumeHalfExtent)` are skipped on the CPU (saving the seed
+dispatch's invocation slot) and the engine logs an actionable line
+naming the offending world voxel and pointing at issue #360. This
+closes #362's acceptance criterion ("either lights surfaces correctly
+or hits a clear assertion explaining the unsupported configuration")
+without touching the volume's footprint or Phase 1a's perf win.
+
+The frame numbers in the Phase 1b row above are within run-to-run
+noise of Phase 1a; the only new CPU work per frame is six integer
+bounds compares per light source (capped at 256).
 
 ## Initial Read
 

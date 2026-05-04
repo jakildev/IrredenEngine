@@ -349,10 +349,11 @@ static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 la
 /// re-uploaded only if `lightCount_` or the global step falloff changes.
 /// Read by `c_seed_light_volume.glsl` and `c_propagate_light_volume.glsl`.
 struct LightVolumeParams {
-    /// 128 — must match `kLightVolumeSize` in
-    /// `component_canvas_light_volume.hpp`.
+    /// Must match `kLightVolumeSize` in
+    /// `component_canvas_light_volume.hpp` (128 today; Phase 1c /
+    /// issue #360 reworks this around a camera-anchored window).
     int gridSize_ = 128;
-    /// 64 — half-extent for world ↔ texel offset.
+    /// `kLightVolumeSize / 2` — half-extent for world ↔ texel offset.
     int halfExtent_ = 64;
     /// Number of valid entries in the `LightSourceBuffer` SSBO this frame.
     int lightCount_ = 0;

@@ -31,6 +31,15 @@
 // upload (~16 KiB at the 256-light cap). Per-light radius variation,
 // per-light cone shaping (SPOT), and analytic point/spot LOS are
 // pending for later phases.
+//
+// Phase 1b (issue #362) addresses the volume-vs-occupancy extent
+// mismatch by surfacing it: any light origin that rounds outside
+// `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)` is dropped on
+// the CPU before the SSBO upload and logged once per distinct origin
+// position (so the previous silent edge clamping at the volume
+// boundary becomes a clear, actionable warning). Phase 1c (#360)
+// replaces this with a camera-anchored window so most scenes keep
+// every light in-range without growing the texture footprint.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -49,6 +58,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 using namespace IRComponents;
@@ -91,12 +101,8 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
         IRMath::max(0.0f, light.intensity_)
     );
     const float radius = static_cast<float>(light.radius_);
-    gpu.directionAndRadius_ = vec4(
-        light.direction_.x,
-        light.direction_.y,
-        light.direction_.z,
-        radius
-    );
+    gpu.directionAndRadius_ =
+        vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
     gpu.coneAndPad_ = vec4(light.coneAngleDeg_, 0.0f, 0.0f, 0.0f);
     return gpu;
 }
@@ -107,10 +113,39 @@ inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
     return IRMath::roundVec3HalfUp(position.pos_);
 }
 
+inline bool isOriginInLightVolume(const ivec3 &origin) {
+    constexpr int he = kLightVolumeHalfExtent;
+    return origin.x >= -he && origin.x < he && origin.y >= -he && origin.y < he &&
+           origin.z >= -he && origin.z < he;
+}
+
+// Pack a signed-int voxel position into a single uint64 so the
+// "already-warned" set can dedupe by exact origin without paying for a
+// custom hash on `ivec3`. 21 bits per axis covers ±1M cells, well
+// beyond any realistic scene; we add a bias to keep the value
+// nonnegative before shifting.
+inline std::uint64_t packOriginKey(const ivec3 &v) {
+    constexpr int kBias = 1 << 20;
+    constexpr std::uint64_t kMask = (1ull << 21) - 1ull;
+    const auto x = static_cast<std::uint64_t>(v.x + kBias) & kMask;
+    const auto y = static_cast<std::uint64_t>(v.y + kBias) & kMask;
+    const auto z = static_cast<std::uint64_t>(v.z + kBias) & kMask;
+    return (x << 42) | (y << 21) | z;
+}
+
 // Gathers all lights with positions into the supplied buffer (capped
 // at `kLightVolumeMaxSources`). Returns the count actually written.
 // Per-tick allocation is bounded by the buffer's reserved capacity.
-inline std::uint32_t gatherLightSources(std::vector<GPULightSource> &out) {
+//
+// Lights whose origin rounds outside the volume's `[-kLightVolumeHalfExtent,
+// +kLightVolumeHalfExtent)` extent are skipped (the seed shader's bounds
+// check would silently drop them anyway) and logged once per unique
+// origin coordinate via `warnedOOBOrigins`. This makes the Phase 1b
+// (#362) silent-clamping issue visible without spamming when the same
+// misplaced static light is processed every frame.
+inline std::uint32_t gatherLightSources(
+    std::vector<GPULightSource> &out, std::unordered_set<std::uint64_t> &warnedOOBOrigins
+) {
     out.clear();
     const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
@@ -127,6 +162,22 @@ inline std::uint32_t gatherLightSources(std::vector<GPULightSource> &out) {
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(positions[i]);
+            if (!isOriginInLightVolume(origin)) {
+                if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
+                    IR_LOG_WARN(
+                        "C_LightSource at world voxel ({}, {}, {}) is "
+                        "outside the light volume's extent "
+                        "[-{}, {}); dropping until issue #360 "
+                        "(camera-anchored grids / Phase 1c) lands.",
+                        origin.x,
+                        origin.y,
+                        origin.z,
+                        kLightVolumeHalfExtent,
+                        kLightVolumeHalfExtent
+                    );
+                }
+                continue;
+            }
             out.push_back(toGpuLight(lights[i], origin));
         }
     }
@@ -145,6 +196,10 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         Buffer *occupancyBuf_ = nullptr;
         std::vector<GPULightSource> lightStaging_{};
         LightVolumeParams params_{};
+        // Set of out-of-bounds light origins we have already warned
+        // about — prevents the per-frame gather from spamming a stable
+        // misplaced light. Keyed via `detail::packOriginKey`.
+        std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
     };
 
     static SystemId create() {
@@ -212,11 +267,9 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     // Phase: gather + upload light SSBO.
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER
-                        );
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
                         const std::uint32_t count =
-                            detail::gatherLightSources(p->lightStaging_);
+                            detail::gatherLightSources(p->lightStaging_, p->warnedOOBOrigins_);
                         p->params_.lightCount_ = static_cast<int>(count);
                         if (count > 0) {
                             p->lightSourceBuf_->subData(
@@ -233,35 +286,22 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     // pass alone; Populate covers seed + N propagate
                     // iterations so the legacy column name still maps
                     // to "where the bulk of the work lives".
-                    p->paramsBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_LightVolumeParams
-                    );
+                    p->paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
 
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER
-                        );
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
                         p->clearProgram_->use();
-                        volume.getReadTexture()->bindAsImage(
-                            0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                        );
-                        const int clearGroups =
-                            IRMath::divCeil(kVolumeSize, kClearGroupSize);
-                        IRRender::device()->dispatchCompute(
-                            clearGroups, clearGroups, clearGroups
-                        );
-                        IRRender::device()->memoryBarrier(
-                            BarrierType::SHADER_IMAGE_ACCESS
-                        );
+                        volume.getReadTexture()
+                            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                        const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
+                        IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     }
 
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER
-                        );
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
 
                         // Seed pass: one thread per light, writes one
                         // bright texel into the read texture.
@@ -271,18 +311,13 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                                 BufferTarget::SHADER_STORAGE,
                                 kBufferIndex_LightSourceBuffer
                             );
-                            volume.getReadTexture()->bindAsImage(
-                                0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                            );
-                            const int seedGroups = IRMath::divCeil(
-                                p->params_.lightCount_, kSeedGroupSize
-                            );
-                            IRRender::device()->dispatchCompute(
-                                static_cast<std::uint32_t>(seedGroups), 1u, 1u
-                            );
-                            IRRender::device()->memoryBarrier(
-                                BarrierType::SHADER_IMAGE_ACCESS
-                            );
+                            volume.getReadTexture()
+                                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                            const int seedGroups =
+                                IRMath::divCeil(p->params_.lightCount_, kSeedGroupSize);
+                            IRRender::device()
+                                ->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
+                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                         }
 
                         // Propagate dilation chain. With no lights the
@@ -302,10 +337,11 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                             const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
                             const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
                             const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
-                            for (int iter = 0; iter < kLightVolumePropagateIterations;
-                                 ++iter) {
+                            for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
                                 volume.getReadTexture()->bindAsImage(
-                                    0, TextureAccess::READ_ONLY, TextureFormat::RGBA8
+                                    0,
+                                    TextureAccess::READ_ONLY,
+                                    TextureFormat::RGBA8
                                 );
                                 volume.getWriteTexture()->bindAsImage(
                                     1,
@@ -317,9 +353,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                                     static_cast<std::uint32_t>(gy),
                                     static_cast<std::uint32_t>(gz)
                                 );
-                                IRRender::device()->memoryBarrier(
-                                    BarrierType::SHADER_IMAGE_ACCESS
-                                );
+                                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                                 volume.swap();
                             }
                         }
