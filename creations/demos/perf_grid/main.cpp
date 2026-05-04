@@ -55,6 +55,14 @@
 #include <numbers>
 #include <string>
 
+// IRPerfGrid stress test: voxel_set vs sdf share the same lattice (positions,
+// colors, periodic-idle wave). They are *not* lighting-equivalent today:
+// BUILD_OCCUPANCY_GRID only walks the voxel pool; sdf mode never allocates
+// pool voxels, so the occupancy bitfield stays empty and AO + GPU light
+// propagation see no occluders. Expect sdf to look brighter / less creased
+// than voxel_set until Phase 3 (#428 AO via trixelDistances, #364 SDF in LOS).
+// See docs/perf/metal_perf_grid_baseline.md § "IRPerfGrid mode parity".
+
 using namespace IRComponents;
 using namespace IREntity;
 using namespace IRMath;
@@ -262,6 +270,13 @@ void createGridEntities() {
         g_settings.waveAmplitude_,
         g_settings.wavePeriodSeconds_
     );
+    if (g_settings.mode_ == PerfGridMode::Sdf) {
+        IR_LOG_INFO(
+            "perf_grid sdf: geometry is SDF-only — voxel pool stays empty, so occupancy-driven AO "
+            "and light-volume LOS do not see these boxes. Visuals differ from voxel_set; see "
+            "docs/perf/metal_perf_grid_baseline.md (IRPerfGrid mode parity)."
+        );
+    }
 
     for (int z = 0; z < n; ++z) {
         for (int y = 0; y < n; ++y) {

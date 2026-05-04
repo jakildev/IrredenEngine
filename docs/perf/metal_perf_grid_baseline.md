@@ -16,8 +16,11 @@ cmake --build build --target IRPerfGrid -- -j8
 ## Notes
 
 `IRPerfGrid` creates a 64x64x64 grid, which is 262,144 entities. In `voxel_set`
-mode this consumes the full global single-voxel pool. Both modes enable the full
-lighting render pipeline and periodic-idle wave motion.
+mode this consumes the full global single-voxel pool. Both modes run the same
+**render pipeline schedule** (voxel stages, shapes, AO, sun shadow, light
+volume, fog, etc.) and the same **periodic-idle wave** on the same lattice
+positions — but they are **not** lighting- or AO-equivalent; see **IRPerfGrid
+mode parity** below.
 
 Metal timing probes stage-boundary counter sampling and emits samples through
 pass descriptors, rather than falling back to `finish()` around tagged systems.
@@ -35,6 +38,31 @@ Failed to create window: glfwCreateWindow returned null
 
 OpenGL comparison numbers still need to be captured from the Linux/Windows
 OpenGL host.
+
+## IRPerfGrid mode parity (`voxel_set` vs `sdf`)
+
+The two modes are meant to stress **different** raster paths on the **same**
+entity lattice (grid positions, gradient coloring, wave motion):
+
+| Aspect | `voxel_set` | `sdf` |
+| --- | --- | --- |
+| Primary GPU work | `VOXEL_TO_TRIXEL` stage 1/2 | `SHAPES_TO_TRIXEL` |
+| Voxel pool | Filled (one 1³ `C_VoxelSetNew` per cell) | **Empty** — entities use `C_ShapeDescriptor` (BOX 1×1×1) only |
+| `BUILD_OCCUPANCY_GRID` | Sees pool voxels → bitfield matches the visible cubes | **No pool voxels** → bitfield stays cleared |
+| AO (`c_compute_voxel_ao`) | Crease darkening from occupancy neighbours | No occupancy data → minimal / no crease occlusion from the grid |
+| Light volume propagation | LOS uses occupancy → propagation blocked by “solid” cells | Empty occupancy → **no** voxel-style blockers in the shader |
+| Sun shadow | Still driven by trixel distance / sun bake (not occupancy) | Same class of signal as voxels for surfaces that rasterize |
+
+So **`sdf` will usually look brighter and “flatter” in AO / emissive fill than
+`voxel_set`** even though the box centers and colors match. That is expected
+with the current architecture, not a bug in either mode.
+
+**Do not** treat cross-mode `IRPerfGrid` timings as a single apples-to-apples
+“lighting cost” comparison — compare within-mode before/after (Phase 0→1c) or
+match the workload (e.g. two `voxel_set` runs).
+
+Closing the gap is **Phase 3+** work: AO via `trixelDistances` (#428) and
+SDF-aware occlusion in the GPU light path (#364), not Phase 1.
 
 ## Metal Results
 
@@ -87,7 +115,7 @@ Metal GPU-stage snapshot from the final frame:
 | Phase 1b | `voxel_set` | 13.04 ms | 0.042 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
 | Phase 1b | `sdf` | 8.62 ms | 0.041 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
 | Phase 1c | `voxel_set` | 22.39 ms (p50 16.34) | 0.045 ms | n/a (GPU) | 0.013 ms | Camera-anchored grids (occupancy + light volume). High avg from a few outlier frames during shader-cache warm-up; p50 is within ~4 ms of Phase 1b. `BuildOccupancyGrid` adds ~0.01 ms for the new SSBO header subData. |
-| Phase 1c | `sdf` | 9.81 ms (p50 9.25) | 0.043 ms | n/a (GPU) | 0.013 ms | Camera-anchored grids. ~1.2 ms above Phase 1b on the noisy 240-frame sample; no GPU regression in `computeLightVolume` or AO. |
+| Phase 1c | `sdf` | 9.81 ms (p50 9.25) | 0.043 ms | n/a (GPU) | 0.013 ms | Camera-anchored grids. ~1.2 ms above Phase 1b on the noisy 240-frame sample; no GPU regression in `computeLightVolume`. **Look** differs from `voxel_set` at any phase (empty occupancy in sdf — see IRPerfGrid mode parity). |
 
 ### Phase 1a notes (GPU light volume rewrite)
 
