@@ -5,6 +5,8 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -51,9 +53,7 @@ template <> struct System<FOG_TO_TRIXEL> {
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "FogToTrixelProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompFogToTrixel, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompFogToTrixel, ShaderType::COMPUTE}}
         );
 
         auto paramsOwner = std::make_unique<Params>();
@@ -61,72 +61,68 @@ template <> struct System<FOG_TO_TRIXEL> {
         p->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
 
-        SystemId systemId = createSystem<
-            C_TriangleCanvasTextures,
-            C_TrixelCanvasRenderBehavior,
-            C_CanvasFogOfWar
-        >(
-            "FogToTrixel",
-            [p](const C_TriangleCanvasTextures &canvasTextures,
-                const C_TrixelCanvasRenderBehavior &behavior,
-                C_CanvasFogOfWar &fog) {
-                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-                if (!behavior.useCameraPositionIso_) {
-                    return;
-                }
+        SystemId systemId =
+            createSystem<C_TriangleCanvasTextures, C_TrixelCanvasRenderBehavior, C_CanvasFogOfWar>(
+                "FogToTrixel",
+                [p](const C_TriangleCanvasTextures &canvasTextures,
+                    const C_TrixelCanvasRenderBehavior &behavior,
+                    C_CanvasFogOfWar &fog) {
+                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+                    if (!behavior.useCameraPositionIso_) {
+                        return;
+                    }
 
-                if (fog.dirty_) {
-                    const std::size_t cellCount = fog.cpuBuffer_.size();
-                    if (p->uploadScratch_.size() < cellCount * 4) {
-                        p->uploadScratch_.resize(cellCount * 4);
+                    if (fog.dirty_) {
+                        const std::size_t cellCount = fog.cpuBuffer_.size();
+                        if (p->uploadScratch_.size() < cellCount * 4) {
+                            p->uploadScratch_.resize(cellCount * 4);
+                        }
+                        // Only the .r channel ever changes; GBA stay at the
+                        // zero-init from resize. Cuts per-dirty-frame stores
+                        // 4×, ~256K → ~64K at 256² grid.
+                        for (std::size_t i = 0; i < cellCount; ++i) {
+                            p->uploadScratch_[i * 4] = fog.cpuBuffer_[i];
+                        }
+                        fog.getTexture()->subImage2D(
+                            0,
+                            0,
+                            kFogOfWarSize,
+                            kFogOfWarSize,
+                            PixelDataFormat::RGBA,
+                            PixelDataType::UNSIGNED_BYTE,
+                            p->uploadScratch_.data()
+                        );
+                        fog.dirty_ = false;
                     }
-                    // Only the .r channel ever changes; GBA stay at the
-                    // zero-init from resize. Cuts per-dirty-frame stores
-                    // 4×, ~256K → ~64K at 256² grid.
-                    for (std::size_t i = 0; i < cellCount; ++i) {
-                        p->uploadScratch_[i * 4] = fog.cpuBuffer_[i];
-                    }
-                    fog.getTexture()->subImage2D(
-                        0, 0,
-                        kFogOfWarSize, kFogOfWarSize,
-                        PixelDataFormat::RGBA,
-                        PixelDataType::UNSIGNED_BYTE,
-                        p->uploadScratch_.data()
+
+                    canvasTextures.getTextureColors()
+                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                    canvasTextures.getTextureDistances()
+                        ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                    fog.getTexture()
+                        ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    // FrameDataVoxelToTrixel carries frameCanvasOffset /
+                    // trixelCanvasOffsetZ1 / voxelRenderOptions — needed for
+                    // the iso pixel → world pos3D recovery in the shader.
+                    // Each pass that consumes it re-binds explicitly because
+                    // any intervening dispatch may have rebound binding 7.
+                    p->voxelFrameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_FrameDataVoxelToCanvas
                     );
-                    fog.dirty_ = false;
-                }
 
-                canvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::READ_WRITE, TextureFormat::RGBA8
-                );
-                canvasTextures.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::READ_ONLY, TextureFormat::R32I
-                );
-                fog.getTexture()->bindAsImage(
-                    2, TextureAccess::READ_ONLY, TextureFormat::RGBA8
-                );
-                // FrameDataVoxelToTrixel carries frameCanvasOffset /
-                // trixelCanvasOffsetZ1 / voxelRenderOptions — needed for
-                // the iso pixel → world pos3D recovery in the shader.
-                // Each pass that consumes it re-binds explicitly because
-                // any intervening dispatch may have rebound binding 7.
-                p->voxelFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
-                );
-
-                const int groupsX = IRMath::divCeil(
-                    canvasTextures.size_.x, kFogToTrixelGroupSize
-                );
-                const int groupsY = IRMath::divCeil(
-                    canvasTextures.size_.y, kFogToTrixelGroupSize
-                );
-                IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            },
-            [p]() { p->program_->use(); }
-        );
+                    const int groupsX =
+                        IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
+                    const int groupsY =
+                        IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);
+                    IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                },
+                [p]() { p->program_->use(); }
+            );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "fogToTrixel");
         return systemId;
     }
 };

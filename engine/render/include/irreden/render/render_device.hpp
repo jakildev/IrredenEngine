@@ -3,12 +3,21 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 
+#include <cstddef>
 #include <cstdint>
 
 namespace IRRender {
 
 class Buffer;
 class Texture2D;
+
+using GpuTimestampHandle = std::uint32_t;
+constexpr GpuTimestampHandle kInvalidGpuTimestampHandle = 0;
+
+enum class TimestampSlot {
+    START,
+    END,
+};
 
 class RenderDevice {
   public:
@@ -21,12 +30,23 @@ class RenderDevice {
     virtual void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) = 0;
     virtual void memoryBarrier(BarrierType barrierType) = 0;
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
-    virtual void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
+    virtual void
+    drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
     virtual void copyImageSubData(
-        std::uint32_t srcHandle, int srcLevel, int srcX, int srcY, int srcZ,
-        std::uint32_t dstHandle, int dstLevel, int dstX, int dstY, int dstZ,
-        int width, int height, int depth
+        std::uint32_t srcHandle,
+        int srcLevel,
+        int srcX,
+        int srcY,
+        int srcZ,
+        std::uint32_t dstHandle,
+        int dstLevel,
+        int dstX,
+        int dstY,
+        int dstZ,
+        int width,
+        int height,
+        int depth
     ) = 0;
     virtual void setPolygonMode(PolygonMode polygonMode) = 0;
     virtual void bindDefaultFramebuffer() = 0;
@@ -38,6 +58,21 @@ class RenderDevice {
     virtual void setDepthWrite(bool enabled) = 0;
     virtual void clearTexImage(const Texture2D *texture, int level, const void *data) = 0;
     virtual void finish() = 0;
+
+    virtual GpuTimestampHandle createTimestampPair() {
+        return kInvalidGpuTimestampHandle;
+    }
+    virtual void destroyTimestampPair(GpuTimestampHandle) {}
+    virtual bool supportsGpuTimestampPairs() const {
+        return false;
+    }
+    virtual int recommendedTimestampPairsInFlight() const {
+        return 3;
+    }
+    virtual void writeTimestamp(GpuTimestampHandle, TimestampSlot) {}
+    virtual bool readTimestampPairMs(GpuTimestampHandle, float &) {
+        return false;
+    }
 };
 
 RenderDevice *device();

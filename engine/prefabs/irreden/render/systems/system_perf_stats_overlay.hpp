@@ -33,8 +33,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
                 static EntityId textEntity = 0;
 
                 EntityId guiCanvas = IRRender::getCanvas("gui");
-                auto &canvasTextures =
-                    IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
+                auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
                 int canvasWidth = canvasTextures.size_.x;
 
                 if (textEntity == 0) {
@@ -59,13 +58,16 @@ template <> struct System<PERF_STATS_OVERLAY> {
 
                 auto &timing = IRRender::gpuStageTiming();
 
-                std::string buf(512, '\0');
+                std::string buf(768, '\0');
                 if (timing.enabled_) {
                     std::snprintf(
-                        buf.data(), buf.size(),
+                        buf.data(),
+                        buf.size(),
                         "FPS: %.0f  %.1fms\nUPD: %.0f\nENT: %u\nDROP: %u\n"
                         "CLR:%.1f CMP:%.1f V1:%.1f V2:%.1f\n"
-                        "SC:%.1f S0:%.1f S1:%.1f T2F:%.1f EC:%.1f\n"
+                        "SC:%.1f S0:%.1f S1:%.1f OCC:%.1f AO:%.1f\n"
+                        "BSM:%.1f SH:%.1f LV:%.1f LIT:%.1f FOG:%.1f\n"
+                        "T2T:%.1f T2F:%.1f EC:%.1f SSR:%.1f FB:%.1f\n"
                         "VIS:%u Z:%u",
                         IRTime::renderFps(),
                         IRTime::renderFrameTimeMs(),
@@ -79,14 +81,25 @@ template <> struct System<PERF_STATS_OVERLAY> {
                         timing.shapeCompactMs_,
                         timing.shapePass0Ms_,
                         timing.shapePass1Ms_,
+                        timing.buildOccupancyGridMs_,
+                        timing.computeVoxelAoMs_,
+                        timing.bakeSunShadowMapMs_,
+                        timing.computeSunShadowMs_,
+                        timing.computeLightVolumeMs_,
+                        timing.lightingToTrixelMs_,
+                        timing.fogToTrixelMs_,
+                        timing.trixelToTrixelMs_,
                         timing.trixelToFbMs_,
                         timing.entityCanvasToFbMs_,
+                        timing.screenSpaceResidualRotateMs_,
+                        timing.fbToScreenMs_,
                         timing.visibleShapeCount_,
                         timing.shapeGroupsZ_
                     );
                 } else {
                     std::snprintf(
-                        buf.data(), buf.size(),
+                        buf.data(),
+                        buf.size(),
                         "FPS: %.0f  %.1fms\nUPD: %.0f\nENT: %u\nDROP: %u",
                         IRTime::renderFps(),
                         IRTime::renderFrameTimeMs(),

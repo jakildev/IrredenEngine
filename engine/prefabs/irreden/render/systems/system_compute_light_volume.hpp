@@ -21,6 +21,8 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -29,6 +31,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <queue>
 #include <tuple>
@@ -41,6 +44,23 @@ using namespace IRRender;
 namespace IRSystem {
 
 namespace detail {
+
+class ScopedCpuPhaseTimer {
+  public:
+    explicit ScopedCpuPhaseTimer(IRRender::CpuPhaseTiming &timing)
+        : m_timing{timing}
+        , m_start{std::chrono::steady_clock::now()} {}
+
+    ~ScopedCpuPhaseTimer() {
+        const auto end = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration<double, std::milli>(end - m_start);
+        m_timing.record(elapsed.count());
+    }
+
+  private:
+    IRRender::CpuPhaseTiming &m_timing;
+    std::chrono::steady_clock::time_point m_start;
+};
 
 inline std::uint64_t packLightVoxelKey(int wx, int wy, int wz) {
     const std::uint64_t x = static_cast<std::uint64_t>(wx + kLightVolumeHalfExtent);
@@ -289,78 +309,90 @@ inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
 
 template <> struct System<COMPUTE_LIGHT_VOLUME> {
     static SystemId create() {
-        return createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
-            "ComputeLightVolume",
-            [](C_OccupancyGrid &grid,
-               C_CanvasLightVolume &volume,
-               const C_TrixelCanvasRenderBehavior &behavior) {
-                if (!behavior.useCameraPositionIso_)
-                    return;
-                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        SystemId systemId =
+            createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
+                "ComputeLightVolume",
+                [](C_OccupancyGrid &grid,
+                   C_CanvasLightVolume &volume,
+                   const C_TrixelCanvasRenderBehavior &behavior) {
+                    if (!behavior.useCameraPositionIso_)
+                        return;
+                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+                    auto &phaseTiming = IRRender::computeLightVolumeTiming();
 
-                {
-                    IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
-                    std::fill(volume.cpuBuffer_.begin(), volume.cpuBuffer_.end(), std::uint8_t{0});
-                }
+                    {
+                        detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
+                        std::fill(
+                            volume.cpuBuffer_.begin(),
+                            volume.cpuBuffer_.end(),
+                            std::uint8_t{0}
+                        );
+                    }
 
-                {
-                    IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
-                    detail::forEachLightSourceWithPosition(
-                        [&grid, &volume](C_LightSource &light, const C_PositionGlobal3D &position) {
-                            const ivec3 originVoxel = detail::roundedLightOrigin(position);
-                            switch (light.type_) {
-                            case LightType::EMISSIVE:
-                                detail::floodFillEmissive(
-                                    grid,
-                                    volume.cpuBuffer_,
-                                    originVoxel,
-                                    light.emitColor_,
-                                    light.intensity_,
-                                    static_cast<int>(light.radius_)
-                                );
-                                break;
-                            case LightType::POINT:
-                                detail::fillPointLight(
-                                    grid,
-                                    volume.cpuBuffer_,
-                                    originVoxel,
-                                    light.emitColor_,
-                                    light.intensity_,
-                                    static_cast<int>(light.radius_)
-                                );
-                                break;
-                            case LightType::SPOT:
-                                detail::fillSpotLight(
-                                    grid,
-                                    volume.cpuBuffer_,
-                                    originVoxel,
-                                    light.emitColor_,
-                                    light.intensity_,
-                                    static_cast<int>(light.radius_),
-                                    light.direction_,
-                                    light.coneAngleDeg_
-                                );
-                                break;
-                            default:
-                                break;
+                    {
+                        detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
+                        detail::forEachLightSourceWithPosition(
+                            [&grid,
+                             &volume](C_LightSource &light, const C_PositionGlobal3D &position) {
+                                const ivec3 originVoxel = detail::roundedLightOrigin(position);
+                                switch (light.type_) {
+                                case LightType::EMISSIVE:
+                                    detail::floodFillEmissive(
+                                        grid,
+                                        volume.cpuBuffer_,
+                                        originVoxel,
+                                        light.emitColor_,
+                                        light.intensity_,
+                                        static_cast<int>(light.radius_)
+                                    );
+                                    break;
+                                case LightType::POINT:
+                                    detail::fillPointLight(
+                                        grid,
+                                        volume.cpuBuffer_,
+                                        originVoxel,
+                                        light.emitColor_,
+                                        light.intensity_,
+                                        static_cast<int>(light.radius_)
+                                    );
+                                    break;
+                                case LightType::SPOT:
+                                    detail::fillSpotLight(
+                                        grid,
+                                        volume.cpuBuffer_,
+                                        originVoxel,
+                                        light.emitColor_,
+                                        light.intensity_,
+                                        static_cast<int>(light.radius_),
+                                        light.direction_,
+                                        light.coneAngleDeg_
+                                    );
+                                    break;
+                                default:
+                                    break;
+                                }
                             }
-                        }
-                    );
-                }
+                        );
+                    }
 
-                {
-                    IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
-                    volume.getTexture()->subImage3D(
-                        kLightVolumeSize,
-                        kLightVolumeSize,
-                        kLightVolumeSize,
-                        PixelDataFormat::RGBA,
-                        PixelDataType::UNSIGNED_BYTE,
-                        volume.cpuBuffer_.data()
-                    );
+                    {
+                        detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
+                        volume.getTexture()->subImage3D(
+                            kLightVolumeSize,
+                            kLightVolumeSize,
+                            kLightVolumeSize,
+                            PixelDataFormat::RGBA,
+                            PixelDataType::UNSIGNED_BYTE,
+                            volume.cpuBuffer_.data()
+                        );
+                    }
                 }
-            }
-        );
+            );
+        IRRender::tagGpuStage(systemId, "computeLightVolume");
+        return systemId;
     }
 };
 
