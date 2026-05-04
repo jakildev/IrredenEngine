@@ -345,13 +345,12 @@ struct GPULightSource {
 };
 static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 layout");
 
-/// CPU mirror of the propagate pass UBO. Uploaded once at system init,
-/// re-uploaded only if `lightCount_` or the global step falloff changes.
-/// Read by `c_seed_light_volume.glsl` and `c_propagate_light_volume.glsl`.
+/// CPU mirror of the propagate pass UBO. Uploaded each frame by
+/// `system_compute_light_volume`. Read by `c_seed_light_volume.glsl`,
+/// `c_propagate_light_volume.glsl`, and `c_lighting_to_trixel.glsl`.
 struct LightVolumeParams {
     /// Must match `kLightVolumeSize` in
-    /// `component_canvas_light_volume.hpp` (128 today; Phase 1c /
-    /// issue #360 reworks this around a camera-anchored window).
+    /// `component_canvas_light_volume.hpp` (128 today).
     int gridSize_ = 128;
     /// `kLightVolumeSize / 2` — half-extent for world ↔ texel offset.
     int halfExtent_ = 64;
@@ -363,10 +362,32 @@ struct LightVolumeParams {
     /// a light reaches `1 / stepFalloff_` cells before going dark
     /// (linear falloff, matching the CPU BFS's `1 - d/radius` curve).
     /// A single global falloff approximates per-light radius variation;
-    /// future Phase 1c ports will move to per-light step counts.
+    /// per-light step counts remain a follow-up beyond Phase 1c.
     float stepFalloff_ = 1.0f / 32.0f;
+    /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
+    /// is centered on this world voxel each frame so a panned camera
+    /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
+    /// only `.xyz` is meaningful. `.w` is reserved for a future "snap
+    /// quantum changed" or "force re-clear" flag.
+    ivec4 worldOriginVoxel_ = ivec4(0);
 };
-static_assert(sizeof(LightVolumeParams) == 16, "LightVolumeParams must match std140 layout");
+static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");
+
+/// Phase 1c (#360): camera-anchored occupancy SSBO header. Written to
+/// the first 16 bytes of `OccupancyGridBuffer` each frame by
+/// `system_build_occupancy_grid`; the bitfield occupies the remainder
+/// (see `kOccupancyHeaderByteSize` consumers in
+/// `system_build_occupancy_grid.hpp` and the SSBO declarations in
+/// `c_compute_voxel_ao.glsl` / `c_propagate_light_volume.glsl`). The
+/// header avoids a second buffer slot — Metal compute encoders share
+/// one global `setBuffer(slot)` table per encoder, so a UBO and SSBO
+/// at the same slot fight; embedding the header in the SSBO sidesteps
+/// the conflict entirely. `.xyz` is the world voxel that maps to local
+/// cell `(0,0,0)`; `.w` is reserved.
+struct OccupancyGridHeader {
+    ivec4 worldOriginVoxel_ = ivec4(0);
+};
+static_assert(sizeof(OccupancyGridHeader) == 16, "OccupancyGridHeader must match std430 layout");
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
 // shapeIndex picks the ShapeDescriptor; tileIsoOrigin is the iso-space

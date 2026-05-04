@@ -86,6 +86,8 @@ Metal GPU-stage snapshot from the final frame:
 | Phase 1a | `sdf` | 8.63 ms | 0.039 ms | n/a (GPU) | 0.012 ms | GPU light-volume rewrite — same dilation chain on the SDF path; 10.6x frame-time win. |
 | Phase 1b | `voxel_set` | 13.04 ms | 0.042 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
 | Phase 1b | `sdf` | 8.62 ms | 0.041 ms | n/a (GPU) | 0.012 ms | OOB-light diagnostic + drop, no extent change. Frame within run-to-run noise of Phase 1a. |
+| Phase 1c | `voxel_set` | 22.39 ms (p50 16.34) | 0.045 ms | n/a (GPU) | 0.013 ms | Camera-anchored grids (occupancy + light volume). High avg from a few outlier frames during shader-cache warm-up; p50 is within ~4 ms of Phase 1b. `BuildOccupancyGrid` adds ~0.01 ms for the new SSBO header subData. |
+| Phase 1c | `sdf` | 9.81 ms (p50 9.25) | 0.043 ms | n/a (GPU) | 0.013 ms | Camera-anchored grids. ~1.2 ms above Phase 1b on the noisy 240-frame sample; no GPU regression in `computeLightVolume` or AO. |
 
 ### Phase 1a notes (GPU light volume rewrite)
 
@@ -135,6 +137,43 @@ without touching the volume's footprint or Phase 1a's perf win.
 The frame numbers in the Phase 1b row above are within run-to-run
 noise of Phase 1a; the only new CPU work per frame is six integer
 bounds compares per light source (capped at 256).
+
+### Phase 1c notes (camera-anchored occupancy + light volume)
+
+Both `C_OccupancyGrid` (256³) and `C_CanvasLightVolume` (128³) now
+track a per-frame `worldOriginVoxel_` derived by inverting the iso
+camera projection at z=0 (`IRRender::detail::cameraAnchorVoxel()`,
+shared header at
+`engine/prefabs/irreden/render/detail/camera_anchor.hpp`). The
+producers (`BUILD_OCCUPANCY_GRID`, `COMPUTE_LIGHT_VOLUME`) recenter
+on that voxel before populating, and the consumer shaders
+(`c_compute_voxel_ao`, `c_propagate_light_volume`,
+`c_seed_light_volume`, `c_lighting_to_trixel`) subtract the origin
+before indexing. So a camera panned to world voxel `(96, 0, 0)`
+keeps a light at `(96, 0, -2)` inside the light volume and the
+occupancy grid without resizing the textures or growing storage.
+
+The occupancy-grid origin is plumbed via a 16-byte
+`OccupancyGridHeader` embedded at the start of the existing
+`OccupancyGridBuffer` SSBO (slot 28), not via a new UBO. Metal's
+compute encoders flush UBO and SSBO entries at slot `i` to a
+single `setBuffer(i)` call with the SSBO winning, so a separate
+`OccupancyGridParams` UBO at any free slot would either collide
+with an SSBO already living there (e.g. `kBufferIndex_SingleVoxelColors`
+at 6) or force a major slot remap. The light-volume origin lives
+in the existing `LightVolumeParams` UBO at slot 23 — no new
+bindings.
+
+Visual parity verified at world origin: `IRLightingEmissive` and
+`IRShapeDebug` produce byte-identical screenshots between Phase 1b
+and Phase 1c at zoom 1/2/4/8/16 with default camera offset. The new
+behavior shows up only when the camera pans far enough that lights
+or occupiers used to fall out of the fixed `[-128, 128)` window.
+
+The CPU overhead is two `subData` calls per frame to upload the
+header + bitfield (vs the old single bitfield call), measured at
+~0.01 ms additional per frame on `BuildOccupancyGrid`. No GPU
+regression in `computeLightVolume` (still ~0.04 ms).
 
 ## Initial Read
 

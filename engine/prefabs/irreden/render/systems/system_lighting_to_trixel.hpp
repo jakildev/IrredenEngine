@@ -68,6 +68,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // later in the pipeline so the buffer is always populated.
         Buffer *voxelFrameDataBuf_ = nullptr;
         Buffer *sunFrameDataBuf_ = nullptr;
+        // Phase 1c (#360): camera-anchored light-volume params UBO. Owned
+        // + uploaded by COMPUTE_LIGHT_VOLUME; the lighting pass needs to
+        // know the volume's world origin to map a pixel's world voxel
+        // back into the volume texel.
+        Buffer *lightVolumeParamsBuf_ = nullptr;
         Texture2D *paletteLUT_ = nullptr;
         FrameDataLightingToTrixel frameData_{};
     };
@@ -110,6 +115,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+        // LightVolumeParamsBuffer is created by COMPUTE_LIGHT_VOLUME,
+        // which is registered ahead of LIGHTING_TO_TRIXEL in the render
+        // pipeline; safe to look up at init time.
+        p->lightVolumeParamsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
         p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
         // Same data for both filter variants; the difference is sampling mode.
@@ -189,6 +198,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     kBufferIndex_FrameDataVoxelToCanvas
                 );
                 p->sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+                p->lightVolumeParamsBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_LightVolumeParams
+                );
 
                 const int groupsX =
                     IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
@@ -202,9 +215,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 p->frameData_.lightingEnabled_ = 1;
                 p->frameData_.lightVolumeEnabled_ = 1;
                 p->frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
-                p->frameDataBuf_->subData(
-                    0, sizeof(FrameDataLightingToTrixel), &p->frameData_
-                );
+                p->frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &p->frameData_);
             }
         );
 

@@ -8,11 +8,17 @@
 // alongside `C_VoxelPool` so lighting systems iterate only the canvases
 // that asked for it.
 //
-// Coordinates are in world-voxel space (one bit per integer cell),
-// centered so `(0,0,0)` lands in the middle of the bitfield. Voxels
-// outside `[-halfExtent, +halfExtent)` are dropped. The layout is
-// `[z][y][x]` row-major with LSB = cell 0, matching std430 for a GLSL
-// `uint[]` read as a 1D array.
+// Coordinates are in world-voxel space (one bit per integer cell). The
+// volume is centered on `worldOriginVoxel_` (defaults to `(0,0,0)`),
+// so the bitfield covers world voxels in
+// `[worldOriginVoxel_ - halfExtent, worldOriginVoxel_ + halfExtent)`
+// per axis. Phase 1c (#360) wired BUILD_OCCUPANCY_GRID to track the
+// iso camera each frame, so the addressable region follows the
+// visible scene instead of staying pinned to world origin. Setters
+// (`setBit`, `getBit`, `inBounds`) take *world* coordinates and
+// translate internally, so producer code stays origin-agnostic.
+// The layout is `[z][y][x]` row-major with LSB = cell 0, matching
+// std430 for a GLSL `uint[]` read as a 1D array.
 
 #include <irreden/ir_math.hpp>
 
@@ -32,33 +38,60 @@ struct C_OccupancyGrid {
     explicit C_OccupancyGrid(int sizeVoxels)
         : m_sizeVoxels{roundedSize(sizeVoxels)} {
 
-        const std::size_t totalBits =
-            static_cast<std::size_t>(m_sizeVoxels) *
-            static_cast<std::size_t>(m_sizeVoxels) *
-            static_cast<std::size_t>(m_sizeVoxels);
+        const std::size_t totalBits = static_cast<std::size_t>(m_sizeVoxels) *
+                                      static_cast<std::size_t>(m_sizeVoxels) *
+                                      static_cast<std::size_t>(m_sizeVoxels);
         m_bitfield.assign(totalBits / 32u, 0u);
 
         const int cpa = chunksPerAxis();
-        const std::size_t chunkCount =
-            static_cast<std::size_t>(cpa) *
-            static_cast<std::size_t>(cpa) *
-            static_cast<std::size_t>(cpa);
+        const std::size_t chunkCount = static_cast<std::size_t>(cpa) *
+                                       static_cast<std::size_t>(cpa) *
+                                       static_cast<std::size_t>(cpa);
         m_chunkDirty.assign(chunkCount, true);
         m_anyDirty = true;
     }
 
-    int sizeVoxels() const { return m_sizeVoxels; }
-    int halfExtent() const { return m_sizeVoxels / 2; }
-    int chunksPerAxis() const { return m_sizeVoxels / kOccupancySpatialChunkSize; }
+    int sizeVoxels() const {
+        return m_sizeVoxels;
+    }
+    int halfExtent() const {
+        return m_sizeVoxels / 2;
+    }
+    int chunksPerAxis() const {
+        return m_sizeVoxels / kOccupancySpatialChunkSize;
+    }
 
-    const std::vector<std::uint32_t> &bitfield() const { return m_bitfield; }
-    std::vector<std::uint32_t> &bitfield() { return m_bitfield; }
+    /// World-voxel position the volume is centered on (Phase 1c / #360).
+    /// Defaults to `(0,0,0)`; updated each frame by
+    /// `system_build_occupancy_grid` to track the iso camera. All
+    /// world-coord accessors below subtract this internally before
+    /// indexing the bitfield.
+    ivec3 worldOriginVoxel() const {
+        return m_worldOriginVoxel;
+    }
+
+    /// Set the camera-anchored origin. Caller is responsible for
+    /// snapping to a sensible quantum (today the producer snaps to
+    /// integer voxel coords; the chunk-aligned snap is left for a
+    /// follow-up that wires incremental updates).
+    void setWorldOriginVoxel(const ivec3 &origin) {
+        m_worldOriginVoxel = origin;
+    }
+
+    const std::vector<std::uint32_t> &bitfield() const {
+        return m_bitfield;
+    }
+    std::vector<std::uint32_t> &bitfield() {
+        return m_bitfield;
+    }
 
     std::size_t bitfieldByteSize() const {
         return m_bitfield.size() * sizeof(std::uint32_t);
     }
 
-    bool isAnyDirty() const { return m_anyDirty; }
+    bool isAnyDirty() const {
+        return m_anyDirty;
+    }
 
     void markAllDirty() {
         std::fill(m_chunkDirty.begin(), m_chunkDirty.end(), true);
@@ -85,7 +118,8 @@ struct C_OccupancyGrid {
         for (int cz = 0; cz < cpa; ++cz) {
             for (int cy = 0; cy < cpa; ++cy) {
                 for (int cx = 0; cx < cpa; ++cx) {
-                    if (!isChunkDirty(cx, cy, cz)) continue;
+                    if (!isChunkDirty(cx, cy, cz))
+                        continue;
                     clearChunkBits(cx, cy, cz);
                 }
             }
@@ -94,19 +128,22 @@ struct C_OccupancyGrid {
 
     bool inBounds(int wx, int wy, int wz) const {
         const int he = halfExtent();
-        return wx >= -he && wx < he &&
-               wy >= -he && wy < he &&
-               wz >= -he && wz < he;
+        const int lx = wx - m_worldOriginVoxel.x;
+        const int ly = wy - m_worldOriginVoxel.y;
+        const int lz = wz - m_worldOriginVoxel.z;
+        return lx >= -he && lx < he && ly >= -he && ly < he && lz >= -he && lz < he;
     }
 
     void setBit(int wx, int wy, int wz) {
-        if (!inBounds(wx, wy, wz)) return;
+        if (!inBounds(wx, wy, wz))
+            return;
         const std::size_t flat = flatIndex(wx, wy, wz);
         m_bitfield[flat >> 5u] |= (1u << (flat & 31u));
     }
 
     bool getBit(int wx, int wy, int wz) const {
-        if (!inBounds(wx, wy, wz)) return false;
+        if (!inBounds(wx, wy, wz))
+            return false;
         const std::size_t flat = flatIndex(wx, wy, wz);
         return (m_bitfield[flat >> 5u] >> (flat & 31u)) & 1u;
     }
@@ -116,6 +153,7 @@ struct C_OccupancyGrid {
     std::vector<std::uint32_t> m_bitfield;
     std::vector<std::uint8_t> m_chunkDirty;
     bool m_anyDirty = false;
+    ivec3 m_worldOriginVoxel{0, 0, 0};
 
     /// Round up to 2× chunk size so `halfExtent` is always a multiple of
     /// 32 — lets `clearChunkBits` do aligned uint32 stores per x-row
@@ -127,17 +165,16 @@ struct C_OccupancyGrid {
 
     std::size_t flatIndex(int wx, int wy, int wz) const {
         const int he = halfExtent();
-        const std::size_t x = static_cast<std::size_t>(wx + he);
-        const std::size_t y = static_cast<std::size_t>(wy + he);
-        const std::size_t z = static_cast<std::size_t>(wz + he);
+        const std::size_t x = static_cast<std::size_t>(wx - m_worldOriginVoxel.x + he);
+        const std::size_t y = static_cast<std::size_t>(wy - m_worldOriginVoxel.y + he);
+        const std::size_t z = static_cast<std::size_t>(wz - m_worldOriginVoxel.z + he);
         const std::size_t size = static_cast<std::size_t>(m_sizeVoxels);
         return (z * size + y) * size + x;
     }
 
     std::size_t chunkIndex(int cx, int cy, int cz) const {
         const std::size_t cpa = static_cast<std::size_t>(chunksPerAxis());
-        return (static_cast<std::size_t>(cz) * cpa +
-                static_cast<std::size_t>(cy)) * cpa +
+        return (static_cast<std::size_t>(cz) * cpa + static_cast<std::size_t>(cy)) * cpa +
                static_cast<std::size_t>(cx);
     }
 

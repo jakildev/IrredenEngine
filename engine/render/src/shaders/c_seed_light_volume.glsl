@@ -17,7 +17,7 @@
 // the later thread wins. The propagate pass picks the brightest
 // (highest residual alpha) candidate per cell, so the closest light
 // dominates overlap regions. Per-channel mixing of overlapping lights
-// is deferred to Phase 1c.
+// is deferred to a follow-up pass.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -37,6 +37,9 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
+    // Phase 1c (#360): camera-anchored window. Subtract this world voxel
+    // before mapping the light's world origin into a local texel index.
+    ivec4 lightVolumeWorldOrigin;
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
@@ -49,7 +52,7 @@ void main() {
 
     const GPULightSource light = lights[lightIndex];
     const ivec3 worldOrigin = ivec3(light.originAndType.xyz);
-    const ivec3 cell = worldOrigin + ivec3(halfExtent);
+    const ivec3 cell = (worldOrigin - lightVolumeWorldOrigin.xyz) + ivec3(halfExtent);
     if (cell.x < 0 || cell.x >= gridSize ||
         cell.y < 0 || cell.y >= gridSize ||
         cell.z < 0 || cell.z >= gridSize) {

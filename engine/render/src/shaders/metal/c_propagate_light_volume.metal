@@ -16,26 +16,46 @@ struct LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
+    // Phase 1c (#360): world voxel the volume is centered on this frame.
+    int4 worldOriginVoxel;
 };
 
-inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
+// Phase 1c (#360): camera-anchored occupancy SSBO layout — header
+// (worldOriginVoxel) followed by the bitfield. See
+// `metal/c_compute_voxel_ao.metal` for the rationale on embedding
+// the header in the SSBO.
+struct OccupancyData {
+    int4 worldOriginVoxel;
+    uint bits[1];
+};
+
+inline bool occupancyGetBit(
+    device const OccupancyData *occupancy,
+    int wx,
+    int wy,
+    int wz
+) {
     int he = kOccupancyGridHalfExtent;
-    if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
+    int4 worldOrigin = occupancy->worldOriginVoxel;
+    int lx = wx - worldOrigin.x;
+    int ly = wy - worldOrigin.y;
+    int lz = wz - worldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
         return false;
     }
-    uint x = uint(wx + he);
-    uint y = uint(wy + he);
-    uint z = uint(wz + he);
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
     uint flat =
         (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancyBits[flat >> 5u];
+    uint bits = occupancy->bits[flat >> 5u];
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
-    device const uint *occupancyBits [[buffer(28)]],
+    device const OccupancyData *occupancy [[buffer(28)]],
     constant LightVolumeParams &params [[buffer(23)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
@@ -47,7 +67,11 @@ kernel void c_propagate_light_volume(
     }
 
     float4 best = lightVolumeRead.read(uint3(cell));
-    const int3 worldCell = cell - int3(params.halfExtent);
+    // Phase 1c (#360): map the local volume cell back to world coords
+    // through the camera-anchored origin so the per-neighbor occupancy
+    // lookup queries the right cell of the (independently anchored)
+    // occupancy grid.
+    const int3 worldCell = (cell - int3(params.halfExtent)) + params.worldOriginVoxel.xyz;
 
     const int3 deltas[6] = {
         int3(1, 0, 0), int3(-1, 0, 0),
@@ -63,7 +87,7 @@ kernel void c_propagate_light_volume(
             continue;
         }
         const int3 nWorld = worldCell + deltas[n];
-        if (occupancyGetBit(occupancyBits, nWorld.x, nWorld.y, nWorld.z)) {
+        if (occupancyGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z)) {
             continue;
         }
         const float4 nv = lightVolumeRead.read(uint3(nCell));
