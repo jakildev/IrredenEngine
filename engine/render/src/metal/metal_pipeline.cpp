@@ -60,6 +60,15 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
     }
+    if (functionName == "c_clear_light_volume") {
+        return MTL::Size(8, 8, 8);
+    }
+    if (functionName == "c_seed_light_volume") {
+        return MTL::Size(64, 1, 1);
+    }
+    if (functionName == "c_propagate_light_volume") {
+        return MTL::Size(8, 8, 4);
+    }
     return MTL::Size(1, 1, 1);
 }
 

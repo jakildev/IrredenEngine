@@ -66,8 +66,10 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │      • c_compute_sun_shadow.glsl → single-texel lookup against   │
 │        the baked sun depth map → per-pixel shadow brightness     │
 │    COMPUTE_LIGHT_VOLUME                                          │
-│      • CPU flood-fill BFS from C_LightSource emitters into the   │
-│        canvas's C_CanvasLightVolume 3D texture (8 MiB upload)    │
+│      • c_clear_light_volume + c_seed_light_volume +              │
+│        c_propagate_light_volume (×128) — GPU dilation chain over │
+│        a ping-pong pair of 128³ RGBA8 3D textures, seeded from   │
+│        a per-frame LightSourceBuffer SSBO. No CPU upload.        │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │
