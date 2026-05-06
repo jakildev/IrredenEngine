@@ -9,6 +9,8 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/camera.hpp>
 
 #include <vector>
@@ -69,9 +71,7 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
                                                  name.name_
                                              );
                 p->frameData_.residualYaw = IRPrefab::Camera::getResidualYaw();
-                p->frameDataBuf_->subData(
-                    0, sizeof(FrameDataScreenResidualRotate), &p->frameData_
-                );
+                p->frameDataBuf_->subData(0, sizeof(FrameDataScreenResidualRotate), &p->frameData_);
                 IRRender::device()->setPolygonMode(PolygonMode::FILL);
                 IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
             },
@@ -84,6 +84,7 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "screenSpaceResidualRotate");
         return systemId;
     }
 
@@ -106,11 +107,10 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
         const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
         float xOffset = IRRender::getViewport().x / 2.0f;
         float yOffset = IRRender::getViewport().y / 2.0f;
-        vec2 offset = vec2(xOffset, yOffset) +
-                      isoDeltaToScreenDelta(
-                          pos3DtoPos2DIso(cameraPosition),
-                          IRRender::getTriangleStepSizeScreen()
-                      );
+        vec2 offset = vec2(xOffset, yOffset) + isoDeltaToScreenDelta(
+                                                   pos3DtoPos2DIso(cameraPosition),
+                                                   IRRender::getTriangleStepSizeScreen()
+                                               );
 
         mat4 model = mat4(1.0f);
         if (name == "main") {

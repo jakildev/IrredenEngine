@@ -17,6 +17,8 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -101,12 +103,11 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     p->ssbo_->subData(0, grid.bitfieldByteSize(), grid.bitfield().data());
                 }
             },
-            [p]() {
-                p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid);
-            }
+            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
+        IRRender::tagGpuStage(systemId, "buildOccupancyGrid");
         return systemId;
     }
 };

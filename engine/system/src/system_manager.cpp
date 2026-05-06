@@ -40,6 +40,10 @@ void SystemManager::unregisterTickObserver(TickObserverId id) {
     }
 }
 
+void SystemManager::clearTickObservers() {
+    m_observers.clear();
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }
@@ -103,8 +107,10 @@ void SystemManager::executeSystem(SystemId system) {
         );
         auto &acc = m_timingAccum[system];
         acc.totalNs_ += ns;
-        if (ns < acc.minNs_) acc.minNs_ = ns;
-        if (ns > acc.maxNs_) acc.maxNs_ = ns;
+        if (ns < acc.minNs_)
+            acc.minNs_ = ns;
+        if (ns > acc.maxNs_)
+            acc.maxNs_ = ns;
         acc.callCount_++;
         acc.totalEntityCount_ += entityCount;
     }

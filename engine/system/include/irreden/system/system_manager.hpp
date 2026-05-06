@@ -29,7 +29,8 @@ class ISystemParams {
 
 template <typename Params> class ISystemParamsImpl : public ISystemParams {
   public:
-    explicit ISystemParamsImpl(std::unique_ptr<Params> params) : params_(std::move(params)) {}
+    explicit ISystemParamsImpl(std::unique_ptr<Params> params)
+        : params_(std::move(params)) {}
 
     std::unique_ptr<Params> params_;
 };
@@ -104,7 +105,8 @@ class SystemManager {
         m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
     }
 
-    template <typename Params> void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+    template <typename Params>
+    void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
         m_systemParams[system] = std::make_unique<ISystemParamsImpl<Params>>(std::move(params));
     }
 
@@ -117,8 +119,12 @@ class SystemManager {
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);
 
-    void setTimingEnabled(bool enabled) { m_timingEnabled = enabled; }
-    bool isTimingEnabled() const { return m_timingEnabled; }
+    void setTimingEnabled(bool enabled) {
+        m_timingEnabled = enabled;
+    }
+    bool isTimingEnabled() const {
+        return m_timingEnabled;
+    }
     void resetTimingStats();
 
     /// Take ownership of an observer; fires `onBeforeTick`/`onAfterTick`
@@ -127,10 +133,17 @@ class SystemManager {
     /// is a single bool check, so unregistered systems pay nothing.
     TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
     void unregisterTickObserver(TickObserverId id);
+    void clearTickObservers();
 
-    const std::string &getSystemName(SystemId id) const { return m_systemNames[id].name_; }
-    SystemId getSystemCount() const { return m_nextSystemId; }
-    const TimingAccum &getTimingAccum(SystemId id) const { return m_timingAccum[id]; }
+    const std::string &getSystemName(SystemId id) const {
+        return m_systemNames[id].name_;
+    }
+    SystemId getSystemCount() const {
+        return m_nextSystemId;
+    }
+    const TimingAccum &getTimingAccum(SystemId id) const {
+        return m_timingAccum[id];
+    }
     const std::unordered_map<IRTime::Events, std::list<SystemId>> &getPipelines() const {
         return m_systemPipelinesNew;
     }
@@ -201,10 +214,12 @@ class SystemManager {
                                 componentsTuple
                             );
                         }
-                    } else if constexpr (std::is_invocable_v<
-                                             FunctionTick,
-                                             Components &...,
-                                             std::optional<RelationComponents *>...>) {
+                    } else if constexpr (
+                        std::is_invocable_v<
+                            FunctionTick,
+                            Components &...,
+                            std::optional<RelationComponents *>...>
+                    ) {
                         auto componentsTuple =
                             std::make_tuple(std::ref(getComponentData<Components>(node))...);
                         EntityId relatedEntity =

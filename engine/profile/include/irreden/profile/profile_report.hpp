@@ -10,7 +10,7 @@ namespace IRProfile {
 /// Per-system timing entry for agent-readable profile reports.
 struct SystemTimingEntry {
     std::string name_;
-    std::string pipeline_;  // "INPUT", "UPDATE", "RENDER"
+    std::string pipeline_; // "INPUT", "UPDATE", "RENDER"
     uint64_t totalNs_ = 0;
     uint64_t minNs_ = UINT64_MAX;
     uint64_t maxNs_ = 0;
@@ -26,6 +26,14 @@ struct GpuStageEntry {
     uint32_t sampleCount_ = 0;
 };
 
+/// Named CPU phase timing entry for manually instrumented system sub-blocks.
+struct CpuPhaseEntry {
+    std::string name_;
+    double totalMs_ = 0.0;
+    double maxMs_ = 0.0;
+    uint32_t sampleCount_ = 0;
+};
+
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
@@ -36,6 +44,7 @@ struct ProfileReport {
     uint32_t archetypeCount_ = 0;
     std::vector<SystemTimingEntry> systemTimings_;
     std::vector<GpuStageEntry> gpuStages_;
+    std::vector<CpuPhaseEntry> cpuPhases_;
 };
 
 /// Write a plain-text profile report to the given file path.
