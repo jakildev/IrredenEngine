@@ -191,17 +191,6 @@ Avoid:
   - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
   - **Links:**
 
-- [~] **Input: fix system_hitbox_mouse_test projection under non-zero camera yaw** — compose `R_z(rasterYaw)` and `R2D(residualYaw)` in `HITBOX_MOUSE_TEST` forward-projection (or inverse-project mouse once in `beforeTick`) so hitbox hover tracks correctly at all visualYaw values
-  - **ID:** T-093
-  - **Area:** engine/prefabs/irreden/input, engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-093-hitbox-yaw
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) mouse hover triggers `onHovered` for entities under cursor at `visualYaw` ∈ {0, π/8, π/4, π/2 + π/16} when entity is on-screen and within hitbox half-extents; (2) hitbox-only hover shows no regression vs master at `visualYaw=0`; (3) test synthesizes known mouse position + camera yaw and asserts `HITBOX_MOUSE_TEST` flips `hovered_` correctly under at least two non-cardinal yaws
-  - **Issue:** #430
-  - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
-  - **Links:**
-
 - [~] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
   - **ID:** T-094
   - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
@@ -226,6 +215,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-093** — Input: fix system_hitbox_mouse_test projection under non-zero camera yaw · Owner: claude/T-093-hitbox-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/436
 - [x] **T-089** — Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design · Owner: opus-worker-2 · PR: https://github.com/jakildev/IrredenEngine/pull/351
 - [x] **T-071** — Render: delete legacy sun-shadow paths (analytic caster + occupancy DDA) · Owner: claude/T-071-delete-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/423
 - [x] **T-057** — Render/input: screen-to-world picking under Z-yaw · Owner: claude/T-057-picking-yaw-inverse · PR: https://github.com/jakildev/IrredenEngine/pull/424
@@ -245,5 +235,5 @@ Avoid:
 - [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
 - [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
 - [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
-- [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
+
 
