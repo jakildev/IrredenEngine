@@ -36,6 +36,7 @@ GAME = ENGINE / "creations" / "game"
 STATE_DIR = Path.home() / ".fleet" / "state"
 TRIGGERS_DIR = STATE_DIR / "triggers"
 SEEN_DIR = STATE_DIR / "seen-hashes"
+PROJECTIONS_DIR = STATE_DIR / "projections"
 PRS_DIR = STATE_DIR / "prs"
 DIFFS_DIR = STATE_DIR / "diffs"
 ISSUES_DIR = STATE_DIR / "issues"
@@ -642,6 +643,132 @@ PROJECTORS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Per-role slices (full-record projections written to disk).
+#
+# PROJECTORS above produce minimal-shape items used purely for trigger-hash
+# detection. Slicers produce full role-relevant records and write them to
+# ~/.fleet/state/projections/<role>.json so a role's startup can read just
+# its slice (~5 KB) instead of the full state.json (~32 KB).
+# ---------------------------------------------------------------------------
+
+
+def _slice_pr_with_repo(repo_key, pr):
+    out = dict(pr)
+    out["repo"] = repo_key
+    return out
+
+
+def _slice_task_with_repo(repo_key, task):
+    out = dict(task)
+    out["repo"] = repo_key
+    return out
+
+
+def _slice_issue_with_repo(repo_key, issue):
+    out = dict(issue)
+    out["repo"] = repo_key
+    return out
+
+
+def slice_sonnet_author(state):
+    out = {"tasks_open": [], "feedback_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "sonnet" in model_tags(task):
+                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & FEEDBACK_LABELS:
+                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_opus_worker(state):
+    out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "opus" in model_tags(task):
+                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
+        for issue in repo_state.get("needs_plan", []):
+            out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
+                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_sonnet_reviewer(state):
+    out = {"candidate_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if pr.get("isDraft"):
+                continue
+            has_recheck = labels & RECHECK_LABELS
+            has_verdict = labels & REVIEW_VERDICT_LABELS
+            if has_verdict and not has_recheck:
+                continue
+            out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_opus_reviewer(state):
+    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
+    out = {"flagged_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if not (labels & flag_labels):
+                continue
+            out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_queue_manager(state):
+    out = {"needs_plan": [], "human_approved": [], "tasks_done": []}
+    for repo_key, repo_state in state["repos"].items():
+        for issue in repo_state.get("needs_plan", []):
+            out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
+        for issue in repo_state.get("human_approved", []):
+            out["human_approved"].append(_slice_issue_with_repo(repo_key, issue))
+        for task in repo_state.get("tasks", {}).get("done", []):
+            out["tasks_done"].append(_slice_task_with_repo(repo_key, task))
+    return out
+
+
+def slice_merger(state):
+    out = {"prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            mergeable = pr.get("mergeable")
+            approved = "fleet:approved" in labels
+            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
+            if approved or blocked:
+                out["prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+SLICERS = {
+    "sonnet-author": slice_sonnet_author,
+    "opus-worker": slice_opus_worker,
+    "sonnet-reviewer": slice_sonnet_reviewer,
+    "opus-reviewer": slice_opus_reviewer,
+    "queue-manager": slice_queue_manager,
+    "merger": slice_merger,
+}
+
+
 def write_atomic(path: Path, payload: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(payload)
@@ -725,6 +852,18 @@ def tick_once():
         if update_role_trigger(role, projection):
             triggers_fired.append(role)
 
+    for role, slicer in SLICERS.items():
+        try:
+            sliced = slicer(state)
+        except Exception as e:
+            log(f"slicer {role} failed: {e}")
+            continue
+        sliced["generated_at"] = state["generated_at"]
+        write_atomic(
+            PROJECTIONS_DIR / f"{role}.json",
+            json.dumps(sliced, indent=2, sort_keys=True) + "\n",
+        )
+
     if triggers_fired:
         log(f"triggered: {', '.join(triggers_fired)}")
     else:
@@ -760,6 +899,7 @@ def main():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     SEEN_DIR.mkdir(parents=True, exist_ok=True)
     TRIGGERS_DIR.mkdir(parents=True, exist_ok=True)
+    PROJECTIONS_DIR.mkdir(parents=True, exist_ok=True)
     PRS_DIR.mkdir(parents=True, exist_ok=True)
     DIFFS_DIR.mkdir(parents=True, exist_ok=True)
     ISSUES_DIR.mkdir(parents=True, exist_ok=True)
