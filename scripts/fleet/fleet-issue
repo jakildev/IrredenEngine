@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""fleet-issue — read scout's per-issue cache, fall back to gh on cache miss.
+
+Subcommand:
+  view <N>      full issue body + comments + labels + state
+
+Repo selection:
+  --repo {engine,game}  default: engine
+
+The scout caches issues that hit `needs_plan` or `human_approved` in
+state.json. Other issues (closed, unlabeled) are not in the cache by
+design — the cache miss path covers those by exec'ing `gh issue view`
+directly.
+
+Source of truth: scripts/fleet/fleet-issue in the engine repo.
+Installed to ~/bin/fleet-issue by scripts/fleet/install.sh.
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+STATE_DIR = Path.home() / ".fleet" / "state"
+ISSUES_DIR = STATE_DIR / "issues"
+REPOS_CACHE = STATE_DIR / "repos.json"
+
+DEFAULT_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def repo_slug(repo_key):
+    try:
+        repos = json.loads(REPOS_CACHE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return DEFAULT_SLUGS.get(repo_key)
+    return repos.get(repo_key) or DEFAULT_SLUGS.get(repo_key)
+
+
+def warn(msg):
+    print(f"fleet-issue: {msg}", file=sys.stderr)
+
+
+def cmd_view(args):
+    path = ISSUES_DIR / args.repo / f"{args.issue_number}.json"
+    detail = None
+    try:
+        detail = json.loads(path.read_text())
+    except FileNotFoundError:
+        warn(f"cache miss for {args.repo}#{args.issue_number}; falling back to gh")
+    except json.JSONDecodeError as e:
+        warn(f"cache file {path} is corrupt: {e}; falling back to gh")
+
+    if detail is None:
+        slug = repo_slug(args.repo)
+        if slug is None:
+            warn(f"unknown repo key: {args.repo}")
+            return 2
+        return subprocess.run([
+            "gh", "issue", "view", str(args.issue_number),
+            "--repo", slug, "--comments",
+        ]).returncode
+
+    print(f"# Issue #{detail['number']}: {detail.get('title', '')}")
+    labels = detail.get("labels", [])
+    if labels:
+        print(f"labels: {', '.join(labels)}")
+    print(f"state: {detail.get('state', '?')}")
+    print()
+    if detail.get("body"):
+        print(detail["body"])
+        print()
+    for c in detail.get("comments", []):
+        author = (c.get("author") or {}).get("login", "?")
+        print(f"\n## {author} at {c.get('createdAt', '')}")
+        print(c.get("body", ""))
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Read scout's per-issue cache.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sp = sub.add_parser("view")
+    sp.add_argument("issue_number", type=int)
+    sp.add_argument(
+        "--repo", default="engine", choices=["engine", "game"],
+        help="Which cached repo to read (default: engine).",
+    )
+    args = parser.parse_args()
+    sys.exit(cmd_view(args))
+
+
+if __name__ == "__main__":
+    main()
