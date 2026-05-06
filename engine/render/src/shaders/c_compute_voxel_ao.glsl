@@ -83,7 +83,7 @@ void main() {
     int rawDepth = encoded >> 2;
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     vec3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
     );
 
     // Face axes in raster frame (pre-cardinal-rotation). Tangents stay in
@@ -130,7 +130,7 @@ void main() {
         int neighbourRawDepth = neighbourEncoded >> 2;
         vec3 neighbourPos3D = trixelCanvasPixelToWorld3D(
             samplePixel, neighbourRawDepth, trixelCanvasOffsetZ1,
-            frameCanvasOffset, voxelRenderOptions, rasterYaw
+            frameCanvasOffset, voxelRenderOptions, cardinalIndex
         );
 
         float d = dot(neighbourPos3D - pos3D, worldOutward);

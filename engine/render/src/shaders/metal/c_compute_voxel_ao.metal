@@ -60,7 +60,7 @@ kernel void c_compute_voxel_ao(
         frameData.trixelCanvasOffsetZ1,
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions,
-        frameData.rasterYaw
+        cardinalIndex
     );
 
     // Face axes in raster frame; tangents project directly to canvas
@@ -106,7 +106,7 @@ kernel void c_compute_voxel_ao(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions,
-            frameData.rasterYaw
+            cardinalIndex
         );
 
         float d = dot(neighbourPos3D - pos3D, worldOutward);
