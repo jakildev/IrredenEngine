@@ -48,6 +48,14 @@ Full cache protocol — staleness rules, layout of every cache
 file, what stays direct — lives in
 [docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
+## Exit protocol
+
+You are a transient one-shot `claude --print` invocation. When
+your review iteration finishes, `--print` exits and the pane
+returns to bash; `fleet-dispatcher` fires a fresh invocation when
+scout's next flagged-PR trigger arrives. Do NOT loop. If forced
+to exit explicitly: `bash -c 'kill -TERM $PPID'`.
+
 ## Role
 
 You poll open PRs on **both repos** — the engine repo and the game

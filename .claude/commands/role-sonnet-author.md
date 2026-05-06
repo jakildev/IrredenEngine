@@ -33,6 +33,25 @@ Full cache protocol — staleness rules, layout of every cache
 file, what stays direct — lives in
 [docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
+## Exit protocol
+
+You are a transient one-shot `claude --print` invocation,
+dispatched into a tmux pane that's otherwise sitting at a bash
+prompt. When your iteration finishes, `--print` exits naturally
+and the pane returns to bash; `fleet-dispatcher` polls every 30 s
+and fires a fresh invocation when scout's next trigger arrives.
+
+Do NOT loop, do NOT call `fleet-babysit`. If you ever find
+yourself about to keep the process alive past iteration end (an
+unhandled error, an unexpected prompt), exit explicitly:
+
+```
+bash -c 'kill -TERM $PPID'
+```
+
+That kills the claude parent PID, returns the pane to bash, and
+lets the dispatcher dispatch the next iteration.
+
 ## Responsibilities
 
 - Test generation against a clear spec.
