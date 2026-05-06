@@ -46,43 +46,25 @@ Common patterns and their correct alternatives:
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs
-(including their reviews and labels). **This cache is the source of
-truth for list-y queries — do NOT bypass it for `gh pr list` when
-the cache is fresh.** One Read tool call replaces what used to be
-two `gh pr list` invocations per iteration.
+Read your pre-filtered slice at
+`~/.fleet/state/projections/opus-reviewer.json` — `flagged_prs`
+(open PRs flagged with `fleet:has-nits` or `fleet:needs-fix`,
+across both repos). ~5 KB vs. ~32 KB for full `state.json`.
 
-Schema (slices this role uses):
-- `repos.{engine,game}.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `author` (login string), `labels` (sorted strings),
-  `mergeable`, `isDraft`, `reviews[]` (each with `author` login,
-  `body`, `state`, `submittedAt`). The `body` of the latest Sonnet
-  review is what tells you whether `Opus recheck required` is in
-  play. Bodies longer than 2 KB are stored as head + tail with an
-  `…[truncated]…` separator (the verdict line typically lives in the
-  tail), so the recheck signal still reaches the cache for typical
-  reviews; if a finding requires the full body for context, fetch
-  it with `fleet-pr view <N>`.
+The slice carries each PR's `reviews[]` so the
+`Opus recheck required` line in the latest Sonnet review body is
+visible without a drill-in. Review bodies longer than 2 KB are
+stored as head + tail with an `…[truncated]…` separator (the
+verdict line typically lives in the tail); for full-body context,
+fetch with `fleet-pr view <N>`.
 
-Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
-wrappers, which read scout's per-PR / per-issue cache and fall back
-to live `gh` on cache miss:
+Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
+`fleet-issue view <N>`. Writes (`gh pr review`, `gh pr comment`,
+`gh pr edit`) stay direct.
 
-- `fleet-pr view <N>` — full PR detail (body + comments + reviews +
-  inline review threads).
-- `fleet-pr diff <N>` — raw diff text. Used on every PR you review.
-- `fleet-pr comments <N>` — flat timeline; convenient when you only
-  need to skim the conversation without the body.
-- `fleet-issue view <N>` — issue body + comments.
-
-Writes (`gh pr review`, `gh pr comment`, `gh pr edit`) stay direct
-— the wrappers are read-only.
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh pr list` calls.
+Full cache protocol — staleness rules, layout of every cache
+file, what stays direct — lives in
+[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
 ## Role
 

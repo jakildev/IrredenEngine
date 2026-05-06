@@ -33,40 +33,19 @@ Common patterns and their correct alternatives:
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs and
-parsed `TASKS.md` rows. **This cache is the source of truth for
-list-y queries — do NOT bypass it for `gh pr list` or
-`git show origin/master:TASKS.md` when the cache is fresh.** One Read
-tool call replaces what used to be two `gh`/`git` invocations at
-startup.
+Read your pre-filtered slice at
+`~/.fleet/state/projections/sonnet-author.json` — `tasks_open`
+(open `[sonnet]` engine tasks) and `feedback_prs` (open PRs with
+`human:needs-fix` / `fleet:needs-fix` / `fleet:has-nits`). ~5 KB
+vs. ~32 KB for full `state.json`.
 
-Schema (slices this role uses):
-- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `author` (login string), `labels` (sorted strings),
-  `mergeable`, `isDraft`. (Sonnet author works only the engine queue
-  — `repos.game` is loaded by the cache too but this role ignores
-  it.)
-- `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
-  `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
+Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
+`fleet-issue view <N>`. Writes (`gh pr edit`, `gh pr comment`,
+`gh pr create`) stay direct.
 
-Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
-wrappers, which read scout's per-PR / per-issue cache and fall back
-to live `gh` on cache miss:
-
-- `fleet-pr view <N>` — full PR detail.
-- `fleet-pr diff <N>` — raw diff text.
-- `fleet-pr comments <N>` — flat timeline of comments + review
-  summaries + inline comments. Use this when addressing feedback.
-- `fleet-issue view <N>` — issue body + comments + labels + state.
-
-Writes (`gh pr edit`, `gh pr comment`, `gh pr create`) stay direct
-— the wrappers are read-only.
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh`/`git` calls.
+Full cache protocol — staleness rules, layout of every cache
+file, what stays direct — lives in
+[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
 ## Responsibilities
 
@@ -96,22 +75,19 @@ whatever directory the task touches before editing anything.
 2. `git -C ~/src/IrredenEngine fetch origin --quiet` — pulls refs
    for later `git checkout`/`git rebase`; the cache snapshots TASKS.md
    and PR metadata but doesn't fetch refs.
-3. **Read the shared fleet state cache** with the Read tool:
-   `~/.fleet/state/state.json`. One Read replaces what used to be
-   two calls here:
-   - `git show origin/master:TASKS.md` →
-     `repos.engine.tasks.{open,in_progress,done}[]`
-   - `gh pr list --state open ...` → `repos.engine.prs[]`
-
-   If the cache file is missing or its `generated_at` is older than
-   ~5 minutes, the scout is down — print
-   `scout cache stale or missing — run fleet-up` and exit. Do not
-   fall back to direct `gh`/`git` calls.
-4. Print a one-line summary: which `[sonnet]` items in
-   `tasks.open[]` look unblocked (`owner == "free"`, `blocked_by`
-   resolves to `(none)` or merged work) and not currently claimed
-   in any open PR (cross-check against `prs[].title` and
-   `prs[].headRefName`).
+3. **Read your slice** with the Read tool:
+   `~/.fleet/state/projections/sonnet-author.json`. Carries
+   `tasks_open` (filtered to `[sonnet]` engine tasks) and
+   `feedback_prs` (open PRs with feedback labels). If the slice
+   file is missing or its `generated_at` is older than ~5 minutes,
+   the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit.
+4. Print a one-line summary: which `tasks_open[]` items look
+   unblocked (`owner == "free"`, `blocked_by` resolves to `(none)`
+   or merged work) and not currently claimed in any open PR. To
+   cross-check against open PR titles / headRefNames, fall back to
+   `~/.fleet/state/state.json` `repos.engine.prs[]` (the slice only
+   carries feedback PRs, not all open PRs).
 
 ## Loop behavior
 

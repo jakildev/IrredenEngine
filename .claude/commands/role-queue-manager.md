@@ -32,55 +32,29 @@ Common patterns and their correct alternatives:
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs,
-ingestion-pending `human:approved` issues (filtered to exclude
-already-queued ones), `fleet:needs-plan` issues, and parsed
-`TASKS.md` rows. **This cache is the source of truth for list-y
-queries — do NOT bypass it for `gh pr list --state open`,
-`gh issue list --label human:approved`, or `gh issue list --label
-fleet:needs-plan` when the cache is fresh.** One Read tool call
-replaces what used to be six or more `gh` invocations per
-maintenance pass.
+Read your pre-filtered slice at
+`~/.fleet/state/projections/queue-manager.json` — `needs_plan`
+(open issues awaiting plans), `human_approved` (issues ready to
+ingest, with `fleet:queued` already filtered out), and
+`tasks_done` (TASKS.md done section). ~5 KB vs. ~32 KB for full
+`state.json`. Fall back to `state.json` for cross-role data
+(e.g. open PRs to scan for `Closes #N` references — the slice
+doesn't carry full PR records).
 
-Schema (slices this role uses):
-- `repos.{engine,game}.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `author` (login string), `labels` (sorted strings),
-  `mergeable`, `isDraft`, `reviews[]`. **No `body`** — the cache
-  doesn't store PR bodies, so any check that needs `Closes #N`
-  parsing keeps a per-item `gh pr view <N> --json body` inline.
-- `repos.{engine,game}.human_approved[]` — open issues with
-  `human:approved` label, MINUS the ones the scout already filters
-  (`fleet:queued`). Each entry has `number`, `title`, `labels` — to
-  match the queue-manager's full ingest search, additionally filter
-  out entries whose `labels` include `fleet:needs-plan` or
-  `fleet:needs-info`.
-- `repos.{engine,game}.needs_plan[]` — open issues with
-  `fleet:needs-plan` label. `number`, `title`, `labels`.
-- `repos.{engine,game}.tasks.{open,in_progress,done}[]` — `status`,
-  `title`, `summary`, `id`, `model`, `owner`, `area`, `blocked_by`,
-  `issue`. **Reflects origin/master** — the queue-manager's own
-  in-progress edits sit only in the working tree until pushed, so
-  the working-tree TASKS.md is still what you Edit/Read for
-  maintenance.
+The cached `tasks` data reflects `origin/master`. The
+queue-manager's own in-progress edits sit in the working tree
+until pushed, so always Edit/Read the working-tree `TASKS.md`
+for maintenance, never the cache.
 
-Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
-wrappers, which read scout's per-PR / per-issue cache and fall back
-to live `gh` on cache miss:
+Per-item drill-ins use `fleet-pr view <N>` (for `Closes #N`
+parsing) and `fleet-issue view <N>` (for ingesting). Queries the
+wrappers don't cover stay direct: `gh pr list --state merged`,
+`gh api repos/.../issues/<N>/timeline`, label edits, and all
+writes.
 
-- `fleet-pr view <N>` — PR body + comments + reviews + inline
-  threads. Use this for the `Closes #N` parsing.
-- `fleet-issue view <N>` — issue body + comments + labels + state.
-  Use this when ingesting a `human:approved` issue.
-
-Queries the wrappers don't cover stay direct: `gh pr list --state
-merged`, `gh api repos/.../issues/<N>/timeline`, label edits, and
-all writes (`gh pr edit`, `gh issue edit`).
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh`/`git` calls.
+Full cache protocol — staleness rules, layout of every cache
+file, what stays direct — lives in
+[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
 ## Role
 

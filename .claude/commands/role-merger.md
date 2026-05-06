@@ -49,30 +49,20 @@ Common patterns and their correct alternatives:
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs
-(including labels, mergeable state, base/head refs, and
-`updatedAt`). **This cache is the source of truth for list-y
-queries — do NOT bypass it for `gh pr list --state open` when the
-cache is fresh.** One Read tool call replaces what used to be two
-`gh pr list` invocations per iteration (cooldown sweep + main
-candidate fetch).
+Read your pre-filtered slice at
+`~/.fleet/state/projections/merger.json` — `prs` (open engine PRs
+that are either `fleet:approved` or have a non-MERGEABLE state).
+~5 KB vs. ~32 KB for full `state.json`. Merger is engine-only;
+the slice ignores game.
 
-Schema (slices this role uses):
-- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `labels` (sorted strings), `mergeable`, `isDraft`,
-  `updatedAt`. (Merger is engine-only; ignore `repos.game.prs[]`.)
+Per-item lookups stay direct: `gh pr view <N> --json mergeable`
+(UNKNOWN refresh — not in the wrapper), `git fetch`, `git rebase`,
+`gh pr comment`, `gh pr edit`. The wrappers are read-only and
+don't cover the conflict-resolution flow.
 
-Per-item lookups (`gh pr view <N> --json mergeable` for UNKNOWN
-refresh, the per-PR conflict-resolution flow that needs `git fetch`,
-`git rebase`, `gh pr comment`, `gh pr edit`) stay inline — those
-pull or push live data the cache doesn't store. The cache covers
-list-shaped queries; live drill-in covers single-item drill-down.
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh pr list` calls.
+Full cache protocol — staleness rules, layout of every cache
+file, what stays direct — lives in
+[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
 ## What you do
 
