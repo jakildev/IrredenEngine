@@ -55,8 +55,8 @@ translation touch core engine invariants — GPU buffer lifetime, compute
 dispatch sizing, iso-projection math, uniform/binding layout. A Sonnet
 agent that picks up a backend-parity task should escalate unless the
 gap is purely mechanical (e.g. a trailing debug-overlay vertex shader
-with no state changes). See the "Model split" section in top-level
-`CLAUDE.md`.
+with no state changes). See the "Model split" section in
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md).
 
 ## Preconditions
 
@@ -262,7 +262,7 @@ cmake --build build --target IRShapeDebug -j$(nproc)
 
 **Windows-native (porting to OpenGL):**
 
-Use the PATH-fix wrapper from `CLAUDE.md`:
+Use the PATH-fix wrapper from [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md):
 
 ```bash
 cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1

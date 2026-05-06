@@ -208,7 +208,7 @@ anyone — file it as a GitHub issue **with NO labels**:
 `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<description>"`
 
 Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`, or
-any other state label. Per CLAUDE.md "Issue/PR labeling discipline":
+any other state label. Per [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline":
 state labels are owned by specific roles (queue-manager, reviewers,
 the human). Author-side filing should add zero labels and let the
 human stamp `human:approved` when they want it picked up. The
@@ -351,7 +351,7 @@ Stop and surface to the human when:
 If during a session you noticed something the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/opus-architect.md`. See top-level `CLAUDE.md`
+`~/.fleet/feedback/opus-architect.md`. See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
 "Fleet feedback channel" for the format and the bar (high — write
 only when there's a real signal worth surfacing).
 

@@ -54,7 +54,7 @@ work either way.
 
 On Windows, the FFmpeg DLLs (`avcodec-*.dll`, `avformat-*.dll`,
 `avutil-*.dll`, `swscale-*.dll`) live at `C:\msys64\mingw64\bin` and must
-be on `PATH` when the executable runs. See the top-level CLAUDE.md for
+be on `PATH` when the executable runs. See [`docs/agents/BUILD.md`](../../docs/agents/BUILD.md) for
 the PATH-fix wrapper.
 
 ## Auto-screenshot helper

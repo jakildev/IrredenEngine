@@ -63,10 +63,11 @@ Trigger when the user says:
 
 Do **not** invoke proactively without a cue. If the user says "commit
 and push" and stops, don't also run `start-next-task` — wait for them
-to ask. The one cursor-flow exception is documented in the top-level
-`CLAUDE.md`: when a new chat lands on a feature branch with an
-already-merged PR and the user asks for new work, surface the state
-and ask whether to invoke `start-next-task` first.
+to ask. The one cursor-flow exception is documented in
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) "Cursor flow":
+when a new chat lands on a feature branch with an already-merged PR
+and the user asks for new work, surface the state and ask whether to
+invoke `start-next-task` first.
 
 ## Preconditions
 

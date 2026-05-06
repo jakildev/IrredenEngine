@@ -26,7 +26,7 @@ unattended (no command-substitution or compound-command gates).
 |---------------|-----------------|-----------------------------------|--------------------------|
 | WSL2 Ubuntu   | `linux-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
 | macOS         | `macos-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
-| Windows-native| `windows-debug` | see `CLAUDE.md` PATH-fix section  | see `CLAUDE.md`          |
+| Windows-native| `windows-debug` | see `docs/agents/BUILD.md` PATH-fix section | see `docs/agents/BUILD.md` |
 
 `fleet-build` auto-detects the worktree root and the corresponding
 `<worktree>/build/` tree, and configures the preset on first use.

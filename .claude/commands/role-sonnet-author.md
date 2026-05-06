@@ -610,7 +610,7 @@ Each iteration:
    - Lifetime/ownership decisions
 
    STOP. File a GitHub issue for the opus work (no labels — see
-   CLAUDE.md "Issue/PR labeling discipline") and note the escalation
+   [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline") and note the escalation
    on your PR:
    `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
    Then comment on your PR: "escalated — filed issue #N for opus".
@@ -751,8 +751,8 @@ about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
 `~/.fleet/feedback/sonnet-fleet-1.md`). Per-worktree filename so
-the human can tell which sonnet pane observed what. See top-level
-`CLAUDE.md` "Fleet feedback channel" for the format and the bar
+the human can tell which sonnet pane observed what. See
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
 (high — most iterations write nothing).
 
 ## Hard rules

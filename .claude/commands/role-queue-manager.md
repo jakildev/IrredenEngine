@@ -141,7 +141,7 @@ If you can't decide, ask the human.
 
 ### Step 2 — Categorize the model (`[opus]` vs `[sonnet]`)
 
-Per the top-level engine `CLAUDE.md` "Model split":
+Per [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Model split":
 
 - **`[opus]`** — touches `engine/render/`, `engine/entity/`,
   `engine/system/`, `engine/world/`, `engine/audio/`, `engine/video/`,
@@ -775,8 +775,8 @@ You are the sole TASKS.md editor. Each maintenance pass:
 If you noticed something this iteration that the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/queue-manager.md`. See top-level `CLAUDE.md`
-"Fleet feedback channel" for the format and the bar (high — most
+`~/.fleet/feedback/queue-manager.md`. See
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar (high — most
 iterations write nothing).
 
 ## Hard rules

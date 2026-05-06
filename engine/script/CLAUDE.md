@@ -66,7 +66,7 @@ include the `_lua.hpp` header or omits the type from
 `scriptFile(path)` passes the path straight to sol2 / `dofile`. Behavior:
 
 - Bare filename → resolved from cwd (which is the exe's runtime dir at
-  launch time; see top-level CLAUDE.md).
+  launch time; see [`docs/agents/BUILD.md`](../../docs/agents/BUILD.md) "Running an executable").
 - Path with a directory separator → resolved from cwd.
 - Absolute path → used as-is.
 

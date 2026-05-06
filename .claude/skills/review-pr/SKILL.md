@@ -63,7 +63,7 @@ When running as Sonnet: finish the review, then in the verdict summary
 mention whether Opus escalation is needed. When running as Opus on a PR
 that already has a Sonnet review: read the Sonnet review first, treat
 it as a first pass, and focus on what Sonnet could not confirm. See
-the top-level `CLAUDE.md` for the full model split.
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) "Model split" for the full split.
 
 ## Preconditions
 
