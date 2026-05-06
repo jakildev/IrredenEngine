@@ -33,41 +33,19 @@ Common patterns and their correct alternatives:
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs and
-parsed `TASKS.md` rows. **This cache is the source of truth for
-list-y queries — do NOT bypass it for `gh pr list` or
-`git show origin/master:TASKS.md` when the cache is fresh.** One Read
-tool call covers four list-shaped queries this role uses: open PRs,
-`fleet:design-blocked` filter, feedback-label filter, and the
-`TASKS.md` task table.
+The architect doesn't have a dedicated per-role projection (it's
+interactive, not loop-driven). Read `~/.fleet/state/state.json`
+for the open-PR list, `fleet:design-blocked` PRs, feedback-label
+PRs, and parsed `TASKS.md`. Filter `repos.engine.prs[]` locally
+on labels.
 
-Schema (slices this role uses):
-- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `author` (login string), `labels` (sorted strings),
-  `mergeable`, `isDraft`. Filter locally for `fleet:design-blocked`,
-  `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits`.
-- `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
-  `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
+Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
+`fleet-issue view <N>`. Writes (`gh pr edit`, `gh pr comment`,
+`gh issue create`, `gh issue edit`) stay direct.
 
-Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
-wrappers, which read scout's per-PR / per-issue cache and fall
-back to live `gh` on cache miss:
-
-- `fleet-pr view <N>` — full PR detail (body + comments + reviews +
-  inline review threads).
-- `fleet-pr diff <N>` — raw diff text.
-- `fleet-pr comments <N>` — flat timeline of comments + review
-  summaries + inline comments. Use this when addressing feedback.
-- `fleet-issue view <N>` — issue body + comments + labels + state.
-
-Writes (`gh pr edit`, `gh pr comment`, `gh issue create`,
-`gh issue edit`) stay direct — the wrappers are read-only.
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh`/`git` calls.
+Full cache protocol — staleness rules, layout of every cache
+file, what stays direct — lives in
+[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
 ## Responsibilities
 
