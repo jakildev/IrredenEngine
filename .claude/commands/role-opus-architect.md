@@ -31,6 +31,37 @@ Common patterns and their correct alternatives:
   exit status / error. Issue the fallback as a separate Bash call if
   needed.
 
+## Shared fleet state cache
+
+The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
+`~/.fleet/state/state.json` every ~60s with both repos' open PRs and
+parsed `TASKS.md` rows. **This cache is the source of truth for
+list-y queries — do NOT bypass it for `gh pr list` or
+`git show origin/master:TASKS.md` when the cache is fresh.** One Read
+tool call covers four list-shaped queries this role uses: open PRs,
+`fleet:design-blocked` filter, feedback-label filter, and the
+`TASKS.md` task table.
+
+Schema (slices this role uses):
+- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
+  `baseRefName`, `author` (login string), `labels` (sorted strings),
+  `mergeable`, `isDraft`. Filter locally for `fleet:design-blocked`,
+  `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits`.
+- `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
+  `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
+
+Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
+`gh api repos/.../pulls/<N>/comments`,
+`gh api repos/.../pulls/<N>/reviews`) stay inline — those pull live
+data the cache doesn't store. The cache covers list-shaped queries;
+live drill-in covers single-item drill-down. Writes (`gh pr edit`,
+`gh pr comment`, `gh issue create`, `gh issue edit`) stay direct.
+
+If `~/.fleet/state/state.json` is missing or its `generated_at` is
+more than ~5 minutes old, the scout daemon isn't running. Print
+`scout cache stale or missing — run fleet-up` and exit; do not
+silently fall back to direct `gh`/`git` calls.
+
 ## Responsibilities
 
 - Core engine architecture: ECS design, ownership and lifetime rules,
@@ -67,18 +98,29 @@ components, or entities.
 0. Print your role banner:
    `[opus-architect] Interactive design partner — core engine architecture, ECS design, render pipeline decisions. On-demand (no loop).`
 1. `git -C ~/src/IrredenEngine fetch origin --quiet`
-2. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
-3. `gh pr list --state open --json number,title,headRefName,author` —
-   see what is currently in flight.
-4. **List `fleet:design-blocked` PRs** (architect's lane — workers
-   escalate mid-task by adding this label):
-   `gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'`
-   If non-empty, surface the list in the standing-by message so
-   the human can direct attention. See "Handling
-   `fleet:design-blocked` PRs" below for the response flow.
-5. Print a one-line summary: how many `[opus]` tasks are unblocked, how
-   many open PRs are in flight, and which (if any) appear to be claiming
-   core-engine work.
+2. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. Covers open PRs, the
+   `fleet:design-blocked` filter, the feedback-label filter, and
+   the parsed `TASKS.md` rows in one call.
+
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit. Do not
+   fall back to direct `gh`/`git` calls.
+3. (Optional) Read `TASKS.md` directly for editorial review —
+   parsed rows are already in `repos.engine.tasks` from step 2.
+4. **Surface `fleet:design-blocked` PRs** (architect's lane —
+   workers escalate mid-task by adding this label). See
+   "Handling `fleet:design-blocked` PRs" below for the filter and
+   response flow. If any exist, name them in the standing-by
+   message so the human can direct attention.
+5. Print a one-line summary: how many `[opus]` tasks in
+   `repos.engine.tasks.open[]` are unblocked, how many entries in
+   `repos.engine.prs[]` are in flight, and which (if any) appear
+   to be claiming core-engine work (heuristic: title or
+   `headRefName` mentions `engine/render`, `engine/entity`,
+   `engine/system`, `engine/world`, `engine/audio`, `engine/video`,
+   `engine/math`).
 6. Print `opus-arch standing by` (or `opus-arch standing by (dry-run)`
    if Mode above is `dry-run`).
 
@@ -107,10 +149,13 @@ opus-worker will (correctly) pick it up.
 
 When you do pick a task:
 
-1. **Cross-check `gh pr list --state open` first.** Skip any task whose
-   title appears in an open PR's title or branch name. The open-PR list
-   is the real claim signal — `TASKS.md` `[~]` flips on feature branches
-   are not visible to other agents until merge.
+1. **Cross-check open PRs from the cache first.** Re-Read
+   `~/.fleet/state/state.json` if its contents are no longer in
+   your conversation context. Skip any task whose title appears in
+   `repos.engine.prs[].title` or `repos.engine.prs[].headRefName`.
+   The open-PR list is the real claim signal — `TASKS.md` `[~]`
+   flips on feature branches are not visible to other agents until
+   merge.
 2. **Claim the task by its ID** (the `**ID:** T-NNN` field, not the
    free-text title):
    `fleet-claim claim "<task ID, e.g. T-003>" opus-architect`
@@ -147,8 +192,11 @@ When you do pick a task:
    `origin/master`. AFTER the reset is complete, you may ask the human
    "what's next?" — but the reset itself is non-negotiable, even in
    interactive mode.
-8. **Check for feedback labels on open PRs** before picking new work:
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title)"'`
+8. **Check for feedback labels on open PRs** before picking new work.
+   Re-Read `~/.fleet/state/state.json` if its contents are no
+   longer in your conversation context. From
+   `repos.engine.prs[]`, pick PRs whose `labels` array contains
+   any of `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits`.
    **Skip** PRs labeled `human:wip` — human is working on it directly.
 
    **Priority order**: `human:needs-fix` > `fleet:needs-fix` > `fleet:has-nits`.
@@ -257,14 +305,11 @@ Those PRs sit there until you respond — the human will direct your
 attention to them, but you should also list them on startup so
 you know what's queued for you.
 
-On startup, list `fleet:design-blocked` PRs in the engine repo:
-
-```
-gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'
-```
-
-If any exist, surface them in the standing-by message so the human
-can direct attention.
+On startup (step 4), surface `fleet:design-blocked` PRs from the
+cache: filter `repos.engine.prs[]` for entries whose `labels` array
+contains `fleet:design-blocked` and format
+`#{number} {title} (by {author})`. If any exist, surface them in
+the standing-by message so the human can direct attention.
 
 When working a `fleet:design-blocked` PR:
 
