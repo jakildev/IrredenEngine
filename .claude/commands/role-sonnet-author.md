@@ -9,27 +9,13 @@ tasks from `TASKS.md`, work them end-to-end, and open PRs.
 
 Mode (optional argument): $ARGUMENTS
 
-## CRITICAL: single-command Bash calls only
+## Bash tool rules
 
-Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
-`;`, or `|`. Never append `2>/dev/null`. Use the **Read** tool instead
-of `cat`. Use the **Grep** tool instead of `grep` or `rg`. Use the
-**Glob** tool instead of `find`. Use `git -C <path>` instead of
-`cd <path> && git`. Violating this blocks unattended operation with
-interactive prompts.
-
-Common patterns and their correct alternatives:
-
-- **Check if a file exists:** Use the **Read** tool — it returns an
-  error if the file doesn't exist, which is fine. Do NOT use
-  `ls <file> 2>/dev/null || echo "missing"`.
-- **Check if a directory exists:** `ls <dir>` alone (no `||`, no
-  `2>/dev/null`). If it fails, the error message tells you.
-- **Read a file that might not exist:** Use the **Read** tool. A "file
-  not found" error is a normal signal, not something to suppress.
-- **Run a command and fall back:** Issue the command alone. Read the
-  exit status / error. Issue the fallback as a separate Bash call if
-  needed.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
+for the canonical list — single-command Bash only, no `cd && git`,
+no shell pipes / redirects, prefer Read / Glob / Grep tools.
+Violating these blocks unattended operation with interactive
+prompts.
 
 ## Shared fleet state cache
 
