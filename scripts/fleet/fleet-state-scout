@@ -319,7 +319,7 @@ def refresh_pr_detail(repo_key, pr_summary):
     # Returns (refetched_pr, refetched_diff) booleans for logging.
     repo_slug = REPO_KEY_TO_SLUG[repo_key]
     pr_number = pr_summary["number"]
-    list_updated_at = pr_summary.get("updatedAt", "")
+    list_updated_at = pr_summary.get("updatedAt") or None
 
     pr_dir = PRS_DIR / repo_key
     pr_path = pr_dir / f"{pr_number}.json"
@@ -339,7 +339,7 @@ def refresh_pr_detail(repo_key, pr_summary):
             head_oid = view.get("headRefOid")
             refetched_pr = True
     else:
-        # Read just enough to know the cached SHA for the diff freshness check.
+        # Read the cached file to extract headRefOid for the diff freshness check.
         try:
             head_oid = json.loads(pr_path.read_text()).get("headRefOid")
         except (FileNotFoundError, json.JSONDecodeError):
@@ -361,7 +361,7 @@ def refresh_pr_detail(repo_key, pr_summary):
 def refresh_issue_detail(repo_key, issue_summary):
     repo_slug = REPO_KEY_TO_SLUG[repo_key]
     issue_number = issue_summary["number"]
-    list_updated_at = issue_summary.get("updatedAt", "")
+    list_updated_at = issue_summary.get("updatedAt") or None
 
     issue_dir = ISSUES_DIR / repo_key
     issue_path = issue_dir / f"{issue_number}.json"
@@ -448,16 +448,17 @@ def refresh_all_details(state):
         return
 
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
-        futures = []
+        futures = {}
         for i, job in enumerate(jobs):
             if i > 0:
                 time.sleep(FETCH_SUBMIT_GAP_SECONDS)
             kind, repo_key, item = job
             if kind == "pr":
-                futures.append(ex.submit(refresh_pr_detail, repo_key, item))
+                futures[ex.submit(refresh_pr_detail, repo_key, item)] = job
             else:
-                futures.append(ex.submit(refresh_issue_detail, repo_key, item))
-        for fut, job in zip(futures, jobs):
+                futures[ex.submit(refresh_issue_detail, repo_key, item)] = job
+        for fut in as_completed(futures):
+            job = futures[fut]
             try:
                 result = fut.result()
             except Exception as e:
