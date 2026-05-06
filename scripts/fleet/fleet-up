@@ -32,6 +32,12 @@ SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
 OPUS_MIN_BACKOFF=1800
 
+# How long to wait for fleet-state-scout's first tick to write
+# state.json before giving up and launching panes anyway. With the
+# throttled fan-out (FETCH_MAX_WORKERS=2 + 250 ms gap) the first
+# tick lands in ~5-10 s; 30 s gives ample headroom for slow networks.
+SCOUT_STARTUP_TIMEOUT_SECONDS=30
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -410,6 +416,22 @@ else
     nohup "$scout_cmd" >>"$scout_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
+
+    # Wait for scout's first tick so panes find a populated state.json
+    # on startup. Without this wait, every pane's "scout cache stale
+    # or missing" diagnostic fires until the first tick lands.
+    state_json="$HOME/.fleet/state/state.json"
+    echo "fleet-up: waiting for first state.json..."
+    for _ in $(seq 1 "$SCOUT_STARTUP_TIMEOUT_SECONDS"); do
+        if [[ -f "$state_json" ]]; then
+            echo "fleet-up: state.json ready"
+            break
+        fi
+        sleep 1
+    done
+    if [[ ! -f "$state_json" ]]; then
+        echo "fleet-up: warning: state.json not present after ${SCOUT_STARTUP_TIMEOUT_SECONDS} s — panes will surface the staleness diagnostic"
+    fi
 fi
 
 # ----------------------------------------------------------------------
@@ -450,6 +472,18 @@ for arg in "$@"; do
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
+
+# Sleep between each agent-pane launch so 8+ panes don't simultaneously
+# fire `git fetch` + the first `claude` invocation on a cold session.
+# Without the stagger, the burst overlaps with the scout's first tick
+# and trips GitHub's secondary rate limit on private repos.
+# Override with FLEET_PANE_STAGGER_SECONDS=0 for tests / local dev.
+FLEET_PANE_STAGGER_SECONDS="${FLEET_PANE_STAGGER_SECONDS:-5}"
+pane_stagger() {
+    if (( FLEET_PANE_STAGGER_SECONDS > 0 )); then
+        sleep "$FLEET_PANE_STAGGER_SECONDS"
+    fi
+}
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
@@ -518,18 +552,21 @@ tmux new-session -d -s "$SESSION" -n fleet \
     "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
+pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
 MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd "$OPUS_MODEL" opus-architect)")
 label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
+pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
     "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
 label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+pane_stagger
 
 # Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
 # sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
@@ -539,11 +576,13 @@ TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-author)")
 label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+pane_stagger
 
 TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)")
 label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+pane_stagger
 
 # Middle row: split MID_LEFT horizontally for game-architect (only if
 # the game worktree exists). 50/50 split since architects coexist as
@@ -553,6 +592,7 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$OPUS_MODEL" game-architect)")
     label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
+    pane_stagger
 fi
 
 # Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
@@ -562,11 +602,13 @@ BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
 label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "FLEET_MIN_BACKOFF=$OPUS_MIN_BACKOFF $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+pane_stagger
 
 # --- Window 2: "ops" — 2x2 grid ---------------------------------------
 #
@@ -583,6 +625,7 @@ OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
     "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
 label_pane_id "$OPS_TL" "queue-manager [sonnet]"
+pane_stagger
 
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
