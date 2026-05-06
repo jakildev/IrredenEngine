@@ -85,13 +85,14 @@ treat it as a hard rule for this role.
 0. Print your role banner:
    `[sonnet-reviewer] First-pass PR reviewer — polls for unreviewed PRs, posts structured reviews, flags Opus escalations. Loop: every 3m.`
 1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
-2. **Discover repo slugs** (used in all `--repo` flags below):
-   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
-   Game: `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
-   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
-   If the game directory doesn't exist, skip all game-repo steps.
-   All `<engine-repo>` and `<game-repo>` placeholders below refer
-   to these discovered slugs.
+2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
+   (written once by `fleet-up` at startup). Use the `engine` field
+   for `<engine-repo>` and the `game` field (when present) for
+   `<game-repo>`. If `game` is absent, skip all game-repo steps.
+   If the cache file is missing, fall back to `gh repo view --json
+   nameWithOwner --jq .nameWithOwner` for engine and `git -C
+   ~/src/IrredenEngine/creations/game remote get-url origin` for
+   game.
 3. Confirm you are on the throwaway branch:
    `git branch --show-current` should report something like
    `claude/sonnet-reviewer-scratch`. If not, run these two commands

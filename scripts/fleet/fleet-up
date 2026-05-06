@@ -435,6 +435,51 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# Step 3e: write the repo-discovery cache
+# ----------------------------------------------------------------------
+#
+# Reviewer / queue-manager / merger roles need the canonical owner/repo
+# slugs for their `--repo` flags. Without this cache they each run
+# `gh repo view --json nameWithOwner` and `git -C ... remote get-url
+# origin` per pane on every restart — N panes × every iteration of
+# wasted gh calls. fleet-up resolves both slugs once and writes them
+# to ~/.fleet/state/repos.json for every role to read.
+extract_repo_slug() {
+    # Convert a git remote URL to "owner/repo".
+    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
+    local url="$1"
+    url="${url#git@github.com:}"
+    url="${url#https://github.com/}"
+    url="${url#http://github.com/}"
+    url="${url%.git}"
+    url="${url%/}"
+    printf '%s' "$url"
+}
+
+repos_cache="$HOME/.fleet/state/repos.json"
+engine_url=$(git -C "$ENGINE" remote get-url origin 2>/dev/null || true)
+if [[ -z "$engine_url" ]]; then
+    echo "fleet-up: warning: could not discover engine repo slug; panes will fall back to gh repo view"
+else
+    engine_slug=$(extract_repo_slug "$engine_url")
+    game_slug=""
+    if [[ -d "$GAME/.git" ]]; then
+        game_url=$(git -C "$GAME" remote get-url origin 2>/dev/null || true)
+        if [[ -n "$game_url" ]]; then
+            game_slug=$(extract_repo_slug "$game_url")
+        fi
+    fi
+    mkdir -p "$(dirname "$repos_cache")"
+    if [[ -n "$game_slug" ]]; then
+        printf '{"engine": "%s", "game": "%s"}\n' "$engine_slug" "$game_slug" > "$repos_cache"
+        echo "fleet-up: wrote $repos_cache (engine=$engine_slug, game=$game_slug)"
+    else
+        printf '{"engine": "%s"}\n' "$engine_slug" > "$repos_cache"
+        echo "fleet-up: wrote $repos_cache (engine=$engine_slug)"
+    fi
+fi
+
+# ----------------------------------------------------------------------
 # Step 4: build the tmux session
 # ----------------------------------------------------------------------
 #

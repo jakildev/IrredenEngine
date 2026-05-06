@@ -117,13 +117,14 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 0. Print your role banner:
    `[opus-reviewer] Final reviewer — Opus recheck on PRs touching core engine invariants or flagged by Sonnet. Loop: every 30m.`
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
-2. **Discover repo slugs** (used in all `--repo` flags below):
-   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
-   Game: `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
-   Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
-   If the game directory doesn't exist, skip all game-repo steps.
-   All `<engine-repo>` and `<game-repo>` placeholders below refer
-   to these discovered slugs.
+2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
+   (written once by `fleet-up` at startup). Use the `engine` field
+   for `<engine-repo>` and the `game` field (when present) for
+   `<game-repo>`. If `game` is absent, skip all game-repo steps.
+   If the cache file is missing, fall back to `gh repo view --json
+   nameWithOwner --jq .nameWithOwner` for engine and `git -C
+   ~/src/IrredenEngine/creations/game remote get-url origin` for
+   game.
 3. Confirm you are on the throwaway branch
    `claude/opus-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):
