@@ -64,10 +64,18 @@ Schema (slices this role uses):
   the working-tree TASKS.md is still what you Edit/Read for
   maintenance.
 
-Per-item lookups (`gh pr view <N> --json body`,
-`gh issue view <N> --comments`, `gh pr list --state merged ...`)
-stay inline — those pull live data the cache doesn't store (PR
-bodies, comment timelines, merged PRs).
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall back
+to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — PR body + comments + reviews + inline
+  threads. Use this for the `Closes #N` parsing.
+- `fleet-issue view <N>` — issue body + comments + labels + state.
+  Use this when ingesting a `human:approved` issue.
+
+Queries the wrappers don't cover stay direct: `gh pr list --state
+merged`, `gh api repos/.../issues/<N>/timeline`, label edits, and
+all writes (`gh pr edit`, `gh issue edit`).
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print
@@ -374,10 +382,12 @@ You are the sole TASKS.md editor. Each maintenance pass:
     pays the same pickup tax (observed: T-067 hit 4×, T-089 hit 2× by
     different opus-workers). For each `[ ]` or `[~]` task whose
     `**Issue:** #N` is a number, fetch the most recent few comments:
-    `gh issue view <N> --repo <repo> --json comments --jq '.comments[-5:]'`
-    Look for a comment body matching the release pattern — case-insensitive
-    substrings like `releasing the t-`, `already shipped`, `work shipped under pr #`,
-    `duplicate of pr #`, `already complete` — that names a specific PR
+    `fleet-issue view <N>` (engine; for game issues add `--repo game`).
+    Scan the comment timeline in the output; the most recent comments
+    are at the end. Look for a comment body matching the release pattern
+    — case-insensitive substrings like `releasing the t-`, `already shipped`,
+    `work shipped under pr #`, `duplicate of pr #`, `already complete` — that
+    names a specific PR
     number. Verify that PR's state with `gh pr view <PR-N> --repo <repo>
     --json state,mergedAt`. If state is `MERGED`:
     a. Flip the TASKS.md row to `[x]` (use Edit; same rules as step 5

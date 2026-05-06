@@ -50,10 +50,18 @@ Schema (slices this role uses):
 - `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
   `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
-`gh api repos/.../comments`) stay inline — those pull live data the
-cache doesn't store. The cache covers list-shaped queries; live
-drill-in covers single-item drill-down.
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall back
+to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — full PR detail.
+- `fleet-pr diff <N>` — raw diff text.
+- `fleet-pr comments <N>` — flat timeline of comments + review
+  summaries + inline comments. Use this when addressing feedback.
+- `fleet-issue view <N>` — issue body + comments + labels + state.
+
+Writes (`gh pr edit`, `gh pr comment`, `gh pr create`) stay direct
+— the wrappers are read-only.
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print
@@ -165,12 +173,12 @@ Each iteration:
    head branch is in the set.
 
    For each flagged PR (after the filter):
-   a. Read **all** feedback (two separate commands):
-      `gh pr view <N> --comments`
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
-      The first gets conversation-level comments. The second gets
-      inline review comments on specific lines — this is where most
-      human feedback lives. Address every comment, not just the first.
+   a. Read **all** feedback:
+      `fleet-pr comments <N>`
+      (covers the timeline, review summaries, and inline comments
+      in one call.)
+      Address every comment — conversation-level, review summaries,
+      and inline line-level comments are all in the output.
 
       **For `fleet:has-nits`** (PR was approved, reviewer flagged
       improvements): focus on the latest review's `### Nits` section.

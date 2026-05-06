@@ -61,11 +61,20 @@ Schema (slices this role uses):
   `title`, `summary`, `id`, `model`, `owner`, `area`, `blocked_by`,
   `issue`.
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
-`gh issue view <N>`, `gh api repos/.../comments`) stay inline — those
-pull live data the cache doesn't store (PR bodies, comments, diffs).
-The cache covers list-shaped queries; live drill-in covers
-single-item drill-down.
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall back
+to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — full PR detail.
+- `fleet-pr diff <N>` — raw diff text.
+- `fleet-pr comments <N>` — flat timeline of comments + review
+  summaries + inline comments. Use this when addressing feedback.
+- `fleet-issue view <N>` — issue body + comments + labels + state.
+  Use this when planning a `fleet:needs-plan` issue.
+
+Writes (`gh pr edit`, `gh pr comment`, `gh pr create`,
+`gh issue edit`, `gh issue create`) stay direct — the wrappers are
+read-only.
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print a
@@ -261,9 +270,10 @@ Do the work, then exit cleanly:
    repo's list; skip the PR if its head branch is in the set.
 
    For each flagged PR (after the filter):
-   a. Read **all** feedback (two separate commands):
-      `gh pr view <N> --comments`
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
+   a. Read **all** feedback (one wrapper call):
+      `fleet-pr comments <N>`
+      (covers the timeline, review summaries, and inline comments
+      in one call.)
 
       **For `fleet:has-nits`**: focus on the latest review's `### Nits`
       section. Address every nit unless it's purely subjective preference.
@@ -480,7 +490,7 @@ Do the work, then exit cleanly:
     b. Read the merger's most recent comment — it lists the
        conflicted files and the master/PR shas that touched each,
        so you don't need to re-discover them:
-       `gh pr view <N> --repo jakildev/IrredenEngine --comments`
+       `fleet-pr comments <N>` (engine; for game PRs add `--repo game`).
        Look for the comment ending in `— fleet merger`.
     c. Check out the PR (this also fetches the head branch):
        `gh pr checkout <N> --repo jakildev/IrredenEngine`
@@ -560,7 +570,7 @@ Do the work, then exit cleanly:
 
    The cache only stores list-shaped data — for per-issue body and
    comments, pull live (per-item lookup, stays inline):
-   `gh issue view <N> --repo <repo> --comments`
+   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
 
    For each issue:
    a. Read the full issue thread (title, body, all comments).

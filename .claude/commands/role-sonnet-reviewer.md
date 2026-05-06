@@ -58,10 +58,17 @@ Schema (slices this role uses):
   `mergeable`, `isDraft`, `reviews[]` (each with `author` login,
   `body`, `state`, `submittedAt`).
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
-`gh api repos/.../comments`) stay inline — those pull live data the
-cache doesn't store (issue comment timeline). The cache covers
-list-shaped queries; live drill-in covers single-item drill-down.
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall back
+to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — full PR detail.
+- `fleet-pr diff <N>` — raw diff text. Used on every PR you review.
+- `fleet-pr comments <N>` — flat timeline; convenient when you only
+  need to skim the conversation without the body.
+
+Writes (`gh pr review`, `gh pr comment`, `gh pr edit`) stay direct
+— the wrappers are read-only.
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print
@@ -120,9 +127,8 @@ treat it as a hard rule for this role.
      whichever gets to it first), OR
    - It **previously had a fleet review** but the author pushed fixes
      and commented "re-review please" — for this last one, do a per-PR
-     `gh pr view <N> --comments` only when the other criteria didn't
-     already match (the comment timeline is per-item drill-in, not in
-     the cache).
+     `fleet-pr comments <N>` only when the other criteria didn't
+     already match.
 
    When picking up a `human:re-review` or `fleet:changes-made` PR,
    **immediately remove the label that triggered pickup** so another
@@ -237,12 +243,12 @@ iteration of polling, reviewing, and exiting cleanly:
         `gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."`
         Do NOT add a verdict label.
 
-   `gh pr diff <N>` always scopes to this PR's own diff — do not
+   `fleet-pr diff <N>` always scopes to this PR's own diff — do not
    re-review the parent.
 
    **Game PRs** (`<game-repo>`):
-   a. Read the diff: `gh pr diff <N> --repo <game-repo>`
-   b. Read PR details: `gh pr view <N> --repo <game-repo>`
+   a. Read the diff: `fleet-pr diff <N> --repo game`
+   b. Read PR details: `fleet-pr view <N> --repo game`
    c. Review the diff manually (you cannot check out game PRs into
       this engine worktree). Focus on code quality, style, and obvious
       bugs. For game-specific conventions, read the game CLAUDE.md at
