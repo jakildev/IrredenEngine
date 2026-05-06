@@ -176,7 +176,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 // unique across both kinds.
                 p->paletteLUT_->bind(3);
                 shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                lightVolume.getTexture()->bind(5);
+                // `getReadTexture()` returns whichever ping-pong texture
+                // the GPU light-volume producer last wrote to, so this
+                // sampler always sees the latest dilation result.
+                lightVolume.getReadTexture()->bind(5);
                 p->frameDataBuf_->bindBase(
                     BufferTarget::UNIFORM,
                     kBufferIndex_FrameDataLightingToTrixel

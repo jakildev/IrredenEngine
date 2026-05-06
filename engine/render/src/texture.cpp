@@ -128,6 +128,17 @@ void Texture3D::bind(std::uint32_t unit) {
     m_impl->bind(unit);
 }
 
+void Texture3D::bindAsImage(
+    std::uint32_t unit,
+    TextureAccess access,
+    TextureFormat format,
+    int level,
+    bool layered,
+    int layer
+) const {
+    m_impl->bindImage(unit, access, format, level, layered, layer);
+}
+
 void Texture3D::subImage3D(
     int width, int height, int depth, PixelDataFormat format, PixelDataType type, const void *data
 ) {

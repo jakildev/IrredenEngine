@@ -155,11 +155,15 @@ void main() {
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE
         // means out-of-volume samples read zero light (the border texels
-        // were cleared during BFS staging).
+        // were cleared during volume staging). The propagate pass stores
+        // unattenuated emit color in rgb and residual strength in alpha,
+        // so the visible contribution is `rgb * alpha` (linear falloff
+        // with Manhattan distance, zero past the light's radius).
         const vec3 sampleCoord =
             (pos3D + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
             vec3(kLightVolumeSize);
-        const vec3 light = texture(lightVolume, sampleCoord).rgb;
+        const vec4 lightSample = texture(lightVolume, sampleCoord);
+        const vec3 light = lightSample.rgb * lightSample.a;
         baseRgb = clamp(baseRgb + src.rgb * light, 0.0, 1.0);
     }
 

@@ -55,6 +55,14 @@ class Texture3DImpl {
     virtual void *getNativeTexture() const = 0;
     virtual std::uint32_t getNativePixelFormat() const = 0;
     virtual void bind(std::uint32_t unit) = 0;
+    virtual void bindImage(
+        std::uint32_t unit,
+        TextureAccess access,
+        TextureFormat format,
+        int level,
+        bool layered,
+        int layer
+    ) const = 0;
     virtual void uploadSubImage3D(
         int width,
         int height,
@@ -139,6 +147,19 @@ class Texture3D {
 
     std::uint32_t getHandle() const;
     void bind(std::uint32_t unit = 0);
+    /// Binds this 3D texture as a writable / readable image for compute
+    /// shaders (`image3D` in GLSL, `texture3d<…, access::*>` in MSL).
+    /// Mirrors `Texture2D::bindAsImage`. Pass `layered = true` to expose
+    /// every Z slice at once (matches GLSL's `layered = GL_TRUE`); for
+    /// 3D-image semantics the `layer` argument is ignored when layered.
+    void bindAsImage(
+        std::uint32_t unit = 0,
+        TextureAccess access = TextureAccess::READ_WRITE,
+        TextureFormat format = TextureFormat::RGBA8,
+        int level = 0,
+        bool layered = true,
+        int layer = 0
+    ) const;
     void subImage3D(
         int width,
         int height,
