@@ -104,7 +104,8 @@ use `cat` — use the Read tool for files.
    are skipped. If the cache file is missing, fall back to
    `gh repo view --json nameWithOwner --jq .nameWithOwner` for
    engine and `git -C ~/src/IrredenEngine/creations/game remote
-   get-url origin` for game.
+   get-url origin` for game. If the game-side fallback fails
+   (directory absent), treat as no game repo.
 4. Read tool → `TASKS.md` (working-tree copy in this worktree —
    the queue-manager edits this file in place, so always Read the
    working tree, not the cache).

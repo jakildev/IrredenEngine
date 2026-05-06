@@ -124,7 +124,8 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    If the cache file is missing, fall back to `gh repo view --json
    nameWithOwner --jq .nameWithOwner` for engine and `git -C
    ~/src/IrredenEngine/creations/game remote get-url origin` for
-   game.
+   game. If the game-side fallback fails (directory absent), treat
+   as no game repo and skip all game-repo steps.
 3. Confirm you are on the throwaway branch
    `claude/opus-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):
