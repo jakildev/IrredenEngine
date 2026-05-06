@@ -172,6 +172,10 @@ realpath_portable() {
     if command -v realpath >/dev/null 2>&1; then
         realpath "$path"
     else
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "fleet-run-targets: neither realpath nor python3 found; cannot resolve path '$path'" >&2
+            exit 1
+        fi
         python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$path"
     fi
 }
