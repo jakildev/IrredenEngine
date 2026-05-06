@@ -76,9 +76,7 @@ def cmd_view(args):
             "gh", "pr", "view", str(args.pr_number), "--comments",
         ])
 
-    print(f"# PR #{detail['number']}")
-    if detail.get("title"):
-        print(f"# {detail['title']}")
+    print(f"# PR #{detail['number']}: {detail.get('title', '')}")
     print()
     if detail.get("body"):
         print(detail["body"])
