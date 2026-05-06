@@ -67,7 +67,7 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        the baked sun depth map → per-pixel shadow brightness     │
 │    COMPUTE_LIGHT_VOLUME                                          │
 │      • c_clear_light_volume + c_seed_light_volume +              │
-│        c_propagate_light_volume (×128) — GPU dilation chain over │
+│        c_propagate_light_volume (×32) — GPU dilation chain over  │
 │        a ping-pong pair of 128³ RGBA8 3D textures, seeded from   │
 │        a per-frame LightSourceBuffer SSBO. No CPU upload.        │
 │    LIGHTING_TO_TRIXEL                                            │

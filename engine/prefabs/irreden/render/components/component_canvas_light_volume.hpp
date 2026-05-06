@@ -98,13 +98,9 @@ struct C_CanvasLightVolume {
     /// Promote `textureWrite_` to the read side after a propagation
     /// pass. Subsequent reads (`getReadTexture()`) see the new contents
     /// while the old read texture becomes the next pass's scratch.
-    void swap() { std::swap(textureRead_, textureWrite_); }
-
-    /// Backwards-compatible alias for the previously-named accessor;
-    /// still used by `LIGHTING_TO_TRIXEL`'s sampler binding. Yields
-    /// the read-side texture so the consumer always sees the latest
-    /// propagated state.
-    Texture3D *getTexture() const { return getReadTexture(); }
+    void swap() {
+        std::swap(textureRead_, textureWrite_);
+    }
 
     static bool inBounds(int wx, int wy, int wz) {
         return wx >= -kLightVolumeHalfExtent && wx < kLightVolumeHalfExtent &&

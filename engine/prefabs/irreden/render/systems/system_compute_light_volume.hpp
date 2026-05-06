@@ -91,12 +91,8 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
         IRMath::max(0.0f, light.intensity_)
     );
     const float radius = static_cast<float>(light.radius_);
-    gpu.directionAndRadius_ = vec4(
-        light.direction_.x,
-        light.direction_.y,
-        light.direction_.z,
-        radius
-    );
+    gpu.directionAndRadius_ =
+        vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
     gpu.coneAndPad_ = vec4(light.coneAngleDeg_, 0.0f, 0.0f, 0.0f);
     return gpu;
 }
@@ -212,11 +208,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     // Phase: gather + upload light SSBO.
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER
-                        );
-                        const std::uint32_t count =
-                            detail::gatherLightSources(p->lightStaging_);
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
+                        const std::uint32_t count = detail::gatherLightSources(p->lightStaging_);
                         p->params_.lightCount_ = static_cast<int>(count);
                         if (count > 0) {
                             p->lightSourceBuf_->subData(
@@ -233,35 +226,22 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     // pass alone; Populate covers seed + N propagate
                     // iterations so the legacy column name still maps
                     // to "where the bulk of the work lives".
-                    p->paramsBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_LightVolumeParams
-                    );
+                    p->paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
 
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER
-                        );
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
                         p->clearProgram_->use();
-                        volume.getReadTexture()->bindAsImage(
-                            0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                        );
-                        const int clearGroups =
-                            IRMath::divCeil(kVolumeSize, kClearGroupSize);
-                        IRRender::device()->dispatchCompute(
-                            clearGroups, clearGroups, clearGroups
-                        );
-                        IRRender::device()->memoryBarrier(
-                            BarrierType::SHADER_IMAGE_ACCESS
-                        );
+                        volume.getReadTexture()
+                            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                        const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
+                        IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     }
 
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
-                        IR_PROFILE_BLOCK(
-                            "ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER
-                        );
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
 
                         // Seed pass: one thread per light, writes one
                         // bright texel into the read texture.
@@ -271,18 +251,13 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                                 BufferTarget::SHADER_STORAGE,
                                 kBufferIndex_LightSourceBuffer
                             );
-                            volume.getReadTexture()->bindAsImage(
-                                0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                            );
-                            const int seedGroups = IRMath::divCeil(
-                                p->params_.lightCount_, kSeedGroupSize
-                            );
-                            IRRender::device()->dispatchCompute(
-                                static_cast<std::uint32_t>(seedGroups), 1u, 1u
-                            );
-                            IRRender::device()->memoryBarrier(
-                                BarrierType::SHADER_IMAGE_ACCESS
-                            );
+                            volume.getReadTexture()
+                                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                            const int seedGroups =
+                                IRMath::divCeil(p->params_.lightCount_, kSeedGroupSize);
+                            IRRender::device()
+                                ->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
+                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                         }
 
                         // Propagate dilation chain. With no lights the
@@ -293,19 +268,22 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                             p->propagateProgram_->use();
                             // Occupancy SSBO is shared with AO; bind it
                             // once then leave bound for the duration.
-                            if (p->occupancyBuf_ != nullptr) {
-                                p->occupancyBuf_->bindBase(
-                                    BufferTarget::SHADER_STORAGE,
-                                    kBufferIndex_OccupancyGrid
-                                );
-                            }
+                            IR_ASSERT(
+                                p->occupancyBuf_ != nullptr,
+                                "OccupancyGridBuffer must exist before COMPUTE_LIGHT_VOLUME"
+                            );
+                            p->occupancyBuf_->bindBase(
+                                BufferTarget::SHADER_STORAGE,
+                                kBufferIndex_OccupancyGrid
+                            );
                             const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
                             const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
                             const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
-                            for (int iter = 0; iter < kLightVolumePropagateIterations;
-                                 ++iter) {
+                            for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
                                 volume.getReadTexture()->bindAsImage(
-                                    0, TextureAccess::READ_ONLY, TextureFormat::RGBA8
+                                    0,
+                                    TextureAccess::READ_ONLY,
+                                    TextureFormat::RGBA8
                                 );
                                 volume.getWriteTexture()->bindAsImage(
                                     1,
@@ -317,9 +295,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                                     static_cast<std::uint32_t>(gy),
                                     static_cast<std::uint32_t>(gz)
                                 );
-                                IRRender::device()->memoryBarrier(
-                                    BarrierType::SHADER_IMAGE_ACCESS
-                                );
+                                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                                 volume.swap();
                             }
                         }
