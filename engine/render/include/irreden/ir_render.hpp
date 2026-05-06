@@ -196,7 +196,7 @@ ivec2 mouseTrixelPositionWorld();
 /// canvas frame and take its iso depth:
 /// @code
 ///   const ivec3 worldRef = ... ;  // e.g. entity world position
-///   const int idx = IRMath::rasterYawCardinalIndex(
+///   const IRMath::CardinalIndex idx = IRMath::rasterYawCardinalIndex(
 ///       IRPrefab::Camera::getRasterYaw());
 ///   const float canvasIsoDepth = static_cast<float>(
 ///       IRMath::pos3DtoDistance(IRMath::rotateCardinalZ(worldRef, idx)));
