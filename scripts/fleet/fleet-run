@@ -125,6 +125,13 @@ shift
 # Default build dir: same auto-detection logic as fleet-build.
 if [[ -z "$BUILD_DIR" ]]; then
     WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    if [[ ! -f "$WORKTREE_ROOT/CMakePresets.json" ]]; then
+        if [[ -f "$WORKTREE_ROOT/../../CMakePresets.json" ]]; then
+            WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/../.." && pwd)"
+        elif [[ -f "$WORKTREE_ROOT/../CMakePresets.json" ]]; then
+            WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/.." && pwd)"
+        fi
+    fi
     BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
 fi
 

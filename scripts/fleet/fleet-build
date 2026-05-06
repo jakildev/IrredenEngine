@@ -26,6 +26,13 @@ set -euo pipefail
 # --- Build directory resolution ---
 # Priority: $IRREDEN_BUILD_DIR > <worktree-root>/build > ~/src/IrredenEngine/build
 WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+if [[ ! -f "$WORKTREE_ROOT/CMakePresets.json" ]]; then
+    if [[ -f "$WORKTREE_ROOT/../../CMakePresets.json" ]]; then
+        WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/../.." && pwd)"
+    elif [[ -f "$WORKTREE_ROOT/../CMakePresets.json" ]]; then
+        WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/.." && pwd)"
+    fi
+fi
 BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
 
 # --- Auto-configure if the build tree doesn't exist yet ---
