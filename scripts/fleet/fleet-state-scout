@@ -36,9 +36,21 @@ GAME = ENGINE / "creations" / "game"
 STATE_DIR = Path.home() / ".fleet" / "state"
 TRIGGERS_DIR = STATE_DIR / "triggers"
 SEEN_DIR = STATE_DIR / "seen-hashes"
+PRS_DIR = STATE_DIR / "prs"
+DIFFS_DIR = STATE_DIR / "diffs"
+ISSUES_DIR = STATE_DIR / "issues"
 PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
+
+# Canonical short keys used in the cache layout. The keys match the
+# `repos.<key>` slots in state.json so consumers can read the per-PR
+# / per-issue files using the same name they already use for the
+# list-shaped cache.
+REPO_KEY_TO_SLUG = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
 
 POLL_SECONDS_DEFAULT = 60
 GH_TIMEOUT_SECONDS = 30
@@ -130,7 +142,7 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", filter_label, "--state", "open",
-        "--json", "number,title,labels",
+        "--json", "number,title,labels,updatedAt",
     ])
     if out is None:
         return []
@@ -210,6 +222,281 @@ def parse_tasks_md(text):
 def fetch_tasks(repo_root):
     out = run_capture(["git", "-C", str(repo_root), "show", "origin/master:TASKS.md"])
     return parse_tasks_md(out or "")
+
+
+# ---------------------------------------------------------------------------
+# Per-PR / per-issue detail cache
+#
+# The list-shaped state.json covers the queries every role makes at startup
+# (open PRs + their labels, issue lists, parsed TASKS.md). Per-item drill-in
+# (full PR body, comment timeline, inline review comments, raw diff, full
+# issue body+comments) used to be live `gh` calls fired per-role per-iteration
+# — the largest remaining token + API cost on the agent side. Scout now
+# fetches that detail once per state change and caches it on disk so every
+# reader is a Read-tool call instead of a gh subprocess.
+#
+# Layout:
+#   ~/.fleet/state/prs/<repo_key>/<N>.json       — full PR detail + inline comments
+#   ~/.fleet/state/diffs/<repo_key>/<N>-<sha>.diff — raw `gh pr diff` text
+#   ~/.fleet/state/issues/<repo_key>/<N>.json    — full issue body + comments
+#
+# `<repo_key>` is the short name (`engine` or `game`) used in state.json,
+# not the github slug, so consumers only ever traffic in one identifier.
+#
+# Refresh policy: only refetch when `updatedAt` from the list query changed
+# (per-PR / per-issue) or `headRefOid` changed (diff). Stable items cost
+# zero per-tick API calls.
+#
+# GC policy: on each tick, any cached file whose number/SHA is no longer in
+# the current list is deleted. PRs that close drop off the open-PR list,
+# their cache files (and all old-SHA diffs) get cleaned up automatically.
+# ---------------------------------------------------------------------------
+
+
+def fetch_pr_view(repo_slug, pr_number):
+    out = run_capture([
+        "gh", "pr", "view", str(pr_number), "--repo", repo_slug,
+        "--json", "number,headRefOid,body,comments,reviews,files,updatedAt",
+    ])
+    if out is None:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh pr view {repo_slug}#{pr_number}: bad JSON: {e}")
+        return None
+
+
+def fetch_pr_inline_comments(repo_slug, pr_number):
+    # Inline review comments live on a different endpoint than `gh pr view`'s
+    # `comments`/`reviews` fields. Reviewers walking a flagged PR want both.
+    out = run_capture([
+        "gh", "api", f"repos/{repo_slug}/pulls/{pr_number}/comments",
+    ])
+    if out is None:
+        return []
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh api .../pulls/{pr_number}/comments: bad JSON: {e}")
+        return []
+
+
+def fetch_pr_diff(repo_slug, pr_number):
+    return run_capture([
+        "gh", "pr", "diff", str(pr_number), "--repo", repo_slug,
+    ])
+
+
+def fetch_issue_detail(repo_slug, issue_number):
+    out = run_capture([
+        "gh", "issue", "view", str(issue_number), "--repo", repo_slug,
+        "--json", "number,title,body,comments,labels,updatedAt,state",
+    ])
+    if out is None:
+        return None
+    try:
+        detail = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh issue view {repo_slug}#{issue_number}: bad JSON: {e}")
+        return None
+    detail["labels"] = sorted(lbl["name"] for lbl in detail.get("labels", []))
+    return detail
+
+
+def _read_cached_updated_at(path):
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return None
+    try:
+        return json.loads(text).get("updatedAt") or None
+    except json.JSONDecodeError:
+        return None
+
+
+def refresh_pr_detail(repo_key, pr_summary):
+    # Returns (refetched_pr, refetched_diff) booleans for logging.
+    repo_slug = REPO_KEY_TO_SLUG[repo_key]
+    pr_number = pr_summary["number"]
+    list_updated_at = pr_summary.get("updatedAt", "")
+
+    pr_dir = PRS_DIR / repo_key
+    pr_path = pr_dir / f"{pr_number}.json"
+    cached_updated_at = _read_cached_updated_at(pr_path)
+
+    refetched_pr = False
+    refetched_diff = False
+    head_oid = None
+
+    if cached_updated_at != list_updated_at:
+        view = fetch_pr_view(repo_slug, pr_number)
+        if view is not None:
+            view["inlineComments"] = fetch_pr_inline_comments(repo_slug, pr_number)
+            view["_cached_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            pr_dir.mkdir(parents=True, exist_ok=True)
+            write_atomic(pr_path, json.dumps(view, indent=2, sort_keys=True) + "\n")
+            head_oid = view.get("headRefOid")
+            refetched_pr = True
+    else:
+        # Read just enough to know the cached SHA for the diff freshness check.
+        try:
+            head_oid = json.loads(pr_path.read_text()).get("headRefOid")
+        except (FileNotFoundError, json.JSONDecodeError):
+            head_oid = None
+
+    if head_oid:
+        diff_dir = DIFFS_DIR / repo_key
+        diff_path = diff_dir / f"{pr_number}-{head_oid}.diff"
+        if not diff_path.exists():
+            diff_text = fetch_pr_diff(repo_slug, pr_number)
+            if diff_text is not None:
+                diff_dir.mkdir(parents=True, exist_ok=True)
+                write_atomic(diff_path, diff_text)
+                refetched_diff = True
+
+    return refetched_pr, refetched_diff
+
+
+def refresh_issue_detail(repo_key, issue_summary):
+    repo_slug = REPO_KEY_TO_SLUG[repo_key]
+    issue_number = issue_summary["number"]
+    list_updated_at = issue_summary.get("updatedAt", "")
+
+    issue_dir = ISSUES_DIR / repo_key
+    issue_path = issue_dir / f"{issue_number}.json"
+    cached_updated_at = _read_cached_updated_at(issue_path)
+    if cached_updated_at == list_updated_at:
+        return False
+
+    detail = fetch_issue_detail(repo_slug, issue_number)
+    if detail is None:
+        return False
+    detail["_cached_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    issue_dir.mkdir(parents=True, exist_ok=True)
+    write_atomic(issue_path, json.dumps(detail, indent=2, sort_keys=True) + "\n")
+    return True
+
+
+def gc_pr_caches(repo_key, current_pr_numbers, current_head_oids):
+    # current_pr_numbers: set of int; current_head_oids: dict{number: sha}.
+    # Delete per-PR JSON for closed PRs, and old-SHA diffs for rebased PRs.
+    pr_dir = PRS_DIR / repo_key
+    if pr_dir.exists():
+        for path in pr_dir.glob("*.json"):
+            try:
+                number = int(path.stem)
+            except ValueError:
+                continue
+            if number not in current_pr_numbers:
+                path.unlink(missing_ok=True)
+
+    diff_dir = DIFFS_DIR / repo_key
+    if diff_dir.exists():
+        for path in diff_dir.glob("*.diff"):
+            stem_parts = path.stem.split("-", 1)
+            if len(stem_parts) != 2:
+                continue
+            try:
+                number = int(stem_parts[0])
+            except ValueError:
+                continue
+            sha = stem_parts[1]
+            if number not in current_pr_numbers:
+                # PR is closed/merged — drop all its diffs.
+                path.unlink(missing_ok=True)
+            elif number in current_head_oids and current_head_oids[number] != sha:
+                # PR is open but rebased to a new SHA — drop the old diff.
+                # If the PR is open but missing from current_head_oids (the
+                # per-PR JSON refetch failed this tick), keep the diff
+                # rather than orphan it.
+                path.unlink(missing_ok=True)
+
+
+def gc_issue_caches(repo_key, current_issue_numbers):
+    issue_dir = ISSUES_DIR / repo_key
+    if not issue_dir.exists():
+        return
+    for path in issue_dir.glob("*.json"):
+        try:
+            number = int(path.stem)
+        except ValueError:
+            continue
+        if number not in current_issue_numbers:
+            path.unlink(missing_ok=True)
+
+
+def refresh_all_details(state):
+    # Fan out per-PR and per-issue refreshes through the same throttled pool
+    # the list queries use, so the combined per-tick burst stays bounded.
+    jobs = []
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key not in REPO_KEY_TO_SLUG:
+            continue
+        for pr in repo_state.get("prs", []):
+            jobs.append(("pr", repo_key, pr))
+        for issue in repo_state.get("needs_plan", []):
+            jobs.append(("issue", repo_key, issue))
+        for issue in repo_state.get("human_approved", []):
+            jobs.append(("issue", repo_key, issue))
+
+    pr_refreshed = 0
+    diff_refreshed = 0
+    issue_refreshed = 0
+
+    if not jobs:
+        return
+
+    with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
+        futures = []
+        for i, job in enumerate(jobs):
+            if i > 0:
+                time.sleep(FETCH_SUBMIT_GAP_SECONDS)
+            kind, repo_key, item = job
+            if kind == "pr":
+                futures.append(ex.submit(refresh_pr_detail, repo_key, item))
+            else:
+                futures.append(ex.submit(refresh_issue_detail, repo_key, item))
+        for fut, job in zip(futures, jobs):
+            try:
+                result = fut.result()
+            except Exception as e:
+                log(f"detail fetch {job[0]} {job[1]}#{job[2]['number']}: {e}")
+                continue
+            if job[0] == "pr":
+                refetched_pr, refetched_diff = result
+                if refetched_pr:
+                    pr_refreshed += 1
+                if refetched_diff:
+                    diff_refreshed += 1
+            elif result:
+                issue_refreshed += 1
+
+    # GC after all refreshes so closed PRs / merged issues are cleaned up.
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key not in REPO_KEY_TO_SLUG:
+            continue
+        pr_numbers = {pr["number"] for pr in repo_state.get("prs", [])}
+        head_oids = {}
+        for pr in repo_state.get("prs", []):
+            number = pr["number"]
+            cached_path = PRS_DIR / repo_key / f"{number}.json"
+            try:
+                head_oids[number] = json.loads(cached_path.read_text()).get("headRefOid")
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+        gc_pr_caches(repo_key, pr_numbers, head_oids)
+        issue_numbers = {
+            i["number"]
+            for i in repo_state.get("needs_plan", []) + repo_state.get("human_approved", [])
+        }
+        gc_issue_caches(repo_key, issue_numbers)
+
+    if pr_refreshed or diff_refreshed or issue_refreshed:
+        log(
+            f"detail refresh: prs={pr_refreshed} diffs={diff_refreshed} "
+            f"issues={issue_refreshed}"
+        )
 
 
 def stable_hash(obj):
@@ -422,6 +709,11 @@ def tick_once():
     state = collect_state()
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
+    try:
+        refresh_all_details(state)
+    except Exception as e:
+        log(f"refresh_all_details failed: {e}")
+
     triggers_fired = []
     for role, projector in PROJECTORS.items():
         try:
@@ -467,6 +759,9 @@ def main():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     SEEN_DIR.mkdir(parents=True, exist_ok=True)
     TRIGGERS_DIR.mkdir(parents=True, exist_ok=True)
+    PRS_DIR.mkdir(parents=True, exist_ok=True)
+    DIFFS_DIR.mkdir(parents=True, exist_ok=True)
+    ISSUES_DIR.mkdir(parents=True, exist_ok=True)
 
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
