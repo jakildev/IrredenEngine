@@ -154,11 +154,11 @@ Avoid:
 
 
 
-- [ ] **Render: GPU-side light-volume propagation (jump flooding / iterative dilation)** — replace CPU BFS + 8 MB subImage3D upload in `system_compute_light_volume.hpp` with GPU seed pass + jump-flood propagate pass(es)
+- [~] **Render: GPU-side light-volume propagation (jump flooding / iterative dilation)** — replace CPU BFS + 8 MB subImage3D upload in `system_compute_light_volume.hpp` with GPU seed pass + jump-flood propagate pass(es)
   - **ID:** T-072
   - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/render-light-volume-gpu
   - **Blocked by:** (none)
   - **Acceptance:** (1) `system_compute_light_volume.hpp` has no per-frame CPU `vector<>` or `std::fill` of volume-sized buffers; `subImage3D` upload for the volume texture removed; (2) GPU seed pass + propagate pass(es) replace CPU BFS; light sources seeded via compute dispatch; (3) `IRLightingCombined` and `IRLightingEmissive` outputs within sample-noise of pre-migration reference; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
   - **Issue:** #359
@@ -168,17 +168,6 @@ Avoid:
 
 
 
-
-- [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
-  - **ID:** T-089
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test covers basic decay case (push lambda modifier with ticksRemaining=60, advance 60 ticks, assert removed); (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance to be defined by architect after design is locked.
-  - **Issue:** #341
-  - **Notes:** Part 1 is mechanical — mirrors `system_modifier_decay.hpp` but targets `C_LambdaModifiers`. Part 2 (stateful lambdas) is architectural: architect prefers option (c) — lambda + companion component — where state lives on entity in its own component and the lambda receives entity ID. Part 2 should be its own dedicated PR after Part 1 lands and design is locked; worker can do Part 1 standalone. Surfaced during architect review of PR #332; documented in `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups."
-  - **Links:**
 
 - [ ] **Render: AO via trixelDistances (drop OccupancyGridBuffer)** — migrate `c_compute_voxel_ao.{glsl,metal}` off `OccupancyGridBuffer`; sample 4 face-tangent neighbour pixels in `trixelDistances` instead
   - **ID:** T-091
@@ -213,11 +202,11 @@ Avoid:
   - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
   - **Links:**
 
-- [ ] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
+- [~] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
   - **ID:** T-094
   - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/render-camera-anchored-grids
   - **Blocked by:** T-072
   - **Acceptance:** (1) lighting demos render with full fidelity when camera is panned far from origin (e.g. ~1000 voxels away); (2) at-origin scenes produce screenshot diff within sampling noise of T-072 reference — no regression; (3) light-volume texture memory footprint unchanged (128³ RGB); (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) GLSL and Metal shaders both read new origin uniform; `render-debug-loop` shows no parity drift
   - **Issue:** #360
@@ -237,6 +226,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-089** — Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design · Owner: opus-worker-2 · PR: https://github.com/jakildev/IrredenEngine/pull/351
 - [x] **T-071** — Render: delete legacy sun-shadow paths (analytic caster + occupancy DDA) · Owner: claude/T-071-delete-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/423
 - [x] **T-057** — Render/input: screen-to-world picking under Z-yaw · Owner: claude/T-057-picking-yaw-inverse · PR: https://github.com/jakildev/IrredenEngine/pull/424
 - [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
@@ -256,4 +246,4 @@ Avoid:
 - [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
 - [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
 - [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
-- [x] **T-065** — Render systems: migrate 12 files off function-local static onto SystemParams · Owner: claude/T-065-render-system-params · PR: https://github.com/jakildev/IrredenEngine/pull/382
+
