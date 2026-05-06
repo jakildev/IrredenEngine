@@ -270,7 +270,7 @@ Do the work, then exit cleanly:
    repo's list; skip the PR if its head branch is in the set.
 
    For each flagged PR (after the filter):
-   a. Read **all** feedback (two separate commands):
+   a. Read **all** feedback (one wrapper call):
       `fleet-pr comments <N>`
       (covers the timeline, review summaries, and inline comments
       in one call.)

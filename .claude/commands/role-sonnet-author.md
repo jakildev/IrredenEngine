@@ -173,13 +173,12 @@ Each iteration:
    head branch is in the set.
 
    For each flagged PR (after the filter):
-   a. Read **all** feedback (two separate commands):
+   a. Read **all** feedback:
       `fleet-pr comments <N>`
       (covers the timeline, review summaries, and inline comments
       in one call.)
-      The first gets conversation-level comments. The second gets
-      inline review comments on specific lines — this is where most
-      human feedback lives. Address every comment, not just the first.
+      Address every comment — conversation-level, review summaries,
+      and inline line-level comments are all in the output.
 
       **For `fleet:has-nits`** (PR was approved, reviewer flagged
       improvements): focus on the latest review's `### Nits` section.
