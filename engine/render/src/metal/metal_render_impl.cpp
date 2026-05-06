@@ -261,8 +261,8 @@ class MetalRenderDevice final : public RenderDevice {
         // Now that the GPU has finished consuming any encoders that
         // captured orphaned buffers, it is safe to release them.
         releaseDeferredMetalBuffers();
-setMetalDrawable(nullptr);
-setMetalCommandBuffer(nullptr);
+        setMetalDrawable(nullptr);
+        setMetalCommandBuffer(nullptr);
     }
 
     void clearDefaultFramebuffer() override {
@@ -705,7 +705,7 @@ std::unique_ptr<RenderImpl> createRenderer() {
 MetalRenderImpl::MetalRenderImpl()
     : m_device{MTL::CreateSystemDefaultDevice()} {
     IRE_LOG_INFO("Initializing Metal render implementation.");
-setMetalBootstrapDevice(m_device);
+    setMetalBootstrapDevice(m_device);
 }
 
 MetalRenderImpl::~MetalRenderImpl() {
@@ -744,7 +744,7 @@ void MetalRenderImpl::printInfo() {
 }
 
 void metalCallback_framebuffer_size(GLFWwindow *, int width, int height) {
-resizeMetalDrawable(width, height);
+    resizeMetalDrawable(width, height);
     IRE_LOG_INFO("Resized Metal viewport to {}x{}", width, height);
 }
 

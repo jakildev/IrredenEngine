@@ -189,7 +189,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     bool supportsGpuTimestampPairs() const override {
-        return true;
+        return GLAD_GL_VERSION_3_3 != 0;
     }
 
     void writeTimestamp(GpuTimestampHandle handle, TimestampSlot slot) override {
