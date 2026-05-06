@@ -42,7 +42,7 @@ TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
 LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
 PID_FILE="$STATE_DIR/dispatcher.pid"
-LOCK_FILE="$STATE_DIR/dispatcher.lock"
+LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-30}"
@@ -100,7 +100,11 @@ cleanup_pid_file() {
     fi
 }
 
-trap cleanup_pid_file EXIT
+on_exit() {
+    cleanup_pid_file
+    release_dispatcher_lock
+}
+trap on_exit EXIT
 trap 'log "received signal; shutting down"; exit 0' TERM INT
 
 # --- tmux helpers ----------------------------------------------------------
@@ -231,7 +235,13 @@ dispatch_role() {
     cmd=$(build_dispatch_command "$role")
 
     log "dispatching $role -> $pane_id"
-    tmux send-keys -t "$pane_id" "$cmd" C-m
+    if ! tmux send-keys -t "$pane_id" "$cmd" C-m; then
+        # send-keys failed (pane vanished, tmux server died). Leave the
+        # trigger in place so the next tick retries — don't orphan the
+        # work by consuming the trigger before the dispatch landed.
+        log "send-keys failed for $role -> $pane_id; trigger kept for retry"
+        return
+    fi
     write_dispatch_record "$role" "$pane_id"
     rm -f "$trigger_file"
 }
@@ -243,14 +253,44 @@ write_pid_file() {
     printf '%d\n' "$$" >"$PID_FILE"
 }
 
+acquire_dispatcher_lock() {
+    # Portable single-instance guard. mkdir is atomic on every POSIX
+    # filesystem (Linux + macOS) and doesn't require flock (which is
+    # not present on macOS by default). The lock-dir's pid file lets
+    # us recover from a crashed previous instance that left the
+    # directory behind.
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
+    local owner_pid
+    owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
+        return 1
+    fi
+    log "stale lock dir found (owner pid=${owner_pid:-?} not running); removing"
+    rm -rf "$LOCK_DIR"
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
+    return 1
+}
+
+release_dispatcher_lock() {
+    if [[ -f "$LOCK_DIR/pid" ]]; then
+        local recorded
+        recorded=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+        if [[ "$recorded" == "$$" ]]; then
+            rm -rf "$LOCK_DIR"
+        fi
+    fi
+}
+
 main() {
     mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR"
 
-    # flock guards against two concurrent dispatchers (e.g. a stale
-    # one left over from a previous fleet-up + a fresh one). Only one
-    # holds the lock at a time.
-    exec 9>"$LOCK_FILE"
-    if ! flock -n 9; then
+    if ! acquire_dispatcher_lock; then
         log "another dispatcher is already running (lock held); exiting"
         exit 0
     fi
