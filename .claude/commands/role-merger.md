@@ -46,6 +46,14 @@ Full cache protocol — staleness rules, layout of every cache
 file, what stays direct — lives in
 [docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
 
+## Exit protocol
+
+You are a transient one-shot `claude --print` invocation. When
+your merge iteration finishes, `--print` exits and the pane
+returns to bash; `fleet-dispatcher` fires a fresh invocation
+when scout's next merge-candidate trigger arrives. Do NOT loop.
+If forced to exit explicitly: `bash -c 'kill -TERM $PPID'`.
+
 ## What you do
 
 You poll open PRs on the **engine repo** every 10 minutes. For each

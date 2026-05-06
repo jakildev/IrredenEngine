@@ -435,6 +435,44 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# Step 3f: launch fleet-dispatcher daemon
+# ----------------------------------------------------------------------
+#
+# Polls every 30 s, watches ~/.fleet/state/triggers/<role>, dispatches
+# transient `claude --print ... | fleet-claude-stream` invocations
+# into idle worker / reviewer / queue-mgr / merger panes via
+# `tmux send-keys`. Architects keep fleet-babysit (interactive
+# --resume sessions), so they're not in the dispatcher's role list.
+#
+# Backgrounded with nohup, PID written to dispatcher.pid for
+# fleet-down to terminate cleanly. The dispatcher itself uses
+# `flock -n` on dispatcher.lock as a second-layer guard.
+dispatcher_cmd=""
+if command -v fleet-dispatcher >/dev/null 2>&1; then
+    dispatcher_cmd="fleet-dispatcher"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-dispatcher" ]]; then
+    dispatcher_cmd="$ENGINE/scripts/fleet/fleet-dispatcher"
+fi
+if [[ -z "$dispatcher_cmd" ]]; then
+    echo "fleet-up: fleet-dispatcher not found — workers will fall back to fleet-babysit lifecycle"
+else
+    dispatcher_pid_file="$HOME/.fleet/state/dispatcher.pid"
+    if [[ -f "$dispatcher_pid_file" ]]; then
+        old_pid=$(cat "$dispatcher_pid_file" 2>/dev/null || true)
+        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+            kill -TERM "$old_pid" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$dispatcher_pid_file"
+    fi
+    mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
+    dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
+    nohup "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
+    disown
+    echo "fleet-up: launched fleet-dispatcher (pid $!, log $dispatcher_log)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 3e: write the repo-discovery cache
 # ----------------------------------------------------------------------
 #
@@ -585,6 +623,20 @@ label_pane_id() {
     tmux set-option -t "$1" -p @role "$2"
 }
 
+# Tag a pane with its dispatcher role slug. The dispatcher matches
+# panes via this tag (separate from the human-readable @role label).
+# Architects don't get tagged — they stay on fleet-babysit and the
+# dispatcher's role list excludes them.
+set_fleet_role() {
+    tmux set-option -t "$1" -p @fleet-role "$2"
+}
+
+# Command for a non-architect pane that's been migrated to the
+# dispatcher model: just an interactive shell. The dispatcher will
+# `tmux send-keys` a `claude --print ... | fleet-claude-stream` line
+# in when it sees a trigger for this role's pane.
+TRANSIENT_PANE_CMD='exec $SHELL -i'
+
 # --- Window 1: "fleet" — 3 rows × 3 columns ---------------------------
 #
 # Build top-down: create initial pane (will become top-left), split
@@ -594,9 +646,10 @@ label_pane_id() {
 
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
+    "$TRANSIENT_PANE_CMD"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
+set_fleet_role "$TOP_LEFT" "sonnet-author"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
@@ -609,8 +662,9 @@ pane_stagger
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
 # Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
@@ -619,14 +673,16 @@ pane_stagger
 # left, giving three equal columns.
 TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-author)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+set_fleet_role "$TOP_MID" "sonnet-author"
 pane_stagger
 
 TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+set_fleet_role "$TOP_RIGHT" "sonnet-reviewer"
 pane_stagger
 
 # Middle row: split MID_LEFT horizontally for game-architect (only if
@@ -645,14 +701,16 @@ fi
 # equal columns.
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "FLEET_MIN_BACKOFF=$OPUS_MIN_BACKOFF $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+set_fleet_role "$BOT_RIGHT" "opus-reviewer"
 pane_stagger
 
 # --- Window 2: "ops" — 2x2 grid ---------------------------------------
@@ -668,14 +726,16 @@ pane_stagger
 # at fleet-index + 1 regardless of base-index.
 OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$OPS_TL" "queue-manager [sonnet]"
+set_fleet_role "$OPS_TL" "queue-manager"
 pane_stagger
 
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
-    "$(launch_cmd "$OPUS_MODEL" merger 10m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$OPS_TR" "merger [opus 4.7]"
+set_fleet_role "$OPS_TR" "merger"
 
 OPS_BL=$(tmux split-window -v -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
     -c "$HOME/.fleet" \
