@@ -192,26 +192,40 @@ constexpr vec2 rotate2D(const vec2 v, float angle) {
     return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
+/// Strongly-typed index for the four camera-yaw cardinal snap points.
+/// Mirrors the 0..3 range used by `rasterYawCardinalIndex` in
+/// `shaders/ir_iso_common.glsl`. CPU and GPU MUST agree on the same index for
+/// any picking ↔ raster handshake.
+enum class CardinalIndex : int {
+    k0 = 0,   ///< rasterYaw ≈ 0      (identity)
+    k90 = 1,  ///< rasterYaw ≈ π/2
+    k180 = 2, ///< rasterYaw ≈ π
+    k270 = 3, ///< rasterYaw ≈ 3π/2
+};
+
 /// CPU mirror of `rasterYawCardinalIndex` in `shaders/ir_iso_common.glsl`.
 /// `IRPrefab::Camera::computeYawSplit` snaps `rasterYaw` to a multiple of
 /// pi/2; the round() defends against bit-wise drift only. Negative inputs
 /// fold via `(q mod 4 + 4) mod 4` into [0, 3]. CPU and GPU MUST resolve
 /// the same cardinal index for any picking ↔ raster handshake.
-constexpr int rasterYawCardinalIndex(float rasterYaw) {
+constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
     constexpr float kHalfPi = 1.5707963267948966f;
     const int q = static_cast<int>(glm::round(rasterYaw / kHalfPi));
-    return ((q % 4) + 4) % 4;
+    return static_cast<CardinalIndex>(((q % 4) + 4) % 4);
 }
 
 /// CPU mirror of `rotateCardinalZ` in `shaders/ir_iso_common.glsl`.
-/// World→view = R_z(-rasterYaw) for cardinal index in [0, 3]. The voxel
+/// World→view = R_z(-rasterYaw) for the given cardinal snap. The voxel
 /// rasterizer applies this to world positions before iso projection, so
 /// any screen↔world picking inverse must compose its inverse on the
 /// recovered 3D position.
-constexpr ivec3 rotateCardinalZ(const ivec3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);
-    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return ivec3(-v.y,  v.x, v.z);
+constexpr ivec3 rotateCardinalZ(const ivec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(v.y, -v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(-v.y, v.x, v.z);
     return v;
 }
 
@@ -219,28 +233,37 @@ constexpr ivec3 rotateCardinalZ(const ivec3 v, int cardinalIndex) {
 /// positions (e.g. `C_PositionGlobal3D + C_PositionOffset3D`) into the
 /// rasterYaw-rotated canvas frame. Same R_z(-rasterYaw) sign convention
 /// as the integer overload.
-constexpr vec3 rotateCardinalZ(const vec3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return vec3( v.y, -v.x, v.z);
-    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return vec3(-v.y,  v.x, v.z);
+constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec3(v.y, -v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec3(-v.y, v.x, v.z);
     return v;
 }
 
 /// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
 /// View→world = R_z(+rasterYaw). Use after `isoPixelToPos3D` to lift a
 /// reconstructed 3D position back to true world coordinates.
-constexpr vec3 rotateCardinalZInv(const vec3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);
-    if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return vec3( v.y, -v.x, v.z);
+constexpr vec3 rotateCardinalZInv(const vec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec3(-v.y, v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec3(v.y, -v.x, v.z);
     return v;
 }
 
 /// Integer view→world variant matching GLSL `rotateCardinalZInvI`.
-constexpr ivec3 rotateCardinalZInvI(const ivec3 v, int cardinalIndex) {
-    if (cardinalIndex == 1) return ivec3(-v.y,  v.x, v.z);
-    if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);
-    if (cardinalIndex == 3) return ivec3( v.y, -v.x, v.z);
+constexpr ivec3 rotateCardinalZInvI(const ivec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(-v.y, v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(v.y, -v.x, v.z);
     return v;
 }
 

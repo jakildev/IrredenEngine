@@ -36,7 +36,7 @@ template <> struct System<HITBOX_MOUSE_TEST> {
         static vec2 s_cameraIso;
         static vec2 s_cameraZoom;
         static vec2 s_fbResHalf;
-        static int s_cardinalIndex;
+        static IRMath::CardinalIndex s_cardinalIndex;
 
         return createSystem<C_HitBox2D, C_PositionGlobal3D, C_PositionOffset3D>(
             "HitBoxMouseTest",
@@ -48,22 +48,17 @@ template <> struct System<HITBOX_MOUSE_TEST> {
                 // the entity's projected center stays at its yaw=0 location
                 // while the rendered output spins under the camera, and
                 // hover misses the rendered position.
-                vec3 viewPos = IRMath::rotateCardinalZ(
-                    globalPos.pos_ + offsetPos.pos_, s_cardinalIndex
-                );
+                vec3 viewPos =
+                    IRMath::rotateCardinalZ(globalPos.pos_ + offsetPos.pos_, s_cardinalIndex);
                 vec2 entityIso = IRMath::pos3DtoPos2DIso(viewPos);
                 vec2 relativeIso = entityIso - s_cameraIso;
-                vec2 screenOffset = IRMath::pos2DIsoToPos2DGameResolution(
-                    relativeIso, s_cameraZoom
-                );
-                vec2 entityCenter = vec2(
-                    s_fbResHalf.x + screenOffset.x,
-                    s_fbResHalf.y - screenOffset.y
-                );
+                vec2 screenOffset =
+                    IRMath::pos2DIsoToPos2DGameResolution(relativeIso, s_cameraZoom);
+                vec2 entityCenter =
+                    vec2(s_fbResHalf.x + screenOffset.x, s_fbResHalf.y - screenOffset.y);
 
-                hitbox.hovered_ =
-                    abs(s_mouseCanvas.x - entityCenter.x) <= hitbox.halfExtent_.x &&
-                    abs(s_mouseCanvas.y - entityCenter.y) <= hitbox.halfExtent_.y;
+                hitbox.hovered_ = abs(s_mouseCanvas.x - entityCenter.x) <= hitbox.halfExtent_.x &&
+                                  abs(s_mouseCanvas.y - entityCenter.y) <= hitbox.halfExtent_.y;
             },
             []() {
                 s_cameraIso = IRRender::getCameraPosition2DIso();
@@ -72,8 +67,7 @@ template <> struct System<HITBOX_MOUSE_TEST> {
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 s_fbResHalf = vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
 
-                const auto [rasterYaw, residualYaw] =
-                    IRPrefab::Camera::getYawSplit();
+                const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
                 s_cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
 
                 // Inverse-rotate the mouse out of the post-composite
@@ -86,11 +80,9 @@ template <> struct System<HITBOX_MOUSE_TEST> {
                 if (std::abs(residualYaw) < kHitboxIdentityYawEpsilon) {
                     s_mouseCanvas = mouseFb;
                 } else {
-                    const float effectiveAngle =
-                        -residualYaw * IRPlatform::kGfx.screenYDirection_;
+                    const float effectiveAngle = -residualYaw * IRPlatform::kGfx.screenYDirection_;
                     s_mouseCanvas =
-                        IRMath::rotate2D(mouseFb - s_fbResHalf, effectiveAngle) +
-                        s_fbResHalf;
+                        IRMath::rotate2D(mouseFb - s_fbResHalf, effectiveAngle) + s_fbResHalf;
                 }
             }
         );
