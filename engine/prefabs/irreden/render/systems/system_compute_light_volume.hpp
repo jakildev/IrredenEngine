@@ -113,12 +113,6 @@ inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
     return IRMath::roundVec3HalfUp(position.pos_);
 }
 
-inline bool isOriginInLightVolume(const ivec3 &origin) {
-    constexpr int he = kLightVolumeHalfExtent;
-    return origin.x >= -he && origin.x < he && origin.y >= -he && origin.y < he &&
-           origin.z >= -he && origin.z < he;
-}
-
 // Pack a signed-int voxel position into a single uint64 so the
 // "already-warned" set can dedupe by exact origin without paying for a
 // custom hash on `ivec3`. 21 bits per axis covers ±1M cells, well
@@ -162,7 +156,7 @@ inline std::uint32_t gatherLightSources(
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(positions[i]);
-            if (!isOriginInLightVolume(origin)) {
+            if (!C_CanvasLightVolume::inBounds(origin.x, origin.y, origin.z)) {
                 if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
                     IR_LOG_WARN(
                         "C_LightSource at world voxel ({}, {}, {}) is "
