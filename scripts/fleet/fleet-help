@@ -168,12 +168,17 @@ Parallel-agent fleet (tmux + Claude)
 ----------------------------------------------------------------------
   fleet-up [dry-run | live | review-only] [--no-attach]
   fleet-down [--force] [--keep-claims] [--wait] [--summary]
-  fleet-babysit …                (normally launched by fleet-up)
+  fleet-babysit …                (normally launched by fleet-up; architects only)
   fleet-claim …                  task claims under ~/.fleet/claims/
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
+  fleet-dispatcher               transient-claude dispatcher (worker panes)
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
-  witness [--once]               detect stale heartbeats
+  witness [--once]               detect stale heartbeats (architects only)
+  fleet-pr view|diff|comments <N> [--repo engine|game]
+                                 read scout's per-PR cache + gh fallback
+  fleet-issue view <N> [--repo engine|game]
+                                 read scout's per-issue cache + gh fallback
 
   fleet-help fleet-up            short summary (fleet-up has no --help)
 
