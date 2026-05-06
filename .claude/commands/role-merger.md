@@ -152,6 +152,43 @@ exit cleanly:
    stacked-PR check need. (Cached equivalent of the previous
    `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
+2.5. **Reconcile `fleet:awaiting-base` labels.** Step 3's filter
+   skips PRs carrying `fleet:awaiting-base`, but the label is only
+   removed inside sub-case ii / iii of step 5a.5 — which doesn't
+   run if the PR was skipped. Without this reconciliation pass,
+   once the merger labels a stacked PR `fleet:awaiting-base`, it
+   keeps skipping forever even after the base PR merges (the label
+   never clears). This step closes the loop.
+
+   From `repos.engine.prs[]`, collect every PR whose `labels`
+   contains `fleet:awaiting-base`. For each such PR, look up its
+   base PR's state:
+
+   `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+
+   Three outcomes:
+
+   - **Base PR is OPEN** — leave the label in place; nothing to do.
+     The base hasn't landed yet.
+
+   - **Base PR is MERGED** — run the same actions as step 5a.5
+     sub-case ii (lines starting "Base PR is MERGED" below):
+     re-target this PR to master, remove `fleet:awaiting-base`,
+     remove `fleet:stacked`, post the "base merged, re-targeted"
+     comment, add `fleet:stacked-rebase`, `fleet:changes-made`,
+     `fleet:merger-cooldown`. The PR's diff against master may
+     differ from the previous review; reviewer re-evaluates next
+     pass. Log: `... reconcile: base #<N> merged, re-targeted to master`.
+
+   - **Base PR is CLOSED (not merged)** — run sub-case iii actions:
+     post the "base closed without merging" comment, remove
+     `fleet:awaiting-base`, add `fleet:needs-info` and
+     `fleet:merger-cooldown`. Log: `... reconcile: base #<N> closed (not merged), labeled fleet:needs-info`.
+
+   PRs handled here count against the "2 candidates per iteration"
+   cap in step 4 — re-targeting and label updates are write-heavy
+   and we don't want to flood the API or the reviewer queue.
+
 3. Filter to candidates. A PR is a candidate if:
    - `mergeable == "CONFLICTING"`, OR
    - `mergeable == "UNKNOWN"` AND the PR was updated > 5 minutes ago
@@ -165,7 +202,7 @@ exit cleanly:
    - `human:needs-fix` — human owes a fix; don't loop on it
    - `human:blocker` — same
    - `human:re-review` — reviewer concern; not the merger's lane
-   - `fleet:awaiting-base` — stacked PR waiting on its base to merge; skip until base merges/closes and sub-case ii/iii removes this label
+   - `fleet:awaiting-base` — stacked PR waiting on its base to merge. Step 2.5 runs first and clears this label whenever the base has merged or closed; if the label survives into step 3 it means the base is still OPEN, so skip.
    - `fleet:semantic-conflict` — already handed off to opus-worker; the
      label IS the durable cooldown and only opus-worker (or the human,
      via `human:needs-fix` escalation) clears it. Re-running rebase
