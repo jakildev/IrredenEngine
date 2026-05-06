@@ -43,6 +43,16 @@ SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 POLL_SECONDS_DEFAULT = 60
 GH_TIMEOUT_SECONDS = 30
 
+# Cap concurrent gh calls and stagger their submission to avoid GitHub's
+# secondary rate limit on private repos. The first tick used to fire all
+# 8 fetches in parallel against a cold token, which on private-repo
+# accounts is enough to trip the per-IP burst limit. With max_workers=2
+# and a 250 ms inter-submit gap the first tick takes ~2 s longer but
+# starts cleanly; pane startup already waits for state.json so the
+# extra latency is invisible to consumers.
+FETCH_MAX_WORKERS = 2
+FETCH_SUBMIT_GAP_SECONDS = 0.25
+
 TERMINATE = threading.Event()
 
 
@@ -385,9 +395,12 @@ def collect_state():
             ("game", "tasks", lambda: fetch_tasks(GAME)),
         ]
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(fn): (repo_key, field)
-                   for (repo_key, field, fn) in fetch_specs}
+    with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
+        futures = {}
+        for i, (repo_key, field, fn) in enumerate(fetch_specs):
+            if i > 0:
+                time.sleep(FETCH_SUBMIT_GAP_SECONDS)
+            futures[ex.submit(fn)] = (repo_key, field)
         for fut in as_completed(futures):
             repo_key, field = futures[fut]
             try:
