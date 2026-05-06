@@ -110,9 +110,11 @@ the cooldown label prevents an immediate retry.
 0. Print your role banner:
    `[merger] Auto-rebases stale PRs and sort-merges TASKS.md conflicts. Loop: every 10m.`
 1. `pwd` — confirm you are in the `merger` worktree.
-2. **Discover engine repo slug** (used in all `--repo` flags below):
-   `gh repo view --json nameWithOwner --jq .nameWithOwner`
-   `<engine-repo>` placeholder below refers to this slug.
+2. **Discover engine repo slug** by Read'ing `~/.fleet/state/repos.json`
+   (written once by `fleet-up` at startup). Use the `engine` field
+   for the `<engine-repo>` placeholder. If the cache file is
+   missing, fall back to `gh repo view --json nameWithOwner --jq
+   .nameWithOwner`.
 3. Reset to the throwaway branch unconditionally — `-B` makes it
    idempotent. Run as two separate Bash calls:
    `git -C ~/src/IrredenEngine fetch origin --quiet`

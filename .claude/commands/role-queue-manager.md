@@ -97,21 +97,20 @@ use `cat` — use the Read tool for files.
    `[queue-manager] Task intake — ingests approved issues into TASKS.md, syncs PR state, maintains the queue. Loop: every 5m. You can also type task descriptions here between loop fires.`
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. **Discover repo slugs** (used in all `--repo` flags below):
-   Engine: `gh repo view --json nameWithOwner --jq .nameWithOwner`
-   Game: determined in step 5 below (probe the game directory).
-   All `<engine-repo>` and `<game-repo>` placeholders below refer
-   to these discovered slugs.
+3. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
+   (written once by `fleet-up` at startup). Use the `engine` field
+   for `<engine-repo>` and the `game` field (when present) for
+   `<game-repo>`. If `game` is absent, all game-repo steps below
+   are skipped. If the cache file is missing, fall back to
+   `gh repo view --json nameWithOwner --jq .nameWithOwner` for
+   engine and `git -C ~/src/IrredenEngine/creations/game remote
+   get-url origin` for game. If the game-side fallback fails
+   (directory absent), treat as no game repo.
 4. Read tool → `TASKS.md` (working-tree copy in this worktree —
    the queue-manager edits this file in place, so always Read the
    working tree, not the cache).
 5. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md`
-   - If the Read succeeds (file exists), the game repo is present.
-     Then derive `<game-repo>`:
-     `git -C ~/src/IrredenEngine/creations/game remote get-url origin`
-     Parse `owner/repo` from the URL (strip protocol, `.git` suffix).
-   - If the Read fails (file not found) → no game repo. All
-     game-repo steps below are skipped.
+   if the game repo is present (per step 3). Skipped otherwise.
 6. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. One Read replaces what used to be
    two `gh pr list --state open` calls (one per repo) here. Both
