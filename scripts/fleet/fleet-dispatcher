@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# fleet-dispatcher — central transient-claude dispatcher (issue #273).
+#
+# The fully-baked version of the trigger-aware back-off shipped in
+# #272. Replaces fleet-babysit's per-pane relaunch loop for
+# worker / reviewer / queue-manager / merger panes with a single
+# polling daemon that decides when to spawn a `claude` invocation
+# and into which pane.
+#
+# Architects (opus-architect, game-architect) keep fleet-babysit —
+# they're long-lived `--resume` interactive sessions and don't fit
+# the transient model.
+#
+# Lifecycle per worker pane (under this dispatcher):
+#   1. Pane sits at `bash` prompt (idle).
+#   2. Scout writes ~/.fleet/state/triggers/<role>.
+#   3. Dispatcher's next tick finds the trigger + a free pane for
+#      that role, `tmux send-keys` a `claude --print ... |
+#      fleet-claude-stream` command into the pane, records the
+#      dispatch in ~/.fleet/state/dispatch/<role>.json, removes the
+#      trigger.
+#   4. claude runs to completion (one iteration), the pane returns
+#      to `bash` because the role's exit-protocol section ends with
+#      `bash -c 'kill -TERM $PPID'`.
+#   5. cleanup_stale_dispatches notices the pane is back at bash,
+#      clears the dispatch record, releases the fleet-claim lock.
+#
+# **THIS SCRIPT IS ADDITIVE INFRA in PR E.1 — fleet-up does not yet
+# spawn it, and worker panes still launch fleet-babysit. Wiring is
+# in PR E.2+E.3 of the overhaul plan.**
+#
+# Source of truth: scripts/fleet/fleet-dispatcher in the engine repo.
+# Installed to ~/bin/fleet-dispatcher by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+# --- Paths -----------------------------------------------------------------
+
+FLEET_SESSION="${FLEET_SESSION:-fleet}"
+STATE_DIR="$HOME/.fleet/state"
+TRIGGERS_DIR="$STATE_DIR/triggers"
+DISPATCH_DIR="$STATE_DIR/dispatch"
+LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
+PID_FILE="$STATE_DIR/dispatcher.pid"
+LOCK_FILE="$STATE_DIR/dispatcher.lock"
+SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
+
+POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-30}"
+
+# Roles this dispatcher is responsible for. Architects are excluded
+# (kept on fleet-babysit). Aligned with the worker / reviewer /
+# queue-mgr / merger roles in fleet-up.
+DISPATCHED_ROLES=(
+    "sonnet-author"
+    "opus-worker"
+    "sonnet-reviewer"
+    "opus-reviewer"
+    "queue-manager"
+    "merger"
+)
+
+# Per-role default claude model. Sourced from fleet-up's
+# OPUS_MODEL / SONNET_MODEL convention.
+declare -A ROLE_MODEL=(
+    ["sonnet-author"]="sonnet"
+    ["opus-worker"]="claude-opus-4-7"
+    ["sonnet-reviewer"]="sonnet"
+    ["opus-reviewer"]="claude-opus-4-7"
+    ["queue-manager"]="sonnet"
+    ["merger"]="claude-opus-4-7"
+)
+
+# Per-role default effort level. Mirrors fleet-babysit's case stmt.
+declare -A ROLE_EFFORT=(
+    ["sonnet-author"]="high"
+    ["opus-worker"]="xhigh"
+    ["sonnet-reviewer"]="high"
+    ["opus-reviewer"]="xhigh"
+    ["queue-manager"]="high"
+    ["merger"]="xhigh"
+)
+
+# --- Logging ---------------------------------------------------------------
+
+log() {
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    printf '[%s dispatcher] %s\n' "$ts" "$*" | tee -a "$LOG_FILE" >&2
+}
+
+# --- Shutdown handling -----------------------------------------------------
+
+cleanup_pid_file() {
+    if [[ -f "$PID_FILE" ]]; then
+        local recorded
+        recorded=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [[ "$recorded" == "$$" ]]; then
+            rm -f "$PID_FILE"
+        fi
+    fi
+}
+
+trap cleanup_pid_file EXIT
+trap 'log "received signal; shutting down"; exit 0' TERM INT
+
+# --- tmux helpers ----------------------------------------------------------
+
+session_exists() {
+    tmux has-session -t "$FLEET_SESSION" 2>/dev/null
+}
+
+# Print one line per pane: <pane_id>\t<@fleet-role>\t<pane_current_command>
+list_pane_state() {
+    if ! session_exists; then
+        return 0
+    fi
+    tmux list-panes -s -t "$FLEET_SESSION" \
+        -F "#{pane_id}	#{@fleet-role}	#{pane_current_command}"
+}
+
+# Find the first idle pane for a given role. Idle = pane_current_command
+# is `bash` (or `zsh`). Returns the pane_id on stdout if found, empty
+# otherwise.
+find_idle_pane_for_role() {
+    local role="$1"
+    list_pane_state | while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+        if [[ "$pane_role" != "$role" ]]; then
+            continue
+        fi
+        case "$pane_cmd" in
+            bash|zsh|sh|fish)
+                printf '%s\n' "$pane_id"
+                return 0
+                ;;
+        esac
+    done
+}
+
+# Returns 0 if the pane is running claude, non-zero otherwise.
+pane_is_running_claude() {
+    local pane_id="$1"
+    list_pane_state | awk -F'\t' -v target="$pane_id" '
+        $1 == target { if ($3 == "claude" || $3 == "node") print "yes"; else print "no" }
+    ' | grep -q "^yes$"
+}
+
+# --- Dispatch state --------------------------------------------------------
+
+dispatch_record() {
+    printf '%s\n' "$DISPATCH_DIR/$1.json"
+}
+
+write_dispatch_record() {
+    local role="$1" pane_id="$2"
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    mkdir -p "$DISPATCH_DIR"
+    printf '{"role":"%s","pane":"%s","dispatched_at":"%s"}\n' \
+        "$role" "$pane_id" "$ts" >"$(dispatch_record "$role")"
+}
+
+read_dispatch_pane() {
+    # Outputs the recorded pane_id for $1 if a dispatch record exists.
+    local file
+    file=$(dispatch_record "$1")
+    if [[ -f "$file" ]]; then
+        sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$file" | head -n 1
+    fi
+}
+
+cleanup_stale_dispatches() {
+    if [[ ! -d "$DISPATCH_DIR" ]]; then
+        return
+    fi
+    local file role pane
+    for file in "$DISPATCH_DIR"/*.json; do
+        [[ -e "$file" ]] || continue
+        role=$(basename "$file" .json)
+        pane=$(read_dispatch_pane "$role")
+        if [[ -z "$pane" ]]; then
+            rm -f "$file"
+            continue
+        fi
+        if pane_is_running_claude "$pane"; then
+            continue
+        fi
+        log "dispatch for $role on $pane completed (pane returned to shell)"
+        rm -f "$file"
+    done
+}
+
+# --- Trigger dispatch ------------------------------------------------------
+
+build_dispatch_command() {
+    # $1 = role; prints the shell-quoted command to send into the pane.
+    local role="$1"
+    local model="${ROLE_MODEL[$role]:-sonnet}"
+    local effort="${ROLE_EFFORT[$role]:-high}"
+    # The role slash command (`/role-<role>`) is preserved from the
+    # fleet-babysit invocation. fleet-claude-stream renders the
+    # streaming events as readable pane text — same pipe babysit uses.
+    printf 'claude --model %q --effort %q --print "/role-%s live" | fleet-claude-stream\n' \
+        "$model" "$effort" "$role"
+}
+
+dispatch_role() {
+    local role="$1"
+    local trigger_file="$TRIGGERS_DIR/$role"
+
+    if [[ ! -f "$trigger_file" ]]; then
+        return
+    fi
+
+    if [[ -f "$(dispatch_record "$role")" ]]; then
+        # Already dispatched; let cleanup_stale_dispatches notice when
+        # the pane returns to bash. Don't fire a second claude at the
+        # same pane.
+        return
+    fi
+
+    local pane_id
+    pane_id=$(find_idle_pane_for_role "$role")
+    if [[ -z "$pane_id" ]]; then
+        # No free pane right now (every pane for this role is running
+        # claude). Leave the trigger in place — next tick may find a
+        # free pane.
+        return
+    fi
+
+    local cmd
+    cmd=$(build_dispatch_command "$role")
+
+    log "dispatching $role -> $pane_id"
+    tmux send-keys -t "$pane_id" "$cmd" C-m
+    write_dispatch_record "$role" "$pane_id"
+    rm -f "$trigger_file"
+}
+
+# --- Main loop -------------------------------------------------------------
+
+write_pid_file() {
+    mkdir -p "$STATE_DIR"
+    printf '%d\n' "$$" >"$PID_FILE"
+}
+
+main() {
+    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR"
+
+    # flock guards against two concurrent dispatchers (e.g. a stale
+    # one left over from a previous fleet-up + a fresh one). Only one
+    # holds the lock at a time.
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        log "another dispatcher is already running (lock held); exiting"
+        exit 0
+    fi
+
+    write_pid_file
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s)"
+
+    while true; do
+        if [[ -f "$SHUTDOWN_FLAG" ]]; then
+            log "shutdown sentinel detected; exiting"
+            break
+        fi
+
+        cleanup_stale_dispatches
+
+        if session_exists; then
+            for role in "${DISPATCHED_ROLES[@]}"; do
+                dispatch_role "$role"
+            done
+        fi
+
+        # Interruptible sleep — wake on shutdown.
+        for _ in $(seq 1 "$POLL_INTERVAL_SECONDS"); do
+            if [[ -f "$SHUTDOWN_FLAG" ]]; then
+                break 2
+            fi
+            sleep 1
+        done
+    done
+
+    log "stopped"
+}
+
+main "$@"
