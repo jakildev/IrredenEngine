@@ -63,12 +63,21 @@ Schema (slices this role uses):
   `…[truncated]…` separator (the verdict line typically lives in the
   tail), so the recheck signal still reaches the cache for typical
   reviews; if a finding requires the full body for context, fetch
-  it with `gh pr view <N> --comments`.
+  it with `fleet-pr view <N>`.
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`)
-stay inline — those pull live data the cache doesn't store (issue
-comment timeline, file diffs). The cache covers list-shaped queries;
-live drill-in covers single-item drill-down.
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall back
+to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — full PR detail (body + comments + reviews +
+  inline review threads).
+- `fleet-pr diff <N>` — raw diff text. Used on every PR you review.
+- `fleet-pr comments <N>` — flat timeline; convenient when you only
+  need to skim the conversation without the body.
+- `fleet-issue view <N>` — issue body + comments.
+
+Writes (`gh pr review`, `gh pr comment`, `gh pr edit`) stay direct
+— the wrappers are read-only.
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print
@@ -144,7 +153,7 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    - Its latest review (sort `reviews[]` by `submittedAt`) has a
      `body` containing `Opus recheck required`, OR
    - The PR touches core engine/game invariants (need to read its
-     diff via `gh pr diff <N>` per-item), OR
+     diff via `fleet-pr diff <N>` per-item), OR
    - Its `labels` contains `human:re-review` (human made changes and
      requested re-review — remove the label when you pick it up:
      `gh pr edit <N> --remove-label "human:re-review"`), OR
@@ -156,7 +165,7 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
      fixups, OR
    - The author pushed fixes and commented "re-review please" after
      a previous Opus review (per-item — check comments via
-     `gh pr view <N> --comments` after your last review's
+     `fleet-pr comments <N>` after your last review's
      `submittedAt`).
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
@@ -190,8 +199,8 @@ iteration of polling, reviewing, and exiting cleanly:
    `repos.game.prs[]`.
 2. For each candidate, in oldest-first order:
    a. Read the existing Sonnet review in full first
-      (`gh pr view <N> --comments`, add `--repo <game-repo>` for
-      game PRs). Note what Sonnet flagged.
+      (`fleet-pr comments <N>`; add `--repo game` for game PRs).
+      Note what Sonnet flagged.
    b. **Stack awareness — gate on upstream status, then note context.**
       A stacked PR's `baseRefName` IS its upstream PR's `headRefName`.
       The candidate PR's own metadata already lives in the cache
@@ -237,12 +246,12 @@ iteration of polling, reviewing, and exiting cleanly:
            `gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."`
            Do NOT add a verdict label.
 
-      `gh pr diff <N>` always scopes to this PR's own diff — do not
-      re-review the parent.
+      `fleet-pr diff <N>` always scopes to this PR's own diff — do
+      not re-review the parent.
    c. **Engine PRs:** Invoke the `review-pr` skill on the PR.
-      **Game PRs:** Read the diff with `gh pr diff <N> --repo
-      <game-repo>` and review manually (you cannot check out game
-      PRs into this engine worktree). For game conventions, read
+      **Game PRs:** Read the diff with `fleet-pr diff <N> --repo game`
+      and review manually (you cannot check out game PRs into this
+      engine worktree). For game conventions, read
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
    d. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should

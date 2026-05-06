@@ -50,12 +50,19 @@ Schema (slices this role uses):
 - `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
   `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
-`gh api repos/.../pulls/<N>/comments`,
-`gh api repos/.../pulls/<N>/reviews`) stay inline — those pull live
-data the cache doesn't store. The cache covers list-shaped queries;
-live drill-in covers single-item drill-down. Writes (`gh pr edit`,
-`gh pr comment`, `gh issue create`, `gh issue edit`) stay direct.
+Per-item drill-ins go through the `fleet-pr` and `fleet-issue`
+wrappers, which read scout's per-PR / per-issue cache and fall
+back to live `gh` on cache miss:
+
+- `fleet-pr view <N>` — full PR detail (body + comments + reviews +
+  inline review threads).
+- `fleet-pr diff <N>` — raw diff text.
+- `fleet-pr comments <N>` — flat timeline of comments + review
+  summaries + inline comments. Use this when addressing feedback.
+- `fleet-issue view <N>` — issue body + comments + labels + state.
+
+Writes (`gh pr edit`, `gh pr comment`, `gh issue create`,
+`gh issue edit`) stay direct — the wrappers are read-only.
 
 If `~/.fleet/state/state.json` is missing or its `generated_at` is
 more than ~5 minutes old, the scout daemon isn't running. Print
@@ -205,8 +212,9 @@ When you do pick a task:
 
    If any PR has `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits`:
    a. Read ALL comments:
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // "general")] \(.body)"'`
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/reviews --jq '.[] | select(.body != "") | .body'`
+      `fleet-pr comments <N>`
+      (combines the timeline, review summaries, and inline comments
+      that used to require three separate `gh api` calls.)
       For `fleet:has-nits`: focus on the latest review's `### Nits`
       section.
    b. Remove the feedback label immediately:
