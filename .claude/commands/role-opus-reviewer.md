@@ -97,7 +97,7 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 ## Startup actions
 
 0. Print your role banner:
-   `[opus-reviewer] Final reviewer — Opus recheck on PRs touching core engine invariants or flagged by Sonnet. Loop: every 30m.`
+   `[opus-reviewer] Final reviewer — Opus recheck on PRs touching core engine invariants or flagged by Sonnet. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
 2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
    (written once by `fleet-up` at startup). Use the `engine` field
@@ -321,9 +321,10 @@ iteration of polling, reviewing, and exiting cleanly:
    opus-reviewer 2026-05-02). Write technical references in plain
    prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
    Then print
-   `[opus-reviewer] Iteration complete. Next run in ~30m (fresh context).`
-   Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
-   ~30 minutes — no carry-over from this iteration.
+   `[opus-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
+   Then exit cleanly. fleet-dispatcher launches a fresh `claude` for
+   this role when the scout's projection sees new actionable PR
+   state — no carry-over between iterations.
 5. If you hit a usage-limit error: print the error and exit.
    `fleet-babysit` waits the limit-delay before relaunching.
 

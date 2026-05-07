@@ -702,10 +702,11 @@ Each iteration:
 
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`. Print
-   `[sonnet-author] Iteration complete. Exiting; babysit will relaunch with fresh context.`
+   `[sonnet-author] Iteration complete. Will re-fire on next dispatcher trigger.`
    Then exit cleanly (do NOT loop back to step 1 inside this same
-   `claude` session — `fleet-babysit` handles the relaunch with a
-   clean conversation).
+   `claude` session — fleet-dispatcher launches a fresh `claude` for
+   each iteration when scout sees new actionable state, so each run
+   has clean conversation context).
 
 ## Mode behavior
 
@@ -733,7 +734,8 @@ or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
   If step 1 finds no flagged PRs and step 1b finds no smoke-pending
   PRs, print
   `[sonnet-author] review-only: nothing to address this iteration.`
-  and exit. fleet-babysit will relaunch you on the normal cadence.
+  and exit. fleet-dispatcher will re-fire when scout sees new
+  actionable state.
 
 ## Usage-limit handling
 

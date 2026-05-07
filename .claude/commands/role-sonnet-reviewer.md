@@ -66,7 +66,7 @@ treat it as a hard rule for this role.
 ## Startup actions
 
 0. Print your role banner:
-   `[sonnet-reviewer] First-pass PR reviewer — polls for unreviewed PRs, posts structured reviews, flags Opus escalations. Loop: every 3m.`
+   `[sonnet-reviewer] First-pass PR reviewer — polls for unreviewed PRs, posts structured reviews, flags Opus escalations. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
 2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
    (written once by `fleet-up` at startup). Use the `engine` field
@@ -355,9 +355,10 @@ iteration of polling, reviewing, and exiting cleanly:
    and silently strip from the saved summary. Write technical
    references in plain prose.
    Then print
-   `[sonnet-reviewer] Iteration complete. Next run in ~3m (fresh context).`
-   Then exit cleanly. `fleet-babysit` relaunches a fresh `claude` in
-   ~3 minutes — no carry-over from this iteration.
+   `[sonnet-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
+   Then exit cleanly. fleet-dispatcher launches a fresh `claude` for
+   this role when the scout's projection sees new actionable PR
+   state — no carry-over between iterations.
 5. If you hit a usage-limit error: print the error and exit.
    `fleet-babysit` waits the limit-delay before relaunching.
 
