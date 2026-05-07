@@ -20,9 +20,13 @@ construction time.
 1. Parses `configFileName` into a `WorldConfig` (resolution, FPS, target
    window size, MIDI device, video-capture defaults, etc.).
 2. Constructs every manager in dependency order:
-   `EntityManager` → `SystemManager` → `InputManager` → `CommandManager`
-   → `TimeManager` → `IRGLFWWindow` → `RenderManager` →
-   `RenderingResourceManager` → `AudioManager` → `VideoManager` → `LuaScript`.
+   `IRGLFWWindow` → `LuaScript` → `EntityManager` → `SystemManager` →
+   `InputManager` → `CommandManager` → `RenderingResourceManager` →
+   `RenderManager` → `AudioManager` → `TimeManager` → `VideoManager`.
+   `LuaScript` leads the manager block so `sol::state` outlives
+   `EntityManager` — archetype columns can hold `sol::object` refs from
+   Lua-defined components (T-100), and C++ destructs members in reverse
+   declaration order.
 3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,
    `initIRUpdateSystems()`, `initIRRenderSystems()` to register the

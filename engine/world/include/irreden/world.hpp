@@ -37,6 +37,11 @@ class World {
   private:
     WorldConfig m_worldConfig;
     IRWindow::IRGLFWWindow m_IRGLFWWindow;
+    // m_lua must lead the manager block: EntityManager's archetype columns
+    // can hold sol::object refs (Lua-typed components, see T-100). Members
+    // destruct in reverse declaration order, so sol::state has to outlive
+    // EntityManager or those refs UAF on shutdown.
+    IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
     IRInput::InputManager m_inputManager;
@@ -46,7 +51,6 @@ class World {
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
     IRVideo::VideoManager m_videoManager;
-    IRScript::LuaScript m_lua;
     bool m_waitForFirstUpdateInput = false;
     bool m_startRecordingOnFirstInput = false;
     bool m_hasHandledFirstInput = false;
