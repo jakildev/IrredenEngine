@@ -98,11 +98,17 @@ declare -A ROLE_EFFORT=(
 )
 
 # --- Logging ---------------------------------------------------------------
+#
+# Writes to stderr only. fleet-up nohups the dispatcher with
+# `>>"$dispatcher_log" 2>&1`, so the redirect is the sole file
+# writer — `tee -a "$LOG_FILE"` here would double every line. When
+# the dispatcher is run manually for debugging, stderr lands on the
+# operator's tty as expected.
 
 log() {
     local ts
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-    printf '[%s dispatcher] %s\n' "$ts" "$*" | tee -a "$LOG_FILE" >&2
+    printf '[%s dispatcher] %s\n' "$ts" "$*" >&2
 }
 
 # --- Shutdown handling -----------------------------------------------------
