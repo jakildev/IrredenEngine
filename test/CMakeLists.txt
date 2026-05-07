@@ -21,6 +21,7 @@ add_executable(IrredenEngineTest
   render/frame_data_sun_layout_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
+  render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   script/modifier_lua_test.cpp
   utility/ir_utility_test.cpp
