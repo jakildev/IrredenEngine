@@ -180,6 +180,20 @@ inline std::uint32_t gatherLightSources(
 
 } // namespace detail
 
+// `LightVolumeParams` defaults must mirror the volume's CPU constants —
+// the system only writes `lightCount_` per frame, so `gridSize_` /
+// `halfExtent_` flow to the GPU straight from the struct's defaults.
+// `system_compute_light_volume.hpp` is the only place that includes
+// both headers, so the drift check belongs here.
+static_assert(
+    LightVolumeParams{}.gridSize_ == kLightVolumeSize,
+    "LightVolumeParams::gridSize_ default must equal kLightVolumeSize"
+);
+static_assert(
+    LightVolumeParams{}.halfExtent_ == kLightVolumeHalfExtent,
+    "LightVolumeParams::halfExtent_ default must equal kLightVolumeHalfExtent"
+);
+
 template <> struct System<COMPUTE_LIGHT_VOLUME> {
     struct Params {
         ShaderProgram *clearProgram_ = nullptr;
