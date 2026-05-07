@@ -25,6 +25,16 @@ namespace IRRender::detail {
 ///   `iso.x = -x + y, iso.y = -x - y` ⇒
 ///   `x = -(iso.x + iso.y) / 2, y = (iso.x - iso.y) / 2`
 /// Result is rounded to the nearest integer voxel.
+///
+/// Coherence contract: both `BUILD_OCCUPANCY_GRID` and
+/// `COMPUTE_LIGHT_VOLUME` must call this once per frame from the same
+/// camera state — guaranteed today by single-threaded render-pipeline
+/// execution (camera mutation lives in INPUT/UPDATE; both consumers
+/// run later in RENDER and share the same `IRRender` snapshot). If a
+/// future change introduces camera mutation between the two ticks,
+/// the propagate shader degrades gracefully (one extra subtract via
+/// `lightVolumeWorldOrigin` vs `occupancyWorldOrigin`) rather than
+/// misindexing.
 inline IRMath::ivec3 cameraAnchorVoxel() {
     const IRMath::vec2 iso = IRRender::getCameraPosition2DIso();
     const float worldX = -(iso.x + iso.y) * 0.5f;

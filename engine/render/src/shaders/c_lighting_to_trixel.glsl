@@ -76,6 +76,9 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // volume's center texel) each frame; subtract it from `pos3D` before
 // converting to a sample coordinate. Mirrors LightVolumeParams in
 // ir_render_types.hpp — only `.xyz` is meaningful, `.w` is reserved.
+// Layout tombstones — must match the propagate/seed UBO layout
+// (c_seed_light_volume.glsl, c_propagate_light_volume.glsl). Lighting
+// only reads the origin; leading-underscore names mark the unused slots.
 layout(std140, binding = 23) uniform LightVolumeParams {
     int _gridSize;
     int _halfExtent;

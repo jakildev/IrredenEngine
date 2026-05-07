@@ -300,7 +300,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         // indexing, so a panned camera keeps lights in
                         // range without resizing the texture.
                         const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
-                        volume.worldOriginVoxel_ = volumeOrigin;
+                        volume.setWorldOriginVoxel(volumeOrigin);
                         p->params_.worldOriginVoxel_ =
                             ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
                         const std::uint32_t count = detail::gatherLightSources(

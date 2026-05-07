@@ -10,7 +10,7 @@
 // if no emitters exist, the volume stays zero-filled and the additive
 // contribution is a no-op.
 //
-// The volume is centered on `worldOriginVoxel_` (defaults to `(0,0,0)`)
+// The volume is centered on `m_worldOriginVoxel` (defaults to `(0,0,0)`)
 // and covers `[origin - kLightVolumeHalfExtent, origin + kLightVolumeHalfExtent)`
 // voxels per axis at 1:1 voxel-per-texel resolution. Phase 1c (#360)
 // wired COMPUTE_LIGHT_VOLUME to track the iso camera each frame so the
@@ -52,11 +52,6 @@ constexpr int kLightVolumeHalfExtent = kLightVolumeSize / 2;
 struct C_CanvasLightVolume {
     std::pair<ResourceId, Texture3D *> textureRead_;
     std::pair<ResourceId, Texture3D *> textureWrite_;
-    /// World voxel the volume is centered on (Phase 1c / #360). The
-    /// producer system updates this each frame from the iso camera.
-    /// Defaults to `(0,0,0)` so static-camera scenes keep the original
-    /// world-origin centering.
-    ivec3 worldOriginVoxel_{0, 0, 0};
 
     C_CanvasLightVolume()
         : textureRead_{IRRender::createResource<IRRender::Texture3D>(
@@ -121,19 +116,22 @@ struct C_CanvasLightVolume {
         return getReadTexture();
     }
 
-    /// Returns whether `(wx, wy, wz)` (world voxel coordinates) fits
-    /// inside the camera-anchored window currently centered on
-    /// `worldOriginVoxel_`. Mirrors the seed shader's bounds check; the
-    /// CPU producer uses this to skip + warn on out-of-range light
-    /// origins before the SSBO upload (Phase 1b / issue #362).
-    bool inBounds(int wx, int wy, int wz) const {
-        const int lx = wx - worldOriginVoxel_.x;
-        const int ly = wy - worldOriginVoxel_.y;
-        const int lz = wz - worldOriginVoxel_.z;
-        return lx >= -kLightVolumeHalfExtent && lx < kLightVolumeHalfExtent &&
-               ly >= -kLightVolumeHalfExtent && ly < kLightVolumeHalfExtent &&
-               lz >= -kLightVolumeHalfExtent && lz < kLightVolumeHalfExtent;
+    /// World voxel the volume is centered on (Phase 1c / #360).
+    /// Defaults to `(0,0,0)` so static-camera scenes keep the original
+    /// world-origin centering.
+    ivec3 worldOriginVoxel() const {
+        return m_worldOriginVoxel;
     }
+
+    /// Update the volume's world anchor. The producer system calls this
+    /// once per frame from the iso camera; downstream sampling shaders
+    /// subtract the anchor before indexing the volume.
+    void setWorldOriginVoxel(const ivec3 &origin) {
+        m_worldOriginVoxel = origin;
+    }
+
+  private:
+    ivec3 m_worldOriginVoxel{0, 0, 0};
 };
 
 } // namespace IRComponents

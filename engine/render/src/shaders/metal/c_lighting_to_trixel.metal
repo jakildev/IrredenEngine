@@ -39,6 +39,10 @@ constant float kLightVolumeHalfExtent = 64.0;
 // Only `worldOriginVoxel.xyz` is read here; the seed/propagate ints
 // are unused on the lighting path but the layout must match for
 // std140/Metal-buffer compatibility with the shared UBO.
+// Layout tombstones — must match the propagate/seed UBO layout
+// (c_seed_light_volume.metal, c_propagate_light_volume.metal). Lighting
+// only reads `worldOriginVoxel`; leading-underscore names mark the
+// unused slots.
 struct LightVolumeParams {
     int   _gridSize;
     int   _halfExtent;
