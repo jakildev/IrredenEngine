@@ -18,6 +18,9 @@ struct LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
+    // Phase 1c (#360): camera-anchored window. Subtract this world voxel
+    // before mapping the light's world origin into a local texel index.
+    int4 worldOriginVoxel;
 };
 
 kernel void c_seed_light_volume(
@@ -33,7 +36,8 @@ kernel void c_seed_light_volume(
 
     const GPULightSource light = lights[lightIndex];
     const int3 worldOrigin = int3(light.originAndType.xyz);
-    const int3 cell = worldOrigin + int3(params.halfExtent);
+    const int3 cell =
+        (worldOrigin - params.worldOriginVoxel.xyz) + int3(params.halfExtent);
     if (cell.x < 0 || cell.x >= params.gridSize ||
         cell.y < 0 || cell.y >= params.gridSize ||
         cell.z < 0 || cell.z >= params.gridSize) {

@@ -21,7 +21,16 @@ const int kOccupancyGridHalfExtent = 128;
 // above any real rasterized depth since voxels are capped around ±128.
 const int kEmptyDistanceEncoded = 65535;
 
+// Phase 1c (#360): camera-anchored layout. The SSBO carries a 16-byte
+// `worldOriginVoxel` header followed by the bitfield. The CPU uploads
+// the world voxel that maps to local cell (0,0,0) each frame; subtract
+// it before checking bounds + computing the bitfield index. The header
+// is embedded in the SSBO (rather than a separate UBO) because Metal
+// compute encoders share one `setBuffer(slot)` table per encoder, so a
+// UBO at the same slot as an unrelated SSBO would clobber it. See
+// `OccupancyGridHeader` in ir_render_types.hpp for the CPU mirror.
 layout(std430, binding = 28) readonly buffer OccupancyGrid {
+    ivec4 occupancyWorldOrigin;
     uint occupancyBits[];
 };
 
@@ -62,12 +71,15 @@ layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
 
 bool occupancyGetBit(int wx, int wy, int wz) {
     int he = kOccupancyGridHalfExtent;
-    if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
+    int lx = wx - occupancyWorldOrigin.x;
+    int ly = wy - occupancyWorldOrigin.y;
+    int lz = wz - occupancyWorldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
         return false;
     }
-    uint x = uint(wx + he);
-    uint y = uint(wy + he);
-    uint z = uint(wz + he);
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
     uint flat =
         (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
     uint bits = occupancyBits[flat >> 5u];

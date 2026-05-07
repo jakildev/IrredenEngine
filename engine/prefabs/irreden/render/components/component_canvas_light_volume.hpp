@@ -10,22 +10,21 @@
 // if no emitters exist, the volume stays zero-filled and the additive
 // contribution is a no-op.
 //
-// The volume is centered at world origin and covers
-// `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)` voxels per axis
-// at 1:1 voxel-per-texel resolution. Geometry outside this range is
-// sampled with CLAMP_TO_EDGE — light contributions outside the box read
-// zero.
+// The volume is centered on `m_worldOriginVoxel` (defaults to `(0,0,0)`)
+// and covers `[origin - kLightVolumeHalfExtent, origin + kLightVolumeHalfExtent)`
+// voxels per axis at 1:1 voxel-per-texel resolution. Phase 1c (#360)
+// wired COMPUTE_LIGHT_VOLUME to track the iso camera each frame so the
+// addressable region follows the visible scene instead of staying
+// pinned to world origin. Geometry outside the current range is sampled
+// with CLAMP_TO_EDGE — light contributions outside the box read zero.
 //
 // Sized smaller than `C_OccupancyGrid` (256³) on purpose: the
 // 128³ × RGBA8 footprint (8 MiB per buffer) keeps GPU storage bounded
 // and the dilation chain's per-iteration cost low. Light sources
-// placed outside `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)`
-// are silently dropped by the shader's bounds check — Phase 1b (issue
-// #362) wired a CPU-side warning in `system_compute_light_volume` so
-// the previous "silent edge clamping" surfaces at the call site.
-// Phase 1c (issue #360) reworks this around a camera-anchored window
-// so the addressable extent moves with the camera instead of growing
-// unboundedly with the world.
+// placed outside the camera-anchored extent are still skipped on the
+// CPU before the SSBO upload (Phase 1b / issue #362), with a one-shot
+// warning per unique offending origin in `system_compute_light_volume`
+// so silent clamping never recurs.
 //
 // Two textures (`textureRead_` / `textureWrite_`) form a ping-pong pair
 // for the GPU jump-flood propagation passes (Phase 1a / issue #359).
@@ -117,11 +116,22 @@ struct C_CanvasLightVolume {
         return getReadTexture();
     }
 
-    static bool inBounds(int wx, int wy, int wz) {
-        return wx >= -kLightVolumeHalfExtent && wx < kLightVolumeHalfExtent &&
-               wy >= -kLightVolumeHalfExtent && wy < kLightVolumeHalfExtent &&
-               wz >= -kLightVolumeHalfExtent && wz < kLightVolumeHalfExtent;
+    /// World voxel the volume is centered on (Phase 1c / #360).
+    /// Defaults to `(0,0,0)` so static-camera scenes keep the original
+    /// world-origin centering.
+    ivec3 worldOriginVoxel() const {
+        return m_worldOriginVoxel;
     }
+
+    /// Update the volume's world anchor. The producer system calls this
+    /// once per frame from the iso camera; downstream sampling shaders
+    /// subtract the anchor before indexing the volume.
+    void setWorldOriginVoxel(const ivec3 &origin) {
+        m_worldOriginVoxel = origin;
+    }
+
+  private:
+    ivec3 m_worldOriginVoxel{0, 0, 0};
 };
 
 } // namespace IRComponents

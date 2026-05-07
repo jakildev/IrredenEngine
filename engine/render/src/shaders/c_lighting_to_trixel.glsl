@@ -71,6 +71,22 @@ layout(binding = 3) uniform sampler2D paletteLUT;
 layout(rgba8, binding = 4) readonly uniform image2D canvasSunShadow;
 layout(binding = 5) uniform sampler3D lightVolume;
 
+// Phase 1c (#360): the light volume is camera-anchored. The CPU
+// uploads `lightVolumeWorldOrigin` (the world voxel that maps to the
+// volume's center texel) each frame; subtract it from `pos3D` before
+// converting to a sample coordinate. Mirrors LightVolumeParams in
+// ir_render_types.hpp — only `.xyz` is meaningful, `.w` is reserved.
+// Layout tombstones — must match the propagate/seed UBO layout
+// (c_seed_light_volume.glsl, c_propagate_light_volume.glsl). Lighting
+// only reads the origin; leading-underscore names mark the unused slots.
+layout(std140, binding = 23) uniform LightVolumeParams {
+    int _gridSize;
+    int _halfExtent;
+    int _lightCount;
+    float _stepFalloff;
+    ivec4 lightVolumeWorldOrigin;
+};
+
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
 // The volume covers world voxels in [-half, half) with one texel per
 // voxel; sample coords are `(worldVoxel + half + 0.5) / size` to land
@@ -159,8 +175,12 @@ void main() {
         // unattenuated emit color in rgb and residual strength in alpha,
         // so the visible contribution is `rgb * alpha` (linear falloff
         // with Manhattan distance, zero past the light's radius).
+        // Phase 1c (#360): subtract the camera-anchored world origin so
+        // the sample maps to the texel the seed/propagate passes wrote.
+        const vec3 localPos =
+            pos3D - vec3(lightVolumeWorldOrigin.xyz);
         const vec3 sampleCoord =
-            (pos3D + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
+            (localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
             vec3(kLightVolumeSize);
         const vec4 lightSample = texture(lightVolume, sampleCoord);
         const vec3 light = lightSample.rgb * lightSample.a;

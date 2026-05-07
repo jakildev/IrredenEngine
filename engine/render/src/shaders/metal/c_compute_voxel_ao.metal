@@ -23,24 +23,48 @@ struct FrameDataSun {
     float2 sunBufferTexelSize;
 };
 
-inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
+// Phase 1c (#360): camera-anchored occupancy SSBO layout — first 16
+// bytes are the world origin, then the bitfield. The header is
+// embedded in the SSBO (rather than a separate UBO) because Metal
+// compute encoders share one `setBuffer(slot)` table per encoder, so a
+// UBO at the same slot as an unrelated SSBO would clobber it. Mirrors
+// `OccupancyGridHeader` in ir_render_types.hpp.
+struct OccupancyData {
+    int4 worldOriginVoxel;
+    // Sentinel array — MSL doesn't allow `bits[]` flexible members, but
+    // accessing past index 0 reads the buffer's actual contents. The
+    // CPU sizes the SSBO to fit `kMaxOccupancyGridSideVoxels^3 / 8`
+    // bytes after the header.
+    uint bits[1];
+};
+
+inline bool occupancyGetBit(
+    device const OccupancyData *occupancy,
+    int wx,
+    int wy,
+    int wz
+) {
     int he = kOccupancyGridHalfExtent;
-    if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
+    int4 worldOrigin = occupancy->worldOriginVoxel;
+    int lx = wx - worldOrigin.x;
+    int ly = wy - worldOrigin.y;
+    int lz = wz - worldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
         return false;
     }
-    uint x = uint(wx + he);
-    uint y = uint(wy + he);
-    uint z = uint(wz + he);
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
     uint flat =
         (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancyBits[flat >> 5u];
+    uint bits = occupancy->bits[flat >> 5u];
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
 kernel void c_compute_voxel_ao(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
-    device const uint *occupancyBits [[buffer(28)]],
+    device const OccupancyData *occupancy [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
     uint3 globalId [[thread_position_in_grid]]
@@ -113,10 +137,10 @@ kernel void c_compute_voxel_ao(
 
     int3 baseOut = surfaceVoxel + outward;
     int occl = 0;
-    if (occupancyGetBit(occupancyBits, baseOut.x + t1.x, baseOut.y + t1.y, baseOut.z + t1.z)) occl++;
-    if (occupancyGetBit(occupancyBits, baseOut.x - t1.x, baseOut.y - t1.y, baseOut.z - t1.z)) occl++;
-    if (occupancyGetBit(occupancyBits, baseOut.x + t2.x, baseOut.y + t2.y, baseOut.z + t2.z)) occl++;
-    if (occupancyGetBit(occupancyBits, baseOut.x - t2.x, baseOut.y - t2.y, baseOut.z - t2.z)) occl++;
+    if (occupancyGetBit(occupancy, baseOut.x + t1.x, baseOut.y + t1.y, baseOut.z + t1.z)) occl++;
+    if (occupancyGetBit(occupancy, baseOut.x - t1.x, baseOut.y - t1.y, baseOut.z - t1.z)) occl++;
+    if (occupancyGetBit(occupancy, baseOut.x + t2.x, baseOut.y + t2.y, baseOut.z + t2.z)) occl++;
+    if (occupancyGetBit(occupancy, baseOut.x - t2.x, baseOut.y - t2.y, baseOut.z - t2.z)) occl++;
 
     // Each filled edge-neighbor darkens by 10%; all four caps at 60%
     // brightness keeps crease darkening visually subtle. Must stay in

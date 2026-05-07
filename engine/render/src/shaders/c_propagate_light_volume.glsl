@@ -16,7 +16,7 @@
 //     highest residual alpha — i.e. whichever wavefront has the most
 //     strength left at this cell. Closest light dominates overlap
 //     regions; per-channel mixing of overlapping lights is deferred
-//     to Phase 1c.
+//     to a follow-up pass.
 //   • Solid neighbors are skipped (light cannot propagate THROUGH
 //     occluders) but solid cells themselves can still receive light
 //     from adjacent air cells, so wall surfaces light up correctly.
@@ -34,7 +34,11 @@ const int kOccupancyGridHalfExtent = 128;
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
 
+// Phase 1c (#360): camera-anchored layout — header carries the world
+// origin, then the bitfield. See c_compute_voxel_ao.glsl for the
+// rationale on embedding the header in the SSBO.
 layout(std430, binding = 28) readonly buffer OccupancyGrid {
+    ivec4 occupancyWorldOrigin;
     uint occupancyBits[];
 };
 
@@ -43,16 +47,23 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
+    // Phase 1c (#360): world voxel the volume is centered on this frame.
+    // `worldCell = (cell - halfExtent) + lightVolumeWorldOrigin.xyz` maps
+    // a local volume cell back to its world voxel for occupancy lookups.
+    ivec4 lightVolumeWorldOrigin;
 };
 
 bool occupancyGetBit(int wx, int wy, int wz) {
     int he = kOccupancyGridHalfExtent;
-    if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
+    int lx = wx - occupancyWorldOrigin.x;
+    int ly = wy - occupancyWorldOrigin.y;
+    int lz = wz - occupancyWorldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
         return false;
     }
-    uint x = uint(wx + he);
-    uint y = uint(wy + he);
-    uint z = uint(wz + he);
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
     uint flat =
         (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
     uint bits = occupancyBits[flat >> 5u];
@@ -66,7 +77,11 @@ void main() {
     }
 
     vec4 best = imageLoad(lightVolumeRead, cell);
-    const ivec3 worldCell = cell - ivec3(halfExtent);
+    // Phase 1c (#360): map the local volume cell back to world coords
+    // through the camera-anchored origin so the per-neighbor occupancy
+    // lookup queries the right cell of the (independently anchored)
+    // occupancy grid.
+    const ivec3 worldCell = (cell - ivec3(halfExtent)) + lightVolumeWorldOrigin.xyz;
 
     const ivec3 deltas[6] = ivec3[6](
         ivec3(1, 0, 0), ivec3(-1, 0, 0),

@@ -70,9 +70,14 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        c_propagate_light_volume (×32) — GPU distance-tracked     │
 │        dilation chain over a ping-pong pair of 128³ RGBA8 3D     │
 │        textures, seeded from a per-frame LightSourceBuffer SSBO. │
-│        No CPU upload. Light origins outside ±64 (the volume's    │
-│        half-extent) drop with a one-shot CPU warning until       │
-│        Phase 1c (#360) camera-anchors the grid.                  │
+│        No CPU upload. The volume is camera-anchored each frame   │
+│        (Phase 1c, #360): worldOriginVoxel_ comes from the iso    │
+│        camera and lives in LightVolumeParams (UBO @ slot 23);    │
+│        the occupancy grid carries its own origin in a 16-byte    │
+│        header at the start of OccupancyGridBuffer (SSBO @ 28).   │
+│        Lights whose rounded world origin falls outside the       │
+│        ±64-voxel window around the camera anchor still drop      │
+│        with a one-shot CPU warning.                              │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │
@@ -264,11 +269,18 @@ Lighting splits across two sampling spaces:
   (64 voxels), so shadow casters within that range project correctly
   even when their iso position is outside the visible rect.
 - **World-space**: AO, flood-fill, and fog-of-war read the
-  **camera-independent world-space occupancy grid**. Off-screen
-  geometry participates in lighting by design — an off-screen
-  building's voxels still occlude AO crease darkening on adjacent
-  on-screen tiles, and a torch off-screen still floods light into
-  on-screen voxels.
+  world-space occupancy grid. As of Phase 1c (#360) the grid is
+  **camera-anchored** — it covers the 256-voxel cube centered on
+  the iso camera's world voxel rather than a fixed `[-128, 128)`
+  window. Off-screen geometry inside that cube still participates
+  in lighting by design (an off-screen building's voxels still
+  occlude AO crease darkening on adjacent on-screen tiles, and a
+  torch a few voxels off-screen still floods light into on-screen
+  voxels). Geometry farther from the camera than ±128 voxels is
+  outside the grid this frame and contributes nothing — the cull
+  is a side effect of the anchor, not a separate viewport check
+  (invariant 1 below still holds: the grid-build iterates the full
+  pool and writes whichever voxels land in-range).
 
 **Phased-out producer:** `BUILD_OCCUPANCY_GRID` and the `OccupancyGrid`
 SSBO are scheduled for removal in T-09Y once AO migrates to screen-space

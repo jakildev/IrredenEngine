@@ -35,6 +35,22 @@ struct FrameDataSun {
 constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
+// Phase 1c (#360): mirrors LightVolumeParams in ir_render_types.hpp.
+// Only `worldOriginVoxel.xyz` is read here; the seed/propagate ints
+// are unused on the lighting path but the layout must match for
+// std140/Metal-buffer compatibility with the shared UBO.
+// Layout tombstones — must match the propagate/seed UBO layout
+// (c_seed_light_volume.metal, c_propagate_light_volume.metal). Lighting
+// only reads `worldOriginVoxel`; leading-underscore names mark the
+// unused slots.
+struct LightVolumeParams {
+    int   _gridSize;
+    int   _halfExtent;
+    int   _lightCount;
+    float _stepFalloff;
+    int4  worldOriginVoxel;
+};
+
 // `faceOutwardNormal()` lives in ir_iso_common.metal — shared with
 // c_compute_voxel_ao.metal so AO sampling and lambert use the same
 // convention.
@@ -43,6 +59,7 @@ kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
+    constant LightVolumeParams& lightVolumeParams [[buffer(23)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
@@ -138,8 +155,13 @@ kernel void c_lighting_to_trixel(
         // residual strength in alpha, so the visible contribution is
         // `rgb * alpha` (linear falloff with Manhattan distance, zero
         // past the light's radius).
+        // Phase 1c (#360): subtract the camera-anchored world origin
+        // so the sample maps to the texel the seed/propagate passes
+        // wrote.
+        const float3 localPos =
+            pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
         const float3 sampleCoord =
-            (pos3D + float3(kLightVolumeHalfExtent) + float3(0.5)) /
+            (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) /
             float3(kLightVolumeSize);
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
         const float3 light = lightSample.rgb * lightSample.a;

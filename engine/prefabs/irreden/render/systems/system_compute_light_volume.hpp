@@ -55,6 +55,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/detail/camera_anchor.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -113,6 +114,13 @@ inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
     return IRMath::roundVec3HalfUp(position.pos_);
 }
 
+inline bool isOriginInLightVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin) {
+    constexpr int he = kLightVolumeHalfExtent;
+    const ivec3 local = lightOrigin - volumeOrigin;
+    return local.x >= -he && local.x < he && local.y >= -he && local.y < he && local.z >= -he &&
+           local.z < he;
+}
+
 // Pack a signed-int voxel position into a single uint64 so the
 // "already-warned" set can dedupe by exact origin without paying for a
 // custom hash on `ivec3`. 21 bits per axis covers ±1M cells, well
@@ -131,14 +139,18 @@ inline std::uint64_t packOriginKey(const ivec3 &v) {
 // at `kLightVolumeMaxSources`). Returns the count actually written.
 // Per-tick allocation is bounded by the buffer's reserved capacity.
 //
-// Lights whose origin rounds outside the volume's `[-kLightVolumeHalfExtent,
-// +kLightVolumeHalfExtent)` extent are skipped (the seed shader's bounds
-// check would silently drop them anyway) and logged once per unique
-// origin coordinate via `warnedOOBOrigins`. This makes the Phase 1b
-// (#362) silent-clamping issue visible without spamming when the same
-// misplaced static light is processed every frame.
+// Lights whose origin rounds outside the volume's camera-anchored window
+// (`worldOriginVoxel ± kLightVolumeHalfExtent`) are skipped (the seed
+// shader's bounds check would silently drop them anyway) and logged once
+// per unique origin coordinate via `warnedOOBOrigins`. This makes the
+// Phase 1b (#362) silent-clamping issue visible without spamming when
+// the same misplaced static light is processed every frame; Phase 1c
+// (#360) shrinks the warning surface by panning the window with the
+// camera so most scenes stay in-range without manual intervention.
 inline std::uint32_t gatherLightSources(
-    std::vector<GPULightSource> &out, std::unordered_set<std::uint64_t> &warnedOOBOrigins
+    std::vector<GPULightSource> &out,
+    const ivec3 &volumeOriginVoxel,
+    std::unordered_set<std::uint64_t> &warnedOOBOrigins
 ) {
     out.clear();
     const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
@@ -156,17 +168,20 @@ inline std::uint32_t gatherLightSources(
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(positions[i]);
-            if (!C_CanvasLightVolume::inBounds(origin.x, origin.y, origin.z)) {
+            if (!isOriginInLightVolume(origin, volumeOriginVoxel)) {
                 if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
                     IR_LOG_WARN(
                         "C_LightSource at world voxel ({}, {}, {}) is "
-                        "outside the light volume's extent "
-                        "[-{}, {}); dropping until issue #360 "
-                        "(camera-anchored grids / Phase 1c) lands.",
+                        "outside the camera-anchored light volume "
+                        "centered on ({}, {}, {}) with half-extent {}; "
+                        "dropping. Pan the camera nearer to the light "
+                        "or move the light into the visible region.",
                         origin.x,
                         origin.y,
                         origin.z,
-                        kLightVolumeHalfExtent,
+                        volumeOriginVoxel.x,
+                        volumeOriginVoxel.y,
+                        volumeOriginVoxel.z,
                         kLightVolumeHalfExtent
                     );
                 }
@@ -250,7 +265,10 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         p->paramsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
         // OccupancyGridBuffer is created by BUILD_OCCUPANCY_GRID, which
         // is registered ahead of this system in every creation that uses
-        // either path; safe to look up at init time.
+        // either path; safe to look up at init time. Phase 1c (#360):
+        // the SSBO carries a 16-byte header (worldOriginVoxel) followed
+        // by the bitfield, so the propagate shader reads the camera-
+        // anchored origin from the same binding.
         p->occupancyBuf_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
         p->lightStaging_.reserve(kLightVolumeMaxSources);
 
@@ -276,8 +294,20 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
                         IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
-                        const std::uint32_t count =
-                            detail::gatherLightSources(p->lightStaging_, p->warnedOOBOrigins_);
+                        // Phase 1c (#360): re-anchor the volume on the
+                        // iso camera each frame; the seed/propagate/
+                        // lighting shaders subtract this origin before
+                        // indexing, so a panned camera keeps lights in
+                        // range without resizing the texture.
+                        const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
+                        volume.setWorldOriginVoxel(volumeOrigin);
+                        p->params_.worldOriginVoxel_ =
+                            ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
+                        const std::uint32_t count = detail::gatherLightSources(
+                            p->lightStaging_,
+                            volumeOrigin,
+                            p->warnedOOBOrigins_
+                        );
                         p->params_.lightCount_ = static_cast<int>(count);
                         if (count > 0) {
                             p->lightSourceBuf_->subData(
@@ -334,8 +364,13 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         // a tighter early-out.
                         if (p->params_.lightCount_ > 0) {
                             p->propagateProgram_->use();
-                            // Occupancy SSBO is shared with AO; bind it
-                            // once then leave bound for the duration.
+                            // Occupancy SSBO is shared with AO; rebind
+                            // for this pipeline (Metal compute encoders
+                            // don't preserve bindings across program
+                            // switches). The SSBO's first 16 bytes are
+                            // a header carrying the camera-anchored
+                            // worldOriginVoxel — the propagate shader
+                            // reads it directly.
                             if (p->occupancyBuf_ != nullptr) {
                                 p->occupancyBuf_->bindBase(
                                     BufferTarget::SHADER_STORAGE,

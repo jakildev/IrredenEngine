@@ -19,9 +19,11 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/ir_render_types.hpp>
 
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/render/detail/camera_anchor.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -37,15 +39,24 @@ namespace IRSystem {
 /// SSBO is fixed so swapping between grid extents doesn't reallocate.
 constexpr int kMaxOccupancyGridSideVoxels = 256;
 
-constexpr std::size_t kOccupancySSBOByteSize =
+/// Phase 1c (#360): the SSBO carries a 16-byte header (the camera-
+/// anchored `worldOriginVoxel`) followed by the bitfield. AO and
+/// propagate shaders read both from the same SSBO binding, sidestepping
+/// the slot-collision a separate UBO would hit (see `OccupancyGridHeader`
+/// in ir_render_types.hpp).
+constexpr std::size_t kOccupancyHeaderByteSize = sizeof(OccupancyGridHeader);
+constexpr std::size_t kOccupancyBitfieldByteSize =
     (static_cast<std::size_t>(kMaxOccupancyGridSideVoxels) *
      static_cast<std::size_t>(kMaxOccupancyGridSideVoxels) *
      static_cast<std::size_t>(kMaxOccupancyGridSideVoxels)) /
     8u;
+constexpr std::size_t kOccupancySSBOByteSize =
+    kOccupancyHeaderByteSize + kOccupancyBitfieldByteSize;
 
 template <> struct System<BUILD_OCCUPANCY_GRID> {
     struct Params {
         Buffer *ssbo_ = nullptr;
+        OccupancyGridHeader header_{};
     };
 
     static SystemId create() {
@@ -70,6 +81,13 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     grid.sizeVoxels() == kMaxOccupancyGridSideVoxels,
                     "Lighting occupancy shaders currently require a 256^3 grid"
                 );
+
+                // Phase 1c (#360): re-center on the iso camera each
+                // frame. `setBit` / `inBounds` translate world→local
+                // internally, so the populate path stays origin-
+                // agnostic; only the GPU consumers need to know the
+                // anchor (uploaded via the SSBO header below).
+                grid.setWorldOriginVoxel(IRRender::detail::cameraAnchorVoxel());
 
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::Clear", IR_PROFILER_COLOR_RENDER);
@@ -100,7 +118,14 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
 
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::Upload", IR_PROFILER_COLOR_RENDER);
-                    p->ssbo_->subData(0, grid.bitfieldByteSize(), grid.bitfield().data());
+                    const ivec3 origin = grid.worldOriginVoxel();
+                    p->header_.worldOriginVoxel_ = ivec4(origin.x, origin.y, origin.z, 0);
+                    p->ssbo_->subData(0, kOccupancyHeaderByteSize, &p->header_);
+                    p->ssbo_->subData(
+                        static_cast<std::ptrdiff_t>(kOccupancyHeaderByteSize),
+                        grid.bitfieldByteSize(),
+                        grid.bitfield().data()
+                    );
                 }
             },
             [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); }
