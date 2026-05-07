@@ -223,10 +223,15 @@ build_dispatch_command() {
     local role="$1"
     local model="${ROLE_MODEL[$role]:-sonnet}"
     local effort="${ROLE_EFFORT[$role]:-high}"
-    # The role slash command (`/role-<role>`) is preserved from the
-    # fleet-babysit invocation. fleet-claude-stream renders the
-    # streaming events as readable pane text — same pipe babysit uses.
-    printf 'claude --model %q --effort %q --print "/role-%s live" | fleet-claude-stream\n' \
+    # `--print` makes each iteration a one-shot process that exits on
+    # completion (PR #257). `--output-format stream-json
+    # --include-partial-messages --verbose` is what makes claude emit
+    # the live JSON event stream that fleet-claude-stream renders as
+    # readable pane text — without those three flags claude buffers in
+    # plain-text mode and only flushes at exit, so the pane looks dead
+    # the whole iteration and the formatter sees no init / tool / delta
+    # events to render. Mirrors fleet-babysit's stream_claude().
+    printf 'claude --model %q --effort %q --print --output-format stream-json --include-partial-messages --verbose "/role-%s live" | fleet-claude-stream\n' \
         "$model" "$effort" "$role"
 }
 
