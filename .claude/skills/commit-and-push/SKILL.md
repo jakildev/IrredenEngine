@@ -38,123 +38,15 @@ Do **not** invoke proactively — only when the user explicitly asks.
 3. **The working tree must have something to commit.** If `git status` is
    clean, tell the user and stop.
 
-## Stack-aware mode
+## Mode detection
 
-This is the **fleet stack** path. The cursor-flow stacking variant
-lives in the next section ("Cursor stack mode"); they have separate
-detection signals and are mutually exclusive in practice.
+This skill has three modes. Detect at the start of the flow, in priority order:
 
-If the current task is part of an `fleet-claim stack` chain (i.e. the
-caller's worktree name has a stack claim under
-`~/.fleet/claims/_stack_<agent>/`), this skill opens **one PR per task,
-chained by `--base`** instead of a single PR with multiple commits.
+1. **Fleet stack mode** — caller has an active `fleet-claim` stack chain. PRs are chained by `--base` (one PR per task). Detected via `fleet-claim stack-pr-state <worktree>`. See [`procedures/fleet-stack.md`](procedures/fleet-stack.md) for the deltas (branch name with `T-NNN` prefix, `stack-base` lookup for `--base`, `Stack context` body block, `fleet:stacked` label, `stack-set-pr` after PR open).
+2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base` git config set (written by `start-next-task` when the human cued stacking). PRs target the parent branch instead of `master`. See [`procedures/cursor-stack.md`](procedures/cursor-stack.md) for the detection check, the `Stacked on:` body line, and the macOS sandbox note.
+3. **Single-PR mode (default)** — neither stack signal present. Proceed with the standard flow below.
 
-Detect stack mode at the start of the flow:
-
-```bash
-fleet-claim stack-pr-state <your-worktree-name>
-```
-
-- Output `no stack claim for agent: <name>` → not stacked, proceed with
-  the normal single-PR flow below.
-- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR
-  column is `(pending)` and whose earlier rows (if any) are all filled
-  is the current task. Note its `<task-id>`; you will need it in steps
-  2 and 8.
-
-The deltas versus the single-PR flow:
-
-- **Step 2 branch name** is `claude/<task-id>-<short-topic>` (e.g.
-  `claude/T-005-occupancy-grid`). The task ID prefix lets the
-  queue-manager, reviewers, and `stack-base` resolve the chain.
-- **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>`
-  instead of `master`. For the first task this still returns `master`;
-  for subsequent tasks it returns the previous task's branch.
-- **After `gh pr create`** record the PR in the stack so the next task
-  can chain off it:
-  ```bash
-  fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
-  ```
-- **PR body** includes a `## Stack context` block with a `Stacked on:`
-  line (the previous PR URL, or `master` for the first task in the
-  chain) and a `Full chain:` line listing the task IDs the molecule
-  covers. Reviewers use this to navigate sibling PRs without leaving
-  the diff.
-- **Labels** include `fleet:stacked` whenever `--base != master` (i.e.
-  every PR in the chain except the first). The merger reads
-  `baseRefName` directly for routing decisions; the label is a derived
-  convenience for human visibility and cheap GitHub-side filtering.
-- **Title** starts with `T-NNN: ` so the queue-manager's per-task
-  matching works and reviewers can tell which task in the chain this
-  PR belongs to.
-
-After the PR opens, do NOT start the next task in the same branch.
-Invoke `start-next-task` the same way as single-PR work; when it comes
-back, the next stacked-PR iteration computes its own `--base` via
-`stack-base` and branches off that (not `origin/master`).
-
-When **the final task's PR is merged**, run
-`fleet-claim release-stack <agent>` to clean up both the per-task
-claims and the stack metadata.
-
-## Cursor stack mode
-
-This is the cursor-flow analog of the fleet stack mode above. It
-opens a single PR per slice but with `--base <previous-feature-
-branch>` instead of `--base master`, so the diffs stay isolated
-while the chain accumulates. No `fleet-claim` machinery, no task
-IDs, no `fleet:stacked` label. State lives entirely in the per-
-branch git config that `start-next-task` writes when the human
-cues stacking.
-
-Detect cursor stack mode after step 1 of the main flow, AFTER
-ruling out fleet stack mode:
-
-```bash
-git config --get branch.$(git branch --show-current).cursor-stack-base
-```
-
-- Output is empty / exit 1 → not cursor-stacked. Proceed with the
-  normal single-PR flow.
-- Output names a branch (e.g. `claude/render-glow-pulse`) → the
-  current branch is cursor-stacked on that branch. Note the value;
-  step 8 uses it as `--base` and writes a `Stacked on:` line to
-  the PR body.
-
-The deltas vs the normal single-PR flow:
-
-- **Step 8 PR base** is the recorded `cursor-stack-base` instead
-  of `master`. Pass it to `gh pr create` as `--base <base>`.
-- **PR body** includes a `Stacked on: <PR URL>` line. Look up the
-  parent PR URL once at PR-open time:
-  ```bash
-  parent_branch=$(git config --get branch.$(git branch --show-current).cursor-stack-base)
-  parent_pr_url=$(gh pr list --head "$parent_branch" --state all --json url -q '.[0].url' --limit 1)
-  ```
-  If the parent has no PR yet (e.g. the human hasn't run
-  `commit-and-push` on it — unusual but possible), use the branch
-  name instead: `Stacked on: <parent_branch>` and warn the user.
-- **Title** uses the normal cursor-flow shape (no `T-NNN:` prefix —
-  cursor flow doesn't use the queue).
-- **No labels** beyond what the normal flow adds. The
-  `fleet:stacked` label is fleet-only; cursor flow just relies on
-  `Stacked on:` in the PR body.
-
-After the PR opens, do NOT clear the `cursor-stack-base` config —
-leave it as a record of the chain. The config is local-only and
-doesn't need cleanup; the next `commit-and-push` on a
-non-stacked branch (no config set) takes the standard path
-automatically.
-
-When the parent PR merges, change this PR's base to `master` in the
-GitHub UI (or `gh pr edit <N> --base master`) — same step as in any
-manual stacked-PR workflow.
-
-**macOS sandbox note.** Cursor's Bash sandbox blocks `gh` keychain
-access and SSH `git push`. Always run `gh pr create`,
-`gh pr edit`, `gh pr list`, and `git push` with the `all`
-permission on macOS. Reads of `git config --get …` are not
-sandboxed.
+The two stack modes are mutually exclusive. In single-PR mode, ignore the procedures/ files and follow the Flow as written.
 
 ## Flow
 
@@ -186,7 +78,7 @@ If you're on `master`:
   ```bash
   git checkout -b claude/<area>-<topic>
   ```
-- **In stack-aware mode** (see section above): use
+- **In fleet stack mode** (see [`procedures/fleet-stack.md`](procedures/fleet-stack.md)): use
   `claude/<task-id>-<short-topic>` instead, and branch off the base
   returned by `fleet-claim stack-base <agent> <task-id>` (which is
   `master` for the first task in the chain, or the previous task's
@@ -201,12 +93,7 @@ If you're already on a feature branch, just use it. Do not rename mid-session.
 
 ### 3. Pre-commit checks and `simplify`
 
-**First**, run the **Rebase guard** check (see section below): if you
-saved a pre-capture earlier in this conversation (a `git diff
-origin/master` snapshot before rebasing), compare it now against a
-fresh `git diff origin/master`. If you don't have that snapshot in
-context, check `git reflog --since=2.hours.ago` for a recent rebase
-entry; if found, warn and inspect manually before proceeding.
+**First**, run the **Rebase guard** check (full procedure: [`procedures/rebase-guard.md`](procedures/rebase-guard.md)): if you saved a pre-capture earlier in this conversation (a `git diff origin/master` snapshot before rebasing), compare it now against a fresh `git diff origin/master`. If you don't have that snapshot in context, check `git reflog --since=2.hours.ago` for a recent rebase entry; if found, warn and inspect manually before proceeding.
 
 **Second**, check whether the diff touches visual/render files:
 
@@ -454,10 +341,10 @@ directly for correctness decisions; `fleet:stacked` is a derived
 convenience label for human visibility and cheap filtering.
 
 **Cursor stack override:** when the current branch has a
-`cursor-stack-base` git config set (see "Cursor stack mode" section
-above), use that as the PR base instead of `master`. No `fleet-claim`
-calls and no `fleet:stacked` label — cursor stack mode is human-
-managed.
+`cursor-stack-base` git config set (see [`procedures/cursor-stack.md`](procedures/cursor-stack.md)
+for the detection rule and full deltas), use that as the PR base
+instead of `master`. No `fleet-claim` calls and no `fleet:stacked`
+label — cursor stack mode is human-managed.
 
 ```bash
 parent_branch=$(git config --get branch."$(git branch --show-current)".cursor-stack-base)
@@ -557,48 +444,6 @@ Reply with a compact summary:
 `start-next-task` skill handles resetting the worktree to a fresh branch off
 master for the next chunk — tell the user to invoke it (or invoke it yourself
 if the user already asked for the next task).
-
-## Rebase guard
-
-**Before rebasing this PR branch onto origin/master**, always capture
-the current diff first. Git's 3-way merge can silently drop hunks
-from non-conflicting regions of a file when a different region of the
-same file has a conflict — no conflict markers, no warning in the
-rebase output.
-
-Do NOT use `>` redirects to `/tmp/` (or any path) — Claude Code's Bash
-tool blocks shell redirects regardless of destination. Both snapshots
-live in your conversation context as Bash output; large diffs auto-
-persist to a `<persisted-output>` link the next iteration can Read.
-(Same rule that role-merger.md uses for its rebase guard.)
-
-### Pre-capture (do this BEFORE `git rebase origin/master`)
-
-Run `git diff origin/master` and keep the output in your conversation
-context — you'll compare it to the post-rebase snapshot below.
-
-### Rebase and resolve conflicts
-
-Run `git rebase origin/master`. Resolve any conflict markers normally.
-
-### Post-capture and comparison
-
-Run `git diff origin/master` again. Compare to the pre-capture above:
-look for lines beginning with `+` in the pre-capture that are absent
-from the post-capture. Each such gap is a silently dropped hunk that
-must be manually re-applied before committing.
-
-For huge diffs that don't fit cleanly in context, both snapshots get
-auto-persisted by Claude Code; Read the persisted-output files to
-diff them with the Read tool's `offset`/`limit`.
-
-### If the pre-capture was skipped
-
-1. Run `git reflog --since=2.hours.ago` to confirm a rebase happened.
-2. Compare `git diff origin/master` against the branch's last pushed state:
-   `git diff origin/<branch-name>` shows what changed since the last push.
-3. Look for missing code blocks based on the PR's commit messages and
-   description. Re-apply any that are absent.
 
 ## Anti-patterns
 
