@@ -1,4 +1,5 @@
 ---
+name: role-opus-architect
 description: Opus architect — engine core design and heavy ECS/render work
 ---
 

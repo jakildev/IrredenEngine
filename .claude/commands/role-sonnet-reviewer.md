@@ -1,4 +1,5 @@
 ---
+name: role-sonnet-reviewer
 description: Sonnet first-pass PR reviewer — polls open PRs and posts structured reviews
 ---
 

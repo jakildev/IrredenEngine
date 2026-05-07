@@ -1,4 +1,5 @@
 ---
+name: role-sonnet-author
 description: Sonnet author — picks bounded tasks from TASKS.md and opens PRs
 ---
 

@@ -1,4 +1,5 @@
 ---
+name: role-merger
 description: Merger orchestrator — auto-resolves mechanical PR conflicts, labels semantic ones for the human
 ---
 

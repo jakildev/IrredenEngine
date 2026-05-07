@@ -1,4 +1,5 @@
 ---
+name: role-opus-worker
 description: Opus worker — plans fleet:needs-plan issues and picks opus-tagged tasks from TASKS.md
 ---
 
