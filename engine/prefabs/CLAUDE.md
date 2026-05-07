@@ -7,7 +7,7 @@ in `engine/<module>/src/`.
 
 ## Hard rules (read before editing)
 
-Two redlines that get violated most often when adding prefab systems and
+Three rules that get violated most often when adding prefab systems and
 components. The full reasoning, allowlists, and canonical patterns live in
 [`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md),
 [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md), and
