@@ -347,6 +347,28 @@ mkdir -p "$HOME/.fleet/alerts"
 # failure mode.
 rm -f "${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
 
+# Sweep stale trigger files from prior fleet sessions. The scout
+# writes ~/.fleet/state/triggers/<role> when it sees new work; the
+# dispatcher consumes them. If the dispatcher crashed or fleet-down
+# was forced, triggers can be left behind, and the next fleet's
+# dispatcher would treat them as fresh work the new scout never
+# asked for (observed: dispatched sonnet-author + opus-worker on
+# fleet-up despite the fresh scout only triggering sonnet-reviewer).
+# Sweep before the scout starts (Step 3d) so any triggers it writes
+# in its first tick are preserved.
+triggers_dir="$HOME/.fleet/state/triggers"
+if [[ -d "$triggers_dir" ]]; then
+    swept=0
+    for trigger in "$triggers_dir"/*; do
+        [[ -e "$trigger" ]] || continue
+        rm -f "$trigger"
+        swept=$((swept + 1))
+    done
+    if (( swept > 0 )); then
+        echo "fleet-up: swept $swept stale trigger(s) from prior session"
+    fi
+fi
+
 # ----------------------------------------------------------------------
 # Step 3c: ensure GitHub labels referenced by agents exist
 # ----------------------------------------------------------------------
