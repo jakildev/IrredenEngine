@@ -108,8 +108,8 @@ This pass catches what slipped through.
 
 **Check 1: `glm::` and `std::` math calls outside the allowlist.**
 
-Run a grep against the staged diff lines, scoped to C++ files outside
-the allowed surfaces. The Grep tool is allowlisted; use it directly:
+Run a grep against all in-scope C++ files (catches both new and existing
+violations). The Grep tool is allowlisted; use it directly:
 
 ```
 Grep tool with:
@@ -146,16 +146,22 @@ suggesting.)
 
 **Check 2: function-local `static` in system tick files.**
 
-Scan added lines (`+` lines from `git diff -U0`) in system files for
-`static` declarations that are NOT `static constexpr` or `static const`.
+Use Grep to scan system files for `static` declarations that are NOT
+`static constexpr` or `static const`, then cross-reference the hits
+against `git diff` added lines to confirm the match is newly introduced.
 
 ```
 Grep tool with:
-  pattern: '^\+\s*static\s+(?!constexpr|const\s+)'
+  pattern: '\bstatic\b(?!\s+constexpr)(?!\s+const\b)'
   glob:    '{engine/prefabs/irreden/**/system_*.{hpp,cpp},engine/system/**/*.{hpp,cpp},creations/**/system_*.{hpp,cpp}}'
   output_mode: 'content'
   -n: true
 ```
+
+Filter the Grep results to lines that also appear as `+` lines in
+`git diff --unified=0` for the same file — those are the newly added
+violations. Lines that exist on both sides (pre-existing code) belong
+to the live-deviation list and should only be noted, not re-flagged.
 
 For each hit, suggest the canonical `SystemParams` migration pattern:
 
