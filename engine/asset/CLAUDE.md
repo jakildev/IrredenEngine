@@ -1,19 +1,25 @@
-# engine/asset/ — trixel texture I/O
+# engine/asset/ — trixel texture + sprite-sheet I/O
 
-Tiny module. The only thing it does today is save and load trixel textures
-(a `(size, colors[], distances[])` tuple) to disk as a raw binary format.
+Tiny module. Today it covers two file formats:
 
-`IRAsset::` exposes two free functions:
+- **Trixel textures** — raw binary `(size, colors[], distances[])` blobs
+  with extension `.txl`.
+- **Sprite-sheet sidecars** — plain-text metadata for PNG atlases with
+  extension `.irsprite`. The PNG itself is loaded by `engine/render/`'s
+  `ImageData`; this module owns only the sidecar.
 
-- `saveTrixelTextureData(name, path, size, colors, distances)` —
-  writes a binary file.
-- `loadTrixelTextureData(name, path, size, colors, distances)` —
-  reads one.
+`IRAsset::` exposes:
 
-The `name` is embedded in the file header; the `path` is the output
-directory.
+- `saveTrixelTextureData(name, path, size, colors, distances)` /
+  `loadTrixelTextureData(...)` — trixel binary round-trip.
+- `saveSpriteSheetMeta(name, path, meta)` /
+  `loadSpriteSheetMeta(name, path)` — sidecar text round-trip.
 
-## Format
+The `name` is embedded in the trixel file header; the `path` is the
+output directory. For sprite sheets, `name` is the basename shared
+by the `.png` atlas and its `.irsprite` sidecar.
+
+## Trixel format
 
 Raw binary, no versioning:
 
@@ -24,6 +30,25 @@ ivec2 size
 ```
 
 No checksum, no magic bytes, no compression. Treat the file as volatile.
+
+## Sprite-sheet sidecar format
+
+Plain text, line-oriented, order-independent. See `ir_asset.hpp` for the
+full `SpriteSheetMeta` / `SpriteAnimationDesc` field set. Atlas pixel
+dimensions are NOT stored — they are read from the PNG at load time.
+
+```
+# comment line (ignored)
+cellWidth  <pixels>
+cellHeight <pixels>
+margin     <pixels>   (optional, default 0)
+padding    <pixels>   (optional, default 0)
+anim <name> <firstFrame> <frameCount> <fps>
+```
+
+Animation names must not contain whitespace (the loader scans with
+`%127s` and would silently truncate); `saveSpriteSheetMeta` asserts on
+this at write time.
 
 ## Typical usage
 
@@ -43,6 +68,7 @@ import/export. Runtime gameplay code generally does not touch this module.
 - **Not a general asset pipeline.** Don't add shader hot-reload, audio
   decoding, or model loading here without a design pass — the file name
   suggests an abstraction that doesn't exist yet.
-- **Only trixel data.** The `FileTypes` enum in `ir_asset.hpp` has
-  `kSpriteImage` and `kVoxelImage` values but no corresponding load/save
-  routines — they're aspirational stubs only.
+- **Voxel image stub.** The `FileTypes` enum in `ir_asset.hpp` has a
+  `kVoxelImage` value with no corresponding load/save routine — still an
+  aspirational stub. (`kSpriteImage` is paired with the `.irsprite`
+  sidecar routines above.)
