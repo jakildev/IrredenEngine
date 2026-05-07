@@ -12,6 +12,9 @@
 
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_binding_traits.hpp>
+#include <irreden/script/lua_component_data.hpp>
+
+#include <vector>
 
 namespace IRScript {
 
@@ -30,6 +33,13 @@ class LuaScript {
     void scriptFile(const char *filename);
 
     void bindCreateEntityBatchFunction();
+
+    // Bind the Lua-driven ECS surface — IRComponent.{register,bindField}
+    // and IREntity.{addLuaComponent,getLuaComponent,removeLuaComponent,
+    // hasLuaComponent}. Idempotent; safe to call multiple times.
+    // Required for any creation that registers Lua-defined components.
+    // See docs/design/lua-driven-ecs.md and engine/script/CLAUDE.md.
+    void bindLuaDrivenEcs();
 
     template <typename T> void registerTypeFromTraits() {
         static_assert(kHasLuaBinding<T>, "Lua binding specialization missing for this type.");

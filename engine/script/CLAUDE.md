@@ -61,6 +61,53 @@ This is the **only** way to add Lua bindings. If a creation forgets to
 include the `_lua.hpp` header or omits the type from
 `registerTypesFromTraits<>`, Lua sees nothing.
 
+## Lua-defined components (`IRComponent.register`)
+
+Lua scripts can declare new component types and attach them to entities,
+with native SoA storage parallel to C++-typed components. Call
+`LuaScript::bindLuaDrivenEcs()` once during creation init to expose the
+surface, then in Lua:
+
+```lua
+local C_Hp = IRComponent.register("Hp", {
+    current = 100,           -- int32
+    max     = { type = "float", default = 100 },  -- explicit type form
+    payload = { type = "table", default = {} },   -- opaque-table opt-in
+})
+
+local entity = IREntity.create_some_entity()
+IREntity.addLuaComponent(entity, C_Hp, { current = 50 })  -- optional overrides
+local hp = IREntity.getLuaComponent(entity, C_Hp)         -- table snapshot
+IREntity.removeLuaComponent(entity, C_Hp)
+```
+
+- **Type inference:** integer literal → `int32`; float literal → `float`;
+  string → `std::string`; bool → `bool`; function → `sol::function`. The
+  short form fails registration with a Lua error if a default value isn't
+  natively classifiable; nested tables in the short form are intentionally
+  rejected. Use the explicit `{ type = "...", default = ... }` form to
+  disambiguate (`current = { type = "float", default = 100 }`) or to opt
+  in to opaque table storage (`payload = { type = "table", default = {} }`).
+- **Identity rule:** registering the same `name` twice raises a Lua error.
+  C++ and Lua share one `ComponentId` space (`EntityManager::registerComponentDynamic`
+  goes through the same component-id allocator).
+- **Modifier-framework integration:** scalar fields (`int32`, `float`,
+  `bool`) auto-register a field binding `("TypeName.fieldName", id)` into
+  `IRPrefab::Modifier::detail::globalFieldRegistry()` at registration time.
+  The returned handle exposes those ids via `C_Hp.fields.current.bindingId`
+  so Lua scripts can pass them to `IRModifier.add` once the modifier
+  bindings ship in T-102. String / function / table fields receive
+  `kInvalidFieldId` (not modifier-targetable).
+- **Storage:** a Lua-typed component is one `IComponentDataLuaTyped`
+  impl with one native vector column per declared field
+  (`std::vector<int32_t>`, `std::vector<float>`, etc., per field type).
+  Reading or writing a field is a typed vector index — never a per-frame
+  `sol::table` lookup.
+
+The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
+T-100 (this PR) lands components only; systems, pipelines, hot-reload,
+and the parity demo follow in T-101..T-104.
+
 ## Script resolution
 
 `scriptFile(path)` passes the path straight to sol2 / `dofile`. Behavior:

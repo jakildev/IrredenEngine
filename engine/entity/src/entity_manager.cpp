@@ -101,7 +101,8 @@ void EntityManager::unregisterPreDestroyHook(PreDestroyHookId id) {
         "unregisterPreDestroyHook called from inside a pre-destroy hook callback — "
         "this would silently skip a sibling hook. Defer the unregister until destroyEntity returns."
     );
-    if (id == kInvalidPreDestroyHookId) return;
+    if (id == kInvalidPreDestroyHookId)
+        return;
     auto it = std::find_if(
         m_preDestroyHooks.begin(),
         m_preDestroyHooks.end(),
@@ -171,8 +172,7 @@ void EntityManager::flushStructuralChanges() {
         auto pendingComponentRemovals = std::move(m_pendingComponentRemovals);
         m_pendingComponentRemovals.clear();
 
-        using RemovalGroupsByNode =
-            std::unordered_map<ArchetypeNode *, std::vector<EntityId>>;
+        using RemovalGroupsByNode = std::unordered_map<ArchetypeNode *, std::vector<EntityId>>;
         std::unordered_map<ComponentId, RemovalGroupsByNode> removalsByComponentAndNode;
 
         for (const auto &pendingRemoval : pendingComponentRemovals) {
@@ -205,13 +205,9 @@ void EntityManager::flushStructuralChanges() {
                 type.erase(componentType);
                 ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
 
-                std::sort(
-                    entities.begin(),
-                    entities.end(),
-                    [this](EntityId a, EntityId b) {
-                        return getRecord(a).row > getRecord(b).row;
-                    }
-                );
+                std::sort(entities.begin(), entities.end(), [this](EntityId a, EntityId b) {
+                    return getRecord(a).row > getRecord(b).row;
+                });
 
                 for (EntityId entity : entities) {
                     if (!entityExists(entity)) {
@@ -348,6 +344,81 @@ void EntityManager::insertRelation(EntityId entity, RelationId relation) {
 smart_ComponentData EntityManager::createComponentDataVector(ComponentId component) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     return m_pureComponentVectors[component]->cloneEmpty();
+}
+
+ComponentId
+EntityManager::registerComponentImpl(const std::string &typeName, smart_ComponentData impl) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    ComponentId componentId = createEntity();
+    m_pureComponentTypes.insert({typeName, componentId});
+    m_pureComponentVectors.emplace(componentId, std::move(impl));
+    return componentId;
+}
+
+ComponentId
+EntityManager::registerComponentDynamic(const std::string &typeName, smart_ComponentData impl) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    if (m_pureComponentTypes.contains(typeName)) {
+        IRE_LOG_WARN("registerComponentDynamic skipped: type {} already registered", typeName);
+        return kNullComponent;
+    }
+    ComponentId componentId = registerComponentImpl(typeName, std::move(impl));
+    IRE_LOG_INFO(
+        "Registered dynamic component type={} with id={}",
+        typeName,
+        static_cast<int>(componentId)
+    );
+    return componentId;
+}
+
+void EntityManager::addComponentByIdImpl(EntityRecord &record, ComponentId componentType) {
+    ArchetypeNode *fromNode = record.archetypeNode;
+    Archetype type = fromNode->type_;
+    type.insert(componentType);
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+    moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+    bool ok = toNode->components_[componentType]->appendDefaultRow();
+    IR_ASSERT(
+        ok,
+        "addComponentDynamic: impl for componentId={} does not support appendDefaultRow — "
+        "use the templated setComponent<T>(entity, value) path for C++-typed components",
+        static_cast<int>(componentType)
+    );
+    IR_ASSERT(
+        toNode->components_[componentType]->size() == toNode->length_,
+        "addComponentDynamic: column out of sync with archetype row count"
+    );
+}
+
+void EntityManager::addComponentDynamic(EntityId entity, ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    EntityRecord &record = getRecord(entity);
+    if (record.archetypeNode->type_.contains(componentType)) {
+        return;
+    }
+    addComponentByIdImpl(record, componentType);
+}
+
+std::pair<IComponentData *, int>
+EntityManager::getComponentDataAndRow(EntityId entity, ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    if (!entityExists(entity)) {
+        return {nullptr, -1};
+    }
+    EntityRecord &record = getRecord(entity);
+    ArchetypeNode *node = record.archetypeNode;
+    auto it = node->components_.find(componentType);
+    if (it == node->components_.end()) {
+        return {nullptr, -1};
+    }
+    return {it->second.get(), record.row};
+}
+
+bool EntityManager::hasComponent(EntityId entity, ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    if (!entityExists(entity))
+        return false;
+    return getRecord(entity).archetypeNode->type_.contains(componentType);
 }
 
 void EntityManager::pushCopyData(

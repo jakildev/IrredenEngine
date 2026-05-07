@@ -39,7 +39,7 @@ inline constexpr PreDestroyHookId kInvalidPreDestroyHookId = 0;
 
 struct PreDestroyHookEntry {
     PreDestroyHookId id_;
-    PreDestroyHook   hook_;
+    PreDestroyHook hook_;
 };
 
 class EntityManager {
@@ -105,15 +105,8 @@ class EntityManager {
             m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
             "Regestering the same component twice"
         );
-        ComponentId componentId = createEntity();
-        m_pureComponentTypes.insert({typeName, componentId});
-        m_pureComponentVectors.emplace(
-            componentId,
-            std::make_unique<IComponentDataImpl<Component>>()
-        );
-        // TODO: Make a component for a pure component and put there...
-        // Same for relation
-
+        ComponentId componentId =
+            registerComponentImpl(typeName, std::make_unique<IComponentDataImpl<Component>>());
         IRE_LOG_INFO(
             "Regestered component type={}, sizeof={} with id={}",
             typeName,
@@ -122,6 +115,49 @@ class EntityManager {
         );
         return componentId;
     }
+
+    // Non-template parallel of registerComponent<T>. Registers a runtime-
+    // declared component (typically Lua-defined) given a fully-constructed
+    // IComponentData impl. The typeName is the user-visible name used to
+    // detect duplicates and to look up the ComponentId by name later.
+    // Registration is lazy / one-time: registering the same name twice
+    // returns kNullComponent (the caller is expected to surface a clear
+    // error to the script). The impl pointer must outlive the EntityManager.
+    ComponentId registerComponentDynamic(const std::string &typeName, smart_ComponentData impl);
+
+    // True if `typeName` is already registered (template OR dynamic path).
+    bool isComponentRegistered(const std::string &typeName) const {
+        return m_pureComponentTypes.contains(typeName);
+    }
+
+    ComponentId getComponentTypeByName(const std::string &typeName) const {
+        auto it = m_pureComponentTypes.find(typeName);
+        if (it == m_pureComponentTypes.end())
+            return kNullComponent;
+        return it->second;
+    }
+
+    // Add a runtime-registered component to `entity` using its impl's
+    // appendDefaultRow(). Used by the Lua-driven add path; C++ callers
+    // should keep using the templated setComponent<T>(entity, value)
+    // form so they pass an explicit value.
+    void addComponentDynamic(EntityId entity, ComponentId componentType);
+
+    // Remove a runtime-registered component (alias of removeComponentById
+    // for symmetry with addComponentDynamic — same machinery as the
+    // template removeComponent<T>).
+    void removeComponentDynamic(EntityId entity, ComponentId componentType) {
+        removeComponentById(entity, componentType);
+    }
+
+    // Returns (impl, row) for the given (entity, componentType). nullptr
+    // impl if the entity does not currently have this component. Used by
+    // dynamic readers/writers (Lua-defined component access path) since
+    // the templated getComponent<T>() requires a static C++ type.
+    std::pair<IComponentData *, int>
+    getComponentDataAndRow(EntityId entity, ComponentId componentType);
+
+    bool hasComponent(EntityId entity, ComponentId componentType);
 
     template <typename Component> ComponentId getComponentType() {
         std::string typeName = typeid(Component).name();
@@ -146,10 +182,9 @@ class EntityManager {
             return insertNewComponent<Component>(record, component);
         }
 
-        IComponentDataImpl<Component> *data =
-            castComponentDataPointer<Component>(
-                record.archetypeNode->components_[componentType].get()
-            );
+        IComponentDataImpl<Component> *data = castComponentDataPointer<Component>(
+            record.archetypeNode->components_[componentType].get()
+        );
         Component &c = data->dataVector[record.row];
         c = component;
         return c;
@@ -221,7 +256,8 @@ class EntityManager {
         });
     }
 
-    template <typename Component> void setComponentDeferred(EntityId entity, const Component &component) {
+    template <typename Component>
+    void setComponentDeferred(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         m_pendingStructuralChanges.push_back([this, entity, component]() {
             if (entityExists(entity)) {
@@ -315,7 +351,9 @@ class EntityManager {
         return res;
     }
 
-    EntityId getLiveEntityCount() const { return m_liveEntityCount; }
+    EntityId getLiveEntityCount() const {
+        return m_liveEntityCount;
+    }
 
     /// Register a hook that fires inside `destroyEntity` BEFORE the
     /// entity's components are torn down. The hook receives the
@@ -354,6 +392,8 @@ class EntityManager {
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);
     void returnEntityToPool(EntityId entity);
+    ComponentId registerComponentImpl(const std::string &typeName, smart_ComponentData impl);
+    void addComponentByIdImpl(EntityRecord &record, ComponentId componentType);
     void pushCopyData(
         IComponentData *fromStructure, unsigned int fromIndex, IComponentData *toStructure
     );
