@@ -227,11 +227,11 @@ half-finished and re-litigated in review.
 
 ### Step 6 — Maintenance scheduling
 
-`fleet-babysit` relaunches this role every ~5 minutes in live mode
-with a **fresh `claude` process and an empty conversation**. Each
+`fleet-dispatcher` launches a fresh `claude` for this role when scout
+sees new actionable state, with an empty conversation. Each
 invocation runs the startup actions and a full maintenance pass, then
-exits cleanly. `fleet-babysit` handles scheduling and crash recovery
-between fresh launches.
+exits cleanly. The pane returns to shell on crash or clean exit so
+the next dispatch lands on a fresh claude.
 
 Between maintenance passes, the human can still type task descriptions
 into this pane (the conversation is live until the agent exits at the
@@ -239,21 +239,18 @@ end of the pass). Process those through Steps 1–5 above (categorize,
 format, file to TASKS.md).
 
 If you hit a usage-limit error: print the error and exit.
-`fleet-babysit` waits the limit-delay before relaunching with a fresh
-context.
+`fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
 
 ### Mode behavior
 
 The Mode argument at the top of this file is one of `dry-run`, `live`,
-or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
 - **`live`** (full operation): each iteration runs a full maintenance
-  pass (steps 0–10 below), then exits. fleet-babysit relaunches every
-  ~5m with fresh context.
+  pass (steps 0–10 below), then exits. fleet-dispatcher launches a fresh claude when scout sees actionable state.
 
 - **`dry-run`** (default): do exactly one maintenance pass, then stop
-  and wait for human instruction. `fleet-babysit` does not auto-relaunch
-  in dry-run mode.
+  and wait for human instruction. `fleet-dispatcher` does not fire again in dry-run mode.
 
 - **`review-only`** (close-out mode): conserves credit by closing out
   in-flight work without expanding the queue. Each iteration runs:
