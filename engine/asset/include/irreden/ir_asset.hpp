@@ -11,9 +11,10 @@ using namespace IRMath;
 namespace IRAsset {
 
 /// Asset file type discriminant.
-/// Note: only `kTrixelImage` has corresponding I/O routines today.
-/// `kSpriteImage` and `kVoxelImage` are aspirational stubs with no
-/// load/save implementation yet.
+/// `kTrixelImage` has `saveTrixelTextureData` / `loadTrixelTextureData`.
+/// `kSpriteImage` has `saveSpriteSheetMeta` / `loadSpriteSheetMeta` for
+/// the `.irsprite` sidecar (the paired PNG is handled by render-module
+/// `ImageData`). `kVoxelImage` is an aspirational stub with no I/O yet.
 enum FileTypes { kSpriteImage, kTrixelImage, kVoxelImage };
 
 /// Writes trixel texture data to a raw binary file at @p path / @p name.txt.
@@ -60,6 +61,10 @@ struct SpriteAnimationDesc {
 ///   margin     <pixels>   (optional outer border, default 0)
 ///   padding    <pixels>   (optional inter-cell gap, default 0)
 ///   anim <name> <firstFrame> <frameCount> <fps>
+///
+/// Animation names must not contain whitespace — the loader scans them
+/// with `%127s`, which stops at the first space/tab and would silently
+/// truncate. `saveSpriteSheetMeta` asserts this at write time.
 struct SpriteSheetMeta {
     uvec2 cellSizePx_ = uvec2{0, 0};
     int margin_ = 0;
@@ -69,17 +74,12 @@ struct SpriteSheetMeta {
 
 /// Writes sprite-sheet sidecar metadata to @p path / @p name .irsprite.
 void saveSpriteSheetMeta(
-    const std::string &name,
-    const std::string &path,
-    const SpriteSheetMeta &meta
+    const std::string &name, const std::string &path, const SpriteSheetMeta &meta
 );
 
 /// Reads sprite-sheet sidecar metadata from @p path / @p name .irsprite.
 /// Returns a default-constructed SpriteSheetMeta if the file cannot be opened.
-SpriteSheetMeta loadSpriteSheetMeta(
-    const std::string &name,
-    const std::string &path
-);
+SpriteSheetMeta loadSpriteSheetMeta(const std::string &name, const std::string &path);
 
 }; // namespace IRAsset
 
