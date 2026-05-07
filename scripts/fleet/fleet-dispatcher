@@ -270,7 +270,16 @@ dispatch_role() {
     cmd=$(build_dispatch_command "$role")
 
     log "dispatching $role -> $pane_id"
-    if ! tmux send-keys -t "$pane_id" "$cmd" C-m; then
+    # C-c aborts any partial input the human may have typed into the
+    # idle pane (including multi-line continuations); C-u then clears
+    # the input line for good measure. Without this the typed-but-
+    # uncommitted prefix concatenates with our dispatch command —
+    # observed: stray "Ca" turned the next dispatch into
+    # "Caclaude --model …" / "zsh: command not found: Caclaude".
+    # Safe at a shell prompt — find_idle_pane_for_role only picks
+    # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
+    # acts on the input loop, not a running command.
+    if ! tmux send-keys -t "$pane_id" C-c C-u "$cmd" C-m; then
         # send-keys failed (pane vanished, tmux server died). Leave the
         # trigger in place so the next tick retries — don't orphan the
         # work by consuming the trigger before the dispatch landed.
