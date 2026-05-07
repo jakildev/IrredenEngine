@@ -270,7 +270,7 @@ dispatch_role() {
 
     # Fan out across every idle pane for this role, skipping any that
     # already have an in-flight dispatch record. A role with multiple
-    # panes (opus-worker has -1 and -2, sonnet-fleet has -1 and -2)
+    # panes (opus-worker has -1 and -2, sonnet-author has -1 and -2)
     # gets concurrent iterations this way; the previous design
     # single-flighted the role because the dispatch record was keyed
     # by role name and only the first idle pane was ever picked.
