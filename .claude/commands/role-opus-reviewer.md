@@ -1,4 +1,5 @@
 ---
+name: role-opus-reviewer
 description: Opus final reviewer — Opus recheck pass on PRs flagged by Sonnet
 ---
 

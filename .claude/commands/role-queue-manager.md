@@ -1,4 +1,5 @@
 ---
+name: role-queue-manager
 description: Queue manager — categorize, tag, and file new tasks into TASKS.md via PR
 ---
 
