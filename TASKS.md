@@ -181,48 +181,15 @@ Avoid:
   - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
   - **Links:**
 
-- [~] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
-  - **ID:** T-094
-  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/render-camera-anchored-grids
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) lighting demos render with full fidelity when camera is panned far from origin (e.g. ~1000 voxels away); (2) at-origin scenes produce screenshot diff within sampling noise of T-072 reference — no regression; (3) light-volume texture memory footprint unchanged (128³ RGB); (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) GLSL and Metal shaders both read new origin uniform; `render-debug-loop` shows no parity drift
-  - **Issue:** #360
-  - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
-  - **Links:**
-
-- [~] **Sprite: sprite-sheet asset format + loader** — implement PNG+sidecar loader that populates C_SpriteSheet from disk
-  - **ID:** T-095
-  - **Area:** engine/asset, engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-095-sprite-sheet-loader
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) known sprite sheet (PNG + sidecar) loads from disk and populates C_SpriteSheet with correct frame count, grid size, and named animations; (2) unit test in test/asset/ covers load + round-trip; (3) fleet-build clean on linux-debug; (4) asset file format documented in a comment block at the top of the loader implementation
-  - **Issue:** #283
-  - **Notes:** Part of #14 (sprite-rendering epic). Loader mirrors existing IRAsset patterns (.txl/.irtxl). Uniform-grid frames only (v1). T-087 (C_Sprite/C_SpriteSheet components) is done.
-  - **Links:**
-
 - [ ] **Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort** — new pipeline stage renders sprite entities with one instanced quad draw, CPU-side iso depth sort, GLSL+MSL backends
   - **ID:** T-096
   - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-095
+  - **Blocked by:** (none)
   - **Acceptance:** (1) single sprite at origin renders at screen center at zoom 1 with pixel-perfect scaling; (2) multiple sprites composite back-to-front by iso depth; (3) 50+ sprites cost exactly one drawArraysInstanced call; (4) fleet-build clean on linux-debug AND macos-debug; (5) render-debug-loop screenshots committed to docs/pr-screenshots/
   - **Issue:** #284
   - **Notes:** Part of #14 (sprite-rendering epic). Replaces system_sprites_to_screen.hpp stub. Screen-composite layer at FRAMEBUFFER_TO_SCREEN stage (not trixel content). Follow backend-parity skill for GLSL/MSL port. Depends on T-095.
-  - **Links:**
-
-- [~] **Sprite: C_SpriteAnimation + animation-advance system** — component tracks sub-animation playback state; UPDATE-phase system advances frames and writes uvRect back to C_Sprite
-  - **ID:** T-097
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-097-sprite-animation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) animation cycles at sheet-specified FPS independent of render rate; (2) LOOP/ONCE/PING_PONG modes all pass unit test expectations; (3) mid-playback sub-animation switch resets state cleanly with no frame glitch; (4) unit test in test/ covers time-advance math without requiring GPU/render pass; (5) fleet-build clean on active preset
-  - **Issue:** #285
-  - **Notes:** Part of #14 (sprite-rendering epic). Time-advance edge cases (multi-frame advance in one tick, ping-pong endpoint flip, mid-playback reset) warrant opus. Public API in IRPrefab::Sprite:: namespace, not IRRender::. Soft dep on T-096 for visual confirmation but unit test acceptance does NOT require it. Depends on T-087 (done).
   - **Links:**
 
 - [ ] **Sprite: Lua bindings + sprite_demo creation** — expose sprite/animation API as ir.sprite.* Lua surface; scaffold sprite_demo demo creation exercising all loop modes and depth sort
@@ -230,21 +197,10 @@ Avoid:
   - **Area:** engine/script, creations/demos/sprite_demo
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-095, T-096, T-097
+  - **Blocked by:** T-096
   - **Acceptance:** (1) fleet-run IRSpriteDemo launches and shows multiple animated sprites without crashing; (2) fleet-run IRSpriteDemo --auto-screenshot 10 produces committed shot list; (3) visual confirmation all three loop modes work and back-to-front sort is correct; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #286
   - **Notes:** Part of #14 (sprite-rendering epic). Use create-creation skill for scaffold. Bindings on ir.sprite.* not ir.render.*. Generated art asset acceptable. Depends on T-095, T-096, T-097.
-  - **Links:**
-
-- [ ] **Lua-driven ECS: design doc** — land docs/design/lua-driven-ecs.md capturing locked-in design decisions (Q1-Q5), public API shape, acceptance criteria, and out-of-scope follow-ups for the six-PR Lua-driven ECS stack
-  - **ID:** T-099
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) docs/design/lua-driven-ecs.md exists and covers Q1 (single native-SoA storage tier with type inference, no silent sol::table fallback), Q2 (archetype-batched dispatch, mandatory), Q3 (one ComponentId per type, C++ and Lua share identity), Q4 (system body hot-reload in v1; schema hot-reload deferred), Q5 (modifier-framework integration via field-binding registry); (2) public API surface documented (IRComponent.register, IRSystem.registerSystem, IRSystem.registerPipeline, IRSystem.replaceSystemBody, IRModifier.add); (3) parity gate spec recorded (Lua perf_grid within 1.5x C++ per-tick cost); (4) LuaJIT question recorded as follow-up if parity gate fails; (5) fleet-build clean; (6) no code changes outside docs/
-  - **Issue:** #487
-  - **Notes:** PR 1 of 6 for parent epic #293 (Lua-driven ECS authoring). No upstream dependencies. Full architect plan in .fleet/plans/T-099.md. Once this merges, plan also lives in-tree at docs/design/lua-driven-ecs.md.
   - **Links:**
 
 - [ ] **Lua-driven ECS: Lua-defined components with type inference** — add IComponentDataLuaTyped + EntityManager::registerComponentDynamic; Lua surface: IRComponent.register with single native-SoA storage tier and type inference; modifier field bindings auto-registered
@@ -252,7 +208,7 @@ Avoid:
   - **Area:** engine/entity, engine/script
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-099
+  - **Blocked by:** (none)
   - **Acceptance:** (1) register C_Hp { current = 100, max = 100 } from Lua; attach to 100 entities; C++ test reads back Hp.current as a real int32 column, not sol::object; (2) explicit typed form { field = {type="float", default=100} } accepted; (3) unresolvable field type raises Lua error at registration naming the offending field; (4) auto-registered field binding "Hp.current" visible to modifier resolver; (5) identity rule: registering a duplicate name fails fast; (6) IREntity.addLuaComponent, getLuaComponent, removeLuaComponent bound; (7) fleet-build clean on linux-debug
   - **Issue:** #488
   - **Notes:** PR 2 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-100.md. Blocked by T-099 (design doc). Key files: engine/entity/include/irreden/entity/i_component_data.hpp (add IComponentDataLuaTyped impl), engine/entity/include/irreden/entity/entity_manager.hpp (add registerComponentDynamic), engine/script/include/irreden/script/lua_script.hpp (add registerComponent).
@@ -315,6 +271,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-099** — Lua-driven ECS: design doc · Owner: claude/T-099-lua-ecs-design-doc · PR: https://github.com/jakildev/IrredenEngine/pull/496
+- [x] **T-097** — Sprite: C_SpriteAnimation + animation-advance system · Owner: claude/T-097-sprite-animation · PR: https://github.com/jakildev/IrredenEngine/pull/495
+- [x] **T-095** — Sprite: sprite-sheet asset format + loader · Owner: claude/T-095-sprite-sheet-loader · PR: https://github.com/jakildev/IrredenEngine/pull/494
+- [x] **T-094** — Render: camera-anchor GPU light volume for fidelity past static window · Owner: claude/render-camera-anchored-grids · PR: https://github.com/jakildev/IrredenEngine/pull/450
 - [x] **T-072** — Render: GPU-side light-volume propagation (jump flooding / iterative dilation) · Owner: claude/render-light-volume-gpu · PR: https://github.com/jakildev/IrredenEngine/pull/448
 - [x] **T-093** — Input: fix system_hitbox_mouse_test projection under non-zero camera yaw · Owner: claude/T-093-hitbox-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/436
 - [x] **T-089** — Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design · Owner: opus-worker-2 · PR: https://github.com/jakildev/IrredenEngine/pull/351
@@ -331,8 +291,4 @@ Avoid:
 - [x] **T-068** — Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment · Owner: claude/T-068-sdf-cardinal-snap-align · PR: https://github.com/jakildev/IrredenEngine/pull/412
 - [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
 - [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
-- [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
-- [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
-- [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
-- [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
 
