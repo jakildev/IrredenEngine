@@ -9,9 +9,10 @@ description: >-
   commit-and-push before the commit message is drafted. The skill
   finds per-entity getComponent in tick functions, allocation in hot
   loops, ECS naming convention slips, opportunities to reuse existing
-  helpers, dead code, debug logs left behind, and tautological
-  comments — applying safe fixes inline and reporting anything that
-  needs human judgment. Saves a review-fix-rereview round-trip.
+  helpers, dead code, debug logs left behind, tautological comments,
+  and stale or drifting CLAUDE.md / role / skill docs — applying safe
+  fixes inline and reporting anything that needs human judgment.
+  Saves a review-fix-rereview round-trip.
 ---
 
 # simplify
@@ -328,9 +329,22 @@ The engine's style preferences are simple and worth applying inline:
   lists, axis vectors (`vec3(1.0f, 0.0f, 0.0f)`), or one-off math
   are fine — only flag numbers where a name would clarify intent.
 
-### 9. Doc-side checks (run when the diff includes any markdown)
+### 9. Doc-side checks (always run)
 
-Code-only diffs can skip. Mixed and doc-heavy diffs run these too.
+Doc upkeep is part of the reviewer-facing bar, in both directions:
+
+- **9a — Doc → code drift.** When the diff includes markdown,
+  check the doc still describes reality (existing API examples,
+  cited file paths, internal consistency).
+- **9b — Code → doc drift.** When the diff includes non-doc files,
+  check whether the nearest `CLAUDE.md` (or relevant role / skill
+  doc) should be updated to reflect a new or removed pattern.
+
+Run whichever sub-checks apply. Pure formatter-only diffs can skip
+both.
+
+#### 9a. Doc → code drift (when the diff includes markdown)
+
 Markdown sources to check: `.md` files anywhere, `docs/**`, role
 docs under `.claude/commands/`, skill docs under `.claude/skills/`,
 top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
@@ -375,6 +389,68 @@ auto-fix — these need human judgment on scope):
   doc — same smell as the main "Contradictions within a doc"
   bullet, but in role/skill docs scope judgment belongs with the
   human. Report; reconciling is outside simplify's scope here.
+
+#### 9b. Code → doc drift (when the diff includes non-doc files)
+
+For each non-doc file in the diff, walk up the directory tree to
+locate the nearest `CLAUDE.md`. De-dupe so each `CLAUDE.md` is
+considered once. For each one, ask whether the current change
+introduces something the doc would reasonably want to mention, or
+invalidates something it currently asserts. The intent is to keep
+each module's `CLAUDE.md` representative of the current state — not
+to grow them with every change.
+
+Flag (don't auto-edit — the "doc-worthy?" call belongs to the
+author):
+
+- **New pattern, file, or convention.** The diff adds a system,
+  component, prefab, shader, helper namespace, debug toggle, build
+  preset, label, role, skill, or any other piece of vocabulary the
+  doc establishes. If the doc enumerates the category (e.g.
+  `engine/render/CLAUDE.md` describes the pipeline stages, or a
+  module `CLAUDE.md` lists "common patterns"), the new entry
+  belongs in the list — or the list needs to stop claiming to be
+  exhaustive.
+- **Removed or renamed thing the doc cites.** The diff deletes or
+  renames a symbol, file, helper, label, or skill that the doc
+  body references by name. Grep the doc for the old name; if it
+  appears, the doc lies now.
+- **Documented counts or lists drifted.** The doc says "we have N
+  X" or enumerates by name; the diff changed the count or the
+  membership. Numbered claims rot the fastest.
+- **A new convention the doc should warn about.** The diff adds a
+  rule or constraint that future contributors will trip over
+  without docs (e.g., "this struct must stay 16-byte aligned",
+  "this enum is the registration mechanism", "this header is
+  generated"). If a reviewer would reasonably ask "where is this
+  documented?", surface the gap.
+- **A convention the doc warned about that no longer applies.**
+  The diff removes the constraint; the warning in the doc is now
+  noise.
+
+Skip 9b when:
+
+- The diff only changes function bodies — no new symbol, no
+  removed symbol, no new file, no new build target.
+- The touched directory has no relevant `CLAUDE.md` upstream
+  (test fixture, generated artifact, third-party vendor tree).
+- The change is purely a typo, formatting, or comment edit.
+
+Report format — one line per `CLAUDE.md` that may need attention,
+with the specific gap and a one-line suggestion. Don't speculate
+about wording; let the author decide whether and how to update.
+Example:
+
+```
+  reported 1 doc-drift finding:
+    - engine/render/CLAUDE.md — pipeline-stages list doesn't
+      mention the new SSAO compute stage added in
+      engine/prefabs/irreden/render/systems/system_ssao.hpp.
+      Worth a one-line addition under "Pipeline stages"?
+```
+
+A clean 9b pass is a finding of "no doc drift" and produces no
+output — silence is success.
 
 ### 10. Format and verify
 
