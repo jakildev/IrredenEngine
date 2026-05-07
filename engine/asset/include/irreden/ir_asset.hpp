@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <string>
+#include <vector>
 
 using namespace IRMath;
 
@@ -37,6 +38,49 @@ void loadTrixelTextureData(
     std::vector<Color> &colors,
     std::vector<Distance> &distances
 );
+
+// ---- Sprite-sheet sidecar ----
+
+/// Per-animation descriptor in a .irsprite sidecar file.
+struct SpriteAnimationDesc {
+    std::string name_;
+    int firstFrame_ = 0;
+    int frameCount_ = 0;
+    float fps_ = 0.0f;
+};
+
+/// Sidecar metadata for a PNG atlas sprite sheet.
+/// Atlas pixel dimensions are NOT stored here — they are read from the PNG
+/// at load time and used to compute normalized frame UV rects.
+///
+/// .irsprite plain-text format (lines, order-independent):
+///   # comment line (ignored)
+///   cellWidth  <pixels>
+///   cellHeight <pixels>
+///   margin     <pixels>   (optional outer border, default 0)
+///   padding    <pixels>   (optional inter-cell gap, default 0)
+///   anim <name> <firstFrame> <frameCount> <fps>
+struct SpriteSheetMeta {
+    uvec2 cellSizePx_ = uvec2{0, 0};
+    int margin_ = 0;
+    int padding_ = 0;
+    std::vector<SpriteAnimationDesc> animations_;
+};
+
+/// Writes sprite-sheet sidecar metadata to @p path / @p name .irsprite.
+void saveSpriteSheetMeta(
+    const std::string &name,
+    const std::string &path,
+    const SpriteSheetMeta &meta
+);
+
+/// Reads sprite-sheet sidecar metadata from @p path / @p name .irsprite.
+/// Returns a default-constructed SpriteSheetMeta if the file cannot be opened.
+SpriteSheetMeta loadSpriteSheetMeta(
+    const std::string &name,
+    const std::string &path
+);
+
 }; // namespace IRAsset
 
 #endif /* IR_ASSET_H */
