@@ -43,6 +43,13 @@ the ECS surface.
 - `TRIXEL_TO_FRAMEBUFFER` — reads the 3 canvas textures, writes the
   framebuffer.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
+- `SPRITE_TO_SCREEN` — optional screen-composite pass that draws every
+  entity holding `C_Sprite + C_Position3D` as a textured alpha-blended
+  quad, sorted back-to-front and grouped by atlas (one
+  `drawArraysInstanced` per atlas). Bypasses the trixel pipeline; runs
+  after the main canvas's `FRAMEBUFFER_TO_SCREEN` tick. Empty-case
+  fast-path means a creation can register the system unconditionally —
+  zero sprites = zero draws.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 

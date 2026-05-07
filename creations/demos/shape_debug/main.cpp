@@ -40,6 +40,7 @@
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
@@ -69,15 +70,17 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), "zoom1_origin"},
     {2.0f, vec2(0, 0), "zoom2_origin"},
-    {
-        4.0f, vec2(0, 0), "zoom4_origin",
-        kCropsZoom4Origin, sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])
-    },
+    {4.0f,
+     vec2(0, 0),
+     "zoom4_origin",
+     kCropsZoom4Origin,
+     sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])},
     {1.0f, vec2(1, 0), "zoom1_odd_offset"},
-    {
-        8.0f, vec2(0, 0), "zoom8_origin",
-        kCropsZoom8Origin, sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])
-    },
+    {8.0f,
+     vec2(0, 0),
+     "zoom8_origin",
+     kCropsZoom8Origin,
+     sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
 };
 
@@ -199,6 +202,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
     };
 
     if (g_autoProfileFrames > 0) {

@@ -502,6 +502,44 @@ metalCurrentDepthPixelFormat(),
         encoder->endEncoding();
     }
 
+    void drawArraysInstanced(
+        DrawMode drawMode, int first, int count, int instanceCount
+    ) override {
+        if (instanceCount <= 0) {
+            return;
+        }
+        auto *pipeline = activeMetalPipeline();
+        const auto &layout = activeMetalVertexLayout();
+        if (pipeline == nullptr || pipeline->isComputePipeline()) {
+            return;
+        }
+
+        auto *encoder = createRenderEncoder();
+        if (encoder == nullptr) {
+            return;
+        }
+
+        auto *pipelineState = pipeline->getRenderPipelineState(
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_
+        );
+        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
+        encoder->setRenderPipelineState(pipelineState);
+        if (metalCurrentDepthTexture() != nullptr) {
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
+        }
+        bindRenderResources(encoder);
+        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        encoder->drawPrimitives(
+            toMetalPrimitiveType(drawMode),
+            static_cast<NS::UInteger>(first),
+            static_cast<NS::UInteger>(count),
+            static_cast<NS::UInteger>(instanceCount)
+        );
+        encoder->endEncoding();
+    }
+
     void setPolygonMode(PolygonMode) override {}
 
     void enableBlending() override {}

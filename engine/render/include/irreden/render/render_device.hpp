@@ -33,6 +33,8 @@ class RenderDevice {
     virtual void
     drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
+    virtual void
+    drawArraysInstanced(DrawMode drawMode, int first, int count, int instanceCount) = 0;
     virtual void copyImageSubData(
         std::uint32_t srcHandle,
         int srcLevel,

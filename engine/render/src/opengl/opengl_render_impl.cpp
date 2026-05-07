@@ -66,6 +66,13 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glDrawArrays(toGLDrawMode(drawMode), first, count);
     }
 
+    void drawArraysInstanced(DrawMode drawMode, int first, int count, int instanceCount) override {
+        if (instanceCount <= 0) {
+            return;
+        }
+        glDrawArraysInstanced(toGLDrawMode(drawMode), first, count, instanceCount);
+    }
+
     void copyImageSubData(
         std::uint32_t srcHandle,
         int srcLevel,
