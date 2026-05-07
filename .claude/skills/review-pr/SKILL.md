@@ -92,42 +92,15 @@ Pick the top result, confirm the title with the user if there's ambiguity.
 
 ### 1b. Check whether the PR is stacked
 
-Every fleet PR today is single-task. When workers claim a dependency
-chain via `fleet-claim stack`, they produce a sequence of single-task
-PRs where each one's `--base` points at the previous task's branch
-instead of `master` — GitHub calls these "stacked PRs". The review
-pass is still per-PR; you don't re-review the parent PR as part of
-reviewing its child.
+Every fleet PR today is single-task. Some are stacked: their `--base` is another open PR's branch rather than `master`. The review pass is still per-PR; you don't re-review the parent.
 
-Detect stacking from the metadata already fetched in step 1:
+**Quick detection** (from the metadata fetched in step 1):
+- `baseRefName != "master"` → stacked on that branch.
+- Body contains `Stacked on:` line → confirms it; gives the parent PR URL.
 
-- **Base branch** (`baseRefName`) is not `master` → stacked on the PR
-  whose head is that branch.
-- **Body** contains a `Stacked on:` line → confirms it, and the line
-  gives you the parent PR URL for the review-body callout.
+If stacked: see [`procedures/stacked-pr-review.md`](procedures/stacked-pr-review.md) for the per-PR scoping rules, the body callout format, and the upstream-fragility flag — then return here for step 1c.
 
-If stacked:
-
-- Review **only this PR's own diff**. `gh pr diff <N>` already scopes
-  to the changes this PR introduces on top of its base branch — it
-  does NOT include the parent's changes. Trust that output; don't
-  manually expand the range.
-- Note the stack context in the review body, e.g. "Stacked on
-  #<parent>; approval assumes #<parent> lands first." Reviewers
-  (and the human merger) use that line to sequence merges.
-- Do **not** read, cite, or re-verify the parent PR's diff. It has
-  its own independent review and label. Cross-contamination between
-  stacked PRs' reviews is the main failure mode to avoid.
-- Verdict and label are set for this PR alone, the same way as a
-  non-stacked PR.
-- **Flag upstream interface fragility.** For any new function,
-  component, system, or shader this PR introduces that depends on an
-  upstream symbol, note in the review body: "if `<upstream-symbol>`
-  changes between approval and merge, this downstream will need a
-  rebase." This alerts the human merger to sequence carefully.
-
-If the base is `master` and there's no `Stacked on:` line, this is a
-standalone PR — proceed with the rest of the flow as normal.
+If standalone (base `master`, no `Stacked on:`): continue with step 1c.
 
 ### 1c. Churn audit when `mergeable == CONFLICTING`
 
@@ -480,75 +453,11 @@ the nits without losing the approval.
 
 ### 5c. Tag render PRs for cross-host smoke validation
 
-Engine render PRs get built and run on whichever backend the author
-happened to be using (OpenGL on Linux, or Metal on macOS). The other
-backend's build + smoke path is not exercised until a fleet agent on
-that host picks the PR up. The `fleet:needs-<host>-smoke` labels
-surface that outstanding work so no render PR merges unvalidated on
-either backend.
+If the diff touches `engine/render/`, `engine/prefabs/irreden/render/`, `engine/render/src/shaders/`, any `*.glsl`, or any `*.metal` file, the PR needs cross-host smoke validation. The standard tagging path subtracts the author's host (only the *other* backend needs validation).
 
-After setting the verdict label in 5b, check the diff's file paths:
+Render-touching PR? See [`procedures/cross-host-smoke.md`](procedures/cross-host-smoke.md) for the host-detection table, the `gh pr edit` calls per author host, and the skip conditions (game-repo PRs, non-render engine PRs).
 
-```bash
-gh pr diff <N> --name-only
-```
-
-If any path matches **any** of these, the PR needs cross-host smoke:
-
-- `engine/render/`
-- `engine/prefabs/irreden/render/`
-- `engine/render/src/shaders/`
-- any `*.glsl` file
-- any `*.metal` file
-
-**Subtract the author's host before tagging.** `commit-and-push`
-stamps `fleet:authored-on-linux` or `fleet:authored-on-macos` at
-PR-create time based on the author's `uname -s`. Per the engine
-`CLAUDE.md` "Verifying render changes" section, render-PR authors
-build + run the demo on their host before opening, so authoring
-on a host is reasonable evidence its smoke is baseline-validated.
-Only the OTHER host actually needs cross-host validation.
-
-Read the candidate's labels (already in the cache as
-`repos.engine.prs[].labels`) and add only the smoke label for the
-host the author was NOT on:
-
-| Author label present | Add smoke label |
-|---|---|
-| `fleet:authored-on-linux` | `fleet:needs-macos-smoke` only |
-| `fleet:authored-on-macos` | `fleet:needs-linux-smoke` only |
-| Neither (Windows-native author, or pre-fix PR) | Both labels |
-
-```bash
-# Linux author  → one call:
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-
-# macOS author  → one call:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-
-# Neither (Windows-native or pre-fix PR) → two calls, one per label
-# (keep them separate so each is independently safe and idempotent):
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-```
-
-Each host's author agents (opus-worker, sonnet-author) poll for the
-label matching their host, run a clean-checkout build + `IRShapeDebug`
-smoke, and remove the label on success. While either label persists,
-the human should hold the merge — that's the whole point of the
-tally.
-
-**Skip the tagging step for:**
-
-- Game-repo PRs — the game's render pipeline uses the engine's
-  backend, so cross-host applies at engine level only.
-- Non-render engine PRs (tooling, docs, `.claude/`, non-render
-  modules like `engine/system/`) — these don't exercise backends and
-  don't benefit from cross-host smoke.
-
-If both labels are already present from a prior reviewer pass, no
-action needed — the `--add-label` call is a no-op when the label is
-already set.
+Non-render PR? Skip to step 6.
 
 ### 6. Report back
 
@@ -574,80 +483,9 @@ Reply with a compact summary to the calling session:
 
 ## Re-review
 
-If the user says "re-review PR 42" after the author-agent has addressed
-comments:
+When the user says "re-review PR 42" or a reviewer-loop session sees `fleet:changes-made` on a previously-flagged PR, the flow is different — you must verify previously-flagged items against the new commits BEFORE running the standard checklist, otherwise you risk re-flagging items that were already fixed.
 
-1. **Check out the updated branch.** `gh pr checkout <N>` again — it pulls
-   the latest commits onto the already-checked-out branch.
-
-2. **Verify previously-flagged items first — before running the checklist.**
-   This is the most important step. Skipping it causes false-positive re-flags.
-
-   a. Fetch the prior review body (run both commands in parallel — first gets
-      conversation-level comments, second gets inline review comments):
-      ```
-      gh pr view <N> --comments
-      gh api repos/jakildev/IrredenEngine/pulls/<N>/comments \
-          --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-      ```
-      Identify the review comment that was posted by this fleet (look for
-      the `## Review —` header and `🤖 Reviewed by` footer).
-
-   b. Extract every `<path>:<line>` or `<path>` reference from the
-      **Blockers**, **Needs-fix**, and **Nits** sections of that prior review.
-      Inline comments from the second command are also flagged items — treat
-      them the same way.
-
-   c. Get the HEAD commit SHA for attribution:
-      ```
-      git rev-parse --short HEAD
-      ```
-
-   d. For each flagged item, read the relevant portion of the file at HEAD
-      using the **Read tool** with `offset` near the flagged line. Determine:
-      - **Fixed** — the issue described in the prior review is no longer present
-        at that location (and not obviously moved elsewhere).
-      - **Still open** — the issue is still present at that location.
-      - **Location changed** — the line moved; the issue exists at a new path/line.
-
-   e. Write a **Prior-review resolution** section that will open the new review
-      body. Format:
-      ```
-      ### Prior-review resolution
-      - ✅ `path:line` — <prior issue summary> — verified fixed at <SHA>
-      - ❌ `path:line` — <prior issue summary> — still present; re-flagged below
-      - ↗ `old_path:old_line` — <prior issue summary> — moved to `new_path:new_line`; re-flagged below
-      ```
-      Every **Blocker**, **Needs-fix**, and **Nit** item from the prior review
-      must appear in one of these three states. (Praise and test-plan items
-      don't require tracking.) Do NOT silently re-flag an item without first
-      checking whether it was fixed.
-
-3. **Read the new commits only.** `git log origin/master..HEAD --oneline` lists
-   all commits on the PR branch since it diverged from master. Scope to the
-   subset that arrived **after the prior review's timestamp** — the prior review
-   comment's `created_at` (visible in the `gh pr view --comments` output from
-   step 2a) is the cutoff. Commits older than that were already reviewed; commits
-   newer than that are the delta to inspect. Avoid re-examining already-reviewed
-   code — focus the checklist on what changed.
-
-   **Re-apply guard:** If new commits are present since the last review, you MUST
-   work through every previously-flagged item in the resolution table (step 2e)
-   before confirming the old verdict. Never re-apply `fleet:needs-fix` or
-   `fleet:blocker` without checking whether the new commits actually address the
-   issue. If new commits clearly fix all flagged items, the verdict may improve
-   to `approve` even if prior iterations set `fleet:needs-fix`.
-
-4. **Run the full fresh-eyes checklist** (Step 4 of the main flow) against the
-   new commits. Carry forward any "Still open" or "Location changed" items from
-   step 2e. Do **not** re-raise items already confirmed fixed in the resolution
-   table.
-
-5. **Post the review.** Open the review body with the Prior-review resolution
-   table (step 2e), then present any new findings and any carried-forward open
-   items. If all prior items are fixed and no new issues appear, the verdict is
-   approve. Follow the same body format and label steps as the main flow
-   (steps 5, 5b, 6).
+See [`procedures/re-review.md`](procedures/re-review.md) for the full re-review procedure (Prior-review resolution table, post-cutoff commit scoping, re-apply guard).
 
 ## Escalation footer
 
