@@ -38,7 +38,7 @@ creations/*
 !creations/demos/
 !creations/demos/**
 
-# claude code: share skills + roles + path-scoped rules, ignore worktrees and local session state
+# claude code: share skills + roles + path-scoped rules + worker subagents, ignore worktrees and local session state
 .claude/*
 !.claude/skills/
 !.claude/skills/**
@@ -46,3 +46,5 @@ creations/*
 !.claude/commands/**
 !.claude/rules/
 !.claude/rules/**
+!.claude/agents/
+!.claude/agents/**
