@@ -597,7 +597,7 @@ If you hit a usage-limit error: print the error and exit. The
 If you noticed something this iteration that the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/merger.md`. See top-level `CLAUDE.md` "Fleet
+`~/.fleet/feedback/merger.md`. See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet
 feedback channel" for the format and the bar (high — most
 iterations write nothing).
 

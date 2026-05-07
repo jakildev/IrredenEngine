@@ -37,7 +37,7 @@ Why tmux-on-unix either way:
   first-class goal for the engine. Running the fleet from WSL matures
   the Linux path; running it from macOS matures the Metal path; the
   Windows-native clone remains the ship-it authority. See "Cross-
-  platform parity" in the top-level `CLAUDE.md` and the `backend-parity`
+  platform parity" in [`docs/agents/FLEET.md`](agents/FLEET.md) and the `backend-parity`
   skill at `.claude/skills/backend-parity/SKILL.md`.
 
 The existing Windows-native clone at
@@ -639,7 +639,7 @@ Practical rule:
   against `TASKS.md` and first-pass reviews. Docs passes, test
   generation, mechanical refactors all go here.
 
-The top-level `CLAUDE.md` "Model split" section has the full rules and
+[`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" has the full rules and
 `TASKS.md` uses a `**Model:**` tag on each task.
 
 ---
@@ -791,7 +791,7 @@ window dies.
 
 ### Two-tier review with both reviewers running
 
-The Opus/Sonnet model split (see root `CLAUDE.md`) wants most first-
+The Opus/Sonnet model split (see [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split") wants most first-
 pass reviews to be Sonnet and only have Opus look at core-engine PRs
 or Sonnet-escalated ones. In the reviewer-loop pattern that means:
 
@@ -1324,8 +1324,8 @@ make the fleet survive it.
   `claude --resume <id>` re-enters the exact session after the reset.
 - **The other models keep working.** Opus and Sonnet budgets are
   separate. When Opus is capped, every Sonnet window in the fleet
-  keeps going and vice versa. This is the single biggest reason the
-  root `CLAUDE.md` wants you to tag tasks `[opus]` or `[sonnet]` — it
+  keeps going and vice versa. This is the single biggest reason
+  [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" wants you to tag tasks `[opus]` or `[sonnet]` — it
   turns the budget split into a backpressure signal instead of a
   fleet-wide stall.
 - **Resumption is manual by default.** I don't think Claude Code

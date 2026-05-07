@@ -114,7 +114,7 @@ Tag every task with the intended model. Default assumption:
 A Sonnet agent that picks up an `[opus]` task should escalate instead of
 charging ahead. A Sonnet agent that finds a `[sonnet]` task is subtler
 than expected (touches an invariant, a lifetime, a race) should stop and
-requeue with `[opus]`. The top-level `CLAUDE.md` has the full split.
+requeue with `[opus]`. [`docs/agents/FLEET.md`](docs/agents/FLEET.md) "Model split" has the full split.
 
 ## Good tasks to queue here (engine-only)
 

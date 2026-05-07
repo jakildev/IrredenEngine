@@ -202,7 +202,7 @@ reviewer-facing PR-body screenshots.
 
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
-skill on the lagging-side host — the rule is in the top-level CLAUDE.md
+skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
 under "Cross-platform parity". `render-debug-loop` captures the
 evidence; `backend-parity` drives the port.
 

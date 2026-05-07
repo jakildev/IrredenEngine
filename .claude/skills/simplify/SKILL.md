@@ -100,7 +100,7 @@ Also flag (don't auto-fix):
 
 ### 3. Naming convention slips
 
-These are the rules from the top-level `CLAUDE.md`:
+These are the rules from [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md):
 
 | Context           | Convention            |
 |-------------------|-----------------------|

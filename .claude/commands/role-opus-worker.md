@@ -429,7 +429,7 @@ Do the work, then exit cleanly:
 
 1c. **Resolve one `fleet:semantic-conflict` PR per iteration
     (engine only).** The merger sets this label when mechanical
-    rebase fails (label semantics: see CLAUDE.md "Issue/PR labeling
+    rebase fails (label semantics: see [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling
     discipline"). That's your lane.
 
     From the cached `repos.engine.prs[]`, pick PRs whose `labels`
@@ -901,7 +901,7 @@ Do the work, then exit cleanly:
    **Design escalation via `fleet:design-blocked`.** When the
    blocker is specifically architectural — the assigned task can't
    proceed without a design call you don't have authority to make —
-   escalate via the label-driven flow (engine `CLAUDE.md`
+   escalate via the label-driven flow ([`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
    "Design-escalation flow") so the architect can pick it up from
    the trigger surface and the same worker (or any worker) can
    resume cleanly:
@@ -1082,8 +1082,8 @@ about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
 `~/.fleet/feedback/opus-worker-1.md`). Per-worktree filename so the
-human can tell which opus-worker observed what. See top-level
-`CLAUDE.md` "Fleet feedback channel" for the format and the bar
+human can tell which opus-worker observed what. See
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
 (high — most iterations write nothing).
 
 ## Hard rules

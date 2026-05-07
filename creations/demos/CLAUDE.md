@@ -43,7 +43,7 @@ No opt-outs.
 3. Add `add_subdirectory(your_name)` to `creations/demos/CMakeLists.txt`.
 4. Build with `cmake --build build --target IRYourName`.
 5. Run with `IRYourNameRun` from VSCode, or manually with the PATH fix
-   from the top-level `CLAUDE.md`.
+   from [`docs/agents/BUILD.md`](../../docs/agents/BUILD.md).
 
 ## Conventions
 
