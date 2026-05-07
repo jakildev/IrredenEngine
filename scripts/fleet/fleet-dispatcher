@@ -74,6 +74,31 @@ SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 # keeps pickup snappy without burning measurable CPU.
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
+# Periodic safety-net re-arm for queue-manager and merger. The
+# scout's queue-manager projection is insensitive to PR-merge events
+# (closing a fleet:queued issue doesn't move it INTO any of the
+# tracked lists; it just disappears), so when a wave of PRs merges
+# the chain stalls: queue-manager doesn't re-trigger → TASKS.md isn't
+# flipped from [~] → [x] → opus-worker projection doesn't change →
+# opus-worker doesn't re-fire. Workers sit idle despite there being
+# obvious follow-up work to do.
+#
+# Until project_queue_manager learns to track "closed fleet:queued
+# issues that haven't been flipped in TASKS.md yet" (the proper
+# fix), this periodic re-arm restores the babysit-era cadence for
+# the two meta-roles.
+#
+# queue-manager re-arms UNCONDITIONALLY (modulo in-flight / pending
+# checks) — its projection is insensitive to PR-merge events, so
+# an "empty" projection doesn't necessarily mean "no work". A no-op
+# iteration is ~30 s of claude time and the safe default.
+#
+# merger re-arms only when its projection has open PRs — its
+# projection is responsive to PR state changes, so the periodic
+# rearm just covers the corner case where a scout-fired trigger
+# was missed.
+PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
+
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Aligned with the worker / reviewer /
 # queue-mgr / merger roles in fleet-up.
@@ -376,6 +401,78 @@ release_dispatcher_lock() {
     fi
 }
 
+rearm_periodic_meta_triggers() {
+    # Write fresh queue-manager / merger triggers when due. Skips if a
+    # trigger is already pending or an iteration is already in flight.
+    #
+    # queue-manager fires UNCONDITIONALLY every cycle (modulo in-flight
+    # / pending checks): its projection is insensitive to PR-merge
+    # events (closing a fleet:queued issue removes it from
+    # human_approved without triggering a delta), so an "empty"
+    # projection does NOT mean "nothing to do" — there may be merged
+    # PRs whose [~] tasks haven't been flipped to [x] yet. The role
+    # itself does the consistency reconciliation; a no-op iteration is
+    # ~30s of claude time and the safe default.
+    #
+    # merger keeps an actionable predicate: its projection IS
+    # responsive (PRs appear/disappear on merge), so we only need to
+    # rearm when the natural trigger chain might be lagging.
+    python3 - <<'PY' || true
+import json
+import pathlib
+
+STATE = pathlib.Path("~/.fleet/state").expanduser()
+PROJ = STATE / "projections"
+TRIG = STATE / "triggers"
+DISP = STATE / "dispatch"
+TRIG.mkdir(parents=True, exist_ok=True)
+
+
+def merger_actionable(p):
+    return bool(p.get("prs"))
+
+
+def role_in_flight(role):
+    if not DISP.is_dir():
+        return False
+    for f in DISP.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("role") == role:
+            return True
+    return False
+
+
+def maybe_arm(role, predicate=None):
+    if predicate is not None:
+        proj = PROJ / f"{role}.json"
+        if not proj.is_file():
+            return
+        try:
+            data = json.loads(proj.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        if not predicate(data):
+            return
+    trig_file = TRIG / role
+    if trig_file.exists():
+        # Already armed (scout, prior rearm, fleet-up bootstrap).
+        return
+    if role_in_flight(role):
+        # Iteration already running for this role.
+        return
+    trig_file.touch()
+    note = "actionable projection" if predicate is not None else "unconditional cadence"
+    print(f"periodic re-arm: {role} ({note}, no in-flight)")
+
+
+maybe_arm("queue-manager")  # unconditional
+maybe_arm("merger", merger_actionable)
+PY
+}
+
 main() {
     mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR"
 
@@ -385,7 +482,17 @@ main() {
     fi
 
     write_pid_file
-    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s)"
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s)"
+
+    # Periodic re-arm runs every Nth tick where N covers
+    # PERIODIC_REARM_INTERVAL_SECONDS. Pre-compute and clamp to >=1
+    # in case someone sets a poll interval longer than the rearm
+    # window (would otherwise produce a div-by-zero in the modulo).
+    local rearm_ticks=$((PERIODIC_REARM_INTERVAL_SECONDS / POLL_INTERVAL_SECONDS))
+    if (( rearm_ticks < 1 )); then
+        rearm_ticks=1
+    fi
+    local tick_count=0
 
     while true; do
         if [[ -f "$SHUTDOWN_FLAG" ]]; then
@@ -395,11 +502,20 @@ main() {
 
         cleanup_stale_dispatches
 
+        # Periodic safety net for chain-broken meta-roles (queue-manager,
+        # merger). Runs first so any rearm-written triggers are picked
+        # up by the normal dispatch_role pass on the same tick.
+        if (( tick_count % rearm_ticks == 0 )); then
+            rearm_periodic_meta_triggers
+        fi
+
         if session_exists; then
             for role in "${DISPATCHED_ROLES[@]}"; do
                 dispatch_role "$role"
             done
         fi
+
+        tick_count=$((tick_count + 1))
 
         # Interruptible sleep — wake on shutdown.
         for _ in $(seq 1 "$POLL_INTERVAL_SECONDS"); do
