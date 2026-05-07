@@ -14,16 +14,19 @@
 # Lifecycle per worker pane (under this dispatcher):
 #   1. Pane sits at `bash` prompt (idle).
 #   2. Scout writes ~/.fleet/state/triggers/<role>.
-#   3. Dispatcher's next tick finds the trigger + a free pane for
-#      that role, `tmux send-keys` a `claude --print ... |
-#      fleet-claude-stream` command into the pane, records the
-#      dispatch in ~/.fleet/state/dispatch/<role>.json, removes the
-#      trigger.
-#   4. claude runs to completion (one iteration), the pane returns
-#      to `bash` because the role's exit-protocol section ends with
-#      `bash -c 'kill -TERM $PPID'`.
-#   5. cleanup_stale_dispatches notices the pane is back at bash,
-#      clears the dispatch record, releases the fleet-claim lock.
+#   3. Dispatcher's next tick finds the trigger + every idle pane
+#      tagged with that role, `tmux send-keys` a `claude --print
+#      ... | fleet-claude-stream` command into each, records each
+#      dispatch in ~/.fleet/state/dispatch/pane-<N>.json, removes
+#      the trigger. (Per-pane tracking — a role with N idle panes
+#      gets N concurrent iterations. fleet-claim's atomic claim
+#      protocol stops them from picking the same task.)
+#   4. Each claude runs to completion (one iteration), the pane
+#      returns to `bash` because the role's exit-protocol section
+#      ends with `bash -c 'kill -TERM $PPID'`.
+#   5. cleanup_stale_dispatches notices each pane is back at bash,
+#      clears that pane's dispatch record, releases the fleet-claim
+#      lock.
 #
 # **THIS SCRIPT IS ADDITIVE INFRA in PR E.1 — fleet-up does not yet
 # spawn it, and worker panes still launch fleet-babysit. Wiring is
@@ -152,10 +155,17 @@ list_pane_state() {
         -F "#{pane_id}	#{@fleet-role}	#{pane_current_command}"
 }
 
-# Find the first idle pane for a given role. Idle = pane_current_command
-# is `bash` (or `zsh`). Returns the pane_id on stdout if found, empty
-# otherwise.
-find_idle_pane_for_role() {
+# List all idle panes for a given role. Idle = pane_current_command
+# is `bash` / `zsh` / `sh` / `fish`. One pane_id per line on stdout
+# (empty output if no idle panes for the role).
+#
+# Plural so dispatch_role can fan out a single trigger across every
+# idle pane that's tagged with this role — that's how a role with
+# more than one pane (opus-worker has -1 and -2) gets concurrent
+# iterations. The previous singular form picked the first idle pane
+# and dropped the rest, which silently single-flighted multi-pane
+# roles.
+find_idle_panes_for_role() {
     local role="$1"
     list_pane_state | while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
         if [[ "$pane_role" != "$role" ]]; then
@@ -164,7 +174,6 @@ find_idle_pane_for_role() {
         case "$pane_cmd" in
             bash|zsh|sh|fish)
                 printf '%s\n' "$pane_id"
-                return 0
                 ;;
         esac
     done
@@ -179,9 +188,27 @@ pane_is_running_claude() {
 }
 
 # --- Dispatch state --------------------------------------------------------
+#
+# Records are keyed by PANE (not role) so a role with multiple panes
+# can have multiple in-flight iterations concurrently. Filename shape
+# is `pane-<N>.json` where <N> is the tmux pane id with the leading
+# `%` stripped (tmux pane ids look like `%3` — `%` is reserved on some
+# filesystems and would need escaping; sanitizing once at the boundary
+# keeps the rest of the script free of shell-quoting hazards).
+#
+# Backward compat: cleanup_stale_dispatches globs `*.json` so any
+# legacy role-keyed records left over from a pre-refactor session
+# (e.g. `merger.json`) get cleaned up the same way as new ones — the
+# pane_id is parsed from the JSON body, not the filename.
+
+pane_id_to_key() {
+    # `%3` -> `pane-3`. Pane ids are always `%<digits>`.
+    printf 'pane-%s\n' "${1#%}"
+}
 
 dispatch_record() {
-    printf '%s\n' "$DISPATCH_DIR/$1.json"
+    # $1 = pane_id (e.g. `%3`)
+    printf '%s\n' "$DISPATCH_DIR/$(pane_id_to_key "$1").json"
 }
 
 write_dispatch_record() {
@@ -190,16 +217,7 @@ write_dispatch_record() {
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     mkdir -p "$DISPATCH_DIR"
     printf '{"role":"%s","pane":"%s","dispatched_at":"%s"}\n' \
-        "$role" "$pane_id" "$ts" >"$(dispatch_record "$role")"
-}
-
-read_dispatch_pane() {
-    # Outputs the recorded pane_id for $1 if a dispatch record exists.
-    local file
-    file=$(dispatch_record "$1")
-    if [[ -f "$file" ]]; then
-        sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$file" | head -n 1
-    fi
+        "$role" "$pane_id" "$ts" >"$(dispatch_record "$pane_id")"
 }
 
 cleanup_stale_dispatches() {
@@ -209,8 +227,8 @@ cleanup_stale_dispatches() {
     local file role pane
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
-        role=$(basename "$file" .json)
-        pane=$(read_dispatch_pane "$role")
+        role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        pane=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         if [[ -z "$pane" ]]; then
             rm -f "$file"
             continue
@@ -250,44 +268,71 @@ dispatch_role() {
         return
     fi
 
-    if [[ -f "$(dispatch_record "$role")" ]]; then
-        # Already dispatched; let cleanup_stale_dispatches notice when
-        # the pane returns to bash. Don't fire a second claude at the
-        # same pane.
-        return
-    fi
-
-    local pane_id
-    pane_id=$(find_idle_pane_for_role "$role")
-    if [[ -z "$pane_id" ]]; then
-        # No free pane right now (every pane for this role is running
-        # claude). Leave the trigger in place — next tick may find a
-        # free pane.
+    # Fan out across every idle pane for this role, skipping any that
+    # already have an in-flight dispatch record. A role with multiple
+    # panes (opus-worker has -1 and -2, sonnet-fleet has -1 and -2)
+    # gets concurrent iterations this way; the previous design
+    # single-flighted the role because the dispatch record was keyed
+    # by role name and only the first idle pane was ever picked.
+    #
+    # No coordination needed at dispatch time: each iteration runs the
+    # same role command, and the role-doc logic uses fleet-claim to
+    # atomically claim work — only one pane can claim a given task,
+    # the others find nothing actionable and exit. If there are fewer
+    # actionable items than idle panes, the surplus panes simply
+    # iterate-and-exit cheaply.
+    local idle_panes
+    idle_panes=$(find_idle_panes_for_role "$role")
+    if [[ -z "$idle_panes" ]]; then
+        # No idle pane right now (every pane for this role is running
+        # claude or otherwise busy). Leave the trigger in place —
+        # next tick may find a free pane.
         return
     fi
 
     local cmd
     cmd=$(build_dispatch_command "$role")
 
-    log "dispatching $role -> $pane_id"
-    # C-c aborts any partial input the human may have typed into the
-    # idle pane (including multi-line continuations); C-u then clears
-    # the input line for good measure. Without this the typed-but-
-    # uncommitted prefix concatenates with our dispatch command —
-    # observed: stray "Ca" turned the next dispatch into
-    # "Caclaude --model …" / "zsh: command not found: Caclaude".
-    # Safe at a shell prompt — find_idle_pane_for_role only picks
-    # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
-    # acts on the input loop, not a running command.
-    if ! tmux send-keys -t "$pane_id" C-c C-u "$cmd" C-m; then
-        # send-keys failed (pane vanished, tmux server died). Leave the
-        # trigger in place so the next tick retries — don't orphan the
-        # work by consuming the trigger before the dispatch landed.
-        log "send-keys failed for $role -> $pane_id; trigger kept for retry"
-        return
+    local dispatched=0
+    while IFS= read -r pane_id; do
+        [[ -n "$pane_id" ]] || continue
+        # Skip panes that already have an in-flight dispatch record.
+        # This handles the case where a pane reports `zsh` transiently
+        # between tool calls — the record says it's still busy and we
+        # don't double-dispatch.
+        if [[ -f "$(dispatch_record "$pane_id")" ]]; then
+            continue
+        fi
+        log "dispatching $role -> $pane_id"
+        # C-c aborts any partial input the human may have typed into
+        # the idle pane (including multi-line continuations); C-u then
+        # clears the input line for good measure. Without this the
+        # typed-but-uncommitted prefix concatenates with our dispatch
+        # command — observed: stray "Ca" turned the next dispatch into
+        # "Caclaude --model …" / "zsh: command not found: Caclaude".
+        # Safe at a shell prompt — find_idle_panes_for_role only picks
+        # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
+        # acts on the input loop, not a running command.
+        if ! tmux send-keys -t "$pane_id" C-c C-u "$cmd" C-m; then
+            # send-keys failed for this pane (pane vanished, tmux
+            # server died, etc.). Try the next one; if none succeed,
+            # we'll keep the trigger for next tick.
+            log "send-keys failed for $role -> $pane_id; trying next idle pane"
+            continue
+        fi
+        write_dispatch_record "$role" "$pane_id"
+        dispatched=$((dispatched + 1))
+    done <<< "$idle_panes"
+
+    if (( dispatched > 0 )); then
+        # At least one pane took the work; consume the trigger.
+        rm -f "$trigger_file"
+    else
+        # Every idle pane already had a record (still settling in
+        # from the last dispatch) or every send-keys failed. Leave
+        # the trigger for the next tick.
+        log "no fresh dispatch for $role; trigger kept for retry"
     fi
-    write_dispatch_record "$role" "$pane_id"
-    rm -f "$trigger_file"
 }
 
 # --- Main loop -------------------------------------------------------------
