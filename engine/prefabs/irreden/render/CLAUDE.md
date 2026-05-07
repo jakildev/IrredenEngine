@@ -23,10 +23,14 @@ the ECS surface.
 - `C_GeometricShape` — 2D overlay shape descriptor.
 - `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
   distance offset).
-- `C_Sprite` / `C_SpriteSheet` — 2D screen-composite sprite + atlas
-  metadata. Sprites bypass the trixel pipeline and draw at the
-  `FRAMEBUFFER_TO_SCREEN` stage. See [`docs/design/sprites.md`](../../../../docs/design/sprites.md)
-  for the full data model, depth semantics, and cross-task scope.
+- `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
+  sprite + atlas metadata + per-instance playback state. Sprites bypass the
+  trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
+  `C_SpriteAnimation` tracks the active sub-animation, frame index, elapsed
+  time, and loop mode for the `SPRITE_ANIMATION_ADVANCE` UPDATE-phase
+  system to write `uvRect` back into `C_Sprite`. See
+  [`docs/design/sprites.md`](../../../../docs/design/sprites.md) for the
+  full data model, depth semantics, and cross-task scope.
 
 ## Key systems (all RENDER pipeline)
 
