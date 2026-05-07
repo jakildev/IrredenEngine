@@ -258,6 +258,50 @@ Avoid:
   - **Notes:** PR 6 of 6 for parent epic #293 — formal acceptance gate for the entire Lua-driven ECS stack. Full architect plan in .fleet/plans/T-104.md. Blocked by T-103 (hot-reload). If parity gate fails, this PR does not merge; instead amend T-099's design doc with corrective decision (LuaJIT migration, codegen-bound bodies, etc.).
   - **Links:**
 
+- [ ] **Fleet: project_queue_manager trigger on PR-merge events** — fix scout's project_queue_manager projection to include closed fleet:queued issues matched against TASKS.md in-progress entries, making the trigger chain self-sustaining on PR merges
+  - **ID:** T-105
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merging a PR that closes a fleet:queued issue fires a queue-manager trigger within the next scout cycle without relying on periodic re-arm; (2) project_queue_manager returns a needs_flip entry for any in-progress TASKS.md task whose linked issue is closed; (3) existing periodic re-arm from PR #499 can be reverted or lengthened once the trigger chain is self-sustaining
+  - **Issue:** #500
+  - **Notes:** Root cause: project_queue_manager projection excludes fleet:queued issues (filtered from human_approved) so closed issues are invisible. Fix: add fetch of closed fleet:queued issues, cross-reference with TASKS.md in_progress entries by Issue: #N. Scout already parses in_progress from TASKS.md. Observed: T-096 and T-100 were un-claimable 4.5h after T-095/T-097/T-099 merged.
+  - **Links:**
+
+- [ ] **Fleet: timeout-wrap tmux send-keys in fleet-dispatcher** — wrap dispatch_role's tmux send-keys call in timeout 5 to prevent dispatcher main-loop freeze when a pane's pty buffer is wedged
+  - **ID:** T-106
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) dispatch_role wraps tmux send-keys in timeout 5; (2) a stuck send-keys is killed after 5 seconds with a log line; (3) dispatcher continues dispatching other roles while one send-keys is stuck; (4) graceful fallback logged at startup if timeout binary is unavailable
+  - **Issue:** #502
+  - **Notes:** Observed 2026-05-07: send-keys to merger pane stuck 25+ min, blocking all role dispatches. PR #486 (C-c C-u clear) reduces probability but does not eliminate. macOS: timeout via GNU coreutils. Interacts cleanly with per-pane records from PR #498.
+  - **Links:**
+
+- [ ] **Fleet: fix pane_is_running_claude for macOS version-string process names** — invert cleanup logic to treat any non-shell pane_current_command as running claude instead of matching hard-coded names
+  - **ID:** T-107
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) pane_is_running_claude returns yes when tmux reports pane_current_command as a version-string like 2.1.132; (2) returns no for bash/zsh/sh/fish; (3) cleanup_stale_dispatches no longer prematurely deletes dispatch records for active claude panes on macOS
+  - **Issue:** #503
+  - **Notes:** Option B from issue preferred (inverted logic: not-shell = running something) over Option A (walk pgrep process tree) for simplicity. Observed: weird macOS process name caused cleanup to treat an active claude pane as returned-to-shell, triggering premature dispatch record deletion.
+  - **Links:**
+
+- [ ] **Docs: replace stale fleet-babysit references in transient role docs** — sweep 6 role docs replacing fleet-babysit with fleet-dispatcher for transient-role relaunch descriptions
+  - **ID:** T-108
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) grep for fleet-babysit in role-opus-reviewer.md, role-opus-worker.md, role-sonnet-author.md, role-sonnet-reviewer.md, role-queue-manager.md, role-merger.md returns zero hits in relaunch/scheduling/backoff contexts; (2) fleet-babysit references in role-opus-architect.md and role-game-architect.md are preserved; (3) usage-limit backoff description matches PR #497 pattern: flag in iteration summary, human intervenes
+  - **Issue:** #504
+  - **Notes:** PR #497 fixed human-visible banner/exit lines. This covers deeper operational sections (~20-30 line touches across 6 files). Strictly doc edits, no code changes. Surviving stale references listed in issue body.
+  - **Links:**
+
 ---
 
 ## In progress
