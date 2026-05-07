@@ -125,7 +125,7 @@ fleet-claim --repo game claim "T-001" opus-worker-1
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
-   `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from engine + game TASKS.md. Loop: every 20m (fresh context).`
+   `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from engine + game TASKS.md. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
 1. `pwd` and confirm you are in an engine `opus-worker-*` worktree (not
    opus-architect, not a reviewer worktree). The directory basename
    (`opus-worker-1` or `opus-worker-2`) is your **agent name** — pass
@@ -708,7 +708,7 @@ Do the work, then exit cleanly:
    means the work would never get done. Pick it up.
 
    If no `Model: opus` tasks are available on either repo, print
-   `[opus-worker] No unblocked [opus] tasks (engine + game). Next run in ~20m.`
+   `[opus-worker] No unblocked [opus] tasks (engine + game). Will re-fire on next dispatcher trigger.`
    and exit cleanly. Do NOT invent work, self-assign documentation
    passes, or create tasks outside the queue.
 
@@ -1032,10 +1032,11 @@ Do the work, then exit cleanly:
     Then use the `start-next-task` skill to land on a fresh
     branch off `origin/master` in the **current cwd's repo** (engine
     if you didn't cd; game if you did). Print
-    `[opus-worker] Iteration complete. Next run in ~20m (fresh context).`
-    Then exit cleanly. `fleet-babysit` will relaunch a fresh `claude`
-    in ~20 minutes — the new process lands cwd back in the engine
-    worktree, so the next iteration starts from a clean slate.
+    `[opus-worker] Iteration complete. Will re-fire on next dispatcher trigger.`
+    Then exit cleanly. fleet-dispatcher launches a fresh `claude` for
+    this role when the scout's projection sees new actionable state —
+    the new process lands cwd back in the engine worktree, so the
+    next iteration starts from a clean slate.
 
 ## Mode behavior
 
@@ -1071,10 +1072,14 @@ or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
   step 1c finds no semantic conflicts, and step 3's molecule resume
   returns empty, print
   `[opus-worker] review-only: nothing to address this iteration.`
-  and exit. fleet-babysit will relaunch you on the normal cadence.
+  and exit. fleet-dispatcher will re-fire when scout sees new
+  actionable state.
 
-If you hit a usage-limit error: print the error and exit. `fleet-babysit`
-detects exit code 2 and waits the limit-delay before relaunching.
+If you hit a usage-limit error: print the error and exit. The pane
+returns to shell; fleet-dispatcher's next tick clears the dispatch
+record. The dispatcher does not implement usage-limit back-off, so
+the next scout-trigger will re-fire and may hit the same limit —
+flag the limit in your iteration summary so the human can adjust.
 
 ## End-of-iteration feedback
 

@@ -89,7 +89,7 @@ the cooldown label prevents an immediate retry.
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
-   `[merger] Auto-rebases stale PRs and sort-merges TASKS.md conflicts. Loop: every 10m.`
+   `[merger] Auto-rebases stale PRs and sort-merges TASKS.md conflicts. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `merger` worktree.
 2. **Discover engine repo slug** by Read'ing `~/.fleet/state/repos.json`
    (written once by `fleet-up` at startup). Use the `engine` field
@@ -576,9 +576,9 @@ exit cleanly:
    and silently strip from the saved summary (observed on
    opus-reviewer 2026-05-02). Write technical references in plain
    prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
-   Then print `[merger] Iteration complete. Next run in ~10m.`
-   Then exit cleanly. The `/loop` driver will re-invoke in 10
-   minutes.
+   Then print `[merger] Iteration complete. Will re-fire on next dispatcher trigger.`
+   Then exit cleanly. fleet-dispatcher re-fires this role when the
+   scout's projection sees new actionable PR state.
 
 If Mode above is `dry-run`: do startup actions only and stop at
 the `merger standing by (dry-run)` line. The PR list is not

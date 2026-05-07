@@ -71,7 +71,7 @@ Run each step as its own **single** tool call. Never combine with
 use `cat` — use the Read tool for files.
 
 0. Print your role banner:
-   `[queue-manager] Task intake — ingests approved issues into TASKS.md, syncs PR state, maintains the queue. Loop: every 5m. You can also type task descriptions here between loop fires.`
+   `[queue-manager] Task intake — ingests approved issues into TASKS.md, syncs PR state, maintains the queue. Transient — re-fires when scout sees new human:approved issues. You can also type task descriptions at the zsh prompt between iterations.`
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
@@ -769,7 +769,7 @@ You are the sole TASKS.md editor. Each maintenance pass:
     references in plain prose.
     `Maintenance: X issues ingested, Y tasks flipped, Z claims cleaned, W epics closed`
     `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
-    `[queue-manager] Iteration complete. Next run in ~5m.`
+    `[queue-manager] Iteration complete. Will re-fire on next dispatcher trigger.`
 
 ## End-of-iteration feedback
 
