@@ -74,6 +74,17 @@ SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 # keeps pickup snappy without burning measurable CPU.
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
+# Which `timeout` binary to use when wrapping tmux send-keys. GNU
+# coreutils ships it as `timeout` on Linux and as `gtimeout` on macOS
+# (Homebrew coreutils, non-conflicting name). Empty string = not found;
+# dispatch_send_keys falls back to plain send-keys (today's behavior).
+TIMEOUT_CMD=""
+if command -v timeout &>/dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+    TIMEOUT_CMD="gtimeout"
+fi
+
 # Periodic safety-net re-arm for queue-manager and merger. The
 # scout's queue-manager projection is insensitive to PR-merge events
 # (closing a fleet:queued issue doesn't move it INTO any of the
@@ -202,6 +213,18 @@ find_idle_panes_for_role() {
                 ;;
         esac
     done
+}
+
+# Wraps tmux send-keys in a $TIMEOUT_CMD guard (issue #502). A wedged
+# pty can block send-keys indefinitely, freezing the main loop for the
+# duration. 5 s is generous — a healthy send-keys returns in < 1 ms.
+# Falls back to plain send-keys if no timeout binary was found.
+dispatch_send_keys() {
+    if [[ -n "$TIMEOUT_CMD" ]]; then
+        "$TIMEOUT_CMD" 5 tmux send-keys "$@"
+    else
+        tmux send-keys "$@"
+    fi
 }
 
 # Returns 0 if the pane is running claude, non-zero otherwise.
@@ -338,11 +361,11 @@ dispatch_role() {
         # Safe at a shell prompt — find_idle_panes_for_role only picks
         # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
         # acts on the input loop, not a running command.
-        if ! tmux send-keys -t "$pane_id" C-c C-u "$cmd" C-m; then
-            # send-keys failed for this pane (pane vanished, tmux
-            # server died, etc.). Try the next one; if none succeed,
-            # we'll keep the trigger for next tick.
-            log "send-keys failed for $role -> $pane_id; trying next idle pane"
+        if ! dispatch_send_keys -t "$pane_id" C-c C-u "$cmd" C-m; then
+            # send-keys timed out or failed for this pane (pane vanished,
+            # tmux server died, pty buffer wedged, etc.). Try the next
+            # pane; if none succeed, keep the trigger for next tick.
+            log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             continue
         fi
         write_dispatch_record "$role" "$pane_id"
@@ -482,7 +505,10 @@ main() {
     fi
 
     write_pid_file
-    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s)"
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none})"
+    if [[ -z "$TIMEOUT_CMD" ]]; then
+        log "WARNING: timeout/gtimeout not found; send-keys is unguarded (install coreutils to fix)"
+    fi
 
     # Periodic re-arm runs every Nth tick where N covers
     # PERIODIC_REARM_INTERVAL_SECONDS. Pre-compute and clamp to >=1
