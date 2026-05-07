@@ -7,10 +7,16 @@
 
 constant int kEmptyDistanceEncoded = 65535;
 
-// Crease-band along the face-outward normal. Must stay in lockstep with
-// the matching constants in c_compute_voxel_ao.glsl.
-constant float kAOMinHeight = 0.125;
-constant float kAOMaxHeight = 1.5;
+// Crease-band along the face-outward normal. Canonical edge-occluder voxel
+// sits at d = `kAOOccluderHeight`; the band is centred there with a
+// ±`kAOBandHalfWidth` voxel tolerance, extended below by
+// `kAOSubVoxelTolerance` for SDF sub-voxel surfaces. Must stay in lockstep
+// with the matching constants in c_compute_voxel_ao.glsl.
+constant float kAOOccluderHeight = 1.0;
+constant float kAOBandHalfWidth = 0.5;
+constant float kAOSubVoxelTolerance = 0.375;
+constant float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
+constant float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
 // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
 // consumed here; the layout must match so the shared UBO at binding 29

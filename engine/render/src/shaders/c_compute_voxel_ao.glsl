@@ -24,10 +24,17 @@ const int kEmptyDistanceEncoded = 65535;
 // `kAOMaxHeight` voxels in front of the receiver's face plane.
 //   Lower bound rejects coplanar continuations (flat surface, d ≈ 0).
 //   Upper bound rejects deep voids (cliffs, d ≫ 1) so they don't darken.
-// The canonical edge-occluder voxel sits at d = 1; the band is centered
-// there with ±0.5 + 0.375 tolerance for SDF sub-voxel surfaces.
-const float kAOMinHeight = 0.125;
-const float kAOMaxHeight = 1.5;
+// The canonical edge-occluder voxel sits at d = `kAOOccluderHeight`; the
+// band is centred there with a ±`kAOBandHalfWidth` voxel tolerance, extended
+// below by `kAOSubVoxelTolerance` so SDF surfaces whose decoded depth lands
+// between the receiver and the canonical voxel still register.
+// Must stay in lockstep with the matching constants in
+// c_compute_voxel_ao.metal.
+const float kAOOccluderHeight = 1.0;
+const float kAOBandHalfWidth = 0.5;
+const float kAOSubVoxelTolerance = 0.375;
+const float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
+const float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
