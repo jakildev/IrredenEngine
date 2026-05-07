@@ -98,6 +98,98 @@ Also flag (don't auto-fix):
 - `endTick` body that reads `ids[0]` or indexes `ids` without first
   guarding `ids.size() == 0`.
 
+### 2b. Math primitives + system-state smells (mechanically detectable)
+
+Two convention slips that are pure regex catches. Both are documented in
+[`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) and
+[`.claude/rules/cpp-systems.md`](../../rules/cpp-systems.md) — those rules
+auto-load whenever an agent opens a C++ file, but agents still slip.
+This pass catches what slipped through.
+
+**Check 1: `glm::` and `std::` math calls outside the allowlist.**
+
+Run a grep against all in-scope C++ files (catches both new and existing
+violations). The Grep tool is allowlisted; use it directly:
+
+```
+Grep tool with:
+  pattern: '\b(glm::|std::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|atan2|asin|acos))\b'
+  glob:    '**/*.{hpp,cpp,h,cc}'
+  output_mode: 'files_with_matches'
+```
+
+For each hit, manually exclude paths in the allowlist (do not flag):
+
+- `engine/math/**` — IRMath itself wraps these names internally.
+- `engine/render/include/irreden/render/backend/**` — backend interop
+  may pass raw glm types into graphics APIs.
+- `*.glsl` / `*.metal` files (the grep glob excludes these, but
+  double-check).
+
+For everything else, flag with the IRMath equivalent. Common substitutions:
+
+| Found | Suggest |
+|-------|---------|
+| `glm::vec3` / `glm::ivec3` / `glm::mat4` | `IRMath::vec3` / `IRMath::ivec3` / `IRMath::mat4` |
+| `glm::min` / `glm::max` / `glm::clamp` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
+| `glm::length` / `glm::normalize` / `glm::dot` | `IRMath::length` / `IRMath::normalize` / `IRMath::dot` |
+| `glm::sin` / `glm::cos` / `glm::sqrt` | `IRMath::sin` / `IRMath::cos` / `IRMath::sqrt` |
+| `glm::pi<float>()` / `glm::half_pi<float>()` / `glm::two_pi<float>()` | `IRMath::kPi` / `IRMath::kHalfPi` / `IRMath::kTwoPi` |
+| `std::min` / `std::max` / `std::clamp` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
+| `std::sin` / `std::cos` / `std::sqrt` / `std::abs` | `IRMath::sin` / `IRMath::cos` / `IRMath::sqrt` / `IRMath::abs` |
+
+If the IRMath wrapper does not exist yet, **don't auto-substitute** —
+flag with: "IRMath::<name> does not exist; add the wrapper to
+`engine/math/` first, then call it." (The `IRMath::kPi` / `kHalfPi` /
+`kTwoPi` constants in particular may not be merged yet — verify before
+suggesting.)
+
+**Check 2: function-local `static` in system tick files.**
+
+Use Grep to scan system files for `static` declarations that are NOT
+`static constexpr` or `static const`, then cross-reference the hits
+against `git diff` added lines to confirm the match is newly introduced.
+
+```
+Grep tool with:
+  pattern: '\bstatic\b(?!\s+constexpr)(?!\s+const\b)'
+  glob:    '{engine/prefabs/irreden/**/system_*.{hpp,cpp},engine/system/**/*.{hpp,cpp},creations/**/system_*.{hpp,cpp}}'
+  output_mode: 'content'
+  -n: true
+```
+
+Filter the Grep results to lines that also appear as `+` lines in
+`git diff --unified=0` for the same file — those are the newly added
+violations. Lines that exist on both sides (pre-existing code) belong
+to the live-deviation list and should only be noted, not re-flagged.
+
+For each hit, suggest the canonical `SystemParams` migration pattern:
+
+> Replace `static <T> name;` with a `SystemParams` field. Capture the
+> params pointer once at `create()` time and pass into the lambdas by
+> value. See [`.claude/rules/cpp-systems.md`](../../rules/cpp-systems.md)
+> "Canonical SystemParams pattern" or
+> [`engine/system/CLAUDE.md`](../../../engine/system/CLAUDE.md) for the
+> canonical example.
+
+Live deviations already on the list (don't re-flag, but note in the
+report if touched):
+
+- `engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp:41-43`
+- `engine/prefabs/irreden/audio/systems/system_rhythmic_launch.hpp:29`
+- `engine/prefabs/irreden/update/systems/system_gravity.hpp:17`
+- `engine/prefabs/irreden/update/systems/system_animation_color.hpp:25-26`
+
+These are tracked in `.fleet/status/system-static-deviations.md` (or
+will be once it's introduced). Don't add new violations; do migrate
+when touching one of the deviation files for other reasons.
+
+**Check 3: `std::cout` / `printf` instead of the engine logger.**
+
+Already covered by section 6 (Reuse opportunities) — left here only as
+a cross-reference. The engine has `IRE_LOG_*` and `IR_LOG_*` macros;
+raw stdout/printf in non-debug code is a cleanup target.
+
 ### 3. Naming convention slips
 
 These are the rules from [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md):
