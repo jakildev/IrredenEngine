@@ -404,7 +404,7 @@ fi
 # Step 3d: launch fleet-state-scout daemon
 # ----------------------------------------------------------------------
 #
-# Polls GitHub + git every 60s and writes `~/.fleet/state/state.json`
+# Polls GitHub + git every 30s and writes `~/.fleet/state/state.json`
 # plus per-role trigger files under `~/.fleet/state/triggers/`. Roles
 # (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
 # queue-manager, merger) read state.json instead of running their own
@@ -460,7 +460,7 @@ fi
 # Step 3f: launch fleet-dispatcher daemon
 # ----------------------------------------------------------------------
 #
-# Polls every 30 s, watches ~/.fleet/state/triggers/<role>, dispatches
+# Polls every 10 s, watches ~/.fleet/state/triggers/<role>, dispatches
 # transient `claude --print ... | fleet-claude-stream` invocations
 # into idle worker / reviewer / queue-mgr / merger panes via
 # `tmux send-keys`. Architects keep fleet-babysit (interactive

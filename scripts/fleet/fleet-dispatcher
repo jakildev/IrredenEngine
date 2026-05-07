@@ -62,7 +62,14 @@ PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 
-POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-30}"
+# Default poll cadence. Workers are transient — each iteration is a
+# one-shot `claude --print` spawned into an idle pane when a trigger
+# file appears, then the pane returns to bash. The dispatcher's
+# interval is the second half of "external state change → worker
+# fires" latency (the scout's interval is the first half). Local-only
+# work (no network), so a tight cadence is essentially free; 10 s
+# keeps pickup snappy without burning measurable CPU.
+POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Aligned with the worker / reviewer /

@@ -53,7 +53,17 @@ REPO_KEY_TO_SLUG = {
     "game": "jakildev/irreden",
 }
 
-POLL_SECONDS_DEFAULT = 60
+# Default poll cadence. Workers are transient now (each iteration is a
+# fresh `claude --print` process spawned by fleet-dispatcher when the
+# scout writes a per-role trigger). The scout's interval is therefore
+# the dominant component of "external state changed → worker fires"
+# latency; under the babysit model workers held context between ticks
+# and could self-pace, but here a 60 s interval was producing ~90 s
+# pickup latency and visibly idle panes. 30 s halves the latency and
+# stays well under GitHub's 5000-req/hr authenticated rate limit even
+# with the per-tick fan-out (the throttled max_workers=2 fetcher caps
+# burst).
+POLL_SECONDS_DEFAULT = 30
 GH_TIMEOUT_SECONDS = 30
 
 # Cap concurrent gh calls and stagger their submission to avoid GitHub's
