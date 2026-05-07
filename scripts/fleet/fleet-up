@@ -228,6 +228,20 @@ baseline = [
     "Bash(fleet-run-targets:*)",
     "Bash(fleet-help:*)",
     "Bash(fleet-heartbeat:*)",
+    # Scout-cache wrappers (PR #458) and post-iteration helpers. Without
+    # these every iteration that calls fleet-issue / fleet-pr /
+    # fleet-iteration-summary stalls at a permission prompt that no human
+    # is around to answer; observed: queue-manager iteration paused for
+    # ~25 minutes on `fleet-issue view 428`. fleet-worktree-busy-branches
+    # is the fast-path filter sonnet-author / opus-worker run on every
+    # task-pickup pass. fleet-labels is the GitHub-label sync wrapper
+    # invoked by fleet-up itself but also occasionally by roles for
+    # ad-hoc relabel passes.
+    "Bash(fleet-issue:*)",
+    "Bash(fleet-pr:*)",
+    "Bash(fleet-iteration-summary:*)",
+    "Bash(fleet-worktree-busy-branches:*)",
+    "Bash(fleet-labels:*)",
     # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
     # in the user-level allowlist matches commands STARTING with `git`,
     # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an
