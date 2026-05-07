@@ -69,6 +69,7 @@ enum SystemName {
     ANIMATION_MOTION_COLOR_SHIFT,
     SPRING_PLATFORM,
     SPRING_COLOR,
+    SPRITE_ANIMATION_ADVANCE,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
     // C_ResolvedFields. Order: decay all three vectors (per-entity,
