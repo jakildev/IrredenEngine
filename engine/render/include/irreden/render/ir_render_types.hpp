@@ -265,6 +265,11 @@ constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
 constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
 constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
 constexpr std::uint32_t kBufferIndex_FrameDataUniformIsoTriangles = 3;
+// Slot 4 was previously unused; the GPU light-volume seed pass reads
+// `LightSourceBuffer` here. Metal caps buffer bindings at 0–30, which
+// rules out the 31+ range that would otherwise be a more obvious home
+// for this SSBO; future cleanup of the index map can renumber freely.
+constexpr std::uint32_t kBufferIndex_LightSourceBuffer = 4;
 constexpr std::uint32_t kBufferIndex_SingleVoxelPositions = 5;
 constexpr std::uint32_t kBufferIndex_SingleVoxelColors = 6;
 constexpr std::uint32_t kBufferIndex_FrameDataVoxelToCanvas = 7;
@@ -286,6 +291,10 @@ constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
 constexpr std::uint32_t kBufferIndex_JointTransforms = 21;
 constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
+// Slot 23 was previously unused; reused for the GPU light-volume
+// dilation chain's UBO. Same Metal-cap rationale as
+// `kBufferIndex_LightSourceBuffer` above.
+constexpr std::uint32_t kBufferIndex_LightVolumeParams = 23;
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
@@ -301,6 +310,63 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // off the occupancy SSBO and the light-volume GPU port (T-072) lands.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
 /// @}
+
+/// Maximum number of light sources uploaded per frame to the
+/// `LightSourceBuffer` SSBO consumed by the GPU light-volume seed pass.
+/// Lights past this cap are silently dropped on the CPU side; the cap is
+/// generous for the engine's current "few dozen lights" workloads.
+constexpr std::uint32_t kLightVolumeMaxSources = 256;
+
+/// Number of GPU dilation iterations the propagate pass runs each
+/// frame. The propagate shader uses distance-tracked linear falloff —
+/// alpha encodes residual strength, decremented by `stepFalloff` per
+/// step. After this many iterations the wavefront has covered a Manhattan
+/// radius of `1 / stepFalloff` cells (= 32 with the default falloff),
+/// matching the typical EMISSIVE/POINT light radius the CPU BFS path
+/// previously used. Phase 1c will replace the global radius cap with
+/// per-light step counts.
+constexpr int kLightVolumePropagateIterations = 32;
+
+/// CPU mirror of the `LightSource` GPU struct uploaded to the
+/// `LightSourceBuffer` SSBO. One entry per active `C_LightSource`
+/// entity. Layout follows std430: every member is a `vec4` so the GPU
+/// stride is 64 bytes per record. Decoded in `c_seed_light_volume`.
+struct GPULightSource {
+    /// xyz = world-space origin in voxel units (round-half-up of
+    /// `C_PositionGlobal3D`); w = `LightType` cast to float.
+    vec4 originAndType_ = vec4(0.0f);
+    /// xyz = emissive RGB in [0, 1]; w = intensity scalar.
+    vec4 colorAndIntensity_ = vec4(0.0f);
+    /// xyz = unit direction (unused for EMISSIVE / POINT); w = radius
+    /// in voxel cells (clamped to `kLightVolumePropagateIterations`).
+    vec4 directionAndRadius_ = vec4(0.0f);
+    /// x = cone aperture in degrees (SPOT only); yzw = std430 padding.
+    vec4 coneAndPad_ = vec4(0.0f);
+};
+static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 layout");
+
+/// CPU mirror of the propagate pass UBO. Uploaded once at system init,
+/// re-uploaded only if `lightCount_` or the global step falloff changes.
+/// Read by `c_seed_light_volume.glsl` and `c_propagate_light_volume.glsl`.
+struct LightVolumeParams {
+    /// Must match `kLightVolumeSize` in
+    /// `component_canvas_light_volume.hpp` (128 today; Phase 1c /
+    /// issue #360 reworks this around a camera-anchored window).
+    int gridSize_ = 128;
+    /// `kLightVolumeSize / 2` — half-extent for world ↔ texel offset.
+    int halfExtent_ = 64;
+    /// Number of valid entries in the `LightSourceBuffer` SSBO this frame.
+    int lightCount_ = 0;
+    /// Per-step alpha decrement applied during distance-tracked
+    /// propagation. The propagate shader stores residual strength in
+    /// the alpha channel; each Manhattan step subtracts this value, so
+    /// a light reaches `1 / stepFalloff_` cells before going dark
+    /// (linear falloff, matching the CPU BFS's `1 - d/radius` curve).
+    /// A single global falloff approximates per-light radius variation;
+    /// future Phase 1c ports will move to per-light step counts.
+    float stepFalloff_ = 1.0f / 32.0f;
+};
+static_assert(sizeof(LightVolumeParams) == 16, "LightVolumeParams must match std140 layout");
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
 // shapeIndex picks the ShapeDescriptor; tileIsoOrigin is the iso-space

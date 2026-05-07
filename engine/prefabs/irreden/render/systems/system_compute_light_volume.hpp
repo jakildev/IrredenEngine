@@ -1,20 +1,45 @@
 #ifndef SYSTEM_COMPUTE_LIGHT_VOLUME_H
 #define SYSTEM_COMPUTE_LIGHT_VOLUME_H
 
-// CPU-side flood-fill light propagation. For each EMISSIVE
-// `C_LightSource` entity in the world, runs a 6-connected BFS through
-// the canvas's `C_OccupancyGrid` (light is blocked by solid voxels)
-// and max-composites the resulting RGB falloff into the canvas's
-// `C_CanvasLightVolume` 3D texture. The texture is then sampled
-// per-pixel by `LIGHTING_TO_TRIXEL`.
+// GPU light propagation. For each `C_LightSource` entity in the world,
+// uploads the light's world voxel origin + emissive color + intensity
+// to a small SSBO, then dispatches three compute passes against the
+// canvas's `C_CanvasLightVolume` ping-pong 3D textures:
 //
-// Pipeline order constraint: must run after `BUILD_OCCUPANCY_GRID`
-// (so the SSBO mirrors the current frame's voxel state) and before
+//   1. `c_clear_light_volume` zeroes the read texture.
+//   2. `c_seed_light_volume` writes one bright texel per light at its
+//      world voxel origin: rgb = emit_color × intensity, alpha = 1.0
+//      (full residual strength).
+//   3. `c_propagate_light_volume` runs `kLightVolumePropagateIterations`
+//      Manhattan-dilation iterations against the canvas's
+//      `C_OccupancyGrid` (light cannot pass through solid voxels). Each
+//      step decrements alpha by `stepFalloff` and propagates the closest
+//      light's color, giving linear falloff bounded at radius
+//      `1 / stepFalloff`. The downstream consumer reads `rgb × alpha`
+//      so out-of-range cells contribute zero. The ping-pong textures are
+//      swapped after each iteration so the `LIGHTING_TO_TRIXEL` pass
+//      always samples the latest state via
+//      `C_CanvasLightVolume::getReadTexture()`.
+//
+// Pipeline order constraint: must run after `BUILD_OCCUPANCY_GRID` (so
+// the SSBO mirrors the current frame's voxel state) and before
 // `LIGHTING_TO_TRIXEL` (which samples the light volume).
 //
-// v1 scope: EMISSIVE lights use 6-connected BFS while POINT lights use
-// Euclidean falloff plus occupancy-grid LOS checks. SPOT shaping, dirty-
-// tracked re-runs, and a GPU wavefront BFS are deferred to follow-up tasks.
+// Phase 1a (issue #359) replaced the previous CPU 6-connected BFS +
+// 8 MiB sub-image upload with the GPU pass chain above. The CPU portion
+// of this system is now bounded by the small per-frame light-source SSBO
+// upload (~16 KiB at the 256-light cap). Per-light radius variation,
+// per-light cone shaping (SPOT), and analytic point/spot LOS are
+// pending for later phases.
+//
+// Phase 1b (issue #362) addresses the volume-vs-occupancy extent
+// mismatch by surfacing it: any light origin that rounds outside
+// `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)` is dropped on
+// the CPU before the SSBO upload and logged once per distinct origin
+// position (so the previous silent edge clamping at the volume
+// boundary becomes a clear, actionable warning). Phase 1c (#360)
+// replaces this with a camera-anchored window so most scenes keep
+// every light in-range without growing the texture footprint.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -23,6 +48,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/ir_render_types.hpp>
 
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -30,12 +56,10 @@
 #include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
-#include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <queue>
-#include <tuple>
 #include <unordered_set>
+#include <vector>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -62,241 +86,25 @@ class ScopedCpuPhaseTimer {
     std::chrono::steady_clock::time_point m_start;
 };
 
-inline std::uint64_t packLightVoxelKey(int wx, int wy, int wz) {
-    const std::uint64_t x = static_cast<std::uint64_t>(wx + kLightVolumeHalfExtent);
-    const std::uint64_t y = static_cast<std::uint64_t>(wy + kLightVolumeHalfExtent);
-    const std::uint64_t z = static_cast<std::uint64_t>(wz + kLightVolumeHalfExtent);
-    return (z << 20) | (y << 10) | x;
-}
-
-inline void writeLightTexel(
-    std::vector<std::uint8_t> &buffer, int wx, int wy, int wz, Color emit, float falloff
-) {
-    const std::size_t idx = C_CanvasLightVolume::flatIndex(wx, wy, wz) * 4u;
-    const float r = static_cast<float>(emit.red_) * falloff;
-    const float g = static_cast<float>(emit.green_) * falloff;
-    const float b = static_cast<float>(emit.blue_) * falloff;
-    const auto clamp8 = [](float v) {
-        return static_cast<std::uint8_t>(IRMath::clamp(v, 0.0f, 255.0f));
-    };
-    // Max-composite so multiple lights overlap by max-channel rather
-    // than additive (prevents oversaturation in shared regions).
-    buffer[idx + 0] = IRMath::max(buffer[idx + 0], clamp8(r));
-    buffer[idx + 1] = IRMath::max(buffer[idx + 1], clamp8(g));
-    buffer[idx + 2] = IRMath::max(buffer[idx + 2], clamp8(b));
-    // Alpha unused by the shader (samples .rgb only). Force 255 so the
-    // RGBA8 upload doesn't ship uninitialised bytes through the driver.
-    buffer[idx + 3] = 255u;
-}
-
-inline void floodFillEmissive(
-    const C_OccupancyGrid &grid,
-    std::vector<std::uint8_t> &buffer,
-    ivec3 originVoxel,
-    Color emit,
-    float intensity,
-    int radius
-) {
-    if (radius <= 0 || intensity <= 0.0f)
-        return;
-    if (!C_CanvasLightVolume::inBounds(originVoxel.x, originVoxel.y, originVoxel.z)) {
-        return;
-    }
-
-    std::queue<std::tuple<int, int, int, int>> q;
-    std::unordered_set<std::uint64_t> visited;
-    visited.reserve(static_cast<std::size_t>(radius) * radius * radius);
-    q.emplace(originVoxel.x, originVoxel.y, originVoxel.z, 0);
-    visited.insert(packLightVoxelKey(originVoxel.x, originVoxel.y, originVoxel.z));
-
-    static constexpr int kDx[6] = {1, -1, 0, 0, 0, 0};
-    static constexpr int kDy[6] = {0, 0, 1, -1, 0, 0};
-    static constexpr int kDz[6] = {0, 0, 0, 0, 1, -1};
-    const float invRadius = 1.0f / static_cast<float>(radius);
-
-    while (!q.empty()) {
-        const auto [x, y, z, d] = q.front();
-        q.pop();
-
-        const float falloff =
-            IRMath::max(0.0f, (1.0f - static_cast<float>(d) * invRadius) * intensity);
-        if (falloff > 0.0f) {
-            writeLightTexel(buffer, x, y, z, emit, falloff);
-        }
-        if (d >= radius)
-            continue;
-
-        for (int n = 0; n < 6; ++n) {
-            const int nx = x + kDx[n];
-            const int ny = y + kDy[n];
-            const int nz = z + kDz[n];
-            if (!C_CanvasLightVolume::inBounds(nx, ny, nz))
-                continue;
-            const std::uint64_t key = packLightVoxelKey(nx, ny, nz);
-            if (!visited.insert(key).second)
-                continue;
-            // Solid voxels block further propagation, but the surface of
-            // the first solid voxel hit must still receive the falloff
-            // value so the lighting pass sees illumination on the visible
-            // surface (the trixel pixel's pos3D recovers the solid voxel,
-            // not the empty cell next to it).
-            const float nFalloff =
-                IRMath::max(0.0f, (1.0f - static_cast<float>(d + 1) * invRadius) * intensity);
-            if (grid.getBit(nx, ny, nz)) {
-                if (nFalloff > 0.0f) {
-                    writeLightTexel(buffer, nx, ny, nz, emit, nFalloff);
-                }
-                continue;
-            }
-            q.emplace(nx, ny, nz, d + 1);
-        }
-    }
-}
-
-inline bool hasLineOfSight(const C_OccupancyGrid &grid, ivec3 originVoxel, ivec3 targetVoxel) {
-    const ivec3 delta = targetVoxel - originVoxel;
-    const int steps =
-        IRMath::max(IRMath::abs(delta.x), IRMath::max(IRMath::abs(delta.y), IRMath::abs(delta.z)));
-    if (steps <= 1)
-        return true;
-
-    const vec3 origin = vec3(originVoxel);
-    const vec3 step = vec3(delta) / static_cast<float>(steps);
-    for (int i = 1; i < steps; ++i) {
-        const vec3 p = origin + step * static_cast<float>(i);
-        // Round-half-up matches the GPU shadow march's cell sampling rule
-        // (`roundHalfUp` in ir_iso_common.glsl/.metal). LOS rays through
-        // half-integer voxel positions classify the same cells on both sides.
-        const ivec3 cell = IRMath::roundVec3HalfUp(p);
-        if (cell == originVoxel || cell == targetVoxel)
-            continue;
-        if (grid.getBit(cell.x, cell.y, cell.z))
-            return false;
-    }
-    return true;
-}
-
-inline void fillPointLight(
-    const C_OccupancyGrid &grid,
-    std::vector<std::uint8_t> &buffer,
-    ivec3 originVoxel,
-    Color emit,
-    float intensity,
-    int radius
-) {
-    radius = IRMath::clamp(radius, 0, 32);
-    if (radius <= 0 || intensity <= 0.0f)
-        return;
-    if (!C_CanvasLightVolume::inBounds(originVoxel.x, originVoxel.y, originVoxel.z)) {
-        return;
-    }
-
-    const float invRadius = 1.0f / static_cast<float>(radius);
-    const int xMin = IRMath::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
-    const int xMax = IRMath::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
-    const int yMin = IRMath::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
-    const int yMax = IRMath::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
-    const int zMin = IRMath::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
-    const int zMax = IRMath::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
-
-    for (int z = zMin; z <= zMax; ++z) {
-        for (int y = yMin; y <= yMax; ++y) {
-            for (int x = xMin; x <= xMax; ++x) {
-                const vec3 delta = vec3(x, y, z) - vec3(originVoxel);
-                const float distance = IRMath::length(delta);
-                if (distance > static_cast<float>(radius))
-                    continue;
-
-                const ivec3 target{x, y, z};
-                if (!hasLineOfSight(grid, originVoxel, target))
-                    continue;
-
-                const float falloff = (1.0f - distance * invRadius) * intensity;
-                if (falloff > 0.0f) {
-                    writeLightTexel(buffer, x, y, z, emit, falloff);
-                }
-            }
-        }
-    }
-}
-
-inline bool
-isInsideSpotCone(ivec3 originVoxel, ivec3 targetVoxel, vec3 direction, float coneAngleDeg) {
-    const vec3 toTarget = vec3(targetVoxel - originVoxel);
-    const float distance = IRMath::length(toTarget);
-    if (distance <= 0.0f)
-        return true;
-
-    const float directionLength = IRMath::length(direction);
-    if (directionLength <= 0.0f)
-        return false;
-
-    const vec3 coneDir = direction / directionLength;
-    const float halfAngleDeg = IRMath::clamp(coneAngleDeg, 0.0f, 180.0f) * 0.5f;
-    const float radians = halfAngleDeg * 0.01745329251994329577f;
-    const float minDot = IRMath::cos(radians);
-    return IRMath::dot(toTarget / distance, coneDir) >= minDot;
-}
-
-inline void fillSpotLight(
-    const C_OccupancyGrid &grid,
-    std::vector<std::uint8_t> &buffer,
-    ivec3 originVoxel,
-    Color emit,
-    float intensity,
-    int radius,
-    vec3 direction,
-    float coneAngleDeg
-) {
-    radius = IRMath::clamp(radius, 0, 32);
-    if (radius <= 0 || intensity <= 0.0f)
-        return;
-    if (!C_CanvasLightVolume::inBounds(originVoxel.x, originVoxel.y, originVoxel.z)) {
-        return;
-    }
-
-    const float invRadius = 1.0f / static_cast<float>(radius);
-    const int xMin = IRMath::max(originVoxel.x - radius, -kLightVolumeHalfExtent);
-    const int xMax = IRMath::min(originVoxel.x + radius, kLightVolumeHalfExtent - 1);
-    const int yMin = IRMath::max(originVoxel.y - radius, -kLightVolumeHalfExtent);
-    const int yMax = IRMath::min(originVoxel.y + radius, kLightVolumeHalfExtent - 1);
-    const int zMin = IRMath::max(originVoxel.z - radius, -kLightVolumeHalfExtent);
-    const int zMax = IRMath::min(originVoxel.z + radius, kLightVolumeHalfExtent - 1);
-
-    for (int z = zMin; z <= zMax; ++z) {
-        for (int y = yMin; y <= yMax; ++y) {
-            for (int x = xMin; x <= xMax; ++x) {
-                const ivec3 target{x, y, z};
-                if (!isInsideSpotCone(originVoxel, target, direction, coneAngleDeg)) {
-                    continue;
-                }
-
-                const vec3 delta = vec3(target - originVoxel);
-                const float distance = IRMath::length(delta);
-                if (distance > static_cast<float>(radius))
-                    continue;
-                if (!hasLineOfSight(grid, originVoxel, target))
-                    continue;
-
-                const float falloff = (1.0f - distance * invRadius) * intensity;
-                if (falloff > 0.0f) {
-                    writeLightTexel(buffer, x, y, z, emit, falloff);
-                }
-            }
-        }
-    }
-}
-
-template <typename Function> void forEachLightSourceWithPosition(Function &&function) {
-    const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
-    auto nodes = IREntity::queryArchetypeNodesSimple(include);
-    for (auto *node : nodes) {
-        auto &lights = IREntity::getComponentData<C_LightSource>(node);
-        auto &positions = IREntity::getComponentData<C_PositionGlobal3D>(node);
-        for (int i = 0; i < node->length_; ++i) {
-            function(lights[i], positions[i]);
-        }
-    }
+inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &originVoxel) {
+    GPULightSource gpu{};
+    gpu.originAndType_ = vec4(
+        static_cast<float>(originVoxel.x),
+        static_cast<float>(originVoxel.y),
+        static_cast<float>(originVoxel.z),
+        static_cast<float>(light.type_)
+    );
+    gpu.colorAndIntensity_ = vec4(
+        static_cast<float>(light.emitColor_.red_) / 255.0f,
+        static_cast<float>(light.emitColor_.green_) / 255.0f,
+        static_cast<float>(light.emitColor_.blue_) / 255.0f,
+        IRMath::max(0.0f, light.intensity_)
+    );
+    const float radius = static_cast<float>(light.radius_);
+    gpu.directionAndRadius_ =
+        vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
+    gpu.coneAndPad_ = vec4(light.coneAngleDeg_, 0.0f, 0.0f, 0.0f);
+    return gpu;
 }
 
 inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
@@ -305,93 +113,263 @@ inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
     return IRMath::roundVec3HalfUp(position.pos_);
 }
 
+// Pack a signed-int voxel position into a single uint64 so the
+// "already-warned" set can dedupe by exact origin without paying for a
+// custom hash on `ivec3`. 21 bits per axis covers ±1M cells, well
+// beyond any realistic scene; we add a bias to keep the value
+// nonnegative before shifting.
+inline std::uint64_t packOriginKey(const ivec3 &v) {
+    constexpr int kBias = 1 << 20;
+    constexpr std::uint64_t kMask = (1ull << 21) - 1ull;
+    const auto x = static_cast<std::uint64_t>(v.x + kBias) & kMask;
+    const auto y = static_cast<std::uint64_t>(v.y + kBias) & kMask;
+    const auto z = static_cast<std::uint64_t>(v.z + kBias) & kMask;
+    return (x << 42) | (y << 21) | z;
+}
+
+// Gathers all lights with positions into the supplied buffer (capped
+// at `kLightVolumeMaxSources`). Returns the count actually written.
+// Per-tick allocation is bounded by the buffer's reserved capacity.
+//
+// Lights whose origin rounds outside the volume's `[-kLightVolumeHalfExtent,
+// +kLightVolumeHalfExtent)` extent are skipped (the seed shader's bounds
+// check would silently drop them anyway) and logged once per unique
+// origin coordinate via `warnedOOBOrigins`. This makes the Phase 1b
+// (#362) silent-clamping issue visible without spamming when the same
+// misplaced static light is processed every frame.
+inline std::uint32_t gatherLightSources(
+    std::vector<GPULightSource> &out, std::unordered_set<std::uint64_t> &warnedOOBOrigins
+) {
+    out.clear();
+    const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
+    const auto nodes = IREntity::queryArchetypeNodesSimple(include);
+    for (auto *node : nodes) {
+        auto &lights = IREntity::getComponentData<C_LightSource>(node);
+        auto &positions = IREntity::getComponentData<C_PositionGlobal3D>(node);
+        for (int i = 0; i < node->length_; ++i) {
+            // Directional lights drive sun shading via the FrameDataSun
+            // path; they do not seed the world-space light volume.
+            if (lights[i].type_ == LightType::DIRECTIONAL) {
+                continue;
+            }
+            if (out.size() >= kLightVolumeMaxSources) {
+                return static_cast<std::uint32_t>(out.size());
+            }
+            const ivec3 origin = roundedLightOrigin(positions[i]);
+            if (!C_CanvasLightVolume::inBounds(origin.x, origin.y, origin.z)) {
+                if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
+                    IR_LOG_WARN(
+                        "C_LightSource at world voxel ({}, {}, {}) is "
+                        "outside the light volume's extent "
+                        "[-{}, {}); dropping until issue #360 "
+                        "(camera-anchored grids / Phase 1c) lands.",
+                        origin.x,
+                        origin.y,
+                        origin.z,
+                        kLightVolumeHalfExtent,
+                        kLightVolumeHalfExtent
+                    );
+                }
+                continue;
+            }
+            out.push_back(toGpuLight(lights[i], origin));
+        }
+    }
+    return static_cast<std::uint32_t>(out.size());
+}
+
 } // namespace detail
 
+// `LightVolumeParams` defaults must mirror the volume's CPU constants —
+// the system only writes `lightCount_` per frame, so `gridSize_` /
+// `halfExtent_` flow to the GPU straight from the struct's defaults.
+// `system_compute_light_volume.hpp` is the only place that includes
+// both headers, so the drift check belongs here.
+static_assert(
+    LightVolumeParams{}.gridSize_ == kLightVolumeSize,
+    "LightVolumeParams::gridSize_ default must equal kLightVolumeSize"
+);
+static_assert(
+    LightVolumeParams{}.halfExtent_ == kLightVolumeHalfExtent,
+    "LightVolumeParams::halfExtent_ default must equal kLightVolumeHalfExtent"
+);
+
 template <> struct System<COMPUTE_LIGHT_VOLUME> {
+    struct Params {
+        ShaderProgram *clearProgram_ = nullptr;
+        ShaderProgram *seedProgram_ = nullptr;
+        ShaderProgram *propagateProgram_ = nullptr;
+        Buffer *lightSourceBuf_ = nullptr;
+        Buffer *paramsBuf_ = nullptr;
+        Buffer *occupancyBuf_ = nullptr;
+        std::vector<GPULightSource> lightStaging_{};
+        LightVolumeParams params_{};
+        // Set of out-of-bounds light origins we have already warned
+        // about — prevents the per-frame gather from spamming a stable
+        // misplaced light. Keyed via `detail::packOriginKey`.
+        std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
+    };
+
     static SystemId create() {
+        IRRender::createNamedResource<ShaderProgram>(
+            "ClearLightVolumeProgram",
+            std::vector{ShaderStage{IRRender::kFileCompClearLightVolume, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "SeedLightVolumeProgram",
+            std::vector{ShaderStage{IRRender::kFileCompSeedLightVolume, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PropagateLightVolumeProgram",
+            std::vector{ShaderStage{IRRender::kFileCompPropagateLightVolume, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<Buffer>(
+            "LightSourceBuffer",
+            nullptr,
+            sizeof(GPULightSource) * kLightVolumeMaxSources,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_LightSourceBuffer
+        );
+        IRRender::createNamedResource<Buffer>(
+            "LightVolumeParamsBuffer",
+            nullptr,
+            sizeof(LightVolumeParams),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
+            kBufferIndex_LightVolumeParams
+        );
+
+        auto paramsOwner = std::make_unique<Params>();
+        Params *p = paramsOwner.get();
+        p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearLightVolumeProgram");
+        p->seedProgram_ = IRRender::getNamedResource<ShaderProgram>("SeedLightVolumeProgram");
+        p->propagateProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PropagateLightVolumeProgram");
+        p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
+        p->paramsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
+        // OccupancyGridBuffer is created by BUILD_OCCUPANCY_GRID, which
+        // is registered ahead of this system in every creation that uses
+        // either path; safe to look up at init time.
+        p->occupancyBuf_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        p->lightStaging_.reserve(kLightVolumeMaxSources);
+
         SystemId systemId =
             createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
                 "ComputeLightVolume",
-                [](C_OccupancyGrid &grid,
-                   C_CanvasLightVolume &volume,
-                   const C_TrixelCanvasRenderBehavior &behavior) {
+                [p](C_OccupancyGrid &,
+                    C_CanvasLightVolume &volume,
+                    const C_TrixelCanvasRenderBehavior &behavior) {
                     if (!behavior.useCameraPositionIso_)
                         return;
                     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
                     auto &phaseTiming = IRRender::computeLightVolumeTiming();
 
+                    constexpr int kClearGroupSize = 8;
+                    constexpr int kPropagateGroupX = 8;
+                    constexpr int kPropagateGroupY = 8;
+                    constexpr int kPropagateGroupZ = 4;
+                    constexpr int kSeedGroupSize = 64;
+                    constexpr int kVolumeSize = kLightVolumeSize;
+
+                    // Phase: gather + upload light SSBO.
+                    {
+                        detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
+                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
+                        const std::uint32_t count =
+                            detail::gatherLightSources(p->lightStaging_, p->warnedOOBOrigins_);
+                        p->params_.lightCount_ = static_cast<int>(count);
+                        if (count > 0) {
+                            p->lightSourceBuf_->subData(
+                                0,
+                                sizeof(GPULightSource) * count,
+                                p->lightStaging_.data()
+                            );
+                        }
+                        p->paramsBuf_->subData(0, sizeof(LightVolumeParams), &p->params_);
+                    }
+
+                    // Phase: dispatch the GPU clear + seed + propagate
+                    // chain. The Clear bucket is reserved for the clear
+                    // pass alone; Populate covers seed + N propagate
+                    // iterations so the legacy column name still maps
+                    // to "where the bulk of the work lives".
+                    p->paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
                         IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
-                        std::fill(
-                            volume.cpuBuffer_.begin(),
-                            volume.cpuBuffer_.end(),
-                            std::uint8_t{0}
-                        );
+                        p->clearProgram_->use();
+                        volume.getReadTexture()
+                            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                        const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
+                        IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     }
 
                     {
                         detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
                         IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
-                        detail::forEachLightSourceWithPosition(
-                            [&grid,
-                             &volume](C_LightSource &light, const C_PositionGlobal3D &position) {
-                                const ivec3 originVoxel = detail::roundedLightOrigin(position);
-                                switch (light.type_) {
-                                case LightType::EMISSIVE:
-                                    detail::floodFillEmissive(
-                                        grid,
-                                        volume.cpuBuffer_,
-                                        originVoxel,
-                                        light.emitColor_,
-                                        light.intensity_,
-                                        static_cast<int>(light.radius_)
-                                    );
-                                    break;
-                                case LightType::POINT:
-                                    detail::fillPointLight(
-                                        grid,
-                                        volume.cpuBuffer_,
-                                        originVoxel,
-                                        light.emitColor_,
-                                        light.intensity_,
-                                        static_cast<int>(light.radius_)
-                                    );
-                                    break;
-                                case LightType::SPOT:
-                                    detail::fillSpotLight(
-                                        grid,
-                                        volume.cpuBuffer_,
-                                        originVoxel,
-                                        light.emitColor_,
-                                        light.intensity_,
-                                        static_cast<int>(light.radius_),
-                                        light.direction_,
-                                        light.coneAngleDeg_
-                                    );
-                                    break;
-                                default:
-                                    break;
-                                }
-                            }
-                        );
-                    }
 
-                    {
-                        detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
-                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
-                        volume.getTexture()->subImage3D(
-                            kLightVolumeSize,
-                            kLightVolumeSize,
-                            kLightVolumeSize,
-                            PixelDataFormat::RGBA,
-                            PixelDataType::UNSIGNED_BYTE,
-                            volume.cpuBuffer_.data()
-                        );
+                        // Seed pass: one thread per light, writes one
+                        // bright texel into the read texture.
+                        if (p->params_.lightCount_ > 0) {
+                            p->seedProgram_->use();
+                            p->lightSourceBuf_->bindBase(
+                                BufferTarget::SHADER_STORAGE,
+                                kBufferIndex_LightSourceBuffer
+                            );
+                            volume.getReadTexture()
+                                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                            const int seedGroups =
+                                IRMath::divCeil(p->params_.lightCount_, kSeedGroupSize);
+                            IRRender::device()
+                                ->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
+                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                        }
+
+                        // Propagate dilation chain. With no lights the
+                        // chain still runs but every iteration reads
+                        // zeros so the cost is bounded; we elide it for
+                        // a tighter early-out.
+                        if (p->params_.lightCount_ > 0) {
+                            p->propagateProgram_->use();
+                            // Occupancy SSBO is shared with AO; bind it
+                            // once then leave bound for the duration.
+                            if (p->occupancyBuf_ != nullptr) {
+                                p->occupancyBuf_->bindBase(
+                                    BufferTarget::SHADER_STORAGE,
+                                    kBufferIndex_OccupancyGrid
+                                );
+                            }
+                            const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
+                            const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
+                            const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
+                            for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
+                                volume.getReadTexture()->bindAsImage(
+                                    0,
+                                    TextureAccess::READ_ONLY,
+                                    TextureFormat::RGBA8
+                                );
+                                volume.getWriteTexture()->bindAsImage(
+                                    1,
+                                    TextureAccess::WRITE_ONLY,
+                                    TextureFormat::RGBA8
+                                );
+                                IRRender::device()->dispatchCompute(
+                                    static_cast<std::uint32_t>(gx),
+                                    static_cast<std::uint32_t>(gy),
+                                    static_cast<std::uint32_t>(gz)
+                                );
+                                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                                volume.swap();
+                            }
+                        }
                     }
                 }
             );
         IRRender::tagGpuStage(systemId, "computeLightVolume");
+        setSystemParams(systemId, std::move(paramsOwner));
         return systemId;
     }
 };

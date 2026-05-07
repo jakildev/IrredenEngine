@@ -19,7 +19,6 @@ add_executable(IrredenEngineTest
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
   render/frame_data_sun_layout_test.cpp
-  render/light_volume_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sprite_components_test.cpp
