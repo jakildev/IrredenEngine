@@ -192,6 +192,50 @@ Avoid:
   - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
   - **Links:**
 
+- [ ] **Sprite: sprite-sheet asset format + loader** — implement PNG+sidecar loader that populates C_SpriteSheet from disk
+  - **ID:** T-095
+  - **Area:** engine/asset, engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) known sprite sheet (PNG + sidecar) loads from disk and populates C_SpriteSheet with correct frame count, grid size, and named animations; (2) unit test in test/asset/ covers load + round-trip; (3) fleet-build clean on linux-debug; (4) asset file format documented in a comment block at the top of the loader implementation
+  - **Issue:** #283
+  - **Notes:** Part of #14 (sprite-rendering epic). Loader mirrors existing IRAsset patterns (.txl/.irtxl). Uniform-grid frames only (v1). T-087 (C_Sprite/C_SpriteSheet components) is done.
+  - **Links:**
+
+- [ ] **Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort** — new pipeline stage renders sprite entities with one instanced quad draw, CPU-side iso depth sort, GLSL+MSL backends
+  - **ID:** T-096
+  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-095
+  - **Acceptance:** (1) single sprite at origin renders at screen center at zoom 1 with pixel-perfect scaling; (2) multiple sprites composite back-to-front by iso depth; (3) 50+ sprites cost exactly one drawArraysInstanced call; (4) fleet-build clean on linux-debug AND macos-debug; (5) render-debug-loop screenshots committed to docs/pr-screenshots/
+  - **Issue:** #284
+  - **Notes:** Part of #14 (sprite-rendering epic). Replaces system_sprites_to_screen.hpp stub. Screen-composite layer at FRAMEBUFFER_TO_SCREEN stage (not trixel content). Follow backend-parity skill for GLSL/MSL port. Depends on T-095.
+  - **Links:**
+
+- [ ] **Sprite: C_SpriteAnimation + animation-advance system** — component tracks sub-animation playback state; UPDATE-phase system advances frames and writes uvRect back to C_Sprite
+  - **ID:** T-097
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) animation cycles at sheet-specified FPS independent of render rate; (2) LOOP/ONCE/PING_PONG modes all pass unit test expectations; (3) mid-playback sub-animation switch resets state cleanly with no frame glitch; (4) unit test in test/ covers time-advance math without requiring GPU/render pass; (5) fleet-build clean on active preset
+  - **Issue:** #285
+  - **Notes:** Part of #14 (sprite-rendering epic). Time-advance edge cases (multi-frame advance in one tick, ping-pong endpoint flip, mid-playback reset) warrant opus. Public API in IRPrefab::Sprite:: namespace, not IRRender::. Soft dep on T-096 for visual confirmation but unit test acceptance does NOT require it. Depends on T-087 (done).
+  - **Links:**
+
+- [ ] **Sprite: Lua bindings + sprite_demo creation** — expose sprite/animation API as ir.sprite.* Lua surface; scaffold sprite_demo demo creation exercising all loop modes and depth sort
+  - **ID:** T-098
+  - **Area:** engine/script, creations/demos/sprite_demo
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-095, T-096, T-097
+  - **Acceptance:** (1) fleet-run IRSpriteDemo launches and shows multiple animated sprites without crashing; (2) fleet-run IRSpriteDemo --auto-screenshot 10 produces committed shot list; (3) visual confirmation all three loop modes work and back-to-front sort is correct; (4) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #286
+  - **Notes:** Part of #14 (sprite-rendering epic). Use create-creation skill for scaffold. Bindings on ir.sprite.* not ir.render.*. Generated art asset acceptable. Depends on T-095, T-096, T-097.
+  - **Links:**
+
 ---
 
 ## In progress
