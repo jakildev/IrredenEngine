@@ -907,7 +907,7 @@ def main():
     parser.add_argument("--once", action="store_true",
                         help="run one tick and exit (for testing)")
     parser.add_argument("--interval", type=int, default=POLL_SECONDS_DEFAULT,
-                        help="poll interval in seconds (default 60)")
+                        help="poll interval in seconds (default 30)")
     args = parser.parse_args()
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
