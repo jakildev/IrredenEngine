@@ -75,7 +75,7 @@ just the items that role works on:
 | opus-worker | `tasks_open` (filtered to `[opus]` tasks, both repos), `needs_plan`, `feedback_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix`) |
-| queue-manager | `needs_plan`, `human_approved`, `tasks_done` |
+| queue-manager | `needs_plan`, `human_approved`, `tasks_done`, `needs_flip` (in-progress tasks whose linked issue closed) |
 | merger | `prs` (engine, approved or non-MERGEABLE only) |
 
 **Read the projection first.** It's ~5 KB vs. ~32 KB for full

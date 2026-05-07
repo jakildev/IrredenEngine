@@ -22,11 +22,13 @@ prompts.
 Read your pre-filtered slice at
 `~/.fleet/state/projections/queue-manager.json` — `needs_plan`
 (open issues awaiting plans), `human_approved` (issues ready to
-ingest, with `fleet:queued` already filtered out), and
-`tasks_done` (TASKS.md done section). ~5 KB vs. ~32 KB for full
-`state.json`. Fall back to `state.json` for cross-role data
-(e.g. open PRs to scan for `Closes #N` references — the slice
-doesn't carry full PR records).
+ingest, with `fleet:queued` already filtered out),
+`tasks_done` (TASKS.md done section), and `needs_flip`
+(in-progress tasks whose linked `fleet:queued` issue closed after
+a PR merged, but TASKS.md hasn't been flipped to `[x]` yet).
+~5 KB vs. ~32 KB for full `state.json`. Fall back to `state.json`
+for cross-role data (e.g. open PRs to scan for `Closes #N`
+references — the slice doesn't carry full PR records).
 
 The cached `tasks` data reflects `origin/master`. The
 queue-manager's own in-progress edits sit in the working tree
