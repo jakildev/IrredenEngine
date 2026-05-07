@@ -1,8 +1,12 @@
-# Irreden Engine – AI Agent Guide
+# Irreden Engine — Architecture reference
 
-Irreden is an isometric "pixelatable" voxel content and game engine built around an archetype-based ECS. Game logic lives in components and systems; Lua is used for configuration and high-level creation logic. C++ handles systems, pipelines, and engine bindings.
+Long-form architecture reference for AI agents and human readers. The top-level [`CLAUDE.md`](../../CLAUDE.md) and module-specific `CLAUDE.md` files cover conventions and rules; this file covers the *shape* of the engine — where things live, what owns what, how the pieces fit together.
+
+For coding conventions (naming, style, the ECS footgun, IRMath rule, no-static-in-systems rule), see [`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md) and the path-scoped rules in [`.claude/rules/`](../../.claude/rules/). For build/run instructions, see [`BUILD.md`](BUILD.md). For fleet workflow, see [`FLEET.md`](FLEET.md).
 
 ---
+
+Irreden is an isometric "pixelatable" voxel content and game engine built around an archetype-based ECS. Game logic lives in components and systems; Lua is used for configuration and high-level creation logic. C++ handles systems, pipelines, and engine bindings.
 
 ## Project Structure
 
@@ -70,17 +74,19 @@ Creations include these directly. Do not include internal module headers — use
 
 ---
 
-## ECS Philosophy: Logic in Components and Systems
+## ECS: Components, Systems, Entities
 
-**Game logic belongs in the ECS, not scattered in scripts or one-off code.**
+Game logic belongs in the ECS, not scattered in scripts or one-off code.
 
-1. **Components** – Plain data structs (`C_` prefix). No logic.
-2. **Systems** – Lambda-based logic operating on entities with a matching component set.
-3. **Entities** – Created with component bundles; `createEntity` implicitly adds `C_PositionGlobal3D` and `C_PositionOffset3D`.
+1. **Components** — Plain data structs (`C_` prefix). No logic.
+2. **Systems** — Lambda-based logic operating on entities with a matching component set.
+3. **Entities** — Created with component bundles; `createEntity` implicitly adds `C_PositionGlobal3D` and `C_PositionOffset3D`.
 
 `SystemId` is an alias for `EntityId` — systems are themselves entities stored in the ECS.
 
-### Component Conventions
+For the rules around per-entity getComponent, deferred entity ops, and component method tiers, see [`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md) and [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
+
+### Component shape (example)
 
 - **Namespace:** `IRComponents`
 - **Naming:** `C_` prefix (e.g. `C_MoveOrder`, `C_Velocity3D`, `C_VoxelSetNew`).
@@ -97,7 +103,7 @@ struct C_MoveOrder {
 }
 ```
 
-### System Conventions
+### System shape (three valid tick signatures)
 
 Prefab systems use `IRSystem::System<SYSTEM_NAME>` template specialization with a static `create()` returning `SystemId`. **Before adding a new prefab system, add its name to the `SystemName` enum in `ir_system_types.hpp`.**
 
@@ -134,18 +140,6 @@ createSystem<C_NavAgent>(
     [](const Archetype& arch, std::vector<EntityId>& ids, std::vector<C_NavAgent>& agents) { ... }
 );
 ```
-
-### Avoid Per-Entity Component Queries Inside System Ticks
-
-**Never call `getComponent` or `getComponentOptional` on individual entities inside a system's per-entity tick function.** Each call performs a hash-map lookup, a linear scan of the entity's archetype set, and another hash-map lookup into the component storage -- all with profiler overhead. At scale this dominates the frame.
-
-**Alternatives (preferred → acceptable):**
-
-1. **Include the component in the system's template parameters** so it's iterated directly from the archetype's dense column storage. This is the primary fix -- the data is accessed via contiguous array index, not random lookup.
-2. **Store the data in an existing component at creation time** if it's known upfront (e.g. store a canvas entity ID in `C_VoxelSetNew` during allocation rather than looking it up every frame).
-3. **Use `beginTick` / `endTick`** for lookups that only need to happen once per frame, not per entity.
-4. **Use `relationTick`** for per-parent-group lookups -- fires once per unique parent entity when using `CHILD_OF` or other relation queries.
-5. **Future:** Use relation-based archetype grouping (e.g. a `RENDERS_ON` relation) to partition entities by group at the archetype level, eliminating per-entity branching entirely.
 
 ### Entity Creation
 
@@ -251,9 +245,7 @@ iso.x = -x + y
 iso.y = -x - y + 2z
 ```
 
-`pos3DtoPos2DScreen` scales the iso result by `triangleStepSizeScreen`
-and applies a backend-specific X / Y sign (`IRPlatform::kGfx.screenYDirection_`);
-the net result is the "+Z down" rendered view described above.
+`pos3DtoPos2DScreen` scales the iso result by `triangleStepSizeScreen` and applies a backend-specific X / Y sign (`IRPlatform::kGfx.screenYDirection_`); the net result is the "+Z down" rendered view described above.
 
 ### Depth / Distance
 
@@ -393,47 +385,6 @@ creations/demos/your_demo/
   - Linux: `cmake --preset linux-debug`, then `cmake --build --preset linux-build-all --target IRGame` (run `scripts/bootstrap_linux.sh` first on Debian/Ubuntu)
   - Windows (MinGW/MSYS2): `cmake --preset windows-debug`, then `cmake --build --preset windows-build-all --target IRGame`
 - `IRREDEN_USER_PROJECTS` still exists for advanced setups where you want to attach additional external CMake projects without using `creations/game/`.
-
----
-
-## Style and Naming
-
-| Context           | Convention                    |
-|-------------------|-------------------------------|
-| Private members   | `m_` prefix only; no trailing `_` |
-| Public members    | trailing `_`                  |
-| Components        | `C_` prefix                   |
-| Enum values       | `SCREAMING_SNAKE_CASE`        |
-| Compute shaders   | `c_` prefix                   |
-| Vertex shaders    | `v_` prefix                   |
-| Fragment shaders  | `f_` prefix                   |
-| Geometry shaders  | `g_` prefix                   |
-
-**Naming style:**
-- Prefer descriptive variable names over abbreviations. A longer name that reads clearly is better than a short one that requires context to decode. For example, prefer `viewCenterIso` over `vcIso`, `minimapCenter` over `mmC`, `isCullingFrozen` over `frozen`.
-- For non-public helper code that must live in headers, prefer a nested lowercase `detail` namespace under the owning API namespace (`IRSystem::detail`, `IRRender::detail`, `IRCommand::detail`).
-- Treat `detail` as a convention marker for implementation helpers, not as part of the intended public API surface.
-- Avoid feature-specific helper namespaces such as `MinimapDetail` unless the helper group is intentionally shared across multiple files as a small named submodule.
-- Do not use anonymous namespaces in headers except for generated or explicitly documented special cases. Use `detail` for header-only helpers, and keep anonymous namespaces in `.cpp` files when possible.
-- If a helper is part of the intentional surface of a header, keep it in the owning namespace instead of moving it into `detail`.
-
-**Logical style:**
-- Prefer early return over nested logic.
-- Prefer C++ standard library types such as `std::string` over raw C-style buffers when they express the intent clearly. Use fixed C buffers only when a low-level API or measured performance need justifies them.
-- Prefer `unique_ptr` over `shared_ptr`. Use `unique_ptr` for the single owner and pass raw pointers to non-owning consumers (e.g. lambda captures, observers). Avoid `shared_ptr` unless true shared ownership is required.
-- Raw pointers indicate non-ownership.
-
----
-
-## Build and Quality
-
-- **Configure:** `cmake --preset linux-debug` (or `macos-debug` / `windows-debug`)
-- **Build:** `cmake --build build --target IRShapeDebug` (or `cmake --build --preset linux-build-all`)
-- **Format check:** `cmake --build build --target format-check`
-- **Format:** `cmake --build build --target format`
-- **Lint:** `cmake --build build --target lint` (includes naming checks)
-
-Requires clang-format and clang-tidy.
 
 ---
 

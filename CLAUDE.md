@@ -4,10 +4,10 @@ Isometric voxel game engine built on an archetype-based ECS. C++ handles the
 engine, systems, and pipelines. Lua 5.4 (via sol2) drives entity creation and
 game logic in creations.
 
-`AGENTS.md` has the full long-form architecture reference. Module-specific
-details live in `CLAUDE.md` files nested under `engine/`, `engine/prefabs/`,
-and `creations/` — read the most specific one for whatever directory you're
-working in.
+[`docs/agents/AGENTS-ARCHITECTURE.md`](docs/agents/AGENTS-ARCHITECTURE.md) has
+the full long-form architecture reference. Module-specific details live in
+`CLAUDE.md` files nested under `engine/`, `engine/prefabs/`, and `creations/`
+— read the most specific one for whatever directory you're working in.
 
 Private implementations (games, editors, experiments) layered on top of the
 engine may live in their own gitignored subdirectories under `creations/` and
@@ -33,7 +33,7 @@ working inside such a subdirectory, always read that subdirectory's own
 |---|---|
 | Coding conventions (ECS, naming, IRMath, ownership, comment style) | [`docs/agents/CLAUDE-BASELINE.md`](docs/agents/CLAUDE-BASELINE.md) |
 | Module-specific patterns (ECS, prefabs, render, math, system, etc.) | the nearest `CLAUDE.md` (loaded automatically when you open a file in that subtree) |
-| Long-form architecture reference (ECS internals, render pipeline, coordinate systems, Lua integration) | [`AGENTS.md`](AGENTS.md) |
+| Long-form architecture reference (ECS internals, render pipeline, coordinate systems, Lua integration) | [`docs/agents/AGENTS-ARCHITECTURE.md`](docs/agents/AGENTS-ARCHITECTURE.md) |
 | Build commands and environment setup (Linux/WSL, Windows, macOS) | [`docs/agents/BUILD.md`](docs/agents/BUILD.md) |
 | Fleet workflow (parallel agents, PRs, cursor cues, design escalation, model split, labels, feedback) | [`docs/agents/FLEET.md`](docs/agents/FLEET.md) |
 | Skills (named workflows like `simplify`, `commit-and-push`, `review-pr`) | [`.claude/skills/`](.claude/skills/) — each has its own `SKILL.md` |
