@@ -192,11 +192,11 @@ Avoid:
   - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
   - **Links:**
 
-- [ ] **Sprite: sprite-sheet asset format + loader** — implement PNG+sidecar loader that populates C_SpriteSheet from disk
+- [~] **Sprite: sprite-sheet asset format + loader** — implement PNG+sidecar loader that populates C_SpriteSheet from disk
   - **ID:** T-095
   - **Area:** engine/asset, engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-095-sprite-sheet-loader
   - **Blocked by:** (none)
   - **Acceptance:** (1) known sprite sheet (PNG + sidecar) loads from disk and populates C_SpriteSheet with correct frame count, grid size, and named animations; (2) unit test in test/asset/ covers load + round-trip; (3) fleet-build clean on linux-debug; (4) asset file format documented in a comment block at the top of the loader implementation
   - **Issue:** #283
@@ -214,11 +214,11 @@ Avoid:
   - **Notes:** Part of #14 (sprite-rendering epic). Replaces system_sprites_to_screen.hpp stub. Screen-composite layer at FRAMEBUFFER_TO_SCREEN stage (not trixel content). Follow backend-parity skill for GLSL/MSL port. Depends on T-095.
   - **Links:**
 
-- [ ] **Sprite: C_SpriteAnimation + animation-advance system** — component tracks sub-animation playback state; UPDATE-phase system advances frames and writes uvRect back to C_Sprite
+- [~] **Sprite: C_SpriteAnimation + animation-advance system** — component tracks sub-animation playback state; UPDATE-phase system advances frames and writes uvRect back to C_Sprite
   - **ID:** T-097
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-097-sprite-animation
   - **Blocked by:** (none)
   - **Acceptance:** (1) animation cycles at sheet-specified FPS independent of render rate; (2) LOOP/ONCE/PING_PONG modes all pass unit test expectations; (3) mid-playback sub-animation switch resets state cleanly with no frame glitch; (4) unit test in test/ covers time-advance math without requiring GPU/render pass; (5) fleet-build clean on active preset
   - **Issue:** #285
@@ -234,6 +234,72 @@ Avoid:
   - **Acceptance:** (1) fleet-run IRSpriteDemo launches and shows multiple animated sprites without crashing; (2) fleet-run IRSpriteDemo --auto-screenshot 10 produces committed shot list; (3) visual confirmation all three loop modes work and back-to-front sort is correct; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #286
   - **Notes:** Part of #14 (sprite-rendering epic). Use create-creation skill for scaffold. Bindings on ir.sprite.* not ir.render.*. Generated art asset acceptable. Depends on T-095, T-096, T-097.
+  - **Links:**
+
+- [ ] **Lua-driven ECS: design doc** — land docs/design/lua-driven-ecs.md capturing locked-in design decisions (Q1-Q5), public API shape, acceptance criteria, and out-of-scope follow-ups for the six-PR Lua-driven ECS stack
+  - **ID:** T-099
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) docs/design/lua-driven-ecs.md exists and covers Q1 (single native-SoA storage tier with type inference, no silent sol::table fallback), Q2 (archetype-batched dispatch, mandatory), Q3 (one ComponentId per type, C++ and Lua share identity), Q4 (system body hot-reload in v1; schema hot-reload deferred), Q5 (modifier-framework integration via field-binding registry); (2) public API surface documented (IRComponent.register, IRSystem.registerSystem, IRSystem.registerPipeline, IRSystem.replaceSystemBody, IRModifier.add); (3) parity gate spec recorded (Lua perf_grid within 1.5x C++ per-tick cost); (4) LuaJIT question recorded as follow-up if parity gate fails; (5) fleet-build clean; (6) no code changes outside docs/
+  - **Issue:** #487
+  - **Notes:** PR 1 of 6 for parent epic #293 (Lua-driven ECS authoring). No upstream dependencies. Full architect plan in .fleet/plans/T-099.md. Once this merges, plan also lives in-tree at docs/design/lua-driven-ecs.md.
+  - **Links:**
+
+- [ ] **Lua-driven ECS: Lua-defined components with type inference** — add IComponentDataLuaTyped + EntityManager::registerComponentDynamic; Lua surface: IRComponent.register with single native-SoA storage tier and type inference; modifier field bindings auto-registered
+  - **ID:** T-100
+  - **Area:** engine/entity, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-099
+  - **Acceptance:** (1) register C_Hp { current = 100, max = 100 } from Lua; attach to 100 entities; C++ test reads back Hp.current as a real int32 column, not sol::object; (2) explicit typed form { field = {type="float", default=100} } accepted; (3) unresolvable field type raises Lua error at registration naming the offending field; (4) auto-registered field binding "Hp.current" visible to modifier resolver; (5) identity rule: registering a duplicate name fails fast; (6) IREntity.addLuaComponent, getLuaComponent, removeLuaComponent bound; (7) fleet-build clean on linux-debug
+  - **Issue:** #488
+  - **Notes:** PR 2 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-100.md. Blocked by T-099 (design doc). Key files: engine/entity/include/irreden/entity/i_component_data.hpp (add IComponentDataLuaTyped impl), engine/entity/include/irreden/entity/entity_manager.hpp (add registerComponentDynamic), engine/script/include/irreden/script/lua_script.hpp (add registerComponent).
+  - **Links:**
+
+- [ ] **Lua-driven ECS: Lua-defined systems with archetype-batched dispatch** — add IRSystem::createSystemDynamic + LuaScript::registerSystem; archetype-batched dispatch (one sol::function call per archetype per tick); C++ and Lua share same ComponentId space
+  - **ID:** T-101
+  - **Area:** engine/system, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-100
+  - **Acceptance:** (1) Lua system iterates (C_Position3D, C_Velocity3D) both C++-defined plus Lua-defined C_Marker tag; C++ render system sees Lua-written C_Position3D changes next frame; (2) separate test shows one sol::function invocation per archetype per tick, not per-entity; (3) unbound C++ type requested in system fails fast with error pointing at lua_component_pack; (4) registerSystem returns a SystemId Lua can pass to registerPipeline; (5) fleet-build clean on linux-debug
+  - **Issue:** #489
+  - **Notes:** PR 3 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-101.md. Blocked by T-100 (Lua components). Key files: engine/system/include/irreden/system/ir_system.hpp (add createSystemDynamic), engine/system/include/irreden/system/system_manager.hpp (DynamicSystem dispatch path), engine/script/include/irreden/script/lua_script.hpp (add registerSystem).
+  - **Links:**
+
+- [ ] **Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings** — bind IRSystem::registerPipeline, SystemName/GameSystemName enums, and modifier framework (C_Modifiers, transforms, C_ResolvedFields, field-binding registry) to Lua; demo creation with pure-Lua initSystems
+  - **ID:** T-102
+  - **Area:** engine/script, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-101
+  - **Acceptance:** (1) Lua calls IRSystem.registerPipeline(IRTime.UPDATE, { IRSystem.systemId(SystemName.LIFETIME), luaSystemId, IRGameSystem.systemId(GameSystemName.GRID_BAKE) }) and all three execute in declared order; (2) IRModifier.add(entity, "Hp.current", { transform = MULTIPLY, value = 0.5 }) against Lua-defined component reflects in C_ResolvedFields; (3) sample demo creation whose entire initSystems lives in main.lua (mixing engine, game, and Lua systems) runs without crash; (4) fleet-build clean on linux-debug
+  - **Issue:** #490
+  - **Notes:** PR 4 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-102.md. Blocked by T-101 (Lua systems). New file: engine/script/include/irreden/script/lua_modifier_bindings.hpp. Convenience: IRSystem.systemId(SystemName.X) -> SystemId.
+  - **Links:**
+
+- [ ] **Lua-driven ECS: hot-reload of Lua system bodies** — add IRSystem::replaceSystemBody(systemId, newFn) C++ + Lua binding; rebinds sol::function in place with no archetype changes or entity migration; document in engine/script/CLAUDE.md
+  - **ID:** T-103
+  - **Area:** engine/script, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-102
+  - **Acceptance:** (1) change a math constant in a Regen tick body in main.lua; call IRSystem.replaceSystemBody(regenSystemId, newFn); observe next-tick behavior change without process restart; (2) SystemId unchanged across the body swap; (3) in-flight entities use new body on next tick with no special handling; (4) doc in engine/script/CLAUDE.md alongside existing trait-based binding pattern; (5) fleet-build clean on linux-debug
+  - **Issue:** #491
+  - **Notes:** PR 5 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-103.md. Blocked by T-102 (pipeline + modifier bindings). Component-schema hot-reload is explicitly out of scope (follow-up in docs/design/lua-driven-ecs.md).
+  - **Links:**
+
+- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+  - **ID:** T-104
+  - **Area:** engine/script, creations/demos/lua_perf_grid
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-103
+  - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
+  - **Issue:** #492
+  - **Notes:** PR 6 of 6 for parent epic #293 — formal acceptance gate for the entire Lua-driven ECS stack. Full architect plan in .fleet/plans/T-104.md. Blocked by T-103 (hot-reload). If parity gate fails, this PR does not merge; instead amend T-099's design doc with corrective decision (LuaJIT migration, codegen-bound bodies, etc.).
   - **Links:**
 
 ---
