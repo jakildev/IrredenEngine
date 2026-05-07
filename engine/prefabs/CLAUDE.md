@@ -5,6 +5,33 @@ domain under `engine/prefabs/irreden/`. Everything here is compiled by whoever
 includes it — there is no prefab .cpp. Keep headers lean; heavy logic belongs
 in `engine/<module>/src/`.
 
+## Hard rules (read before editing)
+
+Two redlines that get violated most often when adding prefab systems and
+components. The full reasoning, allowlists, and canonical patterns live in
+[`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md),
+[`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md), and
+[`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) — those auto-load
+when you open any C++ file. The capsules here are reminders.
+
+- **Math primitives go through IRMath.** Never `glm::*` or
+  `std::sin/cos/sqrt/abs/min/max/clamp` outside `engine/math/`.
+  Use `IRMath::vec3` not `glm::vec3`, `IRMath::clamp` not `std::clamp`,
+  `IRMath::kPi` not `glm::pi<float>()`. Need a primitive that isn't
+  there? Add the wrapper to `engine/math/` first, then call it.
+- **System state lives in `SystemParams`.** Never function-local
+  `static` for mutable or system-owned state — `static constexpr` /
+  `static const` for genuine compile-time constants is fine. Capture
+  the `SystemParams` pointer once in `create()`, pass into lambdas by
+  value (same per-tick cost). The full canonical pattern lives in
+  [`engine/system/CLAUDE.md`](../system/CLAUDE.md) and
+  [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md).
+- **No per-entity `getComponent` inside a system tick.** Add the
+  component to the system's template parameters instead. Foreign-entity
+  lookups for collisions/messages should batch the entities as a vector
+  rather than per-call inside the tick — see
+  [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
+
 ## Layout
 
 ```
