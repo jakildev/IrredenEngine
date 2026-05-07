@@ -48,7 +48,7 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 - [<severity>] <path>:<line> — <slip> — <fix>
 ```
 
-Severities: `needs-fix` for backwards member naming, missing `C_`, missing shader prefix, anonymous namespace in header. `nit` for abbreviation, feature-named helper namespace, enum case slip in less-trafficked code.
+Severities: `needs-fix` for backwards member naming, missing `C_`, missing shader prefix, anonymous namespace in header (may escalate to `blocker` if the definition ODR-violates across TUs). `nit` for abbreviation, feature-named helper namespace, enum case slip in less-trafficked code.
 
 Empty output if clean.
 
