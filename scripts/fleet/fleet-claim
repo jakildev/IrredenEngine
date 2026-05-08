@@ -43,6 +43,8 @@ set -euo pipefail
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
 RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
+FLEET_ENGINE_ROOT="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 
 # --- claim sidecar layout --------------------------------------------------
 #
@@ -714,6 +716,8 @@ cmd_cleanup() {
 
 cmd_check_stale() {
     # Release claims older than max_age seconds (default: 7200 = 2 hours).
+    # Also files a one-shot fleet:stuck-worktree GitHub issue for reservations
+    # older than 24h, capturing dirty files from the stalled worktree.
     local max_age="${1:-7200}"
     local now
     now=$(date +%s)
@@ -746,6 +750,68 @@ cmd_check_stale() {
     else
         echo "released $stale stale claim(s)"
     fi
+
+    # --- reservation staleness escalation ------------------------------------
+    # Reservations held for more than 24h without completing are escalated to
+    # a GitHub issue so the human can intervene. One-shot per reservation:
+    # once filed, a <worktree>.escalated sidecar prevents re-filing on
+    # subsequent check-stale runs.
+    local reservation_max_age=86400   # 24 hours
+    local label_ensured=0
+    if [[ ! -d "$RESERVATIONS_DIR" ]]; then
+        return 0
+    fi
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        [[ -n "$wt" ]] || continue
+        local epoch_n=$(( ${epoch:-0} ))
+        [[ $epoch_n -gt 0 ]] || continue
+        local res_age=$(( now - epoch_n ))
+        [[ $res_age -ge $reservation_max_age ]] || continue
+
+        local escalated_flag="$RESERVATIONS_DIR/$wt.escalated"
+        [[ ! -f "$escalated_flag" ]] || continue
+
+        # Ensure the GitHub label exists — called at most once per check-stale run.
+        if [[ $label_ensured -eq 0 ]]; then
+            gh label create "fleet:stuck-worktree" \
+                --repo "$FLEET_GITHUB_REPO" \
+                --description "Worktree holding a reservation for >24h without completing" \
+                --color "d73a4a" 2>/dev/null || true
+            label_ensured=1
+        fi
+
+        # Capture dirty files from the worktree.
+        local worktree_path="$FLEET_ENGINE_ROOT/.claude/worktrees/$wt"
+        local dirty_section
+        if [[ -d "$worktree_path" ]]; then
+            local raw_dirty
+            raw_dirty=$(git -C "$worktree_path" status --porcelain 2>/dev/null || true)
+            dirty_section="${raw_dirty:-(clean — no uncommitted changes)}"
+        else
+            dirty_section="(worktree directory not found at $worktree_path)"
+        fi
+
+        local age_h=$(( res_age / 3600 ))
+        local branch_show="${branch:-(none)}"
+
+        local tmpfile
+        tmpfile=$(mktemp /tmp/fleet-stuck-XXXXXX)
+        printf 'Worktree **%s** has held a reservation for **%s** for %dh without completing the task.\n\n**Branch:** %s\n**Reserved:** %s\n\n**Dirty files in worktree:**\n```\n%s\n```\n\nAuto-filed by `fleet-claim check-stale`. Run `fleet-claim release-worktree %s` to clear the reservation once resolved.\n' \
+            "$wt" "$tid" "$age_h" "$branch_show" "$ts" "$dirty_section" "$wt" > "$tmpfile"
+
+        local issue_out
+        if issue_out=$(gh issue create \
+            --repo "$FLEET_GITHUB_REPO" \
+            --title "fleet: stuck worktree — $wt holding $tid for ${age_h}h" \
+            --body-file "$tmpfile" \
+            --label "fleet:stuck-worktree" 2>&1); then
+            echo "stuck-worktree: filed $issue_out for $wt ($tid, held ${age_h}h)"
+            touch "$escalated_flag"
+        else
+            echo "stuck-worktree: failed to file issue for $wt ($tid): $issue_out" >&2
+        fi
+        rm -f "$tmpfile"
+    done < <(reservations_dump)
 }
 
 cmd_stack() {
