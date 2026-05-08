@@ -209,62 +209,28 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
-- [~] **Worker role docs: stackable-blocked fallback pickup tier** — update sonnet-author and opus-worker step 3 with two-tier task pickup: unblocked first, stackable-blocked only if no unblocked tasks exist
-  - **ID:** T-112
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-112-stackable-blocked-pickup
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) role-sonnet-author.md and role-opus-worker.md step 3 describe two-tier pickup with only-if-no-unblocked ordering; (2) stacked PR opens with --base $base --label fleet:stacked via commit-and-push cursor-stack mode; (3) multi-blocker tasks (Blocked by: T-A, T-B) explicitly excluded from fallback tier; (4) engine-only guard: game-side stackable tasks not picked up in v1; (5) fleet-claim claim --stackable-on invocation described in worker steps
-  - **Issue:** (none)
-  - **Notes:** PR 3 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Must land after T-110 and T-111. Key files: .claude/commands/role-sonnet-author.md, .claude/commands/role-opus-worker.md.
-  - **Links:**
-
 - [ ] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
   - **ID:** T-115
   - **Area:** docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-112
+  - **Blocked by:** (none)
   - **Acceptance:** (1) docs/agents/FLEET.md has "Cross-author stacking (scheduler)" section with full lifecycle walkthrough; (2) Q1 (only-if-no-unblocked), Q2 (merger-driven hybrid rebase), Q3 (single-blocker-only v1) decisions documented; (3) v1 limitations listed (engine-only, single-blocker, multi-blocker not eligible); (4) pointer to fleet-claim and fleet-state-scout for implementation detail; (5) no other docs changed
   - **Issue:** #501
   - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
   - **Links:**
 
-- [~] **Render: per-canvas light scope via CHILD_OF relation** — scope C_LightSource to a specific canvas; lights become children of their target canvas via CHILD_OF; lighting systems iterate per-canvas through existing RelationParams machinery
-  - **ID:** T-116
-  - **Area:** engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-116-per-canvas-light-scope
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) two-canvas demo where a C_LightSource parented via CHILD_OF to canvas A produces no lighting contribution in canvas B; (2) existing single-canvas lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot) unaffected; (3) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #363
-  - **Notes:** Follow-up from lighting-fidelity-polish PR (audit finding #11). Preferred implementation: Option B (CHILD_OF relation) over Option A (explicit scope tag) — composes with existing RelationParams machinery and falls out of existing system patterns. Every C_LightSource currently contributes to every canvas with a C_CanvasLightVolume; scoping is useful for UI/inset canvases that should not receive world-space lights.
-  - **Links:**
-
-- [ ] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
+- [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-118-hdr-pipeline
   - **Blocked by:** (none)
   - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #366
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-
-- [~] **Fleet: per-role concurrency cap config + dispatcher enforcement** — fleet-up.conf per-role concurrency field; dispatcher defers dispatch when in-flight+reserved >= cap[role]; default opus-worker=2, sonnet-fleet=4
-  - **ID:** T-125
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-125-fleet-concurrency-cap
-  - **Blocked by:** (none)
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) fleet-up.conf gains per-role concurrency config (opus-worker: concurrency=2, sonnet-fleet: concurrency=4); (2) dispatcher defers when in-flight+reserved for role >= cap; (3) with concurrency=2, third concurrent opus-worker iteration deferred even with free worktrees; (4) env-overridable; (5) per-pane parallelism preserved for roles under cap; (6) default values preserve current behavior
-  - **Issue:** (none)
-  - **Notes:** PR 6 of 6 for #521, parallelizable with T-123 after T-122. Full plan in .fleet/plans/T-120.md. Files: ~/bin/fleet-up (config schema), ~/bin/fleet-dispatcher (cap-check at dispatch time). Soft cap — orthogonal to reservations; reservations protect dirty-state continuity, cap protects credit budget.
-  - **Links:**
 
 - [~] **Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO** — remove OccupancyGrid SSBO reads from the propagation system and shaders, replacing with a decoupled SSBO producer; unblocks T-092 deletion pass
   - **ID:** T-126
@@ -290,6 +256,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
+- [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
+- [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
 - [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
 - [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
@@ -307,6 +276,3 @@ Avoid:
 - [x] **T-108** — Docs: replace stale fleet-babysit references in transient role docs · Owner: claude/T-108-docs-fleet-dispatcher-refs · PR: https://github.com/jakildev/IrredenEngine/pull/511
 - [x] **T-107** — Fleet: fix pane_is_running_claude for macOS version-string process names · Owner: claude/T-107-pane-is-running-claude-fix · PR: https://github.com/jakildev/IrredenEngine/pull/510
 - [x] **T-105** — Fleet: project_queue_manager trigger on PR-merge events · Owner: claude/T-105-qm-pr-merge-trigger · PR: https://github.com/jakildev/IrredenEngine/pull/509
-- [x] **T-096** — Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort · Owner: claude/T-096-sprites-to-screen · PR: https://github.com/jakildev/IrredenEngine/pull/507
-- [x] **T-106** — Fleet: timeout-wrap tmux send-keys in fleet-dispatcher · Owner: claude/T-106-timeout-tmux-send-keys · PR: https://github.com/jakildev/IrredenEngine/pull/506
-- [x] **T-099** — Lua-driven ECS: design doc · Owner: claude/T-099-lua-ecs-design-doc · PR: https://github.com/jakildev/IrredenEngine/pull/496
