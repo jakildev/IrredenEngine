@@ -1851,6 +1851,7 @@ cmd_release_worktree() {
         local task_id
         task_id=$(reservation_task_id "$worktree")
         rm -f "$file"
+        rm -f "$RESERVATIONS_DIR/$worktree.escalated"
         echo "released reservation: $worktree (was: $task_id)"
     else
         echo "no reservation for worktree: $worktree" >&2
