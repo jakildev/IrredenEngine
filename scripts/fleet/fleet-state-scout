@@ -179,6 +179,29 @@ def fetch_human_approved(repo):
     return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
 
 
+def fetch_closed_fleet_queued(repo, limit=20):
+    # Closed fleet:queued issues whose TASKS.md [~] entry hasn't been flipped
+    # to [x] yet. --limit caps API cost; recently-closed issues are returned
+    # first by default so the 20-item window covers any realistic merge wave.
+    out = run_capture([
+        "gh", "issue", "list", "--repo", repo,
+        "--label", "fleet:queued", "--state", "closed",
+        "--limit", str(limit),
+        "--json", "number,title,labels,updatedAt",
+    ])
+    if out is None:
+        return []
+    try:
+        issues = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh issue list {repo} --label fleet:queued --state closed: bad JSON: {e}")
+        return []
+    for issue in issues:
+        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    issues.sort(key=lambda issue: issue.get("number", 0))
+    return issues
+
+
 TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
 TASK_FIELD_RE = re.compile(r"^\s+- \*\*([^:]+?):\*\*\s*(.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -614,6 +637,21 @@ def project_opus_reviewer(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _needs_flip_entries(repo_state):
+    # Yield (task_id, issue_num) for [~] tasks whose linked fleet:queued issue
+    # closed (PR merged) but TASKS.md hasn't been flipped to [x] yet.
+    closed_queued_nums = {
+        i["number"] for i in repo_state.get("closed_fleet_queued", [])
+    }
+    for task in repo_state.get("tasks", {}).get("open", []):
+        if task.get("status") != "~":
+            continue
+        issue_ref = task.get("issue") or ""
+        m = re.match(r"#(\d+)", issue_ref)
+        if m and int(m.group(1)) in closed_queued_nums:
+            yield task.get("id") or task.get("title"), int(m.group(1))
+
+
 def project_queue_manager(state):
     items = []
     for repo, repo_state in state["repos"].items():
@@ -626,6 +664,9 @@ def project_queue_manager(state):
         for task in repo_state.get("tasks", {}).get("done", []):
             items.append({"kind": "done", "repo": repo,
                           "id": task.get("id") or task.get("title")})
+        for task_id, issue_num in _needs_flip_entries(repo_state):
+            items.append({"kind": "needs_flip", "repo": repo,
+                          "task_id": task_id, "issue": issue_num})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -745,7 +786,7 @@ def slice_opus_reviewer(state):
 
 
 def slice_queue_manager(state):
-    out = {"needs_plan": [], "human_approved": [], "tasks_done": []}
+    out = {"needs_plan": [], "human_approved": [], "tasks_done": [], "needs_flip": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("needs_plan", []):
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
@@ -753,6 +794,10 @@ def slice_queue_manager(state):
             out["human_approved"].append(_slice_issue_with_repo(repo_key, issue))
         for task in repo_state.get("tasks", {}).get("done", []):
             out["tasks_done"].append(_slice_task_with_repo(repo_key, task))
+        for task_id, issue_num in _needs_flip_entries(repo_state):
+            out["needs_flip"].append(
+                {"repo": repo_key, "task_id": task_id, "issue": issue_num}
+            )
     return out
 
 
@@ -814,6 +859,7 @@ def collect_state():
             ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
+            ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
         ]
     if "game" in repos:
@@ -821,6 +867,7 @@ def collect_state():
             ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
+            ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_tasks(GAME)),
         ]
 
