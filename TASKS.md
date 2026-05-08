@@ -156,18 +156,18 @@ Avoid:
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
   - **Owner:** claude/T-092-occupancy-grid-teardown
-  - **Blocked by:** (none)
+  - **Blocked by:** T-126
   - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
   - **Issue:** #429
   - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first). CAUTION: T-091 (issue #428) was manually closed without a merged PR — the AO migration via trixelDistances was NOT completed; verify that `c_compute_voxel_ao` still does not read `OccupancyGridBuffer` before starting this deletion, or re-file the AO migration work first.
   - **Links:**
 
 
-- [ ] **Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings** — bind IRSystem::registerPipeline, SystemName/GameSystemName enums, and modifier framework (C_Modifiers, transforms, C_ResolvedFields, field-binding registry) to Lua; demo creation with pure-Lua initSystems
+- [~] **Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings** — bind IRSystem::registerPipeline, SystemName/GameSystemName enums, and modifier framework (C_Modifiers, transforms, C_ResolvedFields, field-binding registry) to Lua; demo creation with pure-Lua initSystems
   - **ID:** T-102
   - **Area:** engine/script, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-102-lua-pipeline-modifier-bindings
   - **Blocked by:** (none)
   - **Acceptance:** (1) Lua calls IRSystem.registerPipeline(IRTime.UPDATE, { IRSystem.systemId(SystemName.LIFETIME), luaSystemId, IRGameSystem.systemId(GameSystemName.GRID_BAKE) }) and all three execute in declared order; (2) IRModifier.add(entity, "Hp.current", { transform = MULTIPLY, value = 0.5 }) against Lua-defined component reflects in C_ResolvedFields; (3) sample demo creation whose entire initSystems lives in main.lua (mixing engine, game, and Lua systems) runs without crash; (4) fleet-build clean on linux-debug
   - **Issue:** #490
@@ -220,23 +220,12 @@ Avoid:
   - **Notes:** PR 3 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Must land after T-110 and T-111. Key files: .claude/commands/role-sonnet-author.md, .claude/commands/role-opus-worker.md.
   - **Links:**
 
-- [~] **Merger: cascade rebase on upstream force-push for stacked PRs** — new merger-loop step: detect stacked child PRs whose upstream tip moved, rebase clean children, label conflicted children fleet:needs-base-update
-  - **ID:** T-113
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-113-merger-cascade-rebase
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) merger loop detects fleet:stacked PRs with open base PR whose tip SHA moved; (2) clean rebase -> git push --force-with-lease, prior approval labels preserved; (3) conflict -> git rebase --abort, fleet:needs-base-update label added, conflict-files comment posted; (4) fleet-labels updated with fleet:needs-base-update registration; (5) blocker's author never touches child branch; (6) sidecar-based SHA tracking avoids re-processing already-rebased children
-  - **Issue:** (none)
-  - **Notes:** PR 4 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: .claude/commands/role-merger.md, scripts/fleet/fleet-labels. Runs independently from T-112.
-  - **Links:**
-
 - [ ] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
   - **ID:** T-115
   - **Area:** docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-112, T-113
+  - **Blocked by:** T-112
   - **Acceptance:** (1) docs/agents/FLEET.md has "Cross-author stacking (scheduler)" section with full lifecycle walkthrough; (2) Q1 (only-if-no-unblocked), Q2 (merger-driven hybrid rebase), Q3 (single-blocker-only v1) decisions documented; (3) v1 limitations listed (engine-only, single-blocker, multi-blocker not eligible); (4) pointer to fleet-claim and fleet-state-scout for implementation detail; (5) no other docs changed
   - **Issue:** #501
   - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
@@ -264,18 +253,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-
-- [~] **Fleet: dispatcher reservation-aware pane selection** — when firing a role-X iteration, route to reserved pane for role first; free-pane fallback second; defer if in-flight+reserved >= cap
-  - **ID:** T-121
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-121-auto-reserve-on-claim
-  - **Blocked by:** (none)
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) dispatcher routes to reserved pane when a reservation exists for matching role; (2) free-pane fallback works when no reservation matches; (3) cap-check defers dispatch if in-flight+reserved >= per-role cap; (4) fleet-claim reserve in test → dispatcher routes to reserved pane; remove → routes to free pane
-  - **Issue:** (none)
-  - **Notes:** PR 2 of 6 for #521. Full plan in .fleet/plans/T-120.md. New helper: fleet-claim reservation-role <worktree> → prints role tag from TASKS.md entry. Key file: ~/bin/fleet-dispatcher. @fleet-role kept as fallback signal; reservations take priority.
-  - **Links:**
 
 - [~] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
   - **ID:** T-123
@@ -313,6 +290,17 @@ Avoid:
   - **Notes:** PR 6 of 6 for #521, parallelizable with T-123 after T-122. Full plan in .fleet/plans/T-120.md. Files: ~/bin/fleet-up (config schema), ~/bin/fleet-dispatcher (cap-check at dispatch time). Soft cap — orthogonal to reservations; reservations protect dirty-state continuity, cap protects credit budget.
   - **Links:**
 
+- [ ] **Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO** — remove OccupancyGrid SSBO reads from the propagation system and shaders, replacing with a decoupled SSBO producer; unblocks T-092 deletion pass
+  - **ID:** T-126
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) c_propagate_light_volume.glsl and .metal contain zero reads of OccupancyGridBuffer/occupancyGetBit; (2) system_compute_light_volume.hpp archetype no longer includes C_OccupancyGrid; (3) all lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) render correctly; (4) fleet-build clean on linux-debug AND macos-debug; (5) T-092's hidden-consumer blocker is resolved
+  - **Issue:** #532
+  - **Notes:** Path 1 (standalone bitfield producer, recommended): move SSBO production out of C_OccupancyGrid lifecycle; bit-packing and camera-anchor math already in system_build_occupancy_grid.hpp. Path 2 (trixelDistances LOS) is the long-term direction per engine/render/CLAUDE.md but higher complexity — out of scope for this targeted unblock. Key files: system_compute_light_volume.hpp (remove C_OccupancyGrid from archetype, use standalone produced SSBO), c_propagate_light_volume.glsl and .metal (remove OccupancyGrid binding), creations demo callsites (remove C_OccupancyGrid setComponent). Also covers findings from issues #524 and #530 (parallel escalations of the same hidden consumer). T-117 (PR #522, SDF occlusion) added a second bitfield region (lightBlockerGetBit) to the same SSBO — if #522 is already merged, include that region in the migration too.
+  - **Links:**
+
 ---
 
 ## In progress
@@ -326,6 +314,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
+- [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
 - [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-role-startup-reservation · PR: https://github.com/jakildev/IrredenEngine/pull/533
 - [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
@@ -344,5 +334,3 @@ Avoid:
 - [x] **T-099** — Lua-driven ECS: design doc · Owner: claude/T-099-lua-ecs-design-doc · PR: https://github.com/jakildev/IrredenEngine/pull/496
 - [x] **T-097** — Sprite: C_SpriteAnimation + animation-advance system · Owner: claude/T-097-sprite-animation · PR: https://github.com/jakildev/IrredenEngine/pull/495
 - [x] **T-095** — Sprite: sprite-sheet asset format + loader · Owner: claude/T-095-sprite-sheet-loader · PR: https://github.com/jakildev/IrredenEngine/pull/494
-- [x] **T-094** — Render: camera-anchor GPU light volume for fidelity past static window · Owner: claude/render-camera-anchored-grids · PR: https://github.com/jakildev/IrredenEngine/pull/450
-- [x] **T-072** — Render: GPU-side light-volume propagation (jump flooding / iterative dilation) · Owner: claude/render-light-volume-gpu · PR: https://github.com/jakildev/IrredenEngine/pull/448
