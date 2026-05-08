@@ -29,6 +29,31 @@ free functions: `getEntityManager()`, `createEntity(...)`,
 - **`Relation`** enum — `NONE`, `CHILD_OF`, `PARENT_TO`, `SIBLING_OF`.
   Relations are registered as pseudo-components via `registerRelation()`.
 
+## Component registration: template vs dynamic
+
+`registerComponent<T>()` is the C++ path: a `ComponentId` is allocated
+the first time the type is referenced, backed by an
+`IComponentDataImpl<T>` storing one `std::vector<T>` per archetype.
+
+`registerComponentDynamic(typeName, smart_ComponentData)` is the
+runtime path: caller supplies a fully-constructed `IComponentData`
+impl and a user-visible name. Used by Lua-defined components (see
+`engine/script/CLAUDE.md` "Lua-defined components") which back their
+columns with the script-layer `IComponentDataLuaTyped`. Both paths
+share `m_pureComponentTypes` / `m_pureComponentVectors` so
+`ComponentId`s are drawn from one space; archetype storage,
+move/pack/remove, and pre-destroy hooks all work uniformly.
+
+Dynamic add: `addComponentDynamic(entity, componentId)` adds a
+runtime-registered component using the impl's `appendDefaultRow()`.
+Default impl returns `false` — non-Lua impls reject this path so a
+caller is forced to use `setComponent<T>(entity, value)` with an
+explicit value (matters for components with `= delete`d default
+ctors, e.g. `C_CanvasAOTexture`). Dynamic readers go through
+`getComponentDataAndRow(entity, componentId)` which returns the
+type-erased `IComponentData*` and row index; the caller casts to
+the concrete impl.
+
 ## Iteration API
 
 `forEachComponent(lambda)` iterates all archetype nodes that contain a

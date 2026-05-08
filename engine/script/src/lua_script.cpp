@@ -2,7 +2,130 @@
 
 #include <irreden/script/lua_script.hpp>
 
+#include <irreden/common/modifier_field_registry.hpp>
+
+#include <deque>
+#include <string>
+
 namespace IRScript {
+
+namespace {
+
+// Stable storage for field-binding names registered from Lua. The
+// modifier framework's FieldRegistry stores `const char*` and assumes
+// static-storage lifetime for those pointers (see
+// engine/prefabs/irreden/common/modifier_field_registry.hpp). Lua scripts
+// produce names at runtime, so we own them here in a deque (pointer-
+// stable across pushes) for the lifetime of the process. Registered
+// names are intentionally never freed — modifier ids are issued once
+// and consumers may keep them across world restarts.
+std::deque<std::string> &luaFieldBindingNames() {
+    static std::deque<std::string> names;
+    return names;
+}
+
+// Modifier-targetable field types — only these auto-register a
+// FieldBindingId because the modifier resolver writes float scalars
+// (see docs/design/modifiers.md). String / function / table fields are
+// stored natively but cannot be modifier targets.
+bool isModifierTargetable(LuaFieldType t) {
+    return t == LuaFieldType::INT32 || t == LuaFieldType::FLOAT || t == LuaFieldType::BOOL;
+}
+
+LuaFieldType inferTypeFromDefault(const sol::object &value) {
+    if (value.is<bool>())
+        return LuaFieldType::BOOL;
+    if (value.is<int>())
+        return LuaFieldType::INT32;
+    if (value.is<float>())
+        return LuaFieldType::FLOAT;
+    if (value.is<std::string>())
+        return LuaFieldType::STRING;
+    if (value.is<sol::function>())
+        return LuaFieldType::FUNCTION;
+    // Numeric values that aren't ints (Lua 5.4 distinguishes integer
+    // and float subtypes; sol2 maps `5.0` to float and `5` to int).
+    if (value.is<double>())
+        return LuaFieldType::FLOAT;
+    // Anything else — including nested tables — is a registration-time
+    // error per Q1 of the design (no silent sol::table fallback).
+    return LuaFieldType::TABLE; // sentinel: caller checks this and rejects
+}
+
+LuaFieldType parseExplicitTypeTag(const std::string &tag, bool &ok) {
+    ok = true;
+    if (tag == "int" || tag == "int32" || tag == "integer")
+        return LuaFieldType::INT32;
+    if (tag == "float" || tag == "number")
+        return LuaFieldType::FLOAT;
+    if (tag == "bool" || tag == "boolean")
+        return LuaFieldType::BOOL;
+    if (tag == "string")
+        return LuaFieldType::STRING;
+    if (tag == "function")
+        return LuaFieldType::FUNCTION;
+    if (tag == "table")
+        return LuaFieldType::TABLE;
+    ok = false;
+    return LuaFieldType::TABLE;
+}
+
+// Build a single field schema from one (key, value) entry of the
+// defaults table. Supports both the short form (`current = 100`) and
+// the explicit form (`current = { type = "float", default = 100 }`).
+// Throws sol::error (caught by the protected_function path) on any
+// type-inference failure so the user sees a Lua-side error pointing at
+// the offending field.
+LuaFieldSchema buildFieldSchema(
+    const std::string &componentName, const std::string &fieldName, const sol::object &raw
+) {
+    LuaFieldSchema s;
+    s.name_ = fieldName;
+
+    if (raw.is<sol::table>()) {
+        sol::table t = raw.as<sol::table>();
+        sol::optional<std::string> tag = t.get<sol::optional<std::string>>("type");
+        sol::object dflt = t.get<sol::object>("default");
+        if (tag) {
+            bool ok = false;
+            const LuaFieldType inferred = parseExplicitTypeTag(*tag, ok);
+            if (!ok) {
+                throw sol::error{
+                    "IRComponent.register: " + componentName + "." + fieldName +
+                    " has unknown type tag '" + *tag +
+                    "' (expected one of int|float|bool|string|function|table)"
+                };
+            }
+            s.type_ = inferred;
+            s.default_ = dflt;
+            return s;
+        }
+        // No explicit `type` tag in the inner table → user wanted the
+        // short form with a literal table value, which is a Q1
+        // registration error (no implicit table fallback).
+        throw sol::error{
+            "IRComponent.register: " + componentName + "." + fieldName +
+            " has a table default with no `type` tag — use `{ type = \"table\", default = {...} }` "
+            "to opt in"
+        };
+    }
+
+    const LuaFieldType inferred = inferTypeFromDefault(raw);
+    if (inferred == LuaFieldType::TABLE) {
+        // Sentinel from inferTypeFromDefault — the value didn't match
+        // any native column type. Hard fail with the field name.
+        throw sol::error{
+            "IRComponent.register: " + componentName + "." + fieldName +
+            " has unsupported default value (cannot infer native type — "
+            "use { type = \"...\", default = ... } to disambiguate)"
+        };
+    }
+    s.type_ = inferred;
+    s.default_ = raw;
+    return s;
+}
+
+} // namespace
 
 // lua_dofile runs a lua script. Global functions and variables
 // can be accessed via the lua stack.
@@ -49,19 +172,20 @@ LuaScript::LuaScript()
         IRMath::PlaneIso::YZ
     );
     m_lua["CoordinateAxis"] = m_lua.create_table_with(
-        "XAxis", static_cast<int>(IRMath::CoordinateAxis::XAxis),
-        "YAxis", static_cast<int>(IRMath::CoordinateAxis::YAxis),
-        "ZAxis", static_cast<int>(IRMath::CoordinateAxis::ZAxis)
+        "XAxis",
+        static_cast<int>(IRMath::CoordinateAxis::XAxis),
+        "YAxis",
+        static_cast<int>(IRMath::CoordinateAxis::YAxis),
+        "ZAxis",
+        static_cast<int>(IRMath::CoordinateAxis::ZAxis)
     );
-    m_lua["IRMath"]["layoutGridCentered"] = [](
-                                                int index,
-                                                int count,
-                                                int columns,
-                                                float spacingPrimary,
-                                                float spacingSecondary,
-                                                IRMath::PlaneIso plane,
-                                                float depth
-                                            ) {
+    m_lua["IRMath"]["layoutGridCentered"] = [](int index,
+                                               int count,
+                                               int columns,
+                                               float spacingPrimary,
+                                               float spacingSecondary,
+                                               IRMath::PlaneIso plane,
+                                               float depth) {
         return IRMath::layoutGridCentered(
             index,
             count,
@@ -72,15 +196,13 @@ LuaScript::LuaScript()
             depth
         );
     };
-    m_lua["IRMath"]["layoutZigZagCentered"] = [](
-                                                  int index,
-                                                  int count,
-                                                  int itemsPerZag,
-                                                  float spacingPrimary,
-                                                  float spacingSecondary,
-                                                  IRMath::PlaneIso plane,
-                                                  float depth
-                                              ) {
+    m_lua["IRMath"]["layoutZigZagCentered"] = [](int index,
+                                                 int count,
+                                                 int itemsPerZag,
+                                                 float spacingPrimary,
+                                                 float spacingSecondary,
+                                                 IRMath::PlaneIso plane,
+                                                 float depth) {
         return IRMath::layoutZigZagCentered(
             index,
             count,
@@ -91,15 +213,13 @@ LuaScript::LuaScript()
             depth
         );
     };
-    m_lua["IRMath"]["layoutZigZagPath"] = [](
-                                                int index,
-                                                int count,
-                                                int itemsPerSegment,
-                                                float spacingPrimary,
-                                                float spacingSecondary,
-                                                IRMath::PlaneIso plane,
-                                                float depth
-                                            ) {
+    m_lua["IRMath"]["layoutZigZagPath"] = [](int index,
+                                             int count,
+                                             int itemsPerSegment,
+                                             float spacingPrimary,
+                                             float spacingSecondary,
+                                             IRMath::PlaneIso plane,
+                                             float depth) {
         return IRMath::layoutZigZagPath(
             index,
             count,
@@ -110,35 +230,51 @@ LuaScript::LuaScript()
             depth
         );
     };
-    m_lua["IRMath"]["layoutSquareSpiral"] = [](
-                                                 int index, float spacing, IRMath::PlaneIso plane, float depth
-                                             ) {
-        return IRMath::layoutSquareSpiral(index, spacing, plane, depth);
-    };
-    m_lua["IRMath"]["layoutCircle"] =
-        [](int index, int count, float radius, IRMath::PlaneIso plane, float depth,
-           sol::optional<float> startAngleRad) {
-            const float angle =
-                startAngleRad.value_or(-1.57079633f);  // -pi/2 = top
-            return IRMath::layoutCircle(index, count, radius, angle, plane, depth);
+    m_lua["IRMath"]["layoutSquareSpiral"] =
+        [](int index, float spacing, IRMath::PlaneIso plane, float depth) {
+            return IRMath::layoutSquareSpiral(index, spacing, plane, depth);
         };
+    m_lua["IRMath"]["layoutCircle"] = [](int index,
+                                         int count,
+                                         float radius,
+                                         IRMath::PlaneIso plane,
+                                         float depth,
+                                         sol::optional<float> startAngleRad) {
+        const float angle = startAngleRad.value_or(-1.57079633f); // -pi/2 = top
+        return IRMath::layoutCircle(index, count, radius, angle, plane, depth);
+    };
     m_lua["IRMath"]["layoutHelix"] =
         [](int index, int count, float radius, float turns, float heightSpan, int axis) {
             return IRMath::layoutHelix(
-                index, count, radius, turns, heightSpan,
+                index,
+                count,
+                radius,
+                turns,
+                heightSpan,
                 static_cast<IRMath::CoordinateAxis>(axis)
             );
         };
-    m_lua["IRMath"]["layoutPathTangentArcs"] =
-        [](int index, int count, float radius, int blocksPerArc, float zStep, int axis,
-           sol::optional<float> startAngleRad, sol::optional<bool> invert) {
-            const float angle = startAngleRad.value_or(0.785398163f);
-            const bool inv = invert.value_or(false);
-            return IRMath::layoutPathTangentArcs(
-                index, count, radius, blocksPerArc, zStep,
-                static_cast<IRMath::CoordinateAxis>(axis), angle, inv
-            );
-        };
+    m_lua["IRMath"]["layoutPathTangentArcs"] = [](int index,
+                                                  int count,
+                                                  float radius,
+                                                  int blocksPerArc,
+                                                  float zStep,
+                                                  int axis,
+                                                  sol::optional<float> startAngleRad,
+                                                  sol::optional<bool> invert) {
+        const float angle = startAngleRad.value_or(0.785398163f);
+        const bool inv = invert.value_or(false);
+        return IRMath::layoutPathTangentArcs(
+            index,
+            count,
+            radius,
+            blocksPerArc,
+            zStep,
+            static_cast<IRMath::CoordinateAxis>(axis),
+            angle,
+            inv
+        );
+    };
 }
 
 LuaScript::LuaScript(const char *filename)
@@ -177,6 +313,120 @@ void LuaScript::scriptFile(const char *filename) {
 
 sol::table LuaScript::getTable(const char *name) {
     return m_lua[name];
+}
+
+void LuaScript::bindLuaDrivenEcs() {
+    // Idempotent: re-binding would overwrite identical Lua tables but
+    // the C++ side would re-register IComponent types in the entity
+    // manager — which would fail by name collision. Guard once.
+    if (m_lua["IRComponent"].valid()) {
+        return;
+    }
+
+    m_lua["IRComponent"] = m_lua.create_table();
+
+    auto registerComponent =
+        [this](const std::string &componentName, sol::table defaults) -> sol::object {
+        auto &em = IREntity::getEntityManager();
+        if (em.isComponentRegistered(componentName)) {
+            throw sol::error{"IRComponent.register: '" + componentName + "' is already registered"};
+        }
+
+        std::vector<LuaFieldSchema> schema;
+        schema.reserve(8);
+        for (auto &kv : defaults) {
+            sol::optional<std::string> keyName = kv.first.as<sol::optional<std::string>>();
+            if (!keyName) {
+                throw sol::error{
+                    "IRComponent.register: '" + componentName + "' has a non-string field key"
+                };
+            }
+            schema.push_back(buildFieldSchema(componentName, *keyName, kv.second));
+        }
+
+        std::vector<IRComponents::FieldBindingId> fieldIds;
+        fieldIds.reserve(schema.size());
+        for (const auto &f : schema) {
+            if (!isModifierTargetable(f.type_)) {
+                fieldIds.push_back(IRComponents::kInvalidFieldId);
+                continue;
+            }
+            auto &names = luaFieldBindingNames();
+            names.emplace_back(componentName + "." + f.name_);
+            const auto id = IRPrefab::Modifier::detail::globalFieldRegistry().registerField(
+                names.back().c_str()
+            );
+            fieldIds.push_back(id);
+        }
+
+        auto impl = std::make_unique<IComponentDataLuaTyped>(schema);
+        const IREntity::ComponentId componentId =
+            em.registerComponentDynamic(componentName, std::move(impl));
+        IR_ASSERT(
+            componentId != IREntity::kNullComponent,
+            "registerComponentDynamic returned kNullComponent for {} (duplicate slipped past "
+            "isComponentRegistered check)",
+            componentName.c_str()
+        );
+
+        sol::table handle = m_lua.create_table();
+        handle["typeName"] = componentName;
+        handle["componentId"] = static_cast<lua_Integer>(componentId);
+        sol::table fieldsTable = m_lua.create_table();
+        for (std::size_t i = 0; i < schema.size(); ++i) {
+            sol::table fieldEntry = m_lua.create_table();
+            fieldEntry["name"] = schema[i].name_;
+            fieldEntry["type"] = std::string{toString(schema[i].type_)};
+            fieldEntry["bindingId"] = static_cast<lua_Integer>(fieldIds[i]);
+            fieldsTable[schema[i].name_] = fieldEntry;
+        }
+        handle["fields"] = fieldsTable;
+        return sol::make_object(m_lua, handle);
+    };
+
+    m_lua["IRComponent"]["register"] = registerComponent;
+
+    if (!m_lua["IREntity"].valid()) {
+        m_lua["IREntity"] = m_lua.create_table();
+    }
+
+    m_lua["IREntity"]["addLuaComponent"] = [this](
+                                               IRScript::LuaEntity entity,
+                                               sol::table componentDef,
+                                               sol::optional<sol::table> overrides
+                                           ) {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        auto &em = IREntity::getEntityManager();
+        em.addComponentDynamic(entity.entity, componentId);
+        if (overrides) {
+            auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
+            IR_ASSERT(data != nullptr, "addLuaComponent: post-add lookup failed");
+            auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+            typed->writeRowFromTable(row, *overrides);
+        }
+    };
+
+    m_lua["IREntity"]["getLuaComponent"] =
+        [this](IRScript::LuaEntity entity, sol::table componentDef) -> sol::object {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        auto &em = IREntity::getEntityManager();
+        auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
+        if (!data)
+            return sol::make_object(m_lua, sol::lua_nil);
+        auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+        return sol::make_object(m_lua, typed->readRowAsTable(row, m_lua));
+    };
+
+    m_lua["IREntity"]["removeLuaComponent"] = [](IRScript::LuaEntity entity,
+                                                 sol::table componentDef) {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        IREntity::getEntityManager().removeComponentDynamic(entity.entity, componentId);
+    };
+
+    m_lua["IREntity"]["hasLuaComponent"] = [](IRScript::LuaEntity entity, sol::table componentDef) {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
+    };
 }
 
 } // namespace IRScript

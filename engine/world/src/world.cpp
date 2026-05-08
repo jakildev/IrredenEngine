@@ -24,6 +24,7 @@ World::World(const char *configFileName)
           m_worldConfig["monitor_index"].get_integer(),
           m_worldConfig["monitor_name"].get_string()
       }
+    , m_lua{}
     , m_entityManager{}
     , m_commandManager{}
     , m_systemManager{}
@@ -39,7 +40,6 @@ World::World(const char *configFileName)
     , m_audioManager{}
     , m_timeManager{}
     , m_videoManager{}
-    , m_lua{}
     , m_waitForFirstUpdateInput{
           m_worldConfig["start_updates_on_first_key_press"].get_boolean()
       }

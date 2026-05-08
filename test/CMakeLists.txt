@@ -25,6 +25,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  script/lua_component_register_test.cpp
   script/modifier_lua_test.cpp
   utility/ir_utility_test.cpp
 )
