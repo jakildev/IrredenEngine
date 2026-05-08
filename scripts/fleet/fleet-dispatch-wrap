@@ -23,7 +23,10 @@ PANE_KEY="${1:?fleet-dispatch-wrap: missing pane_key}"
 MODEL="${2:?fleet-dispatch-wrap: missing model}"
 EFFORT="${3:?fleet-dispatch-wrap: missing effort}"
 ROLE="${4:?fleet-dispatch-wrap: missing role}"
-RATE_LIMIT_DIR="$HOME/.fleet/state/rate-limit"
+# Track fleet-dispatcher's STATE_DIR via the same env-var override so a
+# config change in one place propagates to both scripts.
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
 claude --model "$MODEL" --effort "$EFFORT" --print \
     --output-format stream-json --include-partial-messages --verbose \

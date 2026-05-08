@@ -57,7 +57,7 @@ set -euo pipefail
 # --- Paths -----------------------------------------------------------------
 
 FLEET_SESSION="${FLEET_SESSION:-fleet}"
-STATE_DIR="$HOME/.fleet/state"
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
@@ -335,15 +335,13 @@ pane_in_rate_limit_cooldown() {
 # --- Trigger dispatch ------------------------------------------------------
 
 build_dispatch_command() {
-    # $1 = role, $2 = pane_id (e.g. "%3")
+    # $1 = role, $2 = pane_key (e.g. "pane-3")
     # Prints the shell-quoted command to send into the pane.
     # Delegates to fleet-dispatch-wrap so the pane can capture claude's
     # exit code and record rate-limit exits — the pipe to fleet-claude-stream
     # would otherwise swallow claude's exit code (PIPESTATUS is only available
     # in the pane's shell, not in the dispatcher). See fleet-dispatch-wrap.
-    local role="$1" pane_id="$2"
-    local pane_key
-    pane_key=$(pane_id_to_key "$pane_id")
+    local role="$1" pane_key="$2"
     local model="${ROLE_MODEL[$role]:-sonnet}"
     local effort="${ROLE_EFFORT[$role]:-high}"
     printf 'fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
@@ -403,7 +401,7 @@ dispatch_role() {
             continue
         fi
         local cmd
-        cmd=$(build_dispatch_command "$role" "$pane_id")
+        cmd=$(build_dispatch_command "$role" "$pane_key")
         log "dispatching $role -> $pane_id"
         # C-c aborts any partial input the human may have typed into
         # the idle pane (including multi-line continuations); C-u then
