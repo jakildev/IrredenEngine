@@ -282,6 +282,27 @@ list_pane_state() {
 # iterations. The previous singular form picked the first idle pane
 # and dropped the rest, which silently single-flighted multi-pane
 # roles.
+# Returns 0 (true) when a fleet-dispatch-wrap is currently running as a
+# direct child of the pane's shell. Used to disambiguate tmux's
+# pane_current_command, which reports "bash" while fleet-dispatch-wrap
+# (a `#!/usr/bin/env bash` script) runs its `claude | fleet-claude-stream`
+# pipeline — the wrapper's bash interpreter is the process-group leader,
+# so tmux's foreground-pgroup-name lookup returns "bash" rather than
+# "claude" or "python3". Without this check the dispatcher's idle-detection
+# treats a mid-iteration pane as idle: cleanup_stale_dispatches deletes
+# the dispatch record at the next 10s tick, and the next periodic re-arm
+# (default 5 min) fires C-c+new-dispatch into the live pipeline, killing
+# the iteration mid-edit. Observed for queue-manager: ~5 min of analysis
+# + edits would consistently get C-c'd before reaching the commit step,
+# leaving TASKS.md dirty and the master state stale across iterations.
+pane_has_running_wrapper() {
+    local pane_id="$1"
+    local pane_pid
+    pane_pid=$(tmux display-message -t "$pane_id" -p '#{pane_pid}' 2>/dev/null || true)
+    [[ -n "$pane_pid" ]] || return 1
+    pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
+}
+
 find_idle_panes_for_role() {
     local role="$1"
     list_pane_state | while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
@@ -290,6 +311,13 @@ find_idle_panes_for_role() {
         fi
         case "$pane_cmd" in
             bash|zsh|sh|fish)
+                # tmux reports "bash" while fleet-dispatch-wrap is running.
+                # Skip the pane when the wrapper is alive — the iteration
+                # is in progress even though the foreground command name
+                # is in the shell allowlist.
+                if pane_has_running_wrapper "$pane_id"; then
+                    continue
+                fi
                 printf '%s\n' "$pane_id"
                 ;;
         esac
@@ -308,12 +336,16 @@ dispatch_send_keys() {
     fi
 }
 
-# Returns 0 if the pane is occupied (non-shell cmd), non-zero if idle at a shell.
-# Inverted allowlist: macOS tmux reports version strings (e.g. "2.1.132") instead
-# of "claude", so matching by name misses live panes and triggers premature cleanup.
+# Returns 0 if the pane is occupied (non-shell cmd OR fleet-dispatch-wrap
+# alive as direct child of the pane shell), non-zero if truly idle.
+# Inverted allowlist: macOS tmux reports version strings (e.g. "2.1.132")
+# instead of "claude", so matching by name misses live panes and triggers
+# premature cleanup. The wrapper-process check covers the orthogonal case
+# where pane_current_command IS one of the allowlisted shells but a
+# fleet-dispatch-wrap iteration is mid-flight underneath it.
 pane_is_occupied() {
     local pane_id="$1"
-    list_pane_state | awk -F'\t' -v target="$pane_id" '
+    if list_pane_state | awk -F'\t' -v target="$pane_id" '
         $1 == target {
             cmd = $3
             if (cmd != "bash" && cmd != "zsh" && cmd != "sh" && cmd != "fish")
@@ -321,7 +353,10 @@ pane_is_occupied() {
             else
                 print "no"
         }
-    ' | grep -q "^yes$"
+    ' | grep -q "^yes$"; then
+        return 0
+    fi
+    pane_has_running_wrapper "$pane_id"
 }
 
 # --- Dispatch state --------------------------------------------------------
