@@ -38,6 +38,58 @@ OPUS_MIN_BACKOFF=1800
 # tick lands in ~5-10 s; 30 s gives ample headroom for slow networks.
 SCOUT_STARTUP_TIMEOUT_SECONDS=30
 
+# --- Per-role concurrency cap config schema -------------------------------
+#
+# The dispatcher (fleet-dispatcher) enforces a soft cap on simultaneous
+# iterations per role. Counts unique active worktrees: in-flight (pane
+# mid-claude-print) ∪ reserved (worktree pinned to a paused task).
+#
+# Defaults match each role's current pane count, so no role hits the
+# cap under normal operation. The cap only fires when reservations from
+# crashed iterations would push the total over (e.g. a reserved-but-idle
+# pane resumes on the next tick — its slot is counted up front so a
+# fresh dispatch to a free pane doesn't push the role above its budget).
+#
+# Override priority (highest first):
+#   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_OPUS_WORKER=3)
+#   2. ~/.fleet/fleet-up.conf (bash-sourceable; same variable names)
+#   3. Built-in default (defined in fleet-dispatcher)
+#
+# Sample conf (write to ~/.fleet/fleet-up.conf):
+#   FLEET_CONCURRENCY_OPUS_WORKER=2
+#   FLEET_CONCURRENCY_SONNET_AUTHOR=2
+#   FLEET_CONCURRENCY_SONNET_REVIEWER=1
+#   FLEET_CONCURRENCY_OPUS_REVIEWER=1
+#   FLEET_CONCURRENCY_QUEUE_MANAGER=1
+#   FLEET_CONCURRENCY_MERGER=1
+#
+# fleet-up sources the same conf so `fleet-up --help` and the startup
+# banner reflect the active values, and so any future fleet-up logic
+# that wants to provision based on caps can read them directly.
+FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Capture env-set values before sourcing the conf so caller env still wins.
+_env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
+_env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
+_env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
+_env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
+_env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
+_env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+if [[ -f "$FLEET_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$FLEET_CONF"
+fi
+FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
+FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
+FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
+FLEET_CONCURRENCY_QUEUE_MANAGER="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
+FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+      _env_opus_reviewer _env_queue_manager _env_merger
+export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
+export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
+export FLEET_CONCURRENCY_QUEUE_MANAGER FLEET_CONCURRENCY_MERGER
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
