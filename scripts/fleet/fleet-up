@@ -74,14 +74,96 @@ ensure_worktree() {
         || git worktree add "$wt" "$branch")
 }
 
+# --- Worker-pool worktree rename migration (#521) ----------------------
+#
+# The worker pool used to be role-named (opus-worker-{1,2},
+# sonnet-fleet-{1,2}); under the reservation model those names are
+# generic identifiers (worktree-1..4 on engine; game-worktree-1..2 on
+# game). Singletons (architects, reviewers, merger, queue-manager)
+# keep their role-named directories.
+#
+# This is a one-shot migration: if the old-named worktree exists,
+# `git worktree move` it to the new path, then carry the matching
+# reservation file along. Subsequent boots find the new name and
+# skip the migration block.
+#
+# Refuses to migrate if the old worktree has uncommitted edits — the
+# human must commit/stash first, then re-run fleet-up.
+#
+# See docs/agents/MIGRATION-WORKTREES.md for full rationale + rollback.
+
+migrate_legacy_worktree() {
+    local repo="$1"
+    local old_subpath="$2"
+    local new_subpath="$3"
+    local old_path="$repo/$old_subpath"
+    local new_path="$repo/$new_subpath"
+
+    [[ -d "$old_path" ]] || return 0
+    if [[ -d "$new_path" ]]; then
+        # Both exist — bail loudly. Should never happen unless the
+        # human partially migrated by hand.
+        echo "fleet-up: BOTH $old_path and $new_path exist — refusing to auto-migrate" >&2
+        echo "          resolve manually (see docs/agents/MIGRATION-WORKTREES.md) and re-run." >&2
+        exit 1
+    fi
+
+    local dirty
+    dirty="$(cd "$old_path" && git status --porcelain 2>/dev/null || echo SKIP)"
+    if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
+        echo "fleet-up: $old_path has uncommitted edits — cannot migrate to $new_path" >&2
+        echo "          commit/stash and re-run fleet-up. Diff:" >&2
+        echo "$dirty" | head -10 >&2
+        exit 1
+    fi
+
+    echo "fleet-up: migrating worktree $old_path → $new_path (#521)"
+    (cd "$repo" && git worktree move "$old_path" "$new_path") || {
+        echo "fleet-up: git worktree move failed for $old_path" >&2
+        exit 1
+    }
+
+    # Carry the reservation file along, if any.
+    local old_basename new_basename
+    old_basename=$(basename "$old_path")
+    new_basename=$(basename "$new_path")
+    local old_resv="$HOME/.fleet/reservations/${old_basename}.json"
+    local new_resv="$HOME/.fleet/reservations/${new_basename}.json"
+    if [[ -f "$old_resv" ]]; then
+        if [[ -f "$new_resv" ]]; then
+            echo "fleet-up: BOTH $old_resv and $new_resv exist — refusing to overwrite" >&2
+            exit 1
+        fi
+        # Patch the worktree field in the JSON, then move.
+        python3 - "$old_resv" "$new_basename" <<'PYEOF'
+import sys, json
+path, new_wt = sys.argv[1:3]
+with open(path) as f:
+    data = json.load(f)
+data['worktree'] = new_wt
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PYEOF
+        mv "$old_resv" "$new_resv"
+        echo "fleet-up: renamed reservation $old_resv → $new_resv"
+    fi
+}
+
 (cd "$ENGINE" && git fetch origin --quiet) || {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
+# Engine worker pool renames.
+migrate_legacy_worktree "$ENGINE" .claude/worktrees/opus-worker-1  .claude/worktrees/worktree-1
+migrate_legacy_worktree "$ENGINE" .claude/worktrees/opus-worker-2  .claude/worktrees/worktree-2
+migrate_legacy_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1 .claude/worktrees/worktree-3
+migrate_legacy_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2 .claude/worktrees/worktree-4
+
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-1     fleet/opus-worker-1
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-2     fleet/opus-worker-2
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
+ensure_worktree "$ENGINE" .claude/worktrees/worktree-1        fleet/worktree-1
+ensure_worktree "$ENGINE" .claude/worktrees/worktree-2        fleet/worktree-2
+ensure_worktree "$ENGINE" .claude/worktrees/worktree-3        fleet/worktree-3
+ensure_worktree "$ENGINE" .claude/worktrees/worktree-4        fleet/worktree-4
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
@@ -90,13 +172,19 @@ ensure_worktree "$ENGINE" .claude/worktrees/merger            fleet/merger
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
-    ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+
+    # Game worker pool renames (game- prefix prevents reservation
+    # filename collisions with engine workers — see #521).
+    migrate_legacy_worktree "$GAME" .claude/worktrees/opus-worker-1 .claude/worktrees/game-worktree-1
+    migrate_legacy_worktree "$GAME" .claude/worktrees/opus-worker-2 .claude/worktrees/game-worktree-2
+
+    ensure_worktree "$GAME" .claude/worktrees/game-architect    fleet/game-architect
     # Engine opus-workers also pick up game-side `Model: opus` tasks.
     # Each opus-worker pane has its own game worktree so it can `cd` over
     # for game tasks and use commit-and-push there cleanly. The pane's
     # cwd at launch is the engine worktree; the agent cd's per task.
-    ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
-    ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
+    ensure_worktree "$GAME" .claude/worktrees/game-worktree-1   fleet/game-worktree-1
+    ensure_worktree "$GAME" .claude/worktrees/game-worktree-2   fleet/game-worktree-2
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
@@ -298,10 +386,10 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker-1"   claude/opus-worker-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker-2"   claude/opus-worker-2-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worktree-1"      claude/worktree-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worktree-2"      claude/worktree-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worktree-3"      claude/worktree-3-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worktree-4"      claude/worktree-4-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
@@ -310,11 +398,11 @@ reset_worktree "$ENGINE/.claude/worktrees/merger"          claude/merger-scratch
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
 fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/opus-worker-1" claude/game-opus-worker-1-scratch
+if [[ -d "$GAME/.claude/worktrees/game-worktree-1" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-worktree-1" claude/game-worktree-1-scratch
 fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/opus-worker-2" claude/game-opus-worker-2-scratch
+if [[ -d "$GAME/.claude/worktrees/game-worktree-2" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/game-worktree-2" claude/game-worktree-2-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -465,7 +553,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager merger; do
+for wt in opus-architect worktree-1 worktree-2 worktree-3 worktree-4 sonnet-reviewer opus-reviewer queue-manager merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
@@ -476,11 +564,11 @@ fi
 # they cd over for game tasks). Allow access to BOTH the game tree (the
 # worktree's own scope) and the engine tree (so engine helper scripts +
 # CLAUDE.md are reachable from a game cd).
-if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-1" "$ENGINE"
+if [[ -d "$GAME/.claude/worktrees/game-worktree-1" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-worktree-1" "$ENGINE"
 fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-2" "$ENGINE"
+if [[ -d "$GAME/.claude/worktrees/game-worktree-2" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/game-worktree-2" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------
@@ -819,9 +907,9 @@ launch_cmd() {
 # Two windows:
 #
 # Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
-#   Top    (~33%): sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+#   Top    (~33%): worktree-3      worktree-4      sonnet-reviewer
 #   Middle (~33%): opus-architect            [game-architect]
-#   Bottom (~33%): opus-worker-1   opus-worker-2   opus-reviewer
+#   Bottom (~33%): worktree-1      worktree-2      opus-reviewer
 #
 # Window 2 ("ops") — 2x2 grid, 4 panes:
 #   queue-manager  merger
@@ -878,10 +966,10 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 # print the new pane's ID so we can target it for the next split.
 
 tmux new-session -d -s "$SESSION" -n fleet \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
+    -c "$ENGINE/.claude/worktrees/worktree-3" \
     "$TRANSIENT_PANE_CMD"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
-label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
+label_pane_id "$TOP_LEFT" "worktree-3 [sonnet-author]"
 set_fleet_role "$TOP_LEFT" "sonnet-author"
 pane_stagger
 
@@ -894,20 +982,20 @@ pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
+    -c "$ENGINE/.claude/worktrees/worktree-1" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+label_pane_id "$BOT_LEFT" "worktree-1 [opus-worker]"
 set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
-# Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
+# Top row: split TOP_LEFT horizontally to add worktree-4 and
 # sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
 # of the original TOP_LEFT region); the second split halves what's
 # left, giving three equal columns.
 TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    -c "$ENGINE/.claude/worktrees/worktree-4" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+label_pane_id "$TOP_MID" "worktree-4 [sonnet-author]"
 set_fleet_role "$TOP_MID" "sonnet-author"
 pane_stagger
 
@@ -929,13 +1017,13 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     pane_stagger
 fi
 
-# Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
+# Bottom row: split BOT_LEFT horizontally for worktree-2 and
 # opus-reviewer. Same 67/50 pattern as the top row to get three
 # equal columns.
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-worker-2" \
+    -c "$ENGINE/.claude/worktrees/worktree-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+label_pane_id "$BOT_MID" "worktree-2 [opus-worker]"
 set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
@@ -998,16 +1086,19 @@ attach with:  tmux attach -t ${SESSION}
 
 layout (two windows):
   window 1 "fleet" (3x3 grid, ~33% per row):
-    top    — sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
+    top    — worktree-3      worktree-4      sonnet-reviewer
     middle — opus-architect            [game-architect]
-    bottom — opus-worker-1   opus-worker-2   opus-reviewer
+    bottom — worktree-1      worktree-2      opus-reviewer
   window 2 "ops" (2x2 grid):
     top    — queue-manager  merger
     bottom — witness        terminal (\$HOME, free-form shell)
 
+  Worker-pool worktrees use generic names (worktree-1..4) under
+  the reservation model — see docs/agents/MIGRATION-WORKTREES.md.
+
 effort levels:
-  opus agents (architects, opus-workers, opus-reviewer, merger) — xhigh
-  sonnet agents (sonnet-fleet-1/2, sonnet-reviewer, queue-manager) — high
+  opus agents (architects, worktree-1/2, opus-reviewer, merger) — xhigh
+  sonnet agents (worktree-3/4, sonnet-reviewer, queue-manager) — high
   override globally by exporting FLEET_EFFORT=<level> before fleet-up.
   (to change one pane, edit fleet-babysit's case statement — fleet-up
   does not thread env per-pane.)
@@ -1047,9 +1138,9 @@ scheduling (live mode): each worker iteration is a fresh \`claude\` process
   (no context carry-over between tasks). babysit relaunches per role's
   configured interval:
   sonnet-reviewer    — every ~3m     opus-reviewer — every ~30m
-  opus-worker-1/2    — every ~20m    queue-manager — every ~5m
+  worktree-1/2 (opus-worker) — every ~20m   queue-manager — every ~5m
   merger             — every ~10m
-  sonnet-fleet-1/2   — back-to-back (60s pause between iterations)
+  worktree-3/4 (sonnet-author) — back-to-back (60s pause between iterations)
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 
