@@ -36,6 +36,7 @@ void perCanvasScopeScene() {
 
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
 
+    // TODO(T-126): drop C_OccupancyGrid when T-126 migrates COMPUTE_LIGHT_VOLUME archetype.
     EntityId canvasB =
         createEntity(C_OccupancyGrid{256}, C_CanvasLightVolume{}, C_TrixelCanvasRenderBehavior{});
     setName(canvasB, "scope_canvas_b");

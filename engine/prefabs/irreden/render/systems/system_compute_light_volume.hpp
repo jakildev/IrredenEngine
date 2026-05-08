@@ -295,7 +295,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         SystemId systemId =
             createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
                 "ComputeLightVolume",
-                [p](IREntity::EntityId canvasEntity,
+                [p](const IREntity::EntityId canvasEntity,
                     C_OccupancyGrid &,
                     C_CanvasLightVolume &volume,
                     const C_TrixelCanvasRenderBehavior &behavior) {
