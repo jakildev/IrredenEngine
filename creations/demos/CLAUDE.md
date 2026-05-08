@@ -25,6 +25,9 @@ No opt-outs.
   GlobalSlow, LambdaSine, SourceKill, Clamp) via number keys 1–8. Live
   per-cube resolved-speed HUD. Canonical visual reference for the modifier
   framework — see `engine/prefabs/irreden/common/CLAUDE.md`.
+- `sprite_demo/` — exercises `C_Sprite` / `C_SpriteAnimation` Lua bindings.
+  Three sprites demonstrate LOOP, ONCE, and PING_PONG loop modes against a
+  32×32 test sheet (4 × 16px cells: red, green, blue, yellow).
 
 ## Adding a new demo
 

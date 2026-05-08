@@ -1,0 +1,109 @@
+#ifndef LUA_SPRITE_NAMESPACE_H
+#define LUA_SPRITE_NAMESPACE_H
+
+// Exposes the ir.sprite.* Lua namespace for sprite creation and animation
+// control. Call bindSpriteNamespace(luaScript) from a creation's
+// lua_bindings.cpp after the sol2 state is open.
+//
+// Entity IDs cross the Lua/C++ boundary as raw integers (IREntity::EntityId,
+// which is uint64). Creation scripts receive entity IDs from the returned
+// values of ir.sprite.create and ir.sprite.loadSheet.
+
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
+#include <irreden/render/entities/entity_sprite_sheet.hpp>
+#include <irreden/render/sprite_animation.hpp>
+#include <irreden/script/lua_script.hpp>
+
+#include <string>
+
+namespace IRScript {
+
+inline void bindSpriteNamespace(LuaScript &luaScript) {
+    using namespace IRComponents;
+    using IREntity::EntityId;
+
+    auto &lua = luaScript.lua();
+    if (!lua["ir"].valid()) {
+        lua["ir"] = lua.create_table();
+    }
+
+    auto spriteTbl = lua.create_table();
+
+    spriteTbl["ONCE"]      = static_cast<int>(SpriteLoopMode::ONCE);
+    spriteTbl["LOOP"]      = static_cast<int>(SpriteLoopMode::LOOP);
+    spriteTbl["PING_PONG"] = static_cast<int>(SpriteLoopMode::PING_PONG);
+
+    // ir.sprite.loadSheet(name, path) → entityId
+    // Loads name.png + name.irsprite from path and creates an entity
+    // that owns the resulting C_SpriteSheet. The entity lives until
+    // destroyed explicitly; scripts should hold the returned id.
+    spriteTbl["loadSheet"] = [](const std::string &name, const std::string &path) -> EntityId {
+        auto sheet = IRSprite::loadSpriteSheet(name, path);
+        return IREntity::createEntity(std::move(sheet));
+    };
+
+    // ir.sprite.create(sheetEntityId, x, y, z) → entityId
+    // Creates a sprite entity with C_Position3D, C_Sprite, and
+    // C_SpriteAnimation. The initial C_Sprite size is derived from the
+    // first frame of the sheet. Call ir.sprite.playAnimation afterward
+    // to start playback.
+    spriteTbl["create"] = [](EntityId sheetEntity, float x, float y, float z) -> EntityId {
+        auto sheetOpt = IREntity::getComponentOptional<C_SpriteSheet>(sheetEntity);
+        IRMath::vec2 frameSize{16.0f, 16.0f};
+        IRRender::ResourceId texHandle = 0;
+        if (sheetOpt.has_value()) {
+            const auto *s = sheetOpt.value();
+            texHandle = s->textureHandle_;
+            if (!s->frames_.empty()) {
+                frameSize = IRMath::vec2{
+                    static_cast<float>(s->frames_[0].sizePx_.x),
+                    static_cast<float>(s->frames_[0].sizePx_.y)
+                };
+            }
+        } else {
+            IRE_LOG_WARN(
+                "ir.sprite.create: entity {} has no C_SpriteSheet — sprite will be invisible",
+                sheetEntity
+            );
+        }
+        return IREntity::createEntity(
+            IRComponents::C_Position3D{IRMath::vec3{x, y, z}},
+            C_Sprite{texHandle, frameSize},
+            C_SpriteAnimation{}
+        );
+    };
+
+    // ir.sprite.playAnimation(spriteEnt, sheetEnt, animName, loopMode?, speed?)
+    spriteTbl["playAnimation"] = [](
+        EntityId spriteEnt,
+        EntityId sheetEnt,
+        const std::string &animName,
+        sol::optional<int> loopModeOpt,
+        sol::optional<float> speedOpt
+    ) {
+        const auto loopMode = loopModeOpt.has_value()
+            ? static_cast<SpriteLoopMode>(loopModeOpt.value())
+            : SpriteLoopMode::LOOP;
+        const float speed = speedOpt.value_or(1.0f);
+        IRPrefab::Sprite::playAnimation(spriteEnt, sheetEnt, animName, loopMode, speed);
+    };
+
+    spriteTbl["stopAnimation"] = [](EntityId spriteEnt) {
+        IRPrefab::Sprite::stopAnimation(spriteEnt);
+    };
+
+    spriteTbl["getCurrentFrame"] = [](EntityId spriteEnt) -> int {
+        return IRPrefab::Sprite::getCurrentFrame(spriteEnt);
+    };
+
+    spriteTbl["getCurrentAnimation"] = [](EntityId spriteEnt) -> std::string {
+        return IRPrefab::Sprite::getCurrentAnimation(spriteEnt);
+    };
+
+    lua["ir"]["sprite"] = spriteTbl;
+}
+
+} // namespace IRScript
+
+#endif /* LUA_SPRITE_NAMESPACE_H */
