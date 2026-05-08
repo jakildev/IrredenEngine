@@ -251,11 +251,11 @@ Avoid:
   - **Notes:** PR 3 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Must land after T-110 and T-111. Key files: .claude/commands/role-sonnet-author.md, .claude/commands/role-opus-worker.md.
   - **Links:**
 
-- [ ] **Merger: cascade rebase on upstream force-push for stacked PRs** — new merger-loop step: detect stacked child PRs whose upstream tip moved, rebase clean children, label conflicted children fleet:needs-base-update
+- [~] **Merger: cascade rebase on upstream force-push for stacked PRs** — new merger-loop step: detect stacked child PRs whose upstream tip moved, rebase clean children, label conflicted children fleet:needs-base-update
   - **ID:** T-113
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-113-merger-cascade-rebase
   - **Blocked by:** (none)
   - **Acceptance:** (1) merger loop detects fleet:stacked PRs with open base PR whose tip SHA moved; (2) clean rebase -> git push --force-with-lease, prior approval labels preserved; (3) conflict -> git rebase --abort, fleet:needs-base-update label added, conflict-files comment posted; (4) fleet-labels updated with fleet:needs-base-update registration; (5) blocker's author never touches child branch; (6) sidecar-based SHA tracking avoids re-processing already-rebased children
   - **Issue:** (none)
@@ -317,24 +317,12 @@ Avoid:
   - **Notes:** Mirror fleet-babysit LIMIT_DELAY=900 pattern (scripts/fleet/fleet-babysit lines 96 and 563-565). Two detection approaches in issue: Option A (parse pane scrollback for rate-limit pattern), Option B (wrap claude invocation with exit-code reporter). Per-pane keying (not per-role) matches PR #498 per-pane dispatch tracking infrastructure. Key file: scripts/fleet/fleet-dispatcher.
   - **Links:**
 
-- [~] **Fleet: fleet-claim worktree reservation primitives** — new reserve, release-worktree, worktree-for-task, reservation-of, list-reservations subcommands; ~/.fleet/reservations/<worktree>.json storage; atomic create-or-fail; claim/release integration
-  - **ID:** T-120
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-120-fleet-claim-reservations
-  - **Blocked by:** (none)
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) fleet-claim reserve <worktree> <task-id> writes reservation JSON atomically, fails if already reserved; (2) release-worktree clears reservation idempotently; (3) worktree-for-task prints worktree name or empty; (4) reservation-of prints task_id or empty; (5) list-reservations shows all current entries; (6) existing claim/release flow unaffected; (7) minimal bash test harness covers all new paths
-  - **Issue:** (none)
-  - **Notes:** PR 1 of 6 for #521 (worktree-as-reservation epic). Full plan in .fleet/plans/T-120.md. Atomicity via mkdir-lock pattern at ~/.fleet/reservations/<name>.lock/. When fleet-claim claim runs, also writes reservation if agent matches a worktree basename. fleet-up clear-all should clear ~/.fleet/reservations/ but leave dirty worktree state. Confirm ~/bin/ install mechanism with human at PR time — fleet-claim is not in the engine repo.
-  - **Links:**
-
-- [ ] **Fleet: dispatcher reservation-aware pane selection** — when firing a role-X iteration, route to reserved pane for role first; free-pane fallback second; defer if in-flight+reserved >= cap
+- [~] **Fleet: dispatcher reservation-aware pane selection** — when firing a role-X iteration, route to reserved pane for role first; free-pane fallback second; defer if in-flight+reserved >= cap
   - **ID:** T-121
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** T-120
+  - **Owner:** claude/T-121-auto-reserve-on-claim
+  - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) dispatcher routes to reserved pane when a reservation exists for matching role; (2) free-pane fallback works when no reservation matches; (3) cap-check defers dispatch if in-flight+reserved >= per-role cap; (4) fleet-claim reserve in test → dispatcher routes to reserved pane; remove → routes to free pane
   - **Issue:** (none)
@@ -370,7 +358,7 @@ Avoid:
   - **Area:** tooling
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-120
+  - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-claim check-stale detects reservations older than 24h; (2) files engine-repo issue with fleet:stuck-worktree label per stale reservation (title: "fleet: stuck worktree <name> reserved for T-NNN"); (3) issue body includes reservation JSON, dirty file list, last commit; (4) one-shot via ~/.fleet/reservations/<name>.escalated flag; (5) existing check-stale task-claim behavior unaffected
   - **Issue:** (none)
@@ -402,6 +390,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-110** — fleet-claim: stackable-on claim mode + helpers · Owner: claude/T-110-stackable-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/525
 - [x] **T-114** — Reviewer: cross-author stacked-PR awareness · Owner: claude/T-114-reviewer-stacked-pr-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/518
 - [x] **T-101** — Lua-driven ECS: Lua-defined systems with archetype-batched dispatch · Owner: claude/T-101-lua-systems · PR: https://github.com/jakildev/IrredenEngine/pull/517
@@ -421,6 +410,5 @@ Avoid:
 - [x] **T-071** — Render: delete legacy sun-shadow paths (analytic caster + occupancy DDA) · Owner: claude/T-071-delete-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/423
 - [x] **T-057** — Render/input: screen-to-world picking under Z-yaw · Owner: claude/T-057-picking-yaw-inverse · PR: https://github.com/jakildev/IrredenEngine/pull/424
 - [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
-- [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
 
 
