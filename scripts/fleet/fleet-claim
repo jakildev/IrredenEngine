@@ -397,12 +397,12 @@ cmd_claim() {
             echo "claimed: $task_id (slug: $slug, agent: $agent)"
         fi
         # Auto-reserve: bind this worktree to this task so a crashed
-        # iteration resumes on the same pane (#521). The reservation
-        # gate above already proved the task is reserve-able by this
-        # agent, so the only failure mode here is "already reserved
-        # for the same worktree+task" (idempotent re-claim) — treat
-        # silently. agent="unknown" means no caller-provided worktree
-        # name; skip the reservation in that case.
+        # iteration resumes on the same pane (#521). Skip if a
+        # reservation already exists for this worktree — either
+        # idempotent re-claim (same task) or a stale reservation that
+        # T-122 startup will honor on next invocation. agent="unknown"
+        # means no caller-provided worktree name; skip the reservation
+        # in that case.
         if [[ "$agent" != "unknown" ]]; then
             local existing_resv
             existing_resv=$(reservation_task_id "$agent")
