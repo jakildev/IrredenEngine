@@ -151,14 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-
-
-
-
-
-
-
-
 - [~] **Render: final occupancy-grid teardown (drop BUILD_OCCUPANCY_GRID + C_OccupancyGrid)** — pure deletion after T-091 (AO) and T-072 (light-volume) land; remove grid system, component, SSBO, constants, and CLAUDE.md phased-out sections
   - **ID:** T-092
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -168,18 +160,6 @@ Avoid:
   - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
   - **Issue:** #429
   - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first). CAUTION: T-091 (issue #428) was manually closed without a merged PR — the AO migration via trixelDistances was NOT completed; verify that `c_compute_voxel_ao` still does not read `OccupancyGridBuffer` before starting this deletion, or re-file the AO migration work first.
-  - **Links:**
-
-
-- [~] **Sprite: Lua bindings + sprite_demo creation** — expose sprite/animation API as ir.sprite.* Lua surface; scaffold sprite_demo demo creation exercising all loop modes and depth sort
-  - **ID:** T-098
-  - **Area:** engine/script, creations/demos/sprite_demo
-  - **Model:** sonnet
-  - **Owner:** claude/T-098-sprite-lua-demo
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fleet-run IRSpriteDemo launches and shows multiple animated sprites without crashing; (2) fleet-run IRSpriteDemo --auto-screenshot 10 produces committed shot list; (3) visual confirmation all three loop modes work and back-to-front sort is correct; (4) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #286
-  - **Notes:** Part of #14 (sprite-rendering epic). Use create-creation skill for scaffold. Bindings on ir.sprite.* not ir.render.*. Generated art asset acceptable. Depends on T-095, T-096, T-097.
   - **Links:**
 
 
@@ -229,23 +209,12 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
-- [~] **Scout: pre-compute stackable_blocker_pr field** — for each single-T-NNN-blocked task with an open blocker PR, attach stackable_blocker_pr {number, headRefName, author} to the task entry in state.json
-  - **ID:** T-111
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-111-scout-stackable-blocker-pr
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) state.json tasks for single-T-NNN-blocked tasks with an open claude/T-NNN-* PR carry stackable_blocker_pr field; (2) tasks with multiple blockers have no stackable_blocker_pr (v1 guard); (3) tasks with no open blocker PR have no stackable_blocker_pr; (4) scout runs without error after change; (5) projections/queue-manager.json and other projections unaffected if they don't consume the new field
-  - **Issue:** (none)
-  - **Notes:** PR 2 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: scripts/fleet/fleet-state-scout. Engine + game populated but only engine consumed in v1 (game guard in T-112).
-  - **Links:**
-
 - [ ] **Worker role docs: stackable-blocked fallback pickup tier** — update sonnet-author and opus-worker step 3 with two-tier task pickup: unblocked first, stackable-blocked only if no unblocked tasks exist
   - **ID:** T-112
   - **Area:** tooling
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-111
+  - **Blocked by:** (none)
   - **Acceptance:** (1) role-sonnet-author.md and role-opus-worker.md step 3 describe two-tier pickup with only-if-no-unblocked ordering; (2) stacked PR opens with --base $base --label fleet:stacked via commit-and-push cursor-stack mode; (3) multi-blocker tasks (Blocked by: T-A, T-B) explicitly excluded from fallback tier; (4) engine-only guard: game-side stackable tasks not picked up in v1; (5) fleet-claim claim --stackable-on invocation described in worker steps
   - **Issue:** (none)
   - **Notes:** PR 3 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Must land after T-110 and T-111. Key files: .claude/commands/role-sonnet-author.md, .claude/commands/role-opus-worker.md.
@@ -273,26 +242,15 @@ Avoid:
   - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
   - **Links:**
 
-- [ ] **Render: per-canvas light scope via CHILD_OF relation** — scope C_LightSource to a specific canvas; lights become children of their target canvas via CHILD_OF; lighting systems iterate per-canvas through existing RelationParams machinery
+- [~] **Render: per-canvas light scope via CHILD_OF relation** — scope C_LightSource to a specific canvas; lights become children of their target canvas via CHILD_OF; lighting systems iterate per-canvas through existing RelationParams machinery
   - **ID:** T-116
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-116-per-canvas-light-scope
   - **Blocked by:** (none)
   - **Acceptance:** (1) two-canvas demo where a C_LightSource parented via CHILD_OF to canvas A produces no lighting contribution in canvas B; (2) existing single-canvas lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot) unaffected; (3) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #363
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit finding #11). Preferred implementation: Option B (CHILD_OF relation) over Option A (explicit scope tag) — composes with existing RelationParams machinery and falls out of existing system patterns. Every C_LightSource currently contributes to every canvas with a C_CanvasLightVolume; scoping is useful for UI/inset canvases that should not receive world-space lights.
-  - **Links:**
-
-- [~] **Render: SDF occlusion in point/spot light line-of-sight** — add SDF-shape pass to detail::hasLineOfSight so C_ShapeDescriptor entities tagged C_LightBlocker block point/spot propagation
-  - **ID:** T-117
-  - **Area:** engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-117-sdf-occlusion-light-los
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) demo with a C_ShapeDescriptor (box) placed between a point light and a voxel surface produces a visible shadow on the surface; (2) per-shape cost bounded by sun-cone-style culling (only shapes tagged C_LightBlocker within the light radius are evaluated); (3) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #364
-  - **Notes:** Follow-up from lighting-fidelity-polish PR. The SDF-from-occupancy-grid removal left C_ShapeDescriptor entities invisible to point/spot LOS in system_compute_light_volume.hpp::detail::hasLineOfSight. Fix: for each step along the light ray, evaluate IRMath::SDF::evaluate for each C_ShapeDescriptor entity tagged C_LightBlocker; if any shape returns <= kSurfaceThreshold the ray is blocked. If GPU-side propagation rewrite (#359/#360) lands first, this may fold into the compute pass instead.
   - **Links:**
 
 - [ ] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
@@ -319,35 +277,23 @@ Avoid:
   - **Notes:** PR 2 of 6 for #521. Full plan in .fleet/plans/T-120.md. New helper: fleet-claim reservation-role <worktree> → prints role tag from TASKS.md entry. Key file: ~/bin/fleet-dispatcher. @fleet-role kept as fallback signal; reservations take priority.
   - **Links:**
 
-- [~] **Fleet: role docs startup reservation check** — new step 0.5 in opus-worker and sonnet-author: check reservation-of on startup; if found, checkout reserved branch and skip pickup; release-worktree before start-next-task
-  - **ID:** T-122
-  - **Area:** docs, tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-122-role-startup-reservation
-  - **Blocked by:** T-121
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) role-opus-worker.md and role-sonnet-author.md include step 0.5 checking fleet-claim reservation-of <worktree>; (2) if reservation found, checkout reserved branch and skip planning/pickup steps; (3) step 12 calls fleet-claim release-worktree before start-next-task; (4) dry-run test: stale reservation in place → role exits without double-claim; (5) sonnet-reviewer, queue-manager, merger unaffected
-  - **Issue:** (none)
-  - **Notes:** PR 3 of 6 for #521. Full plan in .fleet/plans/T-120.md. Files: .claude/commands/role-opus-worker.md, .claude/commands/role-sonnet-author.md. Architects exempt (dedicated panes, babysit lifecycle). Step 8 (design-blocked escalation) keeps reservation — next iteration resumes same worktree.
-  - **Links:**
-
 - [~] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
   - **ID:** T-123
   - **Area:** tooling, docs
   - **Model:** opus
   - **Owner:** claude/T-123-fleet-up-boot-reconciliation
-  - **Blocked by:** T-122
+  - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-up provisions worktree-N names (opus-worker-1 → worktree-1, sonnet-fleet-1 → worktree-3, etc.); (2) migration script renames clean worktrees via git worktree move; (3) dirty worktrees file escalation issue instead of auto-wiping; (4) docs/agents/MIGRATION-WORKTREES.md included; (5) opus-architect-1 / game-architect-1 untouched; (6) FLEET.md + FLEET-CACHE.md updated
   - **Issue:** (none)
   - **Notes:** PR 4 of 6 for #521, parallelizable with T-125 after T-122 lands. Full plan in .fleet/plans/T-120.md. Human must run migration script locally (touches machine state). All role docs that hardcode worktree names updated in same PR.
   - **Links:**
 
-- [ ] **Fleet: stuck-worktree staleness escalation** — extend fleet-claim check-stale: reservations older than 24h file a fleet:stuck-worktree issue with dirty-file capture; one-shot per reservation via .escalated flag
+- [~] **Fleet: stuck-worktree staleness escalation** — extend fleet-claim check-stale: reservations older than 24h file a fleet:stuck-worktree issue with dirty-file capture; one-shot per reservation via .escalated flag
   - **ID:** T-124
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-124-stuck-worktree-escalation
   - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-claim check-stale detects reservations older than 24h; (2) files engine-repo issue with fleet:stuck-worktree label per stale reservation (title: "fleet: stuck worktree <name> reserved for T-NNN"); (3) issue body includes reservation JSON, dirty file list, last commit; (4) one-shot via ~/.fleet/reservations/<name>.escalated flag; (5) existing check-stale task-claim behavior unaffected
@@ -360,7 +306,7 @@ Avoid:
   - **Area:** tooling
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-122
+  - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-up.conf gains per-role concurrency config (opus-worker: concurrency=2, sonnet-fleet: concurrency=4); (2) dispatcher defers when in-flight+reserved for role >= cap; (3) with concurrency=2, third concurrent opus-worker iteration deferred even with free worktrees; (4) env-overridable; (5) per-pane parallelism preserved for roles under cap; (6) default values preserve current behavior
   - **Issue:** (none)
@@ -380,6 +326,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
+- [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-role-startup-reservation · PR: https://github.com/jakildev/IrredenEngine/pull/533
+- [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
+- [x] **T-117** — Render: SDF occlusion in point/spot light line-of-sight · Owner: claude/T-117-sdf-occlusion-light-los · PR: https://github.com/jakildev/IrredenEngine/pull/522
 - [x] **T-119** — Fleet: usage-limit back-off for fleet-dispatcher transient workers · Owner: claude/T-119-dispatcher-rate-limit-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/526
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-110** — fleet-claim: stackable-on claim mode + helpers · Owner: claude/T-110-stackable-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/525
@@ -396,9 +346,3 @@ Avoid:
 - [x] **T-095** — Sprite: sprite-sheet asset format + loader · Owner: claude/T-095-sprite-sheet-loader · PR: https://github.com/jakildev/IrredenEngine/pull/494
 - [x] **T-094** — Render: camera-anchor GPU light volume for fidelity past static window · Owner: claude/render-camera-anchored-grids · PR: https://github.com/jakildev/IrredenEngine/pull/450
 - [x] **T-072** — Render: GPU-side light-volume propagation (jump flooding / iterative dilation) · Owner: claude/render-light-volume-gpu · PR: https://github.com/jakildev/IrredenEngine/pull/448
-- [x] **T-093** — Input: fix system_hitbox_mouse_test projection under non-zero camera yaw · Owner: claude/T-093-hitbox-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/436
-- [x] **T-089** — Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design · Owner: opus-worker-2 · PR: https://github.com/jakildev/IrredenEngine/pull/351
-- [x] **T-071** — Render: delete legacy sun-shadow paths (analytic caster + occupancy DDA) · Owner: claude/T-071-delete-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/423
-- [x] **T-057** — Render/input: screen-to-world picking under Z-yaw · Owner: claude/T-057-picking-yaw-inverse · PR: https://github.com/jakildev/IrredenEngine/pull/424
-
-
