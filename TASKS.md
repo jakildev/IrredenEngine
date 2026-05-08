@@ -240,11 +240,11 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
-- [ ] **fleet-claim: stackable-on claim mode + helpers** — new find-stackable-blockers, claim-base, and claim --stackable-on subcommands; .meta sidecar records base branch; release cleans sidecar
+- [~] **fleet-claim: stackable-on claim mode + helpers** — new find-stackable-blockers, claim-base, and claim --stackable-on subcommands; .meta sidecar records base branch; release cleans sidecar
   - **ID:** T-110
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-110-stackable-on-claim
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-claim claim --stackable-on <pr-url> T-NNN writes .meta sidecar and sets Owner; (2) fleet-claim find-stackable-blockers T-NNN returns blocker PR URL from state.json; (3) claim-base outputs correct base branch ref; (4) release cleans .meta file; (5) --stackable-on refuses with exit 1 if blocker PR is MERGED or CLOSED; (6) fleet-claim claim --stackable-on on a multi-blocker task is refused; (7) no regression on existing claim/release flow
   - **Issue:** (none)
@@ -339,11 +339,11 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [ ] **Fleet: usage-limit back-off for fleet-dispatcher transient workers** — detect rate-limit exit in transient worker panes and apply per-pane cooldown before re-dispatch, mirroring fleet-babysit's LIMIT_DELAY pattern
+- [~] **Fleet: usage-limit back-off for fleet-dispatcher transient workers** — detect rate-limit exit in transient worker panes and apply per-pane cooldown before re-dispatch, mirroring fleet-babysit's LIMIT_DELAY pattern
   - **ID:** T-119
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-119-dispatcher-rate-limit-backoff
   - **Blocked by:** (none)
   - **Acceptance:** (1) when a transient worker pane exits with a rate-limit error, dispatcher marks that pane with a cooldown file and skips re-dispatch for FLEET_DISPATCHER_LIMIT_DELAY seconds (default 900); (2) other panes not in cooldown dispatch normally (per-pane isolation — parallelism preserved); (3) dispatcher log records cooldown start once per pane, not every tick; (4) FLEET_DISPATCHER_LIMIT_DELAY is env-overridable; (5) fleet-babysit behavior unchanged; (6) existing non-rate-limited panes unaffected
   - **Issue:** #520
