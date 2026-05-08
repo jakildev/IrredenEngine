@@ -11,10 +11,11 @@ local SystemName = IRSystem.SystemName
 
 local tickCounterSysId = IRSystem.registerSystem({
     name = "TickCounterLua",
-    -- Empty include set means the system never matches any archetype, so
-    -- the per-archetype tick body never fires — good. The point of
-    -- including this Lua system is to verify pipeline composition mixes
-    -- prefab and Lua-defined SystemIds in the same list without crashing.
+    -- No entity is created in this demo so no archetype matches
+    -- C_Position3D — the per-archetype tick body never fires. The point
+    -- of including this Lua system is to verify pipeline composition
+    -- mixes prefab and Lua-defined SystemIds in the same list without
+    -- crashing.
     components = { "C_Position3D" },
     tick = function(arch)
         -- Body stays trivial; the demo's success signal is the engine

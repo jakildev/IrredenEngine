@@ -213,7 +213,8 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
   an integer table. The list lives in
   `engine/script/include/irreden/script/lua_pipeline_bindings.hpp`; new
   prefab systems must be appended there alongside the
-  `engine/system/include/irreden/system/ir_system_types.hpp` entry.
+  `engine/system/include/irreden/system/ir_system_types.hpp` entry,
+  and deleted values must be removed from both.
 - **`IRSystem.systemId(name)`** — returns the cached `SystemId` for a
   prefab system the C++ side registered via
   `LuaScript::registerPrefabSystem<N>()` or
