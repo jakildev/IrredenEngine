@@ -727,8 +727,26 @@ Do the work, then exit cleanly:
    "reserved for game-architect" in any file other than `fleet-claim`
    means the work would never get done. Pick it up.
 
-   If no `Model: opus` tasks are available on either repo, print
-   `[opus-worker] No unblocked [opus] tasks (engine + game). Will re-fire on next dispatcher trigger.`
+   **If no unblocked tasks are available on either repo, try the
+   fallback tier.**
+
+   **Fallback: stackable-blocked tasks (engine only, v1).** Look in
+   `repos.engine.tasks.open[]` for entries where `owner == "free"` (or
+   your worktree name), `model` contains `opus`, AND the entry has a
+   `stackable_blocker_pr` field. Only single-blocker tasks have this
+   field — the scout does not set it for tasks with multiple `Blocked by:`
+   entries (Q3 decision: multi-blocker not eligible in v1). Skip game-side
+   tasks — game stackable pickup is deferred to v2; engine only in
+   this tier. Pick the oldest eligible engine task by task ID.
+
+   If a stackable-blocked task is found, claim it with `--stackable-on`:
+   `fleet-claim claim "<task-id>" <your-worktree-name> --stackable-on <stackable_blocker_pr.number>`
+   where `<stackable_blocker_pr.number>` is the PR number from the scout's
+   `stackable_blocker_pr` object (the fleet-claim script accepts a number
+   or full URL). See step 4 for the branching flow.
+
+   **If neither tier yields a task, exit cleanly.** Print
+   `[opus-worker] No unblocked or stackable-blocked [opus] tasks (engine + game). Will re-fire on next dispatcher trigger.`
    and exit cleanly. Do NOT invent work, self-assign documentation
    passes, or create tasks outside the queue.
 
@@ -860,7 +878,16 @@ Do the work, then exit cleanly:
    the same branch, push, and comment as usual. No cross-task
    side-effects.
 
-   For single tasks, use the normal claim flow:
+   For single tasks (including stackable-blocked claims), determine
+   the base branch before checking out:
+   `fleet-claim claim-base "<task-id>"`
+   - Returns `master` — branch off `origin/master` normally.
+   - Returns a feature branch (e.g. `claude/T-NNN-…`) — this is a
+     stackable-on claim; fetch and branch off that upstream branch:
+     `git fetch origin <upstream-branch>`
+     `git checkout -b claude/<task-id>-<short-topic> origin/<upstream-branch>`
+
+   For a normal claim (base is `master`):
    `git checkout -b claude/<area>-<topic>`
    `git commit --allow-empty -m "claim: <task title>"`
 
@@ -868,6 +895,10 @@ Do the work, then exit cleanly:
    include `Closes #N` in the PR body:
    `gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
    If there is no issue (`(none)`), omit the `Closes` line.
+
+   For a stackable-on claim (base is a feature branch), open with
+   `--base <upstream-branch>` and add `fleet:stacked`:
+   `gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
 
    Reference the task title in the PR title so the queue-manager can
    match it.
