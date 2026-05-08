@@ -202,8 +202,6 @@ class LuaScript {
     }
 
   private: //----------------------------------------------------------------
-    sol::state m_lua;
-
     // Lua-name → ComponentId for C++ components that have a Lua
     // binding (populated by `registerType` when `kHasLuaBinding<T>`).
     // Lua-defined components go through `EntityManager`'s
@@ -226,6 +224,13 @@ class LuaScript {
     // the pointer once at bind time so subsequent registrations show up
     // without re-binding.
     std::unordered_map<int, IRSystem::SystemId> m_prefabSystemIds;
+
+    // Declared last so it destructs first: lua_close() runs before any
+    // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the
+    // invariant in world.hpp where m_lua leads so EntityManager outlives
+    // Lua — here the direction is flipped because the constraint is
+    // "lua_close before captured-map destruction" inside LuaScript itself.
+    sol::state m_lua;
 
     // Wires `IRSystem.registerSystem` and the column-view usertypes
     // into the Lua state. Called from the public `bindLuaDrivenEcs()`
