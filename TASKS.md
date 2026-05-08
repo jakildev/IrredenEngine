@@ -229,11 +229,11 @@ Avoid:
 
 
 
-- [ ] **Lua-driven ECS: field index + index-style accessors for zero-string hot path** — expose field column index in registration handle; add `IREntity.getLuaField`/`setLuaField` for zero-string per-tick access; document two-tier accessor contract in engine/script/CLAUDE.md
+- [~] **Lua-driven ECS: field index + index-style accessors for zero-string hot path** — expose field column index in registration handle; add `IREntity.getLuaField`/`setLuaField` for zero-string per-tick access; document two-tier accessor contract in engine/script/CLAUDE.md
   - **ID:** T-109
   - **Area:** engine/script, engine/entity
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-109-lua-field-index-accessors
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRComponent.register` per-field handle carries `index`; (2) `IREntity.getLuaField`/`setLuaField` work by field index with no string lookup or table allocation; (3) out-of-range `fieldIndex` raises Lua error naming the offending index; (4) table-style `addLuaComponent`/`getLuaComponent` unchanged; (5) tests cover index round-trip, out-of-range error, and table-style regression; (6) `fleet-build --target IrredenEngineTest` clean on `linux-debug` and `macos-debug`; (7) `engine/script/CLAUDE.md` two-tier accessor section added
   - **Issue:** #514
@@ -337,6 +337,17 @@ Avoid:
   - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #366
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
+  - **Links:**
+
+- [ ] **Fleet: usage-limit back-off for fleet-dispatcher transient workers** — detect rate-limit exit in transient worker panes and apply per-pane cooldown before re-dispatch, mirroring fleet-babysit's LIMIT_DELAY pattern
+  - **ID:** T-119
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) when a transient worker pane exits with a rate-limit error, dispatcher marks that pane with a cooldown file and skips re-dispatch for FLEET_DISPATCHER_LIMIT_DELAY seconds (default 900); (2) other panes not in cooldown dispatch normally (per-pane isolation — parallelism preserved); (3) dispatcher log records cooldown start once per pane, not every tick; (4) FLEET_DISPATCHER_LIMIT_DELAY is env-overridable; (5) fleet-babysit behavior unchanged; (6) existing non-rate-limited panes unaffected
+  - **Issue:** #520
+  - **Notes:** Mirror fleet-babysit LIMIT_DELAY=900 pattern (scripts/fleet/fleet-babysit lines 96 and 563-565). Two detection approaches in issue: Option A (parse pane scrollback for rate-limit pattern), Option B (wrap claude invocation with exit-code reporter). Per-pane keying (not per-role) matches PR #498 per-pane dispatch tracking infrastructure. Key file: scripts/fleet/fleet-dispatcher.
   - **Links:**
 
 ---
