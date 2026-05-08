@@ -60,10 +60,16 @@ FLEET_SESSION="${FLEET_SESSION:-fleet}"
 STATE_DIR="$HOME/.fleet/state"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
+RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
 PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
+
+# Seconds to back off after a pane exits with code 2 (suspected usage limit).
+# Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of two opus-worker
+# panes hits a limit, the other keeps running.
+LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 
 # Default poll cadence. Workers are transient — each iteration is a
 # one-shot `claude --print` spawned into an idle pane when a trigger
@@ -142,6 +148,11 @@ declare -A ROLE_EFFORT=(
     ["queue-manager"]="high"
     ["merger"]="xhigh"
 )
+
+# Tracks which panes have already had their cooldown logged this cycle so
+# the "in rate-limit cooldown" message fires once per pane per cooldown
+# window, not every 10-second tick. Keyed by pane_key (e.g. "pane-3").
+declare -A RATE_LIMIT_COOLDOWN_LOGGED=()
 
 # --- Logging ---------------------------------------------------------------
 #
@@ -297,23 +308,45 @@ cleanup_stale_dispatches() {
     done
 }
 
+# --- Rate-limit cooldown ---------------------------------------------------
+
+# Returns 0 (true) if the pane is still within its usage-limit cooldown
+# window; returns 1 (false) if the pane is free to dispatch.
+# As a side effect, removes the marker file when the cooldown expires and
+# clears the "already logged" flag so the next cooldown produces a fresh log.
+pane_in_rate_limit_cooldown() {
+    local pane_key="$1"
+    local ts_file="$RATE_LIMIT_DIR/$pane_key.ts"
+    if [[ ! -f "$ts_file" ]]; then
+        return 1
+    fi
+    local ts now elapsed
+    ts=$(cat "$ts_file" 2>/dev/null || printf '0')
+    now=$(date +%s)
+    elapsed=$(( now - ts ))
+    if (( elapsed < LIMIT_DELAY )); then
+        return 0
+    fi
+    rm -f "$ts_file"
+    unset 'RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]'
+    return 1
+}
+
 # --- Trigger dispatch ------------------------------------------------------
 
 build_dispatch_command() {
-    # $1 = role; prints the shell-quoted command to send into the pane.
-    local role="$1"
+    # $1 = role, $2 = pane_id (e.g. "%3")
+    # Prints the shell-quoted command to send into the pane.
+    # Delegates to fleet-dispatch-wrap so the pane can capture claude's
+    # exit code and record rate-limit exits — the pipe to fleet-claude-stream
+    # would otherwise swallow claude's exit code (PIPESTATUS is only available
+    # in the pane's shell, not in the dispatcher). See fleet-dispatch-wrap.
+    local role="$1" pane_id="$2"
+    local pane_key
+    pane_key=$(pane_id_to_key "$pane_id")
     local model="${ROLE_MODEL[$role]:-sonnet}"
     local effort="${ROLE_EFFORT[$role]:-high}"
-    # `--print` makes each iteration a one-shot process that exits on
-    # completion (PR #257). `--output-format stream-json
-    # --include-partial-messages --verbose` is what makes claude emit
-    # the live JSON event stream that fleet-claude-stream renders as
-    # readable pane text — without those three flags claude buffers in
-    # plain-text mode and only flushes at exit, so the pane looks dead
-    # the whole iteration and the formatter sees no init / tool / delta
-    # events to render. Mirrors fleet-babysit's stream_claude().
-    printf 'claude --model %q --effort %q --print --output-format stream-json --include-partial-messages --verbose "/role-%s live" | fleet-claude-stream\n' \
-        "$model" "$effort" "$role"
+    printf 'fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
 }
 
 dispatch_role() {
@@ -346,9 +379,6 @@ dispatch_role() {
         return
     fi
 
-    local cmd
-    cmd=$(build_dispatch_command "$role")
-
     local dispatched=0
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
@@ -359,6 +389,21 @@ dispatch_role() {
         if [[ -f "$(dispatch_record "$pane_id")" ]]; then
             continue
         fi
+        # Skip panes that hit a usage-limit recently. The per-pane
+        # rate-limit marker is written by fleet-dispatch-wrap when claude
+        # exits with code 2. Log the skip once per cooldown window to
+        # avoid repeating the message on every 10-second tick.
+        local pane_key
+        pane_key=$(pane_id_to_key "$pane_id")
+        if pane_in_rate_limit_cooldown "$pane_key"; then
+            if [[ -z "${RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]+x}" ]]; then
+                log "pane $pane_id ($role) in usage-limit cooldown (${LIMIT_DELAY}s); trigger kept"
+                RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
+            fi
+            continue
+        fi
+        local cmd
+        cmd=$(build_dispatch_command "$role" "$pane_id")
         log "dispatching $role -> $pane_id"
         # C-c aborts any partial input the human may have typed into
         # the idle pane (including multi-line continuations); C-u then
@@ -505,7 +550,7 @@ PY
 }
 
 main() {
-    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR"
+    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR"
 
     if ! acquire_dispatcher_lock; then
         log "another dispatcher is already running (lock held); exiting"
