@@ -13,7 +13,9 @@
 # Installed to ~/bin/fleet-claim by scripts/fleet/install.sh.
 #
 # Usage:
-#   fleet-claim claim "<task title>" <agent-name>
+#   fleet-claim claim "<task title>" <agent-name> [--stackable-on <pr-url>]
+#   fleet-claim claim-base <task-id>
+#   fleet-claim find-stackable-blockers <task-id>
 #   fleet-claim release "<task title>"
 #   fleet-claim check "<task title>"
 #   fleet-claim list [--with-age]
@@ -35,6 +37,26 @@ set -euo pipefail
 
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
+
+# --- claim sidecar layout --------------------------------------------------
+#
+# Each claim is the directory $CLAIMS_DIR/<slug>/ (atomic mkdir-as-lock).
+# A claim made with --stackable-on additionally writes a sibling file
+# $CLAIMS_DIR/<slug>.meta containing one line:
+#
+#   stackable_base_branch=<branch>
+#
+# claim-base reads it to tell commit-and-push which branch to base the
+# task's PR on; release / check-stale / cleanup all delete the sidecar
+# alongside the claim dir so it never outlives the claim.
+
+__remove_claim() {
+    # Remove a claim's directory and its --stackable-on sidecar (if any).
+    # Safe on missing slugs; leaves no orphan .meta behind.
+    local slug="$1"
+    rm -rf "$CLAIMS_DIR/$slug"
+    rm -f "$CLAIMS_DIR/${slug}.meta"
+}
 
 # --- global --repo <namespace> ---------------------------------------------
 #
@@ -262,24 +284,102 @@ PYEOF
 cmd_claim() {
     # Try to atomically claim a task. Exit 0 = claimed, exit 1 = taken.
     # $1 = task ID (T-NNN), $2 = agent name
+    # Optional flag: --stackable-on <pr-url> bypasses the blocker gate
+    # and records a sidecar .meta file so the worker branches its PR off
+    # the blocker's open PR head ref instead of master. Race mitigation:
+    # the PR's state is re-fetched here — MERGED falls back to a normal
+    # claim, CLOSED refuses the claim outright.
     local task_id="$1"
     local agent="${2:-unknown}"
+    if [[ $# -ge 2 ]]; then
+        shift 2
+    else
+        shift $#
+    fi
+    local stackable_pr=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stackable-on)
+                if [[ -z "${2:-}" ]]; then
+                    echo "fleet-claim claim: --stackable-on requires a PR URL" >&2
+                    return 2
+                fi
+                stackable_pr="$2"
+                shift 2
+                ;;
+            --stackable-on=*)
+                stackable_pr="${1#--stackable-on=}"
+                shift
+                ;;
+            *)
+                echo "fleet-claim claim: unknown flag '$1'" >&2
+                return 2
+                ;;
+        esac
+    done
+
     local slug
     slug=$(slugify "$task_id")
 
     mkdir -p "$CLAIMS_DIR"
 
-    # Check dependency gate BEFORE attempting the atomic claim.
-    # This prevents claiming a task whose blockers aren't done yet.
-    if ! check_blockers "$task_id"; then
-        return 1
+    # Resolve --stackable-on first: re-verify the blocker PR's state.
+    # The scout's cached `stackable_blocker_pr` snapshot can go stale in
+    # the ~30s between projection write and worker pickup; this re-check
+    # closes the race so we don't claim against a vanished base.
+    local stackable_branch=""
+    if [[ -n "$stackable_pr" ]]; then
+        local pr_json pr_state pr_head
+        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName 2>/dev/null); then
+            echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
+            return 1
+        fi
+        pr_state=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state",""))')
+        pr_head=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("headRefName",""))')
+        case "$pr_state" in
+            MERGED)
+                # Blocker landed in the gap — drop --stackable-on and let
+                # the standard blocker gate prove the task is unblocked.
+                echo "fleet-claim claim: $stackable_pr is MERGED — falling back to normal claim (base=master)" >&2
+                stackable_pr=""
+                ;;
+            OPEN)
+                if [[ -z "$pr_head" ]]; then
+                    echo "fleet-claim claim: $stackable_pr returned empty headRefName — refusing claim" >&2
+                    return 1
+                fi
+                stackable_branch="$pr_head"
+                ;;
+            "")
+                echo "fleet-claim claim: could not parse state for $stackable_pr" >&2
+                return 1
+                ;;
+            *)
+                # CLOSED (without merge) — the stack base is gone.
+                echo "fleet-claim claim: $stackable_pr state=$pr_state — cannot stack on a non-OPEN base" >&2
+                return 1
+                ;;
+        esac
+    fi
+
+    # Standard blocker gate. Skipped only when we have a verified-OPEN
+    # stack base — that's the whole point of --stackable-on.
+    if [[ -z "$stackable_branch" ]]; then
+        if ! check_blockers "$task_id"; then
+            return 1
+        fi
     fi
 
     if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
         echo "$agent" > "$CLAIMS_DIR/$slug/owner"
         echo "$task_id" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
-        echo "claimed: $task_id (slug: $slug, agent: $agent)"
+        if [[ -n "$stackable_branch" ]]; then
+            echo "stackable_base_branch=$stackable_branch" > "$CLAIMS_DIR/${slug}.meta"
+            echo "claimed: $task_id (slug: $slug, agent: $agent, base: $stackable_branch)"
+        else
+            echo "claimed: $task_id (slug: $slug, agent: $agent)"
+        fi
         return 0
     else
         local owner="unknown"
@@ -291,13 +391,165 @@ cmd_claim() {
     fi
 }
 
+cmd_claim_base() {
+    # Print the base branch for a task's PR.
+    # Returns "master" by default, or the recorded stackable base when
+    # the task was claimed with --stackable-on. commit-and-push reads
+    # this at PR-open time to pick `--base` for `gh pr create`.
+    #
+    # Usage: fleet-claim claim-base <task-id>
+    local task_id="$1"
+    local slug
+    slug=$(slugify "$task_id")
+    local meta_file="$CLAIMS_DIR/${slug}.meta"
+    if [[ -f "$meta_file" ]]; then
+        local base
+        base=$(grep -E '^stackable_base_branch=' "$meta_file" 2>/dev/null \
+            | head -n1 | cut -d= -f2-)
+        if [[ -n "$base" ]]; then
+            echo "$base"
+            return 0
+        fi
+    fi
+    echo "master"
+}
+
+cmd_find_stackable_blockers() {
+    # If the task is single-T-NNN-blocked AND that blocker has an open
+    # PR on its Owner branch, print one tab-separated line:
+    #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
+    # Otherwise print nothing (and exit 0). Multi-blocker tasks, free-
+    # text or PR-URL blockers, blockers with no claude/* Owner, and any
+    # ambiguity (zero or >1 matching open PRs) all map to the empty
+    # output — callers treat the result as a strictly optional hint.
+    #
+    # Reads TASKS.md from origin/master so the answer matches what the
+    # scout will compute, regardless of any local working-tree dirt.
+    #
+    # Usage: fleet-claim find-stackable-blockers <task-id>
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim find-stackable-blockers <task-id>" >&2
+        return 2
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" ]]; then
+        return 0
+    fi
+
+    local tasks_md
+    if ! tasks_md=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        return 0
+    fi
+
+    FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import sys, os, re, subprocess, json
+
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_TASKS_MD', '')
+
+# Same TASKS.md shape parser as check_blockers — header lines are
+# "- [x|~| |!] **Title**", indented sub-fields are "  - **Field:** value".
+tasks = {}
+current_id = None
+current_blocked = None
+current_owner = None
+
+def flush():
+    if current_id:
+        tasks[current_id] = {
+            'blocked_by': current_blocked or '(none)',
+            'owner': current_owner or 'free',
+        }
+
+for line in content.splitlines():
+    m = re.match(r'^- \[(.)\] \*\*(.+?)\*\*', line)
+    if m:
+        flush()
+        current_id = None
+        current_blocked = None
+        current_owner = None
+        continue
+    m_id = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m_id:
+        current_id = m_id.group(1).strip()
+        continue
+    m_blocked = re.match(r'^\s+- \*\*Blocked by:\*\*\s*(.+)', line)
+    if m_blocked:
+        current_blocked = m_blocked.group(1).strip()
+        continue
+    m_owner = re.match(r'^\s+- \*\*Owner:\*\*\s*(.+)', line)
+    if m_owner:
+        current_owner = m_owner.group(1).strip()
+        continue
+flush()
+
+if task_id not in tasks:
+    sys.exit(0)
+
+blocked_by = tasks[task_id]['blocked_by']
+if blocked_by == '(none)' or not blocked_by:
+    sys.exit(0)
+
+# v1: single-blocker only. Multi-blocker stacking opens
+# cherry-pick / merge questions the merger has no machinery for; the
+# plan defers it to v2 explicitly.
+blockers = [b.strip() for b in blocked_by.split(',') if b.strip()]
+if len(blockers) != 1:
+    sys.exit(0)
+blocker = blockers[0]
+if not re.match(r'^T-\d+$', blocker):
+    sys.exit(0)
+
+if blocker not in tasks:
+    sys.exit(0)
+owner = tasks[blocker].get('owner', 'free')
+# Owner field holds the claude/* head branch once the blocker's PR is
+# open (queue-manager writes it on PR-open). Anything else means no PR
+# exists yet, or the task is unowned.
+if not owner.startswith('claude/'):
+    sys.exit(0)
+
+try:
+    r = subprocess.run(
+        ['gh', 'pr', 'list', '--head', owner, '--state', 'open',
+         '--json', 'url,headRefName,author,number'],
+        capture_output=True, text=True, timeout=15
+    )
+except (subprocess.SubprocessError, OSError):
+    sys.exit(0)
+if r.returncode != 0:
+    sys.exit(0)
+try:
+    prs = json.loads(r.stdout or '[]')
+except json.JSONDecodeError:
+    sys.exit(0)
+if len(prs) != 1:
+    sys.exit(0)
+
+pr = prs[0]
+url = pr.get('url', '')
+head = pr.get('headRefName', '')
+author = (pr.get('author') or {}).get('login', '')
+number = pr.get('number', '')
+if not url or not head:
+    sys.exit(0)
+print(f"{url}\t{head}\t{author}\t{number}")
+PYEOF
+}
+
 cmd_release() {
     local title="$1"
     local slug
     slug=$(slugify "$title")
 
-    if [[ -d "$CLAIMS_DIR/$slug" ]]; then
-        rm -rf "$CLAIMS_DIR/$slug"
+    # An orphan .meta with no claim dir is also worth cleaning, so we
+    # check both — that's why this branches on (-d || -f .meta) rather
+    # than (-d) alone.
+    if [[ -d "$CLAIMS_DIR/$slug" || -f "$CLAIMS_DIR/${slug}.meta" ]]; then
+        __remove_claim "$slug"
         echo "released: $title (slug: $slug)"
     else
         echo "not claimed: $title (slug: $slug)"
@@ -429,7 +681,7 @@ cmd_cleanup() {
             if [[ "$slug" == "$ds" ]]; then
                 local title="$slug"
                 if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
-                rm -rf "$dir"
+                __remove_claim "$slug"
                 echo "cleaned: $title (merged/closed)"
                 cleaned=$((cleaned + 1))
                 break
@@ -468,7 +720,7 @@ cmd_check_stale() {
             if [[ -f "$dir/owner" ]]; then owner=$(cat "$dir/owner"); fi
             if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
             echo "stale ($((age / 60))m old): $title (owner: $owner)"
-            rm -rf "$dir"
+            __remove_claim "$slug"
             stale=$((stale + 1))
         fi
     done
@@ -1325,10 +1577,25 @@ cmd_molecule_rebase_downstream() {
 case "${1:-}" in
     claim)
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-claim claim \"<title>\" [agent-name]" >&2
+            echo "usage: fleet-claim claim \"<title>\" [agent-name] [--stackable-on <pr-url>]" >&2
             exit 2
         fi
-        cmd_claim "$2" "${3:-unknown}"
+        shift
+        cmd_claim "$@"
+        ;;
+    claim-base)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim claim-base <task-id>" >&2
+            exit 2
+        fi
+        cmd_claim_base "$2"
+        ;;
+    find-stackable-blockers)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim find-stackable-blockers <task-id>" >&2
+            exit 2
+        fi
+        cmd_find_stackable_blockers "$2"
         ;;
     release)
         if [[ -z "${2:-}" ]]; then
@@ -1460,8 +1727,31 @@ global options (must come BEFORE the subcommand):
                                 their lock dirs distinct. Omit for engine.
 
 commands:
-  claim "<title>" [agent]       claim a task (exit 0=claimed, 1=taken)
-  release "<title>"             release a claim
+  claim "<title>" [agent] [--stackable-on <pr-url>]
+                                claim a task (exit 0=claimed, 1=taken).
+                                With --stackable-on, bypass the blocker
+                                gate and record a sibling .meta sidecar
+                                so the worker can branch its PR off the
+                                blocker's open PR head ref. The PR's
+                                state is re-fetched: MERGED falls back
+                                to a normal claim (base=master), CLOSED
+                                refuses (the stack base is gone).
+  claim-base <task-id>          print the base branch for this task's
+                                PR — "master" for normal claims, the
+                                recorded stackable_base_branch for a
+                                --stackable-on claim. Distinct from
+                                stack-base (which serves intra-author
+                                stack claims).
+  find-stackable-blockers <task-id>
+                                if exactly one T-NNN blocker has an
+                                open PR on its claude/* Owner branch,
+                                print one tab-separated line:
+                                <url><TAB><headRefName><TAB><author><TAB><number>.
+                                Empty stdout means no eligible blocker
+                                (multi-blocker, no PR open, ambiguous,
+                                etc.) — callers treat as a hint.
+  release "<title>"             release a claim (also clears the
+                                --stackable-on .meta sidecar).
   check "<title>"               check if free (exit 0=free, 1=taken)
   list                          list all active claims
   stack "T-1 T-2 ..." [agent]  atomically claim a dependency chain (all-or-nothing)
