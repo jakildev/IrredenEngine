@@ -183,11 +183,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Lua-driven ECS: Lua-defined systems with archetype-batched dispatch** — add IRSystem::createSystemDynamic + LuaScript::registerSystem; archetype-batched dispatch (one sol::function call per archetype per tick); C++ and Lua share same ComponentId space
+- [~] **Lua-driven ECS: Lua-defined systems with archetype-batched dispatch** — add IRSystem::createSystemDynamic + LuaScript::registerSystem; archetype-batched dispatch (one sol::function call per archetype per tick); C++ and Lua share same ComponentId space
   - **ID:** T-101
   - **Area:** engine/system, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-101-lua-systems
   - **Blocked by:** (none)
   - **Acceptance:** (1) Lua system iterates (C_Position3D, C_Velocity3D) both C++-defined plus Lua-defined C_Marker tag; C++ render system sees Lua-written C_Position3D changes next frame; (2) separate test shows one sol::function invocation per archetype per tick, not per-entity; (3) unbound C++ type requested in system fails fast with error pointing at lua_component_pack; (4) registerSystem returns a SystemId Lua can pass to registerPipeline; (5) fleet-build clean on linux-debug
   - **Issue:** #489
@@ -284,11 +284,11 @@ Avoid:
   - **Notes:** PR 4 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: .claude/commands/role-merger.md, scripts/fleet/fleet-labels. Runs independently from T-112.
   - **Links:**
 
-- [ ] **Reviewer: cross-author stacked-PR awareness** — add stacked-PR context note to review-body template; add fleet:needs-base-update to verdict-clear label list
+- [~] **Reviewer: cross-author stacked-PR awareness** — add stacked-PR context note to review-body template; add fleet:needs-base-update to verdict-clear label list
   - **ID:** T-114
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-114-reviewer-stacked-pr-awareness
   - **Blocked by:** (none)
   - **Acceptance:** (1) review-body template includes one-paragraph stacked-PR note (Stacked on #U, cross-author from <agent> on T-X) when PR has fleet:stacked label; (2) fleet:needs-base-update appears in verdict-clear label list alongside existing has-nits / needs-fix entries; (3) fleet:awaiting-upstream-review gate unchanged; (4) non-stacked PRs unaffected
   - **Issue:** (none)
