@@ -30,11 +30,17 @@
 #   fleet-claim molecule advance <agent> <task-id> <new-state> [--pr URL] [--commit SHA]
 #   fleet-claim molecule complete <agent>
 #   fleet-claim molecule rebase-downstream <agent> [task-id]
+#   fleet-claim reserve <task-id> <worktree> [branch]
+#   fleet-claim release-worktree <worktree>
+#   fleet-claim reservation-of <worktree>
+#   fleet-claim worktree-for-task <task-id>
+#   fleet-claim list-reservations
 
 set -euo pipefail
 
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
+RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 
 # --- global --repo <namespace> ---------------------------------------------
 #
@@ -272,6 +278,16 @@ cmd_claim() {
     # Check dependency gate BEFORE attempting the atomic claim.
     # This prevents claiming a task whose blockers aren't done yet.
     if ! check_blockers "$task_id"; then
+        return 1
+    fi
+
+    # Reservation gate: refuse if the task is reserved for a different
+    # worktree than the requesting agent. The reservation acts as an
+    # authorization token — same-worktree claims pass through.
+    local reserved_worktree=""
+    reserved_worktree=$(reservation_holder_for_task "$task_id")
+    if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
+        echo "fleet-claim claim: $task_id is reserved for $reserved_worktree (refusing claim by $agent)" >&2
         return 1
     fi
 
@@ -519,6 +535,18 @@ cmd_stack() {
             return 1
         fi
         earlier_in_stack="$earlier_in_stack $task_id"
+
+        # Reservation gate (same as cmd_claim): refuse if any task in
+        # the stack is reserved for a different worktree.
+        local reserved_worktree=""
+        reserved_worktree=$(reservation_holder_for_task "$task_id")
+        if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
+            echo "fleet-claim stack: $task_id is reserved for $reserved_worktree (refusing claim by $agent) — rolling back" >&2
+            for prev in "${claimed[@]}"; do
+                cmd_release "$prev"
+            done
+            return 1
+        fi
 
         if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
             echo "$agent" > "$CLAIMS_DIR/$slug/owner"
@@ -1320,6 +1348,247 @@ cmd_molecule_rebase_downstream() {
     return 0
 }
 
+# --- worktree reservations ------------------------------------------------
+#
+# A reservation pins a future task to a specific worktree. Distinct from a
+# claim:
+#   claim       → "this agent OWNS this task RIGHT NOW" (one task per slug,
+#                  released at end of work)
+#   reservation → "this task is DESTINED for this worktree when worked on"
+#                  (one reservation per worktree, persists across multiple
+#                  claim/release cycles for the same task)
+#
+# Reservations let the human (or an orchestrator) route specific work to
+# specific panes — e.g. "the macOS-only render PR should land on
+# opus-worker-2 because that's the macOS pane". Workers consult their own
+# reservation on startup (reservation-of) and skip normal task pickup if
+# reserved. The dispatcher uses worktree-for-task to prefer the reserved
+# pane when firing a role's iteration.
+#
+# Storage: $RESERVATIONS_DIR/<worktree>.json — one file per worktree.
+# Atomic create via O_EXCL through Python; two concurrent reserves for the
+# same worktree race-and-fail at the filesystem layer.
+#
+# Lifecycle:
+#   reserve <task> <wt> [branch]  → write reservation file (fails if exists)
+#   release-worktree <wt>         → remove reservation file (idempotent)
+#   reservation-of <wt>           → print task ID for this worktree
+#   worktree-for-task <task>      → print worktree pinned to this task
+#   list-reservations             → table of all reservations
+#
+# Claim integration: cmd_claim and cmd_stack consult reservations and refuse
+# to grant a task that is reserved for a different worktree. Same-worktree
+# claims pass through unchanged. cmd_release does NOT touch reservations —
+# the explicit `release-worktree` step is what ends the reservation.
+# `clear-all` does NOT wipe reservations either — they survive fleet bounces
+# (mirrors molecule preservation).
+
+reservation_file() {
+    echo "$RESERVATIONS_DIR/$1.json"
+}
+
+reservation_task_id() {
+    # Print the task_id field of a worktree's reservation, or empty if
+    # the reservation file is missing or malformed. Bash callers use this
+    # to gate claim attempts and to surface "what was reserved" on release.
+    local worktree="$1"
+    local file
+    file=$(reservation_file "$worktree")
+    [[ -f "$file" ]] || return 0
+    python3 - "$file" <<'PYEOF'
+import sys, json
+try:
+    print(json.load(open(sys.argv[1])).get('task_id', ''))
+except Exception:
+    pass
+PYEOF
+}
+
+reservations_dump() {
+    # Emit one TSV row per active reservation:
+    #   <worktree>\t<task_id>\t<branch>\t<created_at>\t<created_epoch>
+    # Used by list-reservations and by reservation_holder_for_task.
+    [[ -d "$RESERVATIONS_DIR" ]] || return 0
+    python3 - "$RESERVATIONS_DIR" <<'PYEOF'
+import sys, json, os
+d = sys.argv[1]
+for name in sorted(os.listdir(d)):
+    if not name.endswith('.json'):
+        continue
+    path = os.path.join(d, name)
+    try:
+        data = json.load(open(path))
+    except Exception:
+        continue
+    worktree = name[:-5]
+    print(
+        f"{worktree}\t{data.get('task_id','')}\t{data.get('branch','')}"
+        f"\t{data.get('created_at','')}\t{data.get('created_epoch',0)}"
+    )
+PYEOF
+}
+
+reservation_holder_for_task() {
+    # Print the worktree name that has this task reserved, or empty.
+    # Used by cmd_claim and cmd_stack as a gate.
+    local task_id="$1"
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        if [[ "$tid" == "$task_id" ]]; then
+            echo "$wt"
+            return 0
+        fi
+    done < <(reservations_dump)
+}
+
+cmd_reserve() {
+    # Atomic create-or-fail. Writes ~/.fleet/reservations/<worktree>.json.
+    # Fails if the worktree already has a reservation, or if the requested
+    # task is already reserved by another worktree.
+    #
+    # Usage: fleet-claim reserve <task-id> <worktree> [branch]
+    # Exit 0: reservation written.
+    # Exit 1: conflict (worktree busy, or task held by another worktree).
+    # Exit 2: usage error.
+    local task_id="$1"
+    local worktree="$2"
+    local branch="${3:-}"
+
+    if [[ -z "$task_id" || -z "$worktree" ]]; then
+        echo "usage: fleet-claim reserve <task-id> <worktree> [branch]" >&2
+        return 2
+    fi
+
+    mkdir -p "$RESERVATIONS_DIR"
+
+    # Cross-worktree conflict: refuse if the task is held by another
+    # worktree. Caught here (not at file create) so the error message
+    # names the actual conflicting holder.
+    local existing_holder=""
+    existing_holder=$(reservation_holder_for_task "$task_id")
+    if [[ -n "$existing_holder" && "$existing_holder" != "$worktree" ]]; then
+        echo "fleet-claim reserve: $task_id is already reserved for $existing_holder" >&2
+        return 1
+    fi
+
+    local file
+    file=$(reservation_file "$worktree")
+    local created_at
+    created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local created_epoch
+    created_epoch=$(date +%s)
+
+    # Atomic O_EXCL create: two concurrent reserves for the same
+    # worktree race-and-fail at the filesystem layer (errno EEXIST → 3).
+    if ! python3 - "$file" "$task_id" "$worktree" "$branch" "$created_at" "$created_epoch" <<'PYEOF'
+import sys, json, os, errno
+path, task_id, worktree, branch, created_at, created_epoch = sys.argv[1:7]
+flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+try:
+    fd = os.open(path, flags, 0o644)
+except OSError as e:
+    if e.errno == errno.EEXIST:
+        sys.exit(3)
+    raise
+with os.fdopen(fd, 'w') as f:
+    json.dump({
+        'task_id': task_id,
+        'worktree': worktree,
+        'branch': branch,
+        'created_at': created_at,
+        'created_epoch': int(created_epoch),
+    }, f, indent=2)
+    f.write('\n')
+PYEOF
+    then
+        local existing_task=""
+        existing_task=$(reservation_task_id "$worktree")
+        if [[ -n "$existing_task" ]]; then
+            echo "fleet-claim reserve: $worktree is already reserved for $existing_task" >&2
+        else
+            echo "fleet-claim reserve: failed to create reservation for $worktree" >&2
+        fi
+        return 1
+    fi
+
+    if [[ -n "$branch" ]]; then
+        echo "reserved: $task_id → $worktree (branch: $branch)"
+    else
+        echo "reserved: $task_id → $worktree"
+    fi
+}
+
+cmd_release_worktree() {
+    # Remove a worktree's reservation. Idempotent. Always exits 0
+    # (mirrors the molecule resume/complete contract — safe to call in
+    # parallel tool batches alongside other fleet-claim ops).
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim release-worktree <worktree>" >&2
+        return 2
+    fi
+
+    local file
+    file=$(reservation_file "$worktree")
+    if [[ -f "$file" ]]; then
+        local task_id
+        task_id=$(reservation_task_id "$worktree")
+        rm -f "$file"
+        echo "released reservation: $worktree (was: $task_id)"
+    else
+        echo "no reservation for worktree: $worktree" >&2
+    fi
+    return 0
+}
+
+cmd_worktree_for_task() {
+    # Print the worktree name reserved for a task, or empty if none.
+    # Empty stdout + exit 0 means "no reservation" (mirrors
+    # molecule_resume's stdout-is-the-channel idiom — callers
+    # discriminate via `[[ -n "$out" ]]`, not by exit code, so the
+    # call is safe in parallel tool batches).
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim worktree-for-task <task-id>" >&2
+        return 2
+    fi
+    reservation_holder_for_task "$task_id"
+    return 0
+}
+
+cmd_reservation_of() {
+    # Print the task ID reserved for this worktree, or empty if none.
+    # Same stdout-channel contract as cmd_worktree_for_task.
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim reservation-of <worktree>" >&2
+        return 2
+    fi
+    reservation_task_id "$worktree"
+    return 0
+}
+
+cmd_list_reservations() {
+    # Show all active reservations: worktree, task_id, branch, age.
+    # Age comes from the created_epoch field; format_duration_short
+    # is the same helper cmd_list --with-age uses.
+    mkdir -p "$RESERVATIONS_DIR"
+    local now
+    now=$(date +%s)
+    local found=0
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        found=1
+        local age_str="?"
+        if [[ -n "$epoch" && "$epoch" -gt 0 ]]; then
+            age_str=$(format_duration_short $(( now - epoch )))
+        fi
+        local branch_show="${branch:-(no branch)}"
+        printf "  %-18s  %-10s  %-50s  (held %s)\n" "$wt" "$tid" "$branch_show" "$age_str"
+    done < <(reservations_dump)
+    if [[ $found -eq 0 ]]; then
+        echo "no active reservations"
+    fi
+}
+
 # --- main -----------------------------------------------------------------
 
 case "${1:-}" in
@@ -1392,6 +1661,37 @@ case "${1:-}" in
         ;;
     clear-all)
         cmd_clear_all
+        ;;
+    reserve)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim reserve <task-id> <worktree> [branch]" >&2
+            exit 2
+        fi
+        cmd_reserve "$2" "$3" "${4:-}"
+        ;;
+    release-worktree)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim release-worktree <worktree>" >&2
+            exit 2
+        fi
+        cmd_release_worktree "$2"
+        ;;
+    reservation-of)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reservation-of <worktree>" >&2
+            exit 2
+        fi
+        cmd_reservation_of "$2"
+        ;;
+    worktree-for-task)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim worktree-for-task <task-id>" >&2
+            exit 2
+        fi
+        cmd_worktree_for_task "$2"
+        ;;
+    list-reservations)
+        cmd_list_reservations
         ;;
     molecule)
         sub="${2:-}"
@@ -1479,6 +1779,25 @@ commands:
                                 AFTER the subcommand and is unrelated to the
                                 global --repo namespace flag above.
   clear-all                     wipe all claims (used by fleet-up on restart)
+
+reservation commands (worktree-pinning, distinct from claims):
+  reserve <task-id> <worktree> [branch]  pin a future task to a specific worktree.
+                                         Atomic O_EXCL create — fails if the worktree
+                                         already has a reservation, or if the task is
+                                         held by another worktree.
+  release-worktree <worktree>            remove a worktree's reservation. Idempotent;
+                                         always exits 0 (safe in parallel tool batches).
+  reservation-of <worktree>              print task ID reserved for a worktree, or empty
+                                         if none. Empty stdout + exit 0 = no reservation
+                                         (mirrors molecule_resume's stdout-channel idiom).
+  worktree-for-task <task-id>            print worktree pinned to a task, or empty.
+                                         Same stdout-channel contract as reservation-of.
+  list-reservations                      table of all active reservations with age.
+
+  Reservation gate: cmd_claim and cmd_stack refuse to grant a task that is reserved
+  for a different worktree than the requesting agent. cmd_release does NOT touch
+  reservations — they outlive single claim cycles. clear-all preserves reservations
+  (mirrors molecule preservation).
 
 molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules + per-task state
