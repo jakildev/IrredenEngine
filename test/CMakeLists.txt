@@ -20,13 +20,13 @@ add_executable(IrredenEngineTest
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
   render/frame_data_sun_layout_test.cpp
+  render/per_canvas_light_scope_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
   script/lua_component_register_test.cpp
-  script/lua_system_register_test.cpp
   script/modifier_lua_test.cpp
   utility/ir_utility_test.cpp
 )
