@@ -317,11 +317,11 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit finding #11). Preferred implementation: Option B (CHILD_OF relation) over Option A (explicit scope tag) — composes with existing RelationParams machinery and falls out of existing system patterns. Every C_LightSource currently contributes to every canvas with a C_CanvasLightVolume; scoping is useful for UI/inset canvases that should not receive world-space lights.
   - **Links:**
 
-- [ ] **Render: SDF occlusion in point/spot light line-of-sight** — add SDF-shape pass to detail::hasLineOfSight so C_ShapeDescriptor entities tagged C_LightBlocker block point/spot propagation
+- [~] **Render: SDF occlusion in point/spot light line-of-sight** — add SDF-shape pass to detail::hasLineOfSight so C_ShapeDescriptor entities tagged C_LightBlocker block point/spot propagation
   - **ID:** T-117
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-117-sdf-occlusion-light-los
   - **Blocked by:** (none)
   - **Acceptance:** (1) demo with a C_ShapeDescriptor (box) placed between a point light and a voxel surface produces a visible shadow on the surface; (2) per-shape cost bounded by sun-cone-style culling (only shapes tagged C_LightBlocker within the light radius are evaluated); (3) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #364
@@ -348,6 +348,78 @@ Avoid:
   - **Acceptance:** (1) when a transient worker pane exits with a rate-limit error, dispatcher marks that pane with a cooldown file and skips re-dispatch for FLEET_DISPATCHER_LIMIT_DELAY seconds (default 900); (2) other panes not in cooldown dispatch normally (per-pane isolation — parallelism preserved); (3) dispatcher log records cooldown start once per pane, not every tick; (4) FLEET_DISPATCHER_LIMIT_DELAY is env-overridable; (5) fleet-babysit behavior unchanged; (6) existing non-rate-limited panes unaffected
   - **Issue:** #520
   - **Notes:** Mirror fleet-babysit LIMIT_DELAY=900 pattern (scripts/fleet/fleet-babysit lines 96 and 563-565). Two detection approaches in issue: Option A (parse pane scrollback for rate-limit pattern), Option B (wrap claude invocation with exit-code reporter). Per-pane keying (not per-role) matches PR #498 per-pane dispatch tracking infrastructure. Key file: scripts/fleet/fleet-dispatcher.
+  - **Links:**
+
+- [ ] **Fleet: fleet-claim worktree reservation primitives** — new reserve, release-worktree, worktree-for-task, reservation-of, list-reservations subcommands; ~/.fleet/reservations/<worktree>.json storage; atomic create-or-fail; claim/release integration
+  - **ID:** T-120
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) fleet-claim reserve <worktree> <task-id> writes reservation JSON atomically, fails if already reserved; (2) release-worktree clears reservation idempotently; (3) worktree-for-task prints worktree name or empty; (4) reservation-of prints task_id or empty; (5) list-reservations shows all current entries; (6) existing claim/release flow unaffected; (7) minimal bash test harness covers all new paths
+  - **Issue:** (none)
+  - **Notes:** PR 1 of 6 for #521 (worktree-as-reservation epic). Full plan in .fleet/plans/T-120.md. Atomicity via mkdir-lock pattern at ~/.fleet/reservations/<name>.lock/. When fleet-claim claim runs, also writes reservation if agent matches a worktree basename. fleet-up clear-all should clear ~/.fleet/reservations/ but leave dirty worktree state. Confirm ~/bin/ install mechanism with human at PR time — fleet-claim is not in the engine repo.
+  - **Links:**
+
+- [ ] **Fleet: dispatcher reservation-aware pane selection** — when firing a role-X iteration, route to reserved pane for role first; free-pane fallback second; defer if in-flight+reserved >= cap
+  - **ID:** T-121
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-120
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) dispatcher routes to reserved pane when a reservation exists for matching role; (2) free-pane fallback works when no reservation matches; (3) cap-check defers dispatch if in-flight+reserved >= per-role cap; (4) fleet-claim reserve in test → dispatcher routes to reserved pane; remove → routes to free pane
+  - **Issue:** (none)
+  - **Notes:** PR 2 of 6 for #521. Full plan in .fleet/plans/T-120.md. New helper: fleet-claim reservation-role <worktree> → prints role tag from TASKS.md entry. Key file: ~/bin/fleet-dispatcher. @fleet-role kept as fallback signal; reservations take priority.
+  - **Links:**
+
+- [ ] **Fleet: role docs startup reservation check** — new step 0.5 in opus-worker and sonnet-author: check reservation-of on startup; if found, checkout reserved branch and skip pickup; release-worktree before start-next-task
+  - **ID:** T-122
+  - **Area:** docs, tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-121
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) role-opus-worker.md and role-sonnet-author.md include step 0.5 checking fleet-claim reservation-of <worktree>; (2) if reservation found, checkout reserved branch and skip planning/pickup steps; (3) step 12 calls fleet-claim release-worktree before start-next-task; (4) dry-run test: stale reservation in place → role exits without double-claim; (5) sonnet-reviewer, queue-manager, merger unaffected
+  - **Issue:** (none)
+  - **Notes:** PR 3 of 6 for #521. Full plan in .fleet/plans/T-120.md. Files: .claude/commands/role-opus-worker.md, .claude/commands/role-sonnet-author.md. Architects exempt (dedicated panes, babysit lifecycle). Step 8 (design-blocked escalation) keeps reservation — next iteration resumes same worktree.
+  - **Links:**
+
+- [ ] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
+  - **ID:** T-123
+  - **Area:** tooling, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-122
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) fleet-up provisions worktree-N names (opus-worker-1 → worktree-1, sonnet-fleet-1 → worktree-3, etc.); (2) migration script renames clean worktrees via git worktree move; (3) dirty worktrees file escalation issue instead of auto-wiping; (4) docs/agents/MIGRATION-WORKTREES.md included; (5) opus-architect-1 / game-architect-1 untouched; (6) FLEET.md + FLEET-CACHE.md updated
+  - **Issue:** (none)
+  - **Notes:** PR 4 of 6 for #521, parallelizable with T-125 after T-122 lands. Full plan in .fleet/plans/T-120.md. Human must run migration script locally (touches machine state). All role docs that hardcode worktree names updated in same PR.
+  - **Links:**
+
+- [ ] **Fleet: stuck-worktree staleness escalation** — extend fleet-claim check-stale: reservations older than 24h file a fleet:stuck-worktree issue with dirty-file capture; one-shot per reservation via .escalated flag
+  - **ID:** T-124
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-120
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) fleet-claim check-stale detects reservations older than 24h; (2) files engine-repo issue with fleet:stuck-worktree label per stale reservation (title: "fleet: stuck worktree <name> reserved for T-NNN"); (3) issue body includes reservation JSON, dirty file list, last commit; (4) one-shot via ~/.fleet/reservations/<name>.escalated flag; (5) existing check-stale task-claim behavior unaffected
+  - **Issue:** (none)
+  - **Notes:** PR 5 of 6 for #521, can run parallel to T-122+ after T-120. Full plan in .fleet/plans/T-120.md. New GitHub label fleet:stuck-worktree needed on engine repo — create it or have human create before PR merges. Files: ~/bin/fleet-claim, ~/bin/fleet-up.
+  - **Links:**
+
+- [ ] **Fleet: per-role concurrency cap config + dispatcher enforcement** — fleet-up.conf per-role concurrency field; dispatcher defers dispatch when in-flight+reserved >= cap[role]; default opus-worker=2, sonnet-fleet=4
+  - **ID:** T-125
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-122
+  - **Stack:** T-120..T-125 worktree-reservations
+  - **Acceptance:** (1) fleet-up.conf gains per-role concurrency config (opus-worker: concurrency=2, sonnet-fleet: concurrency=4); (2) dispatcher defers when in-flight+reserved for role >= cap; (3) with concurrency=2, third concurrent opus-worker iteration deferred even with free worktrees; (4) env-overridable; (5) per-pane parallelism preserved for roles under cap; (6) default values preserve current behavior
+  - **Issue:** (none)
+  - **Notes:** PR 6 of 6 for #521, parallelizable with T-123 after T-122. Full plan in .fleet/plans/T-120.md. Files: ~/bin/fleet-up (config schema), ~/bin/fleet-dispatcher (cap-check at dispatch time). Soft cap — orthogonal to reservations; reservations protect dirty-state continuity, cap protects credit budget.
   - **Links:**
 
 ---
