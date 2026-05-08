@@ -283,18 +283,18 @@ PYEOF
 
 cmd_claim() {
     # Try to atomically claim a task. Exit 0 = claimed, exit 1 = taken.
-    # $1 = task ID (T-NNN), $2 = agent name
+    # $1 = task ID (T-NNN), $2 = agent name (optional; omit to pass flags directly)
     # Optional flag: --stackable-on <pr-url> bypasses the blocker gate
     # and records a sidecar .meta file so the worker branches its PR off
     # the blocker's open PR head ref instead of master. Race mitigation:
     # the PR's state is re-fetched here — MERGED falls back to a normal
     # claim, CLOSED refuses the claim outright.
     local task_id="$1"
-    local agent="${2:-unknown}"
-    if [[ $# -ge 2 ]]; then
-        shift 2
-    else
-        shift $#
+    shift
+    local agent="unknown"
+    if [[ "${1:-}" != --* && $# -ge 1 ]]; then
+        agent="$1"
+        shift
     fi
     local stackable_pr=""
     while [[ $# -gt 0 ]]; do
