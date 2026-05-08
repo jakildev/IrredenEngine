@@ -468,8 +468,25 @@ Each iteration:
    `[sonnet]` agent shouldn't pick `[opus]` tasks anyway). Otherwise
    the task is yours to claim.
 
-   **If no matching task exists, exit cleanly.** Print
-   `[sonnet-author] No unblocked [sonnet] tasks — standing by. Babysit will re-invoke.`
+   **If no matching unblocked task exists, try the fallback tier.**
+
+   **Fallback: stackable-blocked tasks (engine only, v1).** Look in
+   `repos.engine.tasks.open[]` for entries where `owner == "free"` (or
+   your worktree name), `model` contains `sonnet`, AND the entry has a
+   `stackable_blocker_pr` field. Only single-blocker tasks have this
+   field — the scout does not set it for tasks with multiple `Blocked by:`
+   entries (Q3 decision: multi-blocker not eligible in v1). Skip game-side
+   tasks — game stackable pickup is deferred to v2; check
+   `repo == "engine"` only. Pick the oldest eligible task by task ID.
+
+   If a stackable-blocked task is found, claim it with `--stackable-on`:
+   `fleet-claim claim "<task-id>" <your-worktree-name> --stackable-on <stackable_blocker_pr.number>`
+   where `<stackable_blocker_pr.number>` is the PR number from the scout's
+   `stackable_blocker_pr` object (the fleet-claim script accepts a number
+   or full URL). See step 3 for the branching flow.
+
+   **If neither tier yields a task, exit cleanly.** Print
+   `[sonnet-author] No unblocked or stackable-blocked [sonnet] tasks — standing by. Will re-fire on next dispatcher trigger.`
    and stop. Do NOT invent work, self-assign documentation passes,
    or create tasks outside the queue.
 
@@ -574,8 +591,16 @@ Each iteration:
    reviewer's approval on the unchanged commits carries over unless
    a conflict actually modified them.
 
-   **For single-task claims**, create the branch, commit, and open a
-   `fleet:wip` PR normally:
+   **For single-task claims** (including stackable-blocked claims),
+   determine the base before branching:
+   `fleet-claim claim-base "<task-id>"`
+   - Returns `master` — branch off `origin/master` normally.
+   - Returns a feature branch (e.g. `claude/T-NNN-…`) — this is a
+     stackable-on claim; fetch and branch off that upstream branch:
+     `git fetch origin <upstream-branch>`
+     `git checkout -b claude/<task-id>-<short-topic> origin/<upstream-branch>`
+
+   For a normal claim (base is `master`):
    `git checkout -b claude/<area>-<topic>`
    `git commit --allow-empty -m "claim: <task title>"`
 
@@ -584,6 +609,13 @@ Each iteration:
    automatically when the PR merges:
    `gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
    If there is no issue (`(none)`), omit the `Closes` line.
+
+   For a stackable-on claim (base is a feature branch), open with
+   `--base <upstream-branch>` and add `fleet:stacked`:
+   First look up the upstream PR URL:
+   `gh pr view <stackable_blocker_pr.number> --json url --jq .url`
+   Then open the PR:
+   `gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
 
    Reference the task title in the PR title so the queue-manager can
    match it.
