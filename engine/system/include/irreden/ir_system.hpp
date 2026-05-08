@@ -6,6 +6,8 @@
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/system/system_manager.hpp>
 
+#include <functional>
+
 namespace IRSystem {
 extern SystemManager *g_systemManager;
 SystemManager &getSystemManager();
@@ -16,18 +18,17 @@ namespace detail {
 // SystemManager::createSystem so the matched archetype + dispatch only
 // see the real components (not Exclude<...> placeholders).
 template <typename L> struct CallCreateSystem;
-template <typename... Cs>
-struct CallCreateSystem<TypeList<Cs...>> {
-    template <typename... Args>
-    static SystemId run(SystemManager &mgr, Args &&...args) {
+template <typename... Cs> struct CallCreateSystem<TypeList<Cs...>> {
+    template <typename... Args> static SystemId run(SystemManager &mgr, Args &&...args) {
         return mgr.template createSystem<Cs...>(std::forward<Args>(args)...);
     }
 };
 
 template <typename L> struct ArchetypeFromList;
-template <typename... Cs>
-struct ArchetypeFromList<TypeList<Cs...>> {
-    static IREntity::Archetype value() { return IREntity::getArchetype<Cs...>(); }
+template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
+    static IREntity::Archetype value() {
+        return IREntity::getArchetype<Cs...>();
+    }
 };
 
 } // namespace detail
@@ -53,8 +54,7 @@ constexpr SystemId createSystem(
     FunctionRelationTick functionRelationTick = nullptr
 ) {
     using Partition = detail::PartitionExcludes<TickComponents...>;
-    auto excludeArchetype =
-        detail::ArchetypeFromList<typename Partition::Excluded>::value();
+    auto excludeArchetype = detail::ArchetypeFromList<typename Partition::Excluded>::value();
     return detail::CallCreateSystem<typename Partition::Included>::run(
         getSystemManager(),
         std::move(name),
@@ -70,6 +70,26 @@ constexpr SystemId createSystem(
 // Create a prefab system
 template <SystemName type, typename... Args> SystemId createSystem(Args &&...args) {
     return System<type>::create(args...);
+}
+
+// Free-function wrapper around `SystemManager::createSystemDynamic`. Used by
+// the Lua-driven path where component types are known only at runtime; the
+// caller passes resolved archetype sets (lists of `ComponentId`) and a body
+// taking the matched `ArchetypeNode*`. Templated `createSystem<...>` remains
+// the canonical path for C++ systems; this exists only for runtime-typed
+// dispatch (Lua, dynamic systems registered from a creation script).
+inline SystemId createSystemDynamic(
+    std::string name,
+    IREntity::Archetype includeArchetype,
+    IREntity::Archetype excludeArchetype,
+    std::function<void(IREntity::ArchetypeNode *)> body
+) {
+    return getSystemManager().createSystemDynamic(
+        std::move(name),
+        std::move(includeArchetype),
+        std::move(excludeArchetype),
+        std::move(body)
+    );
 }
 
 // TODO: Make extra param as well
@@ -94,9 +114,15 @@ template <typename Params> Params *getSystemParams(SystemId system) {
 void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 void executePipeline(IRTime::Events event);
 
-inline void setTimingEnabled(bool enabled) { getSystemManager().setTimingEnabled(enabled); }
-inline bool isTimingEnabled() { return getSystemManager().isTimingEnabled(); }
-inline void resetTimingStats() { getSystemManager().resetTimingStats(); }
+inline void setTimingEnabled(bool enabled) {
+    getSystemManager().setTimingEnabled(enabled);
+}
+inline bool isTimingEnabled() {
+    return getSystemManager().isTimingEnabled();
+}
+inline void resetTimingStats() {
+    getSystemManager().resetTimingStats();
+}
 
 inline TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer) {
     return getSystemManager().registerTickObserver(std::move(observer));

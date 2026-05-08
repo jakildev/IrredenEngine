@@ -52,6 +52,7 @@ target_link_libraries(
     lua
     sol2
     IrredenEngineEntity
+    IrredenEngineSystem
 )
 target_include_directories(
     IrredenEngineScripting

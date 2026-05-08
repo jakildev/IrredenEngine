@@ -8,8 +8,29 @@ system entity.
 
 ## Public API
 
-`IRSystem::` exposes: `createSystem<...>()`, `registerPipeline()`,
-`executePipeline()`, system tag helpers, and per-system-parameters.
+`IRSystem::` exposes: `createSystem<...>()`, `createSystemDynamic()`,
+`registerPipeline()`, `executePipeline()`, system tag helpers, and
+per-system-parameters.
+
+## `createSystemDynamic` for runtime-typed systems
+
+`createSystem<Components...>()` is the canonical path — component types
+are template parameters, the body's tick signature is detected via
+`std::is_invocable_v`, and dispatch is the per-entity-shape
+fast path described below.
+
+`createSystemDynamic(name, includeArchetype, excludeArchetype, body)`
+is the runtime-typed parallel, used by Lua-defined systems
+(`LuaScript::registerSystem`). The component sets are passed as
+resolved `IREntity::Archetype` (sets of `ComponentId`) and the body
+is a `std::function<void(ArchetypeNode*)>` that fires once per
+matched archetype. Per-entity iteration is the body's responsibility,
+not SystemManager's — the Lua surface uses this to keep the C++/Lua
+boundary at one `sol::function` call per archetype.
+
+Both paths share the same scheduler: `executePipeline` walks
+`m_ticks[system].functionTick_`, which is a `std::function<void(
+ArchetypeNode*)>` regardless of which factory created the system.
 
 ## Three valid TICK function signatures
 

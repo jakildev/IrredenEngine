@@ -44,6 +44,32 @@ void SystemManager::clearTickObservers() {
     m_observers.clear();
 }
 
+SystemId SystemManager::createSystemDynamic(
+    std::string name,
+    Archetype includeArchetype,
+    Archetype excludeArchetype,
+    std::function<void(ArchetypeNode *)> body
+) {
+    m_systemNames.emplace_back(C_Name{std::move(name)});
+    SystemId newSystemId = m_nextSystemId++;
+
+    m_beginTicks.emplace_back(C_SystemEvent<BEGIN_TICK>{[]() {}});
+    m_ticks.emplace_back(
+        C_SystemEvent<TICK>{
+            std::move(body),
+            std::move(includeArchetype),
+            std::move(excludeArchetype),
+        }
+    );
+    m_endTicks.emplace_back(C_SystemEvent<END_TICK>{[]() {}});
+    m_relationTicks.emplace_back(C_SystemEvent<RELATION_TICK>{[](EntityRecord) {}});
+
+    m_relations.emplace_back(C_SystemRelation{Relation::NONE});
+    m_systemParams.emplace_back(nullptr);
+    m_timingAccum.emplace_back();
+    return newSystemId;
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }
