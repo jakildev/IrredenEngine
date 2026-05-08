@@ -30,7 +30,8 @@ class FieldRegistry {
     }
 
     const char *fieldName(IRComponents::FieldBindingId id) const {
-        if (id == IRComponents::kInvalidFieldId || id >= m_names.size()) return nullptr;
+        if (id == IRComponents::kInvalidFieldId || id >= m_names.size())
+            return nullptr;
         return m_names[id];
     }
 
@@ -44,7 +45,8 @@ class FieldRegistry {
     // pointer comparisons would miss equal-but-distinct strings — strcmp
     // is the correct semantic.
     IRComponents::FieldBindingId findFieldId(const char *name) const {
-        if (name == nullptr) return IRComponents::kInvalidFieldId;
+        if (name == nullptr)
+            return IRComponents::kInvalidFieldId;
         for (std::size_t i = 1; i < m_names.size(); ++i) {
             if (m_names[i] != nullptr && std::strcmp(m_names[i], name) == 0) {
                 return static_cast<IRComponents::FieldBindingId>(i);
@@ -53,7 +55,9 @@ class FieldRegistry {
         return IRComponents::kInvalidFieldId;
     }
 
-    std::size_t fieldCount() const { return m_names.size() - 1; }
+    std::size_t fieldCount() const {
+        return m_names.size() - 1;
+    }
 
   private:
     std::vector<const char *> m_names;

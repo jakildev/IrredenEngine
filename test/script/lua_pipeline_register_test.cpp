@@ -14,8 +14,8 @@ namespace {
 using IRComponents::C_Modifiers;
 using IRComponents::C_ResolvedFields;
 using IRComponents::FieldBindingId;
-using IRComponents::TransformKind;
 using IRComponents::kInvalidFieldId;
+using IRComponents::TransformKind;
 using IREntity::EntityId;
 
 // Owns the EntityManager + SystemManager + LuaScript needed to exercise
@@ -42,37 +42,36 @@ class LuaPipelineRegisterTest : public testing::Test {
 
 TEST_F(LuaPipelineRegisterTest, IRTimeEventsBound) {
     auto &lua = m_lua.lua();
-    EXPECT_EQ(lua.script("return IRTime.UPDATE").get<int>(),
-              static_cast<int>(IRTime::UPDATE));
-    EXPECT_EQ(lua.script("return IRTime.RENDER").get<int>(),
-              static_cast<int>(IRTime::RENDER));
-    EXPECT_EQ(lua.script("return IRTime.INPUT").get<int>(),
-              static_cast<int>(IRTime::INPUT));
-    EXPECT_EQ(lua.script("return IRTime.START").get<int>(),
-              static_cast<int>(IRTime::START));
-    EXPECT_EQ(lua.script("return IRTime.END").get<int>(),
-              static_cast<int>(IRTime::END));
+    EXPECT_EQ(lua.script("return IRTime.UPDATE").get<int>(), static_cast<int>(IRTime::UPDATE));
+    EXPECT_EQ(lua.script("return IRTime.RENDER").get<int>(), static_cast<int>(IRTime::RENDER));
+    EXPECT_EQ(lua.script("return IRTime.INPUT").get<int>(), static_cast<int>(IRTime::INPUT));
+    EXPECT_EQ(lua.script("return IRTime.START").get<int>(), static_cast<int>(IRTime::START));
+    EXPECT_EQ(lua.script("return IRTime.END").get<int>(), static_cast<int>(IRTime::END));
 }
 
 TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
     auto &lua = m_lua.lua();
-    EXPECT_EQ(lua.script("return IRSystem.SystemName.LIFETIME").get<int>(),
-              static_cast<int>(IRSystem::LIFETIME));
-    EXPECT_EQ(lua.script("return IRSystem.SystemName.MODIFIER_DECAY").get<int>(),
-              static_cast<int>(IRSystem::MODIFIER_DECAY));
-    EXPECT_EQ(lua.script("return IRSystem.SystemName.FRAMEBUFFER_TO_SCREEN").get<int>(),
-              static_cast<int>(IRSystem::FRAMEBUFFER_TO_SCREEN));
+    EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.LIFETIME").get<int>(),
+        static_cast<int>(IRSystem::LIFETIME)
+    );
+    EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.MODIFIER_DECAY").get<int>(),
+        static_cast<int>(IRSystem::MODIFIER_DECAY)
+    );
+    EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.FRAMEBUFFER_TO_SCREEN").get<int>(),
+        static_cast<int>(IRSystem::FRAMEBUFFER_TO_SCREEN)
+    );
 }
 
 // ---- registerPrefabSystem + IRSystem.systemId -----------------------------
 
 TEST_F(LuaPipelineRegisterTest, SystemIdReturnsCachedPrefabSystemId) {
-    const IRSystem::SystemId expected =
-        m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
+    const IRSystem::SystemId expected = m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
     auto &lua = m_lua.lua();
     const auto actual =
-        lua.script("return IRSystem.systemId(IRSystem.SystemName.LIFETIME)")
-            .get<lua_Integer>();
+        lua.script("return IRSystem.systemId(IRSystem.SystemName.LIFETIME)").get<lua_Integer>();
     EXPECT_EQ(static_cast<IRSystem::SystemId>(actual), expected);
 }
 
@@ -80,7 +79,8 @@ TEST_F(LuaPipelineRegisterTest, SystemIdRaisesForUnregisteredName) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
         "return IRSystem.systemId(IRSystem.SystemName.LIFETIME)",
-        sol::script_pass_on_error);
+        sol::script_pass_on_error
+    );
     EXPECT_FALSE(result.valid());
 }
 
@@ -97,7 +97,8 @@ TEST_F(LuaPipelineRegisterTest, RegisterPipelineAcceptsMixedSystemIds) {
     auto &lua = m_lua.lua();
     // Use a Lua-defined component so the test fixture doesn't need a
     // creation-style lua_component_pack with `C_Position3D` registered.
-    auto result = lua.safe_script(R"(
+    auto result = lua.safe_script(
+        R"(
         local Marker = IRComponent.register("PipelineMarker", { count = 0 })
         local luaSysId = IRSystem.registerSystem({
             name = "PipelineTestLuaSys",
@@ -109,7 +110,9 @@ TEST_F(LuaPipelineRegisterTest, RegisterPipelineAcceptsMixedSystemIds) {
             luaSysId,
         })
         return true
-    )", sol::script_pass_on_error);
+    )",
+        sol::script_pass_on_error
+    );
     // Expectation: pipeline registration succeeds; we don't assert a
     // particular execution order here because the systemmanager-side
     // execution test would require driving the game loop. The end-to-end
@@ -126,37 +129,46 @@ TEST_F(LuaPipelineRegisterTest, RegisterPipelineAcceptsMixedSystemIds) {
 
 TEST_F(LuaPipelineRegisterTest, ModifierTransformEnumBound) {
     auto &lua = m_lua.lua();
-    EXPECT_EQ(lua.script("return IRModifier.Transform.ADD").get<int>(),
-              static_cast<int>(TransformKind::ADD));
-    EXPECT_EQ(lua.script("return IRModifier.Transform.MULTIPLY").get<int>(),
-              static_cast<int>(TransformKind::MULTIPLY));
-    EXPECT_EQ(lua.script("return IRModifier.Transform.SET").get<int>(),
-              static_cast<int>(TransformKind::SET));
-    EXPECT_EQ(lua.script("return IRModifier.Transform.CLAMP_MIN").get<int>(),
-              static_cast<int>(TransformKind::CLAMP_MIN));
-    EXPECT_EQ(lua.script("return IRModifier.Transform.CLAMP_MAX").get<int>(),
-              static_cast<int>(TransformKind::CLAMP_MAX));
-    EXPECT_EQ(lua.script("return IRModifier.Transform.OVERRIDE").get<int>(),
-              static_cast<int>(TransformKind::OVERRIDE));
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.ADD").get<int>(),
+        static_cast<int>(TransformKind::ADD)
+    );
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.MULTIPLY").get<int>(),
+        static_cast<int>(TransformKind::MULTIPLY)
+    );
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.SET").get<int>(),
+        static_cast<int>(TransformKind::SET)
+    );
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.CLAMP_MIN").get<int>(),
+        static_cast<int>(TransformKind::CLAMP_MIN)
+    );
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.CLAMP_MAX").get<int>(),
+        static_cast<int>(TransformKind::CLAMP_MAX)
+    );
+    EXPECT_EQ(
+        lua.script("return IRModifier.Transform.OVERRIDE").get<int>(),
+        static_cast<int>(TransformKind::OVERRIDE)
+    );
 }
 
 // ---- registerField + fieldId ----------------------------------------------
 
 TEST_F(LuaPipelineRegisterTest, RegisterFieldRoundTripsByName) {
     auto &lua = m_lua.lua();
-    auto registered = lua.script(
-        "return IRModifier.registerField('lua.pipeline.test.alpha')")
-        .get<lua_Integer>();
+    auto registered =
+        lua.script("return IRModifier.registerField('lua.pipeline.test.alpha')").get<lua_Integer>();
     EXPECT_GT(registered, 0);
 
-    auto looked = lua.script(
-        "return IRModifier.fieldId('lua.pipeline.test.alpha')")
-        .get<lua_Integer>();
+    auto looked =
+        lua.script("return IRModifier.fieldId('lua.pipeline.test.alpha')").get<lua_Integer>();
     EXPECT_EQ(looked, registered);
 
-    auto missing = lua.script(
-        "return IRModifier.fieldId('lua.pipeline.test.never.registered')")
-        .get<lua_Integer>();
+    auto missing = lua.script("return IRModifier.fieldId('lua.pipeline.test.never.registered')")
+                       .get<lua_Integer>();
     EXPECT_EQ(missing, static_cast<lua_Integer>(kInvalidFieldId));
 }
 
@@ -170,13 +182,15 @@ TEST_F(LuaPipelineRegisterTest, AddMultiplyHalvesResolvedFieldFromLua) {
     // verification example uses `Hp.current`; this test runs the same
     // mechanism under `T102Hp.current` to keep cross-test isolation.
     auto &lua = m_lua.lua();
-    auto setup = lua.safe_script(R"(
+    auto setup = lua.safe_script(
+        R"(
         local Hp = IRComponent.register("T102Hp", { current = 100 })
         return Hp.fields.current.bindingId
-    )", sol::script_pass_on_error);
+    )",
+        sol::script_pass_on_error
+    );
     ASSERT_TRUE(setup.valid()) << "T102Hp registration failed";
-    const auto fieldId =
-        static_cast<FieldBindingId>(setup.get<lua_Integer>());
+    const auto fieldId = static_cast<FieldBindingId>(setup.get<lua_Integer>());
     EXPECT_NE(fieldId, kInvalidFieldId);
 
     const EntityId entity = IREntity::createEntity(C_Modifiers{});
@@ -185,12 +199,15 @@ TEST_F(LuaPipelineRegisterTest, AddMultiplyHalvesResolvedFieldFromLua) {
     // Lua applies the canonical `IRModifier.add(entity, "T102Hp.current",
     // { transform = MULTIPLY, value = 0.5 })` (plan's verification with
     // a test-unique field name).
-    auto add = lua.safe_script(R"(
+    auto add = lua.safe_script(
+        R"(
         IRModifier.add(g_entity, "T102Hp.current", {
             transform = IRModifier.Transform.MULTIPLY,
             value = 0.5,
         })
-    )", sol::script_pass_on_error);
+    )",
+        sol::script_pass_on_error
+    );
     ASSERT_TRUE(add.valid()) << "IRModifier.add failed";
 
     // applyToField shares the resolver evaluator with the pipeline; if
@@ -204,9 +221,8 @@ TEST_F(LuaPipelineRegisterTest, AddMultiplyHalvesResolvedFieldFromLua) {
 
     // The Lua-side `IRModifier.applyToField` mirrors the C++ surface and
     // should report the same composed value.
-    auto fromLua = lua.script(
-        "return IRModifier.applyToField(g_entity, 'T102Hp.current', 100.0)")
-        .get<float>();
+    auto fromLua = lua.script("return IRModifier.applyToField(g_entity, 'T102Hp.current', 100.0)")
+                       .get<float>();
     EXPECT_FLOAT_EQ(fromLua, 50.0f);
 }
 
@@ -214,12 +230,15 @@ TEST_F(LuaPipelineRegisterTest, AddRejectsUnknownFieldName) {
     auto &lua = m_lua.lua();
     const EntityId entity = IREntity::createEntity(C_Modifiers{});
     lua["g_entity"] = static_cast<lua_Integer>(entity);
-    auto result = lua.safe_script(R"(
+    auto result = lua.safe_script(
+        R"(
         IRModifier.add(g_entity, "no.such.field", {
             transform = IRModifier.Transform.ADD,
             value = 1.0,
         })
-    )", sol::script_pass_on_error);
+    )",
+        sol::script_pass_on_error
+    );
     EXPECT_FALSE(result.valid());
 }
 

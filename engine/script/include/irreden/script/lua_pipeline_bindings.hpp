@@ -35,7 +35,6 @@
 #include <irreden/script/lua_script.hpp>
 
 #include <list>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 
@@ -163,8 +162,7 @@ inline void bindSystemNameEnum(LuaScript &script) {
 // `registerPrefabSystem<N>()` calls; passed by pointer so the closure
 // reads the live map rather than a snapshot.
 inline void bindRegisterPipelineAndSystemId(
-    LuaScript &script,
-    const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds
+    LuaScript &script, const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds
 ) {
     sol::state &lua = script.lua();
     if (!lua["IRSystem"].valid()) {
@@ -181,7 +179,8 @@ inline void bindRegisterPipelineAndSystemId(
                 "IRSystem.systemId: unknown SystemName " + std::to_string(name) +
                 " — the C++ creation must call "
                 "LuaScript::registerPrefabSystem<...>() for this prefab system "
-                "before main.lua references it"};
+                "before main.lua references it"
+            };
         }
         return static_cast<lua_Integer>(it->second);
     };
@@ -191,7 +190,8 @@ inline void bindRegisterPipelineAndSystemId(
             event > static_cast<lua_Integer>(IRTime::END)) {
             throw sol::error{
                 "IRSystem.registerPipeline: invalid event " + std::to_string(event) +
-                " — must be IRTime.UPDATE / RENDER / INPUT / START / END"};
+                " — must be IRTime.UPDATE / RENDER / INPUT / START / END"
+            };
         }
         std::list<IRSystem::SystemId> pipeline;
         for (auto &kv : ids) {
@@ -200,7 +200,8 @@ inline void bindRegisterPipelineAndSystemId(
                 throw sol::error{
                     "IRSystem.registerPipeline: every entry in the system list must be "
                     "a SystemId integer (returned by IRSystem.systemId or "
-                    "IRSystem.registerSystem)"};
+                    "IRSystem.registerSystem)"
+                };
             }
             pipeline.push_back(static_cast<IRSystem::SystemId>(*id));
         }

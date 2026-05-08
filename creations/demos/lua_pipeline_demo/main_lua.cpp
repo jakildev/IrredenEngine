@@ -55,8 +55,7 @@ void registerLuaBindings() {
             IRSystem::INPUT_KEY_MOUSE,
             IRSystem::LIFETIME,
             IRSystem::GLOBAL_POSITION_3D,
-            IRSystem::FRAMEBUFFER_TO_SCREEN
-        >();
+            IRSystem::FRAMEBUFFER_TO_SCREEN>();
 
         // Modifier resolver pipeline. `registerResolverPipeline()` does
         // three things in one call: creates the singleton globals
@@ -68,15 +67,25 @@ void registerLuaBindings() {
         const auto resolver = IRPrefab::Modifier::registerResolverPipeline();
         script.registerPrefabSystemId(IRSystem::MODIFIER_DECAY, resolver.modifierDecay_);
         script.registerPrefabSystemId(
-            IRSystem::GLOBAL_MODIFIER_DECAY, resolver.globalModifierDecay_);
+            IRSystem::GLOBAL_MODIFIER_DECAY,
+            resolver.globalModifierDecay_
+        );
         script.registerPrefabSystemId(
-            IRSystem::LAMBDA_MODIFIER_DECAY, resolver.lambdaModifierDecay_);
+            IRSystem::LAMBDA_MODIFIER_DECAY,
+            resolver.lambdaModifierDecay_
+        );
         script.registerPrefabSystemId(
-            IRSystem::MODIFIER_RESOLVE_GLOBAL, resolver.modifierResolveGlobal_);
+            IRSystem::MODIFIER_RESOLVE_GLOBAL,
+            resolver.modifierResolveGlobal_
+        );
         script.registerPrefabSystemId(
-            IRSystem::MODIFIER_RESOLVE_EXEMPT, resolver.modifierResolveExempt_);
+            IRSystem::MODIFIER_RESOLVE_EXEMPT,
+            resolver.modifierResolveExempt_
+        );
         script.registerPrefabSystemId(
-            IRSystem::MODIFIER_RESOLVE_LAMBDA, resolver.modifierResolveLambda_);
+            IRSystem::MODIFIER_RESOLVE_LAMBDA,
+            resolver.modifierResolveLambda_
+        );
     });
 }
 
@@ -99,7 +108,9 @@ int main(int argc, char **argv) {
         cfg.shots_ = kShots;
         cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
         IRSystem::registerPipeline(
-            IRTime::Events::RENDER, {IRVideo::createAutoScreenshotSystem(cfg)});
+            IRTime::Events::RENDER,
+            {IRVideo::createAutoScreenshotSystem(cfg)}
+        );
     }
 
     IREngine::gameLoop();

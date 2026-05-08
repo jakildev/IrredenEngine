@@ -64,34 +64,31 @@
 
 namespace IRScript::detail {
 
-inline IRComponents::FieldBindingId resolveFieldArg(
-    const sol::object &arg,
-    const std::string &caller
-) {
+inline IRComponents::FieldBindingId
+resolveFieldArg(const sol::object &arg, const std::string &caller) {
     if (arg.is<lua_Integer>()) {
         return static_cast<IRComponents::FieldBindingId>(arg.as<lua_Integer>());
     }
     if (arg.is<std::string>()) {
         const std::string name = arg.as<std::string>();
-        const auto id = IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(
-            name.c_str());
+        const auto id = IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(name.c_str());
         if (id == IRComponents::kInvalidFieldId) {
             throw sol::error{
                 caller + ": unknown field name '" + name +
                 "' — register it via IRModifier.registerField or via a "
-                "Lua component IRComponent.register before pushing modifiers"};
+                "Lua component IRComponent.register before pushing modifiers"
+            };
         }
         return id;
     }
     throw sol::error{
         caller + ": field argument must be a string name or a "
-        "FieldBindingId integer"};
+                 "FieldBindingId integer"
+    };
 }
 
-inline IRComponents::TransformKind resolveTransform(
-    const sol::table &opts,
-    const std::string &caller
-) {
+inline IRComponents::TransformKind
+resolveTransform(const sol::table &opts, const std::string &caller) {
     sol::optional<lua_Integer> kind = opts.get<sol::optional<lua_Integer>>("transform");
     if (!kind) {
         throw sol::error{caller + ": opts.transform is required (IRModifier.Transform.X)"};
@@ -137,12 +134,13 @@ inline void bindModifierFramework(LuaScript &script) {
 
     api["fieldId"] = [](const std::string &name) {
         return static_cast<lua_Integer>(
-            IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(name.c_str()));
+            IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(name.c_str())
+        );
     };
 
     api["fieldName"] = [](sol::this_state L, lua_Integer id) -> sol::object {
-        const char *name = IRPrefab::Modifier::fieldName(
-            static_cast<IRComponents::FieldBindingId>(id));
+        const char *name =
+            IRPrefab::Modifier::fieldName(static_cast<IRComponents::FieldBindingId>(id));
         sol::state_view lua_view(L);
         if (name == nullptr) {
             return sol::make_object(lua_view, sol::lua_nil);
@@ -163,7 +161,8 @@ inline void bindModifierFramework(LuaScript &script) {
             kind,
             value,
             static_cast<IREntity::EntityId>(source),
-            ticks);
+            ticks
+        );
     };
 
     api["addGlobal"] = [](sol::object fieldArg, sol::table opts) {
@@ -178,20 +177,19 @@ inline void bindModifierFramework(LuaScript &script) {
             kind,
             value,
             static_cast<IREntity::EntityId>(source),
-            ticks);
+            ticks
+        );
     };
 
-    api["addLambda"] = [](
-                           lua_Integer target,
-                           sol::object fieldArg,
-                           sol::protected_function fn,
-                           sol::optional<sol::table> optsOpt) {
+    api["addLambda"] = [](lua_Integer target,
+                          sol::object fieldArg,
+                          sol::protected_function fn,
+                          sol::optional<sol::table> optsOpt) {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.addLambda");
         lua_Integer source = static_cast<lua_Integer>(IREntity::kNullEntity);
         std::int32_t ticks = -1;
         if (optsOpt) {
-            source = optsOpt->get_or(
-                "source", static_cast<lua_Integer>(IREntity::kNullEntity));
+            source = optsOpt->get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
             ticks = optsOpt->get_or("ticks", static_cast<std::int32_t>(-1));
         }
         // `std::function<float(float)>` wraps the sol::protected_function
@@ -200,22 +198,22 @@ inline void bindModifierFramework(LuaScript &script) {
         // holds a Lua state reference plus a registry handle; copying it
         // bumps the registry refcount, which is the right semantics for
         // a modifier whose lifetime extends across frames.
-        std::function<float(float)> wrapped =
-            [fn](float in) -> float {
-                sol::protected_function_result result = fn(in);
-                if (!result.valid()) {
-                    sol::error err = result;
-                    IRE_LOG_ERROR("IRModifier.addLambda fn error: {}", err.what());
-                    return in;
-                }
-                return result.get<float>();
-            };
+        std::function<float(float)> wrapped = [fn](float in) -> float {
+            sol::protected_function_result result = fn(in);
+            if (!result.valid()) {
+                sol::error err = result;
+                IRE_LOG_ERROR("IRModifier.addLambda fn error: {}", err.what());
+                return in;
+            }
+            return result.get<float>();
+        };
         IRPrefab::Modifier::pushLambda(
             static_cast<IREntity::EntityId>(target),
             field,
             std::move(wrapped),
             static_cast<IREntity::EntityId>(source),
-            ticks);
+            ticks
+        );
     };
 
     api["removeBySource"] = [](lua_Integer source) {
@@ -225,20 +223,22 @@ inline void bindModifierFramework(LuaScript &script) {
     api["applyToField"] = [](lua_Integer target, sol::object fieldArg, float base) {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.applyToField");
         return IRPrefab::Modifier::applyToField(
-            static_cast<IREntity::EntityId>(target), field, base);
+            static_cast<IREntity::EntityId>(target),
+            field,
+            base
+        );
     };
 
-    api["resolved"] = [](
-                          lua_Integer target,
-                          sol::object fieldArg,
-                          sol::optional<float> fallbackOpt) -> float {
+    api["resolved"] =
+        [](lua_Integer target, sol::object fieldArg, sol::optional<float> fallbackOpt) -> float {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.resolved");
         const float fallback = fallbackOpt.value_or(0.0f);
-        auto *resolved =
-            IREntity::getComponentOptional<IRComponents::C_ResolvedFields>(
-                static_cast<IREntity::EntityId>(target))
-                .value_or(nullptr);
-        if (resolved == nullptr) return fallback;
+        auto *resolved = IREntity::getComponentOptional<IRComponents::C_ResolvedFields>(
+                             static_cast<IREntity::EntityId>(target)
+        )
+                             .value_or(nullptr);
+        if (resolved == nullptr)
+            return fallback;
         return resolved->get(field, fallback);
     };
 
