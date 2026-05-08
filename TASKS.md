@@ -183,23 +183,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Lua-driven ECS: Lua-defined systems with archetype-batched dispatch** — add IRSystem::createSystemDynamic + LuaScript::registerSystem; archetype-batched dispatch (one sol::function call per archetype per tick); C++ and Lua share same ComponentId space
-  - **ID:** T-101
-  - **Area:** engine/system, engine/script
-  - **Model:** opus
-  - **Owner:** claude/T-101-lua-systems
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Lua system iterates (C_Position3D, C_Velocity3D) both C++-defined plus Lua-defined C_Marker tag; C++ render system sees Lua-written C_Position3D changes next frame; (2) separate test shows one sol::function invocation per archetype per tick, not per-entity; (3) unbound C++ type requested in system fails fast with error pointing at lua_component_pack; (4) registerSystem returns a SystemId Lua can pass to registerPipeline; (5) fleet-build clean on linux-debug
-  - **Issue:** #489
-  - **Notes:** PR 3 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-101.md. Blocked by T-100 (Lua components). Key files: engine/system/include/irreden/system/ir_system.hpp (add createSystemDynamic), engine/system/include/irreden/system/system_manager.hpp (DynamicSystem dispatch path), engine/script/include/irreden/script/lua_script.hpp (add registerSystem).
-  - **Links:**
-
 - [ ] **Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings** — bind IRSystem::registerPipeline, SystemName/GameSystemName enums, and modifier framework (C_Modifiers, transforms, C_ResolvedFields, field-binding registry) to Lua; demo creation with pure-Lua initSystems
   - **ID:** T-102
   - **Area:** engine/script, engine/system
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-101
+  - **Blocked by:** (none)
   - **Acceptance:** (1) Lua calls IRSystem.registerPipeline(IRTime.UPDATE, { IRSystem.systemId(SystemName.LIFETIME), luaSystemId, IRGameSystem.systemId(GameSystemName.GRID_BAKE) }) and all three execute in declared order; (2) IRModifier.add(entity, "Hp.current", { transform = MULTIPLY, value = 0.5 }) against Lua-defined component reflects in C_ResolvedFields; (3) sample demo creation whose entire initSystems lives in main.lua (mixing engine, game, and Lua systems) runs without crash; (4) fleet-build clean on linux-debug
   - **Issue:** #490
   - **Notes:** PR 4 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-102.md. Blocked by T-101 (Lua systems). New file: engine/script/include/irreden/script/lua_modifier_bindings.hpp. Convenience: IRSystem.systemId(SystemName.X) -> SystemId.
@@ -374,11 +363,11 @@ Avoid:
   - **Notes:** PR 2 of 6 for #521. Full plan in .fleet/plans/T-120.md. New helper: fleet-claim reservation-role <worktree> → prints role tag from TASKS.md entry. Key file: ~/bin/fleet-dispatcher. @fleet-role kept as fallback signal; reservations take priority.
   - **Links:**
 
-- [ ] **Fleet: role docs startup reservation check** — new step 0.5 in opus-worker and sonnet-author: check reservation-of on startup; if found, checkout reserved branch and skip pickup; release-worktree before start-next-task
+- [~] **Fleet: role docs startup reservation check** — new step 0.5 in opus-worker and sonnet-author: check reservation-of on startup; if found, checkout reserved branch and skip pickup; release-worktree before start-next-task
   - **ID:** T-122
   - **Area:** docs, tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-122-role-startup-reservation
   - **Blocked by:** T-121
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) role-opus-worker.md and role-sonnet-author.md include step 0.5 checking fleet-claim reservation-of <worktree>; (2) if reservation found, checkout reserved branch and skip planning/pickup steps; (3) step 12 calls fleet-claim release-worktree before start-next-task; (4) dry-run test: stale reservation in place → role exits without double-claim; (5) sonnet-reviewer, queue-manager, merger unaffected
@@ -435,6 +424,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-101** — Lua-driven ECS: Lua-defined systems with archetype-batched dispatch · Owner: claude/T-101-lua-systems · PR: https://github.com/jakildev/IrredenEngine/pull/517
 - [x] **T-100** — Lua-driven ECS: Lua-defined components with type inference · Owner: claude/T-100-lua-components · PR: https://github.com/jakildev/IrredenEngine/pull/508
 - [x] **T-108** — Docs: replace stale fleet-babysit references in transient role docs · Owner: claude/T-108-docs-fleet-dispatcher-refs · PR: https://github.com/jakildev/IrredenEngine/pull/511
 - [x] **T-107** — Fleet: fix pane_is_running_claude for macOS version-string process names · Owner: claude/T-107-pane-is-running-claude-fix · PR: https://github.com/jakildev/IrredenEngine/pull/510
@@ -454,5 +444,5 @@ Avoid:
 - [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
 - [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
 - [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
-- [x] **T-070** — Render: screen-space sun shadow map — add bake pass (flag-guarded) · Owner: claude/T-070-screen-space-sun-shadow-bake · PR: https://github.com/jakildev/IrredenEngine/pull/406
+
 
