@@ -95,8 +95,9 @@ IREntity.removeLuaComponent(entity, C_Hp)
   `bool`) auto-register a field binding `("TypeName.fieldName", id)` into
   `IRPrefab::Modifier::detail::globalFieldRegistry()` at registration time.
   The returned handle exposes those ids via `C_Hp.fields.current.bindingId`
-  so Lua scripts can pass them to `IRModifier.add` once the modifier
-  bindings ship in T-102. String / function / table fields receive
+  so Lua scripts can pass them to `IRModifier.add` (or use the field
+  name string `"Hp.current"` directly — both shapes are accepted; see
+  the modifier surface below). String / function / table fields receive
   `kInvalidFieldId` (not modifier-targetable).
 - **Storage:** a Lua-typed component is one `IComponentDataLuaTyped`
   impl with one native vector column per declared field
@@ -158,14 +159,121 @@ local sysId = IRSystem.registerSystem({
     `LuaTypedColumnView`: `:getField(i, "name")` /
     `:setField(i, "name", v)` for typed per-field access, or
     `:getRow(i)` / `:setRow(i, table)` for whole-row read/write.
-- **Return value.** A `SystemId` (`lua_Integer`). Holds for use with
-  `IRSystem.registerPipeline` (lands in T-102).
+- **Return value.** A `SystemId` (`lua_Integer`). Pass it directly to
+  `IRSystem.registerPipeline` alongside prefab-system ids returned by
+  `IRSystem.systemId(SystemName.X)` to mix Lua-defined and C++ systems
+  in one pipeline.
 - **No begin/end ticks yet.** Lua-side `beginTick` / `endTick`
-  hooks are not exposed in T-101; add them when a use case needs
+  hooks are not exposed; add them when a use case needs
   frame-scoped setup or teardown.
 
-T-100 landed components; T-101 (this) lands systems; pipelines,
-hot-reload, and the parity demo follow in T-102..T-104.
+## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
+
+`bindLuaDrivenEcs()` also exposes the pipeline-composition surface so a
+creation's entire `initSystems` can live in Lua. The C++ side registers
+which prefab systems Lua may spell:
+
+```cpp
+// In the creation's lua-binding callback:
+script.bindLuaDrivenEcs();
+script.registerPrefabSystems<
+    IRSystem::LIFETIME,
+    IRSystem::GLOBAL_POSITION_3D,
+    IRSystem::FRAMEBUFFER_TO_SCREEN
+>();
+// Also valid: cache an externally-created prefab id under its enum name.
+auto resolver = IRPrefab::Modifier::registerResolverPipeline();
+script.registerPrefabSystemId(IRSystem::MODIFIER_DECAY, resolver.modifierDecay_);
+// ... one call per resolver SystemId.
+```
+
+Then in Lua:
+
+```lua
+local SystemName = IRSystem.SystemName
+
+local luaSysId = IRSystem.registerSystem({
+    name = "MyLuaSys",
+    components = { "C_Position3D" },
+    tick = function(arch) ... end,
+})
+
+IRSystem.registerPipeline(IRTime.UPDATE, {
+    IRSystem.systemId(SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(SystemName.LIFETIME),
+    luaSysId,
+    IRSystem.systemId(SystemName.MODIFIER_DECAY),
+    IRSystem.systemId(SystemName.MODIFIER_RESOLVE_GLOBAL),
+    IRSystem.systemId(SystemName.MODIFIER_RESOLVE_EXEMPT),
+})
+```
+
+- **`IRTime.{UPDATE, RENDER, INPUT, START, END}`** — pipeline event tags.
+- **`IRSystem.SystemName.X`** — every prefab-system enum value, exposed as
+  an integer table. The list lives in
+  `engine/script/include/irreden/script/lua_pipeline_bindings.hpp`; new
+  prefab systems must be appended there alongside the
+  `engine/system/include/irreden/system/ir_system_types.hpp` entry.
+- **`IRSystem.systemId(name)`** — returns the cached `SystemId` for a
+  prefab system the C++ side registered via
+  `LuaScript::registerPrefabSystem<N>()` or
+  `registerPrefabSystemId(name, id)`. Raises a Lua error pointing at the
+  missing C++ registration if the name was never wired up.
+- **`IRSystem.registerPipeline(event, ids)`** — accepts any mix of prefab
+  ids (from `systemId`) and Lua-defined ids (from `registerSystem`).
+- **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the
+  same pattern — bind the game's own enum table at game-side init via
+  `LuaScript::registerEnum<...>()` plus `registerPrefabSystemId` for each
+  exposed game system. Engine code stays oblivious; Lua spells one
+  pipeline that carries both.
+
+The canonical example is `creations/demos/lua_pipeline_demo/`: zero C++
+`initSystems`, every pipeline composed from `main.lua`.
+
+## Modifier framework (`IRModifier.*`)
+
+`bindLuaDrivenEcs()` exposes the engine modifier framework as
+`IRModifier`. The full surface:
+
+```lua
+IRModifier.Transform.{ADD, MULTIPLY, SET, CLAMP_MIN, CLAMP_MAX, OVERRIDE}
+
+IRModifier.registerField("Movement.speed")           -- → FieldBindingId
+IRModifier.fieldId("Movement.speed")                 -- → FieldBindingId
+IRModifier.fieldName(id)                             -- → string | nil
+
+IRModifier.add(entity, fieldNameOrId, {
+    transform = IRModifier.Transform.ADD,
+    value = 0.5,
+    source = sourceEntity,           -- optional
+    ticks = 60,                      -- optional, -1 = no decay
+})
+IRModifier.addGlobal(fieldNameOrId, opts)
+IRModifier.addLambda(entity, fieldNameOrId, fn, opts)
+IRModifier.removeBySource(sourceEntity)
+
+IRModifier.applyToField(entity, fieldNameOrId, base) -- → resolved float
+IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
+```
+
+- **`fieldNameOrId`** — accepts a string (resolved against the registry
+  every call — fine for cold paths and config; cache the integer for
+  hot loops) or a `FieldBindingId`. Lua-defined components auto-expose
+  their scalar field ids at `Comp.fields.<name>.bindingId`; pass that
+  directly to skip the name lookup.
+- **`entity` / `source`** — raw `EntityId` integers, the same shape as
+  `arch.entityAt(i)` in a Lua system tick or `LuaEntity.entity`.
+- **Resolver pipeline integration.** `IRModifier.add` only writes to
+  `C_Modifiers`; the resolver systems (`MODIFIER_DECAY`,
+  `MODIFIER_RESOLVE_GLOBAL/EXEMPT`, etc.) are what compose
+  `C_ResolvedFields` once per UPDATE. To see resolved values from Lua,
+  splice those system ids into the UPDATE pipeline (after a one-shot
+  `IRPrefab::Modifier::registerResolverPipeline()` call from C++ —
+  the function creates the singleton globals entity and returns the
+  six resolver SystemIds; cache them via `registerPrefabSystemId`).
+- **`IRModifier.applyToField`** is a direct query; it shares one
+  evaluator with the resolver pipeline, so the two paths agree on the
+  same input regardless of whether the resolver tick has run yet.
 
 ## Script resolution
 

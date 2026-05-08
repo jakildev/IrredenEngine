@@ -28,6 +28,11 @@ No opt-outs.
 - `sprite_demo/` — exercises `C_Sprite` / `C_SpriteAnimation` Lua bindings.
   Three sprites demonstrate LOOP, ONCE, and PING_PONG loop modes against a
   32×32 test sheet (4 × 16px cells: red, green, blue, yellow).
+- `lua_pipeline_demo/` — minimal-render demo whose entire `initSystems`
+  lives in `scripts/main.lua`. Exercises `IRSystem.registerPipeline`,
+  `IRSystem.systemId(SystemName.X)`, and a Lua-defined system mixed
+  into the UPDATE list alongside prefab systems and the modifier
+  resolver chain. Reference for the T-102 Lua-driven-ECS pattern.
 
 ## Adding a new demo
 

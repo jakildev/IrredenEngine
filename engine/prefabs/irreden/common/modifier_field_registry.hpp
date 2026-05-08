@@ -11,6 +11,7 @@
 #include <irreden/common/components/component_modifiers.hpp>
 
 #include <cstddef>
+#include <cstring>
 #include <vector>
 
 namespace IRPrefab::Modifier::detail {
@@ -31,6 +32,25 @@ class FieldRegistry {
     const char *fieldName(IRComponents::FieldBindingId id) const {
         if (id == IRComponents::kInvalidFieldId || id >= m_names.size()) return nullptr;
         return m_names[id];
+    }
+
+    // Linear scan over registered names. v1 field counts are small
+    // (~tens) so a hash-by-name is unjustified; if a creation registers
+    // hundreds of fields, swap this for an unordered_map<string_view,
+    // FieldBindingId>. The Lua bindings call this per `IRModifier.add`
+    // when the caller passes a field name string instead of a numeric
+    // binding id, and the registered names use static-storage lifetime
+    // (string literals or names() back-buffer in lua_script.cpp), so
+    // pointer comparisons would miss equal-but-distinct strings — strcmp
+    // is the correct semantic.
+    IRComponents::FieldBindingId findFieldId(const char *name) const {
+        if (name == nullptr) return IRComponents::kInvalidFieldId;
+        for (std::size_t i = 1; i < m_names.size(); ++i) {
+            if (m_names[i] != nullptr && std::strcmp(m_names[i], name) == 0) {
+                return static_cast<IRComponents::FieldBindingId>(i);
+            }
+        }
+        return IRComponents::kInvalidFieldId;
     }
 
     std::size_t fieldCount() const { return m_names.size() - 1; }

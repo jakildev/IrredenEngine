@@ -5,6 +5,8 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/script/lua_modifier_bindings.hpp>
+#include <irreden/script/lua_pipeline_bindings.hpp>
 
 #include <deque>
 #include <string>
@@ -432,6 +434,16 @@ void LuaScript::bindLuaDrivenEcs() {
     };
 
     bindLuaDrivenSystems();
+
+    // T-102: pipeline composition + enum bindings + modifier-framework bindings.
+    // After bindLuaDrivenSystems() so the IRSystem table already exists;
+    // these calls extend it with `SystemName`, `systemId`, and
+    // `registerPipeline`. `bindIRTimeEvents` populates `IRTime`;
+    // `bindModifierFramework` populates `IRModifier`.
+    detail::bindIRTimeEvents(*this);
+    detail::bindSystemNameEnum(*this);
+    detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
+    detail::bindModifierFramework(*this);
 }
 
 namespace {
