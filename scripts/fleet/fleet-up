@@ -138,6 +138,18 @@ warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 # iteration left off. Worktrees with cleared reservations fall through
 # to the normal Step 2 reset. (#521)
 
+extract_repo_slug() {
+    # Convert a git remote URL to "owner/repo".
+    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
+    local url="$1"
+    url="${url#git@github.com:}"
+    url="${url#https://github.com/}"
+    url="${url#http://github.com/}"
+    url="${url%.git}"
+    url="${url%/}"
+    printf '%s' "$url"
+}
+
 file_stuck_task_issue() {
     local task_id="$1"
     local branch="$2"
@@ -154,9 +166,10 @@ reconcile_reservation() {
     local file="$1"
     [[ -f "$file" ]] || return 0
 
-    local wt task_id
-    wt=$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1])).get("worktree",""))' "$file" 2>/dev/null)
-    task_id=$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1])).get("task_id",""))' "$file" 2>/dev/null)
+    local wt task_id _combined
+    _combined=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(d.get("worktree",""),d.get("task_id",""),sep="\t")' "$file" 2>/dev/null || echo $'\t')
+    wt="${_combined%%$'\t'*}"
+    task_id="${_combined##*$'\t'}"
     [[ -z "$wt" || -z "$task_id" ]] && return 0
 
     local wt_path=""
@@ -181,7 +194,11 @@ reconcile_reservation() {
 
     # Determine repo by worktree path.
     local gh_repo="jakildev/IrredenEngine"
-    [[ "$wt_path" == "$GAME"* ]] && gh_repo="jakildev/irreden"
+    if [[ "$wt_path" == "$GAME"* ]]; then
+        local _game_url
+        _game_url=$(git -C "$GAME" remote get-url origin 2>/dev/null || true)
+        [[ -n "$_game_url" ]] && gh_repo=$(extract_repo_slug "$_game_url")
+    fi
 
     local pr_state
     pr_state=$(gh pr list --repo "$gh_repo" --head "$current_branch" \
@@ -204,8 +221,9 @@ reconcile_reservation() {
                 local flag_file="$HOME/.fleet/closed-counts/${task_id}.filed"
                 if [[ ! -f "$flag_file" ]]; then
                     echo "fleet-up: count >= 2, filing fleet:stuck-task issue for $task_id"
-                    file_stuck_task_issue "$task_id" "$current_branch" || true
-                    touch "$flag_file"
+                    if file_stuck_task_issue "$task_id" "$current_branch"; then
+                        touch "$flag_file"
+                    fi
                 fi
             fi
             fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
@@ -253,6 +271,9 @@ reset_worktree() {
     # the prior iteration is mid-flight on a real task — leave the
     # worktree on its branch with whatever dirty state it has, so the
     # next dispatcher tick fires step-0.5 resumption. (#521)
+    # Contract: fleet-claim clear-all (Step 3b, below) wipes task claims
+    # (~/.fleet/claims/) but NOT reservations (~/.fleet/reservations/), so
+    # this guard remains intact through the boot sequence.
     local wt_basename
     wt_basename=$(basename "$wt")
     if [[ -f "$HOME/.fleet/reservations/$wt_basename.json" ]]; then
@@ -706,18 +727,6 @@ fi
 # origin` per pane on every restart — N panes × every iteration of
 # wasted gh calls. fleet-up resolves both slugs once and writes them
 # to ~/.fleet/state/repos.json for every role to read.
-extract_repo_slug() {
-    # Convert a git remote URL to "owner/repo".
-    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
-    local url="$1"
-    url="${url#git@github.com:}"
-    url="${url#https://github.com/}"
-    url="${url#http://github.com/}"
-    url="${url%.git}"
-    url="${url%/}"
-    printf '%s' "$url"
-}
-
 repos_cache="$HOME/.fleet/state/repos.json"
 engine_url=$(git -C "$ENGINE" remote get-url origin 2>/dev/null || true)
 if [[ -z "$engine_url" ]]; then
