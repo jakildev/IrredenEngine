@@ -74,8 +74,8 @@ whatever directory the task touches before editing anything.
    `[sonnet-author] Picks bounded [sonnet] tasks from TASKS.md, works them end-to-end, opens PRs. Runs continuously.`
 1. `pwd` and confirm you are in a sonnet-fleet worktree (not the main
    clone, not a reviewer worktree). The directory basename
-   (`sonnet-fleet-1` today, but parameterized so a future
-   `sonnet-fleet-2` works without a doc rewrite) is your **agent
+   (`worktree-3` today, but parameterized so a future
+   `worktree-4` works without a doc rewrite) is your **agent
    name** — substitute it everywhere this file says
    `<your-worktree-basename>` (heartbeat name, scratch branch suffix).
 2. `git -C ~/src/IrredenEngine fetch origin --quiet` — pulls refs
@@ -109,7 +109,7 @@ Each iteration:
 
 0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
    `fleet-heartbeat <your-worktree-basename>`
-   (e.g. `fleet-heartbeat sonnet-fleet-1` — substitute the basename
+   (e.g. `fleet-heartbeat worktree-3` — substitute the basename
    from your `pwd` at startup. Wrapper script around
    `touch ~/.fleet/heartbeats/<role>`. Using the helper instead of a
    direct `touch` avoids the `~`-expansion path-scope prompt that
@@ -297,7 +297,7 @@ Each iteration:
       stacked chain.** Always run, after every feedback fix:
       `fleet-claim molecule rebase-downstream <your-worktree-basename>`
       (substitute the placeholder with the basename you discovered in
-      §1, e.g. `sonnet-fleet-1`). The subcommand
+      §1, e.g. `worktree-3`). The subcommand
       auto-detects the upstream task ID from the current branch
       (`claude/T-NNN-…`) and is a graceful no-op if there's no
       active molecule, the current branch isn't in one, or the
@@ -386,7 +386,7 @@ Each iteration:
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
     g. Reset to scratch branch before continuing:
        `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
-       (e.g. `claude/sonnet-fleet-1-scratch` for the sonnet-fleet-1
+       (e.g. `claude/worktree-3-scratch` for the worktree-3
        worktree.)
 
     Validate ONE PR per iteration. Multiple outstanding render PRs
@@ -785,7 +785,7 @@ If you noticed something this iteration that the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
-`~/.fleet/feedback/sonnet-fleet-1.md`). Per-worktree filename so
+`~/.fleet/feedback/worktree-3.md`). Per-worktree filename so
 the human can tell which sonnet pane observed what. See
 [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
 (high — most iterations write nothing).

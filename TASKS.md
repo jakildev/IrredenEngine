@@ -254,35 +254,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
-  - **ID:** T-123
-  - **Area:** tooling, docs
-  - **Model:** opus
-  - **Owner:** claude/T-123-fleet-up-boot-reconciliation
-  - **Blocked by:** (none)
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) fleet-up provisions worktree-N names (opus-worker-1 → worktree-1, sonnet-fleet-1 → worktree-3, etc.); (2) migration script renames clean worktrees via git worktree move; (3) dirty worktrees file escalation issue instead of auto-wiping; (4) docs/agents/MIGRATION-WORKTREES.md included; (5) opus-architect-1 / game-architect-1 untouched; (6) FLEET.md + FLEET-CACHE.md updated
-  - **Issue:** (none)
-  - **Notes:** PR 4 of 6 for #521, parallelizable with T-125 after T-122 lands. Full plan in .fleet/plans/T-120.md. Human must run migration script locally (touches machine state). All role docs that hardcode worktree names updated in same PR.
-  - **Links:**
-
-- [~] **Fleet: stuck-worktree staleness escalation** — extend fleet-claim check-stale: reservations older than 24h file a fleet:stuck-worktree issue with dirty-file capture; one-shot per reservation via .escalated flag
-  - **ID:** T-124
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-124-stuck-worktree-escalation
-  - **Blocked by:** (none)
-  - **Stack:** T-120..T-125 worktree-reservations
-  - **Acceptance:** (1) fleet-claim check-stale detects reservations older than 24h; (2) files engine-repo issue with fleet:stuck-worktree label per stale reservation (title: "fleet: stuck worktree <name> reserved for T-NNN"); (3) issue body includes reservation JSON, dirty file list, last commit; (4) one-shot via ~/.fleet/reservations/<name>.escalated flag; (5) existing check-stale task-claim behavior unaffected
-  - **Issue:** (none)
-  - **Notes:** PR 5 of 6 for #521, can run parallel to T-122+ after T-120. Full plan in .fleet/plans/T-120.md. New GitHub label fleet:stuck-worktree needed on engine repo — create it or have human create before PR merges. Files: ~/bin/fleet-claim, ~/bin/fleet-up.
-  - **Links:**
-
-- [ ] **Fleet: per-role concurrency cap config + dispatcher enforcement** — fleet-up.conf per-role concurrency field; dispatcher defers dispatch when in-flight+reserved >= cap[role]; default opus-worker=2, sonnet-fleet=4
+- [~] **Fleet: per-role concurrency cap config + dispatcher enforcement** — fleet-up.conf per-role concurrency field; dispatcher defers dispatch when in-flight+reserved >= cap[role]; default opus-worker=2, sonnet-fleet=4
   - **ID:** T-125
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-125-fleet-concurrency-cap
   - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-up.conf gains per-role concurrency config (opus-worker: concurrency=2, sonnet-fleet: concurrency=4); (2) dispatcher defers when in-flight+reserved for role >= cap; (3) with concurrency=2, third concurrent opus-worker iteration deferred even with free worktrees; (4) env-overridable; (5) per-pane parallelism preserved for roles under cap; (6) default values preserve current behavior
@@ -314,6 +290,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
+- [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
@@ -332,5 +310,3 @@ Avoid:
 - [x] **T-096** — Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort · Owner: claude/T-096-sprites-to-screen · PR: https://github.com/jakildev/IrredenEngine/pull/507
 - [x] **T-106** — Fleet: timeout-wrap tmux send-keys in fleet-dispatcher · Owner: claude/T-106-timeout-tmux-send-keys · PR: https://github.com/jakildev/IrredenEngine/pull/506
 - [x] **T-099** — Lua-driven ECS: design doc · Owner: claude/T-099-lua-ecs-design-doc · PR: https://github.com/jakildev/IrredenEngine/pull/496
-- [x] **T-097** — Sprite: C_SpriteAnimation + animation-advance system · Owner: claude/T-097-sprite-animation · PR: https://github.com/jakildev/IrredenEngine/pull/495
-- [x] **T-095** — Sprite: sprite-sheet asset format + loader · Owner: claude/T-095-sprite-sheet-loader · PR: https://github.com/jakildev/IrredenEngine/pull/494

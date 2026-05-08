@@ -139,6 +139,14 @@ inline std::uint64_t packOriginKey(const ivec3 &v) {
 // at `kLightVolumeMaxSources`). Returns the count actually written.
 // Per-tick allocation is bounded by the buffer's reserved capacity.
 //
+// `currentCanvas` scopes the gather to lights that target this canvas —
+// either world-scope lights (no CHILD_OF parent, the back-compat default)
+// or lights whose CHILD_OF parent IS this canvas. Lights parented to a
+// different canvas (or any other entity) are skipped. The parent lookup
+// is per-archetype-node, not per-light, because all entities in a node
+// share the same relation tag in their archetype — a node's lights are
+// either all eligible for this canvas or all not.
+//
 // Lights whose origin rounds outside the volume's camera-anchored window
 // (`worldOriginVoxel ± kLightVolumeHalfExtent`) are skipped (the seed
 // shader's bounds check would silently drop them anyway) and logged once
@@ -149,13 +157,25 @@ inline std::uint64_t packOriginKey(const ivec3 &v) {
 // camera so most scenes stay in-range without manual intervention.
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
+    IREntity::EntityId currentCanvas,
     const ivec3 &volumeOriginVoxel,
     std::unordered_set<std::uint64_t> &warnedOOBOrigins
 ) {
     out.clear();
     const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
+    auto &entityManager = IREntity::getEntityManager();
     for (auto *node : nodes) {
+        // Per-canvas scope: skip the entire node when its lights are
+        // CHILD_OF a different canvas. `kNullEntity` means the lights
+        // are world-scope (no parent) and apply to every canvas — the
+        // back-compat default for demos that never call setParent on
+        // their light entities.
+        const IREntity::EntityId nodeParent =
+            entityManager.getParentEntityFromArchetype(node->type_);
+        if (nodeParent != IREntity::kNullEntity && nodeParent != currentCanvas) {
+            continue;
+        }
         auto &lights = IREntity::getComponentData<C_LightSource>(node);
         auto &positions = IREntity::getComponentData<C_PositionGlobal3D>(node);
         for (int i = 0; i < node->length_; ++i) {
@@ -275,7 +295,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         SystemId systemId =
             createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
                 "ComputeLightVolume",
-                [p](C_OccupancyGrid &,
+                [p](const IREntity::EntityId canvasEntity,
+                    C_OccupancyGrid &,
                     C_CanvasLightVolume &volume,
                     const C_TrixelCanvasRenderBehavior &behavior) {
                     if (!behavior.useCameraPositionIso_)
@@ -305,6 +326,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                             ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
                         const std::uint32_t count = detail::gatherLightSources(
                             p->lightStaging_,
+                            canvasEntity,
                             volumeOrigin,
                             p->warnedOOBOrigins_
                         );

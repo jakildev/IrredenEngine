@@ -15,6 +15,7 @@ set(IR_LIGHTING_DEMO_TARGETS
     IRLightingSdfBlocker
     IRLightingSunOrbit
     IRLightingSunElevationOrbit
+    IRLightingPerCanvasScope
 )
 
 set(IR_LIGHTING_DEMO_SOURCES
@@ -31,6 +32,7 @@ set(IR_LIGHTING_DEMO_SOURCES
     main_sdf_blocker.cpp
     main_sun_orbit.cpp
     main_sun_elevation_orbit.cpp
+    main_per_canvas_scope.cpp
 )
 
 list(LENGTH IR_LIGHTING_DEMO_TARGETS IR_LIGHTING_DEMO_COUNT)

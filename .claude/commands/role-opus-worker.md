@@ -117,9 +117,9 @@ the slug doesn't collide with engine T-NNN of the same number:
 
 ```
 # engine task
-fleet-claim claim "T-001" opus-worker-1
+fleet-claim claim "T-001" worktree-1
 # game task — note the --repo game BEFORE the subcommand
-fleet-claim --repo game claim "T-001" opus-worker-1
+fleet-claim --repo game claim "T-001" worktree-1
 ```
 
 ## Startup actions (do these immediately, in order)
@@ -128,7 +128,7 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    `[opus-worker] Plans fleet:needs-plan issues, executes [opus] tasks from engine + game TASKS.md. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
 1. `pwd` and confirm you are in an engine `opus-worker-*` worktree (not
    opus-architect, not a reviewer worktree). The directory basename
-   (`opus-worker-1` or `opus-worker-2`) is your **agent name** — pass
+   (`worktree-1` or `worktree-2`) is your **agent name** — pass
    it as the `<agent>` argument to `fleet-claim claim`.
 2. Fetch both repos so per-task `git checkout`/`git rebase` and
    `gh pr checkout` work later (the cache gives you a parsed
@@ -187,12 +187,12 @@ reading right now.
 Do the work, then exit cleanly:
 
 0. **Heartbeat** — signal to the witness monitor that this agent is alive.
-   Your agent name is your worktree basename (`opus-worker-1` or `opus-worker-2`,
+   Your agent name is your worktree basename (`worktree-1` or `worktree-2`,
    from `pwd` output at startup). Call the helper with that name:
    `fleet-heartbeat <your-worktree-basename>`
    (Replace `<your-worktree-basename>` with your actual basename — e.g.
-   `fleet-heartbeat opus-worker-2` if that is your worktree. Do not
-   hardcode `opus-worker-1`. The helper wraps a `touch
+   `fleet-heartbeat worktree-2` if that is your worktree. Do not
+   hardcode `worktree-1`. The helper wraps a `touch
    ~/.fleet/heartbeats/<role>`; we route through the wrapper to avoid
    the path-scope prompt that fires on the raw `touch ~/...` form.)
    Also re-run `fleet-heartbeat <your-worktree-basename>` before
@@ -742,11 +742,11 @@ Do the work, then exit cleanly:
    This makes commit-and-push, gh pr create, and `fleet-claim`'s
    dependency check all pick up the right repo automatically:
    `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>`
-   (e.g. `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/opus-worker-1`).
+   (e.g. `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/worktree-1`).
    For an engine task, stay in your engine worktree (no cd needed).
 
    Then acquire the local filesystem lock. **Always pass the task ID**,
-   and pass your worktree basename (`opus-worker-1` or `opus-worker-2`)
+   and pass your worktree basename (`worktree-1` or `worktree-2`)
    as the agent name so it's visible in `fleet-claim list`:
 
    ```
@@ -1115,7 +1115,7 @@ If you noticed something this iteration that the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
-`~/.fleet/feedback/opus-worker-1.md`). Per-worktree filename so the
+`~/.fleet/feedback/worktree-1.md`). Per-worktree filename so the
 human can tell which opus-worker observed what. See
 [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
 (high — most iterations write nothing).

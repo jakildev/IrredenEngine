@@ -287,7 +287,7 @@ EntityId EntityManager::getRelatedEntityFromArchetype(Archetype type, Relation r
     return kNullEntity;
 }
 
-EntityId EntityManager::getParentEntityFromArchetype(Archetype type) {
+EntityId EntityManager::getParentEntityFromArchetype(const Archetype &type) {
     for (auto relation : type) {
         if (isChildOfRelation(relation)) {
             return m_childOfRelations[relation];

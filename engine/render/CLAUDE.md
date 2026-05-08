@@ -83,6 +83,11 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        SSBO; the propagate shader OR's both bitfields per        │
 │        neighbor so SDFs occlude point/spot light without         │
 │        affecting AO. See system_build_occupancy_grid.hpp.        │
+│      • Per-canvas scope (#363): each canvas's light volume is    │
+│        seeded only from lights with no CHILD_OF parent (world-   │
+│        scope, the back-compat default) plus lights parented to   │
+│        that canvas. Parent a light via                           │
+│        `IREntity::setParent(light, canvas)` to confine it.       │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │

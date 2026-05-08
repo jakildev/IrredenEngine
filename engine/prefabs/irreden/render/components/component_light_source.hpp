@@ -21,6 +21,21 @@ enum class LightType : int {
 
 /// Light source component: marks an entity as a light emitter for all
 /// lighting phases (AO, shadows, flood-fill, fog-of-war LOS).
+///
+/// Per-canvas scope (#363, T-116). A C_LightSource entity contributes to
+/// every canvas with a `C_CanvasLightVolume` by default. Calling
+/// `IREntity::setParent(lightEntity, canvasEntity)` scopes the light to
+/// that canvas only — useful when a UI / inset canvas should not be lit
+/// by world-space lights, or when two canvases need independent lighting
+/// (e.g. an "x-ray" preview vs. the main render). Scoping applies to
+/// non-directional lights; DIRECTIONAL lights drive the global sun via
+/// `BAKE_SUN_SHADOW_MAP` and ignore parent.
+///
+/// The parent must be a canvas entity (one with `C_CanvasLightVolume`)
+/// or `kNullEntity` for world scope. A non-directional light parented
+/// to any other entity (player, scene root, arbitrary game object) is
+/// invisible to every canvas — the gather only matches when the light's
+/// CHILD_OF parent equals the canvas being gathered for.
 struct C_LightSource {
     LightType type_;
     IRMath::Color emitColor_;
