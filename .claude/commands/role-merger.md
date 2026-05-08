@@ -314,8 +314,7 @@ exit cleanly:
         — fleet merger
         ```
       - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-base-update"`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-base-update" --add-label "fleet:merger-cooldown"`
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
 
    d. **Reset to scratch.** Same as step 5f:
