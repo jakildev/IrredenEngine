@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# fleet-dispatch-wrap — run one transient-role claude iteration and record
+# rate-limit exits for fleet-dispatcher's per-pane cooldown (issue #520).
+#
+# Called by fleet-dispatcher via tmux send-keys. Arguments:
+#   $1  pane_key  e.g. "pane-3"
+#   $2  model     e.g. "sonnet" or "claude-opus-4-7"
+#   $3  effort    e.g. "high" or "xhigh"
+#   $4  role      e.g. "sonnet-author"
+#
+# On usage-limit exit (exit code 2), writes a Unix-epoch timestamp to
+# ~/.fleet/state/rate-limit/<pane_key>.ts. fleet-dispatcher checks that
+# file before dispatching a new iteration and skips the pane for
+# FLEET_DISPATCHER_LIMIT_DELAY seconds (default: 900).
+#
+# PIPESTATUS[0] captures claude's exit code even though its stdout is
+# piped to fleet-claude-stream — the pipe exit status would be
+# fleet-claude-stream's code, not claude's.
+
+set -uo pipefail
+
+PANE_KEY="${1:?fleet-dispatch-wrap: missing pane_key}"
+MODEL="${2:?fleet-dispatch-wrap: missing model}"
+EFFORT="${3:?fleet-dispatch-wrap: missing effort}"
+ROLE="${4:?fleet-dispatch-wrap: missing role}"
+# Track fleet-dispatcher's STATE_DIR via the same env-var override so a
+# config change in one place propagates to both scripts.
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+
+claude --model "$MODEL" --effort "$EFFORT" --print \
+    --output-format stream-json --include-partial-messages --verbose \
+    "/role-$ROLE live" | fleet-claude-stream
+
+rc="${PIPESTATUS[0]}"
+if [[ "$rc" == "2" ]]; then
+    mkdir -p "$RATE_LIMIT_DIR"
+    date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
+fi

@@ -128,6 +128,8 @@ FLEET_ISSUE_SRC="$SCRIPT_DIR/fleet-issue"
 FLEET_ISSUE_DEST="$HOME/bin/fleet-issue"
 FLEET_DISPATCHER_SRC="$SCRIPT_DIR/fleet-dispatcher"
 FLEET_DISPATCHER_DEST="$HOME/bin/fleet-dispatcher"
+FLEET_DISPATCH_WRAP_SRC="$SCRIPT_DIR/fleet-dispatch-wrap"
+FLEET_DISPATCH_WRAP_DEST="$HOME/bin/fleet-dispatch-wrap"
 WITNESS_SRC="$SCRIPT_DIR/witness"
 WITNESS_DEST="$HOME/bin/witness"
 
@@ -139,7 +141,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_ISSUE_SRC" "$FLEET_DISPATCHER_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_ISSUE_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -236,6 +238,11 @@ fi
 if [[ -f "$FLEET_DISPATCHER_SRC" ]]; then
     ln -sf "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCHER_DEST"
     echo "symlinked $FLEET_DISPATCHER_DEST -> $FLEET_DISPATCHER_SRC"
+fi
+
+if [[ -f "$FLEET_DISPATCH_WRAP_SRC" ]]; then
+    ln -sf "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_DISPATCH_WRAP_DEST"
+    echo "symlinked $FLEET_DISPATCH_WRAP_DEST -> $FLEET_DISPATCH_WRAP_SRC"
 fi
 
 if [[ -f "$WITNESS_SRC" ]]; then
