@@ -327,6 +327,17 @@ Specifically, **never pass these via `--label` when filing**:
   these in its CONFLICTING sweep; opus-worker excludes them from its
   `fleet:semantic-conflict` step. Cleared by the **human** after the
   upstream PR merges.
+- `fleet:needs-base-update` — owned by the **merger** (sets in step 2.6
+  when a stacked child PR's upstream tip was force-pushed and the
+  cascade-rebase onto the new tip conflicts with the child's own
+  commits). The child's branch is anchored to the upstream's old tip;
+  without manual reconciliation it cannot inherit the upstream's
+  updated state. The merger and the cascade-rebase pass skip these.
+  Cleared automatically when the base merges (step 2.5 ii's re-target
+  to master removes it) or closes (step 2.5 iii). Otherwise the
+  **author** rebases manually onto the new upstream tip and removes
+  the label, or an **opus-worker** drives the resolution similar to
+  `fleet:semantic-conflict`.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the
