@@ -159,33 +159,22 @@ Avoid:
 
 
 
-- [~] **Render: AO via trixelDistances (drop OccupancyGridBuffer)** — migrate `c_compute_voxel_ao.{glsl,metal}` off `OccupancyGridBuffer`; sample 4 face-tangent neighbour pixels in `trixelDistances` instead
-  - **ID:** T-091
-  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-091-ao-trixel-distances
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `c_compute_voxel_ao.{glsl,metal}` no longer reads `OccupancyGridBuffer` / slot 28; (2) `system_compute_voxel_ao.hpp` no longer binds `OccupancyGridBuffer`; (3) AO crease-darkening within ~1 iso pixel of edge migration vs pre-migration reference (capture before PR, compare via `render-debug-loop`); (4) SDF shapes get crease AO on adjacent surfaces (regression-fix — SDF-into-occupancy step deleted in T-071); (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #428
-  - **Notes:** Architect direction in `.fleet/plans/T-091.md` (derived from `~/.fleet/plans/issue-358.md` T-09X section). Blocks final occupancy teardown T-092. Approach: project world-space face tangents through iso transform once on CPU, ship in `FrameDataVoxelToTrixel` UBO; compare receiver `pos3D'` vs face-outward plane per pixel. Cost stays O(canvasPixels) with 4 texel reads per pixel.
-  - **Links:**
-
 - [ ] **Render: final occupancy-grid teardown (drop BUILD_OCCUPANCY_GRID + C_OccupancyGrid)** — pure deletion after T-091 (AO) and T-072 (light-volume) land; remove grid system, component, SSBO, constants, and CLAUDE.md phased-out sections
   - **ID:** T-092
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-091
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
   - **Issue:** #429
-  - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
+  - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first). CAUTION: T-091 (issue #428) was manually closed without a merged PR — the AO migration via trixelDistances was NOT completed; verify that `c_compute_voxel_ao` still does not read `OccupancyGridBuffer` before starting this deletion, or re-file the AO migration work first.
   - **Links:**
 
-- [ ] **Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort** — new pipeline stage renders sprite entities with one instanced quad draw, CPU-side iso depth sort, GLSL+MSL backends
+- [~] **Sprite: SPRITES_TO_SCREEN instanced draw + iso z-sort** — new pipeline stage renders sprite entities with one instanced quad draw, CPU-side iso depth sort, GLSL+MSL backends
   - **ID:** T-096
   - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-096-sprites-to-screen
   - **Blocked by:** (none)
   - **Acceptance:** (1) single sprite at origin renders at screen center at zoom 1 with pixel-perfect scaling; (2) multiple sprites composite back-to-front by iso depth; (3) 50+ sprites cost exactly one drawArraysInstanced call; (4) fleet-build clean on linux-debug AND macos-debug; (5) render-debug-loop screenshots committed to docs/pr-screenshots/
   - **Issue:** #284
@@ -203,11 +192,11 @@ Avoid:
   - **Notes:** Part of #14 (sprite-rendering epic). Use create-creation skill for scaffold. Bindings on ir.sprite.* not ir.render.*. Generated art asset acceptable. Depends on T-095, T-096, T-097.
   - **Links:**
 
-- [ ] **Lua-driven ECS: Lua-defined components with type inference** — add IComponentDataLuaTyped + EntityManager::registerComponentDynamic; Lua surface: IRComponent.register with single native-SoA storage tier and type inference; modifier field bindings auto-registered
+- [~] **Lua-driven ECS: Lua-defined components with type inference** — add IComponentDataLuaTyped + EntityManager::registerComponentDynamic; Lua surface: IRComponent.register with single native-SoA storage tier and type inference; modifier field bindings auto-registered
   - **ID:** T-100
   - **Area:** engine/entity, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-100-lua-components
   - **Blocked by:** (none)
   - **Acceptance:** (1) register C_Hp { current = 100, max = 100 } from Lua; attach to 100 entities; C++ test reads back Hp.current as a real int32 column, not sol::object; (2) explicit typed form { field = {type="float", default=100} } accepted; (3) unresolvable field type raises Lua error at registration naming the offending field; (4) auto-registered field binding "Hp.current" visible to modifier resolver; (5) identity rule: registering a duplicate name fails fast; (6) IREntity.addLuaComponent, getLuaComponent, removeLuaComponent bound; (7) fleet-build clean on linux-debug
   - **Issue:** #488
@@ -258,6 +247,50 @@ Avoid:
   - **Notes:** PR 6 of 6 for parent epic #293 — formal acceptance gate for the entire Lua-driven ECS stack. Full architect plan in .fleet/plans/T-104.md. Blocked by T-103 (hot-reload). If parity gate fails, this PR does not merge; instead amend T-099's design doc with corrective decision (LuaJIT migration, codegen-bound bodies, etc.).
   - **Links:**
 
+- [~] **Fleet: project_queue_manager trigger on PR-merge events** — fix scout's project_queue_manager projection to include closed fleet:queued issues matched against TASKS.md in-progress entries, making the trigger chain self-sustaining on PR merges
+  - **ID:** T-105
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** claude/T-105-qm-pr-merge-trigger
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merging a PR that closes a fleet:queued issue fires a queue-manager trigger within the next scout cycle without relying on periodic re-arm; (2) project_queue_manager returns a needs_flip entry for any in-progress TASKS.md task whose linked issue is closed; (3) existing periodic re-arm from PR #499 can be reverted or lengthened once the trigger chain is self-sustaining
+  - **Issue:** #500
+  - **Notes:** Root cause: project_queue_manager projection excludes fleet:queued issues (filtered from human_approved) so closed issues are invisible. Fix: add fetch of closed fleet:queued issues, cross-reference with TASKS.md in_progress entries by Issue: #N. Scout already parses in_progress from TASKS.md. Observed: T-096 and T-100 were un-claimable 4.5h after T-095/T-097/T-099 merged.
+  - **Links:**
+
+- [~] **Fleet: fix pane_is_running_claude for macOS version-string process names** — invert cleanup logic to treat any non-shell pane_current_command as running claude instead of matching hard-coded names
+  - **ID:** T-107
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** claude/T-107-pane-is-running-claude-fix
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) pane_is_running_claude returns yes when tmux reports pane_current_command as a version-string like 2.1.132; (2) returns no for bash/zsh/sh/fish; (3) cleanup_stale_dispatches no longer prematurely deletes dispatch records for active claude panes on macOS
+  - **Issue:** #503
+  - **Notes:** Option B from issue preferred (inverted logic: not-shell = running something) over Option A (walk pgrep process tree) for simplicity. Observed: weird macOS process name caused cleanup to treat an active claude pane as returned-to-shell, triggering premature dispatch record deletion.
+  - **Links:**
+
+- [~] **Docs: replace stale fleet-babysit references in transient role docs** — sweep 6 role docs replacing fleet-babysit with fleet-dispatcher for transient-role relaunch descriptions
+  - **ID:** T-108
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** claude/T-108-docs-fleet-dispatcher-refs
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) grep for fleet-babysit in role-opus-reviewer.md, role-opus-worker.md, role-sonnet-author.md, role-sonnet-reviewer.md, role-queue-manager.md, role-merger.md returns zero hits in relaunch/scheduling/backoff contexts; (2) fleet-babysit references in role-opus-architect.md and role-game-architect.md are preserved; (3) usage-limit backoff description matches PR #497 pattern: flag in iteration summary, human intervenes
+  - **Issue:** #504
+  - **Notes:** PR #497 fixed human-visible banner/exit lines. This covers deeper operational sections (~20-30 line touches across 6 files). Strictly doc edits, no code changes. Surviving stale references listed in issue body.
+  - **Links:**
+
+- [ ] **Lua-driven ECS: field index + index-style accessors for zero-string hot path** — expose field column index in registration handle; add `IREntity.getLuaField`/`setLuaField` for zero-string per-tick access; document two-tier accessor contract in engine/script/CLAUDE.md
+  - **ID:** T-109
+  - **Area:** engine/script, engine/entity
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-100
+  - **Acceptance:** (1) `IRComponent.register` per-field handle carries `index`; (2) `IREntity.getLuaField`/`setLuaField` work by field index with no string lookup or table allocation; (3) out-of-range `fieldIndex` raises Lua error naming the offending index; (4) table-style `addLuaComponent`/`getLuaComponent` unchanged; (5) tests cover index round-trip, out-of-range error, and table-style regression; (6) `fleet-build --target IrredenEngineTest` clean on `linux-debug` and `macos-debug`; (7) `engine/script/CLAUDE.md` two-tier accessor section added
+  - **Issue:** #514
+  - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
+  - **Links:**
+
 ---
 
 ## In progress
@@ -271,6 +304,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-106** — Fleet: timeout-wrap tmux send-keys in fleet-dispatcher · Owner: claude/T-106-timeout-tmux-send-keys · PR: https://github.com/jakildev/IrredenEngine/pull/506
 - [x] **T-099** — Lua-driven ECS: design doc · Owner: claude/T-099-lua-ecs-design-doc · PR: https://github.com/jakildev/IrredenEngine/pull/496
 - [x] **T-097** — Sprite: C_SpriteAnimation + animation-advance system · Owner: claude/T-097-sprite-animation · PR: https://github.com/jakildev/IrredenEngine/pull/495
 - [x] **T-095** — Sprite: sprite-sheet asset format + loader · Owner: claude/T-095-sprite-sheet-loader · PR: https://github.com/jakildev/IrredenEngine/pull/494
@@ -290,5 +324,4 @@ Avoid:
 - [x] **T-084** — merger: dedupe semantic-conflict re-comments when sha pair unchanged · Owner: claude/T-084-merger-dedupe-conflict-comments · PR: https://github.com/jakildev/IrredenEngine/pull/413
 - [x] **T-068** — Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment · Owner: claude/T-068-sdf-cardinal-snap-align · PR: https://github.com/jakildev/IrredenEngine/pull/412
 - [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
-- [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
 

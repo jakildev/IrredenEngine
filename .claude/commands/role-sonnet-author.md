@@ -99,8 +99,8 @@ whatever directory the task touches before editing anything.
 
 Each invocation of this role is **one task iteration**. After the
 iteration completes (or after determining there's no work to do), exit
-cleanly. `fleet-babysit` then relaunches you with a **fresh `claude`
-process and an empty conversation**, so the next task starts with no
+cleanly. `fleet-dispatcher` then launches a fresh `claude`
+process with an empty conversation, so the next task starts with no
 context carried over from the prior task. This keeps each task's
 reasoning focused on its own files instead of accumulating noise from
 earlier work.
@@ -711,10 +711,10 @@ Each iteration:
 ## Mode behavior
 
 The Mode argument at the top of this file is one of `dry-run`, `live`,
-or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
 - **`live`** (full operation): each iteration runs steps 0–11 above,
-  then exits. fleet-babysit relaunches with fresh context.
+  then exits. fleet-dispatcher launches a fresh claude when scout sees actionable state.
 
 - **`dry-run`** (default): do exactly **one** task end-to-end (steps
   1–11), print the PR URL, then stop and wait for human instruction.

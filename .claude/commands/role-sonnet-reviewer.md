@@ -138,8 +138,8 @@ treat it as a hard rule for this role.
 
 ## Loop behavior
 
-`fleet-babysit` relaunches this role every ~3 minutes in live mode
-with a **fresh `claude` process and an empty conversation** — no
+`fleet-dispatcher` launches a fresh `claude` for this role when scout
+sees new actionable PR state, with an empty conversation — no
 context carries over from the prior iteration. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
@@ -360,7 +360,7 @@ iteration of polling, reviewing, and exiting cleanly:
    this role when the scout's projection sees new actionable PR
    state — no carry-over between iterations.
 5. If you hit a usage-limit error: print the error and exit.
-   `fleet-babysit` waits the limit-delay before relaunching.
+   `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait

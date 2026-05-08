@@ -240,9 +240,8 @@ vec3 trixelCanvasPixelToWorld3D(
     ivec2 trixelCanvasOffsetZ1,
     vec2 frameCanvasOffset,
     ivec2 voxelRenderOptions,
-    float rasterYaw
+    int cardinalIndex
 ) {
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     ivec2 isoRel =
         trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
@@ -254,4 +253,18 @@ vec3 trixelCanvasPixelToWorld3D(
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
+}
+
+vec3 trixelCanvasPixelToWorld3D(
+    ivec2 pixel,
+    int rawDepth,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions,
+    float rasterYaw
+) {
+    return trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions,
+        rasterYawCardinalIndex(rasterYaw)
+    );
 }
