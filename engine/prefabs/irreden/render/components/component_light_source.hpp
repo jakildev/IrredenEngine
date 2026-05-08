@@ -30,6 +30,12 @@ enum class LightType : int {
 /// (e.g. an "x-ray" preview vs. the main render). Scoping applies to
 /// non-directional lights; DIRECTIONAL lights drive the global sun via
 /// `BAKE_SUN_SHADOW_MAP` and ignore parent.
+///
+/// The parent must be a canvas entity (one with `C_CanvasLightVolume`)
+/// or `kNullEntity` for world scope. A non-directional light parented
+/// to any other entity (player, scene root, arbitrary game object) is
+/// invisible to every canvas — the gather only matches when the light's
+/// CHILD_OF parent equals the canvas being gathered for.
 struct C_LightSource {
     LightType type_;
     IRMath::Color emitColor_;
