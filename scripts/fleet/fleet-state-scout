@@ -562,9 +562,52 @@ RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
+# Single-T-NNN blocker. Reject multi-blocker (`T-101, T-102`), free-text
+# (`refactor lands`), and PR-URL (`https://...`) forms — all of which
+# the cross-author stacking flow can't resolve to one upstream branch
+# (multi-blocker decision deferred to v2 per T-110 plan Q3).
+SINGLE_TASK_BLOCKER_RE = re.compile(r"^T-\d{3}$")
+
 
 def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
+
+
+def enrich_stackable_blocker_prs(state):
+    # Per T-110 PR 2: for each task whose blocked_by is exactly one T-NNN
+    # ID with exactly one matching open PR (head ref `claude/T-NNN-…`)
+    # in the same repo, attach a `stackable_blocker_pr` field carrying
+    # {number, headRefName, author}. Workers (T-114) read this to decide
+    # whether to fall through to a stackable claim when no unblocked
+    # tasks are free.
+    #
+    # The field is always omitted when:
+    #   - blocked_by isn't a single T-NNN (multi-blocker, free-text, URL)
+    #   - zero open PRs match the expected branch prefix (blocker not
+    #     yet started, or already merged and dropped from open list)
+    #   - more than one open PR matches (rare but possible if a stale
+    #     branch lingers — caller can't pick one safely)
+    #
+    # Engine and game tasks are both enriched; worker pickup only honors
+    # the field for engine in v1 (the merger's cascade-rebase doesn't
+    # process game PRs yet) — that gating lives in the role doc.
+    for repo_state in state["repos"].values():
+        prs = repo_state.get("prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            blocked_by = (task.get("blocked_by") or "").strip()
+            if not SINGLE_TASK_BLOCKER_RE.match(blocked_by):
+                continue
+            prefix = f"claude/{blocked_by}-"
+            matches = [pr for pr in prs
+                       if pr.get("headRefName", "").startswith(prefix)]
+            if len(matches) != 1:
+                continue
+            pr = matches[0]
+            task["stackable_blocker_pr"] = {
+                "number": pr["number"],
+                "headRefName": pr["headRefName"],
+                "author": pr.get("author", ""),
+            }
 
 
 def project_sonnet_author(state):
@@ -896,6 +939,7 @@ def collect_state():
 
 def tick_once():
     state = collect_state()
+    enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
     try:
