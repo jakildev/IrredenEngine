@@ -1049,9 +1049,12 @@ Do the work, then exit cleanly:
     and silently strip from the saved summary. Write technical
     references in plain prose.
 
-    Before invoking `start-next-task`, release the worktree reservation
-    so the next iteration sees this worktree as free:
-    `fleet-claim release-worktree <your-worktree-basename>`
+    **Then release the reservation BEFORE resetting** so the next
+    iteration on this pane doesn't try to resume the just-completed
+    task: `fleet-claim release-worktree <your-worktree-basename>`.
+    Order matters — release before scratch-reset means an
+    interruption between the two leaves the worktree in a known
+    "free" state, not pinned to dead work. (#521)
 
     Then use the `start-next-task` skill to land on a fresh
     branch off `origin/master` in the **current cwd's repo** (engine
