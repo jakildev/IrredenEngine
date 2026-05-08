@@ -92,6 +92,10 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    FRAMEBUFFER_TO_SCREEN                                         │
 │      • v_/f_framebuffer_to_screen.glsl                           │
 │      • + f_debug_overlay.glsl if enabled                         │
+│    SPRITE_TO_SCREEN  (optional; no-op when zero sprites)         │
+│      • v_/f_sprites_to_screen.glsl + metal/sprites_to_screen     │
+│      • CPU iso depth-sort grouped by atlas; one                  │
+│        drawArraysInstanced call per atlas via SSBO @ slot 25     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 

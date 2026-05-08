@@ -37,6 +37,38 @@ struct FrameDataFramebuffer {
     // a frame data component as well or add as field for shader program
 };
 
+/// Per-frame UBO for the SPRITE_TO_SCREEN pass. The orthographic projection
+/// is computed CPU-side from the current viewport (one mat4 per frame, never
+/// per-instance) so the vertex shader's per-sprite work stays minimal.
+struct FrameDataSpritesToScreen {
+    mat4 projection_;
+};
+
+/// Per-instance entry uploaded into the SpriteInstancesBuffer SSBO consumed
+/// by the SPRITE_TO_SCREEN vertex shader. Layout is std430-friendly (vec4
+/// alignment, 48 bytes total) so the GLSL and MSL declarations can share
+/// the same byte layout. Screen position is the sprite quad's top-left
+/// corner in screen-pixel coordinates (Y up); size is in screen pixels.
+struct GpuSpriteInstance {
+    vec4 screenPosSize_; ///< (screenX, screenY, sizeX, sizeY)
+    vec4 uvRect_;        ///< (u0, v0, u1, v1), normalized to atlas
+    vec4 tintRgba_;      ///< per-sprite tint, components in [0, 1]
+};
+static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48 bytes (std430)");
+
+/// CPU-side intermediate for the SPRITE_TO_SCREEN gather + sort. Holds the
+/// data needed to (a) sort by iso depth back-to-front and (b) group runs of
+/// equal texture handles for one drawArraysInstanced call per atlas, then
+/// project into a GpuSpriteInstance during upload.
+struct SpriteRenderEntry {
+    ResourceId textureHandle_ = 0;
+    int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
+    vec2 screenPos_ = vec2(0.0f);
+    vec2 size_ = vec2(0.0f);
+    vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    vec4 tintRgba_ = vec4(1.0f);
+};
+
 /// Per-frame UBO for the SCREEN_SPACE_RESIDUAL_ROTATE pass. The model+offset
 /// pair mirrors FrameDataFramebuffer so this stage can act as a drop-in
 /// replacement for FRAMEBUFFER_TO_SCREEN; residualYaw_ is the leftover yaw
@@ -309,6 +341,16 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // Phased-out producer: this aliasing goes away in T-09Y once AO migrates
 // off the occupancy SSBO and the light-volume GPU port (T-072) lands.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
+// SPRITE_TO_SCREEN runs at the FRAMEBUFFER_TO_SCREEN stage, after every
+// compute pass has completed; the slots it borrows belong to compute-only
+// buffers whose data is no longer needed by the time the sprite stage
+// dispatches. Slot 0 is the long-reserved-but-unused FrameDataUniform
+// constant; slot 25 (CompactedVoxelIndices) is written by
+// VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2 — both finished by the
+// time the FRAMEBUFFER_TO_SCREEN-stage sprites pass binds it. Same Metal
+// 0–30 cap rationale as `kBufferIndex_SunShadowDepthMap`.
+constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
+constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
 /// @}
 
 /// Maximum number of light sources uploaded per frame to the
