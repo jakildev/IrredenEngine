@@ -240,6 +240,72 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
+- [ ] **fleet-claim: stackable-on claim mode + helpers** — new find-stackable-blockers, claim-base, and claim --stackable-on subcommands; .meta sidecar records base branch; release cleans sidecar
+  - **ID:** T-110
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) fleet-claim claim --stackable-on <pr-url> T-NNN writes .meta sidecar and sets Owner; (2) fleet-claim find-stackable-blockers T-NNN returns blocker PR URL from state.json; (3) claim-base outputs correct base branch ref; (4) release cleans .meta file; (5) --stackable-on refuses with exit 1 if blocker PR is MERGED or CLOSED; (6) fleet-claim claim --stackable-on on a multi-blocker task is refused; (7) no regression on existing claim/release flow
+  - **Issue:** (none)
+  - **Notes:** PR 1 of 6 for #501 (scheduler: allow claiming blocked tasks via stacked PRs). Full architect plan in .fleet/plans/T-110.md. Key files: scripts/fleet/fleet-claim. Acceptance criteria A2 from plan: mkdir lock prevents two workers double-claiming the same stackable task.
+  - **Links:**
+
+- [ ] **Scout: pre-compute stackable_blocker_pr field** — for each single-T-NNN-blocked task with an open blocker PR, attach stackable_blocker_pr {number, headRefName, author} to the task entry in state.json
+  - **ID:** T-111
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) state.json tasks for single-T-NNN-blocked tasks with an open claude/T-NNN-* PR carry stackable_blocker_pr field; (2) tasks with multiple blockers have no stackable_blocker_pr (v1 guard); (3) tasks with no open blocker PR have no stackable_blocker_pr; (4) scout runs without error after change; (5) projections/queue-manager.json and other projections unaffected if they don't consume the new field
+  - **Issue:** (none)
+  - **Notes:** PR 2 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: scripts/fleet/fleet-state-scout. Engine + game populated but only engine consumed in v1 (game guard in T-112).
+  - **Links:**
+
+- [ ] **Worker role docs: stackable-blocked fallback pickup tier** — update sonnet-author and opus-worker step 3 with two-tier task pickup: unblocked first, stackable-blocked only if no unblocked tasks exist
+  - **ID:** T-112
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-110, T-111
+  - **Acceptance:** (1) role-sonnet-author.md and role-opus-worker.md step 3 describe two-tier pickup with only-if-no-unblocked ordering; (2) stacked PR opens with --base $base --label fleet:stacked via commit-and-push cursor-stack mode; (3) multi-blocker tasks (Blocked by: T-A, T-B) explicitly excluded from fallback tier; (4) engine-only guard: game-side stackable tasks not picked up in v1; (5) fleet-claim claim --stackable-on invocation described in worker steps
+  - **Issue:** (none)
+  - **Notes:** PR 3 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Must land after T-110 and T-111. Key files: .claude/commands/role-sonnet-author.md, .claude/commands/role-opus-worker.md.
+  - **Links:**
+
+- [ ] **Merger: cascade rebase on upstream force-push for stacked PRs** — new merger-loop step: detect stacked child PRs whose upstream tip moved, rebase clean children, label conflicted children fleet:needs-base-update
+  - **ID:** T-113
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merger loop detects fleet:stacked PRs with open base PR whose tip SHA moved; (2) clean rebase -> git push --force-with-lease, prior approval labels preserved; (3) conflict -> git rebase --abort, fleet:needs-base-update label added, conflict-files comment posted; (4) fleet-labels updated with fleet:needs-base-update registration; (5) blocker's author never touches child branch; (6) sidecar-based SHA tracking avoids re-processing already-rebased children
+  - **Issue:** (none)
+  - **Notes:** PR 4 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: .claude/commands/role-merger.md, scripts/fleet/fleet-labels. Runs independently from T-112.
+  - **Links:**
+
+- [ ] **Reviewer: cross-author stacked-PR awareness** — add stacked-PR context note to review-body template; add fleet:needs-base-update to verdict-clear label list
+  - **ID:** T-114
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) review-body template includes one-paragraph stacked-PR note (Stacked on #U, cross-author from <agent> on T-X) when PR has fleet:stacked label; (2) fleet:needs-base-update appears in verdict-clear label list alongside existing has-nits / needs-fix entries; (3) fleet:awaiting-upstream-review gate unchanged; (4) non-stacked PRs unaffected
+  - **Issue:** (none)
+  - **Notes:** PR 5 of 6 for #501. Full architect plan in .fleet/plans/T-110.md. Key files: .claude/commands/role-sonnet-reviewer.md. Runs independently from T-112 and T-113.
+  - **Links:**
+
+- [ ] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
+  - **ID:** T-115
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-112, T-113, T-114
+  - **Acceptance:** (1) docs/agents/FLEET.md has "Cross-author stacking (scheduler)" section with full lifecycle walkthrough; (2) Q1 (only-if-no-unblocked), Q2 (merger-driven hybrid rebase), Q3 (single-blocker-only v1) decisions documented; (3) v1 limitations listed (engine-only, single-blocker, multi-blocker not eligible); (4) pointer to fleet-claim and fleet-state-scout for implementation detail; (5) no other docs changed
+  - **Issue:** #501
+  - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
+  - **Links:**
+
 ---
 
 ## In progress
