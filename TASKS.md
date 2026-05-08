@@ -306,16 +306,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [~] **Fleet: usage-limit back-off for fleet-dispatcher transient workers** — detect rate-limit exit in transient worker panes and apply per-pane cooldown before re-dispatch, mirroring fleet-babysit's LIMIT_DELAY pattern
-  - **ID:** T-119
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-119-dispatcher-rate-limit-backoff
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) when a transient worker pane exits with a rate-limit error, dispatcher marks that pane with a cooldown file and skips re-dispatch for FLEET_DISPATCHER_LIMIT_DELAY seconds (default 900); (2) other panes not in cooldown dispatch normally (per-pane isolation — parallelism preserved); (3) dispatcher log records cooldown start once per pane, not every tick; (4) FLEET_DISPATCHER_LIMIT_DELAY is env-overridable; (5) fleet-babysit behavior unchanged; (6) existing non-rate-limited panes unaffected
-  - **Issue:** #520
-  - **Notes:** Mirror fleet-babysit LIMIT_DELAY=900 pattern (scripts/fleet/fleet-babysit lines 96 and 563-565). Two detection approaches in issue: Option A (parse pane scrollback for rate-limit pattern), Option B (wrap claude invocation with exit-code reporter). Per-pane keying (not per-role) matches PR #498 per-pane dispatch tracking infrastructure. Key file: scripts/fleet/fleet-dispatcher.
-  - **Links:**
 
 - [~] **Fleet: dispatcher reservation-aware pane selection** — when firing a role-X iteration, route to reserved pane for role first; free-pane fallback second; defer if in-flight+reserved >= cap
   - **ID:** T-121
@@ -341,11 +331,11 @@ Avoid:
   - **Notes:** PR 3 of 6 for #521. Full plan in .fleet/plans/T-120.md. Files: .claude/commands/role-opus-worker.md, .claude/commands/role-sonnet-author.md. Architects exempt (dedicated panes, babysit lifecycle). Step 8 (design-blocked escalation) keeps reservation — next iteration resumes same worktree.
   - **Links:**
 
-- [ ] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
+- [~] **Fleet: worktree naming migration (opus-worker-N → worktree-N)** — fleet-up provisions generic worktree-N names; one-shot migration script renames clean worktrees via git worktree move; dirty worktrees → escalation, not auto-wipe; MIGRATION-WORKTREES.md walkthrough
   - **ID:** T-123
   - **Area:** tooling, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-123-fleet-up-boot-reconciliation
   - **Blocked by:** T-122
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-up provisions worktree-N names (opus-worker-1 → worktree-1, sonnet-fleet-1 → worktree-3, etc.); (2) migration script renames clean worktrees via git worktree move; (3) dirty worktrees file escalation issue instead of auto-wiping; (4) docs/agents/MIGRATION-WORKTREES.md included; (5) opus-architect-1 / game-architect-1 untouched; (6) FLEET.md + FLEET-CACHE.md updated
@@ -390,6 +380,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-119** — Fleet: usage-limit back-off for fleet-dispatcher transient workers · Owner: claude/T-119-dispatcher-rate-limit-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/526
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-110** — fleet-claim: stackable-on claim mode + helpers · Owner: claude/T-110-stackable-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/525
 - [x] **T-114** — Reviewer: cross-author stacked-PR awareness · Owner: claude/T-114-reviewer-stacked-pr-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/518
@@ -409,6 +400,5 @@ Avoid:
 - [x] **T-089** — Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design · Owner: opus-worker-2 · PR: https://github.com/jakildev/IrredenEngine/pull/351
 - [x] **T-071** — Render: delete legacy sun-shadow paths (analytic caster + occupancy DDA) · Owner: claude/T-071-delete-occupancy-grid · PR: https://github.com/jakildev/IrredenEngine/pull/423
 - [x] **T-057** — Render/input: screen-to-world picking under Z-yaw · Owner: claude/T-057-picking-yaw-inverse · PR: https://github.com/jakildev/IrredenEngine/pull/424
-- [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
 
 
