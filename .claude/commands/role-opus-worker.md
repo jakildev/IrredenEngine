@@ -898,6 +898,9 @@ Do the work, then exit cleanly:
 
    For a stackable-on claim (base is a feature branch), open with
    `--base <upstream-branch>` and add `fleet:stacked`:
+   First look up the upstream PR URL:
+   `gh pr view <stackable_blocker_pr.number> --json url --jq .url`
+   Then open the PR:
    `gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
 
    Reference the task title in the PR title so the queue-manager can

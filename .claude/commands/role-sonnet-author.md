@@ -486,7 +486,7 @@ Each iteration:
    or full URL). See step 3 for the branching flow.
 
    **If neither tier yields a task, exit cleanly.** Print
-   `[sonnet-author] No unblocked or stackable-blocked [sonnet] tasks — standing by. Babysit will re-invoke.`
+   `[sonnet-author] No unblocked or stackable-blocked [sonnet] tasks — standing by. Will re-fire on next dispatcher trigger.`
    and stop. Do NOT invent work, self-assign documentation passes,
    or create tasks outside the queue.
 
@@ -612,6 +612,9 @@ Each iteration:
 
    For a stackable-on claim (base is a feature branch), open with
    `--base <upstream-branch>` and add `fleet:stacked`:
+   First look up the upstream PR URL:
+   `gh pr view <stackable_blocker_pr.number> --json url --jq .url`
+   Then open the PR:
    `gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
 
    Reference the task title in the PR title so the queue-manager can
