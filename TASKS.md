@@ -350,11 +350,11 @@ Avoid:
   - **Notes:** Mirror fleet-babysit LIMIT_DELAY=900 pattern (scripts/fleet/fleet-babysit lines 96 and 563-565). Two detection approaches in issue: Option A (parse pane scrollback for rate-limit pattern), Option B (wrap claude invocation with exit-code reporter). Per-pane keying (not per-role) matches PR #498 per-pane dispatch tracking infrastructure. Key file: scripts/fleet/fleet-dispatcher.
   - **Links:**
 
-- [ ] **Fleet: fleet-claim worktree reservation primitives** — new reserve, release-worktree, worktree-for-task, reservation-of, list-reservations subcommands; ~/.fleet/reservations/<worktree>.json storage; atomic create-or-fail; claim/release integration
+- [~] **Fleet: fleet-claim worktree reservation primitives** — new reserve, release-worktree, worktree-for-task, reservation-of, list-reservations subcommands; ~/.fleet/reservations/<worktree>.json storage; atomic create-or-fail; claim/release integration
   - **ID:** T-120
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-120-fleet-claim-reservations
   - **Blocked by:** (none)
   - **Stack:** T-120..T-125 worktree-reservations
   - **Acceptance:** (1) fleet-claim reserve <worktree> <task-id> writes reservation JSON atomically, fails if already reserved; (2) release-worktree clears reservation idempotently; (3) worktree-for-task prints worktree name or empty; (4) reservation-of prints task_id or empty; (5) list-reservations shows all current entries; (6) existing claim/release flow unaffected; (7) minimal bash test harness covers all new paths
