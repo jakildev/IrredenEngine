@@ -1873,6 +1873,82 @@ cmd_list_reservations() {
     fi
 }
 
+cmd_reservation_role() {
+    # Print the dispatcher role for a worktree's reservation, or empty
+    # if no reservation / task not found / Model unparseable. Maps the
+    # task's `Model:` field (sourced from the reservation's task_id)
+    # onto the dispatcher role tag:
+    #
+    #   Model: opus   → opus-worker
+    #   Model: sonnet → sonnet-author
+    #
+    # Used by fleet-dispatcher's per-role concurrency cap to count
+    # reserved-but-idle iterations alongside in-flight ones — a
+    # reservation represents paused work that will resume on the next
+    # tick and consume a slot.
+    #
+    # Searches engine TASKS.md first (origin/master), then game. A
+    # task_id slug is namespace-prefixed via the global --repo flag,
+    # but the reservation's task_id is stored without the prefix —
+    # checking both repos handles cross-repo reservations cheaply.
+    #
+    # Empty stdout + exit 0 = no answer (mirrors reservation-of's
+    # stdout-channel idiom — callers discriminate via `[[ -n ]]`).
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim reservation-role <worktree>" >&2
+        return 2
+    fi
+    local task_id
+    task_id=$(reservation_task_id "$worktree")
+    [[ -n "$task_id" ]] || return 0
+
+    local engine_root="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+    local game_root="${FLEET_GAME_ROOT:-$engine_root/creations/game}"
+
+    local model=""
+    local repo
+    for repo in "$engine_root" "$game_root"; do
+        [[ -d "$repo/.git" || -f "$repo/.git" ]] || continue
+        local tasks_md
+        tasks_md=$(git -C "$repo" show "origin/master:TASKS.md" 2>/dev/null) || continue
+        model=$(FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import sys, os, re
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_TASKS_MD', '')
+current_id = None
+current_model = None
+for line in content.splitlines():
+    if re.match(r'^- \[.\] \*\*', line):
+        if current_id == task_id and current_model:
+            print(current_model)
+            sys.exit(0)
+        current_id = None
+        current_model = None
+        continue
+    m = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m:
+        current_id = m.group(1).strip()
+        continue
+    m = re.match(r'^\s+- \*\*Model:\*\*\s*(.+)', line)
+    if m:
+        current_model = m.group(1).strip()
+        continue
+if current_id == task_id and current_model:
+    print(current_model)
+PYEOF
+)
+        [[ -n "$model" ]] && break
+    done
+
+    case "$model" in
+        opus*)   echo "opus-worker" ;;
+        sonnet*) echo "sonnet-author" ;;
+        *) ;;
+    esac
+    return 0
+}
+
 # --- main -----------------------------------------------------------------
 
 case "${1:-}" in
@@ -1991,6 +2067,13 @@ case "${1:-}" in
         ;;
     list-reservations)
         cmd_list_reservations
+        ;;
+    reservation-role)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reservation-role <worktree>" >&2
+            exit 2
+        fi
+        cmd_reservation_role "$2"
         ;;
     molecule)
         sub="${2:-}"
@@ -2115,6 +2198,10 @@ reservation commands (worktree-pinning, distinct from claims):
   worktree-for-task <task-id>            print worktree pinned to a task, or empty.
                                          Same stdout-channel contract as reservation-of.
   list-reservations                      table of all active reservations with age.
+  reservation-role <worktree>            print dispatcher role tag for this worktree's
+                                         reservation (opus-worker / sonnet-author), or
+                                         empty if no reservation. Used by the dispatcher's
+                                         per-role concurrency cap.
 
   Reservation gate: cmd_claim and cmd_stack refuse to grant a task that is reserved
   for a different worktree than the requesting agent. cmd_release does NOT touch

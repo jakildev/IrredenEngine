@@ -61,10 +61,52 @@ STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
 PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
+
+# --- Per-role concurrency cap config ---------------------------------------
+#
+# Soft cap on simultaneous iterations per role. Counts unique active
+# worktrees: in-flight (dispatch record present) ∪ reserved (reservation
+# whose task's Model maps to this role). Dedup by worktree avoids the
+# auto-reserve double-count where a normally-running pane has both a
+# dispatch record and a reservation for the same task.
+#
+# Override priority: env var > ~/.fleet/fleet-up.conf > built-in default.
+# Default values match each role's current pane count, so no role hits the
+# cap under normal flow — the cap only fires when reservations from a
+# crashed iteration would push the total over.
+FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Capture env-set values before sourcing the conf, so a `FLEET_CONCURRENCY_X`
+# in the caller's environment still wins over a value set inside conf.
+_env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
+_env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
+_env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
+_env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
+_env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
+_env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+if [[ -f "$FLEET_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$FLEET_CONF"
+fi
+declare -A ROLE_CONCURRENCY=(
+    ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
+    ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
+    ["sonnet-reviewer"]="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+    ["opus-reviewer"]="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
+    ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
+    ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+)
+unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+      _env_opus_reviewer _env_queue_manager _env_merger
+
+# Tracks per-role "deferred-by-cap" log throttling so the at-cap message
+# doesn't spam every 10s tick while the cap is held. Cleared whenever a
+# role drops back below cap.
+declare -A CAP_DEFER_LOGGED=()
 
 # Seconds to back off after a pane exits with code 2 (suspected usage limit).
 # Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of two opus-worker
@@ -332,6 +374,58 @@ pane_in_rate_limit_cooldown() {
     return 1
 }
 
+# --- Per-role active-iteration count ---------------------------------------
+
+# Print the count of unique active worktrees for a role. "Active" =
+# (in-flight dispatch record for this role) ∪ (reservation whose task's
+# Model maps to this role). Dedup keys on worktree-basename, which is
+# shared between dispatch records (via the pane's pane_current_path) and
+# reservations (whose filename IS the worktree basename).
+#
+# When tmux isn't running (shouldn't happen for a live dispatcher, but
+# the standalone --count-active CLI invokes this without a session),
+# dispatch records key on pane id instead — same dedup contract still
+# holds across two dispatch records for the same pane.
+count_active_for_role() {
+    local role="$1"
+    declare -A seen=()
+
+    if [[ -d "$DISPATCH_DIR" ]]; then
+        local f r p wt_path wt_name
+        for f in "$DISPATCH_DIR"/*.json; do
+            [[ -e "$f" ]] || continue
+            r=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
+            [[ "$r" == "$role" ]] || continue
+            p=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
+            [[ -n "$p" ]] || continue
+            wt_path=""
+            if session_exists; then
+                wt_path=$(tmux display-message -t "$p" -p '#{pane_current_path}' 2>/dev/null || true)
+            fi
+            if [[ -n "$wt_path" ]]; then
+                wt_name=$(basename "$wt_path")
+                seen["$wt_name"]=1
+            else
+                seen["pane-${p#%}"]=1
+            fi
+        done
+    fi
+
+    if [[ -d "$RESERVATIONS_DIR" ]]; then
+        local rfile wt_name rrole
+        for rfile in "$RESERVATIONS_DIR"/*.json; do
+            [[ -e "$rfile" ]] || continue
+            wt_name=$(basename "$rfile" .json)
+            rrole=$(fleet-claim reservation-role "$wt_name" 2>/dev/null || true)
+            if [[ "$rrole" == "$role" ]]; then
+                seen["$wt_name"]=1
+            fi
+        done
+    fi
+
+    echo "${#seen[@]}"
+}
+
 # --- Trigger dispatch ------------------------------------------------------
 
 build_dispatch_command() {
@@ -353,6 +447,24 @@ dispatch_role() {
 
     if [[ ! -f "$trigger_file" ]]; then
         return
+    fi
+
+    # Per-role concurrency cap. Defer if (in-flight + reserved) already at
+    # cap. Trigger stays in place so the next tick can re-evaluate once an
+    # iteration finishes or a reservation releases. Logged once per cap-held
+    # window to avoid spamming.
+    local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    if (( cap > 0 )); then
+        local active
+        active=$(count_active_for_role "$role")
+        if (( active >= cap )); then
+            if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
+                log "$role at concurrency cap ($active >= $cap); deferring trigger"
+                CAP_DEFER_LOGGED["$role"]=1
+            fi
+            return
+        fi
+        unset 'CAP_DEFER_LOGGED[$role]'
     fi
 
     # Fan out across every idle pane for this role, skipping any that
@@ -605,5 +717,28 @@ main() {
 
     log "stopped"
 }
+
+# Operator/test entry points — exit before main() so the daemon never starts.
+case "${1:-}" in
+    --count-active)
+        # Print active count for a role (in-flight ∪ reserved, deduped by
+        # worktree). Used by tests and for operator inspection.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --count-active <role>" >&2
+            exit 2
+        fi
+        count_active_for_role "$2"
+        exit 0
+        ;;
+    --print-cap)
+        # Print configured cap for a role.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --print-cap <role>" >&2
+            exit 2
+        fi
+        echo "${ROLE_CONCURRENCY[$2]:-0}"
+        exit 0
+        ;;
+esac
 
 main "$@"

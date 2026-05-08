@@ -1,0 +1,31 @@
+# fleet-up.conf — fleet runtime configuration overrides.
+#
+# Copy to ~/.fleet/fleet-up.conf and edit values to tune. fleet-up and
+# fleet-dispatcher both source this file at startup; fleet-dispatcher
+# re-reads on next launch (kill+restart the dispatcher to pick up new
+# values mid-session).
+#
+# Bash-sourceable. Comments start with `#`. Values without quotes work
+# for integers; quote any value containing spaces.
+
+# --- Per-role concurrency caps ----------------------------------------------
+#
+# Soft cap on simultaneous iterations per role. The dispatcher counts
+# (in-flight + reserved) unique worktrees and defers fresh dispatches when
+# the role hits its cap. Reservations count because a paused iteration will
+# resume on the next tick and consume a slot — counting them up front
+# prevents the role from briefly exceeding its budget when a reserved-idle
+# pane wakes up alongside a normal dispatch to a free pane.
+#
+# Defaults match each role's current pane count under stock fleet-up
+# layout (2x opus-worker, 2x sonnet-author, 1 each of the rest), so under
+# default values no role hits its cap during normal operation. Tune up to
+# allow more parallelism (requires adding panes); tune down to throttle a
+# role that's burning too much credit budget.
+
+# FLEET_CONCURRENCY_OPUS_WORKER=2
+# FLEET_CONCURRENCY_SONNET_AUTHOR=2
+# FLEET_CONCURRENCY_SONNET_REVIEWER=1
+# FLEET_CONCURRENCY_OPUS_REVIEWER=1
+# FLEET_CONCURRENCY_QUEUE_MANAGER=1
+# FLEET_CONCURRENCY_MERGER=1
