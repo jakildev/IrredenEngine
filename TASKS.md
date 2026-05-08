@@ -306,6 +306,39 @@ Avoid:
   - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
   - **Links:**
 
+- [ ] **Render: per-canvas light scope via CHILD_OF relation** — scope C_LightSource to a specific canvas; lights become children of their target canvas via CHILD_OF; lighting systems iterate per-canvas through existing RelationParams machinery
+  - **ID:** T-116
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) two-canvas demo where a C_LightSource parented via CHILD_OF to canvas A produces no lighting contribution in canvas B; (2) existing single-canvas lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot) unaffected; (3) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #363
+  - **Notes:** Follow-up from lighting-fidelity-polish PR (audit finding #11). Preferred implementation: Option B (CHILD_OF relation) over Option A (explicit scope tag) — composes with existing RelationParams machinery and falls out of existing system patterns. Every C_LightSource currently contributes to every canvas with a C_CanvasLightVolume; scoping is useful for UI/inset canvases that should not receive world-space lights.
+  - **Links:**
+
+- [ ] **Render: SDF occlusion in point/spot light line-of-sight** — add SDF-shape pass to detail::hasLineOfSight so C_ShapeDescriptor entities tagged C_LightBlocker block point/spot propagation
+  - **ID:** T-117
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) demo with a C_ShapeDescriptor (box) placed between a point light and a voxel surface produces a visible shadow on the surface; (2) per-shape cost bounded by sun-cone-style culling (only shapes tagged C_LightBlocker within the light radius are evaluated); (3) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #364
+  - **Notes:** Follow-up from lighting-fidelity-polish PR. The SDF-from-occupancy-grid removal left C_ShapeDescriptor entities invisible to point/spot LOS in system_compute_light_volume.hpp::detail::hasLineOfSight. Fix: for each step along the light ray, evaluate IRMath::SDF::evaluate for each C_ShapeDescriptor entity tagged C_LightBlocker; if any shape returns <= kSurfaceThreshold the ray is blocked. If GPU-side propagation rewrite (#359/#360) lands first, this may fold into the compute pass instead.
+  - **Links:**
+
+- [ ] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
+  - **ID:** T-118
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #366
+  - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
+  - **Links:**
+
 ---
 
 ## In progress
