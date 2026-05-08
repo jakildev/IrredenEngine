@@ -227,11 +227,19 @@ dispatch_send_keys() {
     fi
 }
 
-# Returns 0 if the pane is running claude, non-zero otherwise.
-pane_is_running_claude() {
+# Returns 0 if the pane is occupied (non-shell cmd), non-zero if idle at a shell.
+# Inverted allowlist: macOS tmux reports version strings (e.g. "2.1.132") instead
+# of "claude", so matching by name misses live panes and triggers premature cleanup.
+pane_is_occupied() {
     local pane_id="$1"
     list_pane_state | awk -F'\t' -v target="$pane_id" '
-        $1 == target { if ($3 == "claude" || $3 == "node") print "yes"; else print "no" }
+        $1 == target {
+            cmd = $3
+            if (cmd != "bash" && cmd != "zsh" && cmd != "sh" && cmd != "fish")
+                print "yes"
+            else
+                print "no"
+        }
     ' | grep -q "^yes$"
 }
 
@@ -281,7 +289,7 @@ cleanup_stale_dispatches() {
             rm -f "$file"
             continue
         fi
-        if pane_is_running_claude "$pane"; then
+        if pane_is_occupied "$pane"; then
             continue
         fi
         log "dispatch for $role on $pane completed (pane returned to shell)"
