@@ -7,9 +7,21 @@ using namespace metal;
 // Manhattan step, 0.0 past the radius). The cell picks whichever
 // air-neighbor candidate has the highest residual alpha so the closest
 // light wins overlap regions.
+//
+// Blocker neighbors are skipped on the same rule as solid voxels: a cell
+// marked in the light-blocker bitfield (rasterized from
+// `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)` entities by
+// `system_build_occupancy_grid`) blocks point/spot light propagation.
 
 constant int kOccupancyGridSize = 256;
 constant int kOccupancyGridHalfExtent = 128;
+// Number of `uint` entries in one bitfield (256³ / 32). Voxel bits live
+// at indices [0, kOccupancyBitfieldUintCount); light-blocker bits at
+// [kOccupancyBitfieldUintCount, 2 * kOccupancyBitfieldUintCount). Must
+// match `kOccupancyBitfieldUintCount` in
+// `system_build_occupancy_grid.hpp`.
+constant uint kOccupancyBitfieldUintCount =
+    uint(kOccupancyGridSize) * uint(kOccupancyGridSize) * uint(kOccupancyGridSize) / 32u;
 
 struct LightVolumeParams {
     int gridSize;
@@ -52,6 +64,32 @@ inline bool occupancyGetBit(
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
+// SDF-shape light blockers. Same camera-anchored layout as the voxel
+// bitfield, indexed `kOccupancyBitfieldUintCount` `uint`s further into
+// the same `bits[]` flexible-array tail.
+inline bool lightBlockerGetBit(
+    device const OccupancyData *occupancy,
+    int wx,
+    int wy,
+    int wz
+) {
+    int he = kOccupancyGridHalfExtent;
+    int4 worldOrigin = occupancy->worldOriginVoxel;
+    int lx = wx - worldOrigin.x;
+    int ly = wy - worldOrigin.y;
+    int lz = wz - worldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
+        return false;
+    }
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
+    uint flat =
+        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
+    uint bits = occupancy->bits[kOccupancyBitfieldUintCount + (flat >> 5u)];
+    return ((bits >> (flat & 31u)) & 1u) == 1u;
+}
+
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
@@ -87,7 +125,8 @@ kernel void c_propagate_light_volume(
             continue;
         }
         const int3 nWorld = worldCell + deltas[n];
-        if (occupancyGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z)) {
+        if (occupancyGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z) ||
+            lightBlockerGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z)) {
             continue;
         }
         const float4 nv = lightVolumeRead.read(uint3(nCell));

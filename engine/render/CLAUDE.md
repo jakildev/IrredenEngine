@@ -77,7 +77,12 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        header at the start of OccupancyGridBuffer (SSBO @ 28).   │
 │        Lights whose rounded world origin falls outside the       │
 │        ±64-voxel window around the camera anchor still drop      │
-│        with a one-shot CPU warning.                              │
+│        with a one-shot CPU warning. SDF blockers (`C_Shape-      │
+│        Descriptor + C_LightBlocker(blocksLOS_=true)` entities)   │
+│        are CPU-rasterized into a second bitfield in the same     │
+│        SSBO; the propagate shader OR's both bitfields per        │
+│        neighbor so SDFs occlude point/spot light without         │
+│        affecting AO. See system_build_occupancy_grid.hpp.        │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │
