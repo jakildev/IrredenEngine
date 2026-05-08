@@ -61,6 +61,7 @@ STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+USAGE_DIR="$STATE_DIR/usage"
 RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
 PID_FILE="$STATE_DIR/dispatcher.pid"
@@ -112,6 +113,33 @@ declare -A CAP_DEFER_LOGGED=()
 # Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of two opus-worker
 # panes hits a limit, the other keeps running.
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
+
+# --- 5-hour-window usage gate ---------------------------------------------
+#
+# Soft, fleet-wide pre-emption: when any rate_limit_event observation
+# reports utilization >= USAGE_GATE_THRESHOLD, defer ALL fresh
+# dispatches until the window resets or utilization drops. In-flight
+# iterations finish normally; their next trigger waits.
+#
+# Observations are written by fleet-claude-stream (one file per
+# rateLimitType under $USAGE_DIR), so the gate piggybacks on every
+# transient worker's stream — no separate poller needed.
+#
+# Conservative against staleness: an observation older than
+# USAGE_STALE_SECONDS (default 1h) or whose resetsAt is in the past
+# is ignored, so the gate doesn't latch closed forever after a single
+# high-watermark reading.
+#
+# Sibling to LIMIT_DELAY's per-pane post-mortem cooldown: that fires
+# AFTER a pane hits the wall and exits with code 2; this fires BEFORE
+# the wall to spread the remaining budget across in-flight work.
+USAGE_GATE_THRESHOLD="${FLEET_DISPATCHER_USAGE_GATE:-0.80}"
+USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+
+# Track whether the gate was logged-as-closed last tick so the
+# "deferring all dispatches" message fires once per closed-window,
+# not every 10s.
+USAGE_GATE_CLOSED_LOGGED=""
 
 # Default poll cadence. Workers are transient — each iteration is a
 # one-shot `claude --print` spawned into an idle pane when a trigger
@@ -372,6 +400,115 @@ pane_in_rate_limit_cooldown() {
     rm -f "$ts_file"
     unset "RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]"
     return 1
+}
+
+# --- Usage gate ------------------------------------------------------------
+
+# Print the gate state on stdout: "open" or "closed:<reason>".
+#
+# Reads ~/.fleet/state/usage/*.json files (latched by fleet-claude-stream
+# on every rate_limit_event), picks the worst observation that is both
+# fresh (observed within USAGE_STALE_SECONDS) and not yet reset
+# (resetsAt in the future), and reports closed iff utilization
+# >= USAGE_GATE_THRESHOLD.
+#
+# Inlined python3 so we get JSON parsing + ISO-8601 timestamp math
+# without adding a shell dep. Same pattern rearm_periodic_meta_triggers
+# uses below.
+usage_gate_status() {
+    local threshold="$USAGE_GATE_THRESHOLD"
+    local stale="$USAGE_STALE_SECONDS"
+    local usage_dir="$USAGE_DIR"
+    USAGE_DIR="$usage_dir" \
+    USAGE_GATE_THRESHOLD="$threshold" \
+    USAGE_STALE_SECONDS="$stale" \
+    python3 - <<'PY'
+import json
+import os
+import pathlib
+import sys
+import time
+from datetime import datetime, timezone
+
+usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
+threshold = float(os.environ.get("USAGE_GATE_THRESHOLD", "0.80"))
+stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+
+if not usage_dir.is_dir():
+    print("open")
+    sys.exit(0)
+
+now = int(time.time())
+worst_util = -1.0
+worst_type = None
+worst_resets = None
+
+for path in sorted(usage_dir.glob("*.json")):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        continue
+    util = data.get("utilization")
+    if not isinstance(util, (int, float)):
+        continue
+    observed_at = data.get("observed_at")
+    if isinstance(observed_at, (int, float)) and now - int(observed_at) > stale_s:
+        continue
+    resets_at = data.get("resetsAt")
+    if isinstance(resets_at, str):
+        try:
+            # API returns ISO-8601 with Z suffix; datetime.fromisoformat
+            # accepts +00:00 but not Z until 3.11 — sub it.
+            dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+            if dt.timestamp() <= now:
+                continue
+        except ValueError:
+            pass
+    util_f = float(util)
+    # Utilization comes back in [0,1]. Be defensive against a future
+    # API that sends a percent in [0,100] (the chat-formatter prints
+    # it as a percent, but the value itself is a fraction today).
+    if util_f > 1.5:
+        util_f = util_f / 100.0
+    if util_f > worst_util:
+        worst_util = util_f
+        worst_type = data.get("rateLimitType", path.stem)
+        worst_resets = resets_at if isinstance(resets_at, str) else None
+
+if worst_util < 0:
+    print("open")
+    sys.exit(0)
+
+if worst_util >= threshold:
+    pct = int(round(worst_util * 100))
+    thr_pct = int(round(threshold * 100))
+    resets_part = f" resets={worst_resets}" if worst_resets else ""
+    print(f"closed:{worst_type} util={pct}% (>= {thr_pct}%){resets_part}")
+else:
+    pct = int(round(worst_util * 100))
+    print(f"open:{worst_type} util={pct}%")
+PY
+}
+
+# Returns 0 (true) when the gate is open and dispatching may proceed.
+# Side effect: emits a one-shot log entry on transitions (open->closed
+# and closed->open) using USAGE_GATE_CLOSED_LOGGED to suppress
+# repeat-on-every-tick spam.
+usage_gate_open() {
+    local status
+    status=$(usage_gate_status)
+    if [[ "$status" == closed:* ]]; then
+        if [[ -z "$USAGE_GATE_CLOSED_LOGGED" ]]; then
+            log "usage gate ${status}; deferring all dispatches"
+            USAGE_GATE_CLOSED_LOGGED=1
+        fi
+        return 1
+    fi
+    if [[ -n "$USAGE_GATE_CLOSED_LOGGED" ]]; then
+        log "usage gate re-opened (${status}); resuming dispatch"
+        USAGE_GATE_CLOSED_LOGGED=""
+    fi
+    return 0
 }
 
 # --- Per-role active-iteration count ---------------------------------------
@@ -660,7 +797,7 @@ PY
 }
 
 main() {
-    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR"
+    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR" "$USAGE_DIR"
 
     if ! acquire_dispatcher_lock; then
         log "another dispatcher is already running (lock held); exiting"
@@ -698,7 +835,11 @@ main() {
             rearm_periodic_meta_triggers
         fi
 
-        if session_exists; then
+        # Fleet-wide usage gate. Closed → skip the dispatch_role pass
+        # entirely; triggers stay in place for next tick. The
+        # rearm_periodic_meta_triggers above still runs so the trigger
+        # set stays accurate for when the gate re-opens.
+        if session_exists && usage_gate_open; then
             for role in "${DISPATCHED_ROLES[@]}"; do
                 dispatch_role "$role"
             done
@@ -737,6 +878,13 @@ case "${1:-}" in
             exit 2
         fi
         echo "${ROLE_CONCURRENCY[$2]:-0}"
+        exit 0
+        ;;
+    --gate-status)
+        # Print the live usage gate status (open / closed) and exit.
+        # Used by operators to inspect the 5-hour-window state without
+        # tailing the dispatcher log.
+        usage_gate_status
         exit 0
         ;;
 esac

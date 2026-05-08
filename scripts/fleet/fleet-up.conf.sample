@@ -29,3 +29,24 @@
 # FLEET_CONCURRENCY_OPUS_REVIEWER=1
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
+
+# --- 5-hour-window usage gate -----------------------------------------------
+#
+# Soft, fleet-wide pre-emption: when any rate_limit_event observation
+# (latched by fleet-claude-stream into ~/.fleet/state/usage/<type>.json)
+# reports utilization >= the threshold, the dispatcher defers ALL fresh
+# dispatches until the window resets or utilization drops back below.
+# In-flight iterations finish normally; their next trigger waits.
+#
+# The threshold is a fraction in [0, 1]; default 0.80 reserves the last
+# 20% of the 5-hour budget for already-running work.
+# Stale window: observations older than this many seconds are ignored,
+# so the gate doesn't latch closed forever based on a single high
+# watermark. Default 1h.
+#
+# Sibling to FLEET_DISPATCHER_LIMIT_DELAY (per-pane post-mortem cooldown
+# after a usage_limit exit). Use --gate-status on fleet-dispatcher to
+# inspect the live state.
+
+# FLEET_DISPATCHER_USAGE_GATE=0.80
+# FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
