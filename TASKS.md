@@ -290,11 +290,11 @@ Avoid:
   - **Notes:** PR 6 of 6 for #521, parallelizable with T-123 after T-122. Full plan in .fleet/plans/T-120.md. Files: ~/bin/fleet-up (config schema), ~/bin/fleet-dispatcher (cap-check at dispatch time). Soft cap — orthogonal to reservations; reservations protect dirty-state continuity, cap protects credit budget.
   - **Links:**
 
-- [ ] **Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO** — remove OccupancyGrid SSBO reads from the propagation system and shaders, replacing with a decoupled SSBO producer; unblocks T-092 deletion pass
+- [~] **Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO** — remove OccupancyGrid SSBO reads from the propagation system and shaders, replacing with a decoupled SSBO producer; unblocks T-092 deletion pass
   - **ID:** T-126
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-126-occupancy-ssbo-decouple
   - **Blocked by:** (none)
   - **Acceptance:** (1) c_propagate_light_volume.glsl and .metal contain zero reads of OccupancyGridBuffer/occupancyGetBit; (2) system_compute_light_volume.hpp archetype no longer includes C_OccupancyGrid; (3) all lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) render correctly; (4) fleet-build clean on linux-debug AND macos-debug; (5) T-092's hidden-consumer blocker is resolved
   - **Issue:** #532
