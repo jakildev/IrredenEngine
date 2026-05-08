@@ -12,6 +12,7 @@ set(IR_LIGHTING_DEMO_TARGETS
     IRLightingDirectional
     IRLightingSunShading
     IRLightingSdfCascade
+    IRLightingSdfBlocker
     IRLightingSunOrbit
     IRLightingSunElevationOrbit
 )
@@ -27,6 +28,7 @@ set(IR_LIGHTING_DEMO_SOURCES
     main_directional.cpp
     main_sun_shading.cpp
     main_sdf_cascade.cpp
+    main_sdf_blocker.cpp
     main_sun_orbit.cpp
     main_sun_elevation_orbit.cpp
 )

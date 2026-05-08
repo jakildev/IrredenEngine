@@ -20,23 +20,43 @@
 //   • Solid neighbors are skipped (light cannot propagate THROUGH
 //     occluders) but solid cells themselves can still receive light
 //     from adjacent air cells, so wall surfaces light up correctly.
+//   • Blocker neighbors are skipped on the same rule: a cell marked in
+//     the light-blocker bitfield (rasterized from `C_ShapeDescriptor +
+//     C_LightBlocker(blocksLOS_=true)` entities by
+//     `system_build_occupancy_grid`) blocks point/spot light
+//     propagation just like a solid voxel, restoring the SDF-LOS
+//     behaviour the GPU port lost in #359.
 //
 // Memory pattern: 6 image reads + 6 occupancy bit reads per thread
 // at 128³ cells × 32 iterations — well below the 71 ms CPU BFS this
 // replaces. The occupancy lookups touch the same `OccupancyGrid` SSBO
-// consumed by AO so no new producer is required for this PR.
+// consumed by AO so no new producer is required for this PR. The
+// blocker bitfield lives in the same SSBO (header + voxel bitfield +
+// blocker bitfield), so the propagate shader does one extra `uint`
+// load per neighbor — no new buffer slot is needed (Metal caps at
+// 0–30 and every slot is already in use).
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
 const int kOccupancyGridSize = 256;
 const int kOccupancyGridHalfExtent = 128;
+// Number of `uint` entries in one bitfield (256³ / 32). Voxel bits live
+// at indices [0, kOccupancyBitfieldUintCount); light-blocker bits at
+// [kOccupancyBitfieldUintCount, 2 * kOccupancyBitfieldUintCount). Must
+// match `kOccupancyBitfieldUintCount` in
+// `system_build_occupancy_grid.hpp`.
+const uint kOccupancyBitfieldUintCount =
+    uint(kOccupancyGridSize) * uint(kOccupancyGridSize) * uint(kOccupancyGridSize) / 32u;
 
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
 
 // Phase 1c (#360): camera-anchored layout — header carries the world
-// origin, then the bitfield. See c_compute_voxel_ao.glsl for the
-// rationale on embedding the header in the SSBO.
+// origin, then two parallel bitfields. See c_compute_voxel_ao.glsl for
+// the rationale on embedding the header in the SSBO. The voxel bitfield
+// (consumed by AO + this shader) is followed by the light-blocker
+// bitfield (consumed only by this shader). Producers stay in
+// `system_build_occupancy_grid.hpp`.
 layout(std430, binding = 28) readonly buffer OccupancyGrid {
     ivec4 occupancyWorldOrigin;
     uint occupancyBits[];
@@ -70,6 +90,27 @@ bool occupancyGetBit(int wx, int wy, int wz) {
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
+// SDF-shape light blockers. Same camera-anchored layout as the voxel
+// bitfield, indexed `kOccupancyBitfieldUintCount` `uint`s into the same
+// `occupancyBits[]` array. Returns true when (wx, wy, wz) lies inside
+// any `C_ShapeDescriptor` with `C_LightBlocker(blocksLOS_=true)`.
+bool lightBlockerGetBit(int wx, int wy, int wz) {
+    int he = kOccupancyGridHalfExtent;
+    int lx = wx - occupancyWorldOrigin.x;
+    int ly = wy - occupancyWorldOrigin.y;
+    int lz = wz - occupancyWorldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
+        return false;
+    }
+    uint x = uint(lx + he);
+    uint y = uint(ly + he);
+    uint z = uint(lz + he);
+    uint flat =
+        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
+    uint bits = occupancyBits[kOccupancyBitfieldUintCount + (flat >> 5u)];
+    return ((bits >> (flat & 31u)) & 1u) == 1u;
+}
+
 void main() {
     const ivec3 cell = ivec3(gl_GlobalInvocationID.xyz);
     if (cell.x >= gridSize || cell.y >= gridSize || cell.z >= gridSize) {
@@ -97,7 +138,8 @@ void main() {
             continue;
         }
         const ivec3 nWorld = worldCell + deltas[n];
-        if (occupancyGetBit(nWorld.x, nWorld.y, nWorld.z)) {
+        if (occupancyGetBit(nWorld.x, nWorld.y, nWorld.z) ||
+            lightBlockerGetBit(nWorld.x, nWorld.y, nWorld.z)) {
             continue;
         }
         const vec4 nv = imageLoad(lightVolumeRead, nCell);
