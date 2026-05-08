@@ -1431,6 +1431,8 @@ PYEOF
 reservation_holder_for_task() {
     # Print the worktree name that has this task reserved, or empty.
     # Used by cmd_claim and cmd_stack as a gate.
+    # TOCTOU: two concurrent cross-worktree same-task reserves may both pass this check;
+    # sequential dispatcher makes this safe in practice.
     local task_id="$1"
     while IFS=$'\t' read -r wt tid branch ts epoch; do
         if [[ "$tid" == "$task_id" ]]; then
