@@ -255,9 +255,8 @@ inline float3 trixelCanvasPixelToWorld3D(
     int2 trixelCanvasOffsetZ1,
     float2 frameCanvasOffset,
     int2 voxelRenderOptions,
-    float rasterYaw
+    int cardinalIndex
 ) {
-    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     const int2 isoRel =
         trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
@@ -269,6 +268,20 @@ inline float3 trixelCanvasPixelToWorld3D(
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
+}
+
+inline float3 trixelCanvasPixelToWorld3D(
+    int2 pixel,
+    int rawDepth,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    float rasterYaw
+) {
+    return trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions,
+        rasterYawCardinalIndex(rasterYaw)
+    );
 }
 
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the

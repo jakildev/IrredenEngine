@@ -1,12 +1,22 @@
 #include "ir_iso_common.metal"
 
 // Mirrors shaders/c_compute_voxel_ao.glsl. Per-pixel ambient-occlusion
-// compute. Samples the 3D occupancy grid for filled cells on the face's
-// outside and writes an AO factor (0..1) into canvasAO.r.
+// compute. Samples four face-tangent neighbour pixels in trixelDistances
+// and counts each as occluding when its decoded surface position sits in
+// front of the receiver's face plane by ~1 voxel along face-outward.
 
-constant int kOccupancyGridSize = 256;
-constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
+
+// Crease-band along the face-outward normal. Canonical edge-occluder voxel
+// sits at d = `kAOOccluderHeight`; the band is centred there with a
+// ±`kAOBandHalfWidth` voxel tolerance, extended below by
+// `kAOSubVoxelTolerance` for SDF sub-voxel surfaces. Must stay in lockstep
+// with the matching constants in c_compute_voxel_ao.glsl.
+constant float kAOOccluderHeight = 1.0;
+constant float kAOBandHalfWidth = 0.5;
+constant float kAOSubVoxelTolerance = 0.375;
+constant float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
+constant float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
 // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
 // consumed here; the layout must match so the shared UBO at binding 29
@@ -23,48 +33,9 @@ struct FrameDataSun {
     float2 sunBufferTexelSize;
 };
 
-// Phase 1c (#360): camera-anchored occupancy SSBO layout — first 16
-// bytes are the world origin, then the bitfield. The header is
-// embedded in the SSBO (rather than a separate UBO) because Metal
-// compute encoders share one `setBuffer(slot)` table per encoder, so a
-// UBO at the same slot as an unrelated SSBO would clobber it. Mirrors
-// `OccupancyGridHeader` in ir_render_types.hpp.
-struct OccupancyData {
-    int4 worldOriginVoxel;
-    // Sentinel array — MSL doesn't allow `bits[]` flexible members, but
-    // accessing past index 0 reads the buffer's actual contents. The
-    // CPU sizes the SSBO to fit `kMaxOccupancyGridSideVoxels^3 / 8`
-    // bytes after the header.
-    uint bits[1];
-};
-
-inline bool occupancyGetBit(
-    device const OccupancyData *occupancy,
-    int wx,
-    int wy,
-    int wz
-) {
-    int he = kOccupancyGridHalfExtent;
-    int4 worldOrigin = occupancy->worldOriginVoxel;
-    int lx = wx - worldOrigin.x;
-    int ly = wy - worldOrigin.y;
-    int lz = wz - worldOrigin.z;
-    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
-        return false;
-    }
-    uint x = uint(lx + he);
-    uint y = uint(ly + he);
-    uint z = uint(lz + he);
-    uint flat =
-        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancy->bits[flat >> 5u];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
-}
-
 kernel void c_compute_voxel_ao(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
-    device const OccupancyData *occupancy [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
     uint3 globalId [[thread_position_in_grid]]
@@ -88,16 +59,6 @@ kernel void c_compute_voxel_ao(
 
     int face = encoded & 3;
     int rawDepth = encoded >> 2;
-
-    // If the subdivision encoding ever shifts, update
-    // c_voxel_to_trixel_stage_1.metal and c_voxel_to_trixel_stage_2.metal
-    // in lockstep — all three shaders must agree on rawDepth scaling.
-    // R(-rasterYaw) compose recovers world-frame surface position and
-    // outward / tangent vectors from the cardinal-rotated raster frame.
-    // At cardinalIndex==0 the path collapses to master so yaw=0 stays
-    // byte-identical.
-    // Also computed inside trixelCanvasPixelToWorld3D; retained here for the
-    // sampling-vector rotation below.
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     float3 pos3D = trixelCanvasPixelToWorld3D(
         pixel,
@@ -105,18 +66,13 @@ kernel void c_compute_voxel_ao(
         frameData.trixelCanvasOffsetZ1,
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions,
-        frameData.rasterYaw
+        cardinalIndex
     );
-    // `roundHalfUp` lives in ir_iso_common.metal and mirrors
-    // `IRMath::roundHalfUp` on the CPU side (see
-    // system_build_occupancy_grid.hpp). Both ends MUST agree on
-    // half-integer voxel positions or the AO sample lands in a
-    // different cell than the one the CPU populated.
-    int3 surfaceVoxel = roundHalfUp(pos3D);
 
-    // Face-outward + tangent axes shared with the lighting lambert via
-    // `faceOutwardNormalI` in ir_iso_common.metal.
-    int3 outward = faceOutwardNormalI(face);
+    // Face axes in raster frame; tangents project directly to canvas
+    // pixels. Outward normal is rotated back to world frame for the
+    // d-test in `pos3D`'s frame. Mirrors GLSL.
+    int3 rasterOutwardI = faceOutwardNormalI(face);
     int3 t1;
     int3 t2;
     if (face == kZFace) {
@@ -129,22 +85,43 @@ kernel void c_compute_voxel_ao(
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }
-    if (cardinalIndex != 0) {
-        outward = rotateCardinalZInvI(outward, cardinalIndex);
-        t1 = rotateCardinalZInvI(t1, cardinalIndex);
-        t2 = rotateCardinalZInvI(t2, cardinalIndex);
+    float3 worldOutward = rotateCardinalZInv(float3(rasterOutwardI), cardinalIndex);
+
+    int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
+    int2 deltaT1 = pos3DtoPos2DIso(t1) * scale;
+    int2 deltaT2 = pos3DtoPos2DIso(t2) * scale;
+
+    int occl = 0;
+    for (int dir = 0; dir < 4; ++dir) {
+        int2 delta;
+        if (dir == 0) delta = deltaT1;
+        else if (dir == 1) delta = -deltaT1;
+        else if (dir == 2) delta = deltaT2;
+        else delta = -deltaT2;
+        int2 samplePixel = pixel + delta;
+        if (samplePixel.x < 0 || samplePixel.x >= size.x ||
+            samplePixel.y < 0 || samplePixel.y >= size.y) continue;
+
+        int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
+        if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
+
+        int neighbourRawDepth = neighbourEncoded >> 2;
+        float3 neighbourPos3D = trixelCanvasPixelToWorld3D(
+            samplePixel,
+            neighbourRawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            cardinalIndex
+        );
+
+        float d = dot(neighbourPos3D - pos3D, worldOutward);
+        if (d > kAOMinHeight && d < kAOMaxHeight) occl++;
     }
 
-    int3 baseOut = surfaceVoxel + outward;
-    int occl = 0;
-    if (occupancyGetBit(occupancy, baseOut.x + t1.x, baseOut.y + t1.y, baseOut.z + t1.z)) occl++;
-    if (occupancyGetBit(occupancy, baseOut.x - t1.x, baseOut.y - t1.y, baseOut.z - t1.z)) occl++;
-    if (occupancyGetBit(occupancy, baseOut.x + t2.x, baseOut.y + t2.y, baseOut.z + t2.z)) occl++;
-    if (occupancyGetBit(occupancy, baseOut.x - t2.x, baseOut.y - t2.y, baseOut.z - t2.z)) occl++;
-
-    // Each filled edge-neighbor darkens by 10%; all four caps at 60%
-    // brightness keeps crease darkening visually subtle. Must stay in
-    // lockstep with the 0.10 coefficient in c_compute_voxel_ao.glsl.
+    // Each occluding edge-neighbour darkens by 10%; all four caps at 60%
+    // brightness. Must stay in lockstep with the 0.10 coefficient in
+    // c_compute_voxel_ao.glsl.
     float ao = 1.0 - float(occl) * 0.10;
     canvasAO.write(float4(ao, 0.0, 0.0, 0.0), uint2(pixel));
 }
