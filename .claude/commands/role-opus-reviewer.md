@@ -245,14 +245,16 @@ iteration of polling, reviewing, and exiting cleanly:
       review actions on your own PRs.
    f. **Set the PR label** to match your verdict (add `--repo
       <game-repo>` for game PRs). The label is the primary signal
-      the human uses. Always remove stale labels first. Two labels
+      the human uses. Always remove stale labels first. Three labels
       are also cleared here as part of the verdict:
       - `fleet:awaiting-upstream-review` — a previously-gated stacked
         PR exits the gate cleanly when the reviewer finally proceeds.
       - `fleet:stacked-rebase` — set by merger when a stacked PR's
         base just merged and got re-targeted to master; your re-eval
         after the re-target is exactly what that label is waiting for.
-      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"`
+      - `fleet:needs-base-update` — stacked PR whose upstream has since
+        been re-approved or merged; cleared on any verdict re-evaluation.
+      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"`
       (swap the label name for needs-fix or blocker as appropriate).
       - Verdict approve, no Nits section → `fleet:approved` only
       - Verdict approve WITH a non-empty `### Nits` section → BOTH

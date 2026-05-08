@@ -427,22 +427,23 @@ calls. Always remove stale verdict labels before adding the new one — a PR
 should have exactly one verdict label (`fleet:approved` / `fleet:needs-fix`
 / `fleet:blocker`) at any time. `fleet:has-nits` is orthogonal — it rides
 on top of `fleet:approved`. The remove list also clears
-`fleet:awaiting-upstream-review` (previously-gated stacked PR exits cleanly)
-and `fleet:stacked-rebase` (re-eval after a stacked-PR retarget completes
-the label's intent).
+`fleet:awaiting-upstream-review` (previously-gated stacked PR exits cleanly),
+`fleet:stacked-rebase` (re-eval after a stacked-PR retarget completes
+the label's intent), and `fleet:needs-base-update` (stacked PR whose
+upstream has since been re-approved or merged).
 
 ```bash
 # For approve, no nits in body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"
 
 # For approve WITH a non-empty Nits section in the body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved" --add-label "fleet:has-nits"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
 # For needs-fix (nits roll into the fix work; no separate label):
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:needs-fix"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:needs-fix"
 
 # For blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:blocker"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:blocker"
 ```
 
 The verdict label is the **primary signal** the human uses to decide

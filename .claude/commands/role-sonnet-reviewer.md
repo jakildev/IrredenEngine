@@ -211,9 +211,9 @@ iteration of polling, reviewing, and exiting cleanly:
         the child diff only — upstream is approved separately."
         When upstream is merged: "Stacked on #<U> (now merged).
         Reviewing standalone diff." Derive `<U>` from the upstream
-        PR number, `<agent>` from the upstream `headRefName`
-        worktree slug (e.g. `sonnet-fleet-1`), and `T-X` from
-        the task ID in the branch name.
+        PR number, `<agent>` from the upstream PR's `author` field
+        (or "N/A" if indeterminate), and `T-X` from the task ID
+        in the branch name.
       - **Upstream OPEN without an approval label** (its `labels`
         contains neither `fleet:approved` nor `human:approved`) —
         add the gate label and post a hold-comment once:
