@@ -204,9 +204,16 @@ iteration of polling, reviewing, and exiting cleanly:
 
    4. **Decide based on upstream status** (gate label not present):
       - **Upstream MERGED, or upstream OPEN with `fleet:approved`
-        or `human:approved`** — proceed with review. Note the stack
-        context in the review body: "Stacked on #<U>; approval
-        assumes #<U> lands first."
+        or `human:approved`** — proceed with review. Prepend the
+        verdict body with a stacked-PR context note. When upstream
+        is still open (has `fleet:approved` or `human:approved`):
+        "Stacked on #<U> (cross-author: <agent> on T-X). Reviewing
+        the child diff only — upstream is approved separately."
+        When upstream is merged: "Stacked on #<U> (now merged).
+        Reviewing standalone diff." Derive `<U>` from the upstream
+        PR number, `<agent>` from the upstream `headRefName`
+        worktree slug (e.g. `sonnet-fleet-1`), and `T-X` from
+        the task ID in the branch name.
       - **Upstream OPEN without an approval label** (its `labels`
         contains neither `fleet:approved` nor `human:approved`) —
         add the gate label and post a hold-comment once:
@@ -265,22 +272,25 @@ iteration of polling, reviewing, and exiting cleanly:
 
    Each verdict command also removes `fleet:awaiting-upstream-review`
    (so a previously-gated stacked PR exits the gate when the reviewer
-   finally proceeds) AND `fleet:stacked-rebase` (set by merger when a
+   finally proceeds), `fleet:stacked-rebase` (set by merger when a
    stacked PR's base just merged and got re-targeted to master — the
-   reviewer's re-eval is what that label is waiting for).
+   reviewer's re-eval is what that label is waiting for), and
+   `fleet:needs-base-update` (set by merger when a stacked child PR
+   conflicted on rebase and needed manual resolution — cleared by the
+   next review verdict once the author has resolved and pushed).
 
    ```
    # Verdict approve, no Nits section:
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"
 
    # Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved" --add-label "fleet:has-nits"
+   gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
    # Verdict needs-fix:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:needs-fix"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:needs-fix"
 
    # Verdict blocker:
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:blocker"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:blocker"
 
    # Re-review of a previously fleet:has-nits PR that's now clean:
    #   removes the has-nits flag while keeping fleet:approved
