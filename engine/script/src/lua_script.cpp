@@ -2,10 +2,13 @@
 
 #include <irreden/script/lua_script.hpp>
 
+#include <irreden/ir_system.hpp>
+
 #include <irreden/common/modifier_field_registry.hpp>
 
 #include <deque>
 #include <string>
+#include <vector>
 
 namespace IRScript {
 
@@ -427,6 +430,223 @@ void LuaScript::bindLuaDrivenEcs() {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
     };
+
+    bindLuaDrivenSystems();
+}
+
+namespace {
+
+// Resolve one entry of a `components` / `excludes` list to a
+// `ComponentId`. Lists may hold either:
+//   - a string (the Lua name of a C++ component bound via
+//     `lua_component_pack`, e.g. "C_Position3D", or the user name of a
+//     Lua-defined component, e.g. "Hp"); OR
+//   - a table handle returned by `IRComponent.register` (as produced
+//     by T-100, holding `componentId` + `typeName` + `fields`).
+//
+// Returns `kNullComponent` and sets `errorMessage` when the entry is
+// neither (caller surfaces a Lua error so the user sees an actionable
+// "this name isn't bound" message — the same "fails fast on unbound
+// C++ type" requirement from the T-101 plan).
+IREntity::ComponentId resolveComponentEntry(
+    const sol::object &entry,
+    const LuaScript &script,
+    const IREntity::EntityManager &em,
+    std::string &errorMessage
+) {
+    if (entry.is<sol::table>()) {
+        sol::table t = entry.as<sol::table>();
+        sol::optional<lua_Integer> id = t.get<sol::optional<lua_Integer>>("componentId");
+        if (id && *id != 0) {
+            return static_cast<IREntity::ComponentId>(*id);
+        }
+        errorMessage = "table entry is missing componentId — pass either a "
+                       "string name or an IRComponent.register handle";
+        return IREntity::kNullComponent;
+    }
+    if (entry.is<std::string>()) {
+        const std::string name = entry.as<std::string>();
+        // C++ components register their Lua-visible name through
+        // `LuaScript::registerType`. Lua-defined components register
+        // their user name through `EntityManager::registerComponentDynamic`.
+        IREntity::ComponentId fromCpp = script.componentIdByLuaName(name);
+        if (fromCpp != IREntity::kNullComponent) {
+            return fromCpp;
+        }
+        IREntity::ComponentId fromLuaTyped = em.getComponentTypeByName(name);
+        if (fromLuaTyped != IREntity::kNullComponent) {
+            return fromLuaTyped;
+        }
+        errorMessage = "unknown component '" + name +
+                       "' — must be a Lua-defined component (IRComponent.register) "
+                       "or a C++ component included in this creation's lua_component_pack";
+        return IREntity::kNullComponent;
+    }
+    errorMessage = "component list entry must be a string name or an "
+                   "IRComponent.register handle";
+    return IREntity::kNullComponent;
+}
+
+// Build the std::vector<ComponentId> for a `components` / `excludes`
+// list. Throws sol::error on the first unresolvable entry.
+std::vector<IREntity::ComponentId> resolveComponentList(
+    const sol::table &list,
+    const std::string &fieldName,
+    const std::string &systemName,
+    const LuaScript &script,
+    const IREntity::EntityManager &em
+) {
+    std::vector<IREntity::ComponentId> ids;
+    ids.reserve(list.size());
+    for (auto &kv : list) {
+        std::string err;
+        IREntity::ComponentId id = resolveComponentEntry(kv.second, script, em, err);
+        if (id == IREntity::kNullComponent) {
+            throw sol::error{
+                "IRSystem.registerSystem: '" + systemName + "'." + fieldName + ": " + err
+            };
+        }
+        ids.push_back(id);
+    }
+    return ids;
+}
+
+} // namespace
+
+void LuaScript::bindLuaDrivenSystems() {
+    if (m_lua["IRSystem"].valid()) {
+        return;
+    }
+
+    // Column-view usertypes shared by every Lua-driven system tick.
+    // Registered once; `registerSystem` plugs concrete column pointers
+    // into fresh views per archetype invocation.
+    m_lua.new_usertype<LuaCppColumnView>(
+        "_IRLuaCppColumnView",
+        sol::no_constructor,
+        "at",
+        &LuaCppColumnView::at,
+        "setAt",
+        &LuaCppColumnView::setAt,
+        "length",
+        &LuaCppColumnView::length
+    );
+    m_lua.new_usertype<LuaTypedColumnView>(
+        "_IRLuaTypedColumnView",
+        sol::no_constructor,
+        "getField",
+        &LuaTypedColumnView::getField,
+        "setField",
+        &LuaTypedColumnView::setField,
+        "getRow",
+        &LuaTypedColumnView::getRow,
+        "setRow",
+        &LuaTypedColumnView::setRow,
+        "length",
+        &LuaTypedColumnView::length
+    );
+
+    m_lua["IRSystem"] = m_lua.create_table();
+
+    auto registerSystem = [this](sol::table args) -> sol::object {
+        sol::optional<std::string> nameOpt = args.get<sol::optional<std::string>>("name");
+        if (!nameOpt) {
+            throw sol::error{"IRSystem.registerSystem: missing required field 'name'"};
+        }
+        const std::string systemName = *nameOpt;
+
+        sol::optional<sol::table> components = args.get<sol::optional<sol::table>>("components");
+        if (!components) {
+            throw sol::error{
+                "IRSystem.registerSystem: '" + systemName +
+                "' missing required field 'components' (list of component names or handles)"
+            };
+        }
+
+        sol::optional<sol::function> tickOpt = args.get<sol::optional<sol::function>>("tick");
+        if (!tickOpt) {
+            throw sol::error{
+                "IRSystem.registerSystem: '" + systemName + "' missing required field 'tick'"
+            };
+        }
+        sol::protected_function tick = *tickOpt;
+
+        auto &em = IREntity::getEntityManager();
+
+        std::vector<IREntity::ComponentId> includeIds =
+            resolveComponentList(*components, "components", systemName, *this, em);
+        std::vector<std::string> includeNames;
+        includeNames.reserve(includeIds.size());
+        for (auto &kv : *components) {
+            includeNames.push_back(
+                kv.second.is<std::string>()
+                    ? kv.second.as<std::string>()
+                    : kv.second.as<sol::table>().get<std::string>("typeName")
+            );
+        }
+
+        std::vector<IREntity::ComponentId> excludeIds;
+        sol::optional<sol::table> excludes = args.get<sol::optional<sol::table>>("excludes");
+        if (excludes) {
+            excludeIds = resolveComponentList(*excludes, "excludes", systemName, *this, em);
+        }
+
+        IREntity::Archetype includeArchetype{includeIds.begin(), includeIds.end()};
+        IREntity::Archetype excludeArchetype{excludeIds.begin(), excludeIds.end()};
+
+        // Body wrapper: one sol::function invocation per matched
+        // archetype per tick. Column views are stack-allocated value
+        // types pushed into a fresh per-tick `archetype` table; the
+        // body inside Lua iterates rows itself, so per-entity work
+        // never crosses the C++/Lua boundary except through column
+        // userdata methods (sol2 method calls, not sol::function
+        // invocations).
+        auto body =
+            [this, tick, includeIds, includeNames, systemName](IREntity::ArchetypeNode *node) {
+                sol::state_view lua{m_lua.lua_state()};
+                sol::table archView = lua.create_table();
+                archView["length"] = node->length_;
+                // entity-id access without copying node->entities_ (which
+                // would be O(N) per archetype tick at large entity counts).
+                archView["entityAt"] = [node](int row) -> lua_Integer {
+                    return static_cast<lua_Integer>(node->entities_[row]);
+                };
+
+                for (std::size_t i = 0; i < includeIds.size(); ++i) {
+                    const IREntity::ComponentId cid = includeIds[i];
+                    IREntity::IComponentData *impl = node->components_.at(cid).get();
+                    if (auto *typed = dynamic_cast<IComponentDataLuaTyped *>(impl)) {
+                        archView[includeNames[i]] = LuaTypedColumnView{typed, node->length_};
+                        continue;
+                    }
+                    const LuaCppColumnAccessor *accessor = cppColumnAccessor(cid);
+                    IR_ASSERT(
+                        accessor != nullptr,
+                        "Lua system '{}': component id {} has no Lua binding accessor — was it "
+                        "registered via LuaScript::registerType?",
+                        systemName.c_str(),
+                        cid
+                    );
+                    archView[includeNames[i]] = LuaCppColumnView{impl, accessor, node->length_};
+                }
+
+                sol::protected_function_result result = tick(archView);
+                if (!result.valid()) {
+                    sol::error err = result;
+                    IRE_LOG_ERROR("Lua system '{}' tick error: {}", systemName.c_str(), err.what());
+                }
+            };
+
+        IRSystem::SystemId systemId = IRSystem::createSystemDynamic(
+            systemName,
+            std::move(includeArchetype),
+            std::move(excludeArchetype),
+            std::move(body)
+        );
+        return sol::make_object(m_lua, static_cast<lua_Integer>(systemId));
+    };
+
+    m_lua["IRSystem"]["registerSystem"] = registerSystem;
 }
 
 } // namespace IRScript

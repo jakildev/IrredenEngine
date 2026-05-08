@@ -11,9 +11,12 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/script/ir_script_types.hpp>
+#include <irreden/script/lua_archetype_view.hpp>
 #include <irreden/script/lua_binding_traits.hpp>
 #include <irreden/script/lua_component_data.hpp>
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace IRScript {
@@ -34,12 +37,46 @@ class LuaScript {
 
     void bindCreateEntityBatchFunction();
 
-    // Bind the Lua-driven ECS surface — IRComponent.{register,bindField}
-    // and IREntity.{addLuaComponent,getLuaComponent,removeLuaComponent,
-    // hasLuaComponent}. Idempotent; safe to call multiple times.
-    // Required for any creation that registers Lua-defined components.
-    // See docs/design/lua-driven-ecs.md and engine/script/CLAUDE.md.
+    // Bind the Lua-driven ECS surface — IRComponent.{register,bindField},
+    // IREntity.{addLuaComponent,getLuaComponent,removeLuaComponent,
+    // hasLuaComponent}, and IRSystem.registerSystem (T-101 archetype-
+    // batched dispatch). Idempotent; safe to call multiple times.
+    // Required for any creation that registers Lua-defined components
+    // or Lua-defined systems. See docs/design/lua-driven-ecs.md and
+    // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
+
+    // True when the C++ component type registered with `luaName`
+    // (typically the binding's `registerType<T>("C_Foo")`) was already
+    // recorded by a prior `registerType` call. Used by Lua systems to
+    // resolve component names against the lua_component_pack the
+    // creation has bound.
+    bool hasComponentLuaName(const std::string &luaName) const {
+        return m_componentByLuaName.find(luaName) != m_componentByLuaName.end();
+    }
+
+    // Returns the `ComponentId` recorded for `luaName`, or
+    // `IREntity::kNullComponent` if no C++ component type with that
+    // Lua name has been registered.
+    IREntity::ComponentId componentIdByLuaName(const std::string &luaName) const {
+        auto it = m_componentByLuaName.find(luaName);
+        if (it == m_componentByLuaName.end()) {
+            return IREntity::kNullComponent;
+        }
+        return it->second;
+    }
+
+    // Returns the column accessor pair registered for the C++ component
+    // with `componentId`, or nullptr if the component does not have a
+    // Lua binding (Lua-defined components go through
+    // `LuaTypedColumnView` instead and do not appear in this map).
+    const LuaCppColumnAccessor *cppColumnAccessor(IREntity::ComponentId componentId) const {
+        auto it = m_cppColumnAccessors.find(componentId);
+        if (it == m_cppColumnAccessors.end()) {
+            return nullptr;
+        }
+        return &it->second;
+    }
 
     template <typename T> void registerTypeFromTraits() {
         static_assert(kHasLuaBinding<T>, "Lua binding specialization missing for this type.");
@@ -63,7 +100,18 @@ class LuaScript {
         IR_LOG_INFO("Registering lua type {}", name);
         IR_ASSERT(sizeof...(Constructors) > 0, "At least one constructor must be specified");
 
-        return m_lua.new_usertype<T>(name, sol::constructors<Constructors...>(), keyValuePairs...);
+        auto usertype =
+            m_lua.new_usertype<T>(name, sol::constructors<Constructors...>(), keyValuePairs...);
+
+        // Components that have a Lua binding (`*_lua.hpp` specializing
+        // `kHasLuaBinding<T> = true`) get their Lua-visible name +
+        // column-row accessors recorded so dynamic systems can resolve
+        // them by name and expose their columns to a Lua tick body.
+        if constexpr (kHasLuaBinding<T>) {
+            recordComponentLuaName<T>(name);
+        }
+
+        return usertype;
     }
     // template <typename T, typename... Args, typename... KeyValuePairs>
     // void registerType(
@@ -113,6 +161,52 @@ class LuaScript {
 
   private: //----------------------------------------------------------------
     sol::state m_lua;
+
+    // Lua-name → ComponentId for C++ components that have a Lua
+    // binding (populated by `registerType` when `kHasLuaBinding<T>`).
+    // Lua-defined components go through `EntityManager`'s
+    // `m_pureComponentTypes` directly; this map only covers C++ types.
+    std::unordered_map<std::string, IREntity::ComponentId> m_componentByLuaName;
+    std::unordered_map<IREntity::ComponentId, std::string> m_componentLuaName;
+
+    // Per-C++-component-id row accessor pair (read + replace) used by
+    // `LuaCppColumnView` so a Lua system tick can read or overwrite a
+    // typed column row without templating the column view on T.
+    // Pointers into this map are handed to view objects on a per-tick
+    // basis; std::unordered_map references are stable across rehash,
+    // so this is safe.
+    std::unordered_map<IREntity::ComponentId, LuaCppColumnAccessor> m_cppColumnAccessors;
+
+    // Wires `IRSystem.registerSystem` and the column-view usertypes
+    // into the Lua state. Called from the public `bindLuaDrivenEcs()`
+    // entry; the public API stays singular so creations only need one
+    // init call regardless of which Lua-driven-ECS PRs land.
+    void bindLuaDrivenSystems();
+
+    // Build the read/replace accessor pair for a C++ component type
+    // and record it under the type's `ComponentId`. Called from
+    // `registerType` when `kHasLuaBinding<T>`.
+    template <typename T> void recordComponentLuaName(const std::string &name) {
+        auto &em = IREntity::getEntityManager();
+        IREntity::ComponentId componentId = em.getComponentType<T>();
+        m_componentByLuaName.emplace(name, componentId);
+        m_componentLuaName.emplace(componentId, name);
+
+        LuaCppColumnAccessor accessor;
+        accessor.reader_ =
+            [](sol::state_view lua, IREntity::IComponentData *data, int row) -> sol::object {
+            auto *typed = IREntity::castComponentDataPointer<T>(data);
+            return sol::make_object(lua, std::ref(typed->dataVector[row]));
+        };
+        accessor.replacer_ =
+            [](sol::state_view, IREntity::IComponentData *data, int row, const sol::object &value) {
+                auto *typed = IREntity::castComponentDataPointer<T>(data);
+                if (auto opt = value.as<sol::optional<T>>()) {
+                    typed->dataVector[row] = *opt;
+                }
+            };
+        m_cppColumnAccessors[componentId] = std::move(accessor);
+    }
 
     template <typename Component>
     ComponentFunction<Component> wrapLuaFunction(sol::protected_function function) {

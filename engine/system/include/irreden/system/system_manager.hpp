@@ -115,6 +115,23 @@ class SystemManager {
         return paramsImpl == nullptr ? nullptr : paramsImpl->params_.get();
     }
 
+    /// Runtime-archetype-typed parallel of `createSystem<...>`. The
+    /// include / exclude archetypes are passed as resolved `Archetype`
+    /// values (sets of `ComponentId`) rather than C++ template
+    /// parameters, and the body is a `std::function` that receives the
+    /// matched `ArchetypeNode*` directly. Used by the Lua-driven path
+    /// (`LuaScript::registerSystem`) where the component types are
+    /// known only at runtime; the body fires once per matched
+    /// archetype per tick (no per-entity dispatch by SystemManager —
+    /// caller's body decides whether to iterate the columns row-wise
+    /// or batch-process them).
+    SystemId createSystemDynamic(
+        std::string name,
+        Archetype includeArchetype,
+        Archetype excludeArchetype,
+        std::function<void(ArchetypeNode *)> body
+    );
+
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);

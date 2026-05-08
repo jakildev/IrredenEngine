@@ -105,8 +105,67 @@ IREntity.removeLuaComponent(entity, C_Hp)
   `sol::table` lookup.
 
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
-T-100 (this PR) lands components only; systems, pipelines, hot-reload,
-and the parity demo follow in T-101..T-104.
+
+## Lua-defined systems (`IRSystem.registerSystem`)
+
+`bindLuaDrivenEcs()` also exposes `IRSystem.registerSystem`. A Lua
+system is a runtime-archetype-typed dispatch: include / exclude
+component sets and a tick body, both resolved against the same
+`ComponentId` space as C++ components.
+
+```lua
+local sysId = IRSystem.registerSystem({
+    name = "MoveByVelocity",
+    components = { "C_Position3D", "C_Velocity3D", C_Marker },  -- string OR handle
+    excludes = { "C_NoMove" },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local pos = arch.C_Position3D:at(i)
+            local vel = arch.C_Velocity3D:at(i)
+            arch.C_Position3D:setAt(i, C_Position3D.new(pos.x + vel.x, pos.y, pos.z))
+        end
+    end,
+})
+```
+
+- **Component name resolution.** Strings are resolved against the
+  Lua-name registry populated by `LuaScript::registerType` (so any
+  component included in the creation's `lua_component_pack` is
+  matchable by its bound name) and against the dynamic component
+  registry (Lua-defined components by user name). Tables holding a
+  numeric `componentId` field — i.e. the handle returned by
+  `IRComponent.register` — are accepted directly. Any other entry, or
+  a string that doesn't resolve in either registry, raises a Lua-side
+  error pointing at the `lua_component_pack`.
+- **Archetype-batched dispatch.** The tick body fires once per
+  matched archetype per pipeline tick — *not* once per entity. Per-
+  entity work happens entirely inside Lua via the column views, so
+  the C++/Lua boundary is one `sol::function` call per archetype +
+  one sol2 method call per row access.
+- **Entity ids.** `arch.entityAt(i)` reads the row's `EntityId`
+  directly from the archetype node — no per-tick column copy. The
+  tick body sees the entity layout from `arch.length` and a single
+  closure for id lookup; archetype mutation during a tick still
+  needs to go through the deferred ECS API, just like a C++ system.
+- **Column views.**
+  - `arch.<name>` for a C++-bound component is a `LuaCppColumnView`:
+    `:at(i)` returns the row as a sol::reference to T (read mutable
+    fields), `:setAt(i, T.new(...))` overwrites the row by value.
+    `setAt` exists because most existing `*_lua.hpp` bindings expose
+    fields as getter lambdas rather than `sol::property` pairs, so a
+    full-row replacement is the universal write path.
+  - `arch.<name>` for a Lua-defined component is a
+    `LuaTypedColumnView`: `:getField(i, "name")` /
+    `:setField(i, "name", v)` for typed per-field access, or
+    `:getRow(i)` / `:setRow(i, table)` for whole-row read/write.
+- **Return value.** A `SystemId` (`lua_Integer`). Holds for use with
+  `IRSystem.registerPipeline` (lands in T-102).
+- **No begin/end ticks yet.** Lua-side `beginTick` / `endTick`
+  hooks are not exposed in T-101; add them when a use case needs
+  frame-scoped setup or teardown.
+
+T-100 landed components; T-101 (this) lands systems; pipelines,
+hot-reload, and the parity demo follow in T-102..T-104.
 
 ## Script resolution
 
