@@ -21,9 +21,8 @@ ir.sprite.playAnimation(spriteA, sheet, "spin", ir.sprite.LOOP, 1.0)
 local spriteB = ir.sprite.create(sheet, 0.0, 0.0, 2.0)
 ir.sprite.playAnimation(spriteB, sheet, "hold_red", ir.sprite.ONCE)
 
--- Sprite C: PING_PONG — bounces between hold_green (frames 0-3 via two
--- 1-frame sub-animations back-to-back isn't visible, so we use the "spin"
--- anim in PING_PONG mode so the reversal is actually apparent).
+-- Sprite C: PING_PONG — uses 'spin' in PING_PONG mode so the back-and-forth
+-- reversal across all 4 frames is apparent.
 local spriteC = ir.sprite.create(sheet, 4.0, 0.0, 2.0)
 ir.sprite.playAnimation(spriteC, sheet, "spin", ir.sprite.PING_PONG, 0.5)
 

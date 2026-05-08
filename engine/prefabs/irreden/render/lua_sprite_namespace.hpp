@@ -10,6 +10,7 @@
 // values of ir.sprite.create and ir.sprite.loadSheet.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/render/entities/entity_sprite_sheet.hpp>
 #include <irreden/render/sprite_animation.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -60,6 +61,11 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
                     static_cast<float>(s->frames_[0].sizePx_.y)
                 };
             }
+        } else {
+            IRE_LOG_WARN(
+                "ir.sprite.create: entity {} has no C_SpriteSheet — sprite will be invisible",
+                sheetEntity
+            );
         }
         return IREntity::createEntity(
             IRComponents::C_Position3D{IRMath::vec3{x, y, z}},
