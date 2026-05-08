@@ -401,7 +401,7 @@ exit cleanly:
       - Add cooldown label so we don't re-attempt next iteration:
         `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
       - Append a log line to `~/.fleet/logs/merger-audit.log`
-        (separate from `merger.log`, which `fleet-babysit` rotates):
+        (separate from `merger.log`):
         `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: clean rebase, force-pushed`
 
       **Conflict (non-zero exit).** Identify which files are
@@ -590,8 +590,8 @@ If Mode above is `review-only`: behave as `live`. Auto-rebasing
 mechanical conflicts helps close out PRs, which IS the point of
 review-only mode.
 
-If you hit a usage-limit error: print the error and exit. The
-`/loop` driver and `fleet-babysit` wrapper handle backoff.
+If you hit a usage-limit error: print the error and exit.
+`fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
 
 ## End-of-iteration feedback
 
@@ -625,9 +625,8 @@ iterations write nothing).
 - **Always log every action** to `~/.fleet/logs/merger-audit.log`
   AND comment on the PR. Two-channel audit: the log is the merger's
   internal trail; the comment is the human-visible trail. The
-  audit log is separate from `~/.fleet/logs/merger.log` (which
-  `fleet-babysit` rotates by `tail -1000`) to keep the audit trail
-  intact across babysit restarts.
+  audit log is separate from `~/.fleet/logs/merger.log` (tail-rotated)
+  to keep the audit trail intact.
 - **Process at most 2 PRs per iteration.** Auto-pushes retrigger
   CI; flooding the queue is worse than slow turnover.
 - **One conflict class per push.** If a rebase needs both TASKS.md
@@ -674,8 +673,7 @@ Every action lands in TWO places:
 
 1. `~/.fleet/logs/merger-audit.log` — append-only audit trail.
    One line per action with timestamp, PR number, branch, action,
-   outcome. Kept separate from `merger.log` (which `fleet-babysit`
-   tail-rotates) so the audit history survives babysit restarts.
+   outcome. Kept separate from `merger.log` (tail-rotated) so the audit history is preserved.
 2. The PR comment thread — human-visible. Always end with
    `— fleet merger` so a human (or another agent) scanning the
    thread can identify merger comments without parsing the

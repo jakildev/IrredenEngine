@@ -177,8 +177,8 @@ fleet-claim --repo game claim "T-001" opus-worker-1
 ## Loop behavior
 
 Each invocation of this role is **one task iteration in a fresh
-`claude` process** — `fleet-babysit` relaunches you every ~20 minutes
-in live mode (or sooner if you exit faster), with an empty
+`claude` process** — `fleet-dispatcher` launches a fresh `claude` when scout sees
+new actionable state, with an empty
 conversation each time. Don't try to "remember" anything from the
 prior iteration; everything you need lives in TASKS.md, the open-PR
 list, plan files under `~/.fleet/plans/`, and the role file you're
@@ -1041,10 +1041,10 @@ Do the work, then exit cleanly:
 ## Mode behavior
 
 The Mode argument at the top of this file is one of `dry-run`, `live`,
-or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
 - **`live`** (full operation): each iteration runs steps 0–12 above,
-  then exits. fleet-babysit relaunches every ~20m with fresh context.
+  then exits. fleet-dispatcher launches a fresh claude when scout sees actionable state.
 
 - **`dry-run`** (default): do startup actions only. Do not plan or
   pick a task. Wait for human instruction.
