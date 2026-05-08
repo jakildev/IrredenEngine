@@ -115,6 +115,146 @@ warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
 warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 
 # ----------------------------------------------------------------------
+# Step 1.5: reconcile reservations against world state
+# ----------------------------------------------------------------------
+#
+# Each reservation in ~/.fleet/reservations/ pins a worktree to an
+# in-flight task. Boot is the single reconciliation point — no
+# wall-clock staleness, just a state-machine pass per reservation:
+#
+#   PR MERGED    → release reservation (work landed)
+#   PR CLOSED    → increment closed-counter; ≥2 fires fleet:stuck-task;
+#                   release reservation either way
+#   PR OPEN      → keep reservation (worker resumes to address feedback
+#                   or idle)
+#   PR missing,
+#     branch has → keep reservation (mid-iteration, pre-PR work)
+#     commits
+#   worktree     → release reservation (orphan)
+#     missing
+#
+# Subsequent panes that fire on a worktree with a kept reservation hit
+# the role-doc step-0.5 resumption check and pick up where the prior
+# iteration left off. Worktrees with cleared reservations fall through
+# to the normal Step 2 reset. (#521)
+
+extract_repo_slug() {
+    # Convert a git remote URL to "owner/repo".
+    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
+    local url="$1"
+    url="${url#git@github.com:}"
+    url="${url#https://github.com/}"
+    url="${url#http://github.com/}"
+    url="${url%.git}"
+    url="${url%/}"
+    printf '%s' "$url"
+}
+
+file_stuck_task_issue() {
+    local task_id="$1"
+    local branch="$2"
+    local body
+    body=$(printf '## Task %s has been retried %s+ times without merge\n\nBoot-time reconciliation observed at least 2 PRs for `%s` close without merging. The current reservation has been released and the closed-counter at `~/.fleet/closed-counts/%s` has been incremented.\n\nLast observed branch: `%s`\n\nLikely structural blocker (design issue, missing engine support, or out-of-date plan). Please triage:\n- abandon and remove from TASKS.md, OR\n- replan with updated context.\n\nPosting one-shot via `~/.fleet/closed-counts/%s.filed`. Re-merging the task or removing the flag file resets the gate.' \
+        "$task_id" "2" "$task_id" "$task_id" "$branch" "$task_id")
+    gh issue create --repo jakildev/IrredenEngine \
+        --title "fleet: stuck-task — $task_id retried 2+ times without merge" \
+        --label "fleet:stuck-task" \
+        --body "$body" 2>&1 | head -3
+}
+
+reconcile_reservation() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+
+    local wt task_id _combined
+    _combined=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(d.get("worktree",""),d.get("task_id",""),sep="\t")' "$file" 2>/dev/null || echo $'\t')
+    wt="${_combined%%$'\t'*}"
+    task_id="${_combined##*$'\t'}"
+    [[ -z "$wt" || -z "$task_id" ]] && return 0
+
+    local wt_path=""
+    for candidate in \
+        "$ENGINE/.claude/worktrees/$wt" \
+        "$GAME/.claude/worktrees/$wt"; do
+        if [[ -d "$candidate" ]]; then
+            wt_path="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$wt_path" ]]; then
+        echo "fleet-up: reservation $wt → $task_id — no matching worktree, releasing"
+        fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    local current_branch
+    current_branch=$(cd "$wt_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    [[ -z "$current_branch" ]] && return 0
+
+    # Determine repo by worktree path.
+    local gh_repo="jakildev/IrredenEngine"
+    if [[ "$wt_path" == "$GAME"* ]]; then
+        local _game_url
+        _game_url=$(git -C "$GAME" remote get-url origin 2>/dev/null || true)
+        [[ -n "$_game_url" ]] && gh_repo=$(extract_repo_slug "$_game_url")
+    fi
+
+    local pr_state
+    pr_state=$(gh pr list --repo "$gh_repo" --head "$current_branch" \
+        --state all --json state --jq '.[0].state // ""' 2>/dev/null || echo "")
+
+    case "$pr_state" in
+        MERGED)
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR merged — releasing"
+            fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            ;;
+        CLOSED)
+            local count_file="$HOME/.fleet/closed-counts/$task_id"
+            mkdir -p "$(dirname "$count_file")"
+            local count=0
+            [[ -f "$count_file" ]] && count=$(cat "$count_file")
+            count=$((count + 1))
+            echo "$count" > "$count_file"
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR closed-without-merge (count=$count) — releasing"
+            if [[ "$count" -ge 2 ]]; then
+                local flag_file="$HOME/.fleet/closed-counts/${task_id}.filed"
+                if [[ ! -f "$flag_file" ]]; then
+                    echo "fleet-up: count >= 2, filing fleet:stuck-task issue for $task_id"
+                    if file_stuck_task_issue "$task_id" "$current_branch"; then
+                        touch "$flag_file"
+                    fi
+                fi
+            fi
+            fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            ;;
+        OPEN)
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR OPEN — keeping"
+            ;;
+        "")
+            # No PR yet. Keep only if branch has commits past master
+            # (prior iteration committed but never opened a PR); release
+            # if branch is at master (worker died before any commit).
+            local commits_ahead
+            commits_ahead=$(cd "$wt_path" && git rev-list --count "origin/master..HEAD" 2>/dev/null || echo 0)
+            if [[ "$commits_ahead" -gt 0 ]]; then
+                echo "fleet-up: reservation $wt → $task_id (branch $current_branch) no PR, $commits_ahead commit(s) — keeping"
+            else
+                echo "fleet-up: reservation $wt → $task_id (branch $current_branch) no PR, no commits — releasing"
+                fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            fi
+            ;;
+    esac
+}
+
+if [[ -d "$HOME/.fleet/reservations" ]]; then
+    for file in "$HOME/.fleet/reservations"/*.json; do
+        [[ -f "$file" ]] || continue
+        reconcile_reservation "$file"
+    done
+fi
+
+# ----------------------------------------------------------------------
 # Step 2: reset each worktree to a fresh branch off origin/master
 # ----------------------------------------------------------------------
 
@@ -124,6 +264,20 @@ reset_worktree() {
     local branch="$2"
 
     if [[ ! -d "$wt" ]]; then
+        return 0
+    fi
+
+    # If a reservation still exists for this worktree (post-Step-1.5),
+    # the prior iteration is mid-flight on a real task — leave the
+    # worktree on its branch with whatever dirty state it has, so the
+    # next dispatcher tick fires step-0.5 resumption. (#521)
+    # Contract: fleet-claim clear-all (Step 3b, below) wipes task claims
+    # (~/.fleet/claims/) but NOT reservations (~/.fleet/reservations/), so
+    # this guard remains intact through the boot sequence.
+    local wt_basename
+    wt_basename=$(basename "$wt")
+    if [[ -f "$HOME/.fleet/reservations/$wt_basename.json" ]]; then
+        echo "fleet-up: $wt has reservation — preserving for resumption."
         return 0
     fi
 
@@ -573,18 +727,6 @@ fi
 # origin` per pane on every restart — N panes × every iteration of
 # wasted gh calls. fleet-up resolves both slugs once and writes them
 # to ~/.fleet/state/repos.json for every role to read.
-extract_repo_slug() {
-    # Convert a git remote URL to "owner/repo".
-    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
-    local url="$1"
-    url="${url#git@github.com:}"
-    url="${url#https://github.com/}"
-    url="${url#http://github.com/}"
-    url="${url%.git}"
-    url="${url%/}"
-    printf '%s' "$url"
-}
-
 repos_cache="$HOME/.fleet/state/repos.json"
 engine_url=$(git -C "$ENGINE" remote get-url origin 2>/dev/null || true)
 if [[ -z "$engine_url" ]]; then
