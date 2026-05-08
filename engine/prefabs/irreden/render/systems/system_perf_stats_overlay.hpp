@@ -81,7 +81,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
                         timing.shapeCompactMs_,
                         timing.shapePass0Ms_,
                         timing.shapePass1Ms_,
-                        timing.buildOccupancyGridMs_,
+                        timing.buildLightOcclusionGridMs_,
                         timing.computeVoxelAoMs_,
                         timing.bakeSunShadowMapMs_,
                         timing.computeSunShadowMs_,

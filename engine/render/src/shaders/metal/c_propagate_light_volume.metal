@@ -11,17 +11,21 @@ using namespace metal;
 // Blocker neighbors are skipped on the same rule as solid voxels: a cell
 // marked in the light-blocker bitfield (rasterized from
 // `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)` entities by
-// `system_build_occupancy_grid`) blocks point/spot light propagation.
+// `system_build_light_occlusion_grid`) blocks point/spot light
+// propagation. T-126 scoped this SSBO to the light-volume LOS path
+// (AO migrated to screen-space sampling in T-091), so the struct name
+// `LightOcclusionData` reflects the surviving consumer.
 
-constant int kOccupancyGridSize = 256;
-constant int kOccupancyGridHalfExtent = 128;
+constant int kLightOcclusionGridSize = 256;
+constant int kLightOcclusionGridHalfExtent = 128;
 // Number of `uint` entries in one bitfield (256³ / 32). Voxel bits live
-// at indices [0, kOccupancyBitfieldUintCount); light-blocker bits at
-// [kOccupancyBitfieldUintCount, 2 * kOccupancyBitfieldUintCount). Must
-// match `kOccupancyBitfieldUintCount` in
-// `system_build_occupancy_grid.hpp`.
-constant uint kOccupancyBitfieldUintCount =
-    uint(kOccupancyGridSize) * uint(kOccupancyGridSize) * uint(kOccupancyGridSize) / 32u;
+// at indices [0, kLightOcclusionBitfieldUintCount); light-blocker bits
+// at [kLightOcclusionBitfieldUintCount, 2 * kLightOcclusionBitfieldUintCount).
+// Must match `kLightOcclusionBitfieldUintCount` in
+// `system_build_light_occlusion_grid.hpp`.
+constant uint kLightOcclusionBitfieldUintCount =
+    uint(kLightOcclusionGridSize) * uint(kLightOcclusionGridSize) *
+    uint(kLightOcclusionGridSize) / 32u;
 
 struct LightVolumeParams {
     int gridSize;
@@ -32,23 +36,22 @@ struct LightVolumeParams {
     int4 worldOriginVoxel;
 };
 
-// Phase 1c (#360): camera-anchored occupancy SSBO layout — header
-// (worldOriginVoxel) followed by the bitfield. See
-// `metal/c_compute_voxel_ao.metal` for the rationale on embedding
-// the header in the SSBO.
-struct OccupancyData {
+// Phase 1c (#360): camera-anchored light-occlusion SSBO layout — header
+// (worldOriginVoxel) followed by the voxel bitfield and the SDF-blocker
+// bitfield (each `kLightOcclusionBitfieldUintCount` uints).
+struct LightOcclusionData {
     int4 worldOriginVoxel;
     uint bits[1];
 };
 
-inline bool occupancyGetBit(
-    device const OccupancyData *occupancy,
+inline bool voxelOcclusionGetBit(
+    device const LightOcclusionData *occlusion,
     int wx,
     int wy,
     int wz
 ) {
-    int he = kOccupancyGridHalfExtent;
-    int4 worldOrigin = occupancy->worldOriginVoxel;
+    int he = kLightOcclusionGridHalfExtent;
+    int4 worldOrigin = occlusion->worldOriginVoxel;
     int lx = wx - worldOrigin.x;
     int ly = wy - worldOrigin.y;
     int lz = wz - worldOrigin.z;
@@ -59,22 +62,22 @@ inline bool occupancyGetBit(
     uint y = uint(ly + he);
     uint z = uint(lz + he);
     uint flat =
-        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancy->bits[flat >> 5u];
+        (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
+    uint bits = occlusion->bits[flat >> 5u];
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
 // SDF-shape light blockers. Same camera-anchored layout as the voxel
-// bitfield, indexed `kOccupancyBitfieldUintCount` `uint`s further into
-// the same `bits[]` flexible-array tail.
+// bitfield, indexed `kLightOcclusionBitfieldUintCount` `uint`s further
+// into the same `bits[]` flexible-array tail.
 inline bool lightBlockerGetBit(
-    device const OccupancyData *occupancy,
+    device const LightOcclusionData *occlusion,
     int wx,
     int wy,
     int wz
 ) {
-    int he = kOccupancyGridHalfExtent;
-    int4 worldOrigin = occupancy->worldOriginVoxel;
+    int he = kLightOcclusionGridHalfExtent;
+    int4 worldOrigin = occlusion->worldOriginVoxel;
     int lx = wx - worldOrigin.x;
     int ly = wy - worldOrigin.y;
     int lz = wz - worldOrigin.z;
@@ -85,15 +88,15 @@ inline bool lightBlockerGetBit(
     uint y = uint(ly + he);
     uint z = uint(lz + he);
     uint flat =
-        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancy->bits[kOccupancyBitfieldUintCount + (flat >> 5u)];
+        (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
+    uint bits = occlusion->bits[kLightOcclusionBitfieldUintCount + (flat >> 5u)];
     return ((bits >> (flat & 31u)) & 1u) == 1u;
 }
 
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
-    device const OccupancyData *occupancy [[buffer(28)]],
+    device const LightOcclusionData *occlusion [[buffer(28)]],
     constant LightVolumeParams &params [[buffer(23)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
@@ -106,9 +109,9 @@ kernel void c_propagate_light_volume(
 
     float4 best = lightVolumeRead.read(uint3(cell));
     // Phase 1c (#360): map the local volume cell back to world coords
-    // through the camera-anchored origin so the per-neighbor occupancy
-    // lookup queries the right cell of the (independently anchored)
-    // occupancy grid.
+    // through the camera-anchored origin so the per-neighbor light-
+    // occlusion lookup queries the right cell of the (independently
+    // anchored) light-occlusion grid.
     const int3 worldCell = (cell - int3(params.halfExtent)) + params.worldOriginVoxel.xyz;
 
     const int3 deltas[6] = {
@@ -125,8 +128,8 @@ kernel void c_propagate_light_volume(
             continue;
         }
         const int3 nWorld = worldCell + deltas[n];
-        if (occupancyGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z) ||
-            lightBlockerGetBit(occupancy, nWorld.x, nWorld.y, nWorld.z)) {
+        if (voxelOcclusionGetBit(occlusion, nWorld.x, nWorld.y, nWorld.z) ||
+            lightBlockerGetBit(occlusion, nWorld.x, nWorld.y, nWorld.z)) {
             continue;
         }
         const float4 nv = lightVolumeRead.read(uint3(nCell));

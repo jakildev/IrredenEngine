@@ -6,9 +6,11 @@
 // participates in LIGHTING_TO_TRIXEL — the system's archetype filter
 // lists it alongside C_CanvasAOTexture and C_CanvasSunShadow, so a
 // canvas missing it silently skips the entire lighting pass (including
-// AO × shadow). Pair with C_TriangleCanvasTextures + C_OccupancyGrid;
-// if no emitters exist, the volume stays zero-filled and the additive
-// contribution is a no-op.
+// AO × shadow). Pair with C_TriangleCanvasTextures; if no emitters
+// exist, the volume stays zero-filled and the additive contribution
+// is a no-op. The light-occlusion SSBO that gates propagation is
+// produced engine-wide by `BUILD_LIGHT_OCCLUSION_GRID` and does not
+// need to be attached per canvas.
 //
 // The volume is centered on `m_worldOriginVoxel` (defaults to `(0,0,0)`)
 // and covers `[origin - kLightVolumeHalfExtent, origin + kLightVolumeHalfExtent)`
@@ -18,7 +20,7 @@
 // pinned to world origin. Geometry outside the current range is sampled
 // with CLAMP_TO_EDGE — light contributions outside the box read zero.
 //
-// Sized smaller than `C_OccupancyGrid` (256³) on purpose: the
+// Sized smaller than the light-occlusion SSBO grid (256³) on purpose: the
 // 128³ × RGBA8 footprint (8 MiB per buffer) keeps GPU storage bounded
 // and the dilation chain's per-iteration cost low. Light sources
 // placed outside the camera-anchored extent are still skipped on the

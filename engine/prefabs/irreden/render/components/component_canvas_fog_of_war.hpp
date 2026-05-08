@@ -24,10 +24,10 @@
 // fog-of-war foundation here lets the render pass and Lua-side scripts
 // ship before those algorithms land.
 //
-// Sized to match `C_OccupancyGrid`'s 256×256 footprint on the ground
+// Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
-// world-centered cell convention — see `component_occupancy_grid.hpp`
-// for the precedent. One cell per integer voxel column. Out-of-range
+// world-centered cell convention. One cell per integer voxel column.
+// Out-of-range
 // writes are silently dropped; out-of-range reads return
 // `kFogStateUnexplored`. Out-of-range pixels in the shader are treated
 // as visible via an explicit bounds check (image bindings bypass sampler

@@ -11,18 +11,19 @@
 //      world voxel origin: rgb = emit_color × intensity, alpha = 1.0
 //      (full residual strength).
 //   3. `c_propagate_light_volume` runs `kLightVolumePropagateIterations`
-//      Manhattan-dilation iterations against the canvas's
-//      `C_OccupancyGrid` (light cannot pass through solid voxels). Each
-//      step decrements alpha by `stepFalloff` and propagates the closest
-//      light's color, giving linear falloff bounded at radius
+//      Manhattan-dilation iterations against the camera-anchored
+//      light-occlusion SSBO produced by `BUILD_LIGHT_OCCLUSION_GRID`
+//      (light cannot pass through solid voxels or SDF light blockers).
+//      Each step decrements alpha by `stepFalloff` and propagates the
+//      closest light's color, giving linear falloff bounded at radius
 //      `1 / stepFalloff`. The downstream consumer reads `rgb × alpha`
 //      so out-of-range cells contribute zero. The ping-pong textures are
 //      swapped after each iteration so the `LIGHTING_TO_TRIXEL` pass
 //      always samples the latest state via
 //      `C_CanvasLightVolume::getReadTexture()`.
 //
-// Pipeline order constraint: must run after `BUILD_OCCUPANCY_GRID` (so
-// the SSBO mirrors the current frame's voxel state) and before
+// Pipeline order constraint: must run after `BUILD_LIGHT_OCCLUSION_GRID`
+// (so the SSBO mirrors the current frame's voxel state) and before
 // `LIGHTING_TO_TRIXEL` (which samples the light volume).
 //
 // Phase 1a (issue #359) replaced the previous CPU 6-connected BFS +
@@ -53,7 +54,6 @@
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_light_source.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/detail/camera_anchor.hpp>
 
@@ -109,8 +109,9 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
 }
 
 inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
-    // Round-half-up so light origins line up with the occupancy-grid cells
-    // populated by `system_build_occupancy_grid` (also round-half-up).
+    // Round-half-up so light origins line up with the light-occlusion
+    // grid cells populated by `system_build_light_occlusion_grid` (also
+    // round-half-up).
     return IRMath::roundVec3HalfUp(position.pos_);
 }
 
@@ -236,7 +237,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         ShaderProgram *propagateProgram_ = nullptr;
         Buffer *lightSourceBuf_ = nullptr;
         Buffer *paramsBuf_ = nullptr;
-        Buffer *occupancyBuf_ = nullptr;
+        Buffer *occlusionBuf_ = nullptr;
         std::vector<GPULightSource> lightStaging_{};
         LightVolumeParams params_{};
         // Set of out-of-bounds light origins we have already warned
@@ -283,20 +284,20 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             IRRender::getNamedResource<ShaderProgram>("PropagateLightVolumeProgram");
         p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
         p->paramsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
-        // OccupancyGridBuffer is created by BUILD_OCCUPANCY_GRID, which
-        // is registered ahead of this system in every creation that uses
-        // either path; safe to look up at init time. Phase 1c (#360):
-        // the SSBO carries a 16-byte header (worldOriginVoxel) followed
-        // by the bitfield, so the propagate shader reads the camera-
-        // anchored origin from the same binding.
-        p->occupancyBuf_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
+        // LightOcclusionGridBuffer is created by
+        // BUILD_LIGHT_OCCLUSION_GRID, which is registered ahead of this
+        // system in every creation that uses either path; safe to look
+        // up at init time. Phase 1c (#360): the SSBO carries a 16-byte
+        // header (worldOriginVoxel) followed by the voxel + blocker
+        // bitfields, so the propagate shader reads the camera-anchored
+        // origin from the same binding.
+        p->occlusionBuf_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->lightStaging_.reserve(kLightVolumeMaxSources);
 
         SystemId systemId =
-            createSystem<C_OccupancyGrid, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
+            createSystem<C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
                 "ComputeLightVolume",
                 [p](const IREntity::EntityId canvasEntity,
-                    C_OccupancyGrid &,
                     C_CanvasLightVolume &volume,
                     const C_TrixelCanvasRenderBehavior &behavior) {
                     if (!behavior.useCameraPositionIso_)
@@ -386,17 +387,18 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         // a tighter early-out.
                         if (p->params_.lightCount_ > 0) {
                             p->propagateProgram_->use();
-                            // Occupancy SSBO is shared with AO; rebind
-                            // for this pipeline (Metal compute encoders
-                            // don't preserve bindings across program
-                            // switches). The SSBO's first 16 bytes are
-                            // a header carrying the camera-anchored
+                            // Light-occlusion SSBO slot 28 also aliases
+                            // the sun-shadow depth map — rebind for this
+                            // pipeline (Metal compute encoders don't
+                            // preserve bindings across program switches).
+                            // The SSBO's first 16 bytes are a header
+                            // carrying the camera-anchored
                             // worldOriginVoxel — the propagate shader
                             // reads it directly.
-                            if (p->occupancyBuf_ != nullptr) {
-                                p->occupancyBuf_->bindBase(
+                            if (p->occlusionBuf_ != nullptr) {
+                                p->occlusionBuf_->bindBase(
                                     BufferTarget::SHADER_STORAGE,
-                                    kBufferIndex_OccupancyGrid
+                                    kBufferIndex_LightOcclusionGrid
                                 );
                             }
                             const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);

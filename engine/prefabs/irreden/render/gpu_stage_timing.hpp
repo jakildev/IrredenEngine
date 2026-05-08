@@ -20,7 +20,7 @@ struct GpuStageTiming {
     float shapePass0Ms_ = 0.0f;
     float shapePass1Ms_ = 0.0f;
     float textToTrixelMs_ = 0.0f;
-    float buildOccupancyGridMs_ = 0.0f;
+    float buildLightOcclusionGridMs_ = 0.0f;
     float computeVoxelAoMs_ = 0.0f;
     float bakeSunShadowMapMs_ = 0.0f;
     float computeSunShadowMs_ = 0.0f;
@@ -127,7 +127,7 @@ inline const std::array<GpuStageInfo, 20> &gpuStageRegistry() {
         {"shapePass0", &GpuStageTiming::shapePass0Ms_, 0.10f},
         {"shapePass1", &GpuStageTiming::shapePass1Ms_, 0.10f},
         {"textToTrixel", &GpuStageTiming::textToTrixelMs_, 0.05f},
-        {"buildOccupancyGrid", &GpuStageTiming::buildOccupancyGridMs_, 0.10f},
+        {"buildLightOcclusionGrid", &GpuStageTiming::buildLightOcclusionGridMs_, 0.10f},
         {"computeVoxelAO", &GpuStageTiming::computeVoxelAoMs_, 0.10f},
         {"bakeSunShadowMap", &GpuStageTiming::bakeSunShadowMapMs_, 0.10f},
         {"computeSunShadow", &GpuStageTiming::computeSunShadowMs_, 0.10f},
