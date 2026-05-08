@@ -208,8 +208,10 @@ Do the work, then exit cleanly:
    - **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
      reserved for an in-flight task from a previous interrupted iteration.
      Read the reserved branch and check it out:
-     `branch=$(jq -r .branch ~/.fleet/reservations/<your-worktree-basename>.json)`
-     `git checkout "$branch"`
+     Use the **Read tool** to read
+     `~/.fleet/reservations/<your-worktree-basename>.json`
+     and extract the `branch` field from the JSON. Then:
+     `git checkout <branch>`
      (No-op if the branch is already checked out.) Run steps 1, 1b, and
      2 normally — feedback, smoke, and `fleet:needs-plan` planning are
      still your responsibility. **At step 3**, skip task pickup: the

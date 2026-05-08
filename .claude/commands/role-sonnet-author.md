@@ -126,8 +126,10 @@ Each iteration:
    - **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
      reserved for an in-flight task from a previous interrupted iteration.
      Read the reserved branch and check it out:
-     `branch=$(jq -r .branch ~/.fleet/reservations/<your-worktree-basename>.json)`
-     `git checkout "$branch"`
+     Use the **Read tool** to read
+     `~/.fleet/reservations/<your-worktree-basename>.json`
+     and extract the `branch` field from the JSON. Then:
+     `git checkout <branch>`
      (No-op if the branch is already checked out.) Run steps 1 and 1b
      normally — feedback and smoke are still your responsibility. **At
      step 2**, skip molecule resume and task pickup entirely: the
@@ -745,7 +747,11 @@ or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 - **`review-only`** (close-out mode): conserves credit by closing out
   in-flight work without expanding the queue. Each iteration runs:
   - Step 0 (heartbeat)
-  - Step 0.5 (reservation check — checkout reserved branch if found)
+  - Step 0.5 (reservation check — checkout reserved branch if found;
+    in review-only mode, check out the reserved branch so step 1
+    feedback applies to the right PR, but do NOT jump to step 4 —
+    exit after step 1b as normal; the reservation persists until the
+    next live-mode iteration resumes the task)
   - Step 1 (address feedback labels on open PRs)
   - Step 1b (cross-host smoke validation on approved render PRs)
 
