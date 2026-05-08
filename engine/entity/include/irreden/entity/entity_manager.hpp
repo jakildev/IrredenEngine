@@ -78,7 +78,7 @@ class EntityManager {
     void destroyMarkedEntities();
     NodeId getParentNodeFromRelation(RelationId relation);
     EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
-    EntityId getParentEntityFromArchetype(Archetype type);
+    EntityId getParentEntityFromArchetype(const Archetype &type);
     RelationId registerRelation(Relation relation, EntityId relatedEntity);
     void setName(EntityId entity, const std::string &name);
     EntityId getEntityByName(const std::string &name) const;
