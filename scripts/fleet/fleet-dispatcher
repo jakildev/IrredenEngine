@@ -370,7 +370,7 @@ pane_in_rate_limit_cooldown() {
         return 0
     fi
     rm -f "$ts_file"
-    unset 'RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]'
+    unset "RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]"
     return 1
 }
 
@@ -464,7 +464,7 @@ dispatch_role() {
             fi
             return
         fi
-        unset 'CAP_DEFER_LOGGED[$role]'
+        unset "CAP_DEFER_LOGGED[$role]"
     fi
 
     # Fan out across every idle pane for this role, skipping any that
