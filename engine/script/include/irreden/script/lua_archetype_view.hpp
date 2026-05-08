@@ -17,6 +17,7 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
+#include <irreden/ir_profile.hpp>
 #include <irreden/entity/i_component_data.hpp>
 #include <irreden/script/lua_component_data.hpp>
 
@@ -62,10 +63,12 @@ class LuaCppColumnView {
         , m_length{length} {}
 
     sol::object at(int row, sol::this_state ts) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaCppColumnView::at row {} out of bounds [0, {})", row, m_length);
         return m_accessor->reader_(sol::state_view{ts}, m_data, row);
     }
 
     void setAt(int row, const sol::object &value, sol::this_state ts) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaCppColumnView::setAt row {} out of bounds [0, {})", row, m_length);
         m_accessor->replacer_(sol::state_view{ts}, m_data, row, value);
     }
 
@@ -90,6 +93,7 @@ class LuaTypedColumnView {
         , m_length{length} {}
 
     sol::object getField(int row, const std::string &fieldName, sol::this_state ts) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaTypedColumnView::getField row {} out of bounds [0, {})", row, m_length);
         const int fieldIdx = m_data->findFieldIndex(fieldName);
         if (fieldIdx < 0) {
             return sol::make_object(sol::state_view{ts}, sol::lua_nil);
@@ -98,6 +102,7 @@ class LuaTypedColumnView {
     }
 
     void setField(int row, const std::string &fieldName, const sol::object &value) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaTypedColumnView::setField row {} out of bounds [0, {})", row, m_length);
         const int fieldIdx = m_data->findFieldIndex(fieldName);
         if (fieldIdx < 0) {
             return;
@@ -106,10 +111,12 @@ class LuaTypedColumnView {
     }
 
     sol::table getRow(int row, sol::this_state ts) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaTypedColumnView::getRow row {} out of bounds [0, {})", row, m_length);
         return m_data->readRowAsTable(row, sol::state_view{ts});
     }
 
     void setRow(int row, const sol::table &values) const {
+        IR_ASSERT(row >= 0 && row < m_length, "LuaTypedColumnView::setRow row {} out of bounds [0, {})", row, m_length);
         m_data->writeRowFromTable(row, values);
     }
 

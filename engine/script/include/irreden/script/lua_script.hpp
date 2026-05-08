@@ -167,7 +167,6 @@ class LuaScript {
     // Lua-defined components go through `EntityManager`'s
     // `m_pureComponentTypes` directly; this map only covers C++ types.
     std::unordered_map<std::string, IREntity::ComponentId> m_componentByLuaName;
-    std::unordered_map<IREntity::ComponentId, std::string> m_componentLuaName;
 
     // Per-C++-component-id row accessor pair (read + replace) used by
     // `LuaCppColumnView` so a Lua system tick can read or overwrite a
@@ -190,7 +189,6 @@ class LuaScript {
         auto &em = IREntity::getEntityManager();
         IREntity::ComponentId componentId = em.getComponentType<T>();
         m_componentByLuaName.emplace(name, componentId);
-        m_componentLuaName.emplace(componentId, name);
 
         LuaCppColumnAccessor accessor;
         accessor.reader_ =
@@ -199,10 +197,12 @@ class LuaScript {
             return sol::make_object(lua, std::ref(typed->dataVector[row]));
         };
         accessor.replacer_ =
-            [](sol::state_view, IREntity::IComponentData *data, int row, const sol::object &value) {
+            [name](sol::state_view, IREntity::IComponentData *data, int row, const sol::object &value) {
                 auto *typed = IREntity::castComponentDataPointer<T>(data);
                 if (auto opt = value.as<sol::optional<T>>()) {
                     typed->dataVector[row] = *opt;
+                } else {
+                    IRE_LOG_ERROR("LuaCppColumnView::setAt: wrong type for column '{}' at row {}", name, row);
                 }
             };
         m_cppColumnAccessors[componentId] = std::move(accessor);

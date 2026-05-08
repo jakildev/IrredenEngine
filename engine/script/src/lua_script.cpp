@@ -488,16 +488,24 @@ IREntity::ComponentId resolveComponentEntry(
 }
 
 // Build the std::vector<ComponentId> for a `components` / `excludes`
-// list. Throws sol::error on the first unresolvable entry.
+// list. Throws sol::error on the first unresolvable entry. When
+// `outNames` is non-null, each entry's display name is appended in
+// lock-step with its id — eliminating the need for a second iteration
+// over the same table and avoiding the ordering assumption that a
+// second pass would require.
 std::vector<IREntity::ComponentId> resolveComponentList(
     const sol::table &list,
     const std::string &fieldName,
     const std::string &systemName,
     const LuaScript &script,
-    const IREntity::EntityManager &em
+    const IREntity::EntityManager &em,
+    std::vector<std::string> *outNames = nullptr
 ) {
     std::vector<IREntity::ComponentId> ids;
     ids.reserve(list.size());
+    if (outNames) {
+        outNames->reserve(list.size());
+    }
     for (auto &kv : list) {
         std::string err;
         IREntity::ComponentId id = resolveComponentEntry(kv.second, script, em, err);
@@ -507,6 +515,13 @@ std::vector<IREntity::ComponentId> resolveComponentList(
             };
         }
         ids.push_back(id);
+        if (outNames) {
+            if (kv.second.is<std::string>()) {
+                outNames->push_back(kv.second.as<std::string>());
+            } else {
+                outNames->push_back(kv.second.as<sol::table>().get<std::string>("typeName"));
+            }
+        }
     }
     return ids;
 }
@@ -573,17 +588,9 @@ void LuaScript::bindLuaDrivenSystems() {
 
         auto &em = IREntity::getEntityManager();
 
-        std::vector<IREntity::ComponentId> includeIds =
-            resolveComponentList(*components, "components", systemName, *this, em);
         std::vector<std::string> includeNames;
-        includeNames.reserve(includeIds.size());
-        for (auto &kv : *components) {
-            includeNames.push_back(
-                kv.second.is<std::string>()
-                    ? kv.second.as<std::string>()
-                    : kv.second.as<sol::table>().get<std::string>("typeName")
-            );
-        }
+        std::vector<IREntity::ComponentId> includeIds =
+            resolveComponentList(*components, "components", systemName, *this, em, &includeNames);
 
         std::vector<IREntity::ComponentId> excludeIds;
         sol::optional<sol::table> excludes = args.get<sol::optional<sol::table>>("excludes");
