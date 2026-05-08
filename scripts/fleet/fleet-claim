@@ -396,6 +396,20 @@ cmd_claim() {
         else
             echo "claimed: $task_id (slug: $slug, agent: $agent)"
         fi
+        # Auto-reserve: bind this worktree to this task so a crashed
+        # iteration resumes on the same pane (#521). Skip if a
+        # reservation already exists for this worktree — either
+        # idempotent re-claim (same task) or a stale reservation that
+        # T-122 startup will honor on next invocation. agent="unknown"
+        # means no caller-provided worktree name; skip the reservation
+        # in that case.
+        if [[ "$agent" != "unknown" ]]; then
+            local existing_resv
+            existing_resv=$(reservation_task_id "$agent")
+            if [[ -z "$existing_resv" ]]; then
+                cmd_reserve "$task_id" "$agent" "" >/dev/null 2>&1 || true
+            fi
+        fi
         return 0
     else
         local owner="unknown"
@@ -565,7 +579,25 @@ cmd_release() {
     # check both — that's why this branches on (-d || -f .meta) rather
     # than (-d) alone.
     if [[ -d "$CLAIMS_DIR/$slug" || -f "$CLAIMS_DIR/${slug}.meta" ]]; then
+        # Capture the owner before remove so we can clear its
+        # reservation. Only release the reservation if it still points
+        # at THIS task — defensive against the worker having already
+        # rotated to a different task with a different reservation
+        # (shouldn't happen under the auto-reserve invariant, but a
+        # mismatched release is silently a no-op rather than wiping
+        # someone else's binding).
+        local owner=""
+        if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
+            owner=$(cat "$CLAIMS_DIR/$slug/owner")
+        fi
         __remove_claim "$slug"
+        if [[ -n "$owner" && "$owner" != "unknown" ]]; then
+            local reserved
+            reserved=$(reservation_task_id "$owner")
+            if [[ "$reserved" == "$title" ]]; then
+                cmd_release_worktree "$owner" >/dev/null 2>&1 || true
+            fi
+        fi
         echo "released: $title (slug: $slug)"
     else
         echo "not claimed: $title (slug: $slug)"
