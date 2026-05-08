@@ -223,6 +223,12 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
         /// upload are skipped while the scene contains zero
         /// `C_LightBlocker(blocksLOS_=true)` shapes — the common case.
         bool prevFrameHadBlockers_ = false;
+        /// Cached per-frame in the per-entity tick, consumed in endTick.
+        /// Raw pointer into the occupancy grid's bitfield vector —
+        /// valid for the duration of one pipeline-stage execution.
+        ivec3 origin_{};
+        const std::uint32_t *gridBitfieldData_ = nullptr;
+        std::size_t gridBitfieldByteSize_ = 0;
     };
 
     static SystemId create() {
@@ -293,8 +299,14 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     }
                 }
 
-                const ivec3 origin = grid.worldOriginVoxel();
-
+                p->origin_ = grid.worldOriginVoxel();
+                p->gridBitfieldData_ = grid.bitfield().data();
+                p->gridBitfieldByteSize_ = grid.bitfieldByteSize();
+            },
+            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); },
+            [p]() {
+                if (p->gridBitfieldData_ == nullptr)
+                    return;
                 std::size_t blockerCount = 0;
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::PopulateBlockers", IR_PROFILER_COLOR_RENDER);
@@ -307,17 +319,17 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     if (p->prevFrameHadBlockers_) {
                         std::fill(p->blockerBitfield_.begin(), p->blockerBitfield_.end(), 0u);
                     }
-                    blockerCount = detail::rasterizeAllBlockers(p->blockerBitfield_, origin);
+                    blockerCount = detail::rasterizeAllBlockers(p->blockerBitfield_, p->origin_);
                 }
 
                 {
                     IR_PROFILE_BLOCK("BuildOccupancyGrid::Upload", IR_PROFILER_COLOR_RENDER);
-                    p->header_.worldOriginVoxel_ = ivec4(origin.x, origin.y, origin.z, 0);
+                    p->header_.worldOriginVoxel_ = ivec4(p->origin_.x, p->origin_.y, p->origin_.z, 0);
                     p->ssbo_->subData(0, kOccupancyHeaderByteSize, &p->header_);
                     p->ssbo_->subData(
                         static_cast<std::ptrdiff_t>(kOccupancyHeaderByteSize),
-                        grid.bitfieldByteSize(),
-                        grid.bitfield().data()
+                        p->gridBitfieldByteSize_,
+                        p->gridBitfieldData_
                     );
                     // Upload the blocker region only when there are
                     // blockers this frame, OR when there were blockers
@@ -332,8 +344,8 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     }
                 }
                 p->prevFrameHadBlockers_ = (blockerCount > 0);
-            },
-            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); }
+                p->gridBitfieldData_ = nullptr;
+            }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
