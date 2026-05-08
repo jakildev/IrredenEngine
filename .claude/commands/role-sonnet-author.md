@@ -118,6 +118,24 @@ Each iteration:
    long-running steps (fleet-build, fleet-run, commit-and-push) to
    prevent false staleness alerts during builds or PR actions.
 
+0.5. **Check for a worktree reservation.** See whether a prior iteration
+   reserved this worktree for an interrupted task:
+   `fleet-claim reservation-of <your-worktree-basename>`
+
+   - **Empty output** — no reservation; proceed normally (step 1 onward).
+   - **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
+     reserved for an in-flight task from a previous interrupted iteration.
+     Read the reserved branch and check it out:
+     `branch=$(jq -r .branch ~/.fleet/reservations/<your-worktree-basename>.json)`
+     `git checkout "$branch"`
+     (No-op if the branch is already checked out.) Run steps 1 and 1b
+     normally — feedback and smoke are still your responsibility. **At
+     step 2**, skip molecule resume and task pickup entirely: the
+     reserved task IS your task. Record the reserved task ID, skip steps
+     2–3 (pickup and claim — already done), and jump directly to step 4
+     (read the plan file) with the reserved task ID. The PR from the
+     previous iteration is still open; do NOT open a new one.
+
 1. **Check for feedback labels on open PRs.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
    conversation context. From `repos.engine.prs[]`, pick PRs whose
@@ -700,6 +718,10 @@ Each iteration:
    and silently strip from the saved summary. Write technical
    references in plain prose.
 
+   Before invoking `start-next-task`, release the worktree reservation
+   so the next iteration sees this worktree as free:
+   `fleet-claim release-worktree <your-worktree-basename>`
+
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`. Print
    `[sonnet-author] Iteration complete. Will re-fire on next dispatcher trigger.`
@@ -723,6 +745,7 @@ or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 - **`review-only`** (close-out mode): conserves credit by closing out
   in-flight work without expanding the queue. Each iteration runs:
   - Step 0 (heartbeat)
+  - Step 0.5 (reservation check — checkout reserved branch if found)
   - Step 1 (address feedback labels on open PRs)
   - Step 1b (cross-host smoke validation on approved render PRs)
 
