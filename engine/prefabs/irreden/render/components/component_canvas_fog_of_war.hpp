@@ -27,8 +27,7 @@
 // Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
 // world-centered cell convention. One cell per integer voxel column.
-// Out-of-range
-// writes are silently dropped; out-of-range reads return
+// Out-of-range writes are silently dropped; out-of-range reads return
 // `kFogStateUnexplored`. Out-of-range pixels in the shader are treated
 // as visible via an explicit bounds check (image bindings bypass sampler
 // wrap modes).
