@@ -94,7 +94,9 @@ the runtime animation state; the animation system writes back into
 
 ### v1 depth model
 
-Each sprite uses `C_Position3D`. Depth = `pos3DtoDistance(pos)` —
+Each sprite reads `C_PositionGlobal3D + C_PositionOffset3D` (the
+auto-added pair on every entity; rendered position is
+`global + offset`). Depth = `pos3DtoDistance(global + offset)` —
 exactly what the trixel pipeline uses to sort voxels. Sort order is
 back-to-front; alpha blending requires it.
 
@@ -107,7 +109,7 @@ back-to-front; alpha blending requires it.
 - `{0.5, 0.5}` — center.
 - `{0.0, 0.0}` — top-left.
 
-Quad origin = `isoProject(C_Position3D.pos_) - anchor * size`.
+Quad origin = `isoProject(global.pos_ + offset.pos_) - anchor * size`.
 
 ### Non-iso seam
 
@@ -115,15 +117,16 @@ Future creations may render in a non-isometric projection (e.g. flat 2D
 side-scroller). The seam to that future is documented here so the v1
 implementation doesn't bake the iso projection in:
 
-- A future `C_Position2D` + `C_Depth` pair replaces `C_Position3D`. The
-  sprite system reads either pair and resolves to a `(screenX, screenY,
-  depth)` triple — same downstream sort-key shape, different inputs.
+- A future `C_Position2D` + `C_Depth` pair replaces the
+  `C_PositionGlobal3D + C_PositionOffset3D` input. The sprite system
+  reads either pair and resolves to a `(screenX, screenY, depth)`
+  triple — same downstream sort-key shape, different inputs.
 - The animation system, atlas loader, and shader code are **invariant**
   to the choice — they touch UVs, frames, and tints, not screen
   position.
 
-v1 implements only the `C_Position3D + iso-projection` path. The seam
-is a one-function-per-projection swap, not a refactor.
+v1 implements only the `Global + Offset → iso-projection` path. The
+seam is a one-function-per-projection swap, not a refactor.
 
 ## Sort scope (v1)
 
@@ -138,8 +141,9 @@ is a one-function-per-projection swap, not a refactor.
 
 One instanced draw per frame:
 
-- CPU iterates `(C_Sprite, C_Position3D)`, computes iso depth, sorts
-  the entity-id array.
+- CPU iterates `(C_Sprite, C_PositionGlobal3D, C_PositionOffset3D)`,
+  computes iso depth from `global + offset`, sorts the entity-id
+  array.
 - CPU builds a per-instance buffer in sort order, packing
   `{ mat4 model, vec4 uvRect, uint textureSlot, vec4 tint }` per sprite.
 - GPU issues `drawArraysInstanced` against the shared `QuadVAOArrays`

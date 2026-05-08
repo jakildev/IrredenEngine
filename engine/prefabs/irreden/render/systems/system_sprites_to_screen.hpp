@@ -5,7 +5,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/render/components/component_sprite.hpp>
 #include <irreden/render/texture.hpp>
 
@@ -18,12 +19,14 @@ using namespace IRMath;
 namespace IRSystem {
 
 /// Screen-composite sprite pass. Iterates entities with C_Sprite +
-/// C_Position3D, computes an iso-projected screen position and depth for
-/// each, sorts back-to-front grouped by atlas texture, and issues one
-/// drawArraysInstanced call per atlas. Sprites bypass the trixel pipeline
-/// entirely — alpha-blended quads land directly on the default
-/// framebuffer at the FRAMEBUFFER_TO_SCREEN pipeline stage, after the
-/// trixel composite finishes.
+/// C_PositionGlobal3D + C_PositionOffset3D, computes an iso-projected
+/// screen position and depth for each from `global + offset` (the
+/// engine-wide rendered-position convention), sorts back-to-front
+/// grouped by atlas texture, and issues one drawArraysInstanced call
+/// per atlas. Sprites bypass the trixel pipeline entirely — alpha-
+/// blended quads land directly on the default framebuffer at the
+/// FRAMEBUFFER_TO_SCREEN pipeline stage, after the trixel composite
+/// finishes.
 ///
 /// CPU-side ordering: entries sort first by texture handle (sprites
 /// sharing one atlas pack into a single drawArraysInstanced call) then
@@ -97,9 +100,14 @@ template <> struct System<SPRITE_TO_SCREEN> {
         p->entries_.reserve(256);
         p->gpuScratch_.reserve(256);
 
-        SystemId systemId = createSystem<IRComponents::C_Sprite, IRComponents::C_Position3D>(
+        SystemId systemId = createSystem<
+            IRComponents::C_Sprite,
+            IRComponents::C_PositionGlobal3D,
+            IRComponents::C_PositionOffset3D>(
             "SpritesToScreen",
-            [p](const IRComponents::C_Sprite &sprite, const IRComponents::C_Position3D &pos) {
+            [p](const IRComponents::C_Sprite &sprite,
+                const IRComponents::C_PositionGlobal3D &global,
+                const IRComponents::C_PositionOffset3D &offset) {
                 if (sprite.textureHandle_ == 0) {
                     return;
                 }
@@ -114,9 +122,10 @@ template <> struct System<SPRITE_TO_SCREEN> {
                     }
                     return;
                 }
+                const vec3 worldPos = global.pos_ + offset.pos_;
                 IRRender::SpriteRenderEntry entry{};
                 entry.textureHandle_ = sprite.textureHandle_;
-                entry.isoDepth_ = static_cast<int>(pos3DtoDistance(pos.pos_));
+                entry.isoDepth_ = static_cast<int>(pos3DtoDistance(worldPos));
                 entry.size_ = sprite.size_;
                 entry.uvRect_ = sprite.uvRect_;
                 entry.tintRgba_ = vec4(
@@ -125,7 +134,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
                     static_cast<float>(sprite.tint_.blue_) / 255.0f,
                     static_cast<float>(sprite.tint_.alpha_) / 255.0f
                 );
-                entry.screenPos_ = computeScreenAnchor(pos.pos_) - sprite.anchor_ * sprite.size_;
+                entry.screenPos_ = computeScreenAnchor(worldPos) - sprite.anchor_ * sprite.size_;
                 p->entries_.push_back(entry);
             },
             [p]() {
