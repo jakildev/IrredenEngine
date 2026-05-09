@@ -95,8 +95,9 @@ IREntity.removeLuaComponent(entity, C_Hp)
   `bool`) auto-register a field binding `("TypeName.fieldName", id)` into
   `IRPrefab::Modifier::detail::globalFieldRegistry()` at registration time.
   The returned handle exposes those ids via `C_Hp.fields.current.bindingId`
-  so Lua scripts can pass them to `IRModifier.add` once the modifier
-  bindings ship in T-102. String / function / table fields receive
+  so Lua scripts can pass them to `IRModifier.add` (or use the field
+  name string `"Hp.current"` directly — both shapes are accepted; see
+  the modifier surface below). String / function / table fields receive
   `kInvalidFieldId` (not modifier-targetable).
 - **Storage:** a Lua-typed component is one `IComponentDataLuaTyped`
   impl with one native vector column per declared field
@@ -116,8 +117,8 @@ component sets and a tick body, both resolved against the same
 ```lua
 local sysId = IRSystem.registerSystem({
     name = "MoveByVelocity",
-    components = { "C_Position3D", "C_Velocity3D", C_Marker },  -- string OR handle
-    excludes = { "C_NoMove" },
+    components = { IRComponent.C_Position3D, IRComponent.C_Velocity3D, C_Marker },
+    excludes = { IRComponent.C_NoMove },
     tick = function(arch)
         for i = 0, arch.length - 1 do
             local pos = arch.C_Position3D:at(i)
@@ -128,15 +129,28 @@ local sysId = IRSystem.registerSystem({
 })
 ```
 
-- **Component name resolution.** Strings are resolved against the
-  Lua-name registry populated by `LuaScript::registerType` (so any
-  component included in the creation's `lua_component_pack` is
-  matchable by its bound name) and against the dynamic component
-  registry (Lua-defined components by user name). Tables holding a
-  numeric `componentId` field — i.e. the handle returned by
-  `IRComponent.register` — are accepted directly. Any other entry, or
-  a string that doesn't resolve in either registry, raises a Lua-side
-  error pointing at the `lua_component_pack`.
+- **Component handle rule.** Always reference engine C++ components in
+  `components` / `excludes` lists using the `IRComponent.C_Name` handle,
+  never as a bare string like `"C_Position3D"`. After `bindLuaDrivenEcs()`
+  + `registerType<T>("C_Name", ...)`, `IRComponent.C_Name` is a handle
+  table `{ typeName, componentId }` identical in shape to what
+  `IRComponent.register` returns for Lua-defined components. Both forms
+  resolve via `resolveComponentEntry` in `lua_script.cpp`. Using handles
+  instead of strings means a typo or missing `registerType` call surfaces
+  immediately as a nil-access error at startup, not a silent no-match at
+  runtime.
+- **Component name resolution (resolver details).** The resolver accepts:
+  1. `IRComponent.C_Name` (table with `componentId`) — preferred for
+     C++ components registered by the creation's `lua_component_pack`.
+  2. The handle returned by `IRComponent.register("Hp", {...})` — for
+     Lua-defined components; assign the returned handle to a local and
+     pass it directly (e.g. `local C_Hp = IRComponent.register(...)`
+     then `components = { C_Hp }`).
+  3. Bare strings — still accepted by the resolver but discouraged for
+     C++ components (use handle form instead). Strings remain the only
+     option for Lua-defined components whose handle is not in scope.
+  Any entry that doesn't resolve raises a Lua error pointing at the
+  missing `registerType` or `IRComponent.register` call.
 - **Archetype-batched dispatch.** The tick body fires once per
   matched archetype per pipeline tick — *not* once per entity. Per-
   entity work happens entirely inside Lua via the column views, so
@@ -158,14 +172,127 @@ local sysId = IRSystem.registerSystem({
     `LuaTypedColumnView`: `:getField(i, "name")` /
     `:setField(i, "name", v)` for typed per-field access, or
     `:getRow(i)` / `:setRow(i, table)` for whole-row read/write.
-- **Return value.** A `SystemId` (`lua_Integer`). Holds for use with
-  `IRSystem.registerPipeline` (lands in T-102).
+- **Return value.** A `SystemId` (`lua_Integer`). Pass it directly to
+  `IRSystem.registerPipeline` alongside prefab-system ids returned by
+  `IRSystem.systemId(SystemName.X)` to mix Lua-defined and C++ systems
+  in one pipeline.
 - **No begin/end ticks yet.** Lua-side `beginTick` / `endTick`
-  hooks are not exposed in T-101; add them when a use case needs
+  hooks are not exposed; add them when a use case needs
   frame-scoped setup or teardown.
 
-T-100 landed components; T-101 (this) lands systems; pipelines,
-hot-reload, and the parity demo follow in T-102..T-104.
+## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
+
+`bindLuaDrivenEcs()` also exposes the pipeline-composition surface so a
+creation's entire `initSystems` can live in Lua. The C++ side registers
+which prefab systems Lua may spell:
+
+```cpp
+// In the creation's lua-binding callback:
+script.bindLuaDrivenEcs();
+script.registerPrefabSystems<
+    IRSystem::LIFETIME,
+    IRSystem::GLOBAL_POSITION_3D,
+    IRSystem::FRAMEBUFFER_TO_SCREEN
+>();
+// Also valid: cache an externally-created prefab id under its enum name.
+auto resolver = IRPrefab::Modifier::registerResolverPipeline();
+script.registerPrefabSystemId(IRSystem::MODIFIER_DECAY, resolver.modifierDecay_);
+// ... one call per resolver SystemId.
+```
+
+Then in Lua:
+
+```lua
+local SystemName = IRSystem.SystemName
+
+local luaSysId = IRSystem.registerSystem({
+    name = "MyLuaSys",
+    components = { IRComponent.C_Position3D },
+    tick = function(arch) ... end,
+})
+
+IRSystem.registerPipeline(IRTime.UPDATE, {
+    IRSystem.systemId(SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(SystemName.LIFETIME),
+    luaSysId,
+    IRSystem.systemId(SystemName.MODIFIER_DECAY),
+    IRSystem.systemId(SystemName.MODIFIER_RESOLVE_GLOBAL),
+    IRSystem.systemId(SystemName.MODIFIER_RESOLVE_EXEMPT),
+})
+```
+
+- **`IRTime.{UPDATE, RENDER, INPUT, START, END}`** — pipeline event tags.
+  Always spell these via `IRTime.X` in Lua (never a bare integer literal).
+  On the C++ binding side, new event entries must be added via the
+  `IR_BIND_TIME(name)` macro in `bindIRTimeEvents` (not a hand-written
+  string literal) so the Lua table key stays derived from the enum name.
+- **`IRSystem.SystemName.X`** — every prefab-system enum value, exposed as
+  an integer table. The list lives in
+  `engine/script/include/irreden/script/lua_pipeline_bindings.hpp`; new
+  prefab systems must be appended there alongside the
+  `engine/system/include/irreden/system/ir_system_types.hpp` entry
+  using the `IR_BIND_SYS(name)` macro (not a hand-written string literal),
+  and deleted values must be removed from both.
+- **`IRSystem.systemId(name)`** — returns the cached `SystemId` for a
+  prefab system the C++ side registered via
+  `LuaScript::registerPrefabSystem<N>()` or
+  `registerPrefabSystemId(name, id)`. Raises a Lua error pointing at the
+  missing C++ registration if the name was never wired up.
+- **`IRSystem.registerPipeline(event, ids)`** — accepts any mix of prefab
+  ids (from `systemId`) and Lua-defined ids (from `registerSystem`).
+- **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the
+  same pattern — bind the game's own enum table at game-side init via
+  `LuaScript::registerEnum<...>()` plus `registerPrefabSystemId` for each
+  exposed game system. Engine code stays oblivious; Lua spells one
+  pipeline that carries both.
+
+The canonical example is `creations/demos/lua_pipeline_demo/`: zero C++
+`initSystems`, every pipeline composed from `main.lua`.
+
+## Modifier framework (`IRModifier.*`)
+
+`bindLuaDrivenEcs()` exposes the engine modifier framework as
+`IRModifier`. The full surface:
+
+```lua
+IRModifier.Transform.{ADD, MULTIPLY, SET, CLAMP_MIN, CLAMP_MAX, OVERRIDE}
+
+IRModifier.registerField("Movement.speed")           -- → FieldBindingId
+IRModifier.fieldId("Movement.speed")                 -- → FieldBindingId
+IRModifier.fieldName(id)                             -- → string | nil
+
+IRModifier.add(entity, fieldNameOrId, {
+    transform = IRModifier.Transform.ADD,
+    value = 0.5,
+    source = sourceEntity,           -- optional
+    ticks = 60,                      -- optional, -1 = no decay
+})
+IRModifier.addGlobal(fieldNameOrId, opts)
+IRModifier.addLambda(entity, fieldNameOrId, fn, opts)
+IRModifier.removeBySource(sourceEntity)
+
+IRModifier.applyToField(entity, fieldNameOrId, base) -- → resolved float
+IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
+```
+
+- **`fieldNameOrId`** — accepts a string (resolved against the registry
+  every call — fine for cold paths and config; cache the integer for
+  hot loops) or a `FieldBindingId`. Lua-defined components auto-expose
+  their scalar field ids at `Comp.fields.<name>.bindingId`; pass that
+  directly to skip the name lookup.
+- **`entity` / `source`** — raw `EntityId` integers, the same shape as
+  `arch.entityAt(i)` in a Lua system tick or `LuaEntity.entity`.
+- **Resolver pipeline integration.** `IRModifier.add` only writes to
+  `C_Modifiers`; the resolver systems (`MODIFIER_DECAY`,
+  `MODIFIER_RESOLVE_GLOBAL/EXEMPT`, etc.) are what compose
+  `C_ResolvedFields` once per UPDATE. To see resolved values from Lua,
+  splice those system ids into the UPDATE pipeline (after a one-shot
+  `IRPrefab::Modifier::registerResolverPipeline()` call from C++ —
+  the function creates the singleton globals entity and returns the
+  six resolver SystemIds; cache them via `registerPrefabSystemId`).
+- **`IRModifier.applyToField`** is a direct query; it shares one
+  evaluator with the resolver pipeline, so the two paths agree on the
+  same input regardless of whether the resolver tick has run yet.
 
 ## Script resolution
 
@@ -185,6 +312,17 @@ Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 - **Trait missing → link error.** `registerTypeFromTraits<T>()`
   `static_assert`s on `kHasLuaBinding<T>`. Forgetting the `_lua.hpp`
   include gives a cryptic linker error, not a runtime failure.
+- **`registerType` name must match the C++ class name exactly.** The string
+  passed to `registerType<C_Foo, ...>("C_Foo", ...)` becomes the Lua-visible
+  name AND the `IRComponent.C_Foo` handle key. Using a non-canonical name
+  (e.g. `"Foo"` for `C_Foo`) breaks the `IRComponent.C_Foo` spelling and
+  causes confusing nil-access errors. Convention: always pass the literal
+  class name as the binding string.
+- **`IRComponent.C_Name` requires `bindLuaDrivenEcs()` first.** The handle
+  is populated in `recordComponentLuaName`, which only writes to
+  `IRComponent[name]` if that table already exists. Call
+  `script.bindLuaDrivenEcs()` before any `script.registerType<T>()` call
+  that expects Lua code to reference the component by handle.
 - **Entity-creation helpers max 12 components.** The batch-create bindings
   are hardcoded up to 12 template args; larger bundles need a native
   helper or a restructure.

@@ -9,6 +9,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_system.hpp>
 
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_archetype_view.hpp>
@@ -45,6 +46,47 @@ class LuaScript {
     // or Lua-defined systems. See docs/design/lua-driven-ecs.md and
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
+
+    // T-102: register a prefab system NAME so the Lua side's
+    // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
+    // Calls `IRSystem::createSystem<NAME>()` once and caches the
+    // resulting SystemId in `m_prefabSystemIds`. Re-calling for the
+    // same NAME is a no-op (subsequent calls return the cached id),
+    // so a creation may safely call it from multiple binding sites
+    // — only the first actually creates the system. Mirrors the
+    // `registerType` / `registerTypesFromTraits` shape.
+    template <IRSystem::SystemName N> IRSystem::SystemId registerPrefabSystem() {
+        const int key = static_cast<int>(N);
+        auto it = m_prefabSystemIds.find(key);
+        if (it != m_prefabSystemIds.end()) {
+            return it->second;
+        }
+        const IRSystem::SystemId id = IRSystem::createSystem<N>();
+        m_prefabSystemIds.emplace(key, id);
+        return id;
+    }
+
+    template <IRSystem::SystemName... Ns> void registerPrefabSystems() {
+        (registerPrefabSystem<Ns>(), ...);
+    }
+
+    // Cache an already-created prefab SystemId under its enum name. Used
+    // when the system was created by an external bootstrap helper —
+    // e.g. `IRPrefab::Modifier::registerResolverPipeline()` returns the
+    // six modifier-resolver SystemIds and creates the singleton globals
+    // entity in the same call. Calling
+    // `registerPrefabSystem<MODIFIER_DECAY>()` after that would create a
+    // duplicate; this helper records the existing id without recreating.
+    void registerPrefabSystemId(IRSystem::SystemName name, IRSystem::SystemId id) {
+        m_prefabSystemIds[static_cast<int>(name)] = id;
+    }
+
+    // Read access for the Lua-side `IRSystem.systemId` lookup; passed
+    // to the binding closure by pointer so the closure reads the live
+    // map populated by registerPrefabSystem<N>() calls.
+    const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds() const {
+        return &m_prefabSystemIds;
+    }
 
     // True when the C++ component type registered with `luaName`
     // (typically the binding's `registerType<T>("C_Foo")`) was already
@@ -160,8 +202,6 @@ class LuaScript {
     }
 
   private: //----------------------------------------------------------------
-    sol::state m_lua;
-
     // Lua-name → ComponentId for C++ components that have a Lua
     // binding (populated by `registerType` when `kHasLuaBinding<T>`).
     // Lua-defined components go through `EntityManager`'s
@@ -176,6 +216,21 @@ class LuaScript {
     // basis; std::unordered_map references are stable across rehash,
     // so this is safe.
     std::unordered_map<IREntity::ComponentId, LuaCppColumnAccessor> m_cppColumnAccessors;
+
+    // T-102: SystemName enum value (cast to int) → SystemId returned by
+    // `IRSystem::createSystem<NAME>()`. Populated by
+    // `registerPrefabSystem<N>()`. The Lua side's `IRSystem.systemId`
+    // closure reads through `prefabSystemIds()`; the closure captures
+    // the pointer once at bind time so subsequent registrations show up
+    // without re-binding.
+    std::unordered_map<int, IRSystem::SystemId> m_prefabSystemIds;
+
+    // Declared last so it destructs first: lua_close() runs before any
+    // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the
+    // invariant in world.hpp where m_lua leads so EntityManager outlives
+    // Lua — here the direction is flipped because the constraint is
+    // "lua_close before captured-map destruction" inside LuaScript itself.
+    sol::state m_lua;
 
     // Wires `IRSystem.registerSystem` and the column-view usertypes
     // into the Lua state. Called from the public `bindLuaDrivenEcs()`
@@ -206,6 +261,14 @@ class LuaScript {
                 }
             };
         m_cppColumnAccessors[componentId] = std::move(accessor);
+
+        // Only if bindLuaDrivenEcs() ran first — that table is the gate.
+        if (m_lua["IRComponent"].valid()) {
+            sol::table handle = m_lua.create_table();
+            handle["typeName"] = name;
+            handle["componentId"] = static_cast<lua_Integer>(componentId);
+            m_lua["IRComponent"][name] = handle;
+        }
     }
 
     template <typename Component>

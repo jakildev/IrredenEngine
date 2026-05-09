@@ -98,6 +98,20 @@ Also flag (don't auto-fix):
   or any component parameter — they must be `void()`.
 - `endTick` body that reads `ids[0]` or indexes `ids` without first
   guarding `ids.size() == 0`.
+- **Bare string C++ component references in Lua.** In `.lua` files, a
+  `components = { "C_..." }` or `excludes = { "C_..." }` entry that
+  spells a C++ component as a bare string (e.g. `"C_Position3D"`) instead
+  of the `IRComponent.C_Name` handle. Fix: replace `"C_Name"` with
+  `IRComponent.C_Name`. Only applicable when `bindLuaDrivenEcs()` is in
+  use (any creation that calls `IRSystem.registerSystem`). Bare strings
+  for Lua-defined components (no `C_` prefix) are still the only option —
+  don't flag those.
+- **Hand-written IRTime / SystemName string keys in new C++ binding code.**
+  In C++ binding files (e.g. `lua_pipeline_bindings.hpp`), new `IRTime`
+  or `SystemName` table entries written as `t["NAME"] = ...` without the
+  `IR_BIND_TIME` / `IR_BIND_SYS` macro. The macros derive the key from
+  the enum via stringization so the key stays in sync. Flag; suggest using
+  `IR_BIND_TIME(NAME)` or `IR_BIND_SYS(NAME)` instead.
 
 ### 2b. Math primitives + system-state smells (mechanically detectable)
 
