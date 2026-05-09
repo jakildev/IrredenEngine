@@ -760,17 +760,62 @@ def project_queue_manager(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _merger_action_signal(labels, mergeable, base_ref):
+    """Canonical signal for whether the merger has actionable work on a PR.
+
+    Returns one of:
+        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip
+        "needs-resolve"    — approved but CONFLICTING / UNSTABLE / BEHIND
+        "stacked-pending"  — approved and base != master (or fleet:stacked)
+        None               — merger has no action right now (skip)
+
+    The signal is computed from durable labels and `mergeable` only.
+    Transient self-set labels the merger toggles on its own iterations
+    (`fleet:merger-cooldown`, `fleet:awaiting-base`,
+    `fleet:needs-base-update`, `fleet:stacked-rebase`,
+    `fleet:changes-made`, `fleet:semantic-conflict`) are intentionally
+    NOT inputs — including them turned the projection hash into a
+    self-trigger loop: the merger fired, toggled its cooldown,
+    re-fired itself on the next scout tick. Observed live 2026-05-09
+    burning ~$2/10min on idle state.
+
+    `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` are also
+    skip signals — the merger isn't the agent that resolves those;
+    a smoke-runner clears them. Including them as merger candidates
+    just makes the merger fire repeatedly to find nothing to do.
+    """
+    skip = labels & {
+        "fleet:wip", "human:wip", "fleet:blocker",
+        "fleet:fork-of-other-pr", "fleet:design-blocked",
+        "fleet:needs-info", "fleet:needs-linux-smoke",
+        "fleet:needs-macos-smoke",
+    }
+    if skip:
+        return None
+    approved = "fleet:approved" in labels
+    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND") and approved:
+        return "needs-resolve"
+    if approved and mergeable == "MERGEABLE" and base_ref == "master":
+        return "merge-ready"
+    if approved and (base_ref != "master" or "fleet:stacked" in labels):
+        return "stacked-pending"
+    return None
+
+
 def project_merger(state):
+    """Hash-input projection: contains only stable signals so the merger
+    doesn't self-trigger on its own label toggles. Slicer (slice_merger)
+    still emits the full PR record for the role to consume."""
     items = []
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            mergeable = pr.get("mergeable")
-            approved = "fleet:approved" in labels
-            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-            if approved or blocked:
-                items.append({"repo": repo, "pr": pr["number"],
-                              "mergeable": mergeable, "labels": pr["labels"]})
+            signal = _merger_action_signal(
+                labels, pr.get("mergeable"), pr.get("baseRefName", "master")
+            )
+            if signal is None:
+                continue
+            items.append({"repo": repo, "pr": pr["number"], "signal": signal})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 

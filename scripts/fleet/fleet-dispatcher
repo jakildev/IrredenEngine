@@ -814,37 +814,36 @@ release_dispatcher_lock() {
 }
 
 rearm_periodic_meta_triggers() {
-    # Periodic safety net for merger. The PRIMARY trigger path is scout's
-    # hash-diff detection — when merger's projection changes, scout writes
-    # ~/.fleet/state/triggers/merger and the dispatcher picks it up the
-    # next tick. This function is the BACKUP path for cases the primary
-    # chain misses (e.g. a scout tick was skipped or the trigger file was
-    # swept on fleet-up).
+    # Scout-watchdog safety net only. With merger's projection now
+    # tightened (only durable signals, not the merger's own toggled
+    # labels), the scout-driven trigger path is sufficient — the
+    # merger only fires when actionable state actually changes.
     #
-    # queue-manager is no longer in this function: maintenance (derived-
-    # field rendering) is now handled by fleet-queue-tick, spawned directly
-    # by fleet-state-scout on projection change. No LLM dispatch needed.
+    # The earlier `maybe_arm("merger", merger_actionable)` periodic
+    # re-arm fired every 5 min whenever any approved/blocked PR
+    # existed in the projection, even when the merger had nothing
+    # to do (e.g. PR has fleet:approved + fleet:needs-linux-smoke
+    # awaiting smoke validation — not the merger's job). Burning
+    # ~$0.30 per iteration × 12/hour was the dominant idle-fleet
+    # token cost. Dropped.
     #
-    # merger: actionable-projection predicate. Its projection IS
-    # responsive (PRs appear/disappear on merge), so we only re-arm
-    # when the natural trigger chain might be lagging.
+    # queue-manager (bookkeeping) is handled by fleet-queue-tick,
+    # spawned directly by fleet-state-scout on projection change.
+    # Queue-manager (ingestion) fires on its own scout-driven
+    # trigger when human:approved-not-yet-queued issues appear.
+    #
+    # If scout itself dies, every role's projection-diff machinery
+    # stops. Re-fire merger as a one-shot so a scout crash doesn't
+    # strand the merge queue indefinitely.
     python3 - <<'PY' || true
-import json
 import pathlib
 import time
 
 STATE = pathlib.Path("~/.fleet/state").expanduser()
-PROJ = STATE / "projections"
 TRIG = STATE / "triggers"
-DISP = STATE / "dispatch"
 STATE_FILE = STATE / "state.json"
 TRIG.mkdir(parents=True, exist_ok=True)
 
-# Scout writes state.json every ~30s. If it hasn't been touched in this
-# many seconds, treat scout as unhealthy and wake queue-manager so a
-# scout crash doesn't strand the queue indefinitely. The dispatcher's
-# rearm interval is the upper bound on detection latency anyway, so a
-# generous threshold here costs nothing.
 SCOUT_STALENESS_SECONDS = 120
 
 
@@ -858,48 +857,15 @@ def scout_unhealthy():
     return age > SCOUT_STALENESS_SECONDS
 
 
-def merger_actionable(p):
-    return bool(p.get("prs"))
-
-
-def role_in_flight(role):
-    if not DISP.is_dir():
-        return False
-    for f in DISP.glob("*.json"):
-        try:
-            data = json.loads(f.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if data.get("role") == role:
-            return True
-    return False
-
-
-def maybe_arm(role, predicate=None, reason="actionable projection"):
-    if predicate is not None:
-        proj = PROJ / f"{role}.json"
-        if not proj.is_file():
-            return
-        try:
-            data = json.loads(proj.read_text())
-        except (OSError, json.JSONDecodeError):
-            return
-        if not predicate(data):
-            return
-    trig_file = TRIG / role
-    if trig_file.exists():
-        # Already armed (scout, prior rearm, fleet-up bootstrap).
-        return
-    if role_in_flight(role):
-        # Iteration already running for this role.
-        return
-    trig_file.touch()
-    print(f"periodic re-arm: {role} ({reason}, no in-flight)")
-
-
-# queue-manager is no longer LLM-dispatched; fleet-queue-tick handles
-# maintenance directly. Only merger needs the periodic safety-net re-arm.
-maybe_arm("merger", merger_actionable)
+if scout_unhealthy():
+    # One-shot watchdog: write merger trigger if scout is dead. The
+    # next scout tick (when scout recovers) will re-establish the
+    # normal projection-diff cadence and this fallback won't fire
+    # again until staleness recurs.
+    trig = TRIG / "merger"
+    if not trig.exists():
+        trig.touch()
+        print("scout-watchdog: re-arming merger (state.json stale)")
 PY
 }
 
