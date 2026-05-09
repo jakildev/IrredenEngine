@@ -202,6 +202,40 @@ def fetch_closed_fleet_queued(repo, limit=20):
     return issues
 
 
+def fetch_recent_merged_prs(repo, limit=30):
+    # Most recent N merged PRs, used by the queue-manager projection so a
+    # fresh merge changes the projection hash and fires queue-manager via
+    # the normal scout-driven trigger path. Without this signal,
+    # queue-manager's projection was insensitive to PR-merge events that
+    # don't also close a fleet:queued issue (e.g. fleet-tooling PRs that
+    # don't have a tracked issue), and the dispatcher had to fall back on
+    # an unconditional 5-minute re-arm to avoid stranding the queue —
+    # burning ~30s of sonnet credit every 5 min indefinitely.
+    #
+    # Window is fixed-size by count, not by time, so the projection is
+    # quiescent when no new PRs merge — no sliding-window churn that
+    # would cause spurious re-fires every poll cycle.
+    #
+    # baseRefName is included so the queue-manager (and its eventual
+    # renderer) can detect merged-to-non-master PRs (the PR #543 stranded
+    # branch pattern from 2026-05-08), where mergedAt is set but the
+    # commit isn't reachable from origin/master.
+    out = run_capture([
+        "gh", "pr", "list", "--repo", repo, "--state", "merged",
+        "--limit", str(limit),
+        "--json", "number,title,baseRefName,mergedAt",
+    ])
+    if out is None:
+        return []
+    try:
+        prs = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh pr list {repo} --state merged: bad JSON: {e}")
+        return []
+    prs.sort(key=lambda pr: pr.get("number", 0))
+    return prs
+
+
 TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
 TASK_FIELD_RE = re.compile(r"^\s+- \*\*([^:]+?):\*\*\s*(.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -710,6 +744,15 @@ def project_queue_manager(state):
         for task_id, issue_num in _needs_flip_entries(repo_state):
             items.append({"kind": "needs_flip", "repo": repo,
                           "task_id": task_id, "issue": issue_num})
+        # Recently-merged PRs feed the projection hash so a fresh merge
+        # fires queue-manager's trigger via update_role_trigger, even when
+        # the merge doesn't close a fleet:queued issue. Fixed-size window
+        # (no time filter) keeps the projection quiescent when no new PRs
+        # merge — see fetch_recent_merged_prs for rationale.
+        for pr in repo_state.get("recent_merged_prs", []):
+            items.append({"kind": "merged_pr", "repo": repo,
+                          "pr": pr["number"],
+                          "base": pr.get("baseRefName", "")})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -829,7 +872,13 @@ def slice_opus_reviewer(state):
 
 
 def slice_queue_manager(state):
-    out = {"needs_plan": [], "human_approved": [], "tasks_done": [], "needs_flip": []}
+    out = {
+        "needs_plan": [],
+        "human_approved": [],
+        "tasks_done": [],
+        "needs_flip": [],
+        "recent_merged_prs": [],
+    }
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("needs_plan", []):
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
@@ -841,6 +890,8 @@ def slice_queue_manager(state):
             out["needs_flip"].append(
                 {"repo": repo_key, "task_id": task_id, "issue": issue_num}
             )
+        for pr in repo_state.get("recent_merged_prs", []):
+            out["recent_merged_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
 
@@ -903,6 +954,7 @@ def collect_state():
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
             ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
+            ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
         ]
     if "game" in repos:
@@ -911,6 +963,7 @@ def collect_state():
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
             ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
+            ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_tasks(GAME)),
         ]
 

@@ -760,30 +760,52 @@ release_dispatcher_lock() {
 }
 
 rearm_periodic_meta_triggers() {
-    # Write fresh queue-manager / merger triggers when due. Skips if a
-    # trigger is already pending or an iteration is already in flight.
+    # Periodic safety net for the meta-roles. The PRIMARY trigger path
+    # is scout's hash-diff detection — when a role's projection changes,
+    # scout writes ~/.fleet/state/triggers/<role> and the dispatcher
+    # picks it up the next tick. This function is the BACKUP path for
+    # cases the primary chain misses.
     #
-    # queue-manager fires UNCONDITIONALLY every cycle (modulo in-flight
-    # / pending checks): its projection is insensitive to PR-merge
-    # events (closing a fleet:queued issue removes it from
-    # human_approved without triggering a delta), so an "empty"
-    # projection does NOT mean "nothing to do" — there may be merged
-    # PRs whose [~] tasks haven't been flipped to [x] yet. The role
-    # itself does the consistency reconciliation; a no-op iteration is
-    # ~30s of claude time and the safe default.
+    # queue-manager: now fires on its own projection deltas (the
+    # `recent_merged_prs` field added in PR queue-manager-event-driven
+    # makes the projection responsive to PR merges, eliminating the
+    # need for unconditional re-arm). The remaining safety net is
+    # scout-watchdog: if scout is dead (state.json stale > 2 min) we
+    # still want queue-manager to wake up periodically and not strand
+    # merged PRs forever. Otherwise the trigger only fires when scout
+    # observes a real signal.
     #
-    # merger keeps an actionable predicate: its projection IS
-    # responsive (PRs appear/disappear on merge), so we only need to
-    # rearm when the natural trigger chain might be lagging.
+    # merger: actionable-projection predicate. Its projection IS
+    # responsive (PRs appear/disappear on merge), so we only re-arm
+    # when the natural trigger chain might be lagging.
     python3 - <<'PY' || true
 import json
 import pathlib
+import time
 
 STATE = pathlib.Path("~/.fleet/state").expanduser()
 PROJ = STATE / "projections"
 TRIG = STATE / "triggers"
 DISP = STATE / "dispatch"
+STATE_FILE = STATE / "state.json"
 TRIG.mkdir(parents=True, exist_ok=True)
+
+# Scout writes state.json every ~30s. If it hasn't been touched in this
+# many seconds, treat scout as unhealthy and wake queue-manager so a
+# scout crash doesn't strand the queue indefinitely. The dispatcher's
+# rearm interval is the upper bound on detection latency anyway, so a
+# generous threshold here costs nothing.
+SCOUT_STALENESS_SECONDS = 120
+
+
+def scout_unhealthy():
+    if not STATE_FILE.is_file():
+        return True
+    try:
+        age = time.time() - STATE_FILE.stat().st_mtime
+    except OSError:
+        return True
+    return age > SCOUT_STALENESS_SECONDS
 
 
 def merger_actionable(p):
@@ -803,7 +825,7 @@ def role_in_flight(role):
     return False
 
 
-def maybe_arm(role, predicate=None):
+def maybe_arm(role, predicate=None, reason="actionable projection"):
     if predicate is not None:
         proj = PROJ / f"{role}.json"
         if not proj.is_file():
@@ -822,11 +844,14 @@ def maybe_arm(role, predicate=None):
         # Iteration already running for this role.
         return
     trig_file.touch()
-    note = "actionable projection" if predicate is not None else "unconditional cadence"
-    print(f"periodic re-arm: {role} ({note}, no in-flight)")
+    print(f"periodic re-arm: {role} ({reason}, no in-flight)")
 
 
-maybe_arm("queue-manager")  # unconditional
+# queue-manager only re-arms here when scout looks dead. Healthy fleet
+# fires queue-manager via scout's normal hash-diff path on real
+# PR-merge / issue-close / TASKS.md changes.
+if scout_unhealthy():
+    maybe_arm("queue-manager", reason="scout-watchdog (state.json stale)")
 maybe_arm("merger", merger_actionable)
 PY
 }
