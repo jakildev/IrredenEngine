@@ -294,7 +294,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
                     // Pass 1: color + entity ID where depth matches
                     canvasTextures.getTextureColors()
-                        ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                        ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA16F);
                     canvasTextures.getTextureEntityIds()
                         ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 

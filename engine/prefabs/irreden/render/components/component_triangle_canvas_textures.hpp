@@ -24,7 +24,10 @@ struct C_TriangleCanvasTextures {
               TextureKind::TEXTURE_2D,
               size.x,
               size.y,
-              TextureFormat::RGBA8,
+              // HDR (RGBA16F): the canvas accumulates emissive intensities >1.0
+              // through the lighting chain so a downstream tonemap pass can
+              // collapse them back into LDR. See engine/render/CLAUDE.md.
+              TextureFormat::RGBA16F,
               TextureWrap::REPEAT,
               TextureFilter::NEAREST
           )}

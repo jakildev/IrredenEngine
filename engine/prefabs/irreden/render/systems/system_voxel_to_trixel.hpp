@@ -350,7 +350,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
                 if (voxelPool.getLiveVoxelCount() == 0) return;
 
                 triangleCanvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
+                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA16F
                 );
                 triangleCanvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::WRITE_ONLY, TextureFormat::R32I

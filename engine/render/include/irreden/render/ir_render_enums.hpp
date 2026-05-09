@@ -26,9 +26,13 @@ enum class TextureAccess : std::uint8_t {
 /// Internal texture format. Matches the GLSL/MSL image format qualifier.
 /// - @c R32I — canvas distance texture; written via @c imageAtomicMin.
 /// - @c RG32UI — entity-id texture; stores (low, high) 32-bit halves.
+/// - @c RGBA16F — HDR canvas color attachment; preserves emissive
+///   intensities >1.0 across the lighting chain so a downstream
+///   tonemap pass can collapse them back into LDR.
 /// - @c DEPTH24_STENCIL8 — framebuffer depth+stencil attachment.
 enum class TextureFormat : std::uint8_t {
     RGBA8,
+    RGBA16F,
     RGBA32F,
     R32I,
     RG32UI,

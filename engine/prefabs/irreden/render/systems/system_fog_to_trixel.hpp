@@ -96,7 +96,7 @@ template <> struct System<FOG_TO_TRIXEL> {
                     }
 
                     canvasTextures.getTextureColors()
-                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA16F);
                     canvasTextures.getTextureDistances()
                         ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                     fog.getTexture()

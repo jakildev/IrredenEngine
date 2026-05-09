@@ -65,6 +65,8 @@ inline GLenum toGLTextureFormat(TextureFormat format) {
     switch (format) {
         case TextureFormat::RGBA8:
             return GL_RGBA8;
+        case TextureFormat::RGBA16F:
+            return GL_RGBA16F;
         case TextureFormat::RGBA32F:
             return GL_RGBA32F;
         case TextureFormat::R32I:

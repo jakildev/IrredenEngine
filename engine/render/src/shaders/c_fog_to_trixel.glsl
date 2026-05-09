@@ -52,7 +52,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float _yawPadding;
 };
 
-layout(rgba8, binding = 0) uniform image2D trixelColors;
+layout(rgba16f, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
 
