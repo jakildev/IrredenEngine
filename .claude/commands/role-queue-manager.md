@@ -178,8 +178,8 @@ If you hit a usage-limit error: print the error and exit.
    `fleet-tasks-render --in-place --repo game ~/src/IrredenEngine/creations/game/TASKS.md`
 
 5. **Ingest `human:approved` issues (skip in review-only mode).**
-   Re-Read `~/.fleet/state/state.json`. From
-   `repos.engine.human_approved[]`, drop entries whose `labels`
+   Re-Read `~/.fleet/state/projections/queue-manager.json`. From
+   `human_approved[]`, drop entries whose `labels`
    include any of `fleet:queued`, `fleet:needs-plan`,
    `fleet:needs-info`, `fleet:epic`. For each remaining candidate:
 
