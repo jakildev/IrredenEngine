@@ -105,6 +105,29 @@ IREntity.removeLuaComponent(entity, C_Hp)
   Reading or writing a field is a typed vector index — never a per-frame
   `sol::table` lookup.
 
+### Two-tier accessor contract
+
+**Table-style** (`addLuaComponent(overrides)`, `getLuaComponent`) — friendly
+setup/debug surface. `getLuaComponent` allocates a Lua table per call and does
+string-keyed field lookups. Fine for one-shot calls and inspection; not for
+per-tick hot paths.
+
+**Index-style** (`getLuaField`, `setLuaField`) — zero-string hot-path surface.
+Resolve `field.index` once at script load and pass the integer per tick. No
+string lookup, no table allocation:
+
+```lua
+local C_Hp = IRComponent.register("Hp", { current = 100 })
+local currentIdx = C_Hp.fields.current.index  -- resolve once
+
+-- inside per-tick system body:
+local v = IREntity.getLuaField(entity, C_Hp, currentIdx)
+IREntity.setLuaField(entity, C_Hp, currentIdx, v + 1)
+```
+
+Both accessors bounds-check `fieldIndex` and raise a Lua error on
+out-of-range. Use index-style inside any per-tick Lua system body.
+
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
