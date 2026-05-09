@@ -59,8 +59,8 @@ Model, Blocked by, Acceptance, Issue, Notes) accurate.
 4. Read tool → `TASKS.md` (working-tree copy).
 5. Read tool → `~/src/IrredenEngine/creations/game/TASKS.md` if game
    repo is present. Skip otherwise.
-6. Read tool → `~/.fleet/state/state.json`. If missing or
-   `generated_at` older than ~5 minutes: print
+6. Read tool → `~/.fleet/state/projections/queue-manager.json`. If
+   missing or `generated_at` older than ~5 minutes: print
    `scout cache stale or missing — run fleet-up` and exit.
 7. Print: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
    then: `queue-manager standing by — paste a task description and I will categorize and file it`.
@@ -110,6 +110,7 @@ Standard tags: `engine/render`, `engine/entity`, `engine/system`,
   - **Model:** opus | sonnet
   - **Owner:** free
   - **Blocked by:** (none) | T-NNN, T-NNN
+  - **Stack:** (none) | T-XXX..T-YYY <slug>  ← optional; omit for non-stacked tasks
   - **Acceptance:** <concrete check>
   - **Issue:** (none) | #N
   - **Notes:** <context, links, prior attempts>
@@ -157,9 +158,10 @@ If you hit a usage-limit error: print the error and exit.
 0. **Write heartbeat:**
    `fleet-heartbeat queue-manager`
 
-1. **Clean stale claims:**
-   `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
-   `fleet-claim check-stale 7200`
+1a. **Clean stale claims:**
+    `fleet-claim cleanup --repo <engine-repo> --repo <game-repo>`
+1b. **Check stale heartbeats:**
+    `fleet-claim check-stale 7200`
 
 2. **Reset TASKS.md to a known-clean base** (defensive against dirty
    inheritance from a prior interrupted iteration — idempotent):
@@ -258,8 +260,9 @@ this iteration, append a structured entry to
   If a feature PR includes TASKS.md changes from an author agent,
   flag it — those changes should be removed.
 - You are the **sole `.fleet/status/*.md` editor**. Update these
-  files when a referenced PR merges; stage with the maintenance commit
-  or via a `queue: status update` PR. See `.fleet/status/README.md`.
+  files via a `queue: status update` PR when you notice a relevant
+  merge — status file updates are manual/on-demand, not part of the
+  automated maintenance pass. See `.fleet/status/README.md`.
 - Never `gh pr merge` — the human merges.
 - **Bookkeeping exception:** you MAY push directly to master in both
   repos when the commit touches **only** `TASKS.md`,
