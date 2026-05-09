@@ -424,17 +424,17 @@ inline IsoBounds2D visibleIsoViewport(
     return {viewCenter - halfExtent - vec2(margin), viewCenter + halfExtent + vec2(margin)};
 }
 
-/// Widens an iso-space AABB to also enclose any point that, when shifted by
-/// `-sunDir * sweepDistance`, lands inside the original. Equivalent to taking
-/// the union of @p visible and @p visible translated by the iso projection of
-/// `-sunDir * sweepDistance`.
+/// Widens an iso-space AABB toward the sun to include off-screen shadow
+/// casters. A caster at `visiblePos + sunDir * t` (for `t ∈ [0,
+/// sweepDistance]`) casts a shadow onto the on-screen pixel at `visiblePos`,
+/// so the swept AABB is the visible AABB expanded by the iso projection of
+/// `sunDir * sweepDistance`.
 ///
 /// Used by the iso rasterizers to include off-screen shadow casters: a
 /// surface inside the swept AABB but outside the visible AABB doesn't reach
 /// the framebuffer, but the screen-space sun-shadow bake projects its trixel
 /// distance into the sun-depth map, so the shadow it throws onto an
-/// on-screen pixel is still rendered. Mirrors the corner-sweep step in
-/// `BAKE_SUN_SHADOW_MAP` (see `system_bake_sun_shadow_map.hpp`).
+/// on-screen pixel is still rendered.
 ///
 /// @p sunDir is the direction from the world toward the sun (engine
 /// convention: +Z is down). @p sweepDistance is the maximum shadow throw
@@ -447,7 +447,7 @@ inline IsoBounds2D shadowFeederIsoBounds(
     if (sweepDistance <= 0.0f) {
         return visible;
     }
-    const vec2 shift = pos3DtoPos2DIso(-sunDir * sweepDistance);
+    const vec2 shift = pos3DtoPos2DIso(sunDir * sweepDistance);
     const vec2 lowExpand = vec2(glm::min(0.0f, shift.x), glm::min(0.0f, shift.y));
     const vec2 highExpand = vec2(glm::max(0.0f, shift.x), glm::max(0.0f, shift.y));
     return {visible.min_ + lowExpand, visible.max_ + highExpand};
