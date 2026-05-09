@@ -218,6 +218,6 @@ Avoid:
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
 - [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
+- [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-117** — Render: SDF occlusion in point/spot light line-of-sight · Owner: claude/T-117-sdf-occlusion-light-los · PR: https://github.com/jakildev/IrredenEngine/pull/522
 - [x] **T-119** — Fleet: usage-limit back-off for fleet-dispatcher transient workers · Owner: claude/T-119-dispatcher-rate-limit-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/526
-- [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
