@@ -30,16 +30,30 @@
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
 
-# --- 5-hour-window usage gate -----------------------------------------------
+# --- Usage gate (per-rate-limit-type thresholds) ----------------------------
 #
 # Soft, fleet-wide pre-emption: when any rate_limit_event observation
 # (latched by fleet-claude-stream into ~/.fleet/state/usage/<type>.json)
-# reports utilization >= the threshold, the dispatcher defers ALL fresh
+# exceeds the threshold for its type, the dispatcher defers ALL fresh
 # dispatches until the window resets or utilization drops back below.
 # In-flight iterations finish normally; their next trigger waits.
 #
-# The threshold is a fraction in [0, 1]; default 0.80 reserves the last
-# 20% of the 5-hour budget for already-running work.
+# Per-type thresholds let the operator distinguish:
+#   - Short-window limits (e.g. five_hour) — pre-empt at 80% so 20%
+#     of the budget is left for in-flight work to finish cleanly.
+#   - Long-window limits (e.g. seven_day all-models weekly) — pre-empt
+#     only at 95% so typical operation isn't gated by mid-week burn.
+#
+# Built-in defaults (apply with no override):
+#   five_hour:  0.80
+#   seven_day:  0.95
+#   (any other type): 0.80
+#
+# Threshold lookup order:
+#   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (per-type override)
+#   2. FLEET_DISPATCHER_USAGE_GATE               (global override)
+#   3. Built-in default (above)
+#
 # Stale window: observations older than this many seconds are ignored,
 # so the gate doesn't latch closed forever based on a single high
 # watermark. Default 1h.
@@ -48,5 +62,12 @@
 # after a usage_limit exit). Use --gate-status on fleet-dispatcher to
 # inspect the live state.
 
+# Global override (applies to any type without a per-type override).
 # FLEET_DISPATCHER_USAGE_GATE=0.80
+
+# Per-type overrides — uncomment + edit if you want different
+# thresholds than the built-in defaults.
+# FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR=0.80
+# FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.95
+
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
