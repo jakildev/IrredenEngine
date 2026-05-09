@@ -676,28 +676,24 @@ else
 fi
 
 # ----------------------------------------------------------------------
-# Step 3e2: bootstrap-trigger queue-manager / merger on actionable state
+# Step 3e2: bootstrap-trigger all roles on actionable state
 # ----------------------------------------------------------------------
 #
 # Workers are transient now — each iteration is a one-shot `claude`
 # spawned by the dispatcher when the scout writes a per-role trigger,
 # and triggers fire only on projection-content deltas. Edge case:
 # if a previous iteration was killed mid-run (fleet-down during
-# queue-manager's ingestion, dispatcher crash mid-merge, etc.) the
-# inputs that drove that trigger are still in the projection on the
-# next boot — but the scout sees identical content, decides "no
-# change", emits no trigger, and the work never resumes.
+# any role's work, dispatcher crash, etc.) the inputs that drove
+# that trigger are still in the projection on the next boot — but
+# the scout sees identical content, decides "no change", emits no
+# trigger, and the work never resumes.
 #
-# Surgical bootstrap: for the two idempotent meta-roles (queue-manager,
-# merger), if their projection has actionable content right now, seed a
-# trigger so the dispatcher picks them up in its first tick. A no-op
-# iteration is cheap and self-correcting; the cost of a false-positive
-# bootstrap is one short claude invocation, while the cost of a missed
-# resume is a permanently stuck queue or merge backlog.
-#
-# Author/reviewer roles intentionally NOT bootstrapped — those should
-# fire only when real new work appears in the projection delta. A
-# spurious sonnet-author dispatch on every boot would burn cycles.
+# Symmetric bootstrap: for all dispatched roles, if their projection
+# has actionable content right now, seed a trigger so the dispatcher
+# picks them up in its first tick. A no-op iteration is cheap and
+# self-correcting; the cost of a false-positive bootstrap is one short
+# claude invocation, while the cost of a missed resume is a permanently
+# stuck queue, merge backlog, or idle worker with real work pending.
 if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY' || true
 import json
@@ -712,8 +708,25 @@ def merger_actionable(p):
 
 # queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
 # fleet-queue-tick directly on projection change. No bootstrap trigger needed.
+
+def author_worker_actionable(p):
+    return bool(p.get("tasks_open")) or bool(p.get("feedback_prs"))
+
+def opus_worker_actionable(p):
+    return author_worker_actionable(p) or bool(p.get("needs_plan"))
+
+def sonnet_reviewer_actionable(p):
+    return bool(p.get("candidate_prs"))
+
+def opus_reviewer_actionable(p):
+    return bool(p.get("flagged_prs"))
+
 for role, predicate in [
     ("merger", merger_actionable),
+    ("sonnet-author", author_worker_actionable),
+    ("opus-worker", opus_worker_actionable),
+    ("sonnet-reviewer", sonnet_reviewer_actionable),
+    ("opus-reviewer", opus_reviewer_actionable),
 ]:
     proj = proj_dir / f"{role}.json"
     if not proj.is_file():
