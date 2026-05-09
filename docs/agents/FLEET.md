@@ -21,12 +21,14 @@ This repo runs a parallel-agent workflow. The rules:
 5. **Never `--force` push to `master`.** Never use `--no-verify` to skip hooks
    unless the user explicitly asks.
 6. **Shared task queue lives in `TASKS.md`.** Pick the next unblocked item
-   from there rather than inventing work. **Only the queue-manager agent
-   edits `TASKS.md`** — author agents must never include TASKS.md changes
-   in their feature PRs (this causes merge conflicts across all parallel
-   PRs). Reference the task title in your PR description instead. The
-   same single-editor rule applies to `.fleet/status/*.md`; see
-   `.fleet/status/README.md`.
+   from there rather than inventing work. **Only the queue-manager role and
+   `fleet-queue-tick` edit `TASKS.md`** — author agents must never include
+   TASKS.md changes in their feature PRs (this causes merge conflicts across
+   all parallel PRs). Reference the task title in your PR description instead.
+   The same single-editor rule applies to `.fleet/status/*.md`; see
+   `.fleet/status/README.md`. (`fleet-queue-tick` is a scout-spawned shell
+   script that recomputes derived fields; queue-manager ingestion is
+   human/Cursor-flow only.)
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
@@ -175,7 +177,7 @@ the question to the architect and resume cleanly:
    `~/.fleet/plans/issue-<N>.md`, posts a PR comment with concrete
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
 3. Queue-manager re-syncs the updated plan into the repo at
-   `.fleet/plans/T-<NNN>.md` on its next maintenance pass.
+   `.fleet/plans/T-<NNN>.md` when next invoked for ingestion (Cursor flow).
 4. Worker (any worker — not necessarily the original one) sees the
    `fleet:design-unblocked` PR via its feedback-PR loop on the next
    iteration, reads the architect's comment + the updated plan,
@@ -186,7 +188,7 @@ Reviewer agents skip `fleet:design-blocked` PRs (they're in
 escalation limbo, not awaiting review). The full per-role procedure
 is in `role-opus-worker.md` (escalate + resume),
 `role-opus-architect.md` ("Handling `fleet:design-blocked` PRs"),
-and `role-queue-manager.md` (step 5c plan re-sync).
+and `role-queue-manager.md` (step 5d plan copy).
 
 ### Model split: Opus for core, Sonnet for the fleet
 
@@ -371,9 +373,9 @@ Specifically, **never pass these via `--label` when filing**:
   that bundles multiple child issues (listed as a markdown task list
   `- [ ] #N` in the body). Queue-manager:
   (1) skips epics from TASKS.md ingestion (they're meta, not work),
-  (2) auto-closes the epic on its 5-min maintenance pass once ALL
-      referenced children are closed,
-  (3) re-reads the body LIVE each pass — so adding a new `- [ ] #M`
+  (2) auto-closes the epic once ALL referenced children are closed
+      (handled by `fleet-queue-tick` on projection-change ticks),
+  (3) re-reads the body LIVE each tick — so adding a new `- [ ] #M`
       after the original children close keeps the epic open until
       #M also closes ("done done").
   The CHILDREN go through the normal `human:approved` ingestion

@@ -60,8 +60,9 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 #   FLEET_CONCURRENCY_SONNET_AUTHOR=2
 #   FLEET_CONCURRENCY_SONNET_REVIEWER=1
 #   FLEET_CONCURRENCY_OPUS_REVIEWER=1
-#   FLEET_CONCURRENCY_QUEUE_MANAGER=1
 #   FLEET_CONCURRENCY_MERGER=1
+#
+# queue-manager is no longer LLM-dispatched; omit from cap config.
 #
 # fleet-up sources the same conf so `fleet-up --help` and the startup
 # banner reflect the active values, and so any future fleet-up logic
@@ -72,7 +73,6 @@ _env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
 _env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
 _env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
 _env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
-_env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
@@ -82,13 +82,12 @@ FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORK
 FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
 FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
 FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
-FLEET_CONCURRENCY_QUEUE_MANAGER="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
 FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
-      _env_opus_reviewer _env_queue_manager _env_merger
+      _env_opus_reviewer _env_merger
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
-export FLEET_CONCURRENCY_QUEUE_MANAGER FLEET_CONCURRENCY_MERGER
+export FLEET_CONCURRENCY_MERGER
 
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
@@ -708,14 +707,12 @@ proj_dir = pathlib.Path("~/.fleet/state/projections").expanduser()
 trig_dir = pathlib.Path("~/.fleet/state/triggers").expanduser()
 trig_dir.mkdir(parents=True, exist_ok=True)
 
-def queue_manager_actionable(p):
-    return bool(p.get("human_approved")) or bool(p.get("needs_plan"))
-
 def merger_actionable(p):
     return bool(p.get("prs"))
 
+# queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
+# fleet-queue-tick directly on projection change. No bootstrap trigger needed.
 for role, predicate in [
-    ("queue-manager", queue_manager_actionable),
     ("merger", merger_actionable),
 ]:
     proj = proj_dir / f"{role}.json"
@@ -1012,8 +1009,9 @@ pane_stagger
 OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$OPS_TL" "queue-manager [sonnet]"
-set_fleet_role "$OPS_TL" "queue-manager"
+# queue-manager pane is now a scratch terminal for manual ingestion (Cursor
+# flow) — no fleet-role tag so the dispatcher never dispatches it as LLM.
+label_pane_id "$OPS_TL" "queue-mgr/scratch [human]"
 pane_stagger
 
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
