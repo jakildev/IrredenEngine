@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -40,26 +41,18 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
 
 inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     C_VoxelPool &pool,
-    vec2 cameraIso,
-    ivec2 canvasOffsetZ1,
-    ivec2 canvasSize,
-    vec2 zoom = vec2(1.0f)
+    IsoBounds2D viewport
 ) {
     static thread_local std::vector<std::uint32_t> mask;
     pool.rebuildChunkBounds();
     int chunkCount = pool.getChunkCount();
     mask.assign(chunkCount, 0);
 
-    constexpr int kMargin = 8;
-    auto vp = IRMath::visibleIsoViewport(
-        cameraIso, canvasOffsetZ1, canvasSize, zoom, kMargin
-    );
-
     auto &bounds = pool.getChunkBounds();
     for (int c = 0; c < chunkCount; ++c) {
         const auto &cb = bounds[c];
-        if (cb.isoMax_.x >= vp.min_.x && cb.isoMin_.x <= vp.max_.x &&
-            cb.isoMax_.y >= vp.min_.y && cb.isoMin_.y <= vp.max_.y) {
+        if (cb.isoMax_.x >= viewport.min_.x && cb.isoMin_.x <= viewport.max_.x &&
+            cb.isoMax_.y >= viewport.min_.y && cb.isoMin_.y <= viewport.max_.y) {
             mask[c] = 1;
         }
     }
@@ -256,10 +249,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
                 clearCanvasAndDistances(entity, triangleCanvasTextures);
 
-                ivec2 cullOffsetZ1 = IRMath::trixelOriginOffsetZ1(cull.canvasSize_);
-                const auto &uploadMask = buildChunkVisibilityMask(
-                    voxelPool, cull.cameraIso_, cullOffsetZ1, cull.canvasSize_, cull.zoom_
+                // Widen both cull regions (chunk-pre-filter and per-pixel
+                // GPU bounds) to the shadow-feeder AABB when sun shadows
+                // are enabled, so off-screen casters within
+                // kSunShadowMaxDistance still write into trixelDistances
+                // and feed BAKE_SUN_SHADOW_MAP. When shadows are off the
+                // sweep collapses to zero and bounds match the visible
+                // viewport (legacy behavior). The sun-direction lookup
+                // is gated on the shadow flag too, so disabled-shadow
+                // creations skip the C_LightSource archetype scan.
+                const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+                const vec3 sunDir = shadowsEnabled
+                    ? IRPrefab::SunShadow::resolveDirection()
+                    : vec3(0.0f);
+                const float sweepDistance = shadowsEnabled
+                    ? IRPrefab::SunShadow::kSunShadowMaxDistance
+                    : 0.0f;
+
+                constexpr int kChunkMargin = 8;
+                const IsoBounds2D chunkVp = IRMath::shadowFeederIsoBounds(
+                    cull.isoViewport(kChunkMargin), sunDir, sweepDistance
                 );
+                const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp);
                 p->chunkVisBuf_->subData(
                     0,
                     uploadMask.size() * sizeof(std::uint32_t),
@@ -267,9 +278,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
 
                 constexpr int kGpuMargin = 4;
-                auto cullVp = cull.isoViewport(kGpuMargin);
-                p->frameData_.cullIsoMin_ = ivec2(glm::floor(cullVp.min_));
-                p->frameData_.cullIsoMax_ = ivec2(glm::ceil(cullVp.max_));
+                const IsoBounds2D gpuVp = IRMath::shadowFeederIsoBounds(
+                    cull.isoViewport(kGpuMargin), sunDir, sweepDistance
+                );
+                p->frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
+                p->frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
                 p->frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &p->frameData_);
 
                 p->voxelPosBuf_->subData(

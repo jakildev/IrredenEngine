@@ -27,6 +27,7 @@
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/sun_shadow_constants.hpp>
 
 #include <array>
 #include <cstddef>
@@ -41,10 +42,10 @@ namespace IRSystem {
 // Must match `kSunShadowMapDim` in c_clear_sun_shadow_map.glsl /
 // c_bake_sun_shadow_map.glsl (and Metal counterparts).
 constexpr int kSunShadowMapDim = 1024;
-// Sweeps the visible AABB along -sunDir before projecting to sun-space,
-// so off-screen surfaces within this many voxels still cast into-frame
-// shadows. Bounds the shadow throw distance for the entire pipeline.
-constexpr float kSunShadowMaxDistance = 64.0f;
+// `kSunShadowMaxDistance` (the AABB-sweep length, also consumed by the iso
+// rasterizers' shadow-feeder cull) lives in `sun_shadow_constants.hpp` so
+// both producers stay in lockstep.
+using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
 constexpr int kIsoFrustumCornerCount = 8;
 

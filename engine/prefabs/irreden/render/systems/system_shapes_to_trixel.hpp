@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -198,7 +199,26 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         texOpt.value()->size_
                     );
                     constexpr int kMargin = 4;
-                    p->cullBounds_ = IRRender::getCullViewport().isoViewport(kMargin);
+                    // Widen to the shadow-feeder AABB (visible ∪ swept along
+                    // -sunDir by kSunShadowMaxDistance) so off-screen SDF
+                    // casters still write distances into trixelDistances and
+                    // feed BAKE_SUN_SHADOW_MAP. The same widened bounds are
+                    // uploaded as cullIsoMin/Max in endTick so per-tile
+                    // shaders never clip a shadow-feeder pixel. Sun-direction
+                    // resolution is gated on the shadow flag so a disabled-
+                    // shadow creation skips the C_LightSource archetype scan.
+                    const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+                    const vec3 sunDir = shadowsEnabled
+                        ? IRPrefab::SunShadow::resolveDirection()
+                        : vec3(0.0f);
+                    const float sweepDistance = shadowsEnabled
+                        ? IRPrefab::SunShadow::kSunShadowMaxDistance
+                        : 0.0f;
+                    p->cullBounds_ = IRMath::shadowFeederIsoBounds(
+                        IRRender::getCullViewport().isoViewport(kMargin),
+                        sunDir,
+                        sweepDistance
+                    );
                 } else {
                     p->cullBounds_.reset();
                 }
