@@ -121,20 +121,35 @@ void main() {
     vec2 sunUV = vec2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
     float sunZ = -dot(biasedPos3D, sunDir);
 
-    ivec2 sunPx = ivec2(round((sunUV - sunBufferOriginUV) / sunBufferTexelSize));
-    bool shadowed = false;
-    if (sunPx.x >= 0 && sunPx.x < kSunShadowMapDim &&
-        sunPx.y >= 0 && sunPx.y < kSunShadowMapDim) {
-        uint storedPacked = sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x];
-        if (storedPacked != 0xFFFFFFFFu) {
-            float nearestZ = unpackSunDepth(storedPacked);
-            float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
-            float texelSize = max(sunBufferTexelSize.x, sunBufferTexelSize.y);
-            float bias =
-                texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
-            shadowed = (sunZ - nearestZ) > bias;
+    // Bias depends only on per-fragment constants (face/normal/sunDir,
+    // texelSize) — hoisted outside the PCF loop. T-132's slope-scale +
+    // quantisation-noise formula stays unchanged; the PCF kernel just
+    // applies it to each of the four taps.
+    float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
+    float texelSize = max(sunBufferTexelSize.x, sunBufferTexelSize.y);
+    float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+
+    // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
+    // Fades shadow boundaries across one sun-texel instead of cliff-edging.
+    // floor() pairs with the bake's round() convention (texel centers on
+    // integers) so the four taps surround the fragment's continuous sunPxF.
+    vec2 sunPxF = (sunUV - sunBufferOriginUV) / sunBufferTexelSize;
+    ivec2 base = ivec2(floor(sunPxF));
+    vec2 frac = sunPxF - vec2(base);
+    float shadowAccum = 0.0;
+    for (int dy = 0; dy < 2; ++dy) {
+        for (int dx = 0; dx < 2; ++dx) {
+            ivec2 px = base + ivec2(dx, dy);
+            if (px.x < 0 || px.x >= kSunShadowMapDim ||
+                px.y < 0 || px.y >= kSunShadowMapDim) continue;
+            uint stored = sunDepthBuf[px.y * kSunShadowMapDim + px.x];
+            if (stored == 0xFFFFFFFFu) continue;  // no caster → lit
+            float nearestZ = unpackSunDepth(stored);
+            float weight = mix(1.0 - frac.x, frac.x, float(dx))
+                         * mix(1.0 - frac.y, frac.y, float(dy));
+            if ((sunZ - nearestZ) > bias) shadowAccum += weight;
         }
     }
-    float factor = shadowed ? kShadowDarken : 1.0;
+    float factor = mix(1.0, kShadowDarken, shadowAccum);
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));
 }
