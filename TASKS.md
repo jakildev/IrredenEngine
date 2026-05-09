@@ -165,6 +165,18 @@ Avoid:
 
 
 
+- [ ] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
+  - **ID:** T-105
+  - **Area:** engine/script, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) LuaJIT 2.1 replaces Lua 5.4 in cmake/; all sol2 usertype/registerType bindings compile and function; (2) Lua 5.4-only feature audit complete — goto, integer subtypes, <const>/<close>, generational GC, bit32 — findings documented in PR body; (3) fleet-build --target IrredenEngineTest clean + 100% pass; fleet-build --target IRPerfGrid clean; creations/demos/lua_pipeline_demo runs end-to-end; all Lua-driven ECS tests pass; (4) EVAL-mode perf re-run on testbed from PR #563 documented (target 2–10× C++ perf_grid baseline); (5) engine/script/CLAUDE.md updated with LuaJIT 2.1 runtime note (available: bit ops, FFI; not available: 5.4-only features)
+  - **Issue:** #585
+  - **Notes:** T-104 measurement showed ≥10 000× EVAL-mode slowdown on Lua 5.4 sol2 dispatch; LuaJIT trace JIT collapses that inner-loop shape. Architect decision tracked in #566. Blocks T-106 (codegen pipeline foundation) and PR #563 (perf-grid testbed needs LuaJIT measurement). Out of scope: codegen pipeline (T-106/107/108), parity gate (T-109), LuaJIT FFI in engine bindings.
+  - **Links:**
+
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
