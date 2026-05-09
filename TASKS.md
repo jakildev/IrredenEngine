@@ -174,11 +174,11 @@ Avoid:
   - **Notes:** PR 4 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-102.md. Blocked by T-101 (Lua systems). New file: engine/script/include/irreden/script/lua_modifier_bindings.hpp. Convenience: IRSystem.systemId(SystemName.X) -> SystemId.
   - **Links:**
 
-- [ ] **Lua-driven ECS: hot-reload of Lua system bodies** — add IRSystem::replaceSystemBody(systemId, newFn) C++ + Lua binding; rebinds sol::function in place with no archetype changes or entity migration; document in engine/script/CLAUDE.md
+- [~] **Lua-driven ECS: hot-reload of Lua system bodies** — add IRSystem::replaceSystemBody(systemId, newFn) C++ + Lua binding; rebinds sol::function in place with no archetype changes or entity migration; document in engine/script/CLAUDE.md
   - **ID:** T-103
   - **Area:** engine/script, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-103-lua-system-body-hot-reload
   - **Blocked by:** T-102
   - **Acceptance:** (1) change a math constant in a Regen tick body in main.lua; call IRSystem.replaceSystemBody(regenSystemId, newFn); observe next-tick behavior change without process restart; (2) SystemId unchanged across the body swap; (3) in-flight entities use new body on next tick with no special handling; (4) doc in engine/script/CLAUDE.md alongside existing trait-based binding pattern; (5) fleet-build clean on linux-debug
   - **Issue:** #491
