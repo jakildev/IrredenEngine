@@ -177,17 +177,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT** — add C_HitBox2DGui + HITBOX_MOUSE_TEST_GUI system; priority: GUI > world > trixel; fire Lua onEntityHovered/Clicked from all three paths
-  - **ID:** T-130
-  - **Area:** engine/prefabs/irreden/input
-  - **Model:** opus
-  - **Owner:** claude/T-130-gui-hitbox-source
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) demos with voxel-only hover (no C_HitBox2DGui entities) unchanged; (2) C_HitBox2DGui + SYSTEM_ENTITY_HOVER_DETECT priority ordering (GUI > world > trixel) documented in engine/prefabs/irreden/input/CLAUDE.md; (3) HITBOX_MOUSE_TEST_GUI added to SystemName enum in engine/system/include/irreden/system/ir_system_types.hpp; (4) pipeline order: HITBOX_MOUSE_TEST, HITBOX_MOUSE_TEST_GUI, ENTITY_HOVER_DETECT; (5) fleet-build clean on linux-debug
-  - **Issue:** #354
-  - **Notes:** #353 (Metal entity-id readback) is closed/resolved. Game-side follow-up (palette_selector.lua, C_HitBox2DGui Lua bindings) is explicitly out of scope for this PR. findFirstHovered should be a per-frame scan in endTick, not per-entity getComponent.
-  - **Links:**
-
 - [~] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
   - **ID:** T-133
   - **Area:** shaders/glsl, shaders/metal
@@ -213,6 +202,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
 - [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
 - [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
 - [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
@@ -232,4 +222,3 @@ Avoid:
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
-- [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
