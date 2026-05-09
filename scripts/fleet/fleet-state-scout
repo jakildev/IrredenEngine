@@ -774,12 +774,39 @@ def project_merger(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def project_queue_manager_ingest(state):
+    """Hash-input projection for the queue-manager-ingest auto-fire.
+
+    Tracks the SET of `human:approved AND NOT fleet:queued` issues —
+    i.e., issues the human has approved but queue-manager hasn't yet
+    filed into TASKS.md. The hash flips when this set CHANGES:
+
+    - Operator adds `human:approved` to issue #N: #N enters the set,
+      hash flips, scout spawns fleet-queue-ingest, the LLM iteration
+      categorizes #N and writes a task entry with `fleet:queued`.
+    - After ingestion, #N has `fleet:queued` so it drops from the
+      set; hash flips again. fleet-queue-ingest re-fires, finds the
+      set is empty, exits in <1s. One wasted iteration per ingestion
+      cycle, acceptable cost.
+
+    `human_approved` from `fetch_human_approved` already excludes
+    `fleet:queued` issues (that filter lives in fetch_issues_by_label),
+    so this projector simply enumerates that set across both repos.
+    """
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for issue in repo_state.get("human_approved", []):
+            items.append({"repo": repo, "issue": issue["number"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
 PROJECTORS = {
     "sonnet-author": project_sonnet_author,
     "opus-worker": project_opus_worker,
     "sonnet-reviewer": project_sonnet_reviewer,
     "opus-reviewer": project_opus_reviewer,
     "queue-manager": project_queue_manager,
+    "queue-manager-ingest": project_queue_manager_ingest,
     "merger": project_merger,
 }
 
@@ -899,6 +926,16 @@ def slice_queue_manager(state):
     return out
 
 
+def slice_queue_manager_ingest(state):
+    """Slice for fleet-queue-ingest. Mirrors the projector — list of
+    issues the human has approved but the queue hasn't filed yet."""
+    out = {"pending_issues": []}
+    for repo_key, repo_state in state["repos"].items():
+        for issue in repo_state.get("human_approved", []):
+            out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
+    return out
+
+
 def slice_merger(state):
     # Merger is engine-only (v1 scope per role-merger.md). Game-repo
     # PRs would just be skipped by the merger's own filter, but
@@ -922,6 +959,7 @@ SLICERS = {
     "sonnet-reviewer": slice_sonnet_reviewer,
     "opus-reviewer": slice_opus_reviewer,
     "queue-manager": slice_queue_manager,
+    "queue-manager-ingest": slice_queue_manager_ingest,
     "merger": slice_merger,
 }
 
@@ -1038,6 +1076,34 @@ def tick_once():
                     triggers_fired.append("queue-manager(queue-tick)")
                 except Exception as e:
                     log(f"queue-manager: failed to spawn fleet-queue-tick: {e}")
+        elif role == "queue-manager-ingest":
+            # Auto-fire ingestion when the human:approved-and-not-yet-queued
+            # set changes. Same spawn pattern as queue-tick but invokes an
+            # LLM iteration via fleet-queue-ingest. Lockfile inside the
+            # script prevents concurrent runs.
+            new_hash = stable_hash(projection)
+            seen_file = SEEN_DIR / role
+            try:
+                old_hash = seen_file.read_text().strip()
+            except FileNotFoundError:
+                old_hash = ""
+            if new_hash != old_hash:
+                write_atomic(seen_file, new_hash + "\n")
+                try:
+                    ingest_cmd = subprocess.run(
+                        ["which", "fleet-queue-ingest"],
+                        capture_output=True, text=True,
+                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-ingest")
+                    subprocess.Popen(
+                        [ingest_cmd],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
+                    triggers_fired.append("queue-manager-ingest(spawn)")
+                except Exception as e:
+                    log(f"queue-manager-ingest: failed to spawn fleet-queue-ingest: {e}")
         elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 

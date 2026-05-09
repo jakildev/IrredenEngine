@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# fleet-queue-ingest — spawn one LLM ingestion iteration when scout sees
+# new human:approved issues that aren't yet in TASKS.md.
+#
+# Sibling to fleet-queue-tick. fleet-queue-tick handles MECHANICAL
+# bookkeeping (status flips, Owner, Done section, blocked-by resolution)
+# via fleet-tasks-render — pure deterministic, no LLM. fleet-queue-ingest
+# handles LLM-grade INGESTION (read issue body, categorize, write a new
+# TASKS.md entry with model assignment, blocked-by chain, plan reference)
+# by invoking `claude --print /role-queue-manager ingest`.
+#
+# Invoked directly by fleet-state-scout when the queue-manager-ingest
+# projection changes (new human:approved issue appears, or an existing
+# one gets fleet:queued and drops out of the set).
+#
+# Idempotent: if there are no pending issues to ingest, exits in <1s
+# without invoking claude. The role doc itself re-checks before doing
+# any work, so a spurious spawn (e.g. on the post-ingestion drop-out
+# transition) costs only the bash startup time.
+#
+# Lockfile prevents concurrent runs.
+#
+# Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
+# Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+ENGINE="${FLEET_ENGINE:-$HOME/src/IrredenEngine}"
+LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
+LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
+PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
+QM_WT="$ENGINE/.claude/worktrees/queue-manager"
+
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log() {
+    printf '[%s queue-ingest] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" \
+        | tee -a "$LOG_FILE" >&2
+}
+
+# Directory-based lockfile (atomic on POSIX). Concurrent fleet-queue-ingest
+# would race on TASKS.md edits; fail silently here so the second invocation
+# just exits.
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    log "another fleet-queue-ingest is running; exiting"
+    exit 0
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
+
+# Fast-path: scout's projection-diff fires on BOTH set-grow (new approved
+# issue) AND set-shrink (issue ingested, dropped out of human:approved-
+# minus-fleet:queued). On the post-ingestion drop-out the set is empty.
+# Bail out cheaply instead of spinning up claude to find nothing to do.
+if [[ -f "$PROJECTION_FILE" ]]; then
+    pending_count=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$PROJECTION_FILE'))
+    print(len(data.get('pending_issues', [])))
+except Exception:
+    print(0)
+")
+    if [[ "$pending_count" == "0" ]]; then
+        log "no pending issues — empty projection, exiting"
+        exit 0
+    fi
+fi
+
+# Use the queue-manager worktree as an isolated working area (mirrors
+# fleet-queue-tick). Fall back to the main clone if the worktree
+# doesn't exist (e.g. fresh fleet install pre-fleet-up).
+if [[ ! -d "$QM_WT" ]]; then
+    log "queue-manager worktree not found at $QM_WT; using main clone"
+    QM_WT="$ENGINE"
+fi
+
+# Reset the worktree to a clean state on master so we never carry stale
+# branch commits or pre-existing dirty edits into the LLM iteration.
+git -C "$QM_WT" fetch origin --quiet
+git -C "$QM_WT" checkout -B fleet-queue-ingest origin/master >/dev/null 2>&1
+
+log "starting LLM ingestion iteration"
+
+# Dispatch a one-shot claude --print invocation in ingest mode. The role
+# doc reads the queue-manager-ingest projection slice, categorizes each
+# issue, edits TASKS.md, commits, and pushes. claude --print exits when
+# the LLM produces a final response (no kill -TERM needed; that's
+# blocked by the auto-mode classifier anyway).
+#
+# stdin/stdout/stderr go to the log so the operator can debug. start a
+# new session so the script can return immediately if needed (though we
+# do wait here so the lockfile stays held until the LLM finishes).
+cd "$QM_WT"
+claude --model sonnet --effort high --print \
+    --output-format stream-json --include-partial-messages --verbose \
+    "/role-queue-manager ingest" >> "$LOG_FILE" 2>&1 || {
+    log "claude exited non-zero (rc=$?); leaving lock for manual inspection"
+    exit 1
+}
+
+log "ingestion iteration complete"
