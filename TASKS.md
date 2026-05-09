@@ -163,23 +163,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings** — bind IRSystem::registerPipeline, SystemName/GameSystemName enums, and modifier framework (C_Modifiers, transforms, C_ResolvedFields, field-binding registry) to Lua; demo creation with pure-Lua initSystems
-  - **ID:** T-102
-  - **Area:** engine/script, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-102-lua-pipeline-modifier-bindings
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Lua calls IRSystem.registerPipeline(IRTime.UPDATE, { IRSystem.systemId(SystemName.LIFETIME), luaSystemId, IRGameSystem.systemId(GameSystemName.GRID_BAKE) }) and all three execute in declared order; (2) IRModifier.add(entity, "Hp.current", { transform = MULTIPLY, value = 0.5 }) against Lua-defined component reflects in C_ResolvedFields; (3) sample demo creation whose entire initSystems lives in main.lua (mixing engine, game, and Lua systems) runs without crash; (4) fleet-build clean on linux-debug
-  - **Issue:** #490
-  - **Notes:** PR 4 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-102.md. Blocked by T-101 (Lua systems). New file: engine/script/include/irreden/script/lua_modifier_bindings.hpp. Convenience: IRSystem.systemId(SystemName.X) -> SystemId.
-  - **Links:**
-
 - [~] **Lua-driven ECS: hot-reload of Lua system bodies** — add IRSystem::replaceSystemBody(systemId, newFn) C++ + Lua binding; rebinds sol::function in place with no archetype changes or entity migration; document in engine/script/CLAUDE.md
   - **ID:** T-103
   - **Area:** engine/script, engine/system
   - **Model:** opus
   - **Owner:** claude/T-103-lua-system-body-hot-reload
-  - **Blocked by:** T-102
+  - **Blocked by:** (none)
   - **Acceptance:** (1) change a math constant in a Regen tick body in main.lua; call IRSystem.replaceSystemBody(regenSystemId, newFn); observe next-tick behavior change without process restart; (2) SystemId unchanged across the body swap; (3) in-flight entities use new body on next tick with no special handling; (4) doc in engine/script/CLAUDE.md alongside existing trait-based binding pattern; (5) fleet-build clean on linux-debug
   - **Issue:** #491
   - **Notes:** PR 5 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-103.md. Blocked by T-102 (pipeline + modifier bindings). Component-schema hot-reload is explicitly out of scope (follow-up in docs/design/lua-driven-ecs.md).
@@ -244,6 +233,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-queue-manager-scout-driven-script · PR: https://github.com/jakildev/IrredenEngine/pull/558
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
 - [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
@@ -263,4 +253,3 @@ Avoid:
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-110** — fleet-claim: stackable-on claim mode + helpers · Owner: claude/T-110-stackable-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/525
 - [x] **T-114** — Reviewer: cross-author stacked-PR awareness · Owner: claude/T-114-reviewer-stacked-pr-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/518
-- [x] **T-101** — Lua-driven ECS: Lua-defined systems with archetype-batched dispatch · Owner: claude/T-101-lua-systems · PR: https://github.com/jakildev/IrredenEngine/pull/517
