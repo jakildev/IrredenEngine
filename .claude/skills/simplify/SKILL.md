@@ -248,11 +248,11 @@ Also check:
   spaces are not interchangeable.
 
 If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`,
-`system_*fog*`, `system_build_occupancy_grid*`, or any
+`system_*fog*`, `system_build_light_occlusion_grid*`, or any
 `c_compute_*shadow*.glsl` / `.metal`, also flag:
 - Grid-build code that includes `cull_viewport_state.hpp` or calls
-  `visibleIsoViewport` — the occupancy grid must cover the full voxel
-  pool, not the render-culled subset.
+  `visibleIsoViewport` — the light-occlusion grid must cover the full
+  voxel pool, not the render-culled subset.
 - Flood-fill seed gather filtered by `visibleIsoViewport` without
   expanding by `C_LightSource::radius_` — off-screen sources must
   still seed on-screen tiles.

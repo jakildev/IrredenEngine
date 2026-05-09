@@ -14,7 +14,6 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_light_source.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>

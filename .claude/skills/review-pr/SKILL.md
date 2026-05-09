@@ -236,12 +236,12 @@ compliance or raise an issue.
   follow-up task).
 
 **Lighting** (if the diff touches `system_*ao*`, `system_*shadow*`,
-`system_*flood*`, `system_*fog*`, `system_build_occupancy_grid*`, or any
-`c_compute_*shadow*.glsl` / `.metal`)
-- Check 1 (grid coverage): `system_build_occupancy_grid.hpp` iterates the
-  full voxel pool — it does **not** include `cull_viewport_state.hpp` and
-  does not call `visibleIsoViewport`. Off-screen geometry participates in
-  lighting by design.
+`system_*flood*`, `system_*fog*`, `system_build_light_occlusion_grid*`,
+or any `c_compute_*shadow*.glsl` / `.metal`)
+- Check 1 (grid coverage): `system_build_light_occlusion_grid.hpp`
+  iterates the full voxel pool — it does **not** include
+  `cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
+  Off-screen geometry participates in lighting by design.
 - Check 2 (shadow-ring extent): if chunk streaming is involved, the
   resident-chunk set extends past the view frustum by
   `maxCasterHeight × cot(sunAltitude)` in the sun-projection direction.

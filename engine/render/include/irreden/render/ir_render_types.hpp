@@ -331,16 +331,21 @@ constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
 constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
-constexpr std::uint32_t kBufferIndex_OccupancyGrid = 28;
+// T-126 renamed this slot from `kBufferIndex_OccupancyGrid` to reflect
+// the post-T-091 consumer set: the SSBO at slot 28 now feeds only the
+// light-volume propagate shader (voxel-existence + SDF-blocker bits),
+// not AO or sun-shadow.
+constexpr std::uint32_t kBufferIndex_LightOcclusionGrid = 28;
 constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
-// Aliases the occupancy-grid slot. AO + light-volume read OccupancyGrid;
-// the sun bake writes / the sun shadow lookup reads SunShadowDepthMap.
-// Both consumers run on different stages and rebind slot 28 to whichever
-// resource they need before their own dispatch, so the alias is safe.
-// Phased-out producer: this aliasing goes away in T-09Y once AO migrates
-// off the occupancy SSBO and the light-volume GPU port (T-072) lands.
-constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_OccupancyGrid;
+// Aliases the light-occlusion-grid slot. The light-volume propagate
+// shader reads LightOcclusionGrid; the sun bake writes /
+// the sun shadow lookup reads SunShadowDepthMap. Both consumers run on
+// different stages and rebind slot 28 to whichever resource they need
+// before their own dispatch, so the alias is safe. Phased-out producer:
+// this aliasing goes away in T-09Y once light-volume LOS moves off the
+// world-space bitfield.
+constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
 // SPRITE_TO_SCREEN runs at the FRAMEBUFFER_TO_SCREEN stage, after every
 // compute pass has completed; the slots it borrows belong to compute-only
 // buffers whose data is no longer needed by the time the sprite stage
@@ -415,21 +420,25 @@ struct LightVolumeParams {
 };
 static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");
 
-/// Phase 1c (#360): camera-anchored occupancy SSBO header. Written to
-/// the first 16 bytes of `OccupancyGridBuffer` each frame by
-/// `system_build_occupancy_grid`; the bitfield occupies the remainder
-/// (see `kOccupancyHeaderByteSize` consumers in
-/// `system_build_occupancy_grid.hpp` and the SSBO declarations in
-/// `c_compute_voxel_ao.glsl` / `c_propagate_light_volume.glsl`). The
-/// header avoids a second buffer slot — Metal compute encoders share
-/// one global `setBuffer(slot)` table per encoder, so a UBO and SSBO
-/// at the same slot fight; embedding the header in the SSBO sidesteps
-/// the conflict entirely. `.xyz` is the world voxel that maps to local
-/// cell `(0,0,0)`; `.w` is reserved.
-struct OccupancyGridHeader {
+/// Phase 1c (#360): camera-anchored light-occlusion SSBO header.
+/// Written to the first 16 bytes of `LightOcclusionGridBuffer` each
+/// frame by `system_build_light_occlusion_grid`; the voxel + SDF-blocker
+/// bitfields occupy the remainder (see `kLightOcclusionHeaderByteSize`
+/// consumers in `system_build_light_occlusion_grid.hpp` and the SSBO
+/// declarations in `c_propagate_light_volume.glsl` /
+/// `metal/c_propagate_light_volume.metal`). The header avoids a second
+/// buffer slot — Metal compute encoders share one global
+/// `setBuffer(slot)` table per encoder, so a UBO and SSBO at the same
+/// slot fight; embedding the header in the SSBO sidesteps the conflict
+/// entirely. `.xyz` is the world voxel that maps to local cell
+/// `(0,0,0)`; `.w` is reserved.
+struct LightOcclusionGridHeader {
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
-static_assert(sizeof(OccupancyGridHeader) == 16, "OccupancyGridHeader must match std430 layout");
+static_assert(
+    sizeof(LightOcclusionGridHeader) == 16,
+    "LightOcclusionGridHeader must match std430 layout"
+);
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
 // shapeIndex picks the ShapeDescriptor; tileIsoOrigin is the iso-space

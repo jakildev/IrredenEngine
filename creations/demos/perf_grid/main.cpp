@@ -16,7 +16,6 @@
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
@@ -27,7 +26,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
-#include <irreden/render/systems/system_build_occupancy_grid.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
@@ -57,7 +56,7 @@
 
 // IRPerfGrid stress test: voxel_set vs sdf share the same lattice (positions,
 // colors, periodic-idle wave). They are *not* lighting-equivalent today:
-// BUILD_OCCUPANCY_GRID only walks the voxel pool; sdf mode never allocates
+// BUILD_LIGHT_OCCLUSION_GRID only walks the voxel pool; sdf mode never allocates
 // pool voxels, so the occupancy bitfield stays empty and AO + GPU light
 // propagation see no occluders. Expect sdf to look brighter / less creased
 // than voxel_set until Phase 3 (#428 AO via trixelDistances, #364 SDF in LOS).
@@ -311,7 +310,6 @@ void configureLightingAndCanvas() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
 
-    IREntity::setComponent(mainCanvas, C_OccupancyGrid{256});
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
@@ -383,7 +381,7 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_OCCUPANCY_GRID>(),
+        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),

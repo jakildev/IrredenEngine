@@ -1,28 +1,34 @@
-#ifndef SYSTEM_BUILD_OCCUPANCY_GRID_H
-#define SYSTEM_BUILD_OCCUPANCY_GRID_H
+#ifndef SYSTEM_BUILD_LIGHT_OCCLUSION_GRID_H
+#define SYSTEM_BUILD_LIGHT_OCCLUSION_GRID_H
 
-// Rebuilds the CPU-side 3D occupancy bitfield and uploads it to the SSBO
-// at `kBufferIndex_OccupancyGrid` for downstream lighting compute shaders
-// (COMPUTE_VOXEL_AO, COMPUTE_LIGHT_VOLUME).
+// Rebuilds the camera-anchored 3D light-occlusion bitfield and uploads
+// it to the SSBO at `kBufferIndex_LightOcclusionGrid` for the
+// light-volume propagation compute shader (`COMPUTE_LIGHT_VOLUME`).
 //
 // Must run at the **start of RENDER**, before `VOXEL_TO_TRIXEL_STAGE_1`,
-// so lighting compute passes see the current frame's voxel state.
+// so light-volume propagation sees the current frame's voxel state.
 //
 // The SSBO carries two parallel bitfields after the
-// `OccupancyGridHeader`: the voxel bitfield (consumed by AO + light-volume
-// propagation) and the **light-blocker bitfield** (consumed only by
-// `c_propagate_light_volume`). The blocker bitfield rasterizes SDFs of
-// `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)` entities so they
-// occlude point/spot light propagation, restoring the pre-#359 SDF-LOS
-// behavior the GPU port lost. AO does not read the blocker bitfield, so
-// SDF shapes do not start darkening AO unless their voxel-pool variant is
-// also present.
+// `LightOcclusionGridHeader`: the voxel bitfield (consumed by
+// `c_propagate_light_volume`) and the **light-blocker bitfield**
+// (consumed only by `c_propagate_light_volume`). The blocker bitfield
+// rasterizes SDFs of `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`
+// entities so they occlude point/spot light propagation, restoring the
+// pre-#359 SDF-LOS behavior the GPU port lost. AO does not read either
+// bitfield (it migrated to screen-space neighbour sampling in T-091).
 //
-// Phased-out producer: this system + the OccupancyGrid SSBO it feeds will
-// be deleted in T-09Y once AO migrates to screen-space neighbour sampling
-// (T-09X) and light-volume LOS moves to the GPU (T-072). The sun-shadow
-// path no longer reads it — the screen-space sun-depth bake replaces the
-// 3D occupancy march.
+// T-126: bitfield storage moved into `SystemParams` and the SSBO was
+// renamed from `OccupancyGrid` to `LightOcclusionGrid` to reflect the
+// post-T-091 consumer set; the `C_OccupancyGrid` component opt-in is
+// gone. The system selects the main rendering canvas via
+// `<C_VoxelPool, C_TrixelCanvasRenderBehavior>` and the
+// `useCameraPositionIso_` flag — same gate `COMPUTE_LIGHT_VOLUME` uses.
+//
+// Phased-out producer: this system + the LightOcclusionGrid SSBO it
+// feeds are scheduled for full removal in T-09Y once light-volume LOS
+// moves off the world-space bitfield. T-126 detached the producer from
+// per-canvas component storage so T-092 can delete `C_OccupancyGrid`
+// without touching shader bindings.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -35,7 +41,7 @@
 
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/detail/camera_anchor.hpp>
@@ -52,69 +58,71 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-/// Upper-bound grid edge length the SSBO is sized for — 256³ = 2 MB.
-/// Per-instance `C_OccupancyGrid` components may be smaller, but the
-/// SSBO is fixed so swapping between grid extents doesn't reallocate.
-constexpr int kMaxOccupancyGridSideVoxels = 256;
+/// Edge length of the camera-anchored light-occlusion grid the SSBO is
+/// sized for — 256³ = 2 MB voxel bitfield + 2 MB blocker bitfield.
+constexpr int kMaxLightOcclusionGridSideVoxels = 256;
 
-/// Phase 1c (#360): the SSBO carries a 16-byte header (the camera-
-/// anchored `worldOriginVoxel`) followed by two parallel bitfields — the
-/// voxel occupancy grid (AO + light-volume LOS) followed by the
-/// light-blocker grid (light-volume LOS only, populated from
-/// `C_ShapeDescriptor + C_LightBlocker` entities). Both bitfields share
-/// the same camera-anchored layout so a single world→local index
-/// translation works for either lookup.
-constexpr std::size_t kOccupancyHeaderByteSize = sizeof(OccupancyGridHeader);
-constexpr std::size_t kOccupancyBitfieldByteSize =
-    (static_cast<std::size_t>(kMaxOccupancyGridSideVoxels) *
-     static_cast<std::size_t>(kMaxOccupancyGridSideVoxels) *
-     static_cast<std::size_t>(kMaxOccupancyGridSideVoxels)) /
+/// SSBO layout (Phase 1c / #360): a 16-byte header carrying the camera-
+/// anchored `worldOriginVoxel` followed by two parallel bitfields — the
+/// voxel-existence grid (consumed by `c_propagate_light_volume`)
+/// followed by the light-blocker grid (also consumed only by
+/// `c_propagate_light_volume`, populated from `C_ShapeDescriptor +
+/// C_LightBlocker` entities). Both bitfields share the same camera-
+/// anchored layout so a single world→local index translation works for
+/// either lookup.
+constexpr std::size_t kLightOcclusionHeaderByteSize = sizeof(LightOcclusionGridHeader);
+constexpr std::size_t kLightOcclusionBitfieldByteSize =
+    (static_cast<std::size_t>(kMaxLightOcclusionGridSideVoxels) *
+     static_cast<std::size_t>(kMaxLightOcclusionGridSideVoxels) *
+     static_cast<std::size_t>(kMaxLightOcclusionGridSideVoxels)) /
     8u;
-constexpr std::size_t kOccupancyBitfieldUintCount = kOccupancyBitfieldByteSize / sizeof(std::uint32_t);
-constexpr std::size_t kOccupancySSBOByteSize =
-    kOccupancyHeaderByteSize + 2u * kOccupancyBitfieldByteSize;
+constexpr std::size_t kLightOcclusionBitfieldUintCount =
+    kLightOcclusionBitfieldByteSize / sizeof(std::uint32_t);
+constexpr std::size_t kLightOcclusionSSBOByteSize =
+    kLightOcclusionHeaderByteSize + 2u * kLightOcclusionBitfieldByteSize;
 
 /// Byte offset of the light-blocker bitfield region inside
-/// `OccupancyGridBuffer`. The propagate shader indexes the same `uint[]`
-/// as the voxel bitfield, just shifted by `kOccupancyBitfieldUintCount`.
+/// `LightOcclusionGridBuffer`. The propagate shader indexes the same
+/// `uint[]` as the voxel bitfield, just shifted by
+/// `kLightOcclusionBitfieldUintCount`.
 constexpr std::size_t kLightBlockerBitfieldByteOffset =
-    kOccupancyHeaderByteSize + kOccupancyBitfieldByteSize;
+    kLightOcclusionHeaderByteSize + kLightOcclusionBitfieldByteSize;
 
 namespace detail {
 
-/// Index helpers for the light-blocker bitfield. The bitfield mirrors the
-/// 256³ voxel occupancy grid layout (camera-anchored, `[z][y][x]`
-/// row-major, LSB = cell 0), so the translation matches `flatIndex` in
-/// `C_OccupancyGrid` and `occupancyGetBit` in the propagate shader. Both
-/// the CPU rasterizer here and the GPU lookup must use the same encoding
-/// — see `c_propagate_light_volume.glsl::lightBlockerGetBit`.
-inline bool blockerInBounds(int wx, int wy, int wz, const ivec3 &origin) {
-    constexpr int kHalf = kMaxOccupancyGridSideVoxels / 2;
+/// Index helpers for both bitfields (voxel existence + light blockers).
+/// The two bitfields mirror the same 256³ camera-anchored layout —
+/// `[z][y][x]` row-major, LSB = cell 0 — so the math is identical. Both
+/// the CPU rasterizer here and the GPU lookup must use the same
+/// encoding — see `c_propagate_light_volume.glsl::voxelOcclusionGetBit`
+/// and `lightBlockerGetBit`.
+inline bool gridInBounds(int wx, int wy, int wz, const ivec3 &origin) {
+    constexpr int kHalf = kMaxLightOcclusionGridSideVoxels / 2;
     const int lx = wx - origin.x;
     const int ly = wy - origin.y;
     const int lz = wz - origin.z;
     return lx >= -kHalf && lx < kHalf && ly >= -kHalf && ly < kHalf && lz >= -kHalf && lz < kHalf;
 }
 
-inline std::size_t blockerFlatIndex(int wx, int wy, int wz, const ivec3 &origin) {
-    constexpr std::size_t kHalf = kMaxOccupancyGridSideVoxels / 2;
-    constexpr std::size_t kSize = kMaxOccupancyGridSideVoxels;
+inline std::size_t gridFlatIndex(int wx, int wy, int wz, const ivec3 &origin) {
+    constexpr std::size_t kHalf = kMaxLightOcclusionGridSideVoxels / 2;
+    constexpr std::size_t kSize = kMaxLightOcclusionGridSideVoxels;
     const std::size_t x = static_cast<std::size_t>(wx - origin.x) + kHalf;
     const std::size_t y = static_cast<std::size_t>(wy - origin.y) + kHalf;
     const std::size_t z = static_cast<std::size_t>(wz - origin.z) + kHalf;
     return (z * kSize + y) * kSize + x;
 }
 
-inline void blockerSetBit(
+inline void gridSetBit(
     std::vector<std::uint32_t> &bitfield,
     int wx,
     int wy,
     int wz,
     const ivec3 &origin
 ) {
-    if (!blockerInBounds(wx, wy, wz, origin))
+    if (!gridInBounds(wx, wy, wz, origin))
         return;
-    const std::size_t flat = blockerFlatIndex(wx, wy, wz, origin);
+    const std::size_t flat = gridFlatIndex(wx, wy, wz, origin);
     bitfield[flat >> 5u] |= (1u << (flat & 31u));
 }
 
@@ -139,7 +147,7 @@ inline void rasterizeShapeBlocker(
     const vec4 effectiveParams = IRMath::SDF::effectiveParams(shapeType, shape.params_);
     const vec3 boundingHalf = IRMath::SDF::boundingHalf(shapeType, effectiveParams);
 
-    constexpr int kHalf = kMaxOccupancyGridSideVoxels / 2;
+    constexpr int kHalf = kMaxLightOcclusionGridSideVoxels / 2;
     const int gridXMin = origin.x - kHalf;
     const int gridXMax = origin.x + kHalf - 1;
     const int gridYMin = origin.y - kHalf;
@@ -169,7 +177,7 @@ inline void rasterizeShapeBlocker(
                     shapeWorldPos;
                 if (IRMath::SDF::evaluate(localPos, shapeType, effectiveParams) <=
                     IRMath::SDF::kSurfaceThreshold) {
-                    blockerSetBit(bitfield, wx, wy, wz, origin);
+                    gridSetBit(bitfield, wx, wy, wz, origin);
                 }
             }
         }
@@ -209,10 +217,15 @@ inline std::size_t rasterizeAllBlockers(
 
 } // namespace detail
 
-template <> struct System<BUILD_OCCUPANCY_GRID> {
+template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
     struct Params {
         Buffer *ssbo_ = nullptr;
-        OccupancyGridHeader header_{};
+        LightOcclusionGridHeader header_{};
+        /// CPU mirror of the voxel-existence bitfield, allocated once
+        /// at `create()` and reused every frame. T-126: replaces the
+        /// per-canvas `C_OccupancyGrid::bitfield()` storage so the SSBO
+        /// producer no longer requires the component opt-in.
+        std::vector<std::uint32_t> voxelBitfield_{};
         /// CPU mirror of the light-blocker bitfield. Allocated once at
         /// `create()` and reused every frame.
         std::vector<std::uint32_t> blockerBitfield_{};
@@ -223,28 +236,31 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
         /// upload are skipped while the scene contains zero
         /// `C_LightBlocker(blocksLOS_=true)` shapes — the common case.
         bool prevFrameHadBlockers_ = false;
-        /// Cached per-frame in the per-entity tick, consumed in endTick.
-        /// Raw pointer into the occupancy grid's bitfield vector —
-        /// valid for the duration of one pipeline-stage execution.
+        /// Camera-anchored origin of the current frame's grid. Set by
+        /// the per-entity tick, consumed by the end-tick upload.
         ivec3 origin_{};
-        const std::uint32_t *gridBitfieldData_ = nullptr;
-        std::size_t gridBitfieldByteSize_ = 0;
+        /// Set true by the per-entity tick, false at the end of
+        /// end-tick. Guards the SSBO upload when no canvas matched the
+        /// archetype this frame (defensive — the system normally runs
+        /// once per frame on the main canvas).
+        bool ranThisFrame_ = false;
     };
 
     static SystemId create() {
         IRRender::createNamedResource<Buffer>(
-            "OccupancyGridBuffer",
+            "LightOcclusionGridBuffer",
             nullptr,
-            kOccupancySSBOByteSize,
+            kLightOcclusionSSBOByteSize,
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
-            kBufferIndex_OccupancyGrid
+            kBufferIndex_LightOcclusionGrid
         );
 
         auto paramsOwner = std::make_unique<Params>();
         Params *p = paramsOwner.get();
-        p->ssbo_ = IRRender::getNamedResource<Buffer>("OccupancyGridBuffer");
-        p->blockerBitfield_.assign(kOccupancyBitfieldUintCount, 0u);
+        p->ssbo_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
+        p->voxelBitfield_.assign(kLightOcclusionBitfieldUintCount, 0u);
+        p->blockerBitfield_.assign(kLightOcclusionBitfieldUintCount, 0u);
         // The SSBO is created with `nullptr` initial data, so the
         // blocker region's contents are undefined until the system
         // first uploads. Push a zero-fill once at init so the
@@ -256,25 +272,23 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
             p->blockerBitfield_.data()
         );
 
-        SystemId systemId = createSystem<C_VoxelPool, C_OccupancyGrid>(
-            "BuildOccupancyGrid",
-            [p](IREntity::EntityId, C_VoxelPool &pool, C_OccupancyGrid &grid) {
+        SystemId systemId = createSystem<C_VoxelPool, C_TrixelCanvasRenderBehavior>(
+            "BuildLightOcclusionGrid",
+            [p](IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-                IR_ASSERT(
-                    grid.sizeVoxels() == kMaxOccupancyGridSideVoxels,
-                    "Lighting occupancy shaders currently require a 256^3 grid"
-                );
+                if (!behavior.useCameraPositionIso_)
+                    return;
 
                 // Phase 1c (#360): re-center on the iso camera each
-                // frame. `setBit` / `inBounds` translate world→local
-                // internally, so the populate path stays origin-
-                // agnostic; only the GPU consumers need to know the
-                // anchor (uploaded via the SSBO header below).
-                grid.setWorldOriginVoxel(IRRender::detail::cameraAnchorVoxel());
+                // frame. The CPU bitfield producer and the GPU consumer
+                // both translate world→local against `origin_` /
+                // `worldOriginVoxel` so the populate path stays origin-
+                // agnostic.
+                p->origin_ = IRRender::detail::cameraAnchorVoxel();
 
                 {
-                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Clear", IR_PROFILER_COLOR_RENDER);
-                    std::fill(grid.bitfield().begin(), grid.bitfield().end(), 0u);
+                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Clear", IR_PROFILER_COLOR_RENDER);
+                    std::fill(p->voxelBitfield_.begin(), p->voxelBitfield_.end(), 0u);
                 }
 
                 const auto &globals = pool.getPositionGlobals();
@@ -282,34 +296,30 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                 const int liveCount = pool.getLiveVoxelCount();
 
                 {
-                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Populate", IR_PROFILER_COLOR_RENDER);
+                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Populate", IR_PROFILER_COLOR_RENDER);
                     for (int i = 0; i < liveCount; ++i) {
                         if (colors[i].color_.alpha_ == 0)
                             continue;
                         const vec3 &wp = globals[i].pos_;
                         // Round-half-up — must match the `roundHalfUp(...)`
                         // helper in shaders/ir_iso_common.glsl + .metal. See
-                        // IRMath::roundHalfUp doc-comment for why this rule
-                        // (vs std::lround / glm::round) is required for the
-                        // CPU↔GPU occupancy-grid handshake.
+                        // IRMath::roundVec3HalfUp doc-comment for why this
+                        // rule (vs std::lround / glm::round) is required for
+                        // the CPU↔GPU light-occlusion-grid handshake.
                         const ivec3 cell = IRMath::roundVec3HalfUp(wp);
-                        if (!grid.inBounds(cell.x, cell.y, cell.z))
-                            continue;
-                        grid.setBit(cell.x, cell.y, cell.z);
+                        detail::gridSetBit(p->voxelBitfield_, cell.x, cell.y, cell.z, p->origin_);
                     }
                 }
 
-                p->origin_ = grid.worldOriginVoxel();
-                p->gridBitfieldData_ = grid.bitfield().data();
-                p->gridBitfieldByteSize_ = grid.bitfieldByteSize();
+                p->ranThisFrame_ = true;
             },
-            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_OccupancyGrid); },
+            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid); },
             [p]() {
-                if (p->gridBitfieldData_ == nullptr)
+                if (!p->ranThisFrame_)
                     return;
                 std::size_t blockerCount = 0;
                 {
-                    IR_PROFILE_BLOCK("BuildOccupancyGrid::PopulateBlockers", IR_PROFILER_COLOR_RENDER);
+                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::PopulateBlockers", IR_PROFILER_COLOR_RENDER);
                     // Skip the 2 MB memset + rasterize when we know the
                     // bitfield is already all-zero. After the last
                     // blocker disappears we still need one trailing
@@ -323,13 +333,13 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                 }
 
                 {
-                    IR_PROFILE_BLOCK("BuildOccupancyGrid::Upload", IR_PROFILER_COLOR_RENDER);
+                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Upload", IR_PROFILER_COLOR_RENDER);
                     p->header_.worldOriginVoxel_ = ivec4(p->origin_.x, p->origin_.y, p->origin_.z, 0);
-                    p->ssbo_->subData(0, kOccupancyHeaderByteSize, &p->header_);
+                    p->ssbo_->subData(0, kLightOcclusionHeaderByteSize, &p->header_);
                     p->ssbo_->subData(
-                        static_cast<std::ptrdiff_t>(kOccupancyHeaderByteSize),
-                        p->gridBitfieldByteSize_,
-                        p->gridBitfieldData_
+                        static_cast<std::ptrdiff_t>(kLightOcclusionHeaderByteSize),
+                        p->voxelBitfield_.size() * sizeof(std::uint32_t),
+                        p->voxelBitfield_.data()
                     );
                     // Upload the blocker region only when there are
                     // blockers this frame, OR when there were blockers
@@ -344,16 +354,16 @@ template <> struct System<BUILD_OCCUPANCY_GRID> {
                     }
                 }
                 p->prevFrameHadBlockers_ = (blockerCount > 0);
-                p->gridBitfieldData_ = nullptr;
+                p->ranThisFrame_ = false;
             }
         );
 
         setSystemParams(systemId, std::move(paramsOwner));
-        IRRender::tagGpuStage(systemId, "buildOccupancyGrid");
+        IRRender::tagGpuStage(systemId, "buildLightOcclusionGrid");
         return systemId;
     }
 };
 
 } // namespace IRSystem
 
-#endif /* SYSTEM_BUILD_OCCUPANCY_GRID_H */
+#endif /* SYSTEM_BUILD_LIGHT_OCCLUSION_GRID_H */

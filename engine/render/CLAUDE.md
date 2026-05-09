@@ -73,16 +73,16 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        No CPU upload. The volume is camera-anchored each frame   │
 │        (Phase 1c, #360): worldOriginVoxel_ comes from the iso    │
 │        camera and lives in LightVolumeParams (UBO @ slot 23);    │
-│        the occupancy grid carries its own origin in a 16-byte    │
-│        header at the start of OccupancyGridBuffer (SSBO @ 28).   │
-│        Lights whose rounded world origin falls outside the       │
-│        ±64-voxel window around the camera anchor still drop      │
-│        with a one-shot CPU warning. SDF blockers (`C_Shape-      │
-│        Descriptor + C_LightBlocker(blocksLOS_=true)` entities)   │
-│        are CPU-rasterized into a second bitfield in the same     │
-│        SSBO; the propagate shader OR's both bitfields per        │
-│        neighbor so SDFs occlude point/spot light without         │
-│        affecting AO. See system_build_occupancy_grid.hpp.        │
+│        the light-occlusion grid carries its own origin in a      │
+│        16-byte header at the start of LightOcclusionGridBuffer   │
+│        (SSBO @ 28). Lights whose rounded world origin falls      │
+│        outside the ±64-voxel window around the camera anchor     │
+│        still drop with a one-shot CPU warning. SDF blockers      │
+│        (`C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`    │
+│        entities) are CPU-rasterized into a second bitfield in    │
+│        the same SSBO; the propagate shader OR's both bitfields   │
+│        per neighbor so SDFs occlude point/spot light without     │
+│        affecting AO. See system_build_light_occlusion_grid.hpp.  │
 │      • Per-canvas scope (#363): each canvas's light volume is    │
 │        seeded only from lights with no CHILD_OF parent (world-   │
 │        scope, the back-compat default) plus lights parented to   │
@@ -282,27 +282,28 @@ Lighting splits across two sampling spaces:
   iso-frustum AABB is swept along `-sunDir` by `kSunShadowMaxDistance`
   (64 voxels), so shadow casters within that range project correctly
   even when their iso position is outside the visible rect.
-- **World-space**: AO, flood-fill, and fog-of-war read the
-  world-space occupancy grid. As of Phase 1c (#360) the grid is
-  **camera-anchored** — it covers the 256-voxel cube centered on
-  the iso camera's world voxel rather than a fixed `[-128, 128)`
-  window. Off-screen geometry inside that cube still participates
-  in lighting by design (an off-screen building's voxels still
-  occlude AO crease darkening on adjacent on-screen tiles, and a
-  torch a few voxels off-screen still floods light into on-screen
-  voxels). Geometry farther from the camera than ±128 voxels is
-  outside the grid this frame and contributes nothing — the cull
-  is a side effect of the anchor, not a separate viewport check
-  (invariant 1 below still holds: the grid-build iterates the full
-  pool and writes whichever voxels land in-range).
+- **World-space**: light-volume propagation reads the world-space
+  light-occlusion grid (post-T-091, AO migrated off it). As of
+  Phase 1c (#360) the grid is **camera-anchored** — it covers the
+  256-voxel cube centered on the iso camera's world voxel rather
+  than a fixed `[-128, 128)` window. Off-screen geometry inside that
+  cube still participates in lighting by design (a torch a few
+  voxels off-screen still floods light into on-screen voxels).
+  Geometry farther from the camera than ±128 voxels is outside the
+  grid this frame and contributes nothing — the cull is a side
+  effect of the anchor, not a separate viewport check (invariant 1
+  below still holds: the grid-build iterates the full pool and
+  writes whichever voxels land in-range).
 
-**Phased-out producer:** `BUILD_OCCUPANCY_GRID` and the `OccupancyGrid`
-SSBO are scheduled for removal in T-09Y once AO migrates to screen-space
-neighbour sampling (T-09X) and light-volume LOS moves to the GPU
-(T-072). The single source of truth for "is there geometry along ray R"
-in the long run is `trixelDistances` (and the depth-map bakes derived
-from it); the world-space bitfield is an intermediate that survives only
-because two consumers haven't yet been ported.
+**Phased-out producer:** `BUILD_LIGHT_OCCLUSION_GRID` and the
+`LightOcclusionGrid` SSBO are scheduled for removal in T-09Y once
+light-volume LOS moves off the world-space bitfield. AO already
+migrated to screen-space neighbour sampling (T-091), so the bitfield
+now feeds only `c_propagate_light_volume`. The single source of truth
+for "is there geometry along ray R" in the long run is `trixelDistances`
+(and the depth-map bakes derived from it); the world-space bitfield is
+an intermediate that survives only until the propagate shader migrates
+to a screen-space LOS source.
 
 The four invariants below exist because these are the places easiest to break
 silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
@@ -310,23 +311,26 @@ fog-of-war #170) reviewer should run this checklist. See #196 for the
 architect review that originated them.
 
 The sun-shadow path reads the screen-space sun depth map (baked from
-`trixelDistances`), not the occupancy grid; invariants 1, 2, and 4
-below apply to AO + light-volume only. The shadow-ring (invariant 2)
-is implicitly enforced by the bake AABB sweep — see "Sun shadow bake
-AABB sweep" below.
+`trixelDistances`), not the light-occlusion grid; invariants 1, 2, and
+4 below apply to the light-volume propagate path only (AO migrated to
+screen-space sampling in T-091). The shadow-ring (invariant 2) is
+implicitly enforced by the bake AABB sweep — see "Sun shadow bake AABB
+sweep" below.
 
 ### 1. Grid-build iterates the full voxel pool, not the render-culled subset
 
 `buildChunkVisibilityMask` is a render-pipeline-local mask inside
-`system_voxel_to_trixel`. The occupancy-grid-build system must use its own
-iteration path and must **not** consult that mask. The failure mode is
-sharing a helper that accidentally applies the render cull to the grid build.
+`system_voxel_to_trixel`. The light-occlusion-grid-build system must use
+its own iteration path and must **not** consult that mask. The failure
+mode is sharing a helper that accidentally applies the render cull to
+the grid build.
 
-**Check:** `system_build_occupancy_grid.hpp` does not include
+**Check:** `system_build_light_occlusion_grid.hpp` does not include
 `cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
 
-**Status (T-010, PR #188):** compliant — `System<BUILD_OCCUPANCY_GRID>`
-iterates `pool.getLiveVoxelCount()` on the full pool with no viewport filter.
+**Status (T-010, PR #188; renamed in T-126):** compliant —
+`System<BUILD_LIGHT_OCCLUSION_GRID>` iterates `pool.getLiveVoxelCount()`
+on the full pool with no viewport filter.
 
 ### 2. Shadow-ring extent when chunk streaming activates
 

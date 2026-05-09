@@ -39,9 +39,9 @@ For changed files under `engine/render/`, `engine/prefabs/irreden/render/`, or a
 
 ## Lighting stage (additional checks)
 
-If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`, `system_*fog*`, `system_build_occupancy_grid*`, or `c_compute_*shadow*.glsl` / `.metal`:
+If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`, `system_*fog*`, `system_build_light_occlusion_grid*`, or `c_compute_*shadow*.glsl` / `.metal`:
 
-- **Grid-build code must NOT include `cull_viewport_state.hpp`** or call `visibleIsoViewport`. The occupancy grid covers the full voxel pool; off-screen geometry participates in lighting by design.
+- **Grid-build code must NOT include `cull_viewport_state.hpp`** or call `visibleIsoViewport`. The light-occlusion grid covers the full voxel pool; off-screen geometry participates in lighting by design.
 - **Shadow-ring extent.** When chunk streaming is involved, the resident-chunk set extends past the view frustum by `maxCasterHeight × cot(sunAltitude)` in the sun-projection direction.
 - **Light-seed expansion.** Flood-fill seed gather must NOT filter by `visibleIsoViewport` without expanding by `C_LightSource::radius_`. Off-screen sources within radius must still seed on-screen tiles.
 - **AO/shadow guard band.** When chunk streaming is active, the resident chunk set includes a 1-chunk guard band in all six directions for correct AO neighbor sampling.

@@ -21,7 +21,6 @@
 #include "common/lighting_demo_main.hpp"
 
 #include <irreden/render/components/component_canvas_light_volume.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 namespace {
@@ -36,9 +35,7 @@ void perCanvasScopeScene() {
 
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
 
-    // TODO(T-126): drop C_OccupancyGrid when T-126 migrates COMPUTE_LIGHT_VOLUME archetype.
-    EntityId canvasB =
-        createEntity(C_OccupancyGrid{256}, C_CanvasLightVolume{}, C_TrixelCanvasRenderBehavior{});
+    EntityId canvasB = createEntity(C_CanvasLightVolume{}, C_TrixelCanvasRenderBehavior{});
     setName(canvasB, "scope_canvas_b");
 
     constexpr vec3 lightOriginA{24.0f, 6.0f, -2.0f};
