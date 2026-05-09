@@ -151,23 +151,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Lua-driven ECS: hot-reload of Lua system bodies** — add IRSystem::replaceSystemBody(systemId, newFn) C++ + Lua binding; rebinds sol::function in place with no archetype changes or entity migration; document in engine/script/CLAUDE.md
-  - **ID:** T-103
-  - **Area:** engine/script, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-103-lua-system-body-hot-reload
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) change a math constant in a Regen tick body in main.lua; call IRSystem.replaceSystemBody(regenSystemId, newFn); observe next-tick behavior change without process restart; (2) SystemId unchanged across the body swap; (3) in-flight entities use new body on next tick with no special handling; (4) doc in engine/script/CLAUDE.md alongside existing trait-based binding pattern; (5) fleet-build clean on linux-debug
-  - **Issue:** #491
-  - **Notes:** PR 5 of 6 for parent epic #293. Full architect plan in .fleet/plans/T-103.md. Blocked by T-102 (pipeline + modifier bindings). Component-schema hot-reload is explicitly out of scope (follow-up in docs/design/lua-driven-ecs.md).
-  - **Links:**
-
 - [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
   - **Owner:** claude/T-104-lua-perf-grid
-  - **Blocked by:** T-103
+  - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
   - **Notes:** PR 6 of 6 for parent epic #293 — formal acceptance gate for the entire Lua-driven ECS stack. Full architect plan in .fleet/plans/T-104.md. Blocked by T-103 (hot-reload). If parity gate fails, this PR does not merge; instead amend T-099's design doc with corrective decision (LuaJIT migration, codegen-bound bodies, etc.).
@@ -188,44 +177,44 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT** — add C_HitBox2DGui + HITBOX_MOUSE_TEST_GUI system; priority: GUI > world > trixel; fire Lua onEntityHovered/Clicked from all three paths
+- [~] **Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT** — add C_HitBox2DGui + HITBOX_MOUSE_TEST_GUI system; priority: GUI > world > trixel; fire Lua onEntityHovered/Clicked from all three paths
   - **ID:** T-130
   - **Area:** engine/prefabs/irreden/input
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-130-hover-gui-source
   - **Blocked by:** (none)
   - **Acceptance:** (1) demos with voxel-only hover (no C_HitBox2DGui entities) unchanged; (2) C_HitBox2DGui + SYSTEM_ENTITY_HOVER_DETECT priority ordering (GUI > world > trixel) documented in engine/prefabs/irreden/input/CLAUDE.md; (3) HITBOX_MOUSE_TEST_GUI added to SystemName enum in engine/system/include/irreden/system/ir_system_types.hpp; (4) pipeline order: HITBOX_MOUSE_TEST, HITBOX_MOUSE_TEST_GUI, ENTITY_HOVER_DETECT; (5) fleet-build clean on linux-debug
   - **Issue:** #354
   - **Notes:** #353 (Metal entity-id readback) is closed/resolved. Game-side follow-up (palette_selector.lua, C_HitBox2DGui Lua bindings) is explicitly out of scope for this PR. findFirstHovered should be a per-frame scan in endTick, not per-entity getComponent.
   - **Links:**
 
-- [ ] **Render: widen iso rasterization to shadow-feeder AABB (sun shadow Mitigation A)** — extend VOXEL_TO_TRIXEL and SHAPES_TO_TRIXEL cull region to include shadow-feeder AABB so off-screen casters write to the sun-depth map
+- [~] **Render: widen iso rasterization to shadow-feeder AABB (sun shadow Mitigation A)** — extend VOXEL_TO_TRIXEL and SHAPES_TO_TRIXEL cull region to include shadow-feeder AABB so off-screen casters write to the sun-depth map
   - **ID:** T-131
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-131-shadow-feeder-aabb
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 1/2/4/8 produces shadow silhouettes within ≤1 sun-space texel of legacy DDA reference; (2) tall caster placed just outside iso viewport correctly throws shadow onto visible floor pixel; (3) main_sun_shadow.cpp and main_combined.cpp render with no edge truncation at all four cardinal yaws; (4) per-frame dispatch group count grows by at most 1 + (kSunShadowMaxDistance / iso-extent) over visible-only path; (5) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #443
   - **Notes:** Design doc: docs/design/screen-space-sun-shadow-map.md §"Off-screen shadow casters" lines 217-234. Reuse kSunShadowMaxDistance from system_bake_sun_shadow_map.hpp for sweep extent. Agent to profile approach (1) replace-cull-AABB vs (2) two-AABB-pipeline and pick based on perf. Sibling tickets: T-132 (normal-bias), T-133 (PCF).
   - **Links:**
 
-- [ ] **Render: sun shadow normal-bias offset + slope-scale bias tuning** — offset shadow lookup by outward normal (kNormalBiasVoxels ≈ 0.5) and bump kShadowBiasTexelScale to ~2.0 to eliminate chevron acne on cube tops and SDF spheres
+- [~] **Render: sun shadow normal-bias offset + slope-scale bias tuning** — offset shadow lookup by outward normal (kNormalBiasVoxels ≈ 0.5) and bump kShadowBiasTexelScale to ~2.0 to eliminate chevron acne on cube tops and SDF spheres
   - **ID:** T-132
   - **Area:** shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-132-shadow-normal-bias
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — no chevron/scratch artifacts on cube tops or sphere surfaces; (2) no peter-panning shadow gaps at caster/floor contact edge; (3) main_sun_elevation_orbit runs full sun-direction sweep without per-frame regression artifacts; (4) bias constants in named const float declarations with tuning comment; (5) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #444
   - **Notes:** Edit c_compute_sun_shadow.glsl:113-127 and metal/c_compute_sun_shadow.metal:85-105. Normal-bias offsets the lookup query, NOT the bake write (biasing the bake causes peter-panning). Sibling tickets: T-131 (AABB widening), T-133 (PCF).
   - **Links:**
 
-- [ ] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
+- [~] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
   - **ID:** T-133
   - **Area:** shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-133-2x2-pcf-sun-shadow
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — shadow boundaries soften by ~1 sun-space texel, no jaggies or broken-comb edges; (2) main_sun_shadow.cpp and main_combined.cpp show smooth shadow edges at all four cardinal yaws; (3) per-frame cost regression ≤2% of total render-pipeline time (measure via IR_PROFILE_BLOCK("ComputeSunShadow")); (4) linux-debug OpenGL and macos-debug Metal produce visually equivalent softening; (5) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #445
@@ -246,6 +235,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
 - [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
@@ -262,7 +252,6 @@ Avoid:
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
-- [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
+- [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
 - [x] **T-117** — Render: SDF occlusion in point/spot light line-of-sight · Owner: claude/T-117-sdf-occlusion-light-los · PR: https://github.com/jakildev/IrredenEngine/pull/522
-- [x] **T-119** — Fleet: usage-limit back-off for fleet-dispatcher transient workers · Owner: claude/T-119-dispatcher-rate-limit-backoff · PR: https://github.com/jakildev/IrredenEngine/pull/526
