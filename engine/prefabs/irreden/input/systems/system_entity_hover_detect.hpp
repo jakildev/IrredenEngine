@@ -125,12 +125,14 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             "EntityHoverDetect",
             [](C_EntityHoverDetectTag &) {},
             []() {
-                // Resolve the hovered entity from three sources in priority
-                // order: GUI > world > trixel. GUI/world hitbox flags are
-                // populated upstream (HITBOX_MOUSE_TEST_GUI, HITBOX_MOUSE_TEST)
-                // — we just pick the first hit per source. Tie-break across
-                // entities within a source is archetype iteration order
-                // (deterministic per frame, matches the design in #354).
+                // Runs once per frame in the functionBeginTick slot, after
+                // upstream HITBOX_MOUSE_TEST and HITBOX_MOUSE_TEST_GUI have
+                // populated their `hovered_` flags. Resolves the hovered
+                // entity from three sources in priority order: GUI > world
+                // > trixel — we just pick the first hit per source. Tie-
+                // break across entities within a source is archetype
+                // iteration order (deterministic per frame, matches the
+                // design in #354).
                 IREntity::EntityId guiHovered = IREntity::kNullEntity;
                 IREntity::forEachComponent<C_HitBox2DGui>([&](IREntity::EntityId id,
                                                               C_HitBox2DGui &hb) {
