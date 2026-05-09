@@ -225,11 +225,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
+- [~] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
   - **ID:** T-136
   - **Area:** engine/system, engine/prefabs/irreden/render, engine/prefabs/irreden/input
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-136-register-system-helper
   - **Blocked by:** (none)
   - **Acceptance:** (1) registerSystem<SystemName, Components...>(name) lands in ir_system.hpp with concepts for tick/beginTick/endTick/relationTick hooks; (2) all prefab systems using setSystemParams migrated to member-on-System<N> shape (grep -l "setSystemParams(systemId" engine/prefabs/); (3) engine/system/CLAUDE.md "Per-system parameters" section rewritten with preferred/escape-hatch forms; (4) new test covers all four hooks with per-tick field persistence; (5) no frame-time regression on IRShapeDebug; (6) fleet-build clean on linux-debug
   - **Issue:** #580
@@ -258,6 +258,58 @@ Avoid:
   - **Acceptance:** (1) two concurrent fleet-claim T-X invocations: exactly one succeeds, other exits "already claimed" and writes nothing; (2) after successful claim, TASKS.md on master shows [~] + Owner within 30s; (3) fleet-claim --reclaim T-X resets [~] → [ ] if Owner branch doesn't exist on remote
   - **Issue:** #583
   - **Notes:** Filed from T-130 double-claim incident (PRs #575 + #579). Model-tag gate is a separate issue (#582, T-137). Implementation: ephemeral branch claude/queue-claim-T-NNN, one-line TASKS.md update pushed before worker starts feature branch; direct push or tiny merger-handled PR both viable.
+  - **Links:**
+
+
+- [ ] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
+  - **ID:** T-106
+  - **Area:** engine/script, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-105
+  - **Stack:** T-106..T-109 codegen-pipeline
+  - **Acceptance:** (1) new codegen tool at cmake/lua_codegen/ — takes list of .lua files + output .hpp path, language choice documented in PR body; (2) emits struct C_Name in namespace IRComponents + matching _lua.hpp binding (kHasLuaBinding<C_Name>, bindLuaType<C_Name>, sol::usertype with field accessors) + registration helper calling IREntity::EntityManager::registerComponent<C_Name>() for every IRComponent.register("Name", {...}) call found; (3) type inference: int→int32_t, float, bool, string; explicit typed form ({field = {type="float", default=100}}) honored; unsupported defaults error with file/line/field name; (4) CMake helper irreden_lua_codegen(<target> SOURCES <lua_files...> OUTPUT_HPP <path>) with add_custom_command in cmake/ir_functions.cmake; (5) smoke test: C_Hp{current=100, max=100} round-trip (Lua creates entity → C++ reads back) passes; (6) test/script/lua_component_register_test.cpp passes under CODEGEN mode (test-harness toggle EVAL vs. CODEGEN); (7) fleet-build --target IrredenEngineTest clean + all existing tests pass
+  - **Issue:** #586
+  - **Notes:** PR 1 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-105 (LuaJIT migration). Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Precedent for add_custom_command shape: creations/demos/lua_pipeline_demo/CMakeLists.txt lines 21–36. Out of scope: system bodies (T-107), mode override (T-108), demo migration (T-109).
+  - **Links:**
+
+
+- [ ] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
+  - **ID:** T-107
+  - **Area:** engine/script, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-106
+  - **Stack:** T-106..T-109 codegen-pipeline
+  - **Acceptance:** (1) codegen tool parses DSL subset: canonical loop (for i=0, arch.length-1 do), column ops (arch.Component:at/setAt/getField/setField), Component.new(), arithmetic/comparison/logical ops, if/elseif/else, local declarations, whitelisted intrinsics; (2) emits template<> struct System<NAME> specialisations in namespace IRSystem with tick(arch_ref) member + static SystemId create() using registerSystem<> (if T-136 landed) or createSystem+setSystemParams; (3) out-of-DSL features produce build errors with file/line/feature name; test cases assert specific error messages for: closures, metatables, require, unsupported loop forms; (4) intrinsic whitelist config table (Lua→C++ template): math.sin/cos/tan/atan/sqrt/abs/floor/ceil/min/max + IRMath.lerp/clamp; extensible by adding table entries; (5) test/script/lua_system_register_test.cpp passes under CODEGEN mode; (6) fleet-build --target IrredenEngineTest clean + all existing tests pass
+  - **Issue:** #587
+  - **Notes:** PR 2 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-106. Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Out of scope: per-system mode override (T-108), demo migration (T-109).
+  - **Links:**
+
+
+- [ ] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
+  - **ID:** T-108
+  - **Area:** engine/script, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-107
+  - **Stack:** T-106..T-109 codegen-pipeline
+  - **Acceptance:** (1) IRSystem.registerSystem({mode="eval"|"codegen",...}) opts system out/in; absent mode uses creation default; unknown values are codegen errors; (2) CMake IR_LUA_ECS_DEFAULT_MODE cache var per creation (CODEGEN default or EVAL); irreden_lua_codegen helper gains DEFAULT_MODE param; (3) EVAL-mode systems emit stubs calling bindLuaDrivenEcs() → IRSystem::createSystemDynamic() at runtime; CODEGEN systems emit C++ as in T-107; same SystemId space; (4) coexistence test: two systems in one Lua file (one CODEGEN, one EVAL) — both register, both tick, EVAL is hot-reloadable, CODEGEN hot-reload attempt errors with "hot-reload not supported in CODEGEN mode for system 'Name'; mark mode='eval' or rebuild"; (5) T-103 hot-reload continues working for EVAL systems; (6) engine/script/CLAUDE.md updated with mode semantics + CMake flag + hot-reload-only-in-EVAL contract; engine/CLAUDE.md style section gets CODEGEN-as-default bullet; (7) fleet-build clean under both IR_LUA_ECS_DEFAULT_MODE=CODEGEN and =EVAL; all tests pass under both
+  - **Issue:** #588
+  - **Notes:** PR 3 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-107. Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Out of scope: demo migration (T-109).
+  - **Links:**
+
+
+- [ ] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
+  - **ID:** T-109
+  - **Area:** engine/script, creations/demos/lua_perf_grid
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-108
+  - **Stack:** T-106..T-109 codegen-pipeline
+  - **Acceptance:** (1) lua_perf_grid/ migrated to CODEGEN; fleet-build --target IRLuaPerfGrid clean under IR_LUA_ECS_DEFAULT_MODE=CODEGEN; fleet-run produces same populated lattice as C++ baseline; (2) CODEGEN wave-system per-tick measured at 16³ (4096 entities) and 64³ (262144 entities): ≤1.5× C++ perf_grid wave system; actual ratio documented; (3) EVAL build (IR_LUA_ECS_DEFAULT_MODE=EVAL) profiled same configs: ~2–10× C++ (informational, not a gate); (4) docs/design/lua-driven-ecs.md retrospective updated: original ≥10000× failure, LuaJIT-only intermediate, CODEGEN final (gate number), architect rationale; (5) PR #563 rebased + body amended with measurements, merged; epic #293 amended + closed; #566 closed; (6) fleet-build --target IrredenEngineTest clean under both modes; full test suite passes. If gate fails (>1.5×): do NOT close #293; amend docs/design/lua-driven-ecs.md with corrective decision instead
+  - **Issue:** #589
+  - **Notes:** PR 4 of 4 (final) for Lua codegen stack (T-106..T-109 codegen-pipeline); closes Lua-driven ECS epic #293 and corrective-decision issue #566. Blocked by T-108. Design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Predecessors: #585 (T-105), #586 (T-106), #587 (T-107), #588 (T-108).
   - **Links:**
 
 
