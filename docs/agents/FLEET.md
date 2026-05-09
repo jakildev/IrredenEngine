@@ -312,12 +312,16 @@ Two stacking modes exist in this fleet:
    - **Clean rebase** → force-push #101, post a confirmation
      comment, leave existing approval labels intact.
    - **Conflict** → add `fleet:needs-base-update` to #101, name
-     the conflict files, leave it for Worker B to reconcile via the
-     normal `human:needs-fix` / `fleet:needs-fix` feedback loop.
+     the conflict files, leave it for Worker B (or an opus-worker)
+     to reconcile manually with `git rebase origin/<baseRefName>`;
+     the label clears when they push a clean rebase or when the
+     upstream merges.
 6. **PR #100 merges.** The merger re-targets #101's base from
    `claude/T-X-…` to `master` (existing re-target logic, unchanged)
    and removes `fleet:stacked`. PR #101 is now a standard PR vs
-   `master`.
+   `master`. The merger also adds `fleet:stacked-rebase` and
+   `fleet:changes-made` — the reviewer's re-eval of the re-targeted
+   diff is the action `fleet:stacked-rebase` is waiting for.
 
 **Design decisions (v1):**
 
@@ -420,6 +424,20 @@ Specifically, **never pass these via `--label` when filing**:
   **author** rebases manually onto the new upstream tip and removes
   the label, or an **opus-worker** drives the resolution similar to
   `fleet:semantic-conflict`.
+- `fleet:awaiting-upstream-review` — owned by the **reviewer**. Set
+  on a stacked child PR when the upstream PR is not yet approved
+  (the child's review is deferred until the upstream verdict
+  lands). Cleared by the **reviewer** on the next pass once the
+  upstream has been approved or merged, or implicitly cleared as
+  part of any subsequent verdict label-swap (the reviewer's
+  approve/has-nits/needs-fix/blocker commands all remove it).
+- `fleet:stacked-rebase` — owned by the **merger** (sets in step
+  2.5 ii alongside `fleet:changes-made` when re-targeting a stacked
+  child PR to `master` after the upstream merges, signalling that
+  the diff against the new base may differ from the prior review).
+  Cleared by the **reviewer** on the post-rebase verdict (the same
+  label-swap commands that handle `fleet:awaiting-upstream-review`
+  remove it).
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the
