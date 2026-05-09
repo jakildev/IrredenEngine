@@ -59,7 +59,9 @@ TEST_F(CHitBox2DGuiScanTest, ScanFindsHoveredEntities) {
         }
     );
 
-    EXPECT_NE(firstHovered, IREntity::kNullEntity);
-    EXPECT_NE(firstHovered, e1);
-    EXPECT_TRUE(firstHovered == e2 || firstHovered == e3);
+    // All three entities share the same archetype (just `C_HitBox2DGui`),
+    // so `forEachComponent` walks them in insertion order: e1 (not hovered,
+    // skipped), e2 (hovered, locked in as firstHovered), e3 (hovered but
+    // firstHovered already set). e2 is the documented tie-break.
+    EXPECT_EQ(firstHovered, e2);
 }
