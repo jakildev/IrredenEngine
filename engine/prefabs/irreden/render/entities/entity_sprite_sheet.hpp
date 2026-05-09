@@ -65,9 +65,8 @@ buildFrameTable(IRMath::uvec2 atlasSizePx, const IRAsset::SpriteSheetMeta &meta)
 ///   - @p name .irsprite — sidecar metadata (see @c IRAsset::loadSpriteSheetMeta).
 ///
 /// The returned component owns a GPU Texture2D identified by
-/// @c sheet.textureHandle_.  The caller is responsible for releasing it via
-/// @c IRRender::destroyResource<IRRender::Texture2D>(sheet.textureHandle_)
-/// when the sheet is no longer needed.
+/// @c sheet.textureHandle_.  The texture is freed automatically when the
+/// entity that holds the component is destroyed (@c C_SpriteSheet::onDestroy).
 inline IRComponents::C_SpriteSheet
 loadSpriteSheet(const std::string &name, const std::string &path) {
     IRAsset::SpriteSheetMeta meta = IRAsset::loadSpriteSheetMeta(name, path);
