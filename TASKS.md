@@ -209,11 +209,11 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
-- [ ] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
+- [~] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
   - **ID:** T-115
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-115-cross-author-stacking-docs
   - **Blocked by:** (none)
   - **Acceptance:** (1) docs/agents/FLEET.md has "Cross-author stacking (scheduler)" section with full lifecycle walkthrough; (2) Q1 (only-if-no-unblocked), Q2 (merger-driven hybrid rebase), Q3 (single-blocker-only v1) decisions documented; (3) v1 limitations listed (engine-only, single-blocker, multi-blocker not eligible); (4) pointer to fleet-claim and fleet-state-scout for implementation detail; (5) no other docs changed
   - **Issue:** #501
@@ -243,22 +243,22 @@ Avoid:
   - **Notes:** Path 1 (standalone bitfield producer, recommended): move SSBO production out of C_OccupancyGrid lifecycle; bit-packing and camera-anchor math already in system_build_occupancy_grid.hpp. Path 2 (trixelDistances LOS) is the long-term direction per engine/render/CLAUDE.md but higher complexity — out of scope for this targeted unblock. Key files: system_compute_light_volume.hpp (remove C_OccupancyGrid from archetype, use standalone produced SSBO), c_propagate_light_volume.glsl and .metal (remove OccupancyGrid binding), creations demo callsites (remove C_OccupancyGrid setComponent). Also covers findings from issues #524 and #530 (parallel escalations of the same hidden consumer). T-117 (PR #522, SDF occlusion) added a second bitfield region (lightBlockerGetBit) to the same SSBO — if #522 is already merged, include that region in the migration too.
   - **Links:**
 
-- [ ] **Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call** — shrink role-queue-manager.md from ~800 lines to ~150; replace bookkeeping steps with fleet-tasks-render --in-place; keep ingestion path LLM-driven
+- [~] **Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call** — shrink role-queue-manager.md from ~800 lines to ~150; replace bookkeeping steps with fleet-tasks-render --in-place; keep ingestion path LLM-driven
   - **ID:** T-127
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-127-queue-manager-fleet-tasks-render
   - **Blocked by:** (none)
   - **Acceptance:** (1) queue-manager iteration with no pending ingestion completes in <30s and produces clean git status; (2) iteration interrupted mid-ingestion recoverable — next iteration reruns renderer, same output; (3) fleet-tasks-render auto-detects ghost rows (stale [~] whose PR merged to master) and flips them; (4) role doc is ~150 lines after edit
   - **Issue:** #554
   - **Notes:** PR 3 of 4 in queue-manager-as-state-machine plan. Depends on PR #552 (event-driven trigger) and PR #553 (fleet-tasks-render), both merged. Soak fleet-tasks-render for ~24h in production before landing. Files: .claude/commands/role-queue-manager.md (large deletion, lines ~250-650 replaced with renderer call + ingestion append path).
   - **Links:**
 
-- [ ] **Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane** — replace queue-manager LLM iterations with fleet-queue-tick shell wrapper; TASKS.md flips within ~60s of a PR merge; zero sonnet credit on queue-manager
+- [~] **Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane** — replace queue-manager LLM iterations with fleet-queue-tick shell wrapper; TASKS.md flips within ~60s of a PR merge; zero sonnet credit on queue-manager
   - **ID:** T-128
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-128-queue-manager-scout-driven-script
   - **Blocked by:** T-127
   - **Acceptance:** (1) zero queue-manager LLM dispatch lines in dispatcher.log under normal flow; (2) TASKS.md flips within ~60s of a PR merge; (3) concurrent fleet-queue-tick invocations: second no-ops via lockfile; (4) push-race handled (rebase + retry in wrapper); (5) fleet-up correctly removes or repurposes queue-manager pane
   - **Issue:** #555
