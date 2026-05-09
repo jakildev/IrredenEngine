@@ -24,6 +24,8 @@ _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 project_queue_manager = _mod.project_queue_manager
 slice_queue_manager = _mod.slice_queue_manager
+project_queue_manager_ingest = _mod.project_queue_manager_ingest
+slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
 stable_hash = _mod.stable_hash
 
 
@@ -108,6 +110,61 @@ class SlicerExposesMergedPRs(unittest.TestCase):
         self.assertEqual(len(out["recent_merged_prs"]), 1)
         self.assertEqual(out["recent_merged_prs"][0]["number"], 540)
         self.assertEqual(out["recent_merged_prs"][0]["repo"], "engine")
+
+
+class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
+    """The queue-manager-ingest projection drives auto-spawning of
+    fleet-queue-ingest. Hash flips ONLY when the human-approved-not-
+    yet-queued set changes."""
+
+    def test_empty_state_is_stable(self):
+        h1 = stable_hash(project_queue_manager_ingest(_state()))
+        h2 = stable_hash(project_queue_manager_ingest(_state()))
+        self.assertEqual(h1, h2)
+
+    def test_new_human_approved_issue_flips_hash(self):
+        before = stable_hash(project_queue_manager_ingest(_state()))
+        after = stable_hash(project_queue_manager_ingest(_state(
+            engine_human_approved=[
+                {"number": 9001, "title": "Feature X",
+                 "labels": ["human:approved"]},
+            ],
+        )))
+        self.assertNotEqual(before, after,
+                            "new human:approved issue must flip ingest hash")
+
+    def test_same_set_does_not_flip(self):
+        approved = [{"number": 9001, "title": "Feature X",
+                     "labels": ["human:approved"]}]
+        h1 = stable_hash(project_queue_manager_ingest(_state(
+            engine_human_approved=approved)))
+        h2 = stable_hash(project_queue_manager_ingest(_state(
+            engine_human_approved=approved)))
+        self.assertEqual(h1, h2,
+                         "stable set must not flip hash (no spurious spawns)")
+
+    def test_set_shrink_also_flips_hash(self):
+        # Post-ingestion: issue gets fleet:queued and drops out of
+        # human_approved (fetch_human_approved excludes fleet:queued).
+        # Hash flips again, fleet-queue-ingest re-fires, finds empty set,
+        # exits in <1s. One wasted spawn per ingestion cycle, acceptable.
+        with_issue = stable_hash(project_queue_manager_ingest(_state(
+            engine_human_approved=[
+                {"number": 9001, "title": "Feature X",
+                 "labels": ["human:approved"]},
+            ],
+        )))
+        empty = stable_hash(project_queue_manager_ingest(_state()))
+        self.assertNotEqual(with_issue, empty)
+
+    def test_slice_emits_pending_issues_list(self):
+        approved = [{"number": 9001, "title": "Feature X",
+                     "labels": ["human:approved"]}]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=approved))
+        self.assertIn("pending_issues", out)
+        self.assertEqual(len(out["pending_issues"]), 1)
+        self.assertEqual(out["pending_issues"][0]["number"], 9001)
+        self.assertEqual(out["pending_issues"][0]["repo"], "engine")
 
 
 if __name__ == "__main__":

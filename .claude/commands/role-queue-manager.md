@@ -41,18 +41,27 @@ only need to add new `[ ]` rows and keep human-authored fields accurate.
 
 ## When to invoke this role
 
-This role is now a **Cursor-flow / human-paired operation** for
-ingestion only. The dispatcher does NOT launch an LLM iteration
-automatically. Invoke manually when:
+Two invocation modes:
 
-- A batch of `human:approved` issues needs to be filed into TASKS.md
-- A `fleet:needs-plan` issue has received Opus planning and needs an entry
-- You need to manually triage an unusual issue not fitting the normal flow
+1. **Auto-ingest (no human in the loop).** `fleet-state-scout`
+   detects a new `human:approved` issue (i.e., the
+   `human:approved AND NOT fleet:queued` set has grown) and spawns
+   `fleet-queue-ingest`, which runs this role with
+   `$ARGUMENTS=ingest`. You read the queue-manager-ingest projection,
+   ingest each pending issue, commit + push, then exit. No prompt,
+   no human paste.
+2. **Cursor-flow / human-paired.** Operator runs
+   `claude /role-queue-manager` (no argument) interactively to
+   triage an unusual issue or re-ingest after a partial failure.
+   You print the standby prompt and wait for paste input.
 
 ## Startup actions
 
 0. Print your role banner:
-   `[queue-manager] Task intake — ingests approved issues into TASKS.md. Manual/Cursor-flow only.`
+   - If `$ARGUMENTS` is `ingest`:
+     `[queue-manager] Auto-ingest mode — processing pending human:approved issues.`
+   - Otherwise:
+     `[queue-manager] Task intake — ingests approved issues into TASKS.md. Cursor-flow / interactive.`
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
 3. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`.
@@ -64,8 +73,18 @@ automatically. Invoke manually when:
 6. Read tool → `~/.fleet/state/projections/queue-manager.json`. If
    missing or `generated_at` older than ~5 minutes: print
    `scout cache stale or missing — run fleet-up` and exit.
-7. Print: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done`
-   then: `queue-manager standing by — paste a task description and I will categorize and file it`.
+7. Read tool → `~/.fleet/state/projections/queue-manager-ingest.json`
+   to see the pending-ingestion set.
+8. Print: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done · P pending ingest`.
+   - **If `$ARGUMENTS` is `ingest`:** if `pending_issues` is empty,
+     print `[queue-manager] No pending issues; exiting.` and end the
+     turn (no further tool calls — claude --print exits naturally).
+     Otherwise: process every issue in `pending_issues`
+     non-interactively per the Ingestion flow below, commit + push
+     each as you go, then end the turn.
+   - **Otherwise (interactive):** print
+     `queue-manager standing by — paste a task description and I will categorize and file it`
+     and wait for human input.
 
 ## Ingestion flow
 
