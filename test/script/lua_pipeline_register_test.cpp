@@ -2,6 +2,7 @@
 
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_position_3d_lua.hpp>
 #include <irreden/common/modifier.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -63,6 +64,45 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         lua.script("return IRSystem.SystemName.FRAMEBUFFER_TO_SCREEN").get<int>(),
         static_cast<int>(IRSystem::FRAMEBUFFER_TO_SCREEN)
     );
+}
+
+// ---- IRComponent.C_Name handle (C++ component handle exposure) -----------
+
+TEST_F(LuaPipelineRegisterTest, CppComponentHandleAvailableAfterRegisterType) {
+    m_lua.registerTypeFromTraits<IRComponents::C_Position3D>();
+    auto &lua = m_lua.lua();
+    // Handle table should exist with a non-zero componentId.
+    auto tableResult = lua.safe_script(
+        "return type(IRComponent.C_Position3D) == 'table'",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(tableResult.valid()) << tableResult.get<sol::error>().what();
+    EXPECT_TRUE(tableResult.get<bool>());
+
+    auto idResult = lua.safe_script(
+        "return (IRComponent.C_Position3D.componentId or 0) ~= 0",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(idResult.valid());
+    EXPECT_TRUE(idResult.get<bool>());
+
+    // The handle should be usable directly in a components list.
+    auto sysResult = lua.safe_script(
+        R"(
+        local sysId = IRSystem.registerSystem({
+            name = "HandleTestSys",
+            components = { IRComponent.C_Position3D },
+            tick = function(arch) end,
+        })
+        return type(sysId) == "number"
+    )",
+        sol::script_pass_on_error
+    );
+    if (!sysResult.valid()) {
+        sol::error err = sysResult;
+        FAIL() << err.what();
+    }
+    EXPECT_TRUE(sysResult.get<bool>());
 }
 
 // ---- registerPrefabSystem + IRSystem.systemId -----------------------------

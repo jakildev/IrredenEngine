@@ -41,19 +41,22 @@
 namespace IRScript::detail {
 
 // Bind `IRTime.UPDATE / RENDER / INPUT / START / END` as integer table
-// entries. The underlying `IRTime::Events` enum is C-style; this exposes
-// the canonical names by which Lua callers spell pipeline events.
+// entries. The underlying `IRTime::Events` enum is C-style; `IR_BIND_TIME`
+// derives each key from the enum name via stringization (same pattern as
+// `IR_BIND_SYS` below) so the table key stays in sync with the enum.
 inline void bindIRTimeEvents(LuaScript &script) {
     sol::state &lua = script.lua();
     if (lua["IRTime"].valid()) {
         return; // idempotent
     }
     sol::table t = lua.create_table();
-    t["UPDATE"] = static_cast<lua_Integer>(IRTime::UPDATE);
-    t["RENDER"] = static_cast<lua_Integer>(IRTime::RENDER);
-    t["INPUT"] = static_cast<lua_Integer>(IRTime::INPUT);
-    t["START"] = static_cast<lua_Integer>(IRTime::START);
-    t["END"] = static_cast<lua_Integer>(IRTime::END);
+#define IR_BIND_TIME(name) t[#name] = static_cast<lua_Integer>(IRTime::name)
+    IR_BIND_TIME(UPDATE);
+    IR_BIND_TIME(RENDER);
+    IR_BIND_TIME(INPUT);
+    IR_BIND_TIME(START);
+    IR_BIND_TIME(END);
+#undef IR_BIND_TIME
     lua["IRTime"] = t;
 }
 

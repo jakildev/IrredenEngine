@@ -261,6 +261,14 @@ class LuaScript {
                 }
             };
         m_cppColumnAccessors[componentId] = std::move(accessor);
+
+        // Only if bindLuaDrivenEcs() ran first — that table is the gate.
+        if (m_lua["IRComponent"].valid()) {
+            sol::table handle = m_lua.create_table();
+            handle["typeName"] = name;
+            handle["componentId"] = static_cast<lua_Integer>(componentId);
+            m_lua["IRComponent"][name] = handle;
+        }
     }
 
     template <typename Component>

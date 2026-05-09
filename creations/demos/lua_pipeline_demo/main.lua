@@ -16,7 +16,7 @@ local tickCounterSysId = IRSystem.registerSystem({
     -- of including this Lua system is to verify pipeline composition
     -- mixes prefab and Lua-defined SystemIds in the same list without
     -- crashing.
-    components = { "C_Position3D" },
+    components = { IRComponent.C_Position3D },
     tick = function(arch)
         -- Body stays trivial; the demo's success signal is the engine
         -- reaching the game loop with a Lua-driven pipeline + exiting

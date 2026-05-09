@@ -117,8 +117,8 @@ component sets and a tick body, both resolved against the same
 ```lua
 local sysId = IRSystem.registerSystem({
     name = "MoveByVelocity",
-    components = { "C_Position3D", "C_Velocity3D", C_Marker },  -- string OR handle
-    excludes = { "C_NoMove" },
+    components = { IRComponent.C_Position3D, IRComponent.C_Velocity3D, C_Marker },
+    excludes = { IRComponent.C_NoMove },
     tick = function(arch)
         for i = 0, arch.length - 1 do
             local pos = arch.C_Position3D:at(i)
@@ -129,15 +129,28 @@ local sysId = IRSystem.registerSystem({
 })
 ```
 
-- **Component name resolution.** Strings are resolved against the
-  Lua-name registry populated by `LuaScript::registerType` (so any
-  component included in the creation's `lua_component_pack` is
-  matchable by its bound name) and against the dynamic component
-  registry (Lua-defined components by user name). Tables holding a
-  numeric `componentId` field — i.e. the handle returned by
-  `IRComponent.register` — are accepted directly. Any other entry, or
-  a string that doesn't resolve in either registry, raises a Lua-side
-  error pointing at the `lua_component_pack`.
+- **Component handle rule.** Always reference engine C++ components in
+  `components` / `excludes` lists using the `IRComponent.C_Name` handle,
+  never as a bare string like `"C_Position3D"`. After `bindLuaDrivenEcs()`
+  + `registerType<T>("C_Name", ...)`, `IRComponent.C_Name` is a handle
+  table `{ typeName, componentId }` identical in shape to what
+  `IRComponent.register` returns for Lua-defined components. Both forms
+  resolve via `resolveComponentEntry` in `lua_script.cpp`. Using handles
+  instead of strings means a typo or missing `registerType` call surfaces
+  immediately as a nil-access error at startup, not a silent no-match at
+  runtime.
+- **Component name resolution (resolver details).** The resolver accepts:
+  1. `IRComponent.C_Name` (table with `componentId`) — preferred for
+     C++ components registered by the creation's `lua_component_pack`.
+  2. The handle returned by `IRComponent.register("Hp", {...})` — for
+     Lua-defined components; assign the returned handle to a local and
+     pass it directly (e.g. `local C_Hp = IRComponent.register(...)`
+     then `components = { C_Hp }`).
+  3. Bare strings — still accepted by the resolver but discouraged for
+     C++ components (use handle form instead). Strings remain the only
+     option for Lua-defined components whose handle is not in scope.
+  Any entry that doesn't resolve raises a Lua error pointing at the
+  missing `registerType` or `IRComponent.register` call.
 - **Archetype-batched dispatch.** The tick body fires once per
   matched archetype per pipeline tick — *not* once per entity. Per-
   entity work happens entirely inside Lua via the column views, so
@@ -194,7 +207,7 @@ local SystemName = IRSystem.SystemName
 
 local luaSysId = IRSystem.registerSystem({
     name = "MyLuaSys",
-    components = { "C_Position3D" },
+    components = { IRComponent.C_Position3D },
     tick = function(arch) ... end,
 })
 
@@ -209,11 +222,16 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
 ```
 
 - **`IRTime.{UPDATE, RENDER, INPUT, START, END}`** — pipeline event tags.
+  Always spell these via `IRTime.X` in Lua (never a bare integer literal).
+  On the C++ binding side, new event entries must be added via the
+  `IR_BIND_TIME(name)` macro in `bindIRTimeEvents` (not a hand-written
+  string literal) so the Lua table key stays derived from the enum name.
 - **`IRSystem.SystemName.X`** — every prefab-system enum value, exposed as
   an integer table. The list lives in
   `engine/script/include/irreden/script/lua_pipeline_bindings.hpp`; new
   prefab systems must be appended there alongside the
-  `engine/system/include/irreden/system/ir_system_types.hpp` entry,
+  `engine/system/include/irreden/system/ir_system_types.hpp` entry
+  using the `IR_BIND_SYS(name)` macro (not a hand-written string literal),
   and deleted values must be removed from both.
 - **`IRSystem.systemId(name)`** — returns the cached `SystemId` for a
   prefab system the C++ side registered via
@@ -294,6 +312,17 @@ Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 - **Trait missing → link error.** `registerTypeFromTraits<T>()`
   `static_assert`s on `kHasLuaBinding<T>`. Forgetting the `_lua.hpp`
   include gives a cryptic linker error, not a runtime failure.
+- **`registerType` name must match the C++ class name exactly.** The string
+  passed to `registerType<C_Foo, ...>("C_Foo", ...)` becomes the Lua-visible
+  name AND the `IRComponent.C_Foo` handle key. Using a non-canonical name
+  (e.g. `"Foo"` for `C_Foo`) breaks the `IRComponent.C_Foo` spelling and
+  causes confusing nil-access errors. Convention: always pass the literal
+  class name as the binding string.
+- **`IRComponent.C_Name` requires `bindLuaDrivenEcs()` first.** The handle
+  is populated in `recordComponentLuaName`, which only writes to
+  `IRComponent[name]` if that table already exists. Call
+  `script.bindLuaDrivenEcs()` before any `script.registerType<T>()` call
+  that expects Lua code to reference the component by handle.
 - **Entity-creation helpers max 12 components.** The batch-create bindings
   are hardcoded up to 12 template args; larger bundles need a native
   helper or a restructure.
