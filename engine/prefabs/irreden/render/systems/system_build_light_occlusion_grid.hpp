@@ -17,18 +17,14 @@
 // pre-#359 SDF-LOS behavior the GPU port lost. AO does not read either
 // bitfield (it migrated to screen-space neighbour sampling in T-091).
 //
-// T-126: bitfield storage moved into `SystemParams` and the SSBO was
-// renamed from `OccupancyGrid` to `LightOcclusionGrid` to reflect the
-// post-T-091 consumer set; the `C_OccupancyGrid` component opt-in is
-// gone. The system selects the main rendering canvas via
+// The system selects the main rendering canvas via
 // `<C_VoxelPool, C_TrixelCanvasRenderBehavior>` and the
 // `useCameraPositionIso_` flag — same gate `COMPUTE_LIGHT_VOLUME` uses.
+// Bitfield storage lives in `SystemParams` (no per-canvas component opt-in).
 //
 // Phased-out producer: this system + the LightOcclusionGrid SSBO it
 // feeds are scheduled for full removal in T-09Y once light-volume LOS
-// moves off the world-space bitfield. T-126 detached the producer from
-// per-canvas component storage so T-092 can delete `C_OccupancyGrid`
-// without touching shader bindings.
+// moves off the world-space bitfield.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -222,9 +218,7 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         Buffer *ssbo_ = nullptr;
         LightOcclusionGridHeader header_{};
         /// CPU mirror of the voxel-existence bitfield, allocated once
-        /// at `create()` and reused every frame. T-126: replaces the
-        /// per-canvas `C_OccupancyGrid::bitfield()` storage so the SSBO
-        /// producer no longer requires the component opt-in.
+        /// at `create()` and reused every frame.
         std::vector<std::uint32_t> voxelBitfield_{};
         /// CPU mirror of the light-blocker bitfield. Allocated once at
         /// `create()` and reused every frame.

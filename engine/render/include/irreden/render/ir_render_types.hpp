@@ -331,10 +331,8 @@ constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
 constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
-// T-126 renamed this slot from `kBufferIndex_OccupancyGrid` to reflect
-// the post-T-091 consumer set: the SSBO at slot 28 now feeds only the
-// light-volume propagate shader (voxel-existence + SDF-blocker bits),
-// not AO or sun-shadow.
+// Slot 28: feeds only the light-volume propagate shader (voxel-existence
+// + SDF-blocker bits). Neither AO nor sun-shadow reads this SSBO.
 constexpr std::uint32_t kBufferIndex_LightOcclusionGrid = 28;
 constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
