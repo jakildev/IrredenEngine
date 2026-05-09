@@ -5,11 +5,11 @@ paths:
   - "creations/**/system_*.{hpp,cpp}"
 ---
 
-# System state lives in SystemParams, never function-local static
+# System state lives on System<N> or in SystemParams, never function-local static
 
 Rule:
 
-> **Never** use function-local `static` for *mutable* or *system-owned* state inside a system tick or its `create()` function. Use `SystemParams` instead.
+> **Never** use function-local `static` for *mutable* or *system-owned* state inside a system tick or its `create()` function. Use the member-on-`System<N>` form (preferred) or the explicit `SystemParams` form.
 
 Allowed: `static constexpr`, `static const` for genuine compile-time constants. Those are program constants, not system state.
 
@@ -22,9 +22,38 @@ Function-local `static` for system state is broken on four axes:
 3. **Single-instance assumption** — all instances of `System<X>` share the same statics. Multi-instance use silently cross-talks.
 4. **Conflicts with the ECS philosophy** — "everything on an entity" is the design; statics are the back door.
 
-The performance argument doesn't hold either: `SystemParams` has the same per-tick access cost as `static`. Capture the params pointer once at `create()` time, pass it into lambdas by value — the pointer lookup happens once, not per tick.
+The performance argument doesn't hold either: both supported forms have the same per-tick access cost as `static`. The instance pointer is captured into the lambdas at `create()` time — the lookup happens once, not per tick.
 
-## Canonical SystemParams pattern
+## Preferred: member-on-`System<N>` via `registerSystem`
+
+State lives as fields on the `System<N>` specialization itself; hooks are named member functions:
+
+```cpp
+template <> struct System<MY_NAME> {
+    int counter_ = 0;             // params live as members
+
+    void beginTick() { counter_ = 0; }
+    void tick(C_Foo &foo) { counter_ += foo.x; }
+    void endTick() { /* flush counter_ */ }
+
+    static SystemId create() {
+        return registerSystem<MY_NAME, C_Foo>("MyName");
+    }
+};
+```
+
+`registerSystem<N, Components...>(name, relationParams = {})`:
+
+- `Components...` accepts the same `Exclude<...>` markers as `createSystem`.
+- `tick(...)` is required — three accepted signatures (per-component, per-entity-id, per-archetype batch); the helper picks the right one by member detection.
+- `beginTick()`, `endTick()`, `relationTick(RelComps&...)` are optional — wired only when defined on `System<N>`.
+- The instance is `std::make_unique<System<N>>()`, owned by the system entity's params slot, freed when the system is destroyed.
+
+Read the instance back via `getSystemParams<System<N>>(systemId)` (tests, diagnostics).
+
+## Explicit: `Params` + `setSystemParams` (escape hatch)
+
+The pre-`registerSystem` pattern. Same lifetime, same per-tick cost, more boilerplate. Reach for this when you need a custom params lifetime, multiple distinct params types per system, or you're maintaining an existing system already on this shape:
 
 ```cpp
 SystemId create() {
@@ -41,11 +70,9 @@ SystemId create() {
 }
 ```
 
-Notes:
+Notes (apply to both forms):
 
-- Allocate a `std::make_unique<MyParams>()`, capture its `.get()` pointer **before** the move.
-- The lambdas capture `p` by value. `p` outlives the lambdas because `setSystemParams` transfers ownership to the system entity.
-- The system entity owns the params; both are destroyed together when the system is destroyed.
+- The instance pointer is captured by value; it outlives the lambdas because the system entity owns the allocation.
 - **Don't store raw references to params across frames** — if the system is recreated (e.g. via reload), the pointer is invalid.
 
 ## Three valid TICK function signatures

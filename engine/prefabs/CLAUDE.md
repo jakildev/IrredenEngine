@@ -19,11 +19,14 @@ when you open any C++ file. The capsules here are reminders.
   Use `IRMath::vec3` not `glm::vec3`, `IRMath::clamp` not `std::clamp`,
   `IRMath::kPi` not `glm::pi<float>()`. Need a primitive that isn't
   there? Add the wrapper to `engine/math/` first, then call it.
-- **System state lives in `SystemParams`.** Never function-local
-  `static` for mutable or system-owned state — `static constexpr` /
-  `static const` for genuine compile-time constants is fine. Capture
-  the `SystemParams` pointer once in `create()`, pass into lambdas by
-  value (same per-tick cost). The full canonical pattern lives in
+- **System state lives on `System<N>` or in `SystemParams`.** Never
+  function-local `static` for mutable or system-owned state —
+  `static constexpr` / `static const` for genuine compile-time
+  constants is fine. Prefer the **member-on-`System<N>`** form via
+  `IRSystem::registerSystem<N, Cs...>(name)` (params as fields,
+  hooks as named member functions); the explicit `Params` +
+  `setSystemParams` form remains supported as an escape hatch.
+  Both forms have the same per-tick cost. Full pattern in
   [`engine/system/CLAUDE.md`](../system/CLAUDE.md) and
   [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md).
 - **No per-entity `getComponent` inside a system tick.** Add the
@@ -155,7 +158,9 @@ and should be moved to a system, builder, or namespace.
 - ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component
   including `audio/` component). Prefabs are grouped by domain on purpose;
   cross-domain composition belongs in a creation.
-- ❌ Function-local `static` for system-owned state. Use `SystemParams`
-  instead — same per-tick cost, correct lifetime, multi-instance safe.
-  See `engine/system/CLAUDE.md` "Don't use function-local `static` for
-  system state" for the rule, rationale, and canonical pattern.
+- ❌ Function-local `static` for system-owned state. Use the
+  member-on-`System<N>` form via `registerSystem` (preferred) or the
+  explicit `Params` + `setSystemParams` form — both have the same
+  per-tick cost, correct lifetime, and are multi-instance safe.
+  See `engine/system/CLAUDE.md` "Per-system parameters" for the
+  rule, rationale, and canonical patterns.

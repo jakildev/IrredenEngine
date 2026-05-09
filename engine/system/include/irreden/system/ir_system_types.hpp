@@ -112,7 +112,12 @@ enum SystemName {
     CAMERA_MOUSE_PAN,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
-    ENTITY_CANVAS_TO_FRAMEBUFFER
+    ENTITY_CANVAS_TO_FRAMEBUFFER,
+
+    // Reserved for tests of the registerSystem<> member-on-System<N>
+    // helper. Do not use from a creation or prefab system.
+    TEST_REGISTER_SYSTEM_A,
+    TEST_REGISTER_SYSTEM_B
 };
 
 template <typename... RelationComponents> struct RelationParams {
