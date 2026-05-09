@@ -181,7 +181,7 @@ Avoid:
   - **ID:** T-130
   - **Area:** engine/prefabs/irreden/input
   - **Model:** opus
-  - **Owner:** claude/T-130-hover-gui-source
+  - **Owner:** claude/T-130-gui-hitbox-source
   - **Blocked by:** (none)
   - **Acceptance:** (1) demos with voxel-only hover (no C_HitBox2DGui entities) unchanged; (2) C_HitBox2DGui + SYSTEM_ENTITY_HOVER_DETECT priority ordering (GUI > world > trixel) documented in engine/prefabs/irreden/input/CLAUDE.md; (3) HITBOX_MOUSE_TEST_GUI added to SystemName enum in engine/system/include/irreden/system/ir_system_types.hpp; (4) pipeline order: HITBOX_MOUSE_TEST, HITBOX_MOUSE_TEST_GUI, ENTITY_HOVER_DETECT; (5) fleet-build clean on linux-debug
   - **Issue:** #354
