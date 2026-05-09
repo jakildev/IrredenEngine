@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+# fleet-gate-status — read-only view of dispatcher gating state.
+#
+# Visualises whether fleet-dispatcher is currently throttling new work
+# and, if so, when it will resume. Two sources:
+#
+#   1. Fleet-wide usage gate — based on rate_limit_event observations
+#      latched by fleet-claude-stream into ~/.fleet/state/usage/*.json.
+#      Mirrors fleet-dispatcher's usage_gate_status(): same threshold
+#      lookup, same staleness check, same past-resetsAt prune. If those
+#      rules change there, mirror the change here. (`fleet-dispatcher
+#      --gate-status` exposes a one-line variant of the same evaluation.)
+#
+#   2. Per-pane cooldowns — fleet-dispatch-wrap writes a Unix epoch to
+#      ~/.fleet/state/rate-limit/<pane_key>.ts when claude exits with
+#      code 2 (suspected wall-hit). The pane stays out of dispatch for
+#      LIMIT_DELAY seconds (default 900).
+#
+# Pure read-only: no mutations, no daemon contact. The dispatcher itself
+# auto-resumes when each rate-limit window's resetsAt passes — this
+# command does NOT trigger resume; it just shows the current state.
+
+set -euo pipefail
+
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+USAGE_DIR="$STATE_DIR/usage"
+RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+
+# Same env vars and defaults as fleet-dispatcher, so output cannot
+# disagree with what the dispatcher actually evaluates.
+USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
+POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
+
+JSON=0
+case "${1:-}" in
+    -h|--help)
+        cat <<'EOF'
+fleet-gate-status — read-only view of fleet-dispatcher gating.
+
+  fleet-gate-status            human-readable summary
+  fleet-gate-status --json     machine-readable JSON
+  fleet-gate-status -h|--help  this help
+
+Reports both:
+  • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
+  • per-pane cooldowns (15-min default after a pane exits with code 2)
+
+Auto-resume is automatic: when a rate-limit window's resetsAt timestamp
+passes, the dispatcher re-opens the gate on its next poll (~10s). This
+command only visualises state — it does NOT trigger resume.
+
+State sources (read-only):
+  ~/.fleet/state/usage/*.json         (written by fleet-claude-stream)
+  ~/.fleet/state/rate-limit/*.ts      (written by fleet-dispatch-wrap)
+
+Tunables (env, shared with fleet-dispatcher):
+  FLEET_DISPATCHER_USAGE_GATE_<TYPE>  per-type threshold (e.g. _FIVE_HOUR=0.7)
+  FLEET_DISPATCHER_USAGE_GATE         global threshold override
+  FLEET_DISPATCHER_USAGE_STALE_SECONDS  default 3600
+  FLEET_DISPATCHER_LIMIT_DELAY        default 900
+  FLEET_DISPATCHER_INTERVAL           default 10
+EOF
+        exit 0
+        ;;
+    --json)
+        JSON=1
+        ;;
+    "")
+        ;;
+    *)
+        echo "fleet-gate-status: unknown arg '$1' (try --help)" >&2
+        exit 2
+        ;;
+esac
+
+export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS LIMIT_DELAY \
+       POLL_INTERVAL_SECONDS JSON
+
+# Pass through any per-type / global override env vars that fleet-dispatcher
+# reads, so threshold lookup matches the dispatcher's view.
+if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
+    export FLEET_DISPATCHER_USAGE_GATE
+fi
+for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' || true); do
+    export "$_gate_var"
+done
+
+python3 - <<'PY'
+import json
+import os
+import pathlib
+import sys
+import time
+from datetime import datetime, timezone
+
+usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
+ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
+stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
+poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
+emit_json = os.environ.get("JSON") == "1"
+
+# Mirrors fleet-dispatcher:482-518. Keep in sync.
+BUILTIN_PER_TYPE_DEFAULTS = {
+    "seven_day": 0.95,
+    "five_hour": 0.80,
+}
+BUILTIN_FALLBACK = 0.80
+
+
+def threshold_for(rate_limit_type):
+    safe = "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+    if safe:
+        var = f"FLEET_DISPATCHER_USAGE_GATE_{safe}"
+        if var in os.environ and os.environ[var]:
+            try:
+                return float(os.environ[var])
+            except ValueError:
+                pass
+    glob = os.environ.get("FLEET_DISPATCHER_USAGE_GATE", "")
+    if glob:
+        try:
+            return float(glob)
+        except ValueError:
+            pass
+    return BUILTIN_PER_TYPE_DEFAULTS.get(rate_limit_type or "", BUILTIN_FALLBACK)
+
+
+def parse_resets(value):
+    """Return a tz-aware datetime for the observation's resetsAt.
+
+    The CLI has shipped resetsAt in two shapes — ISO-8601 string with Z
+    suffix, and Unix epoch int/float. Accept both so the gate evaluation
+    matches the dispatcher's usage_gate_status().
+    """
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
+
+
+def fmt_duration(seconds):
+    if seconds is None:
+        return "?"
+    if seconds < 0:
+        return "expired"
+    if seconds < 60:
+        return f"{seconds}s"
+    m, s = divmod(seconds, 60)
+    if m < 60:
+        return f"{m}m {s}s" if s else f"{m}m"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m" if m else f"{h}h"
+
+
+now = int(time.time())
+
+# --- Usage gate -----------------------------------------------------------
+
+observations = []
+breaches = []
+
+if usage_dir.is_dir():
+    for path in sorted(usage_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        util = data.get("utilization")
+        if not isinstance(util, (int, float)):
+            continue
+        observed_at = data.get("observed_at")
+        is_stale = (
+            isinstance(observed_at, (int, float))
+            and now - int(observed_at) > stale_s
+        )
+        resets_raw = data.get("resetsAt")
+        resets_dt = parse_resets(resets_raw)
+        # ISO-8601 for display so int-epoch payloads don't render as raw numbers.
+        resets_at_str = (
+            resets_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            if resets_dt is not None
+            else (resets_raw if isinstance(resets_raw, str) else None)
+        )
+        is_past = resets_dt is not None and resets_dt.timestamp() <= now
+        eta_s = (
+            int(resets_dt.timestamp() - now) if resets_dt is not None else None
+        )
+
+        util_f = float(util)
+        # Defensive: API returns [0,1] today; tolerate a future [0,100].
+        if util_f > 1.5:
+            util_f = util_f / 100.0
+        rl_type = data.get("rateLimitType", path.stem)
+        thr = threshold_for(rl_type)
+
+        active = not is_stale and not is_past
+        breaching = active and util_f >= thr
+
+        obs = {
+            "rateLimitType": rl_type,
+            "utilization": round(util_f, 4),
+            "threshold": thr,
+            "resetsAt": resets_at_str,
+            "etaSeconds": eta_s,
+            "observed_at": observed_at,
+            "stale": is_stale,
+            "past_reset": is_past,
+            "breaching": breaching,
+        }
+        observations.append(obs)
+        if breaching:
+            breaches.append(obs)
+
+gate_state = "closed" if breaches else "open"
+
+# --- Per-pane cooldowns ---------------------------------------------------
+
+cooldowns = []
+if ratelimit_dir.is_dir():
+    for path in sorted(ratelimit_dir.glob("*.ts")):
+        try:
+            ts = int(path.read_text().strip())
+        except (OSError, ValueError):
+            continue
+        elapsed = now - ts
+        remaining = limit_delay - elapsed
+        cooldowns.append({
+            "pane": path.stem,
+            "hit_at": ts,
+            "remaining": max(0, remaining),
+            "expired": remaining <= 0,
+        })
+
+active_cooldowns = [c for c in cooldowns if not c["expired"]]
+
+# --- Output ---------------------------------------------------------------
+
+if emit_json:
+    out = {
+        "gate": gate_state,
+        "breaching": breaches,
+        "observations": observations,
+        "cooldowns": cooldowns,
+        "thresholds_in_effect": {
+            "five_hour": threshold_for("five_hour"),
+            "seven_day": threshold_for("seven_day"),
+        },
+        "limit_delay_seconds": limit_delay,
+        "usage_stale_seconds": stale_s,
+        "poll_interval_seconds": poll_s,
+        "now": now,
+    }
+    print(json.dumps(out, indent=2, sort_keys=True))
+    sys.exit(0)
+
+print("fleet-gate-status — read-only view of dispatcher gating")
+print()
+
+if not observations:
+    print("Fleet-wide usage gate: OPEN")
+    print("  no observations yet (no claude rate_limit_event seen since fleet started)")
+else:
+    label = "CLOSED" if gate_state == "closed" else "OPEN"
+    print(f"Fleet-wide usage gate: {label}")
+
+    def fmt_obs(o, prefix, threshold_text, suffix=""):
+        pct = int(round(o["utilization"] * 100))
+        eta = (
+            f" (in {fmt_duration(o['etaSeconds'])})"
+            if o["etaSeconds"] is not None and o["etaSeconds"] > 0
+            else ""
+        )
+        resets_part = f" resets={o['resetsAt']}" if o.get("resetsAt") else ""
+        return (
+            f"  {prefix:<10} {o['rateLimitType']} "
+            f"util={pct}% {threshold_text}{suffix}{resets_part}{eta}"
+        )
+
+    for o in sorted(breaches, key=lambda x: x["utilization"], reverse=True):
+        thr_pct = int(round(o["threshold"] * 100))
+        print(fmt_obs(o, "breaching:", f"(>= {thr_pct}%)"))
+    for o in observations:
+        if o["breaching"] or o["stale"] or o["past_reset"]:
+            continue
+        thr_pct = int(round(o["threshold"] * 100))
+        print(fmt_obs(o, "other:", f"(< {thr_pct}%)"))
+    for o in observations:
+        if not (o["stale"] or o["past_reset"]):
+            continue
+        reasons = "/".join(
+            r for r, on in (("stale", o["stale"]), ("past-reset", o["past_reset"])) if on
+        )
+        print(fmt_obs(o, "pruned:", f"[{reasons}]"))
+
+print()
+if active_cooldowns:
+    print(f"Per-pane cooldowns: {len(active_cooldowns)} active")
+    for c in active_cooldowns:
+        hit_iso = datetime.fromtimestamp(c["hit_at"], tz=timezone.utc) \
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(
+            f"  {c['pane']:<10} {fmt_duration(c['remaining'])} remaining "
+            f"(cooldown {limit_delay}s, hit {hit_iso})"
+        )
+else:
+    print("Per-pane cooldowns: none active")
+
+print()
+print(f"Note: dispatcher polls every {poll_s}s; resume happens within ~{poll_s}s of reset.")
+PY

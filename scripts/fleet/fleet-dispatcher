@@ -538,15 +538,19 @@ for path in sorted(usage_dir.glob("*.json")):
     if isinstance(observed_at, (int, float)) and now - int(observed_at) > stale_s:
         continue
     resets_at = data.get("resetsAt")
+    # rate_limit_info ships resetsAt as either an ISO-8601 string or a
+    # Unix epoch int/float depending on CLI version — handle both.
     if isinstance(resets_at, str):
         try:
-            # API returns ISO-8601 with Z suffix; datetime.fromisoformat
-            # accepts +00:00 but not Z until 3.11 — sub it.
+            # datetime.fromisoformat accepts +00:00 but not Z until 3.11.
             dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
             if dt.timestamp() <= now:
                 continue
         except ValueError:
             pass
+    elif isinstance(resets_at, (int, float)):
+        if resets_at <= now:
+            continue
     util_f = float(util)
     # Utilization comes back in [0,1]. Be defensive against a future
     # API that sends a percent in [0,100] (the chat-formatter prints
