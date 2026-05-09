@@ -1011,7 +1011,34 @@ def tick_once():
         except Exception as e:
             log(f"projector {role} failed: {e}")
             continue
-        if update_role_trigger(role, projection):
+        if role == "queue-manager":
+            # queue-manager maintenance is now script-driven.
+            # Invoke fleet-queue-tick directly on projection change instead
+            # of writing a trigger for the dispatcher to consume with an LLM.
+            new_hash = stable_hash(projection)
+            seen_file = SEEN_DIR / role
+            try:
+                old_hash = seen_file.read_text().strip()
+            except FileNotFoundError:
+                old_hash = ""
+            if new_hash != old_hash:
+                write_atomic(seen_file, new_hash + "\n")
+                try:
+                    tick_cmd = subprocess.run(
+                        ["which", "fleet-queue-tick"],
+                        capture_output=True, text=True,
+                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-tick")
+                    subprocess.Popen(
+                        [tick_cmd],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    log("queue-manager: spawned fleet-queue-tick (projection changed)")
+                    triggers_fired.append("queue-manager(queue-tick)")
+                except Exception as e:
+                    log(f"queue-manager: failed to spawn fleet-queue-tick: {e}")
+        elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 
     for role, slicer in SLICERS.items():
