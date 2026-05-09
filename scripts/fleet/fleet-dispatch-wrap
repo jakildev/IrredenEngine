@@ -28,6 +28,14 @@ ROLE="${4:?fleet-dispatch-wrap: missing role}"
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
+# Expose the role's model tier so fleet-claim can enforce the model-tag gate.
+# fleet-claim refuses claims when FLEET_ROLE_MODEL != the task's Model: field.
+if [[ "$MODEL" == *opus* ]]; then
+    export FLEET_ROLE_MODEL=opus
+else
+    export FLEET_ROLE_MODEL=sonnet
+fi
+
 claude --model "$MODEL" --effort "$EFFORT" --print \
     --output-format stream-json --include-partial-messages --verbose \
     "/role-$ROLE live" | fleet-claude-stream

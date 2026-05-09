@@ -287,6 +287,75 @@ sys.exit(0)
 PYEOF
 }
 
+# --- model-tag gate -------------------------------------------------------
+
+check_model_tag() {
+    # Refuse the claim if the calling role's model doesn't match the task's
+    # Model: field in TASKS.md. Gate is opt-in — no-op when:
+    #   • FLEET_ROLE_MODEL is unset or empty (manual / ad-hoc claim)
+    #   • task has no Model: field in TASKS.md
+    # Exits non-zero on mismatch; caller should return 1.
+    local task_id="$1"
+    local role_model="${FLEET_ROLE_MODEL:-}"
+
+    if [[ -z "$role_model" ]]; then
+        return 0
+    fi
+
+    local tasks_file=""
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -n "$repo_root" && -f "$repo_root/TASKS.md" ]]; then
+        tasks_file="$repo_root/TASKS.md"
+    fi
+
+    if [[ -z "$tasks_file" || ! -f "$tasks_file" ]]; then
+        return 0
+    fi
+
+    python3 - "$task_id" "$tasks_file" "$role_model" <<'PYEOF'
+import sys, re
+
+task_id = sys.argv[1]
+tasks_file = sys.argv[2]
+role_model = sys.argv[3].lower()
+
+with open(tasks_file) as f:
+    content = f.read()
+
+current_id = None
+task_model = None
+
+for line in content.splitlines():
+    if re.match(r'^- \[.\] \*\*.+\*\*', line):
+        current_id = None
+        continue
+
+    m_id = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m_id:
+        current_id = m_id.group(1).strip()
+        continue
+
+    m_model = re.match(r'^\s+- \*\*Model:\*\*\s*(.+)', line)
+    if m_model and current_id == task_id:
+        task_model = m_model.group(1).strip().lower()
+        break
+
+if task_model is None:
+    sys.exit(0)
+
+if task_model != role_model:
+    print(
+        f"fleet-claim: refuse {task_id} — tagged [{task_model}], "
+        f"this role is [{role_model}]; use a [{task_model}] agent",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+sys.exit(0)
+PYEOF
+}
+
 # --- subcommands ----------------------------------------------------------
 
 cmd_claim() {
@@ -376,6 +445,13 @@ cmd_claim() {
         if ! check_blockers "$task_id"; then
             return 1
         fi
+    fi
+
+    # Model-tag gate: refuse when FLEET_ROLE_MODEL is set and doesn't match
+    # the task's Model: field. No-op when FLEET_ROLE_MODEL is unset or the
+    # task has no Model: field.
+    if ! check_model_tag "$task_id"; then
+        return 1
     fi
 
     # Reservation gate: refuse if the task is reserved for a different
