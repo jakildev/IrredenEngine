@@ -209,17 +209,6 @@ Avoid:
   - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
   - **Links:**
 
-- [~] **Docs: cross-author stacking lifecycle in FLEET.md** — new "Cross-author stacking (scheduler)" subsection covering full lifecycle (claim → PR open → reviewer gate → upstream feedback rebase → upstream merge re-target), Q1/Q2/Q3 decisions, and v1 limitations
-  - **ID:** T-115
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-115-cross-author-stacking-docs
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) docs/agents/FLEET.md has "Cross-author stacking (scheduler)" section with full lifecycle walkthrough; (2) Q1 (only-if-no-unblocked), Q2 (merger-driven hybrid rebase), Q3 (single-blocker-only v1) decisions documented; (3) v1 limitations listed (engine-only, single-blocker, multi-blocker not eligible); (4) pointer to fleet-claim and fleet-state-scout for implementation detail; (5) no other docs changed
-  - **Issue:** #501
-  - **Notes:** PR 6 of 6 for #501 — lands last, closes the tracking issue. Full architect plan in .fleet/plans/T-110.md.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -229,28 +218,6 @@ Avoid:
   - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #366
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
-  - **Links:**
-
-- [~] **Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call** — shrink role-queue-manager.md from ~800 lines to ~150; replace bookkeeping steps with fleet-tasks-render --in-place; keep ingestion path LLM-driven
-  - **ID:** T-127
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-127-queue-manager-fleet-tasks-render
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) queue-manager iteration with no pending ingestion completes in <30s and produces clean git status; (2) iteration interrupted mid-ingestion recoverable — next iteration reruns renderer, same output; (3) fleet-tasks-render auto-detects ghost rows (stale [~] whose PR merged to master) and flips them; (4) role doc is ~150 lines after edit
-  - **Issue:** #554
-  - **Notes:** PR 3 of 4 in queue-manager-as-state-machine plan. Depends on PR #552 (event-driven trigger) and PR #553 (fleet-tasks-render), both merged. Soak fleet-tasks-render for ~24h in production before landing. Files: .claude/commands/role-queue-manager.md (large deletion, lines ~250-650 replaced with renderer call + ingestion append path).
-  - **Links:**
-
-- [~] **Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane** — replace queue-manager LLM iterations with fleet-queue-tick shell wrapper; TASKS.md flips within ~60s of a PR merge; zero sonnet credit on queue-manager
-  - **ID:** T-128
-  - **Area:** tooling, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-128-queue-manager-scout-driven-script
-  - **Blocked by:** T-127
-  - **Acceptance:** (1) zero queue-manager LLM dispatch lines in dispatcher.log under normal flow; (2) TASKS.md flips within ~60s of a PR merge; (3) concurrent fleet-queue-tick invocations: second no-ops via lockfile; (4) push-race handled (rebase + retry in wrapper); (5) fleet-up correctly removes or repurposes queue-manager pane
-  - **Issue:** #555
-  - **Notes:** PR 4 of 4 in queue-manager-as-state-machine plan. Irreversible — soak T-127 for ~1 week in production before landing. New file: scripts/fleet/fleet-queue-tick (30-line wrapper). Also modifies: fleet-state-scout (inline call on projection change), fleet-up (remove pane), install.sh (symlink), docs/agents/FLEET.md.
   - **Links:**
 
 - [~] **Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles** — extend fleet-up's bootstrap-trigger block to cover sonnet-author, opus-worker, sonnet-reviewer, and opus-reviewer so they fire on first scout tick after fleet-down/up when their projections have actionable work
@@ -277,6 +244,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-queue-manager-scout-driven-script · PR: https://github.com/jakildev/IrredenEngine/pull/558
+- [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
+- [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
 - [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
@@ -294,6 +264,3 @@ Avoid:
 - [x] **T-110** — fleet-claim: stackable-on claim mode + helpers · Owner: claude/T-110-stackable-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/525
 - [x] **T-114** — Reviewer: cross-author stacked-PR awareness · Owner: claude/T-114-reviewer-stacked-pr-awareness · PR: https://github.com/jakildev/IrredenEngine/pull/518
 - [x] **T-101** — Lua-driven ECS: Lua-defined systems with archetype-batched dispatch · Owner: claude/T-101-lua-systems · PR: https://github.com/jakildev/IrredenEngine/pull/517
-- [x] **T-100** — Lua-driven ECS: Lua-defined components with type inference · Owner: claude/T-100-lua-components · PR: https://github.com/jakildev/IrredenEngine/pull/508
-- [x] **T-108** — Docs: replace stale fleet-babysit references in transient role docs · Owner: claude/T-108-docs-fleet-dispatcher-refs · PR: https://github.com/jakildev/IrredenEngine/pull/511
-- [x] **T-107** — Fleet: fix pane_is_running_claude for macOS version-string process names · Owner: claude/T-107-pane-is-running-claude-fix · PR: https://github.com/jakildev/IrredenEngine/pull/510
