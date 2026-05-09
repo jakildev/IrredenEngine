@@ -712,6 +712,9 @@ def merger_actionable(p):
 def author_worker_actionable(p):
     return bool(p.get("tasks_open")) or bool(p.get("feedback_prs"))
 
+def opus_worker_actionable(p):
+    return author_worker_actionable(p) or bool(p.get("needs_plan"))
+
 def sonnet_reviewer_actionable(p):
     return bool(p.get("candidate_prs"))
 
@@ -721,7 +724,7 @@ def opus_reviewer_actionable(p):
 for role, predicate in [
     ("merger", merger_actionable),
     ("sonnet-author", author_worker_actionable),
-    ("opus-worker", author_worker_actionable),
+    ("opus-worker", opus_worker_actionable),
     ("sonnet-reviewer", sonnet_reviewer_actionable),
     ("opus-reviewer", opus_reviewer_actionable),
 ]:
