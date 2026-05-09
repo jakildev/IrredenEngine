@@ -143,30 +143,50 @@ exit cleanly:
    stacked-PR check need. (Cached equivalent of the previous
    `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
-2.5. **Reconcile `fleet:awaiting-base` / `fleet:needs-base-update`
-   labels.** Step 3's filter skips PRs carrying either label, but
-   they're only removed inside sub-case ii / iii of step 5a.5 —
-   which doesn't run if the PR was skipped. Without this
-   reconciliation pass, once the merger labels a stacked PR
-   `fleet:awaiting-base` (from step 5a.5 i — child CONFLICTING with
-   master) or `fleet:needs-base-update` (from step 2.6 — child
-   stale vs upstream tip and cascade-rebase failed), it keeps
-   skipping forever even after the base PR merges. This step
-   closes the loop for both labels — the merge / close transition
-   is the same regardless of which entry path set them.
+2.5. **Reconcile stacked PRs whose base has merged or closed —
+   retarget proactively, label-independent.** Two failure modes
+   this step has to cover:
 
-   From `repos.engine.prs[]`, collect every PR whose `labels`
-   contains `fleet:awaiting-base` OR `fleet:needs-base-update`
-   (a PR may carry both; processing it once is sufficient — the
-   cleanup actions below remove both regardless). For each such
-   PR, look up its base PR's state:
+   1. **Labeled stacked PRs.** The merger sometimes sets
+      `fleet:awaiting-base` (step 5a.5 sub-case i — child
+      CONFLICTING because base merged) or `fleet:needs-base-update`
+      (step 2.6 — child stale vs upstream tip and cascade-rebase
+      failed). Step 3's filter skips PRs carrying either label, so
+      without this pass they never advance after their base
+      transitions.
+   2. **Unlabeled stacked PRs whose base just merged
+      (PR-#558 case).** A child that stays `MERGEABLE` against its
+      OLD base after the base merges keeps `baseRefName` pointing
+      at the stale `claude/<parent>` branch. If a human clicks
+      merge, GitHub merges to the stale base, NOT master — content
+      ends up on a branch that's unreachable from `origin/master`.
+      The merger normally sets `fleet:awaiting-base` only when the
+      child becomes CONFLICTING; a still-mergeable child gets no
+      label and slips past every guard.
+
+   This step covers both: scan every stacked PR (any
+   `baseRefName != "master"`) regardless of label state, and
+   retarget the moment the base lands.
+
+   From `repos.engine.prs[]`, collect every PR where:
+   - `baseRefName != "master"` (stacked PR), AND
+   - `labels` contains NONE of `fleet:wip`, `human:wip`,
+     `fleet:fork-of-other-pr`, `fleet:merger-cooldown`,
+     `fleet:semantic-conflict`.
+
+   `fleet:awaiting-base` and `fleet:needs-base-update` are NOT in
+   the skip set — those PRs are exactly the labeled-population
+   case from (1). `fleet:stacked` is also fine here for the same
+   reason. For each such PR, look up its base PR's state:
 
    `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
    Three outcomes:
 
-   - **Base PR is OPEN** — leave the label in place; nothing to do.
-     The base hasn't landed yet.
+   - **Base PR is OPEN** — nothing to do; the base hasn't landed
+     yet. (The PR may already carry `fleet:awaiting-base` or
+     `fleet:stacked` from an earlier pass; leave those in place
+     so step 3 keeps skipping.)
 
    - **Base PR is MERGED** — run the same actions as step 5a.5
      sub-case ii (lines starting "Base PR is MERGED" below):
@@ -175,9 +195,12 @@ exit cleanly:
      stale-tip mark from step 2.6 is moot once the base lands),
      post the "base merged, re-targeted" comment, add
      `fleet:stacked-rebase`, `fleet:changes-made`,
-     `fleet:merger-cooldown`. The PR's diff against master may
-     differ from the previous review; reviewer re-evaluates next
-     pass. Log: `... reconcile: base #<N> merged, re-targeted to master`.
+     `fleet:merger-cooldown`. `gh pr edit --remove-label X` is a
+     no-op when the label isn't present, so the same command list
+     covers both the labeled-population and the unlabeled-stacked
+     cases. The PR's diff against master may differ from the
+     previous review; reviewer re-evaluates next pass. Log:
+     `... reconcile: base #<N> merged, re-targeted to master`.
 
    - **Base PR is CLOSED (not merged)** — run sub-case iii actions:
      post the "base closed without merging" comment, remove
