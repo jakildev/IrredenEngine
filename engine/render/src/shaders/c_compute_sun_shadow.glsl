@@ -67,10 +67,15 @@ float unpackSunDepth(uint packed) {
     return float(packed) / kSunDepthScale - kSunDepthOffset;
 }
 
-// Bias must cover the worst-case sunZ variation between iso pixels that
-// share a sun-space texel — roughly `texelSize / slope` voxels for slope =
-// dot(faceNormal, sunDir). Below that, a flat surface self-shadows.
-const float kShadowBiasTexelScale = 1.0;
+// Normal-bias offset pushes the lookup point along the face's outward
+// normal before projecting into sun-space, preventing self-shadow acne on
+// cube tops and SDF spheres caused by adjacent-face pixels rounding to the
+// same sun-texel. Tune via render-debug-loop on shape_debug.
+const float kNormalBiasVoxels = 0.5;
+// Slope-scale bias covers the worst-case sunZ variation between iso pixels
+// that share a sun-space texel — roughly texelSize/slope voxels. Below
+// that threshold a flat surface self-shadows. Tune via render-debug-loop on shape_debug.
+const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
 const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
@@ -100,14 +105,21 @@ void main() {
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
     );
 
+    int face = encoded & 3;
+    vec3 normal = faceOutwardNormal(face);
+
     // Screen-space lookup against the bake output. sunZ is negated
     // (smaller = closer to sun) so the bake's atomicMin stores the
-    // nearest blocker per texel.
+    // nearest blocker per texel. The lookup position is offset along the
+    // outward normal first so the projected sun-texel shifts away from the
+    // true-surface writer, eliminating self-shadow acne without biasing the
+    // baked depth map itself.
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
     vec3 vHat = sunBasisV.xyz;
-    vec2 sunUV = vec2(dot(pos3D, uHat), dot(pos3D, vHat));
-    float sunZ = -dot(pos3D, sunDir);
+    vec3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
+    vec2 sunUV = vec2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
+    float sunZ = -dot(biasedPos3D, sunDir);
 
     ivec2 sunPx = ivec2(round((sunUV - sunBufferOriginUV) / sunBufferTexelSize));
     bool shadowed = false;
@@ -116,8 +128,6 @@ void main() {
         uint storedPacked = sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x];
         if (storedPacked != 0xFFFFFFFFu) {
             float nearestZ = unpackSunDepth(storedPacked);
-            int face = encoded & 3;
-            vec3 normal = faceOutwardNormal(face);
             float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
             float texelSize = max(sunBufferTexelSize.x, sunBufferTexelSize.y);
             float bias =
