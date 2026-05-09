@@ -70,6 +70,17 @@ SystemId SystemManager::createSystemDynamic(
     return newSystemId;
 }
 
+void SystemManager::replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body) {
+    IR_ASSERT(
+        system < m_nextSystemId,
+        "replaceSystemBody: SystemId {} out of range (have {} systems)",
+        system,
+        m_nextSystemId
+    );
+    IR_ASSERT(static_cast<bool>(body), "replaceSystemBody: body must be a non-empty std::function");
+    m_ticks[system].functionTick_ = std::move(body);
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }

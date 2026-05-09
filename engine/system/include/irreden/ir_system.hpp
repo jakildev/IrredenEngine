@@ -92,6 +92,17 @@ inline SystemId createSystemDynamic(
     );
 }
 
+// Free-function wrapper around `SystemManager::replaceSystemBody`. Swap a
+// system's per-archetype tick body in place; archetype filter, exclude
+// archetype, `SystemParams`, and pipeline registrations are unchanged.
+// Used by the Lua hot-reload path (`IRSystem.replaceSystemBody`) and by
+// any C++ caller that wants to rebind a dynamic system's body without
+// recreating the system entity.
+inline void
+replaceSystemBody(SystemId system, std::function<void(IREntity::ArchetypeNode *)> body) {
+    getSystemManager().replaceSystemBody(system, std::move(body));
+}
+
 // TODO: Make extra param as well
 template <typename ComponentTag> void addSystemTag(SystemId system) {
     getSystemManager().addSystemTag<ComponentTag>(system);
