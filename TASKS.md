@@ -265,6 +265,17 @@ Avoid:
   - **Notes:** PR 4 of 4 in queue-manager-as-state-machine plan. Irreversible — soak T-127 for ~1 week in production before landing. New file: scripts/fleet/fleet-queue-tick (30-line wrapper). Also modifies: fleet-state-scout (inline call on projection change), fleet-up (remove pane), install.sh (symlink), docs/agents/FLEET.md.
   - **Links:**
 
+- [ ] **Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles** — extend fleet-up's bootstrap-trigger block to cover sonnet-author, opus-worker, sonnet-reviewer, and opus-reviewer so they fire on first scout tick after fleet-down/up when their projections have actionable work
+  - **ID:** T-129
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) after fleet-down && fleet-up, all roles with actionable projection state get a trigger written within first scout tick; (2) dispatcher.log shows worker/reviewer dispatch lines within ~60s of fleet-up returning; (3) no regression to existing queue-manager/merger bootstrap path
+  - **Issue:** #561
+  - **Notes:** Option A (symmetric bootstrap-trigger) per issue recommendation. Extend the bootstrap-trigger block around line 680 in scripts/fleet/fleet-up; predicates: sonnet-author/opus-worker: bool(tasks_open) or bool(feedback_prs); sonnet-reviewer/opus-reviewer: bool(candidate_prs or flagged_prs). One-shot recovery today is rm ~/.fleet/state/seen-hashes/<role> per issue body.
+  - **Links:**
+
 ---
 
 ## In progress
