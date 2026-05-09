@@ -161,29 +161,12 @@ elif command -v gtimeout &>/dev/null; then
     TIMEOUT_CMD="gtimeout"
 fi
 
-# Periodic safety-net re-arm for queue-manager and merger. The
-# scout's queue-manager projection is insensitive to PR-merge events
-# (closing a fleet:queued issue doesn't move it INTO any of the
-# tracked lists; it just disappears), so when a wave of PRs merges
-# the chain stalls: queue-manager doesn't re-trigger → TASKS.md isn't
-# flipped from [~] → [x] → opus-worker projection doesn't change →
-# opus-worker doesn't re-fire. Workers sit idle despite there being
-# obvious follow-up work to do.
+# Periodic safety-net re-arm for merger. The merger's projection IS
+# responsive to PR state changes, so we only re-arm when the natural
+# trigger chain might be lagging (e.g. a scout tick was skipped).
 #
-# Until project_queue_manager learns to track "closed fleet:queued
-# issues that haven't been flipped in TASKS.md yet" (the proper
-# fix), this periodic re-arm restores the babysit-era cadence for
-# the two meta-roles.
-#
-# queue-manager re-arms UNCONDITIONALLY (modulo in-flight / pending
-# checks) — its projection is insensitive to PR-merge events, so
-# an "empty" projection doesn't necessarily mean "no work". A no-op
-# iteration is ~30 s of claude time and the safe default.
-#
-# merger re-arms only when its projection has open PRs — its
-# projection is responsive to PR state changes, so the periodic
-# rearm just covers the corner case where a scout-fired trigger
-# was missed.
+# queue-manager is no longer in this list: maintenance is now script-driven
+# (fleet-queue-tick, spawned by fleet-state-scout on projection change).
 PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 
 # Roles this dispatcher is responsible for. Architects are excluded
@@ -194,9 +177,12 @@ DISPATCHED_ROLES=(
     "opus-worker"
     "sonnet-reviewer"
     "opus-reviewer"
-    "queue-manager"
     "merger"
 )
+# queue-manager is no longer LLM-dispatched. Maintenance (derived-field
+# rendering) is handled by fleet-queue-tick, spawned directly by
+# fleet-state-scout when the queue-manager projection changes.
+# Ingestion (new issues → TASKS.md) is a Cursor-flow / human operation.
 
 # Per-role default claude model. Sourced from fleet-up's
 # OPUS_MODEL / SONNET_MODEL convention.
@@ -205,7 +191,6 @@ declare -A ROLE_MODEL=(
     ["opus-worker"]="claude-opus-4-7"
     ["sonnet-reviewer"]="sonnet"
     ["opus-reviewer"]="claude-opus-4-7"
-    ["queue-manager"]="sonnet"
     ["merger"]="claude-opus-4-7"
 )
 
@@ -215,7 +200,6 @@ declare -A ROLE_EFFORT=(
     ["opus-worker"]="xhigh"
     ["sonnet-reviewer"]="high"
     ["opus-reviewer"]="xhigh"
-    ["queue-manager"]="high"
     ["merger"]="xhigh"
 )
 
@@ -760,20 +744,16 @@ release_dispatcher_lock() {
 }
 
 rearm_periodic_meta_triggers() {
-    # Periodic safety net for the meta-roles. The PRIMARY trigger path
-    # is scout's hash-diff detection — when a role's projection changes,
-    # scout writes ~/.fleet/state/triggers/<role> and the dispatcher
-    # picks it up the next tick. This function is the BACKUP path for
-    # cases the primary chain misses.
+    # Periodic safety net for merger. The PRIMARY trigger path is scout's
+    # hash-diff detection — when merger's projection changes, scout writes
+    # ~/.fleet/state/triggers/merger and the dispatcher picks it up the
+    # next tick. This function is the BACKUP path for cases the primary
+    # chain misses (e.g. a scout tick was skipped or the trigger file was
+    # swept on fleet-up).
     #
-    # queue-manager: now fires on its own projection deltas (the
-    # `recent_merged_prs` field added in PR queue-manager-event-driven
-    # makes the projection responsive to PR merges, eliminating the
-    # need for unconditional re-arm). The remaining safety net is
-    # scout-watchdog: if scout is dead (state.json stale > 2 min) we
-    # still want queue-manager to wake up periodically and not strand
-    # merged PRs forever. Otherwise the trigger only fires when scout
-    # observes a real signal.
+    # queue-manager is no longer in this function: maintenance (derived-
+    # field rendering) is now handled by fleet-queue-tick, spawned directly
+    # by fleet-state-scout on projection change. No LLM dispatch needed.
     #
     # merger: actionable-projection predicate. Its projection IS
     # responsive (PRs appear/disappear on merge), so we only re-arm
@@ -847,11 +827,8 @@ def maybe_arm(role, predicate=None, reason="actionable projection"):
     print(f"periodic re-arm: {role} ({reason}, no in-flight)")
 
 
-# queue-manager only re-arms here when scout looks dead. Healthy fleet
-# fires queue-manager via scout's normal hash-diff path on real
-# PR-merge / issue-close / TASKS.md changes.
-if scout_unhealthy():
-    maybe_arm("queue-manager", reason="scout-watchdog (state.json stale)")
+# queue-manager is no longer LLM-dispatched; fleet-queue-tick handles
+# maintenance directly. Only merger needs the periodic safety-net re-arm.
 maybe_arm("merger", merger_actionable)
 PY
 }
