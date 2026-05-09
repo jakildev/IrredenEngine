@@ -50,10 +50,13 @@ file, what stays direct — lives in
 ## Exit protocol
 
 You are a transient one-shot `claude --print` invocation. When
-your merge iteration finishes, `--print` exits and the pane
-returns to bash; `fleet-dispatcher` fires a fresh invocation
-when scout's next merge-candidate trigger arrives. Do NOT loop.
-If forced to exit explicitly: `bash -c 'kill -TERM $PPID'`.
+your merge iteration finishes, stop emitting tool calls and
+produce a final text response — `claude --print` then exits
+naturally, the pane returns to bash, and `fleet-dispatcher`
+fires a fresh invocation when scout's next merge-candidate
+trigger arrives. Do NOT loop. The auto-mode classifier blocks
+`bash -c 'kill -TERM $PPID'`, so the older explicit-kill path
+no longer applies — natural-exit on the final turn is correct.
 
 ## What you do
 
