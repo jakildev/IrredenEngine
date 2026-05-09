@@ -213,11 +213,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
+- [~] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
   - **ID:** T-135
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-135-fleet-up-conf-concurrency-cap
   - **Blocked by:** (none)
   - **Acceptance:** (1) ~/.fleet/fleet-up.conf created by fleet-up on first run with documented defaults (FLEET_CAP_OPUS_WORKER=2, FLEET_CAP_SONNET_AUTHOR=4); (2) dispatcher honors cap edits on next tick; (3) removing conf file restores no-cap behavior; (4) with cap=1 and both opus-worker panes idle, only one picks up the trigger; (5) cap-defer reason logged when cap kicks in
   - **Issue:** #547
@@ -249,11 +249,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
+- [~] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
   - **ID:** T-138
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-138-fleet-claim-master-lock
   - **Blocked by:** (none)
   - **Acceptance:** (1) two concurrent fleet-claim T-X invocations: exactly one succeeds, other exits "already claimed" and writes nothing; (2) after successful claim, TASKS.md on master shows [~] + Owner within 30s; (3) fleet-claim --reclaim T-X resets [~] → [ ] if Owner branch doesn't exist on remote
   - **Issue:** #583
