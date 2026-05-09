@@ -187,16 +187,6 @@ Avoid:
 
 
 
-- [~] **Lua-driven ECS: field index + index-style accessors for zero-string hot path** — expose field column index in registration handle; add `IREntity.getLuaField`/`setLuaField` for zero-string per-tick access; document two-tier accessor contract in engine/script/CLAUDE.md
-  - **ID:** T-109
-  - **Area:** engine/script, engine/entity
-  - **Model:** sonnet
-  - **Owner:** claude/T-109-lua-field-index-accessors
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `IRComponent.register` per-field handle carries `index`; (2) `IREntity.getLuaField`/`setLuaField` work by field index with no string lookup or table allocation; (3) out-of-range `fieldIndex` raises Lua error naming the offending index; (4) table-style `addLuaComponent`/`getLuaComponent` unchanged; (5) tests cover index round-trip, out-of-range error, and table-style regression; (6) `fleet-build --target IrredenEngineTest` clean on `linux-debug` and `macos-debug`; (7) `engine/script/CLAUDE.md` two-tier accessor section added
-  - **Issue:** #514
-  - **Notes:** Follow-up to T-100 (PR #508). Additive — no changes to existing table-style API. Enables Lua systems to cache `field.index` once at script load and call `getLuaField`/`setLuaField` per tick with zero string work. Unblocks T-101 to commit to a zero-string per-tick contract. Key files: `engine/script/src/lua_script.cpp` (add field.index + getLuaField/setLuaField bindings), `engine/script/include/irreden/script/i_component_data_lua_typed.hpp` (add readFieldAt/writeFieldAt), `test/script/lua_component_register_test.cpp` (index accessor tests).
-  - **Links:**
 
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
@@ -209,16 +199,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [~] **Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles** — extend fleet-up's bootstrap-trigger block to cover sonnet-author, opus-worker, sonnet-reviewer, and opus-reviewer so they fire on first scout tick after fleet-down/up when their projections have actionable work
-  - **ID:** T-129
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-129-fleet-up-bootstrap-triggers
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) after fleet-down && fleet-up, all roles with actionable projection state get a trigger written within first scout tick; (2) dispatcher.log shows worker/reviewer dispatch lines within ~60s of fleet-up returning; (3) no regression to existing queue-manager/merger bootstrap path
-  - **Issue:** #561
-  - **Notes:** Option A (symmetric bootstrap-trigger) per issue recommendation. Extend the bootstrap-trigger block around line 680 in scripts/fleet/fleet-up; predicates: sonnet-author/opus-worker: bool(tasks_open) or bool(feedback_prs); sonnet-reviewer/opus-reviewer: bool(candidate_prs or flagged_prs). One-shot recovery today is rm ~/.fleet/state/seen-hashes/<role> per issue body.
-  - **Links:**
 
 ---
 
@@ -233,6 +213,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
+- [x] **T-109** — Lua-driven ECS: field index + index-style accessors for zero-string hot path · Owner: claude/T-109-lua-field-index-accessors · PR: https://github.com/jakildev/IrredenEngine/pull/519
 - [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-queue-manager-scout-driven-script · PR: https://github.com/jakildev/IrredenEngine/pull/558
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
