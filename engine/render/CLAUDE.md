@@ -271,9 +271,15 @@ don't exercise backends and don't benefit from cross-host smoke).
 
 The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
 `system_voxel_to_trixel.hpp`, and the per-shape iso-bounds check in
-`system_shapes_to_trixel.hpp`) is a strict camera-frustum cull on the
-rendering path. It governs which voxels/shapes are written into canvas
-textures — nothing else.
+`system_shapes_to_trixel.hpp`) covers the visible iso AABB **plus the
+shadow-feeder sweep** when sun shadows are enabled
+(`IRMath::shadowFeederIsoBounds` widens by `kSunShadowMaxDistance` along
+`-sunDir`; T-131 / PR #576). It governs which voxels/shapes are written
+into canvas textures — pixels outside the visible AABB but inside the
+swept extent still produce `trixelDistances` writes so the screen-space
+sun-shadow bake can project off-screen casters onto on-screen pixels.
+Bounds collapse to the visible viewport when `getSunShadowsEnabled()` is
+false.
 
 Lighting splits across two sampling spaces:
 
