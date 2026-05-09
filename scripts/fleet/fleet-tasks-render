@@ -397,18 +397,6 @@ def render_blocked_by(value: str, status_by_id: dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def compose_done_entry(pr: dict, repo_slug: str) -> Optional[str]:
-    title = pr.get("title", "")
-    m = PR_TITLE_PREFIX_RE.match(title)
-    if not m:
-        return None
-    task_id = m.group(1)
-    rest = title[m.end():].lstrip(": ").strip()
-    head = pr.get("headRefName", "") or "unknown"
-    pr_url = f"https://github.com/{repo_slug}/pull/{pr['number']}"
-    return f"- [x] **{task_id}** — {rest} · Owner: {head} · PR: {pr_url}"
-
-
 def compose_done_section(
     merged_prs: list[dict],
     existing_done: list[str],
