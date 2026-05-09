@@ -47,7 +47,7 @@ TEST(VisibleIsoViewportTest, CameraShiftMovesBoundsOppositely) {
     );
     EXPECT_NEAR(b.min_.x, -10.0f, kTolerance);
     EXPECT_NEAR(b.min_.y, -20.0f, kTolerance);
-    EXPECT_NEAR(b.max_.x,  90.0f, kTolerance);
+    EXPECT_NEAR(b.max_.x, 90.0f, kTolerance);
     EXPECT_NEAR(b.max_.y, 180.0f, kTolerance);
 }
 
@@ -62,9 +62,9 @@ TEST(VisibleIsoViewportTest, ZoomTwoHalvesHalfExtent) {
         IRMath::ivec2(100, 200),
         IRMath::vec2(2.0f)
     );
-    EXPECT_NEAR(b.min_.x,  25.0f, kTolerance);
-    EXPECT_NEAR(b.min_.y,  50.0f, kTolerance);
-    EXPECT_NEAR(b.max_.x,  75.0f, kTolerance);
+    EXPECT_NEAR(b.min_.x, 25.0f, kTolerance);
+    EXPECT_NEAR(b.min_.y, 50.0f, kTolerance);
+    EXPECT_NEAR(b.max_.x, 75.0f, kTolerance);
     EXPECT_NEAR(b.max_.y, 150.0f, kTolerance);
 }
 
@@ -96,7 +96,7 @@ TEST(VisibleIsoViewportTest, CanvasOriginOffsetShiftsBounds) {
     );
     EXPECT_NEAR(b.min_.x, -50.0f, kTolerance);
     EXPECT_NEAR(b.min_.y, -100.0f, kTolerance);
-    EXPECT_NEAR(b.max_.x,  50.0f, kTolerance);
+    EXPECT_NEAR(b.max_.x, 50.0f, kTolerance);
     EXPECT_NEAR(b.max_.y, 100.0f, kTolerance);
 }
 
@@ -159,13 +159,15 @@ TEST(IsEntityOnScreenTest, EntityAtOriginIsOnScreen) {
     // 1x1x1 voxel at origin, offset (50,100), canvas (100,200), camera (0,0).
     // isoBounds of unit voxel at origin: min=(-1,-2), max=(1,2)
     // canvasMin=(49,98), canvasMax=(51,102) — fully inside canvas.
-    EXPECT_TRUE(IRMath::isEntityOnScreen(
-        IRMath::vec3(0.0f),
-        IRMath::ivec3(1, 1, 1),
-        IRMath::vec2(0.0f),
-        IRMath::ivec2(50, 100),
-        IRMath::ivec2(100, 200)
-    ));
+    EXPECT_TRUE(
+        IRMath::isEntityOnScreen(
+            IRMath::vec3(0.0f),
+            IRMath::ivec3(1, 1, 1),
+            IRMath::vec2(0.0f),
+            IRMath::ivec2(50, 100),
+            IRMath::ivec2(100, 200)
+        )
+    );
 }
 
 TEST(IsEntityOnScreenTest, EntityFarRightIsOffScreen) {
@@ -173,26 +175,30 @@ TEST(IsEntityOnScreenTest, EntityFarRightIsOffScreen) {
     // pushing canvasMax.x below 0.
     // worldPos=(500,0,0) → iso bounds center ≈ (-500,-500)
     // canvasMax.x = -499 + 50 + 0 = -449 < 0 → off screen.
-    EXPECT_FALSE(IRMath::isEntityOnScreen(
-        IRMath::vec3(500.0f, 0.0f, 0.0f),
-        IRMath::ivec3(1, 1, 1),
-        IRMath::vec2(0.0f),
-        IRMath::ivec2(50, 100),
-        IRMath::ivec2(100, 200)
-    ));
+    EXPECT_FALSE(
+        IRMath::isEntityOnScreen(
+            IRMath::vec3(500.0f, 0.0f, 0.0f),
+            IRMath::ivec3(1, 1, 1),
+            IRMath::vec2(0.0f),
+            IRMath::ivec2(50, 100),
+            IRMath::ivec2(100, 200)
+        )
+    );
 }
 
 TEST(IsEntityOnScreenTest, EntityFarBelowIsOffScreen) {
     // Entity with very negative iso.y — far below canvas.
     // worldPos=(0,200,0): iso.y = -0 - 200 + 0 = -200
     // canvasMax.y ≈ -200 + 100 = -100 < 0 → off screen.
-    EXPECT_FALSE(IRMath::isEntityOnScreen(
-        IRMath::vec3(0.0f, 200.0f, 0.0f),
-        IRMath::ivec3(1, 1, 1),
-        IRMath::vec2(0.0f),
-        IRMath::ivec2(50, 100),
-        IRMath::ivec2(100, 200)
-    ));
+    EXPECT_FALSE(
+        IRMath::isEntityOnScreen(
+            IRMath::vec3(0.0f, 200.0f, 0.0f),
+            IRMath::ivec3(1, 1, 1),
+            IRMath::vec2(0.0f),
+            IRMath::ivec2(50, 100),
+            IRMath::ivec2(100, 200)
+        )
+    );
 }
 
 TEST(IsEntityOnScreenTest, CameraOffsetBringsEntityOnScreen) {
@@ -202,13 +208,15 @@ TEST(IsEntityOnScreenTest, CameraOffsetBringsEntityOnScreen) {
     //   canvasMax.x = 201+50-150 = 101 >= 0  ✓
     //   canvasMin.y = -202+100+100 = -2 < 200 ✓
     //   canvasMax.y = -198+100+100 =  2 >= 0  ✓  → on screen
-    EXPECT_TRUE(IRMath::isEntityOnScreen(
-        IRMath::vec3(0.0f, 200.0f, 0.0f),
-        IRMath::ivec3(1, 1, 1),
-        IRMath::vec2(-150.0f, 100.0f),
-        IRMath::ivec2(50, 100),
-        IRMath::ivec2(100, 200)
-    ));
+    EXPECT_TRUE(
+        IRMath::isEntityOnScreen(
+            IRMath::vec3(0.0f, 200.0f, 0.0f),
+            IRMath::ivec3(1, 1, 1),
+            IRMath::vec2(-150.0f, 100.0f),
+            IRMath::ivec2(50, 100),
+            IRMath::ivec2(100, 200)
+        )
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -238,10 +246,7 @@ TEST(AspectRatioTest, SixteenByNineHeightFrom1920p) {
 
 TEST(AspectRatioTest, FourByThreeWidthFrom480p) {
     // 4:3 → ivec2(3, 4); 480 * 4 / 3 = 640
-    EXPECT_EQ(
-        IRMath::calcResolutionWidthFromHeightAndAspectRatio(480, IRMath::ivec2(3, 4)),
-        640
-    );
+    EXPECT_EQ(IRMath::calcResolutionWidthFromHeightAndAspectRatio(480, IRMath::ivec2(3, 4)), 640);
 }
 
 TEST(AspectRatioTest, SquareAspectRatioPreservesSize) {
@@ -338,8 +343,8 @@ TEST(InverseIsoProjectionTest, EvenIsoPositionRoundTrips) {
     // Verify: pos3DtoPos2DIso(-1,1,0) = ivec2(-(-1)+1, -(-1)-1+0) = (2,0) ✓
     auto r = IRMath::pos2DIsoToPos3DAtZLevelNew(IRMath::ivec2(2, 0), 0);
     EXPECT_EQ(r.x, -1);
-    EXPECT_EQ(r.y,  1);
-    EXPECT_EQ(r.z,  0);
+    EXPECT_EQ(r.y, 1);
+    EXPECT_EQ(r.z, 0);
     auto iso = IRMath::pos3DtoPos2DIso(r);
     EXPECT_EQ(iso.x, 2);
     EXPECT_EQ(iso.y, 0);
@@ -378,6 +383,60 @@ TEST(InverseIsoProjectionTest, AltFormAtNonZeroZLevel) {
     EXPECT_EQ(fromNew.x, fromAlt.x);
     EXPECT_EQ(fromNew.y, fromAlt.y);
     EXPECT_EQ(fromNew.z, fromAlt.z);
+}
+
+// ---------------------------------------------------------------------------
+// shadowFeederIsoBounds
+// Widens an iso-space AABB toward the sun to include off-screen shadow casters.
+//
+// shift = pos3DtoPos2DIso(sunDir * sweepDistance)
+// lowExpand  = (min(0, shift.x), min(0, shift.y))
+// highExpand = (max(0, shift.x), max(0, shift.y))
+// result = {visible.min + lowExpand, visible.max + highExpand}
+// ---------------------------------------------------------------------------
+
+TEST(ShadowFeederIsoBoundsTest, ZeroSweepReturnsVisible) {
+    IRMath::IsoBounds2D v{IRMath::vec2(0.0f, 0.0f), IRMath::vec2(10.0f, 10.0f)};
+    auto r = IRMath::shadowFeederIsoBounds(v, IRMath::vec3(0.0f, 0.0f, -1.0f), 0.0f);
+    EXPECT_NEAR(r.min_.x, 0.0f, kTolerance);
+    EXPECT_NEAR(r.min_.y, 0.0f, kTolerance);
+    EXPECT_NEAR(r.max_.x, 10.0f, kTolerance);
+    EXPECT_NEAR(r.max_.y, 10.0f, kTolerance);
+}
+
+TEST(ShadowFeederIsoBoundsTest, NegativeSweepReturnsVisible) {
+    IRMath::IsoBounds2D v{IRMath::vec2(0.0f, 0.0f), IRMath::vec2(10.0f, 10.0f)};
+    auto r = IRMath::shadowFeederIsoBounds(v, IRMath::vec3(0.0f, 0.0f, -1.0f), -5.0f);
+    EXPECT_NEAR(r.min_.x, 0.0f, kTolerance);
+    EXPECT_NEAR(r.min_.y, 0.0f, kTolerance);
+    EXPECT_NEAR(r.max_.x, 10.0f, kTolerance);
+    EXPECT_NEAR(r.max_.y, 10.0f, kTolerance);
+}
+
+TEST(ShadowFeederIsoBoundsTest, SunStraightUpExtendsMinY) {
+    // sunDir = (0, 0, -1): sun directly overhead (+Z is down in engine convention).
+    // pos3DtoPos2DIso(0, 0, -1) = (0, -2).
+    // shift = (0, -2) for sweepDistance=1.
+    // Casters lie on the -iso.y side of on-screen pixels; min_.y extends downward.
+    IRMath::IsoBounds2D v{IRMath::vec2(0.0f, 0.0f), IRMath::vec2(10.0f, 10.0f)};
+    auto r = IRMath::shadowFeederIsoBounds(v, IRMath::vec3(0.0f, 0.0f, -1.0f), 1.0f);
+    EXPECT_NEAR(r.min_.x, 0.0f, kTolerance);
+    EXPECT_NEAR(r.min_.y, -2.0f, kTolerance);
+    EXPECT_NEAR(r.max_.x, 10.0f, kTolerance);
+    EXPECT_NEAR(r.max_.y, 10.0f, kTolerance);
+}
+
+TEST(ShadowFeederIsoBoundsTest, DefaultSunDirectionExpandsCorrectAxes) {
+    // Engine default: sunDir = (-0.3, -0.2, -0.93).
+    // iso(sunDir) = (-(-0.3)+(-0.2), -(-0.3)-(-0.2)+2*(-0.93)) = (0.1, -1.36).
+    // shift = (0.1, -1.36) for sweepDistance=1.
+    // lowExpand=(0, -1.36) expands min_.y; highExpand=(0.1, 0) expands max_.x.
+    IRMath::IsoBounds2D v{IRMath::vec2(0.0f, 0.0f), IRMath::vec2(10.0f, 10.0f)};
+    auto r = IRMath::shadowFeederIsoBounds(v, IRMath::vec3(-0.3f, -0.2f, -0.93f), 1.0f);
+    EXPECT_NEAR(r.min_.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(r.min_.y, -1.36f, 1e-4f);
+    EXPECT_NEAR(r.max_.x, 10.1f, 1e-4f);
+    EXPECT_NEAR(r.max_.y, 10.0f, 1e-4f);
 }
 
 } // namespace
