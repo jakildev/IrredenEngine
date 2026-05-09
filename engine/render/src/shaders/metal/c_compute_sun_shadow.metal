@@ -13,7 +13,15 @@ constant float kShadowDarken = 0.45;
 constant int kSunShadowMapDim = 1024;
 constant float kSunDepthScale = 1024.0;
 constant float kSunDepthOffset = 512.0;
-constant float kShadowBiasTexelScale = 1.0;
+// Normal-bias offset pushes the lookup point along the face's outward
+// normal before projecting into sun-space, preventing self-shadow acne on
+// cube tops and SDF spheres caused by adjacent-face pixels rounding to the
+// same sun-texel. Tune via render-debug-loop on shape_debug.
+constant float kNormalBiasVoxels = 0.5;
+// Slope-scale bias covers the worst-case sunZ variation between iso pixels
+// that share a sun-space texel — roughly texelSize/slope voxels. Below
+// that threshold a flat surface self-shadows. Tune via render-debug-loop on shape_debug.
+constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
@@ -73,14 +81,21 @@ kernel void c_compute_sun_shadow(
         frameData.rasterYaw
     );
 
+    int face = encoded & 3;
+    float3 normal = faceOutwardNormal(face);
+
     // Screen-space lookup against the bake output. sunZ is negated
     // (smaller = closer to sun) so the bake's atomicMin stores the
-    // nearest blocker per texel.
+    // nearest blocker per texel. The lookup position is offset along the
+    // outward normal first so the projected sun-texel shifts away from the
+    // true-surface writer, eliminating self-shadow acne without biasing the
+    // baked depth map itself.
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
     float3 vHat = sunFrameData.sunBasisV.xyz;
-    float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
-    float sunZ = -dot(pos3D, sunDir);
+    float3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
+    float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
+    float sunZ = -dot(biasedPos3D, sunDir);
 
     int2 sunPx = int2(round(
         (sunUV - sunFrameData.sunBufferOriginUV) /
@@ -92,8 +107,6 @@ kernel void c_compute_sun_shadow(
         uint storedPacked = sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x];
         if (storedPacked != 0xFFFFFFFFu) {
             float nearestZ = unpackSunDepth(storedPacked);
-            int face = encoded & 3;
-            float3 normal = faceOutwardNormal(face);
             float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
             float texelSize = max(
                 sunFrameData.sunBufferTexelSize.x,
