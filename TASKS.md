@@ -188,17 +188,6 @@ Avoid:
   - **Notes:** #353 (Metal entity-id readback) is closed/resolved. Game-side follow-up (palette_selector.lua, C_HitBox2DGui Lua bindings) is explicitly out of scope for this PR. findFirstHovered should be a per-frame scan in endTick, not per-entity getComponent.
   - **Links:**
 
-- [~] **Render: widen iso rasterization to shadow-feeder AABB (sun shadow Mitigation A)** — extend VOXEL_TO_TRIXEL and SHAPES_TO_TRIXEL cull region to include shadow-feeder AABB so off-screen casters write to the sun-depth map
-  - **ID:** T-131
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-131-shadow-feeder-aabb
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 1/2/4/8 produces shadow silhouettes within ≤1 sun-space texel of legacy DDA reference; (2) tall caster placed just outside iso viewport correctly throws shadow onto visible floor pixel; (3) main_sun_shadow.cpp and main_combined.cpp render with no edge truncation at all four cardinal yaws; (4) per-frame dispatch group count grows by at most 1 + (kSunShadowMaxDistance / iso-extent) over visible-only path; (5) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #443
-  - **Notes:** Design doc: docs/design/screen-space-sun-shadow-map.md §"Off-screen shadow casters" lines 217-234. Reuse kSunShadowMaxDistance from system_bake_sun_shadow_map.hpp for sweep extent. Agent to profile approach (1) replace-cull-AABB vs (2) two-AABB-pipeline and pick based on perf. Sibling tickets: T-132 (normal-bias), T-133 (PCF).
-  - **Links:**
-
 - [~] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
   - **ID:** T-133
   - **Area:** shaders/glsl, shaders/metal
@@ -224,6 +213,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
 - [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
 - [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
@@ -243,4 +233,3 @@ Avoid:
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
-- [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
