@@ -132,6 +132,16 @@ class SystemManager {
         std::function<void(ArchetypeNode *)> body
     );
 
+    /// Replace the per-archetype tick body of an existing system in place.
+    /// The system's `SystemId`, archetype filter, exclude archetype,
+    /// `SystemParams`, and any pipeline registrations are unchanged —
+    /// only the function invoked per matched `ArchetypeNode` is swapped.
+    /// In-flight entities continue using the new body on the next
+    /// pipeline tick with no special handling. Asserts on out-of-range
+    /// SystemId; the body must be non-empty (an empty `std::function`
+    /// would crash on the next dispatch).
+    void replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body);
+
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);

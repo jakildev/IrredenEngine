@@ -9,8 +9,8 @@ system entity.
 ## Public API
 
 `IRSystem::` exposes: `createSystem<...>()`, `createSystemDynamic()`,
-`registerPipeline()`, `executePipeline()`, system tag helpers, and
-per-system-parameters.
+`replaceSystemBody()`, `registerPipeline()`, `executePipeline()`,
+system tag helpers, and per-system-parameters.
 
 ## `createSystemDynamic` for runtime-typed systems
 
@@ -31,6 +31,26 @@ boundary at one `sol::function` call per archetype.
 Both paths share the same scheduler: `executePipeline` walks
 `m_ticks[system].functionTick_`, which is a `std::function<void(
 ArchetypeNode*)>` regardless of which factory created the system.
+
+## `replaceSystemBody` for hot-reload
+
+`replaceSystemBody(systemId, body)` swaps the per-archetype tick body of
+an existing system in place. The system's `SystemId`, archetype filter,
+exclude archetype, `SystemParams`, and pipeline registrations are
+unchanged — only the function invoked per matched `ArchetypeNode` is
+rebound. In-flight entities continue using the new body on the next
+pipeline tick with no special handling.
+
+Used by the Lua-driven hot-reload path (`IRSystem.replaceSystemBody`,
+documented in `engine/script/CLAUDE.md`) where the Lua side reseats
+the captured `sol::protected_function` inside the dynamic system's
+body lambda via a shared reference. Any C++ caller can also use the
+free function directly when the body is a plain
+`std::function<void(ArchetypeNode*)>`.
+
+Schema-level changes (different include / exclude archetype) are out
+of scope — `replaceSystemBody` is the cheap path that avoids entity
+migration. To change the archetype, register a new system.
 
 ## Three valid TICK function signatures
 

@@ -203,6 +203,54 @@ local sysId = IRSystem.registerSystem({
   hooks are not exposed; add them when a use case needs
   frame-scoped setup or teardown.
 
+## Hot-reload of Lua system bodies (`IRSystem.replaceSystemBody`)
+
+`IRSystem.replaceSystemBody(systemId, newTick)` reseats the tick
+body of an already-registered Lua system in place. The system's
+`SystemId`, archetype filter, exclude archetype, `SystemParams`, and
+pipeline registrations are unchanged — only the function invoked per
+matched archetype changes. Subsequent ticks on `systemId` use
+`newTick` with no special handling for in-flight entities.
+
+```lua
+local sysId = IRSystem.registerSystem({
+    name = "Regen",
+    components = { "C_Hp" },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local hp = arch.C_Hp:getField(i, "current")
+            arch.C_Hp:setField(i, "current", hp + 1)  -- regen rate = 1
+        end
+    end,
+})
+
+-- Edit main.lua, change the regen rate to 5, then call:
+IRSystem.replaceSystemBody(sysId, function(arch)
+    for i = 0, arch.length - 1 do
+        local hp = arch.C_Hp:getField(i, "current")
+        arch.C_Hp:setField(i, "current", hp + 5)  -- new regen rate
+    end
+end)
+```
+
+- **Eligibility.** Only systems registered via `IRSystem.registerSystem`
+  carry the captured tick reference; calling
+  `replaceSystemBody` on a prefab system id (from
+  `IRSystem.systemId(SystemName.X)`) or any other `SystemId` raises
+  a Lua error pointing at `IRSystem.registerSystem`.
+- **Component-schema hot-reload is out of scope** for this surface.
+  Only the per-archetype body changes; the include / exclude
+  archetype is fixed at `registerSystem` time. Re-running
+  `IRSystem.registerSystem` with the same name creates a *new*
+  `SystemId` — there is no in-place archetype migration.
+- **C++ parallel.** `IRSystem::replaceSystemBody(systemId, body)` is
+  the C++ entry point (see `engine/system/include/irreden/ir_system.hpp`).
+  Both APIs share `SystemManager::replaceSystemBody`, which mutates
+  `m_ticks[id].functionTick_` directly. The Lua surface goes one
+  level higher: it reseats the captured `sol::protected_function`
+  inside the existing body lambda (via a shared_ptr), keeping the
+  archview / column-view setup intact.
+
 ## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
 
 `bindLuaDrivenEcs()` also exposes the pipeline-composition surface so a

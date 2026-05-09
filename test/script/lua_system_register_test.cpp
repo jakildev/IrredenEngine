@@ -351,6 +351,110 @@ TEST_F(LuaSystemRegisterTest, EntityAtSurfacesEntityIdsToLua) {
     EXPECT_TRUE(ids.count(e1));
 }
 
+// ---- T-103: replaceSystemBody hot-reload -----------------------------------
+//
+// `IRSystem.replaceSystemBody(systemId, newFn)` reseats the tick body
+// of an already-registered Lua system in place. The system's id,
+// archetype filter, and pipeline membership are unchanged; the next
+// tick on `systemId` invokes `newFn`.
+
+TEST_F(LuaSystemRegisterTest, ReplaceSystemBodyChangesNextTickBehavior) {
+    auto &lua = m_lua.lua();
+    auto entity = IREntity::createEntity(TestPos{0.0f, 0.0f, 0.0f}, TestVel{1.0f, 0.0f, 0.0f});
+    lua["entity"] = static_cast<lua_Integer>(entity);
+
+    // Register: original body adds vel.x. After one UPDATE, x == 1.0.
+    auto regResult = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'Move',
+            components = { 'TestPos', 'TestVel' },
+            tick = function(arch)
+                for i = 0, arch.length - 1 do
+                    local pos = arch.TestPos:at(i)
+                    local vel = arch.TestVel:at(i)
+                    arch.TestPos:setAt(i, TestPos.new(pos.x + vel.x, pos.y, pos.z))
+                end
+            end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(regResult.valid()) << sol::error{regResult}.what();
+    const IRSystem::SystemId sysId = regResult.get<lua_Integer>();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<TestPos>(entity).x, 1.0f);
+
+    // Hot-swap: new body adds 100 * vel.x. After next UPDATE, x == 1 + 100.
+    auto swapResult = lua.safe_script(
+        R"(
+        IRSystem.replaceSystemBody(sysId, function(arch)
+            for i = 0, arch.length - 1 do
+                local pos = arch.TestPos:at(i)
+                local vel = arch.TestVel:at(i)
+                arch.TestPos:setAt(i, TestPos.new(pos.x + 100.0 * vel.x, pos.y, pos.z))
+            end
+        end)
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(swapResult.valid()) << sol::error{swapResult}.what();
+
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<TestPos>(entity).x, 101.0f);
+}
+
+TEST_F(LuaSystemRegisterTest, ReplaceSystemBodyKeepsSystemIdAndPipelineIntact) {
+    auto &lua = m_lua.lua();
+    IREntity::createEntity(TestPos{}, TestVel{});
+
+    auto regResult = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'Stable',
+            components = { 'TestPos', 'TestVel' },
+            tick = function(arch) end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(regResult.valid()) << sol::error{regResult}.what();
+    const IRSystem::SystemId sysIdBefore = regResult.get<lua_Integer>();
+    const IRSystem::SystemId countBefore = m_system_manager.getSystemCount();
+
+    auto swapResult = lua.safe_script(
+        "IRSystem.replaceSystemBody(sysId, function(arch) bodyCalled = true end)",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(swapResult.valid()) << sol::error{swapResult}.what();
+
+    // No new system entity created — the swap reuses the existing slot.
+    EXPECT_EQ(m_system_manager.getSystemCount(), countBefore);
+
+    // The original SystemId still works through the pipeline.
+    lua["bodyCalled"] = false;
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysIdBefore});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_TRUE(lua["bodyCalled"].get<bool>());
+    EXPECT_STREQ(m_system_manager.getSystemName(sysIdBefore).c_str(), "Stable");
+}
+
+TEST_F(LuaSystemRegisterTest, ReplaceSystemBodyOnUnknownIdRaisesLuaError) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "IRSystem.replaceSystemBody(99999, function(arch) end)",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    sol::error err = result;
+    const std::string msg = err.what();
+    EXPECT_NE(msg.find("99999"), std::string::npos);
+    EXPECT_NE(msg.find("registerSystem"), std::string::npos);
+}
+
 // ---- excludes filter --------------------------------------------------------
 
 TEST_F(LuaSystemRegisterTest, ExcludesFilterDropsTaggedArchetype) {

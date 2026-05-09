@@ -288,7 +288,21 @@ LuaScript::LuaScript(const char *filename)
     scriptFile(filename);
 }
 
-LuaScript::~LuaScript() {}
+LuaScript::~LuaScript() {
+    // Release sol::protected_function references held by m_luaSystemTicks
+    // BEFORE m_lua's destructor closes the Lua state. Member destruction
+    // runs in reverse declaration order — m_lua is declared last so it
+    // destructs first, which is correct for the Lua-ref-free maps
+    // (m_prefabSystemIds etc.) but wrong for m_luaSystemTicks's
+    // shared_ptr<sol::protected_function> values: those would call
+    // luaL_unref against a dead lua_State and crash. Explicitly clear
+    // here so the ref releases happen while Lua is still alive. Body
+    // lambdas owned by SystemManager have already been destroyed by the
+    // time LuaScript's dtor runs (see World's m_lua → m_entityManager →
+    // m_systemManager declaration order, reverse-destructed), so this
+    // map is the last surviving owner of those refs.
+    m_luaSystemTicks.clear();
+}
 
 void LuaScript::scriptFile(const char *filename) {
     // Ensure filename is not NULL.
@@ -623,7 +637,14 @@ void LuaScript::bindLuaDrivenSystems() {
                 "IRSystem.registerSystem: '" + systemName + "' missing required field 'tick'"
             };
         }
-        sol::protected_function tick = *tickOpt;
+        // T-103: stash the tick in a shared_ptr so `IRSystem.replaceSystemBody`
+        // can later reseat the underlying sol::protected_function. The body
+        // lambda below captures `tickRef` (the shared_ptr); the registered-
+        // system map (`m_luaSystemTicks[systemId] = tickRef`) keeps an
+        // independent ref so `IRSystem.replaceSystemBody` can locate and
+        // reseat the function by `SystemId`, and so `~LuaScript()` can
+        // explicitly release the ref while the Lua state is still alive.
+        auto tickRef = std::make_shared<sol::protected_function>(std::move(*tickOpt));
 
         auto &em = IREntity::getEntityManager();
 
@@ -656,7 +677,7 @@ void LuaScript::bindLuaDrivenSystems() {
         // userdata methods (sol2 method calls, not sol::function
         // invocations).
         auto body =
-            [this, tick, includeIds, includeNames, systemName](IREntity::ArchetypeNode *node) {
+            [this, tickRef, includeIds, includeNames, systemName](IREntity::ArchetypeNode *node) {
                 sol::state_view lua{m_lua.lua_state()};
                 sol::table archView = lua.create_table();
                 archView["length"] = node->length_;
@@ -684,7 +705,7 @@ void LuaScript::bindLuaDrivenSystems() {
                     archView[includeNames[i]] = LuaCppColumnView{impl, accessor, node->length_};
                 }
 
-                sol::protected_function_result result = tick(archView);
+                sol::protected_function_result result = (*tickRef)(archView);
                 if (!result.valid()) {
                     sol::error err = result;
                     IRE_LOG_ERROR("Lua system '{}' tick error: {}", systemName.c_str(), err.what());
@@ -697,10 +718,36 @@ void LuaScript::bindLuaDrivenSystems() {
             std::move(excludeArchetype),
             std::move(body)
         );
+        m_luaSystemTicks.emplace(systemId, tickRef);
         return sol::make_object(m_lua, static_cast<lua_Integer>(systemId));
     };
 
     m_lua["IRSystem"]["registerSystem"] = registerSystem;
+
+    // T-103: hot-reload the tick body of a previously-registered Lua
+    // system. Reseats the captured sol::protected_function inside the
+    // shared_ptr that the registerSystem body lambda holds; the next
+    // pipeline tick on `systemId` invokes `newTick`. SystemId, archetype
+    // filter, exclude archetype, and pipeline registrations are
+    // unchanged. Only systems registered via `IRSystem.registerSystem`
+    // are eligible (C++/prefab system ids raise a Lua error). See
+    // engine/script/CLAUDE.md and docs/design/lua-driven-ecs.md.
+    auto replaceSystemBody = [this](lua_Integer systemIdLua, sol::protected_function newTick) {
+        if (!newTick.valid()) {
+            throw sol::error{"IRSystem.replaceSystemBody: 'newTick' must be a function"};
+        }
+        const auto systemId = static_cast<IRSystem::SystemId>(systemIdLua);
+        auto it = m_luaSystemTicks.find(systemId);
+        if (it == m_luaSystemTicks.end()) {
+            throw sol::error{
+                "IRSystem.replaceSystemBody: SystemId " + std::to_string(systemIdLua) +
+                " was not registered via IRSystem.registerSystem (only "
+                "Lua-defined systems support hot-reload)"
+            };
+        }
+        *it->second = std::move(newTick);
+    };
+    m_lua["IRSystem"]["replaceSystemBody"] = replaceSystemBody;
 }
 
 } // namespace IRScript

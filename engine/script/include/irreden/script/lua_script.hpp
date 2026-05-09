@@ -16,6 +16,7 @@
 #include <irreden/script/lua_binding_traits.hpp>
 #include <irreden/script/lua_component_data.hpp>
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -224,6 +225,17 @@ class LuaScript {
     // the pointer once at bind time so subsequent registrations show up
     // without re-binding.
     std::unordered_map<int, IRSystem::SystemId> m_prefabSystemIds;
+
+    // T-103: per-Lua-system shared sol::protected_function reference. The
+    // dynamic-system body lambda captures the shared_ptr; replacing the
+    // pointed-to function via `*it->second = newFn` rebinds every future
+    // invocation of the same SystemId — no re-create, no archetype change,
+    // no entity migration. Only Lua-defined systems (registered via
+    // `IRSystem.registerSystem`) have an entry; C++ systems and prefab
+    // systems are absent, so `IRSystem.replaceSystemBody` rejects their
+    // ids with a Lua error rather than silently no-oping.
+    std::unordered_map<IRSystem::SystemId, std::shared_ptr<sol::protected_function>>
+        m_luaSystemTicks;
 
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the
