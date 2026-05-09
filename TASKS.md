@@ -189,6 +189,66 @@ Avoid:
   - **Links:**
 
 
+- [ ] **C_SpriteSheet: onDestroy GPU texture cleanup** — add onDestroy() to C_SpriteSheet calling IRRender::destroyResource(textureHandle_) to prevent GPU texture leak on entity destroy
+  - **ID:** T-134
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) C_SpriteSheet gains onDestroy() that calls IRRender::destroyResource(textureHandle_); (2) pattern matches C_TriangleCanvasTextures and C_TrixelFramebuffer; (3) fleet-build clean on linux-debug; (4) no crash on sprite_demo
+  - **Issue:** #535
+  - **Notes:** Escalated from PR #527 (T-098 sprite Lua bindings review), Nit 4. Currently harmless for single-load demos; becomes a GPU leak for long-running scenes with sheet reload.
+  - **Links:**
+
+
+- [ ] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
+  - **ID:** T-135
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) ~/.fleet/fleet-up.conf created by fleet-up on first run with documented defaults (FLEET_CAP_OPUS_WORKER=2, FLEET_CAP_SONNET_AUTHOR=4); (2) dispatcher honors cap edits on next tick; (3) removing conf file restores no-cap behavior; (4) with cap=1 and both opus-worker panes idle, only one picks up the trigger; (5) cap-defer reason logged when cap kicks in
+  - **Issue:** #547
+  - **Notes:** Design questions resolved in issue body: sonnet-fleet key maps to FLEET_CAP_SONNET_AUTHOR (canonical role name); bash-sourceable format at ~/.fleet/fleet-up.conf; count = active dispatch records + reservations mapped to role; absent conf → no cap. Full design spec in #547.
+  - **Links:**
+
+
+- [ ] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
+  - **ID:** T-136
+  - **Area:** engine/system, engine/prefabs/irreden/render, engine/prefabs/irreden/input
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) registerSystem<SystemName, Components...>(name) lands in ir_system.hpp with concepts for tick/beginTick/endTick/relationTick hooks; (2) all prefab systems using setSystemParams migrated to member-on-System<N> shape (grep -l "setSystemParams(systemId" engine/prefabs/); (3) engine/system/CLAUDE.md "Per-system parameters" section rewritten with preferred/escape-hatch forms; (4) new test covers all four hooks with per-tick field persistence; (5) no frame-time regression on IRShapeDebug; (6) fleet-build clean on linux-debug
+  - **Issue:** #580
+  - **Notes:** Multiple PRs expected: PR 1 lands helper + CLAUDE.md update; subsequent PRs migrate one system cluster each. Full spec and migration list in #580. Backward-compat preserved — createSystem/setSystemParams/getSystemParams stay public.
+  - **Links:**
+
+
+- [ ] **fleet-claim: hard model-tag gate** — refuse claim when role model mismatches the task's Model: field; exits non-zero with clear error; no-op when task has no Model: field
+  - **ID:** T-137
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) fleet-claim T-X from sonnet-author shell on opus-tagged task exits non-zero with clear error, writes nothing; (2) fleet-claim T-X from opus-worker shell proceeds normally; (3) task with no Model: field claims from either role; (4) each role wrapper sets FLEET_ROLE_MODEL before invoking fleet-claim
+  - **Issue:** #582
+  - **Notes:** Filed from T-130 double-claim incident (PRs #575 + #579). Atomic master-side lock is a separate issue (#583, T-138). Model tag is advisory today — this makes it a hard gate.
+  - **Links:**
+
+
+- [ ] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
+  - **ID:** T-138
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) two concurrent fleet-claim T-X invocations: exactly one succeeds, other exits "already claimed" and writes nothing; (2) after successful claim, TASKS.md on master shows [~] + Owner within 30s; (3) fleet-claim --reclaim T-X resets [~] → [ ] if Owner branch doesn't exist on remote
+  - **Issue:** #583
+  - **Notes:** Filed from T-130 double-claim incident (PRs #575 + #579). Model-tag gate is a separate issue (#582, T-137). Implementation: ephemeral branch claude/queue-claim-T-NNN, one-line TASKS.md update pushed before worker starts feature branch; direct push or tiny merger-handled PR both viable.
+  - **Links:**
+
+
 ---
 
 ## In progress
