@@ -199,17 +199,6 @@ Avoid:
   - **Notes:** Design doc: docs/design/screen-space-sun-shadow-map.md §"Off-screen shadow casters" lines 217-234. Reuse kSunShadowMaxDistance from system_bake_sun_shadow_map.hpp for sweep extent. Agent to profile approach (1) replace-cull-AABB vs (2) two-AABB-pipeline and pick based on perf. Sibling tickets: T-132 (normal-bias), T-133 (PCF).
   - **Links:**
 
-- [~] **Render: sun shadow normal-bias offset + slope-scale bias tuning** — offset shadow lookup by outward normal (kNormalBiasVoxels ≈ 0.5) and bump kShadowBiasTexelScale to ~2.0 to eliminate chevron acne on cube tops and SDF spheres
-  - **ID:** T-132
-  - **Area:** shaders/glsl, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** claude/T-132-shadow-normal-bias
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — no chevron/scratch artifacts on cube tops or sphere surfaces; (2) no peter-panning shadow gaps at caster/floor contact edge; (3) main_sun_elevation_orbit runs full sun-direction sweep without per-frame regression artifacts; (4) bias constants in named const float declarations with tuning comment; (5) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #444
-  - **Notes:** Edit c_compute_sun_shadow.glsl:113-127 and metal/c_compute_sun_shadow.metal:85-105. Normal-bias offsets the lookup query, NOT the bake write (biasing the bake causes peter-panning). Sibling tickets: T-131 (AABB widening), T-133 (PCF).
-  - **Links:**
-
 - [~] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
   - **ID:** T-133
   - **Area:** shaders/glsl, shaders/metal
@@ -235,6 +224,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
 - [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
@@ -254,4 +244,3 @@ Avoid:
 - [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
 - [x] **T-120** — fleet-claim worktree reservation primitives · Owner: claude/T-120-fleet-claim-reservations · PR: https://github.com/jakildev/IrredenEngine/pull/529
 - [x] **T-098** — Sprite: Lua bindings + sprite_demo creation · Owner: claude/T-098-sprite-lua-demo · PR: https://github.com/jakildev/IrredenEngine/pull/527
-- [x] **T-117** — Render: SDF occlusion in point/spot light line-of-sight · Owner: claude/T-117-sdf-occlusion-light-los · PR: https://github.com/jakildev/IrredenEngine/pull/522
