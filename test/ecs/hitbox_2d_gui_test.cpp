@@ -39,6 +39,9 @@ TEST(CHitBox2DGuiTest, WidthHeightCtorMatchesIvecCtor) {
 // archetype-iteration order.
 class CHitBox2DGuiScanTest : public testing::Test {
   protected:
+    // The EntityManager constructor sets `g_entityManager`; the free-function
+    // `IREntity::createEntity` used below routes through that global. The
+    // member exists for that side-effect, not for direct use.
     IREntity::EntityManager m_entity_manager;
 };
 

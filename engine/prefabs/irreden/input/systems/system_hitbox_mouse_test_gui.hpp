@@ -46,6 +46,13 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
                                   p->mouseGuiTrixel_.y >= lo.y && p->mouseGuiTrixel_.y < hi.y;
             },
             [p]() {
+                // beginTick lookups assume the "gui" canvas and
+                // "mainFramebuffer" entities already exist. Standard render
+                // setup creates both before INPUT pipelines run, so a creation
+                // that registers HITBOX_MOUSE_TEST_GUI in an INPUT pipeline
+                // gets them for free. A creation registering this system
+                // before its render pipeline has constructed the GUI canvas
+                // would assert here on the first frame.
                 EntityId guiCanvas = IRRender::getCanvas("gui");
                 auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
                 auto &framebuffer =
