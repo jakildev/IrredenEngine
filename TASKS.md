@@ -189,11 +189,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **C_SpriteSheet: onDestroy GPU texture cleanup** — add onDestroy() to C_SpriteSheet calling IRRender::destroyResource(textureHandle_) to prevent GPU texture leak on entity destroy
+- [~] **C_SpriteSheet: onDestroy GPU texture cleanup** — add onDestroy() to C_SpriteSheet calling IRRender::destroyResource(textureHandle_) to prevent GPU texture leak on entity destroy
   - **ID:** T-134
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-134-sprite-sheet-on-destroy
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_SpriteSheet gains onDestroy() that calls IRRender::destroyResource(textureHandle_); (2) pattern matches C_TriangleCanvasTextures and C_TrixelFramebuffer; (3) fleet-build clean on linux-debug; (4) no crash on sprite_demo
   - **Issue:** #535
@@ -225,11 +225,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet-claim: hard model-tag gate** — refuse claim when role model mismatches the task's Model: field; exits non-zero with clear error; no-op when task has no Model: field
+- [~] **fleet-claim: hard model-tag gate** — refuse claim when role model mismatches the task's Model: field; exits non-zero with clear error; no-op when task has no Model: field
   - **ID:** T-137
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-137-fleet-claim-model-gate
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-claim T-X from sonnet-author shell on opus-tagged task exits non-zero with clear error, writes nothing; (2) fleet-claim T-X from opus-worker shell proceeds normally; (3) task with no Model: field claims from either role; (4) each role wrapper sets FLEET_ROLE_MODEL before invoking fleet-claim
   - **Issue:** #582
