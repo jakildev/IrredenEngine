@@ -381,6 +381,7 @@ void LuaScript::bindLuaDrivenEcs() {
             fieldEntry["name"] = schema[i].name_;
             fieldEntry["type"] = std::string{toString(schema[i].type_)};
             fieldEntry["bindingId"] = static_cast<lua_Integer>(fieldIds[i]);
+            fieldEntry["index"] = static_cast<lua_Integer>(i);
             fieldsTable[schema[i].name_] = fieldEntry;
         }
         handle["fields"] = fieldsTable;
@@ -429,6 +430,47 @@ void LuaScript::bindLuaDrivenEcs() {
     m_lua["IREntity"]["hasLuaComponent"] = [](IRScript::LuaEntity entity, sol::table componentDef) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
+    };
+
+    m_lua["IREntity"]["getLuaField"] = [this](
+                                           IRScript::LuaEntity entity,
+                                           sol::table componentDef,
+                                           int fieldIndex
+                                       ) -> sol::object {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        auto &em = IREntity::getEntityManager();
+        auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
+        if (!data)
+            return sol::make_object(m_lua, sol::lua_nil);
+        auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+        const int schemaSize = static_cast<int>(typed->schema().size());
+        if (fieldIndex < 0 || fieldIndex >= schemaSize)
+            throw sol::error(
+                "getLuaField: fieldIndex " + std::to_string(fieldIndex) + " out of range [0, " +
+                std::to_string(schemaSize) + ")"
+            );
+        return typed->readFieldAt(row, fieldIndex, m_lua);
+    };
+
+    m_lua["IREntity"]["setLuaField"] = [this](
+                                           IRScript::LuaEntity entity,
+                                           sol::table componentDef,
+                                           int fieldIndex,
+                                           sol::object value
+                                       ) {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        auto &em = IREntity::getEntityManager();
+        auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
+        if (!data)
+            return;
+        auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+        const int schemaSize = static_cast<int>(typed->schema().size());
+        if (fieldIndex < 0 || fieldIndex >= schemaSize)
+            throw sol::error(
+                "setLuaField: fieldIndex " + std::to_string(fieldIndex) + " out of range [0, " +
+                std::to_string(schemaSize) + ")"
+            );
+        typed->writeFieldAt(row, fieldIndex, value);
     };
 
     bindLuaDrivenSystems();

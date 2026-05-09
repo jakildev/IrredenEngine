@@ -306,4 +306,144 @@ TEST_F(LuaComponentTest, RemoveLuaComponentDropsFromArchetype) {
     EXPECT_FALSE(m_entity_manager.hasComponent(e, componentId));
 }
 
+// ---- Field index + index-style accessors -----------------------------------
+
+TEST_F(LuaComponentTest, FieldHandleExposesIndex) {
+    auto &lua = m_lua.lua();
+    // field.index must be a non-negative integer, distinct across all fields.
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('IdxComp', { hp = 100, mp = 50, name = 'hero' })\n"
+        "return C.fields.hp.index, C.fields.mp.index, C.fields.name.index"
+    );
+    ASSERT_TRUE(result.valid());
+    auto [hpIdx, mpIdx, nameIdx] =
+        result.get<std::tuple<lua_Integer, lua_Integer, lua_Integer>>();
+    EXPECT_GE(hpIdx, 0);
+    EXPECT_GE(mpIdx, 0);
+    EXPECT_GE(nameIdx, 0);
+    EXPECT_NE(hpIdx, mpIdx);
+    EXPECT_NE(hpIdx, nameIdx);
+    EXPECT_NE(mpIdx, nameIdx);
+}
+
+TEST_F(LuaComponentTest, FieldIndexMatchesFindFieldIndex) {
+    auto &lua = m_lua.lua();
+    // The index in the Lua handle must equal findFieldIndex's result for the same name.
+    ASSERT_TRUE(lua.safe_script(
+                        "C_Score = IRComponent.register('Score', { value = 0 })\n"
+                        "scoreIdx = C_Score.fields.value.index"
+                    )
+                    .valid());
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Score");
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, cid);
+
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, cid);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+    const int cppIdx = typed->findFieldIndex("value");
+    ASSERT_GE(cppIdx, 0);
+
+    auto idxResult = lua.safe_script("return scoreIdx");
+    ASSERT_TRUE(idxResult.valid());
+    EXPECT_EQ(idxResult.get<lua_Integer>(), static_cast<lua_Integer>(cppIdx));
+}
+
+TEST_F(LuaComponentTest, IndexStyleSetGetRoundTrip) {
+    // Verify readFieldAt / writeFieldAt work correctly at the C++ level using
+    // the index exposed via the Lua handle — the same index getLuaField /
+    // setLuaField will use at runtime.
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                        "C_Energy = IRComponent.register('Energy', { level = 0 })\n"
+                        "energyIdx = C_Energy.fields.level.index"
+                    )
+                    .valid());
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Energy");
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, cid);
+
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, cid);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    auto idxResult = lua.safe_script("return energyIdx");
+    ASSERT_TRUE(idxResult.valid());
+    const int fieldIdx = static_cast<int>(idxResult.get<lua_Integer>());
+
+    typed->writeFieldAt(row, fieldIdx, sol::make_object(lua, 42));
+    sol::object readBack = typed->readFieldAt(row, fieldIdx, lua);
+    ASSERT_TRUE(readBack.is<int>());
+    EXPECT_EQ(readBack.as<int>(), 42);
+}
+
+TEST_F(LuaComponentTest, IndexStyleLuaSetGet) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                        "C_Mana = IRComponent.register('Mana', { current = 100, max = 200 })"
+                    )
+                    .valid());
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Mana");
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, cid);
+
+    // Register a C++ helper so Lua can get a typed entity handle.
+    lua["_makeHandle"] = [e]() -> IRScript::LuaEntity { return IRScript::LuaEntity{e}; };
+    auto result = lua.safe_script(
+        "local ent = _makeHandle()\n"
+        "local idx = C_Mana.fields.current.index\n"
+        "IREntity.setLuaField(ent, C_Mana, idx, 77)\n"
+        "return IREntity.getLuaField(ent, C_Mana, idx)"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<int>(), 77);
+}
+
+TEST_F(LuaComponentTest, IndexStyleTableStyleAccessorsUnchanged) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                        "C_Shield = IRComponent.register('Shield', { hp = 50 })"
+                    )
+                    .valid());
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Shield");
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, cid);
+
+    lua["_makeHandle"] = [e]() -> IRScript::LuaEntity { return IRScript::LuaEntity{e}; };
+    auto result = lua.safe_script(
+        "return IREntity.getLuaComponent(_makeHandle(), C_Shield).hp"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<int>(), 50);
+}
+
+TEST_F(LuaComponentTest, IndexStyleOutOfRangeRaisesLuaError) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                        "C_Tag = IRComponent.register('Tag', { label = 'x' })"
+                    )
+                    .valid());
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Tag");
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, cid);
+
+    lua["_makeHandle"] = [e]() -> IRScript::LuaEntity { return IRScript::LuaEntity{e}; };
+
+    auto getResult = lua.safe_script(
+        "IREntity.getLuaField(_makeHandle(), C_Tag, 999)",
+        sol::script_pass_on_error
+    );
+    EXPECT_FALSE(getResult.valid());
+    sol::error getErr = getResult;
+    EXPECT_NE(std::string(getErr.what()).find("999"), std::string::npos);
+
+    auto setResult = lua.safe_script(
+        "IREntity.setLuaField(_makeHandle(), C_Tag, 999, 'oops')",
+        sol::script_pass_on_error
+    );
+    EXPECT_FALSE(setResult.valid());
+    sol::error setErr = setResult;
+    EXPECT_NE(std::string(setErr.what()).find("999"), std::string::npos);
+}
+
 } // namespace
