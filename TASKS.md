@@ -156,7 +156,7 @@ Avoid:
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
   - **Owner:** claude/T-092-occupancy-grid-teardown
-  - **Blocked by:** T-126
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
   - **Issue:** #429
   - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first). CAUTION: T-091 (issue #428) was manually closed without a merged PR — the AO migration via trixelDistances was NOT completed; verify that `c_compute_voxel_ao` still does not read `OccupancyGridBuffer` before starting this deletion, or re-file the AO migration work first.
@@ -231,18 +231,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-
-- [~] **Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO** — remove OccupancyGrid SSBO reads from the propagation system and shaders, replacing with a decoupled SSBO producer; unblocks T-092 deletion pass
-  - **ID:** T-126
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-126-occupancy-ssbo-decouple
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) c_propagate_light_volume.glsl and .metal contain zero reads of OccupancyGridBuffer/occupancyGetBit; (2) system_compute_light_volume.hpp archetype no longer includes C_OccupancyGrid; (3) all lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) render correctly; (4) fleet-build clean on linux-debug AND macos-debug; (5) T-092's hidden-consumer blocker is resolved
-  - **Issue:** #532
-  - **Notes:** Path 1 (standalone bitfield producer, recommended): move SSBO production out of C_OccupancyGrid lifecycle; bit-packing and camera-anchor math already in system_build_occupancy_grid.hpp. Path 2 (trixelDistances LOS) is the long-term direction per engine/render/CLAUDE.md but higher complexity — out of scope for this targeted unblock. Key files: system_compute_light_volume.hpp (remove C_OccupancyGrid from archetype, use standalone produced SSBO), c_propagate_light_volume.glsl and .metal (remove OccupancyGrid binding), creations demo callsites (remove C_OccupancyGrid setComponent). Also covers findings from issues #524 and #530 (parallel escalations of the same hidden consumer). T-117 (PR #522, SDF occlusion) added a second bitfield region (lightBlockerGetBit) to the same SSBO — if #522 is already merged, include that region in the migration too.
-  - **Links:**
-
 - [~] **Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call** — shrink role-queue-manager.md from ~800 lines to ~150; replace bookkeeping steps with fleet-tasks-render --in-place; keep ingestion path LLM-driven
   - **ID:** T-127
   - **Area:** tooling
@@ -289,6 +277,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
 - [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
@@ -308,4 +297,3 @@ Avoid:
 - [x] **T-100** — Lua-driven ECS: Lua-defined components with type inference · Owner: claude/T-100-lua-components · PR: https://github.com/jakildev/IrredenEngine/pull/508
 - [x] **T-108** — Docs: replace stale fleet-babysit references in transient role docs · Owner: claude/T-108-docs-fleet-dispatcher-refs · PR: https://github.com/jakildev/IrredenEngine/pull/511
 - [x] **T-107** — Fleet: fix pane_is_running_claude for macOS version-string process names · Owner: claude/T-107-pane-is-running-claude-fix · PR: https://github.com/jakildev/IrredenEngine/pull/510
-- [x] **T-105** — Fleet: project_queue_manager trigger on PR-merge events · Owner: claude/T-105-qm-pr-merge-trigger · PR: https://github.com/jakildev/IrredenEngine/pull/509
