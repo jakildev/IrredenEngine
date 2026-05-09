@@ -223,7 +223,11 @@ def fetch_recent_merged_prs(repo, limit=30):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "merged",
         "--limit", str(limit),
-        "--json", "number,title,baseRefName,mergedAt",
+        # headRefName feeds the downstream Done-section renderer's
+        # Owner field — the queue-manager projection itself doesn't
+        # diff on it, but the slicer passes the full record through
+        # to ~/.fleet/state/projections/queue-manager.json.
+        "--json", "number,title,headRefName,baseRefName,mergedAt",
     ])
     if out is None:
         return []
