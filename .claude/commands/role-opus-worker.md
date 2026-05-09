@@ -49,17 +49,22 @@ file, what stays direct — lives in
 
 You are a transient one-shot `claude --print` invocation,
 dispatched into a tmux pane that's otherwise sitting at a bash
-prompt. When your iteration finishes, `--print` exits naturally
-and the pane returns to bash; `fleet-dispatcher` polls every 30 s
-and fires a fresh invocation when scout's next trigger arrives.
+prompt. When your iteration finishes, **stop emitting tool calls
+and produce a final text response** — `claude --print` then exits
+naturally, the pane returns to bash, and `fleet-dispatcher` fires
+a fresh invocation on scout's next trigger.
 
-Do NOT loop, do NOT call `fleet-babysit`. If you ever find
-yourself about to keep the process alive past iteration end,
-exit explicitly:
+Do NOT loop, do NOT call `fleet-babysit`, do NOT keep emitting
+tool calls hoping the iteration will be re-entered. The iteration
+is done when you stop producing turns.
 
-```
-bash -c 'kill -TERM $PPID'
-```
+Older role-doc revisions suggested `bash -c 'kill -TERM $PPID'`
+to terminate immediately. The auto-mode classifier now blocks
+that command (it reads as "agent attempting to terminate its
+controlling session"), so the explicit-kill path no longer
+applies. Ending your turn cleanly without further tool calls is
+the correct exit; the natural-exit pause is at most a few
+seconds and doesn't change anything load-bearing.
 
 ## Responsibilities
 
