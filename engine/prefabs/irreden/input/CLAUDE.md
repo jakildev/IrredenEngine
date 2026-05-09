@@ -7,7 +7,14 @@ systems that populate button state. The underlying polling lives in
 ## Key components
 
 - `C_HitBox2D` — half-extents + `hovered_` flag. Tested against mouse
-  position per frame.
+  position per frame in **world space** (camera-transformed iso).
+- `C_HitBox2DGui` — full width/height + `hovered_` flag. AABB extends
+  `[pos, pos + size_)` from a sibling `C_GuiPosition`, in
+  **GUI-canvas-trixel coordinates** (top-left origin, +X right, +Y down).
+  Kept separate from `C_HitBox2D` because the world hitbox lives in
+  camera-transformed iso and the GUI hitbox lives in screen-space
+  trixels — mixing the two coordinate systems silently mis-locates hover
+  in either path.
 - `C_KeyboardKey` — GLFW key code.
 - `C_KeyMouseButton` — wraps the `KeyMouseButtons` enum value. One entity
   per physical button, created at engine init.
@@ -27,10 +34,37 @@ systems that populate button state. The underlying polling lives in
 - `HITBOX_MOUSE_TEST` (INPUT pipeline) — tests `C_HitBox2D` against the
   mouse position in screen space. Caches camera pos/zoom at
   `beginTick` to translate world → screen consistently.
+- `HITBOX_MOUSE_TEST_GUI` (INPUT pipeline) — tests `C_HitBox2DGui +
+  C_GuiPosition` against the mouse projected into GUI-canvas-trixel
+  coordinates. Computes the projection once per frame in `beginTick`
+  by inverting the screen-residual-yaw rotation (matching
+  `HITBOX_MOUSE_TEST`'s convention) and scaling
+  `mouseFb / framebufferRes * guiCanvasSize`.
 - `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — dispatches
   `onHovered`/`onUnhovered`/`onClicked`/`onRightClicked` callbacks for
-  entities whose hover state changed. Callbacks are
-  `sol::protected_function`s registered from Lua.
+  entities whose hover state changed. Resolves the hovered entity from
+  three sources in priority order: **GUI > world > trixel**. The two
+  hitbox sources are scanned once per frame via `forEachComponent` (no
+  per-entity `getComponent`) and the first archetype-iteration entry
+  with `hovered_=true` wins; ties within a single hitbox source resolve
+  in archetype-iteration order. Callbacks are `sol::protected_function`s
+  registered from Lua.
+
+## Pipeline order
+
+For hover-driven creations, register the INPUT pipeline as:
+
+```
+HITBOX_MOUSE_TEST,
+HITBOX_MOUSE_TEST_GUI,
+SYSTEM_ENTITY_HOVER_DETECT,
+```
+
+The two hitbox systems write `hovered_` flags that
+`SYSTEM_ENTITY_HOVER_DETECT` reads; reordering breaks the cascade.
+Creations that don't use one of the hitbox sources can omit it — the
+hover-detect scan walks zero entities for a missing component archetype
+and falls through to the next priority tier.
 
 ## Commands
 
