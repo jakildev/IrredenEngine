@@ -28,7 +28,9 @@ the ECS surface.
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
   `C_SpriteAnimation` tracks the active sub-animation, frame index, elapsed
   time, and loop mode for the `SPRITE_ANIMATION_ADVANCE` UPDATE-phase
-  system to write `uvRect` back into `C_Sprite`. See
+  system to write `uvRect` back into `C_Sprite`. `C_SpriteSheet` owns the
+  atlas GPU texture handle — **freed in `onDestroy()`**; callers must not
+  call `destroyResource` manually. See
   [`docs/design/sprites.md`](../../../../docs/design/sprites.md) for the
   full data model, depth semantics, and cross-task scope.
 
