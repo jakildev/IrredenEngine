@@ -188,6 +188,51 @@ Avoid:
   - **Links:**
 
 
+- [ ] **Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT** — add C_HitBox2DGui + HITBOX_MOUSE_TEST_GUI system; priority: GUI > world > trixel; fire Lua onEntityHovered/Clicked from all three paths
+  - **ID:** T-130
+  - **Area:** engine/prefabs/irreden/input
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) demos with voxel-only hover (no C_HitBox2DGui entities) unchanged; (2) C_HitBox2DGui + SYSTEM_ENTITY_HOVER_DETECT priority ordering (GUI > world > trixel) documented in engine/prefabs/irreden/input/CLAUDE.md; (3) HITBOX_MOUSE_TEST_GUI added to SystemName enum in engine/system/include/irreden/system/ir_system_types.hpp; (4) pipeline order: HITBOX_MOUSE_TEST, HITBOX_MOUSE_TEST_GUI, ENTITY_HOVER_DETECT; (5) fleet-build clean on linux-debug
+  - **Issue:** #354
+  - **Notes:** #353 (Metal entity-id readback) is closed/resolved. Game-side follow-up (palette_selector.lua, C_HitBox2DGui Lua bindings) is explicitly out of scope for this PR. findFirstHovered should be a per-frame scan in endTick, not per-entity getComponent.
+  - **Links:**
+
+- [ ] **Render: widen iso rasterization to shadow-feeder AABB (sun shadow Mitigation A)** — extend VOXEL_TO_TRIXEL and SHAPES_TO_TRIXEL cull region to include shadow-feeder AABB so off-screen casters write to the sun-depth map
+  - **ID:** T-131
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 1/2/4/8 produces shadow silhouettes within ≤1 sun-space texel of legacy DDA reference; (2) tall caster placed just outside iso viewport correctly throws shadow onto visible floor pixel; (3) main_sun_shadow.cpp and main_combined.cpp render with no edge truncation at all four cardinal yaws; (4) per-frame dispatch group count grows by at most 1 + (kSunShadowMaxDistance / iso-extent) over visible-only path; (5) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #443
+  - **Notes:** Design doc: docs/design/screen-space-sun-shadow-map.md §"Off-screen shadow casters" lines 217-234. Reuse kSunShadowMaxDistance from system_bake_sun_shadow_map.hpp for sweep extent. Agent to profile approach (1) replace-cull-AABB vs (2) two-AABB-pipeline and pick based on perf. Sibling tickets: T-132 (normal-bias), T-133 (PCF).
+  - **Links:**
+
+- [ ] **Render: sun shadow normal-bias offset + slope-scale bias tuning** — offset shadow lookup by outward normal (kNormalBiasVoxels ≈ 0.5) and bump kShadowBiasTexelScale to ~2.0 to eliminate chevron acne on cube tops and SDF spheres
+  - **ID:** T-132
+  - **Area:** shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — no chevron/scratch artifacts on cube tops or sphere surfaces; (2) no peter-panning shadow gaps at caster/floor contact edge; (3) main_sun_elevation_orbit runs full sun-direction sweep without per-frame regression artifacts; (4) bias constants in named const float declarations with tuning comment; (5) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #444
+  - **Notes:** Edit c_compute_sun_shadow.glsl:113-127 and metal/c_compute_sun_shadow.metal:85-105. Normal-bias offsets the lookup query, NOT the bake write (biasing the bake causes peter-panning). Sibling tickets: T-131 (AABB widening), T-133 (PCF).
+  - **Links:**
+
+- [ ] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
+  - **ID:** T-133
+  - **Area:** shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — shadow boundaries soften by ~1 sun-space texel, no jaggies or broken-comb edges; (2) main_sun_shadow.cpp and main_combined.cpp show smooth shadow edges at all four cardinal yaws; (3) per-frame cost regression ≤2% of total render-pipeline time (measure via IR_PROFILE_BLOCK("ComputeSunShadow")); (4) linux-debug OpenGL and macos-debug Metal produce visually equivalent softening; (5) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #445
+  - **Notes:** Edit c_compute_sun_shadow.glsl:112-128 and metal/c_compute_sun_shadow.metal:85-107. Pseudocode in issue body. Both sibling tickets (T-131 AABB widening, T-132 normal-bias) are independent and can land in any order.
+  - **Links:**
+
+
 ---
 
 ## In progress
