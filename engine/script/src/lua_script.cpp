@@ -641,8 +641,9 @@ void LuaScript::bindLuaDrivenSystems() {
         // can later reseat the underlying sol::protected_function. The body
         // lambda below captures `tickRef` (the shared_ptr); the registered-
         // system map (`m_luaSystemTicks[systemId] = tickRef`) keeps an
-        // independent ref so the function survives pipeline teardown
-        // intermediate states.
+        // independent ref so `IRSystem.replaceSystemBody` can locate and
+        // reseat the function by `SystemId`, and so `~LuaScript()` can
+        // explicitly release the ref while the Lua state is still alive.
         auto tickRef = std::make_shared<sol::protected_function>(std::move(*tickOpt));
 
         auto &em = IREntity::getEntityManager();
