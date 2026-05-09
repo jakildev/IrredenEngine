@@ -270,6 +270,88 @@ SDF shapes, lighting, and backend parity. See `engine/render/CLAUDE.md`
 
 ---
 
+## Stacked PRs
+
+Stacked PRs let downstream work start before an upstream dependency
+merges, keeping each task's diff scoped to its own branch and PR.
+Two stacking modes exist in this fleet:
+
+- **Cursor stacking** — human-driven; described under
+  [Stacking in cursor flow](#cursor-flow-human-in-the-loop) above.
+  No task IDs or fleet labels involved; driven by git config and
+  human cues.
+- **Cross-author stacking (scheduler)** — autonomous; described
+  below. A free worker picks up a blocked task when the blocker
+  already has an open PR, branches off the blocker's branch, and
+  opens a stacked PR. The merger keeps the chain in sync as the
+  upstream PR evolves.
+
+### Cross-author stacking (scheduler)
+
+**Scenario walkthrough:**
+
+1. **Worker A** claims T-X, opens PR #100 with `fleet:wip`.
+2. **Worker B**'s next iteration: no unblocked tasks. The fallback
+   tier in the task-pickup loop finds T-Y (`Blocked by: T-X`,
+   `stackable_blocker_pr = { number: 100, headRefName: "claude/T-X-…" }`
+   pre-computed by the scout). Worker B claims T-Y with:
+   `fleet-claim claim T-Y <agent> --stackable-on 100`
+3. Worker B reads `fleet-claim claim-base T-Y` → returns
+   `claude/T-X-…` (not `master`). It fetches and branches off
+   `origin/claude/T-X-…`, then opens PR #101 with
+   `--base claude/T-X-…` and adds `fleet:stacked`. PR #101's diff
+   shows only T-Y's changes; T-X's commits are part of the base.
+4. **Reviewer** sees `fleet:stacked` on #101 and checks #100's
+   approval state. If #100 is not yet approved, the reviewer defers
+   with `fleet:awaiting-upstream-review`. Once #100 is approved, the
+   reviewer evaluates #101's delta only and notes the cross-author
+   topology in the review body.
+5. **Worker A** pushes a feedback fix to #100 (new commits on
+   `claude/T-X-…`). The **merger** detects that #101's upstream tip
+   moved on its next iteration:
+   - **Clean rebase** → force-push #101, post a confirmation
+     comment, leave existing approval labels intact.
+   - **Conflict** → add `fleet:needs-base-update` to #101, name
+     the conflict files, leave it for Worker B to reconcile via the
+     normal `human:needs-fix` / `fleet:needs-fix` feedback loop.
+6. **PR #100 merges.** The merger re-targets #101's base from
+   `claude/T-X-…` to `master` (existing re-target logic, unchanged)
+   and removes `fleet:stacked`. PR #101 is now a standard PR vs
+   `master`.
+
+**Design decisions (v1):**
+
+- **Q1 — Aggression.** Two-tier pickup: workers exhaust the normal
+  unblocked list first; cross-author stacking is a fallback only for
+  otherwise-idle panes. The coordination tax (rebase cascades,
+  reviewer gating on upstream state) makes the simple path
+  preferable by default.
+- **Q2 — Cascade rebase.** Merger-driven hybrid. When the upstream
+  PR force-pushes, the merger (which has no claim conflicts on the
+  child) attempts the rebase. The upstream's author does not rebase
+  the child — that would require cross-worktree gymnastics that
+  introduce ownership conflicts.
+- **Q3 — Multi-blocker.** Single-blocker tasks only. A task with
+  `Blocked by: T-A, T-B` is never eligible for the fallback tier
+  even if all blockers have open PRs. Picking a single base branch
+  from multiple blockers is a design call the v1 merger machinery
+  does not handle.
+
+**v1 limitations:**
+
+- Engine tasks only — game repo has no merger, so the cascade-rebase
+  step has no actor. The scout may populate `stackable_blocker_pr`
+  for game tasks for visibility, but worker pickup skips them.
+- Single-blocker tasks only (see Q3).
+
+For the exact command sequences, see: `role-sonnet-author.md` and
+`role-opus-worker.md` (fallback-tier claim + stackable-base branching);
+`role-merger.md` (cascade-rebase step and `fleet:needs-base-update`);
+`role-sonnet-reviewer.md` (upstream-gating and cross-author topology
+note).
+
+---
+
 ## Issue/PR labeling discipline (applies everywhere, all agents)
 
 When filing a GitHub issue (`gh issue create`) or PR (`gh pr create`)
