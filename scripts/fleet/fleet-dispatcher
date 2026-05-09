@@ -114,16 +114,29 @@ declare -A CAP_DEFER_LOGGED=()
 # panes hits a limit, the other keeps running.
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 
-# --- 5-hour-window usage gate ---------------------------------------------
+# --- Usage gate (per-rate-limit-type thresholds) --------------------------
 #
 # Soft, fleet-wide pre-emption: when any rate_limit_event observation
-# reports utilization >= USAGE_GATE_THRESHOLD, defer ALL fresh
-# dispatches until the window resets or utilization drops. In-flight
-# iterations finish normally; their next trigger waits.
+# exceeds the threshold for its type, defer ALL fresh dispatches until
+# the window resets or utilization drops. In-flight iterations finish
+# normally; their next trigger waits.
 #
 # Observations are written by fleet-claude-stream (one file per
 # rateLimitType under $USAGE_DIR), so the gate piggybacks on every
 # transient worker's stream — no separate poller needed.
+#
+# Per-type thresholds let the operator distinguish a short-window
+# limit (5-hour, baked default 80% — leaves 20% headroom for
+# in-flight iterations to finish) from a long-window limit (7-day
+# all-models, baked default 95% — pre-emption only when very close
+# to the wall, so typical operation isn't gated by mid-week burn).
+#
+# Threshold lookup order (per observation type, e.g. "seven_day"):
+#   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPERCASE>  (per-type override)
+#   2. FLEET_DISPATCHER_USAGE_GATE                   (global override)
+#   3. BUILTIN_PER_TYPE_DEFAULTS in the Python below (seven_day=0.95,
+#      five_hour=0.80; everything else falls to the global default)
+#   4. Final fallback 0.80
 #
 # Conservative against staleness: an observation older than
 # USAGE_STALE_SECONDS (default 1h) or whose resetsAt is in the past
@@ -133,8 +146,21 @@ LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 # Sibling to LIMIT_DELAY's per-pane post-mortem cooldown: that fires
 # AFTER a pane hits the wall and exits with code 2; this fires BEFORE
 # the wall to spread the remaining budget across in-flight work.
-USAGE_GATE_THRESHOLD="${FLEET_DISPATCHER_USAGE_GATE:-0.80}"
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+
+# Export the gate env vars so the inline-Python in usage_gate_status
+# sees them. Sourcing fleet-up.conf doesn't auto-export, so without
+# this an operator's `FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.50` in
+# conf would only exist as a bash-scope local. Export wraps only
+# already-set vars so unset ones stay unset (and the Python lookup
+# falls through to its baked defaults).
+if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
+    export FLEET_DISPATCHER_USAGE_GATE
+fi
+for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' || true); do
+    export "$_gate_var"
+done
+unset _gate_var
 
 # Track whether the gate was logged-as-closed last tick so the
 # "deferring all dispatches" message fires once per closed-window,
@@ -439,44 +465,82 @@ pane_in_rate_limit_cooldown() {
 
 # --- Usage gate ------------------------------------------------------------
 
-# Print the gate state on stdout: "open" or "closed:<reason>".
+# Print the gate state on stdout: "open" / "open:<info>" / "closed:<reason>".
 #
 # Reads ~/.fleet/state/usage/*.json files (latched by fleet-claude-stream
-# on every rate_limit_event), picks the worst observation that is both
-# fresh (observed within USAGE_STALE_SECONDS) and not yet reset
-# (resetsAt in the future), and reports closed iff utilization
-# >= USAGE_GATE_THRESHOLD.
+# on every rate_limit_event). For each fresh, not-yet-reset observation,
+# compares utilization against the per-type threshold (see threshold_for
+# below). Reports closed when at least one observation breaches its own
+# threshold; the highest-utilization breach wins the report when several
+# are over.
 #
 # Inlined python3 so we get JSON parsing + ISO-8601 timestamp math
 # without adding a shell dep. Same pattern rearm_periodic_meta_triggers
 # uses below.
 usage_gate_status() {
-    local threshold="$USAGE_GATE_THRESHOLD"
-    local stale="$USAGE_STALE_SECONDS"
-    local usage_dir="$USAGE_DIR"
-    USAGE_DIR="$usage_dir" \
-    USAGE_GATE_THRESHOLD="$threshold" \
-    USAGE_STALE_SECONDS="$stale" \
+    USAGE_DIR="$USAGE_DIR" \
+    USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     python3 - <<'PY'
 import json
 import os
 import pathlib
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
-threshold = float(os.environ.get("USAGE_GATE_THRESHOLD", "0.80"))
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+
+# Built-in per-type defaults. Used only when neither the per-type env
+# override nor the global env override is set. This lets a fresh
+# install ship with the operator's preferred 80%/95% split without
+# requiring fleet-up.conf entries.
+BUILTIN_PER_TYPE_DEFAULTS = {
+    "seven_day": 0.95,   # all-models weekly window — pre-empt close to wall
+    "five_hour": 0.80,   # short-window — leave 20% headroom for in-flight work
+}
+# Final fallback for unknown types when the operator hasn't set a
+# global override either.
+BUILTIN_FALLBACK = 0.80
+
+
+def threshold_for(rate_limit_type):
+    """Per-type threshold lookup.
+
+    Order:
+      1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (operator per-type)
+      2. FLEET_DISPATCHER_USAGE_GATE               (operator global)
+      3. BUILTIN_PER_TYPE_DEFAULTS[type]           (baked sensible default)
+      4. BUILTIN_FALLBACK (0.80) for unknown types
+
+    The per-type env name is the rate-limit type uppercased with
+    non-alnum chars replaced by `_` (e.g. `five_hour` →
+    `FIVE_HOUR`).
+    """
+    safe = "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+    if safe:
+        var = f"FLEET_DISPATCHER_USAGE_GATE_{safe}"
+        if var in os.environ and os.environ[var]:
+            try:
+                return float(os.environ[var])
+            except ValueError:
+                pass
+    glob = os.environ.get("FLEET_DISPATCHER_USAGE_GATE", "")
+    if glob:
+        try:
+            return float(glob)
+        except ValueError:
+            pass
+    return BUILTIN_PER_TYPE_DEFAULTS.get(rate_limit_type or "", BUILTIN_FALLBACK)
+
 
 if not usage_dir.is_dir():
     print("open")
     sys.exit(0)
 
 now = int(time.time())
-worst_util = -1.0
-worst_type = None
-worst_resets = None
+breaches = []  # list of (util_f, threshold, type, resets_at)
+top_observation = None  # for the all-open log line
 
 for path in sorted(usage_dir.glob("*.json")):
     try:
@@ -505,23 +569,29 @@ for path in sorted(usage_dir.glob("*.json")):
     # it as a percent, but the value itself is a fraction today).
     if util_f > 1.5:
         util_f = util_f / 100.0
-    if util_f > worst_util:
-        worst_util = util_f
-        worst_type = data.get("rateLimitType", path.stem)
-        worst_resets = resets_at if isinstance(resets_at, str) else None
+    rl_type = data.get("rateLimitType", path.stem)
+    th = threshold_for(rl_type)
+    if util_f >= th:
+        breaches.append((util_f, th, rl_type, resets_at))
+    if top_observation is None or util_f > top_observation[0]:
+        top_observation = (util_f, th, rl_type, resets_at)
 
-if worst_util < 0:
-    print("open")
-    sys.exit(0)
-
-if worst_util >= threshold:
-    pct = int(round(worst_util * 100))
-    thr_pct = int(round(threshold * 100))
-    resets_part = f" resets={worst_resets}" if worst_resets else ""
-    print(f"closed:{worst_type} util={pct}% (>= {thr_pct}%){resets_part}")
+if breaches:
+    # Multiple breaches: report the highest utilization. That's the
+    # most pressing one and what the operator will care about first.
+    breaches.sort(key=lambda x: x[0], reverse=True)
+    util_f, th, rl_type, resets = breaches[0]
+    pct = int(round(util_f * 100))
+    thr_pct = int(round(th * 100))
+    resets_part = f" resets={resets}" if resets else ""
+    print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%){resets_part}")
+elif top_observation is not None:
+    util_f, th, rl_type, _resets = top_observation
+    pct = int(round(util_f * 100))
+    thr_pct = int(round(th * 100))
+    print(f"open:{rl_type} util={pct}% (< {thr_pct}%)")
 else:
-    pct = int(round(worst_util * 100))
-    print(f"open:{worst_type} util={pct}%")
+    print("open")
 PY
 }
 

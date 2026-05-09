@@ -98,6 +98,38 @@ printf '{"rateLimitType":"five_hour","utilization":85,"resetsAt":"%s","observed_
 out=$("$DISPATCHER" --gate-status)
 assert_starts_with "$out" "closed:five_hour util=85%" "percent value treated as percent"
 
+# --- Per-type thresholds -----------------------------------------------------
+
+echo "T9: seven_day at 92% with builtin 0.95 default => open"
+printf '{"rateLimitType":"seven_day","utilization":0.92,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+rm -f "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open:seven_day util=92%" "seven_day defaults to 0.95"
+
+echo "T10: seven_day at 96% with builtin 0.95 default => closed"
+printf '{"rateLimitType":"seven_day","utilization":0.96,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:seven_day util=96% (>= 95%)" "seven_day trips at 96%"
+
+echo "T11: per-type env override beats builtin default"
+out=$(FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.50 "$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:seven_day util=96% (>= 50%)" "per-type override wins"
+
+echo "T12: global env override applies to types without per-type override"
+# unknown type — falls through per-type lookup -> global override -> 0.50
+printf '{"rateLimitType":"daily_tokens","utilization":0.60,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/daily_tokens.json"
+rm -f "$FLEET_STATE_DIR/usage/seven_day.json"
+out=$(FLEET_DISPATCHER_USAGE_GATE=0.50 "$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:daily_tokens util=60% (>= 50%)" "global override applies to unknown types"
+
+echo "T13: per-type override beats global override"
+# Same daily_tokens at 60%, but global set to 0.50, daily_tokens-specific set to 0.99 -> open
+out=$(FLEET_DISPATCHER_USAGE_GATE=0.50 FLEET_DISPATCHER_USAGE_GATE_DAILY_TOKENS=0.99 "$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open:daily_tokens util=60%" "per-type beats global"
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]
