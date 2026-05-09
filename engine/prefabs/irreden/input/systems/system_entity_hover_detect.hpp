@@ -4,7 +4,11 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
+
+#include <irreden/input/components/component_hitbox_2d.hpp>
+#include <irreden/input/components/component_hitbox_2d_gui.hpp>
 
 #include <sol/sol.hpp>
 #include <vector>
@@ -52,7 +56,8 @@ struct EntityEventHandlers {
         auto eraseById = [handlerId](std::vector<HandlerEntry> &vec) {
             vec.erase(
                 std::remove_if(
-                    vec.begin(), vec.end(),
+                    vec.begin(),
+                    vec.end(),
                     [handlerId](const HandlerEntry &e) { return e.id == handlerId; }
                 ),
                 vec.end()
@@ -120,7 +125,32 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             "EntityHoverDetect",
             [](C_EntityHoverDetectTag &) {},
             []() {
-                IREntity::EntityId currentHovered = IRRender::getEntityIdAtMouseTrixel();
+                // Resolve the hovered entity from three sources in priority
+                // order: GUI > world > trixel. GUI/world hitbox flags are
+                // populated upstream (HITBOX_MOUSE_TEST_GUI, HITBOX_MOUSE_TEST)
+                // — we just pick the first hit per source. Tie-break across
+                // entities within a source is archetype iteration order
+                // (deterministic per frame, matches the design in #354).
+                IREntity::EntityId guiHovered = IREntity::kNullEntity;
+                IREntity::forEachComponent<C_HitBox2DGui>([&](IREntity::EntityId id,
+                                                              C_HitBox2DGui &hb) {
+                    if (guiHovered == IREntity::kNullEntity && hb.hovered_) {
+                        guiHovered = id;
+                    }
+                });
+                IREntity::EntityId worldHovered = IREntity::kNullEntity;
+                if (guiHovered == IREntity::kNullEntity) {
+                    IREntity::forEachComponent<C_HitBox2D>([&](IREntity::EntityId id,
+                                                               C_HitBox2D &hb) {
+                        if (worldHovered == IREntity::kNullEntity && hb.hovered_) {
+                            worldHovered = id;
+                        }
+                    });
+                }
+                IREntity::EntityId currentHovered = guiHovered != IREntity::kNullEntity ? guiHovered
+                                                    : worldHovered != IREntity::kNullEntity
+                                                        ? worldHovered
+                                                        : IRRender::getEntityIdAtMouseTrixel();
                 auto &handlers = getEntityEventHandlers();
 
                 static int logCounter = 0;
@@ -131,7 +161,8 @@ template <> struct System<ENTITY_HOVER_DETECT> {
                 if (currentHovered != previousHoveredEntity) {
                     IRE_LOG_DEBUG(
                         "[HoverDetect] state change: {} -> {}",
-                        previousHoveredEntity, currentHovered
+                        previousHoveredEntity,
+                        currentHovered
                     );
                     if (previousHoveredEntity != IREntity::kNullEntity) {
                         handlers.fireUnhovered(previousHoveredEntity);
@@ -144,24 +175,20 @@ template <> struct System<ENTITY_HOVER_DETECT> {
 
                 if (IRInput::checkKeyMouseButton(
                         KeyMouseButtons::kMouseButtonRight,
-                        ButtonStatuses::PRESSED)) {
+                        ButtonStatuses::PRESSED
+                    )) {
                     handlers.fireRightClick();
                     if (currentHovered != IREntity::kNullEntity) {
-                        IRE_LOG_DEBUG(
-                            "[Click] Entity {} clicked (right button)",
-                            currentHovered
-                        );
+                        IRE_LOG_DEBUG("[Click] Entity {} clicked (right button)", currentHovered);
                         handlers.fireClicked(currentHovered, 1);
                     }
                 }
                 if (currentHovered != IREntity::kNullEntity) {
                     if (IRInput::checkKeyMouseButton(
                             KeyMouseButtons::kMouseButtonLeft,
-                            ButtonStatuses::PRESSED)) {
-                        IRE_LOG_DEBUG(
-                            "[Click] Entity {} clicked (left button)",
-                            currentHovered
-                        );
+                            ButtonStatuses::PRESSED
+                        )) {
+                        IRE_LOG_DEBUG("[Click] Entity {} clicked (left button)", currentHovered);
                         handlers.fireClicked(currentHovered, 0);
                     }
                 }

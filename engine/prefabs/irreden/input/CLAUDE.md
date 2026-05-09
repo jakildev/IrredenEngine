@@ -6,8 +6,13 @@ systems that populate button state. The underlying polling lives in
 
 ## Key components
 
-- `C_HitBox2D` — half-extents + `hovered_` flag. Tested against mouse
-  position per frame.
+- `C_HitBox2D` — half-extents + `hovered_` flag. World-anchored; tested
+  against mouse position in framebuffer-pixel space per frame.
+- `C_HitBox2DGui` — full width/height (top-left + size AABB) + `hovered_`
+  flag, anchored to a sibling `C_GuiPosition`. Coordinates live in **gui
+  canvas trixel** units, the same space the GUI canvas writes into. Kept
+  separate from `C_HitBox2D` so the two coordinate systems never get
+  mixed inside one tick.
 - `C_KeyboardKey` — GLFW key code.
 - `C_KeyMouseButton` — wraps the `KeyMouseButtons` enum value. One entity
   per physical button, created at engine init.
@@ -27,10 +32,26 @@ systems that populate button state. The underlying polling lives in
 - `HITBOX_MOUSE_TEST` (INPUT pipeline) — tests `C_HitBox2D` against the
   mouse position in screen space. Caches camera pos/zoom at
   `beginTick` to translate world → screen consistently.
-- `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — dispatches
+- `HITBOX_MOUSE_TEST_GUI` (INPUT pipeline) — tests `C_HitBox2DGui` +
+  `C_GuiPosition` against the mouse mapped into gui-canvas trixel
+  coordinates. Caches the mapped mouse position at `beginTick` so the
+  per-entity tick is two compares.
+- `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — resolves the hovered
+  entity from three sources in priority order **GUI > world > trixel**
+  (first GUI hit wins; if none, first world hit; otherwise the GPU
+  trixel entity-id readback) and dispatches
   `onHovered`/`onUnhovered`/`onClicked`/`onRightClicked` callbacks for
-  entities whose hover state changed. Callbacks are
+  the entity whose hover state changed. Tie-break across entities
+  within a source is archetype iteration order. Callbacks are
   `sol::protected_function`s registered from Lua.
+
+**Pipeline registration order (INPUT) for hover dispatch.** Both hitbox
+systems must run **before** `SYSTEM_ENTITY_HOVER_DETECT` so their
+`hovered_` flags are current when the resolver scans them:
+`HITBOX_MOUSE_TEST` → `HITBOX_MOUSE_TEST_GUI` → `SYSTEM_ENTITY_HOVER_DETECT`.
+A creation that wants only one source can register the relevant subset
+— the resolver tolerates absent sources (no entities → no hits → falls
+through to the next priority).
 
 ## Commands
 

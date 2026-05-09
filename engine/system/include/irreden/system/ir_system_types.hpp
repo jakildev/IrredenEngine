@@ -31,6 +31,7 @@ enum SystemName {
     INPUT_GAMEPAD,
     ENTITY_HOVER_DETECT,
     HITBOX_MOUSE_TEST,
+    HITBOX_MOUSE_TEST_GUI,
 
     // Update systems
     SCREEN_VIEW,
