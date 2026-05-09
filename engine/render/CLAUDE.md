@@ -61,7 +61,7 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    BAKE_SUN_SHADOW_MAP                                           │
 │      • c_clear_sun_shadow_map.glsl + c_bake_sun_shadow_map.glsl  │
 │      • atomicMin-projects iso pixels into a sun-aligned depth    │
-│        map at slot 28 (aliases the occupancy grid; rebind)       │
+│        map at slot 28 (kBufferIndex_LightOcclusionGrid alias)    │
 │    COMPUTE_SUN_SHADOW                                            │
 │      • c_compute_sun_shadow.glsl → single-texel lookup against   │
 │        the baked sun depth map → per-pixel shadow brightness     │
