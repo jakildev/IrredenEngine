@@ -68,6 +68,32 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # banner reflect the active values, and so any future fleet-up logic
 # that wants to provision based on caps can read them directly.
 FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Bootstrap the operator-editable conf on first run by copying the
+# in-repo sample. Sample lives next to fleet-up itself; resolve via
+# BASH_SOURCE so the symlink at ~/bin/fleet-up still points back to
+# the engine repo's scripts/fleet/fleet-up.conf.sample. Skipped when
+# FLEET_CONF is already present (idempotent across re-runs) or when
+# the sample isn't reachable (fallthrough to dispatcher built-ins).
+if [[ ! -e "$FLEET_CONF" ]]; then
+    _fleet_up_self=$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
+    case "$_fleet_up_self" in
+        /*) ;;
+        # Relative readlink target (e.g. install.sh used a relative `ln -sf`):
+        # resolve against the symlink's containing directory so the join lands
+        # on the real script, not the symlink itself. install.sh currently
+        # always emits absolute targets so this branch is dead under the
+        # standard install — kept for future-proofing if the install scheme
+        # ever switches to relative symlinks.
+        *)  _fleet_up_self="$(cd "$(dirname "${BASH_SOURCE[0]}")/$(dirname "$_fleet_up_self")" && pwd)/$(basename "$_fleet_up_self")" ;;
+    esac
+    _fleet_up_sample="$(dirname "$_fleet_up_self")/fleet-up.conf.sample"
+    if [[ -f "$_fleet_up_sample" ]]; then
+        mkdir -p "$(dirname "$FLEET_CONF")"
+        cp "$_fleet_up_sample" "$FLEET_CONF"
+        echo "fleet-up: seeded $FLEET_CONF from $_fleet_up_sample"
+    fi
+    unset _fleet_up_self _fleet_up_sample
+fi
 # Capture env-set values before sourcing the conf so caller env still wins.
 _env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
 _env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
