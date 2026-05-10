@@ -1495,6 +1495,11 @@ std::string sliceFunctionBody(
         if (concat[i] == '\n') ++currentLine;
     }
     // Find the LAST `end` (as a whole word) on the last line.
+    // v1 limitation: scans rightmost to leftmost, so a line like
+    //   `end -- end of tick`
+    // matches the comment's `end` first and produces a malformed slice that
+    // fails with a parse error downstream. Workaround: the closing `end` of
+    // the tick function must not appear in an inline comment on that same line.
     const std::string lastLine = concat.substr(lastLineOffset);
     auto isWordBoundary = [](char c) { return !(std::isalnum(static_cast<unsigned char>(c)) || c == '_'); };
     size_t bodyEnd = std::string::npos;
