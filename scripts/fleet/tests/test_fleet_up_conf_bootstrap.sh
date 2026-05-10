@@ -113,6 +113,27 @@ CONF3="$TMPROOT/nested/dir/test3.conf"
 run_fleet_up_bootstrap_only "$CONF3"
 assert_file_exists "$CONF3" "conf created in newly-made directory"
 
+# --- Test 4: sample missing — bootstrap is a no-op (graceful degrade) ------
+# Copy fleet-up to an isolated dir without a fleet-up.conf.sample alongside,
+# then run the copy. The bootstrap's _fleet_up_sample resolution lands in
+# the isolated dir, finds no sample, and skips the cp without error.
+echo "T4: sample missing — bootstrap skips quietly"
+CONF4="$TMPROOT/test4.conf"
+ISOLATED_DIR="$TMPROOT/isolated"
+mkdir -p "$ISOLATED_DIR"
+cp "$FLEET_UP" "$ISOLATED_DIR/fleet-up"
+[[ ! -e "$CONF4" ]] || { echo "  setup error: $CONF4 already exists" >&2; exit 1; }
+[[ ! -f "$ISOLATED_DIR/fleet-up.conf.sample" ]] || { echo "  setup error: sample present in isolated dir" >&2; exit 1; }
+PATH=/usr/bin:/bin FLEET_CONF="$CONF4" \
+    "$ISOLATED_DIR/fleet-up" >/dev/null 2>&1 || true
+if [[ ! -f "$CONF4" ]]; then
+    PASS=$((PASS + 1))
+    echo "  ok: conf not created when sample is missing"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: conf was created despite missing sample ($CONF4)"
+fi
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 if (( FAIL > 0 )); then

@@ -78,7 +78,13 @@ if [[ ! -e "$FLEET_CONF" ]]; then
     _fleet_up_self=$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
     case "$_fleet_up_self" in
         /*) ;;
-        *)  _fleet_up_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "$_fleet_up_self")" ;;
+        # Relative readlink target (e.g. install.sh used a relative `ln -sf`):
+        # resolve against the symlink's containing directory so the join lands
+        # on the real script, not the symlink itself. install.sh currently
+        # always emits absolute targets so this branch is dead under the
+        # standard install — kept for future-proofing if the install scheme
+        # ever switches to relative symlinks.
+        *)  _fleet_up_self="$(cd "$(dirname "${BASH_SOURCE[0]}")/$(dirname "$_fleet_up_self")" && pwd)/$(basename "$_fleet_up_self")" ;;
     esac
     _fleet_up_sample="$(dirname "$_fleet_up_self")/fleet-up.conf.sample"
     if [[ -f "$_fleet_up_sample" ]]; then
