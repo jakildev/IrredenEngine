@@ -189,18 +189,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **C_SpriteSheet: onDestroy GPU texture cleanup** — add onDestroy() to C_SpriteSheet calling IRRender::destroyResource(textureHandle_) to prevent GPU texture leak on entity destroy
-  - **ID:** T-134
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-134-sprite-sheet-on-destroy
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) C_SpriteSheet gains onDestroy() that calls IRRender::destroyResource(textureHandle_); (2) pattern matches C_TriangleCanvasTextures and C_TrixelFramebuffer; (3) fleet-build clean on linux-debug; (4) no crash on sprite_demo
-  - **Issue:** #535
-  - **Notes:** Escalated from PR #527 (T-098 sprite Lua bindings review), Nit 4. Currently harmless for single-load demos; becomes a GPU leak for long-running scenes with sheet reload.
-  - **Links:**
-
-
 - [~] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
   - **ID:** T-135
   - **Area:** tooling
@@ -314,6 +302,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-134** — C_SpriteSheet: onDestroy GPU texture cleanup · Owner: claude/T-134-sprite-sheet-on-destroy · PR: https://github.com/jakildev/IrredenEngine/pull/590
 - [x] **T-133** — Render: 2x2 PCF in screen-space sun shadow lookup · Owner: claude/T-133-2x2-pcf-sun-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/574
 - [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
 - [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
@@ -333,4 +322,3 @@ Avoid:
 - [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
 - [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-worker-resumption-step · PR: https://github.com/jakildev/IrredenEngine/pull/539
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
-- [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
