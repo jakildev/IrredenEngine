@@ -354,10 +354,75 @@ def pick_pr(prs: list[dict]) -> Optional[dict]:
     return None
 
 
-def derive_status(task_id: str, by_id: dict[str, list[dict]]) -> tuple[str, str, Optional[dict]]:
+def load_fs_claims(repo_key: str) -> set[str]:
+    """Return the set of task IDs that have an active fleet-claim FS lock.
+
+    Filters by the slug's namespace prefix so engine renders ignore game
+    claims and vice-versa. Engine slugs lack a prefix; game slugs are
+    `game-...`. The directory is read defensively — a malformed or
+    missing entry contributes nothing rather than aborting the render.
+
+    Used by `derive_status` to preserve [~] in the no-PR window between
+    `fleet-claim claim` (T-138 master-push) and the worker's first
+    `gh pr create`. Without this, the next queue-tick after the master
+    push would clobber [~] back to [ ] before the worker had a chance
+    to open the PR — the very race T-138 is meant to close.
+    """
+    claims_dir = pathlib.Path(
+        os.environ.get(
+            "FLEET_CLAIMS_DIR",
+            str(pathlib.Path.home() / ".fleet" / "claims"),
+        )
+    )
+    if not claims_dir.is_dir():
+        return set()
+    out: set[str] = set()
+    for entry in sorted(claims_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        slug = entry.name
+        # Stack metadata (`_stack_<agent>/`) is bookkeeping, not a claim.
+        if slug.startswith("_stack_"):
+            continue
+        if repo_key == "engine" and slug.startswith("game-"):
+            continue
+        if repo_key == "game" and not slug.startswith("game-"):
+            continue
+        title_file = entry / "title"
+        if not title_file.is_file():
+            continue
+        try:
+            tid = title_file.read_text().strip()
+        except OSError:
+            continue
+        if TASK_ID_RE.match(tid):
+            out.add(tid)
+    return out
+
+
+def derive_status(
+    task_id: str,
+    by_id: dict[str, list[dict]],
+    fs_claims: Optional[set[str]] = None,
+    existing_status: Optional[str] = None,
+    existing_owner: Optional[str] = None,
+) -> tuple[str, str, Optional[dict]]:
     """Return (status_marker, owner_string, pr_or_None) for a task id."""
     pr = pick_pr(by_id.get(task_id, []))
     if pr is None:
+        # No PR found. Normally this means the task is open ([ ]/free).
+        # T-138 exception: if fleet-claim has just written [~] to master
+        # but the worker hasn't opened the PR yet, the FS claim is the
+        # only signal that the task is in-flight. Preserve [~] in that
+        # narrow window so this render doesn't overwrite the master-push
+        # we just made. `cmd_check_stale` later prunes abandoned FS
+        # claims; the next render after that reverts naturally to [ ].
+        if (
+            fs_claims
+            and task_id in fs_claims
+            and existing_status == "~"
+        ):
+            return "~", existing_owner or "free", None
         return " ", "free", None
     if pr.get("mergedAt") and pr.get("baseRefName") == "master":
         return "x", "free", pr  # owner irrelevant for merged
@@ -517,6 +582,10 @@ def render(
         if m:
             status_by_id.setdefault(m.group(1), "x")
 
+    # FS claims (T-138): preserves [~] in the no-PR window after
+    # fleet-claim's master-push and before the worker's PR is opened.
+    fs_claims = load_fs_claims(repo_key)
+
     # First pass: derive status for each task. Detect newly-merged
     # tasks so we can move them to Done.
     block_decisions: list[tuple[TaskBlock, str, str, Optional[dict]]] = []
@@ -525,7 +594,12 @@ def render(
         if tid is None:
             block_decisions.append((block, block.status, block.get_field("owner") or "free", None))
             continue
-        marker, owner, pr = derive_status(tid, by_id)
+        existing_owner = block.get_field("owner")
+        marker, owner, pr = derive_status(
+            tid, by_id, fs_claims=fs_claims,
+            existing_status=block.status,
+            existing_owner=existing_owner,
+        )
         status_by_id[tid] = marker
         block_decisions.append((block, marker, owner, pr))
 

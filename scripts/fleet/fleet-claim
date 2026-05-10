@@ -46,6 +46,34 @@ RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 FLEET_ENGINE_ROOT="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 
+# --- master-side TASKS.md lock (T-138) ------------------------------------
+#
+# Beyond the local FS lock, claim/stack push a one-line TASKS.md update to
+# `origin/master` so a polling worker on any host (or a worker that sees
+# only origin/master/TASKS.md) can no longer mistake a claimed task for
+# free. The push uses pure git plumbing (hash-object + mktree +
+# commit-tree + push) — no working-tree mutation in the agent's worktree.
+#
+# Race resolution:
+#   - Two same-host workers race on the FS mkdir lock first; the loser
+#     never reaches master_lock_task.
+#   - Two cross-host workers (or workers whose FS claim layouts diverge)
+#     each win their FS lock; their master pushes race. One push lands
+#     fast-forward; the other detects non-FF, refetches, sees [~] already
+#     set, and aborts with "race lost on master push" — its FS claim is
+#     rolled back.
+#
+# Stranded [~] recovery:
+#   fleet-tasks-render preserves [~] when an active FS claim exists, so
+#   queue-tick won't immediately revert. When `fleet-claim check-stale`
+#   removes a stale FS claim, the next queue-tick re-derives without the
+#   FS-claim signal and reverts [~] → [ ]. No new metadata in TASKS.md.
+#
+# Opt-out:
+#   Set FLEET_CLAIM_NO_MASTER_LOCK=1 to skip the master push. Used by
+#   tests and any bootstrap scenario where origin is unreachable.
+#   `cmd_claim` falls back to FS-lock-only behavior with a stderr note.
+
 # --- claim sidecar layout --------------------------------------------------
 #
 # Each claim is the directory $CLAIMS_DIR/<slug>/ (atomic mkdir-as-lock).
@@ -356,6 +384,308 @@ sys.exit(0)
 PYEOF
 }
 
+# --- master-side TASKS.md push helpers ------------------------------------
+
+master_lock_task() {
+    # Push a TASKS.md status update to origin/master via pure git plumbing.
+    # $1 = action ("lock" → flip [ ] → [~]; "unlock" → flip [~] → [ ])
+    # $2 = task ID (T-NNN)
+    # $3 = owner string ("opus-worker-1", "free", etc.)
+    #
+    # Exit codes:
+    #   0 — push succeeded (or no-op: row already in target state)
+    #   1 — race lost (TASKS.md shows the task in a state that means
+    #       another agent already claimed/released it)
+    #   2 — task not found in TASKS.md, or origin unreachable, or
+    #       protected push was rejected for a non-race reason
+    #
+    # Skipped entirely when FLEET_CLAIM_NO_MASTER_LOCK=1 — exits 0 with
+    # a stderr note. Tests and bootstrap-without-network use this.
+    local action="$1"
+    local task_id="$2"
+    local owner="$3"
+
+    if [[ "${FLEET_CLAIM_NO_MASTER_LOCK:-0}" == "1" ]]; then
+        echo "fleet-claim: master-lock skipped (FLEET_CLAIM_NO_MASTER_LOCK=1)" >&2
+        return 0
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" || ! -f "$repo_root/TASKS.md" ]]; then
+        echo "fleet-claim: master-lock requires a git repo with TASKS.md (cwd: $(pwd))" >&2
+        return 2
+    fi
+
+    FLEET_REPO_ROOT="$repo_root" \
+    FLEET_LOCK_ACTION="$action" \
+    FLEET_LOCK_TASK_ID="$task_id" \
+    FLEET_LOCK_OWNER="$owner" \
+    python3 <<'PYEOF'
+import os, re, subprocess, sys
+
+repo = os.environ['FLEET_REPO_ROOT']
+action = os.environ['FLEET_LOCK_ACTION']
+task_id = os.environ['FLEET_LOCK_TASK_ID']
+owner = os.environ['FLEET_LOCK_OWNER']
+
+
+def run(args, **kw):
+    return subprocess.run(args, capture_output=True, text=True, **kw)
+
+
+def git(*args, check=False, **kw):
+    return run(['git', '-C', repo, *args], check=check, **kw)
+
+
+def fetch_master():
+    # Soft-fail when origin isn't configured or unreachable: the local
+    # FS lock alone is still a real lock for same-host races, so we
+    # warn and skip the master push rather than blocking the claim.
+    # Cross-host race resolution degrades silently in that env.
+    r = git('fetch', 'origin', 'master', '--quiet')
+    if r.returncode != 0:
+        sys.stderr.write(
+            "fleet-claim: master-lock skipped — fetch origin master failed "
+            f"(repo: {repo}). FS-lock-only mode.\n"
+        )
+        sys.exit(0)
+
+
+# Apply the [ ]/[~] flip + Owner update for $task_id. Returns
+# (new_content, decision) where decision is one of:
+#   'edited'    — row was modified, push needed
+#   'noop'      — row already in target state AND owned by $owner
+#                 (idempotent re-lock / same-agent re-unlock)
+#   'race-lost' — row state implies another agent already owns it
+#                 (or the task is done) — caller must roll back
+def edit_tasks_md(content, action, task_id, owner):
+    target_status = '~' if action == 'lock' else ' '
+    expect_status = ' ' if action == 'lock' else '~'
+
+    lines = content.splitlines(keepends=True)
+    out = []
+    found = False
+    decision = None
+
+    header_re = re.compile(r'^- \[([ ~x!])\] \*\*([^*]+)\*\*(.*)$')
+    field_re = re.compile(r'^(\s+)- \*\*([^:]+):\*\*\s*(.*?)\s*$')
+
+    n = len(lines)
+    i = 0
+    while i < n:
+        line = lines[i]
+        m = header_re.match(line.rstrip('\n'))
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+
+        # Read the whole block (header + field lines until next header
+        # or section break).
+        status = m.group(1)
+        j = i + 1
+        block = [line]
+        block_id_local = None
+        block_owner = None
+        field_indices = {}
+        while j < n:
+            nxt = lines[j]
+            if header_re.match(nxt.rstrip('\n')):
+                break
+            if nxt.startswith('## '):
+                break
+            fm = field_re.match(nxt.rstrip('\n'))
+            if fm:
+                key = fm.group(2).strip().lower()
+                field_indices[key] = len(block)
+                if key == 'id':
+                    block_id_local = fm.group(3).strip()
+                if key == 'owner':
+                    block_owner = fm.group(3).strip()
+            block.append(nxt)
+            j += 1
+
+        if block_id_local == task_id:
+            found = True
+            if status == target_status:
+                # Already in the target state. Whether that's a benign
+                # noop or a race-lost depends on Owner:
+                #   lock:   target=[~]. If Owner is us → noop (idempotent
+                #           re-lock). If Owner is someone else → race-lost.
+                #   unlock: target=[ ]. Already free; treat as noop
+                #           regardless of Owner (someone else may have
+                #           released first; nothing to do).
+                if action == 'lock':
+                    if (block_owner or 'free') == owner:
+                        decision = 'noop'
+                    else:
+                        decision = 'race-lost'
+                else:
+                    decision = 'noop'
+            elif status != expect_status:
+                # Wrong starting state — task may be [x] (done) or in some
+                # other terminal state. Don't try to overwrite.
+                decision = 'race-lost'
+            elif action == 'unlock' and (block_owner or 'free') != owner and owner != 'free':
+                # Sanity check: we're trying to release someone else's
+                # lock. Refuse — leave the row alone. (The free-target
+                # branch above already handles "owner==free" correctly.)
+                decision = 'race-lost'
+            else:
+                decision = 'edited'
+                new_header = re.sub(
+                    r'^(- \[)[ ~x!](\])',
+                    lambda mm: mm.group(1) + target_status + mm.group(2),
+                    block[0],
+                    count=1,
+                )
+                block[0] = new_header
+                if 'owner' in field_indices:
+                    idx = field_indices['owner']
+                    block[idx] = re.sub(
+                        r'^(\s+- \*\*Owner:\*\*\s*).*$',
+                        lambda mm: mm.group(1) + owner,
+                        block[idx].rstrip('\n'),
+                        count=1,
+                    ) + '\n'
+            out.extend(block)
+            i = j
+            continue
+
+        out.extend(block)
+        i = j
+
+    if not found:
+        return None, 'not-found'
+
+    return ''.join(out), decision
+
+
+fetch_master()
+
+for attempt in range(1, 4):
+    cur_master = git('rev-parse', 'origin/master').stdout.strip()
+    if not cur_master:
+        sys.stderr.write("fleet-claim: could not resolve origin/master\n")
+        sys.exit(2)
+
+    show = git('show', f'{cur_master}:TASKS.md')
+    if show.returncode != 0:
+        sys.stderr.write(f"fleet-claim: read TASKS.md from origin/master: {show.stderr}")
+        sys.exit(2)
+    content = show.stdout
+
+    new_content, decision = edit_tasks_md(content, action, task_id, owner)
+
+    if decision == 'not-found':
+        sys.stderr.write(f"fleet-claim: {task_id} not found in master/TASKS.md\n")
+        sys.exit(2)
+
+    if decision == 'noop':
+        sys.exit(0)
+
+    if decision == 'race-lost':
+        sys.stderr.write(
+            f"fleet-claim: {task_id} on master is not in expected state "
+            f"({'[ ]' if action == 'lock' else '[~]'}) — race lost\n"
+        )
+        sys.exit(1)
+
+    # Hash the new TASKS.md as a blob.
+    hp = subprocess.run(
+        ['git', '-C', repo, 'hash-object', '-w', '--stdin'],
+        input=new_content, capture_output=True, text=True,
+    )
+    if hp.returncode != 0:
+        sys.stderr.write(f"fleet-claim: hash-object failed: {hp.stderr}")
+        sys.exit(2)
+    new_blob = hp.stdout.strip()
+
+    # Read the master tree top-level entries; replace TASKS.md's blob.
+    ls = git('ls-tree', cur_master)
+    if ls.returncode != 0:
+        sys.stderr.write(f"fleet-claim: ls-tree failed: {ls.stderr}")
+        sys.exit(2)
+    new_tree_lines = []
+    seen_tasks_md = False
+    for line in ls.stdout.splitlines():
+        m = re.match(r'^(\S+) (\S+) (\S+)\t(.+)$', line)
+        if not m:
+            continue
+        mode, otype, sha, name = m.group(1), m.group(2), m.group(3), m.group(4)
+        if name == 'TASKS.md':
+            new_tree_lines.append(f'{mode} {otype} {new_blob}\t{name}')
+            seen_tasks_md = True
+        else:
+            new_tree_lines.append(line)
+    if not seen_tasks_md:
+        sys.stderr.write("fleet-claim: TASKS.md not found in origin/master tree\n")
+        sys.exit(2)
+
+    mt = subprocess.run(
+        ['git', '-C', repo, 'mktree'],
+        input='\n'.join(new_tree_lines) + '\n',
+        capture_output=True, text=True,
+    )
+    if mt.returncode != 0:
+        sys.stderr.write(f"fleet-claim: mktree failed: {mt.stderr}")
+        sys.exit(2)
+    new_tree = mt.stdout.strip()
+
+    msg_verb = 'claim' if action == 'lock' else 'release'
+    commit_msg = f"queue: {msg_verb} {task_id} ({owner})"
+
+    env = os.environ.copy()
+    # Use the user's git identity for the commit; fall back to a fleet
+    # identity if not configured (CI / fresh test env).
+    cfg_email = git('config', 'user.email').stdout.strip()
+    cfg_name = git('config', 'user.name').stdout.strip()
+    env.setdefault('GIT_AUTHOR_NAME', cfg_name or 'fleet-claim')
+    env.setdefault('GIT_AUTHOR_EMAIL', cfg_email or 'fleet-claim@local')
+    env.setdefault('GIT_COMMITTER_NAME', cfg_name or 'fleet-claim')
+    env.setdefault('GIT_COMMITTER_EMAIL', cfg_email or 'fleet-claim@local')
+
+    ct = subprocess.run(
+        ['git', '-C', repo, 'commit-tree', new_tree, '-p', cur_master, '-m', commit_msg],
+        capture_output=True, text=True, env=env,
+    )
+    if ct.returncode != 0:
+        sys.stderr.write(f"fleet-claim: commit-tree failed: {ct.stderr}")
+        sys.exit(2)
+    new_commit = ct.stdout.strip()
+
+    push = subprocess.run(
+        ['git', '-C', repo, 'push', 'origin', f'{new_commit}:refs/heads/master'],
+        capture_output=True, text=True,
+    )
+    if push.returncode == 0:
+        # Update local origin/master ref so subsequent reads see our push.
+        # Skip silently if the update-ref fails — the remote is the source
+        # of truth either way and the next fetch will catch up.
+        subprocess.run(
+            ['git', '-C', repo, 'update-ref', 'refs/remotes/origin/master', new_commit],
+            capture_output=True,
+        )
+        sys.exit(0)
+
+    err = (push.stderr or push.stdout).lower()
+    if ('non-fast-forward' in err or 'fetch first' in err
+            or 'rejected' in err and 'fetch' in err):
+        # Refetch and retry — another push won the race; we re-read and
+        # check whether the row is already in our target state.
+        fetch_master()
+        continue
+
+    sys.stderr.write(f"fleet-claim: push origin master failed: {push.stderr}")
+    sys.exit(2)
+
+# Out of retries. Treat as race lost — the row may now be [~] or [x].
+sys.stderr.write(f"fleet-claim: {task_id} master-lock retries exhausted; race lost\n")
+sys.exit(1)
+PYEOF
+}
+
 # --- subcommands ----------------------------------------------------------
 
 cmd_claim() {
@@ -468,6 +798,24 @@ cmd_claim() {
         echo "$agent" > "$CLAIMS_DIR/$slug/owner"
         echo "$task_id" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
+
+        # Master-side TASKS.md push (T-138). Cross-host race resolution:
+        # if another agent already pushed [~] for this task while we were
+        # acquiring the FS lock, master_lock_task returns 1 — we roll
+        # back the FS claim so it doesn't shadow the real owner. Soft
+        # failures (origin unreachable, malformed TASKS.md) abort with
+        # the same rollback; the task should be re-attempted on the
+        # next iteration once origin is reachable again.
+        local lock_rc=0
+        master_lock_task lock "$task_id" "$agent" || lock_rc=$?
+        if [[ $lock_rc -ne 0 ]]; then
+            __remove_claim "$slug"
+            if [[ $lock_rc -eq 1 ]]; then
+                echo "fleet-claim claim: $task_id master-lock race lost — another agent already claimed on origin/master" >&2
+            fi
+            return 1
+        fi
+
         if [[ -n "$stackable_branch" ]]; then
             echo "stackable_base_branch=$stackable_branch" > "$CLAIMS_DIR/${slug}.meta"
             echo "claimed: $task_id (slug: $slug, agent: $agent, base: $stackable_branch)"
@@ -646,6 +994,121 @@ if not url or not head:
     sys.exit(0)
 print(f"{url}\t{head}\t{author}\t{number}")
 PYEOF
+}
+
+cmd_reclaim() {
+    # Manual recovery for a stranded `[~]` row whose Owner branch no
+    # longer exists on the remote (the worker died between the master
+    # push and the feature-branch push). Resets master to `[ ]`+free
+    # and drops any matching local FS claim. Called by humans /
+    # cleanup tools; auto-recovery via check-stale + the FS-claim
+    # signal in fleet-tasks-render handles the typical case.
+    #
+    # Usage: fleet-claim reclaim <task-id>
+    # Exit 0 — reclaimed (or row was already [ ]/[x]; nothing to do)
+    # Exit 1 — Owner branch IS reachable; refusing to clobber an
+    #          actively-held lock.
+    # Exit 2 — origin unreachable, malformed TASKS.md, etc.
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim reclaim <task-id>" >&2
+        return 2
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" || ! -f "$repo_root/TASKS.md" ]]; then
+        echo "fleet-claim reclaim: requires a git repo with TASKS.md" >&2
+        return 2
+    fi
+
+    if ! git -C "$repo_root" fetch origin master --quiet; then
+        echo "fleet-claim reclaim: fetch origin master failed" >&2
+        return 2
+    fi
+
+    # Read row state + Owner branch from master. The helper reads
+    # FLEET_RECLAIM_TASKS_MD from the env to avoid a broken-pipe
+    # interaction with `git show | python3` under `set -e + pipefail`
+    # (python's early sys.exit() closes the pipe; git's SIGPIPE then
+    # propagates to a non-zero command-substitution status).
+    local tasks_md_content
+    if ! tasks_md_content=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        echo "fleet-claim reclaim: read TASKS.md from origin/master failed" >&2
+        return 2
+    fi
+    local owner_branch
+    owner_branch=$(FLEET_RECLAIM_TASKS_MD="$tasks_md_content" python3 - "$task_id" <<'PYEOF'
+import os, re, sys
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_RECLAIM_TASKS_MD', '')
+block_status = None
+block_id = None
+block_owner = None
+header_re = re.compile(r'^- \[([ ~x!])\] \*\*([^*]+)\*\*')
+field_re = re.compile(r'^\s+- \*\*([^:]+):\*\*\s*(.*?)\s*$')
+for line in content.splitlines():
+    m = header_re.match(line)
+    if m:
+        if block_id == task_id:
+            print(f"{block_status}\t{block_owner or 'free'}")
+            sys.exit(0)
+        block_status = m.group(1)
+        block_id = None
+        block_owner = None
+        continue
+    fm = field_re.match(line)
+    if fm:
+        key = fm.group(1).strip().lower()
+        if key == 'id':
+            block_id = fm.group(2).strip()
+        elif key == 'owner':
+            block_owner = fm.group(2).strip()
+if block_id == task_id:
+    print(f"{block_status}\t{block_owner or 'free'}")
+PYEOF
+    )
+
+    if [[ -z "$owner_branch" ]]; then
+        echo "fleet-claim reclaim: $task_id not found in master/TASKS.md" >&2
+        return 2
+    fi
+
+    local status="${owner_branch%%	*}"
+    local owner="${owner_branch#*	}"
+
+    if [[ "$status" != "~" ]]; then
+        echo "fleet-claim reclaim: $task_id is not in [~] state (status: [$status]) — nothing to reclaim"
+        return 0
+    fi
+
+    # If the Owner field looks like a branch name (claude/T-NNN-…),
+    # check whether the branch actually exists on origin. If yes,
+    # someone is actively holding the lock — refuse to clobber.
+    # If the Owner is just a worktree name (opus-worker-1) or "free",
+    # the worker died before the PR opened, so reclaim is safe.
+    if [[ "$owner" == claude/* ]]; then
+        if git -C "$repo_root" ls-remote --exit-code origin "refs/heads/$owner" >/dev/null 2>&1; then
+            echo "fleet-claim reclaim: $task_id Owner branch '$owner' still exists on origin — refusing to clobber" >&2
+            return 1
+        fi
+    fi
+
+    # Push [~]+owner → [ ]+free. Use master_lock_task with action=unlock,
+    # passing "free" so the Owner field is reset correctly. The sanity
+    # check's `owner != 'free'` clause is also bypassed by "free", so
+    # this is both correct and accepted by the helper.
+    local rc=0
+    master_lock_task unlock "$task_id" "free" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "fleet-claim reclaim: master push failed (rc=$rc)" >&2
+        return $rc
+    fi
+
+    # Drop any matching local FS claim. cmd_release is idempotent.
+    cmd_release "$task_id" >/dev/null 2>&1 || true
+
+    echo "reclaimed: $task_id (was [~]+$owner on master)"
 }
 
 cmd_release() {
@@ -954,8 +1417,11 @@ cmd_stack() {
         # skip_ids so intra-stack dependencies don't block the claim.
         if ! check_blockers "$task_id" "" "$earlier_in_stack"; then
             echo "fleet-claim stack: $task_id has unresolved blockers" >&2
-            # Roll back
+            # Roll back FS claims AND any master-side [~] pushes for the
+            # tasks earlier in this stack — leaving them on master would
+            # let the next iteration see the chain as half-claimed.
             for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
                 cmd_release "$prev"
             done
             return 1
@@ -969,6 +1435,7 @@ cmd_stack() {
         if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
             echo "fleet-claim stack: $task_id is reserved for $reserved_worktree (refusing claim by $agent) — rolling back" >&2
             for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
                 cmd_release "$prev"
             done
             return 1
@@ -979,6 +1446,25 @@ cmd_stack() {
             echo "$task_id" > "$CLAIMS_DIR/$slug/title"
             date +%s     > "$CLAIMS_DIR/$slug/created"
             echo "stack" > "$CLAIMS_DIR/$slug/stack"
+
+            # Master-side TASKS.md push (T-138). Same rollback discipline
+            # as cmd_claim: lose the master race → release THIS slug AND
+            # all earlier stack entries (FS + master) so the chain ends
+            # in a clean state.
+            local lock_rc=0
+            master_lock_task lock "$task_id" "$agent" || lock_rc=$?
+            if [[ $lock_rc -ne 0 ]]; then
+                __remove_claim "$slug"
+                if [[ $lock_rc -eq 1 ]]; then
+                    echo "fleet-claim stack: $task_id master-lock race lost — rolling back" >&2
+                fi
+                for prev in "${claimed[@]}"; do
+                    master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
+                    cmd_release "$prev"
+                done
+                return 1
+            fi
+
             claimed+=("$task_id")
         else
             local owner="unknown"
@@ -987,6 +1473,7 @@ cmd_stack() {
             fi
             echo "fleet-claim stack: $task_id already claimed by $owner — rolling back" >&2
             for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
                 cmd_release "$prev"
             done
             return 1
@@ -2124,6 +2611,13 @@ case "${1:-}" in
         fi
         cmd_release "$2"
         ;;
+    reclaim)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reclaim <task-id>" >&2
+            exit 2
+        fi
+        cmd_reclaim "$2"
+        ;;
     check)
         if [[ -z "${2:-}" ]]; then
             echo "usage: fleet-claim check \"<title>\"" >&2
@@ -2284,6 +2778,13 @@ global options (must come BEFORE the subcommand):
                                 Engine and game share T-NNN IDs; this keeps
                                 their lock dirs distinct. Omit for engine.
 
+environment:
+  FLEET_CLAIM_NO_MASTER_LOCK=1  skip the master-side TASKS.md push that
+                                claim/stack normally do (T-138). Used by
+                                tests and bootstrap scenarios where origin
+                                is unreachable. Cross-host race resolution
+                                degrades to FS-lock-only when set.
+
 commands:
   claim "<title>" [agent] [--stackable-on <pr-url>]
                                 claim a task (exit 0=claimed, 1=taken).
@@ -2310,6 +2811,14 @@ commands:
                                 etc.) — callers treat as a hint.
   release "<title>"             release a claim (also clears the
                                 --stackable-on .meta sidecar).
+  reclaim <task-id>             manually unstick a [~] row whose Owner
+                                branch no longer exists on origin (the
+                                worker died between master push and PR
+                                open). Pushes [~] → [ ]+free. Refuses
+                                if the Owner branch IS on origin
+                                (someone holds the lock). check-stale
+                                + the FS-claim signal handle the
+                                typical case automatically.
   check "<title>"               check if free (exit 0=free, 1=taken)
   list                          list all active claims
   stack "T-1 T-2 ..." [agent]  atomically claim a dependency chain (all-or-nothing)
@@ -2381,6 +2890,20 @@ Dependency gate:
   URLs), the claim is refused. The cwd's git repo determines which
   TASKS.md is consulted — `cd` into the right worktree before claiming
   cross-repo tasks.
+
+Master-side TASKS.md lock (T-138):
+  After acquiring the local FS lock, claim/stack push a one-line
+  TASKS.md update to origin/master via pure git plumbing
+  (hash-object + mktree + commit-tree + push). The row is flipped from
+  [ ] to [~] and Owner is set to the agent name. This closes the
+  cross-host race window where a polling worker on another machine
+  reads origin/master/TASKS.md and sees a claimed task as still free.
+  Race semantics: a non-fast-forward push (someone else's claim landed
+  first) triggers a fetch + retry; if the row is now [~] from another
+  agent the FS lock is rolled back and the claim returns 1 ("race
+  lost on master push"). fleet-tasks-render preserves [~] in the
+  no-PR window via the same FS claim signal — when check-stale
+  prunes an abandoned claim the next render naturally reverts [~].
 
 Stack claiming:
   stack claims a chain of tasks atomically. If any task is already claimed

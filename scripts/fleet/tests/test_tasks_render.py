@@ -20,6 +20,7 @@ Issue, Stack, etc.). This harness covers:
 import importlib.machinery
 import importlib.util
 import json
+import os
 import pathlib
 import tempfile
 import unittest
@@ -143,6 +144,75 @@ class StatusDerivation(unittest.TestCase):
             # Task added to Done
             self.assertIn("- [x] **T-200**", out)
             self.assertIn("PR: https://github.com/jakildev/IrredenEngine/pull/200", out)
+
+    def test_fs_claim_preserves_in_progress_marker_with_no_pr(self):
+        # T-138: fleet-claim flips master/TASKS.md [ ] → [~] before the
+        # worker opens its PR. derive_status with no PR would normally
+        # revert to [ ], clobbering the master push. The FS claim is the
+        # signal to preserve [~] until the PR appears (or check-stale
+        # prunes the abandoned claim).
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)
+            claims_dir = pathlib.Path(td) / "claims"
+            (claims_dir / "t-200").mkdir(parents=True)
+            (claims_dir / "t-200" / "title").write_text("T-200")
+            (claims_dir / "t-200" / "owner").write_text("opus-worker-1")
+            old = os.environ.pop("FLEET_CLAIMS_DIR", None)
+            os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
+            try:
+                text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
+                out = render(text, state_file=state, repo_key="engine")
+            finally:
+                if old is None:
+                    os.environ.pop("FLEET_CLAIMS_DIR", None)
+                else:
+                    os.environ["FLEET_CLAIMS_DIR"] = old
+            self.assertIn("- [~] **Some Engine Feature**", out)
+            self.assertIn("**Owner:** opus-worker-1", out)
+
+    def test_no_fs_claim_reverts_in_progress_marker_with_no_pr(self):
+        # Mirror of the test above without the FS claim — confirms the
+        # FS-claim signal is what preserves [~]. With no PR and no FS
+        # claim, the row reverts to [ ] (the historical behavior).
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)
+            claims_dir = pathlib.Path(td) / "empty-claims"
+            claims_dir.mkdir(parents=True)
+            old = os.environ.pop("FLEET_CLAIMS_DIR", None)
+            os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
+            try:
+                text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
+                out = render(text, state_file=state, repo_key="engine")
+            finally:
+                if old is None:
+                    os.environ.pop("FLEET_CLAIMS_DIR", None)
+                else:
+                    os.environ["FLEET_CLAIMS_DIR"] = old
+            self.assertIn("- [ ] **Some Engine Feature**", out)
+            self.assertIn("**Owner:** free", out)
+
+    def test_game_slug_namespace_isolation(self):
+        # An engine render must ignore game-namespaced FS claims (slug
+        # `game-...`) so cross-repo claims don't bleed across renders.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)
+            claims_dir = pathlib.Path(td) / "claims"
+            (claims_dir / "game-t-200").mkdir(parents=True)
+            (claims_dir / "game-t-200" / "title").write_text("T-200")
+            (claims_dir / "game-t-200" / "owner").write_text("opus-worker-1")
+            old = os.environ.pop("FLEET_CLAIMS_DIR", None)
+            os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
+            try:
+                text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
+                # Engine render: game-T-200 claim must not preserve [~]
+                # for this engine task with the same task ID.
+                out = render(text, state_file=state, repo_key="engine")
+            finally:
+                if old is None:
+                    os.environ.pop("FLEET_CLAIMS_DIR", None)
+                else:
+                    os.environ["FLEET_CLAIMS_DIR"] = old
+            self.assertIn("- [ ] **Some Engine Feature**", out)
 
     def test_stranded_merge_keeps_task_in_progress(self):
         # PR #543 regression: mergedAt is set but base != master, so
