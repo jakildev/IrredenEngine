@@ -165,18 +165,6 @@ Avoid:
 
 
 
-- [~] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
-  - **ID:** T-105
-  - **Area:** engine/script, build
-  - **Model:** opus
-  - **Owner:** claude/T-105-luajit-runtime
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) LuaJIT 2.1 replaces Lua 5.4 in cmake/; all sol2 usertype/registerType bindings compile and function; (2) Lua 5.4-only feature audit complete — goto, integer subtypes, <const>/<close>, generational GC, bit32 — findings documented in PR body; (3) fleet-build --target IrredenEngineTest clean + 100% pass; fleet-build --target IRPerfGrid clean; creations/demos/lua_pipeline_demo runs end-to-end; all Lua-driven ECS tests pass; (4) EVAL-mode perf re-run on testbed from PR #563 documented (target 2–10× C++ perf_grid baseline); (5) engine/script/CLAUDE.md updated with LuaJIT 2.1 runtime note (available: bit ops, FFI; not available: 5.4-only features)
-  - **Issue:** #585
-  - **Notes:** T-104 measurement showed ≥10 000× EVAL-mode slowdown on Lua 5.4 sol2 dispatch; LuaJIT trace JIT collapses that inner-loop shape. Architect decision tracked in #566. Blocks T-106 (codegen pipeline foundation) and PR #563 (perf-grid testbed needs LuaJIT measurement). Out of scope: codegen pipeline (T-106/107/108), parity gate (T-109), LuaJIT FFI in engine bindings.
-  - **Links:**
-
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -194,7 +182,7 @@ Avoid:
   - **Area:** engine/script, build
   - **Model:** opus
   - **Owner:** claude/T-106-lua-codegen-foundation
-  - **Blocked by:** T-105
+  - **Blocked by:** (none)
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) new codegen tool at cmake/lua_codegen/ — takes list of .lua files + output .hpp path, language choice documented in PR body; (2) emits struct C_Name in namespace IRComponents + matching _lua.hpp binding (kHasLuaBinding<C_Name>, bindLuaType<C_Name>, sol::usertype with field accessors) + registration helper calling IREntity::EntityManager::registerComponent<C_Name>() for every IRComponent.register("Name", {...}) call found; (3) type inference: int→int32_t, float, bool, string; explicit typed form ({field = {type="float", default=100}}) honored; unsupported defaults error with file/line/field name; (4) CMake helper irreden_lua_codegen(<target> SOURCES <lua_files...> OUTPUT_HPP <path>) with add_custom_command in cmake/ir_functions.cmake; (5) smoke test: C_Hp{current=100, max=100} round-trip (Lua creates entity → C++ reads back) passes; (6) test/script/lua_component_register_test.cpp passes under CODEGEN mode (test-harness toggle EVAL vs. CODEGEN); (7) fleet-build --target IrredenEngineTest clean + all existing tests pass
   - **Issue:** #586
@@ -254,6 +242,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
 - [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
@@ -266,11 +255,10 @@ Avoid:
 - [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
-- [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
 - [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
 - [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
-- [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
+- [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
