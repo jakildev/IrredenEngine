@@ -20,6 +20,7 @@ Issue, Stack, etc.). This harness covers:
 import importlib.machinery
 import importlib.util
 import json
+import os
 import pathlib
 import tempfile
 import unittest
@@ -156,7 +157,6 @@ class StatusDerivation(unittest.TestCase):
             (claims_dir / "t-200").mkdir(parents=True)
             (claims_dir / "t-200" / "title").write_text("T-200")
             (claims_dir / "t-200" / "owner").write_text("opus-worker-1")
-            import os
             old = os.environ.pop("FLEET_CLAIMS_DIR", None)
             os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
             try:
@@ -178,7 +178,6 @@ class StatusDerivation(unittest.TestCase):
             state = _state_file(td)
             claims_dir = pathlib.Path(td) / "empty-claims"
             claims_dir.mkdir(parents=True)
-            import os
             old = os.environ.pop("FLEET_CLAIMS_DIR", None)
             os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
             try:
@@ -201,7 +200,6 @@ class StatusDerivation(unittest.TestCase):
             (claims_dir / "game-t-200").mkdir(parents=True)
             (claims_dir / "game-t-200" / "title").write_text("T-200")
             (claims_dir / "game-t-200" / "owner").write_text("opus-worker-1")
-            import os
             old = os.environ.pop("FLEET_CLAIMS_DIR", None)
             os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
             try:

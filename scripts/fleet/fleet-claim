@@ -1095,10 +1095,11 @@ PYEOF
     fi
 
     # Push [~]+owner → [ ]+free. Use master_lock_task with action=unlock,
-    # passing the current owner so the in-helper sanity check accepts
-    # the transition (we own this revert because no live branch claims it).
+    # passing "free" so the Owner field is reset correctly. The sanity
+    # check's `owner != 'free'` clause is also bypassed by "free", so
+    # this is both correct and accepted by the helper.
     local rc=0
-    master_lock_task unlock "$task_id" "$owner" || rc=$?
+    master_lock_task unlock "$task_id" "free" || rc=$?
     if [[ $rc -ne 0 ]]; then
         echo "fleet-claim reclaim: master push failed (rc=$rc)" >&2
         return $rc
