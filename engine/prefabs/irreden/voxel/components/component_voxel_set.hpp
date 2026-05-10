@@ -111,6 +111,10 @@ struct C_VoxelSetNew {
     // voxels, just in case the constructor might be called in more than
     // one place?
     void onDestroy() {
+        // numVoxels_ equals requestedVoxels on all non-error paths (the
+        // constructor min-span guard fires IR_ASSERT before returning a
+        // mismatched allocation), so deallocateVoxels releases exactly
+        // what allocateVoxels reserved.
         IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
         IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
     }

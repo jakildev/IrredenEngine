@@ -209,6 +209,7 @@ struct C_VoxelPool {
         m_entityIdsDirty = false;
     }
 
+    [[deprecated("Capture VoxelPoolAllocation::startIndex_ at allocateVoxels call time instead — see engine/render/CLAUDE.md")]]
     const C_PositionGlobal3D *getPositionGlobalsBasePtr() const {
         return m_voxelPositionsGlobal.data();
     }
