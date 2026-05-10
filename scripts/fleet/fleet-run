@@ -22,6 +22,15 @@
 
 set -euo pipefail
 
+# --- Shared helpers (detect_engine_root) ---
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ ! -f "$_FLEET_COMMON_SH" ]]; then
+    echo "fleet-run: missing fleet-common.sh (expected next to fleet-run)" >&2
+    exit 1
+fi
+# shellcheck source=fleet-common.sh
+source "$_FLEET_COMMON_SH"
+
 BUILD_DIR=""
 TIMEOUT=""
 while [[ $# -gt 0 ]]; do
@@ -124,14 +133,7 @@ shift
 
 # Default build dir: same auto-detection logic as fleet-build.
 if [[ -z "$BUILD_DIR" ]]; then
-    WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
-    if [[ ! -f "$WORKTREE_ROOT/CMakePresets.json" ]]; then
-        if [[ -f "$WORKTREE_ROOT/../../CMakePresets.json" ]]; then
-            WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/../.." && pwd)"
-        elif [[ -f "$WORKTREE_ROOT/../CMakePresets.json" ]]; then
-            WORKTREE_ROOT="$(cd "$WORKTREE_ROOT/.." && pwd)"
-        fi
-    fi
+    WORKTREE_ROOT=$(detect_engine_root)
     BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
 fi
 
