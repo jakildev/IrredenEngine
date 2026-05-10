@@ -215,18 +215,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: extract detect_engine_root into fleet-common.sh** — eliminate duplicated root-detection logic across fleet-build, fleet-run, and fleet-run-targets
-  - **ID:** T-140
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-140-fleet-common-sh
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) scripts/fleet/fleet-common.sh created with detect_engine_root() as the authoritative implementation; (2) fleet-build sources fleet-common.sh and removes its own inline root-detection (lines 28-35); (3) fleet-run sources fleet-common.sh and removes its own inline copy (lines 127-134); (4) fleet-run-targets sources fleet-common.sh instead of defining detect_engine_root() locally (lines 150-161); (5) fleet-common.sh symlink entry added to scripts/fleet/install.sh; (6) fleet-build, fleet-run, fleet-run-targets all still work correctly from ~/bin symlinks (source path resolved via git rev-parse --show-toplevel)
-  - **Issue:** #451
-  - **Notes:** Flagged as a nit in PR #446 review. Scripts run via ~/bin symlinks so the source path must be resolved dynamically, not hardcoded.
-  - **Links:**
-
-
 - [~] **Demo: Z-Yaw world rotation showcase** — demo creation(s) exercising Z-Yaw world rotation with SDF/voxel entities, mouse-controlled rotation, and per-voxel hover/click detection
   - **ID:** T-141
   - **Area:** creations/demos
@@ -276,6 +264,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
 - [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
 - [x] **T-106** — Codegen pipeline foundation — components only · Owner: claude/T-106-lua-codegen-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/596
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
@@ -295,4 +284,3 @@ Avoid:
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
 - [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
-- [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
