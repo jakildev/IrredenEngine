@@ -1,8 +1,8 @@
 # Irreden Engine
 
 Isometric voxel game engine built on an archetype-based ECS. C++ handles the
-engine, systems, and pipelines. Lua 5.4 (via sol2) drives entity creation and
-game logic in creations.
+engine, systems, and pipelines. LuaJIT 2.1 (via sol2) drives entity creation
+and game logic in creations.
 
 [`docs/agents/AGENTS-ARCHITECTURE.md`](docs/agents/AGENTS-ARCHITECTURE.md) has
 the full long-form architecture reference. Module-specific details live in

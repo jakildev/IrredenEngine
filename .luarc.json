@@ -65,5 +65,5 @@
         "C_AnimColorState",
         "C_AnimMotionColorShift"
     ],
-    "runtime.version": "Lua 5.4"
+    "runtime.version": "LuaJIT"
 }

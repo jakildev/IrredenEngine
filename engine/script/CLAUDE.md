@@ -1,8 +1,60 @@
-# engine/script/ — Lua 5.4 via sol2
+# engine/script/ — LuaJIT 2.1 via sol2
 
 Thin wrapper around sol2 that exposes ECS components, math, and input to
 Lua. Creations register *which* components get bound via a per-creation
 `lua_component_pack.hpp` file.
+
+## Lua runtime: LuaJIT 2.1
+
+The engine's Lua VM is **LuaJIT 2.1** (Lua 5.1 base + LuaJIT extensions).
+The runtime is fetched at configure time and built from upstream source
+via `engine/script/third_party/luajit/CMakeLists.txt`.
+
+What's available beyond Lua 5.1:
+
+- `bit` module — bitwise ops over 32-bit integers (LuaJIT-native, faster
+  than Lua 5.4's `>>`/`<<`/`&`/`|` operators when JIT-compiled).
+- `ffi` module — C FFI from Lua. Available to creations; engine bindings
+  stay sol2-based.
+- Trace JIT compiler — heats up stable inner loops into compiled native
+  code. Per-archetype Lua system ticks are exactly the shape it
+  compiles well; expect 2–10× C++ on warmed-up loops vs. ≥10 000× under
+  the prior Lua 5.4 + sol2 path.
+
+What's NOT available (Lua 5.2/5.3/5.4 features, do not use):
+
+- `goto` / labels — LuaJIT runs in 5.1-compat mode by default.
+- Integer subtype — all numbers are doubles; whole-number literals
+  written `0`, `0.0`, or `1.0` round-trip identically through sol2 as
+  int. For float fields whose default is whole-numbered (`x = 0.0`)
+  use the explicit form `x = { type = "float", default = 0 }`. Auto-
+  inference keys off whether the value has a fractional part.
+- `<const>` / `<close>` attribute syntax — Lua 5.4 only.
+- Generational GC tuning knobs — LuaJIT uses incremental.
+- `bit32` (the 5.2 transitional module) — use `bit` instead, same
+  function names with `bit.bxor` etc.
+- `math.type` — there is no integer subtype to query.
+
+Sol2 detects LuaJIT via `LUAJIT_VERSION` in `lua.h` and adapts
+bindings automatically; no creation-side code changes were required
+for the runtime swap. See [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md)
+"Retrospective" for the perf-measurement story.
+
+### Build flag: `SOL_EXCEPTIONS_ALWAYS_UNSAFE`
+
+`engine/script/CMakeLists.txt` defines `SOL_EXCEPTIONS_ALWAYS_UNSAFE=1`
+on `IrredenEngineScripting`. Sol2's default for LuaJIT 2.1 lets C++
+exceptions propagate through the LuaJIT VM via the platform unwinder —
+in practice, the message is lost and `sol::error::what()` reports a
+generic `"C++ exception"`. With `ALWAYS_UNSAFE` the trampoline catches
+`std::exception` in-process and forwards `what()` via `lua_error`,
+preserving the message in `protected_function` results. The
+"unsafe" name is sol2 convention; it is the safer choice here.
+
+LuaJIT itself is compiled with `XCFLAGS=-DLUAJIT_UNWIND_EXTERNAL` so
+external unwinding is wired up regardless of the sol2 setting — a
+future binding that prefers the propagation path can flip the
+sol2 macro without rebuilding LuaJIT.
 
 ## `LuaScript`
 

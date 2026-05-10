@@ -31,7 +31,7 @@ IrredenEngine/
 │   ├── prefabs/            # Header-only components, systems, commands, entities
 │   ├── profile/            # IrredenEngineProfile (easy_profiler)
 │   ├── render/             # IrredenEngineRendering (OpenGL, trixel pipeline, shaders, text)
-│   ├── script/             # IrredenEngineScripting (Lua 5.4, sol2)
+│   ├── script/             # IrredenEngineScripting (LuaJIT 2.1, sol2)
 │   ├── system/             # IrredenEngineSystem (pipeline scheduling)
 │   ├── time/               # IrredenEngineTime (fixed-step timing)
 │   ├── video/              # IrredenEngineVideo (video capture, screenshots)
@@ -313,7 +313,7 @@ The navigation system adds a chunked spatial layer on top of voxel space:
 
 ## Lua Integration
 
-Lua 5.4 + sol2. C++ sets up all systems and pipelines; Lua drives entity creation, configuration, and runtime game logic.
+LuaJIT 2.1 + sol2. C++ sets up all systems and pipelines; Lua drives entity creation, configuration, and runtime game logic.
 
 ### File Layout for a Lua Creation
 

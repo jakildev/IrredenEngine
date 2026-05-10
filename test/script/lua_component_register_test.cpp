@@ -44,8 +44,13 @@ TEST_F(LuaComponentTest, IntegerDefaultsInferAsInt32) {
 
 TEST_F(LuaComponentTest, FloatDefaultsInferAsFloat) {
     auto &lua = m_lua.lua();
+    // Numeric defaults need a fractional component for the inference to
+    // resolve to float. LuaJIT (Lua 5.1 base) has no integer subtype, so
+    // a whole-number literal written as `0.0` is indistinguishable from
+    // `0` at the C API level — both round-trip through sol2 as int. Use
+    // explicit `{type="float", default=N}` for whole-number floats.
     auto result = lua.safe_script(
-        "local C = IRComponent.register('Velocity', { x = 0.0, y = 0.0, z = 0.0 })\n"
+        "local C = IRComponent.register('Velocity', { x = 0.5, y = 1.5, z = -3.14 })\n"
         "return C.fields.x.type, C.fields.y.type, C.fields.z.type"
     );
     ASSERT_TRUE(result.valid());
@@ -53,6 +58,25 @@ TEST_F(LuaComponentTest, FloatDefaultsInferAsFloat) {
     EXPECT_EQ(x, "float");
     EXPECT_EQ(y, "float");
     EXPECT_EQ(z, "float");
+}
+
+TEST_F(LuaComponentTest, WholeNumberLiteralsAlwaysInferAsInt32UnderLuaJIT) {
+    // Companion to FloatDefaultsInferAsFloat documenting the LuaJIT
+    // limitation: a whole-number literal written with a decimal point
+    // (`0.0`) infers as int32 because Lua 5.1's number type has no
+    // integer subtype distinction. Tests authoring this contract
+    // explicitly so a future regression (e.g. accidental switch to a
+    // dual-num LuaJIT build) is loud.
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('VelocityWhole', { x = 0.0, y = 1.0, z = -3.0 })\n"
+        "return C.fields.x.type, C.fields.y.type, C.fields.z.type"
+    );
+    ASSERT_TRUE(result.valid());
+    auto [x, y, z] = result.get<std::tuple<std::string, std::string, std::string>>();
+    EXPECT_EQ(x, "int32");
+    EXPECT_EQ(y, "int32");
+    EXPECT_EQ(z, "int32");
 }
 
 TEST_F(LuaComponentTest, MixedDefaultsInferPerField) {
@@ -316,8 +340,7 @@ TEST_F(LuaComponentTest, FieldHandleExposesIndex) {
         "return C.fields.hp.index, C.fields.mp.index, C.fields.name.index"
     );
     ASSERT_TRUE(result.valid());
-    auto [hpIdx, mpIdx, nameIdx] =
-        result.get<std::tuple<lua_Integer, lua_Integer, lua_Integer>>();
+    auto [hpIdx, mpIdx, nameIdx] = result.get<std::tuple<lua_Integer, lua_Integer, lua_Integer>>();
     EXPECT_GE(hpIdx, 0);
     EXPECT_GE(mpIdx, 0);
     EXPECT_GE(nameIdx, 0);
@@ -330,9 +353,9 @@ TEST_F(LuaComponentTest, FieldIndexMatchesFindFieldIndex) {
     auto &lua = m_lua.lua();
     // The index in the Lua handle must equal findFieldIndex's result for the same name.
     ASSERT_TRUE(lua.safe_script(
-                        "C_Score = IRComponent.register('Score', { value = 0 })\n"
-                        "scoreIdx = C_Score.fields.value.index"
-                    )
+                       "C_Score = IRComponent.register('Score', { value = 0 })\n"
+                       "scoreIdx = C_Score.fields.value.index"
+    )
                     .valid());
     const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Score");
     IREntity::EntityId e = IREntity::createEntity();
@@ -355,9 +378,9 @@ TEST_F(LuaComponentTest, IndexStyleSetGetRoundTrip) {
     // setLuaField will use at runtime.
     auto &lua = m_lua.lua();
     ASSERT_TRUE(lua.safe_script(
-                        "C_Energy = IRComponent.register('Energy', { level = 0 })\n"
-                        "energyIdx = C_Energy.fields.level.index"
-                    )
+                       "C_Energy = IRComponent.register('Energy', { level = 0 })\n"
+                       "energyIdx = C_Energy.fields.level.index"
+    )
                     .valid());
     const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Energy");
     IREntity::EntityId e = IREntity::createEntity();
@@ -379,10 +402,10 @@ TEST_F(LuaComponentTest, IndexStyleSetGetRoundTrip) {
 
 TEST_F(LuaComponentTest, IndexStyleLuaSetGet) {
     auto &lua = m_lua.lua();
-    ASSERT_TRUE(lua.safe_script(
-                        "C_Mana = IRComponent.register('Mana', { current = 100, max = 200 })"
-                    )
-                    .valid());
+    ASSERT_TRUE(
+        lua.safe_script("C_Mana = IRComponent.register('Mana', { current = 100, max = 200 })")
+            .valid()
+    );
     const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Mana");
     IREntity::EntityId e = IREntity::createEntity();
     m_entity_manager.addComponentDynamic(e, cid);
@@ -401,28 +424,20 @@ TEST_F(LuaComponentTest, IndexStyleLuaSetGet) {
 
 TEST_F(LuaComponentTest, IndexStyleTableStyleAccessorsUnchanged) {
     auto &lua = m_lua.lua();
-    ASSERT_TRUE(lua.safe_script(
-                        "C_Shield = IRComponent.register('Shield', { hp = 50 })"
-                    )
-                    .valid());
+    ASSERT_TRUE(lua.safe_script("C_Shield = IRComponent.register('Shield', { hp = 50 })").valid());
     const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Shield");
     IREntity::EntityId e = IREntity::createEntity();
     m_entity_manager.addComponentDynamic(e, cid);
 
     lua["_makeHandle"] = [e]() -> IRScript::LuaEntity { return IRScript::LuaEntity{e}; };
-    auto result = lua.safe_script(
-        "return IREntity.getLuaComponent(_makeHandle(), C_Shield).hp"
-    );
+    auto result = lua.safe_script("return IREntity.getLuaComponent(_makeHandle(), C_Shield).hp");
     ASSERT_TRUE(result.valid());
     EXPECT_EQ(result.get<int>(), 50);
 }
 
 TEST_F(LuaComponentTest, IndexStyleOutOfRangeRaisesLuaError) {
     auto &lua = m_lua.lua();
-    ASSERT_TRUE(lua.safe_script(
-                        "C_Tag = IRComponent.register('Tag', { label = 'x' })"
-                    )
-                    .valid());
+    ASSERT_TRUE(lua.safe_script("C_Tag = IRComponent.register('Tag', { label = 'x' })").valid());
     const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Tag");
     IREntity::EntityId e = IREntity::createEntity();
     m_entity_manager.addComponentDynamic(e, cid);
