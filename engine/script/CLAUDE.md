@@ -182,6 +182,54 @@ out-of-range. Use index-style inside any per-tick Lua system body.
 
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
 
+## Build-time codegen of Lua-defined components (CODEGEN mode)
+
+The same `IRComponent.register("Name", { ... })` schema can be **statically
+emitted** as a C++ struct + Lua usertype binding at build time, instead of
+allocated at runtime via `IComponentDataLuaTyped`. Components-only path is
+T-106; system bodies (T-107) and per-system mode override (T-108) follow.
+
+**Build pipeline:**
+
+```cmake
+# In a creation's or test's CMakeLists.txt:
+irreden_lua_codegen(<target>
+    SOURCES path/to/schema.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/my_components.hpp
+)
+```
+
+The helper invokes `cmake/lua_codegen/ir_lua_codegen` (a small C++ tool
+linking sol2 + the engine's vendored Lua) which executes the input schema
+under stubbed `IRComponent` / `IRSystem` / `IRTime` / etc. globals, captures
+every `IRComponent.register(...)` call, and emits a header with one
+`namespace IRComponents { struct C_Name { ... }; }` per registration plus
+the matching `kHasLuaBinding` + `bindLuaType` specializations and a
+`IRScript::CodegenRegistry::registerCodegenComponents(LuaScript&)` helper
+that pre-registers each component with the EntityManager and binds the
+usertype.
+
+**CODEGEN supports:** `int32` / `float` / `bool` / `string` field types and
+both the short form (`current = 100`) and the explicit-type form
+(`current = { type = "float", default = 100 }`).
+
+**EVAL-only (codegen-time error if used in CODEGEN):** `table` and
+`function` field types, nested-table short form, duplicate component names,
+unknown `type` tag. Errors point at file/component/field with a
+Lua-stack traceback.
+
+**Field order is alphabetical** in the generated struct + constructor —
+Lua hash-table iteration is implementation-defined and not stable, so
+the codegen sorts fields by name to keep the header reproducible. Use
+positional construction `C_Hp{50, 75}` or named field assignment after a
+default-construct.
+
+The hand-test + regression coverage lives at
+`test/script/lua_component_codegen_test.cpp` + the sibling fixture
+`lua_component_codegen_fixtures.lua`. The architect plan
+(`docs/design/lua-driven-ecs.md` / planning artifacts under `~/.claude/`)
+covers the broader CODEGEN/EVAL split design.
+
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
 `bindLuaDrivenEcs()` also exposes `IRSystem.registerSystem`. A Lua

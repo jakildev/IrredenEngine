@@ -56,6 +56,10 @@ include_directories(${PROJECT_SOURCE_DIR}/engine/prefabs)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 
+# Lua → C++ codegen tool used by creations and tests via irreden_lua_codegen().
+# Added after engine/ so the lua + sol2 targets are already declared.
+add_subdirectory(${PROJECT_SOURCE_DIR}/cmake/lua_codegen)
+
 if(IRREDEN_BUILD_CREATIONS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 endif()

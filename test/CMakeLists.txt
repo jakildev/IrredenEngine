@@ -27,6 +27,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_system_register_test.cpp
@@ -44,6 +45,16 @@ FetchContent_MakeAvailable(googletest)
 target_link_libraries(IrredenEngineTest PUBLIC
     IrredenEngine
     gtest_main
+)
+
+# T-106: build lua_component_codegen_fixtures.hpp from the sibling
+# .lua schema and add the include path. The hand-test demo for the
+# codegen tool — exercises the full pipeline (Lua schema → C++
+# struct + Lua binding + EntityManager registration) and runs as
+# part of the standard test suite.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_component_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_component_codegen_fixtures.hpp
 )
 
 target_include_directories(IrredenEngineTest PRIVATE
