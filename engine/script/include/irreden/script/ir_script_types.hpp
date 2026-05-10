@@ -32,6 +32,20 @@ struct LuaEntity {
         : entity{0} {}
 };
 
+/// Resolution mode for `IRSystem.registerSystem({...})` calls without an
+/// explicit `mode = "..."` field. Set per-creation via
+/// `LuaScript::setEcsDefaultMode()`; the codegen tool emits a matching
+/// `kDefaultEcsMode` constant from the build-time
+/// `IR_LUA_ECS_DEFAULT_MODE` cache var so build-side and runtime-side
+/// dispatch agree. T-108 architect plan; see `engine/script/CLAUDE.md`
+/// "Lua-driven ECS modes".
+enum class EcsMode {
+    CODEGEN, ///< Default. Runtime registration is a no-op; the codegen-emitted
+             ///< `createSystem_<NAME>()` already created the system.
+    EVAL,    ///< Runtime registers via `IRSystem::createSystemDynamic` (the existing T-100/T-101
+             ///< path); body is hot-reloadable via `IRSystem.replaceSystemBody`.
+};
+
 /// Callable type that constructs a single component from entity-creation parameters.
 template <typename Component>
 using ComponentFunction = std::function<Component(IREntity::CreateEntityCallbackParams)>;

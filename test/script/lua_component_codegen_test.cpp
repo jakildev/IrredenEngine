@@ -138,13 +138,14 @@ TEST_F(LuaComponentCodegenTest, ArchetypeMovePreservesFieldValues) {
 
 TEST_F(LuaComponentCodegenTest, RegisterCodegenComponentsExposesLuaHandle) {
     // After registerCodegenComponents(), the C++ component types are
-    // recorded under their Lua-visible names; the IRComponent.C_Foo handle
-    // should resolve via the same machinery the EVAL path uses for
-    // handwritten lua_component_pack types.
+    // recorded under their unprefixed Lua-visible names (T-108 — was
+    // `C_CodegenHp` before, now `CodegenHp` to match the user-facing
+    // form in `IRComponent.register('Hp', ...)`); the IRComponent.<name>
+    // handle should resolve via the same machinery the EVAL path uses
+    // for handwritten lua_component_pack types.
     auto &lua = m_lua.lua();
-    auto result = lua.safe_script(
-        "return type(IRComponent.C_CodegenHp), IRComponent.C_CodegenHp.componentId"
-    );
+    auto result =
+        lua.safe_script("return type(IRComponent.CodegenHp), IRComponent.CodegenHp.componentId");
     ASSERT_TRUE(result.valid());
     auto [handleType, componentId] = result.get<std::tuple<std::string, lua_Integer>>();
     EXPECT_EQ(handleType, "table");
@@ -154,10 +155,15 @@ TEST_F(LuaComponentCodegenTest, RegisterCodegenComponentsExposesLuaHandle) {
 // ---- Lua usertype field accessors ------------------------------------------
 
 TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
+    // T-108: codegen-emitted usertype is bound under the unprefixed name
+    // (`CodegenHp`, was `C_CodegenHp`) and fields are member-pointer
+    // properties (`hp.current`, was `hp:current()`). Both shifts came in
+    // to support EVAL bodies in coexistence mode reading and writing
+    // fields with property syntax instead of getter-call syntax.
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
-        "local hp = C_CodegenHp.new(7, 11)\n"
-        "return hp:current(), hp:max()"
+        "local hp = CodegenHp.new(7, 11)\n"
+        "return hp.current, hp.max"
     );
     ASSERT_TRUE(result.valid());
     auto [current, max] = result.get<std::tuple<lua_Integer, lua_Integer>>();

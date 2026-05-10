@@ -351,6 +351,26 @@ void LuaScript::bindLuaDrivenEcs() {
     auto registerComponent =
         [this](const std::string &componentName, sol::table defaults) -> sol::object {
         auto &em = IREntity::getEntityManager();
+        // T-108: in coexistence mode, the same .lua file is consumed by the
+        // build-time codegen tool AND loaded again at runtime. Components
+        // declared via `IRComponent.register("Foo", {...})` get codegen'd
+        // as C++ structs (`IRComponents::C_Foo`) and pre-registered by
+        // `registerCodegenComponents()`; the runtime call would otherwise
+        // create a parallel IComponentDataLuaTyped under the same Lua name,
+        // splitting archetype storage. Detect the C++-codegen'd case via
+        // the LuaScript-side `componentByLuaName` map (populated by
+        // `registerType<T>` → `recordComponentLuaName<T>`) and return the
+        // existing handle without re-registering. Lua code paths that
+        // depend on `handle.fields.<name>.bindingId` (modifier framework)
+        // do not work for codegen'd-as-C++ components in coexistence mode
+        // — that's an EVAL-only feature documented in CLAUDE.md.
+        const IREntity::ComponentId existingCpp = componentIdByLuaName(componentName);
+        if (existingCpp != IREntity::kNullComponent) {
+            sol::object existingHandle = m_lua["IRComponent"][componentName];
+            if (existingHandle.is<sol::table>()) {
+                return existingHandle;
+            }
+        }
         if (em.isComponentRegistered(componentName)) {
             throw sol::error{"IRComponent.register: '" + componentName + "' is already registered"};
         }
@@ -624,6 +644,34 @@ void LuaScript::bindLuaDrivenSystems() {
         }
         const std::string systemName = *nameOpt;
 
+        // T-108: per-system mode override + creation default. Codegen-bound
+        // systems (`mode = "codegen"`, or absent under a CODEGEN creation
+        // default) are deliberate no-ops at runtime — the codegen-emitted
+        // `createSystem_<NAME>()` already created the system and the
+        // runtime call exists only so the same .lua file can drive both
+        // build-time codegen and runtime EVAL registration without
+        // diverging. Returning a 0 SystemId here matches what the codegen-
+        // tool's IRSystem shim returns for the build-time pass — Lua code
+        // that captures the result for pipeline registration must pull the
+        // CODEGEN id from the C++-side `CodegenSystemIds` instead.
+        sol::optional<std::string> modeOpt = args.get<sol::optional<std::string>>("mode");
+        EcsMode resolvedMode = m_ecsDefaultMode;
+        if (modeOpt) {
+            if (*modeOpt == "codegen") {
+                resolvedMode = EcsMode::CODEGEN;
+            } else if (*modeOpt == "eval") {
+                resolvedMode = EcsMode::EVAL;
+            } else {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName + "' has unknown mode '" + *modeOpt +
+                    "'. Allowed: \"codegen\", \"eval\" (or omit for creation default)."
+                };
+            }
+        }
+        if (resolvedMode == EcsMode::CODEGEN) {
+            return sol::make_object(m_lua, static_cast<lua_Integer>(0));
+        }
+
         sol::optional<sol::table> components = args.get<sol::optional<sol::table>>("components");
         if (!components) {
             throw sol::error{
@@ -740,10 +788,18 @@ void LuaScript::bindLuaDrivenSystems() {
         const auto systemId = static_cast<IRSystem::SystemId>(systemIdLua);
         auto it = m_luaSystemTicks.find(systemId);
         if (it == m_luaSystemTicks.end()) {
+            // T-108: hot-reload is an EVAL-only feature. CODEGEN systems and
+            // prefab systems are static at build time; the
+            // `m_luaSystemTicks` miss covers both, but the error string
+            // names CODEGEN explicitly so the dev sees the next step
+            // (mark the system `mode = "eval"` or rebuild).
             throw sol::error{
-                "IRSystem.replaceSystemBody: SystemId " + std::to_string(systemIdLua) +
-                " was not registered via IRSystem.registerSystem (only "
-                "Lua-defined systems support hot-reload)"
+                "IRSystem.replaceSystemBody: hot-reload not supported for SystemId " +
+                std::to_string(systemIdLua) +
+                " — only systems registered via IRSystem.registerSystem with "
+                "mode='eval' (or under an EVAL creation default) support hot-reload. "
+                "CODEGEN systems and prefab systems are static at build time; "
+                "mark the system mode='eval' or rebuild the binary."
             };
         }
         *it->second = std::move(newTick);

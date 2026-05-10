@@ -231,8 +231,17 @@ struct ParsedBody {
 
 // ---- Captured system metadata (filled by main.cpp's IRSystem shim) ----------
 
+// Per-system mode resolved by the codegen tool. CODEGEN emits a typed C++
+// `IRSystem::createSystem<...>` specialisation; EVAL skips C++ emission and
+// the system is left to register at runtime via the existing Lua-driven path
+// (`IRSystem.registerSystem` → `IRSystem::createSystemDynamic`). T-108
+// architect plan, see `docs/design/lua-driven-ecs.md` and the per-system
+// `mode` field in `engine/script/CLAUDE.md`.
+enum class SystemMode { CODEGEN, EVAL };
+
 struct SystemRecord {
     std::string name_;                       // e.g. "MoveByVelocity"
+    SystemMode mode_ = SystemMode::CODEGEN;  // T-108 per-system mode override
     std::vector<std::string> components_;    // include archetype, in declared order
     std::vector<std::string> excludes_;      // exclude archetype, in declared order
     std::string sourceFile_;                 // resolved file path

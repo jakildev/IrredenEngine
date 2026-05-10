@@ -290,16 +290,11 @@ features (mixed C++/Lua component archetypes via runtime-typed
 dispatch, `replaceSystemBody` hot-reload, `entityAt(i)` reads,
 dynamic field-name strings) stay in the EVAL test file by design.
 
-**v1 scope notes (deferred to T-108 / follow-up):**
+**v1 scope notes:**
 
-- Per-system `mode = "codegen"` / `mode = "eval"` override is **T-108**.
-  Today, every `IRSystem.registerSystem` in a file passed to
-  `irreden_lua_codegen()` is captured and codegen-translated; an
-  out-of-DSL violation aborts the build. Until T-108 lands, files that
-  mix CODEGEN and EVAL systems must split into two .lua files.
 - Codegen system create-functions return a fresh `SystemId` each time
   they're called. Hot-reload via `IRSystem.replaceSystemBody` is
-  EVAL-only; CODEGEN systems are static at build time.
+  EVAL-only (T-108); CODEGEN systems are static at build time.
 - The `SystemName`-enum partial generation called out in #587's
   acceptance is deferred — codegen systems register by string name
   through `IRSystem::createSystem<...>` directly, which produces a
@@ -307,6 +302,105 @@ dynamic field-name strings) stay in the EVAL test file by design.
   pipeline machinery without going through `System<NAME>::create()`.
   Add the enum partial in a follow-up if a creation needs the named
   prefab-system spelling for a codegen'd system.
+
+### Per-system mode override + CODEGEN/EVAL coexistence (T-108)
+
+Every `IRSystem.registerSystem({...})` call accepts an optional
+`mode` field that overrides the creation default for that one system:
+
+```lua
+-- CODEGEN system: typed C++ tick body emitted at build time
+IRSystem.registerSystem({
+    name = "Move",
+    components = { "Pos", "Vel" },
+    tick = function(arch) ... end,        -- mode field absent → creation default
+})
+
+-- EVAL system in the same file: runtime-registered via createSystemDynamic,
+-- hot-reloadable via replaceSystemBody. Skipped by the codegen tool's C++
+-- emission pass; the runtime LuaScript registers it the moment scriptFile()
+-- evaluates the call.
+IRSystem.registerSystem({
+    name = "Wobble",
+    mode = "eval",
+    components = { "Pos" },
+    tick = function(arch) ... end,
+})
+```
+
+**Mode resolution.** Two layers, evaluated independently at build time
+and runtime:
+
+- **Build time** — the codegen tool's `--default-mode=codegen|eval` CLI
+  flag (driven by the `irreden_lua_codegen()` helper's `DEFAULT_MODE`
+  param, which falls back to the `IR_LUA_ECS_DEFAULT_MODE` CMake cache
+  var, which defaults to `CODEGEN`). The codegen tool emits typed
+  `IRSystem::createSystem<...>` for CODEGEN systems and skips C++
+  emission for EVAL systems.
+- **Runtime** — `LuaScript::setEcsDefaultMode(EcsMode)`. The runtime
+  `IRSystem.registerSystem` shim consults this default for unmarked
+  calls. Default is `EVAL` so creations that don't use codegen at all
+  keep working without ceremony. Codegen-using creations call
+  `lua.setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode)`
+  after `registerCodegenComponents()` so runtime dispatch matches the
+  build-time default.
+
+Unknown values in either layer (`mode = "potato"`, `--default-mode=lua`)
+are explicit errors — silent fallback would hide the typo until
+months later when the missing system surfaces.
+
+**CMake helper.** Per-creation override via `DEFAULT_MODE` arg:
+
+```cmake
+irreden_lua_codegen(MyCreation
+    SOURCES schema.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/my_codegen.hpp
+    DEFAULT_MODE EVAL          # optional; defaults to IR_LUA_ECS_DEFAULT_MODE or CODEGEN
+)
+```
+
+A dev-iteration build flavor can flip every creation's default at the
+command line without editing source: `cmake -DIR_LUA_ECS_DEFAULT_MODE=EVAL`.
+
+**Coexistence wiring.** A creation that mixes CODEGEN and EVAL systems
+in one .lua file calls the helpers in this order:
+
+```cpp
+m_lua.bindLuaDrivenEcs();
+IRScript::CodegenRegistry::registerCodegenComponents(m_lua);
+m_lua.setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode);
+auto codegenIds = IRScript::CodegenRegistry::registerCodegenSystems();
+m_lua.scriptFile("main.lua");   // EVAL systems register here
+// codegenIds.<Name> is the SystemId for each CODEGEN system; EVAL
+// SystemIds come back from `IRSystem.registerSystem` in Lua.
+```
+
+The runtime pass over `main.lua` re-runs every `IRSystem.registerSystem`
+call from the file, but unmarked-or-explicit-codegen calls are skipped
+by the runtime shim so CODEGEN systems aren't double-registered. EVAL
+calls register normally.
+
+**`IRComponent.register` is idempotent in coexistence mode.** When
+`registerCodegenComponents` has already pre-registered a component as
+a C++ struct, the runtime `IRComponent.register("MyComp", {...})` call
+returns the existing handle instead of erroring on duplicate. Without
+the carve-out, the runtime load would create a parallel
+`IComponentDataLuaTyped` under the same Lua name, splitting archetype
+storage. Lua-side code that depends on `handle.fields.<name>.bindingId`
+(modifier framework) does NOT work for codegen'd-as-C++ components —
+the C++-side registration doesn't populate the modifier registry the
+way the runtime path does.
+
+**Hot-reload contract.** `IRSystem.replaceSystemBody(systemId, newTick)`
+works on EVAL systems; calling it on a CODEGEN system raises a Lua
+error pointing at the `mode = "eval"` escape hatch. Mark the system
+EVAL or rebuild the binary.
+
+**Test-harness coverage.** End-to-end coexistence regressions live in
+`test/script/lua_system_coexistence_{test.cpp,fixtures.lua}` —
+verifies both modes register, both tick, EVAL is hot-reloadable,
+CODEGEN is not, and `IRComponent.register` is idempotent in the
+coexistence path.
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
