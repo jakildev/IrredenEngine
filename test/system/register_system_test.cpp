@@ -7,10 +7,10 @@
 
 namespace {
 
-struct ValueA {
+struct C_ValueA {
     int n_ = 0;
 };
-struct ValueB {
+struct C_ValueB {
     int m_ = 0;
 };
 
@@ -34,7 +34,7 @@ template <> struct System<TEST_REGISTER_SYSTEM_A> {
         scaleFromBegin_ = beginCount_ * 10;
     }
 
-    void tick(ValueA &v) {
+    void tick(C_ValueA &v) {
         tickCount_++;
         v.n_ += scaleFromBegin_;
     }
@@ -44,24 +44,23 @@ template <> struct System<TEST_REGISTER_SYSTEM_A> {
     }
 
     static SystemId create() {
-        return registerSystem<TEST_REGISTER_SYSTEM_A, ValueA>("RegisterSystemTestA");
+        return registerSystem<TEST_REGISTER_SYSTEM_A, C_ValueA>("RegisterSystemTestA");
     }
 };
 
 // Second specialization to exercise per-instance state separation —
-// the same SystemName cannot be registered twice (the params slot is
-// per SystemId), but two distinct System<NAME>s should each own their
-// own params instance with no cross-talk.
+// two distinct System<N> specializations own independent params instances
+// with no cross-talk between different SystemName types.
 template <> struct System<TEST_REGISTER_SYSTEM_B> {
     int hits_ = 0;
 
-    void tick(ValueB &v) {
+    void tick(C_ValueB &v) {
         hits_++;
         v.m_ += 1;
     }
 
     static SystemId create() {
-        return registerSystem<TEST_REGISTER_SYSTEM_B, ValueB>("RegisterSystemTestB");
+        return registerSystem<TEST_REGISTER_SYSTEM_B, C_ValueB>("RegisterSystemTestB");
     }
 };
 
@@ -80,20 +79,20 @@ class RegisterSystemTest : public testing::Test {
 };
 
 TEST_F(RegisterSystemTest, MemberTickFiresPerEntity) {
-    auto idA = IREntity::createEntity(ValueA{0});
-    auto idB = IREntity::createEntity(ValueA{0});
+    auto idA = IREntity::createEntity(C_ValueA{0});
+    auto idB = IREntity::createEntity(C_ValueA{0});
 
     auto sysId = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
     m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
     m_system_manager.executePipeline(IRTime::Events::UPDATE);
 
-    // beginTick set scaleFromBegin_ = 10; tick added 10 to each ValueA.
-    EXPECT_EQ(IREntity::getComponent<ValueA>(idA).n_, 10);
-    EXPECT_EQ(IREntity::getComponent<ValueA>(idB).n_, 10);
+    // beginTick set scaleFromBegin_ = 10; tick added 10 to each C_ValueA.
+    EXPECT_EQ(IREntity::getComponent<C_ValueA>(idA).n_, 10);
+    EXPECT_EQ(IREntity::getComponent<C_ValueA>(idB).n_, 10);
 }
 
 TEST_F(RegisterSystemTest, MemberFieldsPersistAcrossTicks) {
-    auto idA = IREntity::createEntity(ValueA{0});
+    auto idA = IREntity::createEntity(C_ValueA{0});
 
     auto sysId = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
     m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
@@ -109,9 +108,8 @@ TEST_F(RegisterSystemTest, MemberFieldsPersistAcrossTicks) {
     EXPECT_EQ(params->endCount_, 3) << "endTick fired once per pipeline execution";
     EXPECT_EQ(params->tickCount_, 3) << "per-entity tick fired once per execution per entity";
 
-    // beginCount_ accumulated 1+2+3=6 in the field; scaleFromBegin_ = 10*beginCount_ each tick.
-    // ValueA.n_ accumulated 10 + 20 + 30 = 60.
-    EXPECT_EQ(IREntity::getComponent<ValueA>(idA).n_, 60);
+    // scaleFromBegin_ was 10, 20, 30 on executions 1-3; C_ValueA.n_ accumulated 10+20+30=60.
+    EXPECT_EQ(IREntity::getComponent<C_ValueA>(idA).n_, 60);
 }
 
 TEST_F(RegisterSystemTest, BeginAndEndFireWithZeroEntities) {
@@ -128,8 +126,8 @@ TEST_F(RegisterSystemTest, BeginAndEndFireWithZeroEntities) {
 }
 
 TEST_F(RegisterSystemTest, DistinctSystemsHaveIndependentParams) {
-    IREntity::createEntity(ValueA{0});
-    IREntity::createEntity(ValueB{0});
+    IREntity::createEntity(C_ValueA{0});
+    IREntity::createEntity(C_ValueB{0});
 
     auto sysA = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
     auto sysB = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_B>();
