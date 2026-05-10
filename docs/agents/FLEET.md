@@ -358,6 +358,57 @@ note).
 
 ---
 
+## Rate-limit handling (auto-resume on reset)
+
+The dispatcher gates new work in two places. **Both auto-resume — there
+is no operator command to "wait for the reset."** It just happens.
+
+**Fleet-wide usage gate** — pre-emptive, threshold-based. Every
+`rate_limit_event` from a claude pane is latched by `fleet-claude-stream`
+into `~/.fleet/state/usage/<type>.json` (one file per `rateLimitType`,
+e.g. `five_hour`, `seven_day`). On every 10-second tick `fleet-dispatcher`
+evaluates each observation: if `utilization` is at or above the per-type
+threshold, the gate closes and **all** new dispatches defer (in-flight
+iterations finish normally; their next trigger waits). The gate
+auto-reopens on the first tick after the observation's `resetsAt`
+passes — at most ~10 s after the actual reset — or sooner if a fresh
+observation reports utilisation below threshold.
+
+Defaults and tuning:
+
+- 5-hour window: gate closes at `≥ 80 %` (leaves headroom for in-flight
+  work). Override with `FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR`.
+- 7-day window: gate closes at `≥ 95 %` (only pre-empt close to the
+  wall). Override with `FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY`.
+- Global override (any unmatched type): `FLEET_DISPATCHER_USAGE_GATE`.
+- Stale observations (older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS`,
+  default `3600`) are dropped from evaluation, so a single high-watermark
+  reading can't latch the gate closed forever.
+
+**Per-pane cooldown** — post-mortem, applied after a single pane exits
+with code 2 (suspected wall-hit). `fleet-dispatch-wrap` writes
+`~/.fleet/state/rate-limit/<pane_key>.ts`; the dispatcher excludes that
+pane from dispatch for `FLEET_DISPATCHER_LIMIT_DELAY` seconds (default
+`900` = 15 min). Other panes for the same role keep running. The
+marker file is removed automatically once the cooldown expires.
+
+**Visibility:** `fleet-gate-status` (read-only) prints the current
+gate state, breaching observation, ETA to reset, and active per-pane
+cooldowns. `fleet-gate-status --json` for scripting. The transition
+log lines `usage gate closed:…` / `usage gate re-opened (…); resuming
+dispatch` are also emitted to the dispatcher log on each transition
+(once per transition — not per tick).
+
+The canonical implementation lives in
+[`scripts/fleet/fleet-dispatcher`](../../scripts/fleet/fleet-dispatcher)
+(see the "Usage gate" header comment block and `usage_gate_status()`).
+When changing thresholds, staleness, or the gate algorithm, update
+[`scripts/fleet/fleet-gate-status`](../../scripts/fleet/fleet-gate-status)
+in the same commit so the read-only view stays consistent with what
+the dispatcher actually applies.
+
+---
+
 ## Issue/PR labeling discipline (applies everywhere, all agents)
 
 When filing a GitHub issue (`gh issue create`) or PR (`gh pr create`)

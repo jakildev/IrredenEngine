@@ -90,7 +90,7 @@ witness — polls ~/.fleet/heartbeats for stale mtimes.
 See scripts/fleet/witness header.
 EOF
             ;;
-        fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels)
+        fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels | fleet-gate-status)
             bash "$path" --help
             ;;
         fleet-claude-stream | fleet-state-scout | fleet-feedback)
@@ -172,6 +172,7 @@ Parallel-agent fleet (tmux + Claude)
   fleet-claim …                  task claims under ~/.fleet/claims/
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-dispatcher               transient-claude dispatcher (worker panes)
+  fleet-gate-status [--json]     show usage gate + per-pane cooldown state
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   witness [--once]               detect stale heartbeats (architects only)
