@@ -154,7 +154,10 @@ Field inferFromShortValue(
         // collapses them. Push the value back onto the stack so we can
         // call lua_isinteger, which is the authoritative subtype check.
         // (A C++-side round-trip can't distinguish `0` from `0.0` because
-        // both round-trip cleanly through int64.)
+        // both round-trip cleanly through int64.) LuaJIT 2.1 also tags
+        // integer vs float at the TValue level, so lua_isinteger returns
+        // non-zero for integer literals there too — the approach survives
+        // the LuaJIT migration unchanged.
         lua_State *L = ts;
         sol::stack::push(L, value);
         const bool isInt = lua_isinteger(L, -1) != 0;
@@ -229,7 +232,20 @@ Field inferFromExplicitTable(
         if (defaultVal.is<sol::nil_t>()) {
             f.default_ = std::int32_t{0};
         } else {
-            f.default_ = static_cast<std::int32_t>(defaultVal.as<double>());
+            // Mirror inferFromShortValue's int32 overflow guard so the explicit
+            // form errors at codegen time instead of silently wrapping —
+            // `{ type = 'int32', default = 2147483648 }` should fail the same
+            // way `current = 2147483648` does in the short form.
+            const std::int64_t asInt = defaultVal.as<std::int64_t>();
+            if (asInt < std::numeric_limits<std::int32_t>::min() ||
+                asInt > std::numeric_limits<std::int32_t>::max()) {
+                schemaError(
+                    ts,
+                    "lua_codegen: field '" + componentName + "." + fieldName +
+                        "' integer default is out of int32 range"
+                );
+            }
+            f.default_ = static_cast<std::int32_t>(asInt);
         }
     } else if (typeStr == "float") {
         f.type_ = FieldType::FLOAT;

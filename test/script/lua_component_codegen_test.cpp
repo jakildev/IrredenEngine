@@ -21,8 +21,19 @@
 #include "lua_component_codegen_fixtures.hpp"
 
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <string>
 #include <type_traits>
+
+// MSVC names the POSIX pipe-spawn helpers with a leading underscore.
+#ifdef _WIN32
+#define ir_popen  _popen
+#define ir_pclose _pclose
+#else
+#define ir_popen  popen
+#define ir_pclose pclose
+#endif
 
 namespace {
 
@@ -152,6 +163,39 @@ TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
     auto [current, max] = result.get<std::tuple<lua_Integer, lua_Integer>>();
     EXPECT_EQ(current, 7);
     EXPECT_EQ(max, 11);
+}
+
+// ---- Schema-error coverage (subprocess invocation) -------------------------
+
+// Runs the codegen binary on a fixture that uses the explicit
+// `{ type = 'int32', default = <out-of-range> }` form and verifies the tool
+// errors out with a clear diagnostic instead of silently truncating. The
+// short-form path's matching guard is exercised implicitly by the rest of
+// this suite — the explicit-form path is the regression surface here
+// (PR #596 review).
+TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
+    const std::filesystem::path outPath =
+        std::filesystem::temp_directory_path() / "ir_lua_codegen_overflow.hpp";
+    std::filesystem::remove(outPath);
+
+    const std::string cmd = std::string{IR_LUA_CODEGEN_BINARY} + " --out " +
+        outPath.string() + " " + IR_LUA_CODEGEN_OVERFLOW_FIXTURE + " 2>&1";
+
+    FILE *pipe = ir_popen(cmd.c_str(), "r");
+    ASSERT_NE(pipe, nullptr) << "failed to spawn ir_lua_codegen";
+
+    std::string output;
+    char buf[256];
+    while (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
+        output += buf;
+    }
+    const int status = ir_pclose(pipe);
+
+    EXPECT_NE(status, 0) << "codegen tool should fail on int32 overflow; output: " << output;
+    EXPECT_NE(output.find("out of int32 range"), std::string::npos)
+        << "expected 'out of int32 range' diagnostic; got: " << output;
+    EXPECT_FALSE(std::filesystem::exists(outPath))
+        << "codegen tool should not write output on schema error";
 }
 
 } // namespace

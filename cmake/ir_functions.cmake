@@ -143,8 +143,9 @@ endfunction()
 #     SOURCES change, regenerating OUTPUT_HPP.
 #   - Adds OUTPUT_HPP to <target>'s sources so CMake tracks the dependency.
 #   - Adds OUTPUT_HPP's parent directory to <target>'s include path.
-#   - Adds an explicit dependency on the ir_lua_codegen tool target so the
-#     codegen binary is built first on a clean tree.
+#   - The custom command's DEPENDS list already includes ir_lua_codegen, so
+#     the codegen binary is built first on a clean tree without a separate
+#     add_dependencies() edge.
 #
 # All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
 # unless absolute. The generated header is regenerated on Lua-source change
@@ -193,7 +194,6 @@ function(
 
     target_sources(${target} PRIVATE "${IRLC_OUTPUT_HPP}")
     target_include_directories(${target} PRIVATE "${_output_dir}")
-    add_dependencies(${target} ir_lua_codegen)
 endfunction()
 
 # copyDLL copies dll file on windows build into dest path

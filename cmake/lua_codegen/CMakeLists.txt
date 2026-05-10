@@ -2,9 +2,10 @@
 # from Lua schemas. See main.cpp for design notes; cmake/ir_functions.cmake's
 # `irreden_lua_codegen()` helper drives the per-creation invocations.
 #
-# Linked against the engine's vendored Lua (engine/script/third_party/lua54)
-# and sol2 (already fetched by engine/script/CMakeLists.txt). This subdir
-# is added AFTER engine/ in the top-level CMakeLists so both deps resolve.
+# Linked against the engine's vendored LuaJIT (engine/script/third_party/luajit,
+# exposed under the `lua` target) and sol2 (already fetched by
+# engine/script/CMakeLists.txt). This subdir is added AFTER engine/ in the
+# top-level CMakeLists so both deps resolve.
 
 add_executable(ir_lua_codegen main.cpp)
 target_link_libraries(ir_lua_codegen PRIVATE lua sol2)

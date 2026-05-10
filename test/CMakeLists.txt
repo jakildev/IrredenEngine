@@ -57,6 +57,18 @@ irreden_lua_codegen(IrredenEngineTest
     OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_component_codegen_fixtures.hpp
 )
 
+# T-106 schema-error regression: feed the codegen binary a fixture with an
+# int32 overflow default in the explicit form (subprocess invocation in
+# lua_component_codegen_test.cpp). Path constants are passed via compile
+# definitions so the test resolves both at runtime regardless of cwd, and
+# the fixture file is added to the dependency graph so an edit triggers
+# a test rebuild.
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
+    IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
+)
+add_dependencies(IrredenEngineTest ir_lua_codegen)
+
 target_include_directories(IrredenEngineTest PRIVATE
     ${googletest_SOURCE_DIR}/googletest/include
     ${googletest_SOURCE_DIR}/googlemock/include
