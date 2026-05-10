@@ -177,25 +177,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
-  - **ID:** T-107
-  - **Area:** engine/script, build
-  - **Model:** opus
-  - **Owner:** claude/T-107-codegen-system-bodies
-  - **Blocked by:** (none)
-  - **Stack:** T-106..T-109 codegen-pipeline
-  - **Acceptance:** (1) codegen tool parses DSL subset: canonical loop (for i=0, arch.length-1 do), column ops (arch.Component:at/setAt/getField/setField), Component.new(), arithmetic/comparison/logical ops, if/elseif/else, local declarations, whitelisted intrinsics; (2) emits template<> struct System<NAME> specialisations in namespace IRSystem with tick(arch_ref) member + static SystemId create() using registerSystem<> (if T-136 landed) or createSystem+setSystemParams; (3) out-of-DSL features produce build errors with file/line/feature name; test cases assert specific error messages for: closures, metatables, require, unsupported loop forms; (4) intrinsic whitelist config table (Lua→C++ template): math.sin/cos/tan/atan/sqrt/abs/floor/ceil/min/max + IRMath.lerp/clamp; extensible by adding table entries; (5) test/script/lua_system_register_test.cpp passes under CODEGEN mode; (6) fleet-build --target IrredenEngineTest clean + all existing tests pass
-  - **Issue:** #587
-  - **Notes:** PR 2 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-106. Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Out of scope: per-system mode override (T-108), demo migration (T-109).
-  - **Links:**
-
-
 - [~] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
   - **ID:** T-108
   - **Area:** engine/script, build
   - **Model:** opus
   - **Owner:** claude/T-108-mode-override-coexistence
-  - **Blocked by:** T-107
+  - **Blocked by:** (none)
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) IRSystem.registerSystem({mode="eval"|"codegen",...}) opts system out/in; absent mode uses creation default; unknown values are codegen errors; (2) CMake IR_LUA_ECS_DEFAULT_MODE cache var per creation (CODEGEN default or EVAL); irreden_lua_codegen helper gains DEFAULT_MODE param; (3) EVAL-mode systems emit stubs calling bindLuaDrivenEcs() → IRSystem::createSystemDynamic() at runtime; CODEGEN systems emit C++ as in T-107; same SystemId space; (4) coexistence test: two systems in one Lua file (one CODEGEN, one EVAL) — both register, both tick, EVAL is hot-reloadable, CODEGEN hot-reload attempt errors with "hot-reload not supported in CODEGEN mode for system 'Name'; mark mode='eval' or rebuild"; (5) T-103 hot-reload continues working for EVAL systems; (6) engine/script/CLAUDE.md updated with mode semantics + CMake flag + hot-reload-only-in-EVAL contract; engine/CLAUDE.md style section gets CODEGEN-as-default bullet; (7) fleet-build clean under both IR_LUA_ECS_DEFAULT_MODE=CODEGEN and =EVAL; all tests pass under both
   - **Issue:** #588
@@ -228,11 +215,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: extract detect_engine_root into fleet-common.sh** — eliminate duplicated root-detection logic across fleet-build, fleet-run, and fleet-run-targets
+- [~] **fleet: extract detect_engine_root into fleet-common.sh** — eliminate duplicated root-detection logic across fleet-build, fleet-run, and fleet-run-targets
   - **ID:** T-140
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-140-fleet-common-sh
   - **Blocked by:** (none)
   - **Acceptance:** (1) scripts/fleet/fleet-common.sh created with detect_engine_root() as the authoritative implementation; (2) fleet-build sources fleet-common.sh and removes its own inline root-detection (lines 28-35); (3) fleet-run sources fleet-common.sh and removes its own inline copy (lines 127-134); (4) fleet-run-targets sources fleet-common.sh instead of defining detect_engine_root() locally (lines 150-161); (5) fleet-common.sh symlink entry added to scripts/fleet/install.sh; (6) fleet-build, fleet-run, fleet-run-targets all still work correctly from ~/bin symlinks (source path resolved via git rev-parse --show-toplevel)
   - **Issue:** #451
@@ -240,11 +227,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Demo: Z-Yaw world rotation showcase** — demo creation(s) exercising Z-Yaw world rotation with SDF/voxel entities, mouse-controlled rotation, and per-voxel hover/click detection
+- [~] **Demo: Z-Yaw world rotation showcase** — demo creation(s) exercising Z-Yaw world rotation with SDF/voxel entities, mouse-controlled rotation, and per-voxel hover/click detection
   - **ID:** T-141
   - **Area:** creations/demos
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-141-z-yaw-rotation-demo
   - **Blocked by:** (none)
   - **Acceptance:** (1) at least two demo modes: (a) SDF + voxel-pool entities rotating under Z-Yaw; (b) rotation tied to mouse movement with toggle key for mouse lock; (2) clickable entities: hover highlights, click triggers a visual effect; (3) hover and click detection work correctly under rotation (per-voxel, not separate hitboxes); (4) any unimplemented per-voxel detection functionality is documented as filed issues or linked; (5) fleet-build --target IR<DemoName> clean on linux-debug; fleet-run produces visually correct rotating scene
   - **Issue:** #569
@@ -252,11 +239,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **macOS: fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN** — diagnose and fix wild pointer-difference in C_VoxelPool::setEntityIdForRange causing SIGBUS; include Lua-binding rename fix
+- [~] **macOS: fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN** — diagnose and fix wild pointer-difference in C_VoxelPool::setEntityIdForRange causing SIGBUS; include Lua-binding rename fix
   - **ID:** T-142
   - **Area:** engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-142-voxel-set-children-crash
   - **Blocked by:** (none)
   - **Acceptance:** (1) repro verified on Linux (document whether Linux also crashes or allocator silently tolerates wild index); (2) root cause identified: startIdx from data()-getPositionGlobalsBasePtr() pointer arithmetic on non-same-allocation vectors, or stale poolCache C_VoxelPool* after archetype mutation; (3) debug assertion added in setEntityIdForRange: startIdx + count <= m_voxelEntities.size(); (4) IRShapeDebug runs without crash on macos-debug; --auto-screenshot 10 produces frames; (5) Lua-binding fix: IR_BIND_SYS(BUILD_OCCUPANCY_GRID) → IR_BIND_SYS(BUILD_LIGHT_OCCLUSION_GRID) in engine/script/include/irreden/script/lua_pipeline_bindings.hpp:148; (6) IrredenEngineTest passes; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #577
@@ -264,11 +251,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
+- [~] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
   - **ID:** T-143
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-143-resolve-sun-direction
   - **Blocked by:** (none)
   - **Acceptance:** (1) new system RESOLVE_SUN_DIRECTION added to SystemName enum; registered at head of RENDER pipeline; resolves C_LightSource DIRECTIONAL override once per frame (respects IRRender::getSunShadowsEnabled()); (2) IRPrefab::SunShadow::getFrameSunDirection() accessor reads from system params; (3) VOXEL_TO_TRIXEL_STAGE_1 and SHAPES_TO_TRIXEL use getFrameSunDirection() — no direct C_LightSource scans; (4) sun-direction lookup in system_voxel_to_trixel hoisted from per-entity tick lambda to beginTick; (5) BAKE_SUN_SHADOW_MAP retains or unifies its own detail::resolveSun() — author's call, must be deliberate; (6) no behavioral change to shadow casting in shape_debug at zoom 4 / zoom 8; (7) fleet-build clean on linux-debug
   - **Issue:** #578
@@ -289,6 +276,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
 - [x] **T-106** — Codegen pipeline foundation — components only · Owner: claude/T-106-lua-codegen-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/596
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
@@ -306,6 +294,5 @@ Avoid:
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
 - [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
-- [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
-- [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
+- [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
