@@ -39,10 +39,8 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
     return ivec2(groupsX, groupsY);
 }
 
-inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
-    C_VoxelPool &pool,
-    IsoBounds2D viewport
-) {
+inline const std::vector<std::uint32_t> &
+buildChunkVisibilityMask(C_VoxelPool &pool, IsoBounds2D viewport) {
     static thread_local std::vector<std::uint32_t> mask;
     pool.rebuildChunkBounds();
     int chunkCount = pool.getChunkCount();
@@ -60,9 +58,7 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
 }
 
 inline void buildVoxelFrameData(
-    FrameDataVoxelToCanvas &frameData,
-    const C_TriangleCanvasTextures &canvas,
-    int liveVoxelCount
+    FrameDataVoxelToCanvas &frameData, const C_TriangleCanvasTextures &canvas, int liveVoxelCount
 ) {
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
@@ -70,26 +66,22 @@ inline void buildVoxelFrameData(
 
     frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
     frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
-    frameData.voxelRenderOptions_ =
-        ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
+    frameData.voxelRenderOptions_ = ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
     frameData.voxelDispatchGrid_ = dispatchGrid;
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
 
-    // visualYaw_, residualYaw_, and _yawPadding_ not consumed in T-055; scaffolded for T-058 (screen-space residual composite)
+    // visualYaw_, residualYaw_, and _yawPadding_ not consumed in T-055; scaffolded for T-058
+    // (screen-space residual composite)
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
-    const auto [rasterYaw, residualYaw] =
-        IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
+    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
     frameData.residualYaw_ = residualYaw;
 }
 
-inline void clearCanvasAndDistances(
-    IREntity::EntityId canvasEntity,
-    C_TriangleCanvasTextures &canvas
-) {
-    auto background =
-        IREntity::getComponentOptional<C_TriangleCanvasBackground>(canvasEntity);
+inline void
+clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTextures &canvas) {
+    auto background = IREntity::getComponentOptional<C_TriangleCanvasBackground>(canvasEntity);
     if (background.has_value()) {
         (*background.value()).clearCanvasWithBackground(canvas);
     } else {
@@ -97,17 +89,14 @@ inline void clearCanvasAndDistances(
     }
     static const std::int32_t clearValue =
         static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
-    IRRender::device()->clearTexImage(
-        canvas.getTextureDistances(), 0, &clearValue
-    );
+    IRRender::device()->clearTexImage(canvas.getTextureDistances(), 0, &clearValue);
 }
 
 inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf) {
     if (!pool.isEntityIdsDirty()) {
         return;
     }
-    entityIdBuf->subData(
-        0, liveCount * sizeof(IREntity::EntityId), pool.getEntityIds().data());
+    entityIdBuf->subData(0, liveCount * sizeof(IREntity::EntityId), pool.getEntityIds().data());
     pool.clearEntityIdsDirty();
 }
 
@@ -122,6 +111,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         Buffer *chunkVisBuf_ = nullptr;
         Buffer *indirectBuf_ = nullptr;
         FrameDataVoxelToCanvas frameData_{};
+        // Resolved once per frame in beginTick; read by the per-entity tick.
+        vec3 sunDir_{};
+        float sweepDistance_ = 0.0f;
         // Log-throttle state — emit the render-mode log line only when
         // mode or effective subdivisions change.
         int previousRenderMode_ = -1;
@@ -131,15 +123,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "VoxelCompactProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompVoxelVisibilityCompact, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompVoxelVisibilityCompact, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
-            std::vector{
-                ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "SingleVoxelFrameData",
@@ -217,7 +205,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 C_VoxelPool &voxelPool,
                 C_TriangleCanvasTextures &triangleCanvasTextures) {
                 const int liveVoxelCount = voxelPool.getLiveVoxelCount();
-                if (liveVoxelCount == 0) return;
+                if (liveVoxelCount == 0)
+                    return;
 
                 IRRender::updateCullViewport(
                     IRRender::getCameraPosition2DIso(),
@@ -226,9 +215,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 const auto &cull = IRRender::getCullViewport();
 
-                buildVoxelFrameData(
-                    p->frameData_, triangleCanvasTextures, liveVoxelCount
-                );
+                buildVoxelFrameData(p->frameData_, triangleCanvasTextures, liveVoxelCount);
 
                 const int renderMode = p->frameData_.voxelRenderOptions_.x;
                 const int effectiveSub = p->frameData_.voxelRenderOptions_.y;
@@ -249,37 +236,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
                 clearCanvasAndDistances(entity, triangleCanvasTextures);
 
-                // Widen both cull regions (chunk-pre-filter and per-pixel
-                // GPU bounds) to the shadow-feeder AABB when sun shadows
-                // are enabled, so off-screen casters within
-                // kSunShadowMaxDistance still write into trixelDistances
-                // and feed BAKE_SUN_SHADOW_MAP. When shadows are off the
-                // sweep collapses to zero and bounds match the visible
-                // viewport (legacy behavior). The sun-direction lookup
-                // is gated on the shadow flag too, so disabled-shadow
-                // creations skip the C_LightSource archetype scan.
-                const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-                const vec3 sunDir = shadowsEnabled
-                    ? IRPrefab::SunShadow::resolveDirection()
-                    : vec3(0.0f);
-                const float sweepDistance = shadowsEnabled
-                    ? IRPrefab::SunShadow::kSunShadowMaxDistance
-                    : 0.0f;
+                // Sun direction and sweep distance are resolved once per
+                // frame in beginTick (via IRPrefab::SunShadow::getFrameSunDirection)
+                // and cached in params, so no C_LightSource archetype scan
+                // runs per entity.
+                const vec3 &sunDir = p->sunDir_;
+                const float sweepDistance = p->sweepDistance_;
 
                 constexpr int kChunkMargin = 8;
                 const IsoBounds2D chunkVp = IRMath::shadowFeederIsoBounds(
-                    cull.isoViewport(kChunkMargin), sunDir, sweepDistance
+                    cull.isoViewport(kChunkMargin),
+                    sunDir,
+                    sweepDistance
                 );
                 const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp);
-                p->chunkVisBuf_->subData(
-                    0,
-                    uploadMask.size() * sizeof(std::uint32_t),
-                    uploadMask.data()
-                );
+                p->chunkVisBuf_
+                    ->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
 
                 constexpr int kGpuMargin = 4;
                 const IsoBounds2D gpuVp = IRMath::shadowFeederIsoBounds(
-                    cull.isoViewport(kGpuMargin), sunDir, sweepDistance
+                    cull.isoViewport(kGpuMargin),
+                    sunDir,
+                    sweepDistance
                 );
                 p->frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
                 p->frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
@@ -290,11 +268,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     liveVoxelCount * sizeof(C_PositionGlobal3D),
                     voxelPool.getPositionGlobals().data()
                 );
-                p->voxelColorBuf_->subData(
-                    0,
-                    liveVoxelCount * sizeof(C_Voxel),
-                    voxelPool.getColors().data()
-                );
+                p->voxelColorBuf_
+                    ->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
                 syncEntityIds(voxelPool, liveVoxelCount, p->voxelEntityIdBuf_);
 
                 const VoxelIndirectDispatchParams zeroed{};
@@ -309,13 +284,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
                 p->stage1Program_->use();
-                triangleCanvasTextures.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::READ_ONLY, TextureFormat::R32I
-                );
+                triangleCanvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             },
-            []() {
+            [p]() {
+                // Resolve sun direction once per frame so the per-entity tick
+                // reads the cached value instead of scanning C_LightSource
+                // once per voxel-pool-canvas pair.
+                const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+                p->sunDir_ =
+                    shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
+                p->sweepDistance_ =
+                    shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
+
                 IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
                 auto background =
                     IREntity::getComponentOptional<C_TriangleCanvasBackground>(backgroundCanvas);
@@ -347,9 +330,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
-            std::vector{
-                ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
         );
 
         auto paramsOwner = std::make_unique<Params>();
@@ -360,17 +341,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
         SystemId systemId = createSystem<C_VoxelPool, C_TriangleCanvasTextures>(
             "SingleVoxelToCanvasSecond",
             [p](const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
-                if (voxelPool.getLiveVoxelCount() == 0) return;
+                if (voxelPool.getLiveVoxelCount() == 0)
+                    return;
 
-                triangleCanvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                );
-                triangleCanvasTextures.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::WRITE_ONLY, TextureFormat::R32I
-                );
-                triangleCanvasTextures.getTextureEntityIds()->bindAsImage(
-                    2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI
-                );
+                triangleCanvasTextures.getTextureColors()
+                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                triangleCanvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+                triangleCanvasTextures.getTextureEntityIds()
+                    ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
                 IRRender::device()->dispatchComputeIndirect(p->indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);

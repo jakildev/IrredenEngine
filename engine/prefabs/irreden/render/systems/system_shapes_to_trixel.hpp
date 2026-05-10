@@ -127,14 +127,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     if (!p->yawZero_) {
                         viewPos = vec3(
                             p->yawCos_ * pos.pos_.x + p->yawSin_ * pos.pos_.y,
-                           -p->yawSin_ * pos.pos_.x + p->yawCos_ * pos.pos_.y,
-                            pos.pos_.z);
+                            -p->yawSin_ * pos.pos_.x + p->yawCos_ * pos.pos_.y,
+                            pos.pos_.z
+                        );
                         const float absC = IRMath::abs(p->yawCos_);
                         const float absS = IRMath::abs(p->yawSin_);
                         sizeForExtent = vec3(
                             sizeForExtent.x * absC + sizeForExtent.y * absS,
                             sizeForExtent.x * absS + sizeForExtent.y * absC,
-                            sizeForExtent.z);
+                            sizeForExtent.z
+                        );
                     }
                     vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
                     vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
@@ -208,12 +210,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     // resolution is gated on the shadow flag so a disabled-
                     // shadow creation skips the C_LightSource archetype scan.
                     const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-                    const vec3 sunDir = shadowsEnabled
-                        ? IRPrefab::SunShadow::resolveDirection()
-                        : vec3(0.0f);
-                    const float sweepDistance = shadowsEnabled
-                        ? IRPrefab::SunShadow::kSunShadowMaxDistance
-                        : 0.0f;
+                    const vec3 sunDir =
+                        shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
+                    const float sweepDistance =
+                        shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
                     p->cullBounds_ = IRMath::shadowFeederIsoBounds(
                         IRRender::getCullViewport().isoViewport(kMargin),
                         sunDir,
@@ -305,8 +305,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
                     // Pass 0: depth via imageAtomicMin
                     p->frameData_.passIndex = 0;
-                    p->shapesFrameDataBuf_->subData(
-                        0, sizeof(GPUShapesFrameData), &p->frameData_);
+                    p->shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &p->frameData_);
 
                     IRRender::device()
                         ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
@@ -319,8 +318,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
                     p->frameData_.passIndex = 1;
-                    p->shapesFrameDataBuf_->subData(
-                        0, sizeof(GPUShapesFrameData), &p->frameData_);
+                    p->shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &p->frameData_);
 
                     IRRender::device()
                         ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
@@ -375,11 +373,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            vec3 viewPos = yawZero
-                ? worldPos
-                : vec3( yawCos * worldPos.x + yawSin * worldPos.y,
-                       -yawSin * worldPos.x + yawCos * worldPos.y,
-                        worldPos.z);
+            vec3 viewPos = yawZero ? worldPos
+                                   : vec3(
+                                         yawCos * worldPos.x + yawSin * worldPos.y,
+                                         -yawSin * worldPos.x + yawCos * worldPos.y,
+                                         worldPos.z
+                                     );
             ivec3 origin = IRMath::roundVec3HalfUp(viewPos);
 
             // Canonical bounding half-extent lives in IRMath::SDF (shared with
@@ -396,7 +395,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 boundingHalf = vec3(
                     boundingHalf.x * absYawC + boundingHalf.y * absYawS,
                     boundingHalf.x * absYawS + boundingHalf.y * absYawC,
-                    boundingHalf.z);
+                    boundingHalf.z
+                );
             }
             ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
             ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
