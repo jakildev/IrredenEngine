@@ -33,6 +33,34 @@ This repo runs a parallel-agent workflow. The rules:
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
 
+### How `fleet-claim` enforces single-claim atomicity
+
+Picking a task is two-step: a local FS lock (per-host atomic via
+`mkdir(2)` under `~/.fleet/claims/<slug>/`) and a master-side TASKS.md
+push that flips `[ ] → [~]` and writes `Owner:` on `origin/master`.
+The master push is pure git plumbing (`hash-object` + `mktree` +
+`commit-tree` + `push`) — no working-tree mutation in the agent's
+worktree. Together they catch:
+
+- **Same-host races** — the FS lock wins atomically; the loser never
+  reaches the master push.
+- **Cross-host races** — both win their FS lock; their master pushes
+  race, and the loser's `git push` returns non-fast-forward. After
+  re-fetching, the loser sees `[~]` set by the winner and aborts with
+  exit 1 ("race lost on master push"), rolling back its FS claim.
+
+Once the worker opens its PR, `fleet-tasks-render` re-derives Owner
+from the PR's `headRefName`. In the no-PR window between
+`fleet-claim claim` and `gh pr create` the renderer preserves `[~]`
+by reading the FS claim directly — so a queue-tick that fires in
+that gap does not clobber the master-push. When `check-stale` prunes
+an abandoned claim the next renderer run reverts `[~]` to `[ ]`
+naturally.
+
+`FLEET_CLAIM_NO_MASTER_LOCK=1` skips the master push entirely
+(used by tests and bootstrap-without-network flows). Cross-host
+race resolution degrades to FS-lock-only when set.
+
 ### Cursor flow (human-in-the-loop)
 
 The rules above describe the fleet workflow. When working with the
