@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+- [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-104-lua-perf-grid
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
@@ -165,11 +165,11 @@ Avoid:
 
 
 
-- [ ] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
+- [~] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
   - **ID:** T-105
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-105-luajit-runtime
   - **Blocked by:** (none)
   - **Acceptance:** (1) LuaJIT 2.1 replaces Lua 5.4 in cmake/; all sol2 usertype/registerType bindings compile and function; (2) Lua 5.4-only feature audit complete — goto, integer subtypes, <const>/<close>, generational GC, bit32 — findings documented in PR body; (3) fleet-build --target IrredenEngineTest clean + 100% pass; fleet-build --target IRPerfGrid clean; creations/demos/lua_pipeline_demo runs end-to-end; all Lua-driven ECS tests pass; (4) EVAL-mode perf re-run on testbed from PR #563 documented (target 2–10× C++ perf_grid baseline); (5) engine/script/CLAUDE.md updated with LuaJIT 2.1 runtime note (available: bit ops, FFI; not available: 5.4-only features)
   - **Issue:** #585
@@ -177,11 +177,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
+- [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-118-hdr-pipeline
   - **Blocked by:** (none)
   - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #366
@@ -189,11 +189,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
+- [~] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
   - **ID:** T-135
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-135-fleet-up-conf-concurrency-cap
   - **Blocked by:** (none)
   - **Acceptance:** (1) ~/.fleet/fleet-up.conf created by fleet-up on first run with documented defaults (FLEET_CAP_OPUS_WORKER=2, FLEET_CAP_SONNET_AUTHOR=4); (2) dispatcher honors cap edits on next tick; (3) removing conf file restores no-cap behavior; (4) with cap=1 and both opus-worker panes idle, only one picks up the trigger; (5) cap-defer reason logged when cap kicks in
   - **Issue:** #547
@@ -201,11 +201,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
+- [~] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
   - **ID:** T-136
   - **Area:** engine/system, engine/prefabs/irreden/render, engine/prefabs/irreden/input
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-136-register-system-helper
   - **Blocked by:** (none)
   - **Acceptance:** (1) registerSystem<SystemName, Components...>(name) lands in ir_system.hpp with concepts for tick/beginTick/endTick/relationTick hooks; (2) all prefab systems using setSystemParams migrated to member-on-System<N> shape (grep -l "setSystemParams(systemId" engine/prefabs/); (3) engine/system/CLAUDE.md "Per-system parameters" section rewritten with preferred/escape-hatch forms; (4) new test covers all four hooks with per-tick field persistence; (5) no frame-time regression on IRShapeDebug; (6) fleet-build clean on linux-debug
   - **Issue:** #580
@@ -213,11 +213,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
+- [~] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
   - **ID:** T-138
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-138-fleet-claim-master-lock
   - **Blocked by:** (none)
   - **Acceptance:** (1) two concurrent fleet-claim T-X invocations: exactly one succeeds, other exits "already claimed" and writes nothing; (2) after successful claim, TASKS.md on master shows [~] + Owner within 30s; (3) fleet-claim --reclaim T-X resets [~] → [ ] if Owner branch doesn't exist on remote
   - **Issue:** #583
@@ -225,11 +225,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
+- [~] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
   - **ID:** T-106
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-106-lua-codegen-foundation
   - **Blocked by:** T-105
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) new codegen tool at cmake/lua_codegen/ — takes list of .lua files + output .hpp path, language choice documented in PR body; (2) emits struct C_Name in namespace IRComponents + matching _lua.hpp binding (kHasLuaBinding<C_Name>, bindLuaType<C_Name>, sol::usertype with field accessors) + registration helper calling IREntity::EntityManager::registerComponent<C_Name>() for every IRComponent.register("Name", {...}) call found; (3) type inference: int→int32_t, float, bool, string; explicit typed form ({field = {type="float", default=100}}) honored; unsupported defaults error with file/line/field name; (4) CMake helper irreden_lua_codegen(<target> SOURCES <lua_files...> OUTPUT_HPP <path>) with add_custom_command in cmake/ir_functions.cmake; (5) smoke test: C_Hp{current=100, max=100} round-trip (Lua creates entity → C++ reads back) passes; (6) test/script/lua_component_register_test.cpp passes under CODEGEN mode (test-harness toggle EVAL vs. CODEGEN); (7) fleet-build --target IrredenEngineTest clean + all existing tests pass
@@ -238,11 +238,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
+- [~] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
   - **ID:** T-107
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-107-codegen-system-bodies
   - **Blocked by:** T-106
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) codegen tool parses DSL subset: canonical loop (for i=0, arch.length-1 do), column ops (arch.Component:at/setAt/getField/setField), Component.new(), arithmetic/comparison/logical ops, if/elseif/else, local declarations, whitelisted intrinsics; (2) emits template<> struct System<NAME> specialisations in namespace IRSystem with tick(arch_ref) member + static SystemId create() using registerSystem<> (if T-136 landed) or createSystem+setSystemParams; (3) out-of-DSL features produce build errors with file/line/feature name; test cases assert specific error messages for: closures, metatables, require, unsupported loop forms; (4) intrinsic whitelist config table (Lua→C++ template): math.sin/cos/tan/atan/sqrt/abs/floor/ceil/min/max + IRMath.lerp/clamp; extensible by adding table entries; (5) test/script/lua_system_register_test.cpp passes under CODEGEN mode; (6) fleet-build --target IrredenEngineTest clean + all existing tests pass
@@ -251,11 +251,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
+- [~] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
   - **ID:** T-108
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-108-mode-override-coexistence
   - **Blocked by:** T-107
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) IRSystem.registerSystem({mode="eval"|"codegen",...}) opts system out/in; absent mode uses creation default; unknown values are codegen errors; (2) CMake IR_LUA_ECS_DEFAULT_MODE cache var per creation (CODEGEN default or EVAL); irreden_lua_codegen helper gains DEFAULT_MODE param; (3) EVAL-mode systems emit stubs calling bindLuaDrivenEcs() → IRSystem::createSystemDynamic() at runtime; CODEGEN systems emit C++ as in T-107; same SystemId space; (4) coexistence test: two systems in one Lua file (one CODEGEN, one EVAL) — both register, both tick, EVAL is hot-reloadable, CODEGEN hot-reload attempt errors with "hot-reload not supported in CODEGEN mode for system 'Name'; mark mode='eval' or rebuild"; (5) T-103 hot-reload continues working for EVAL systems; (6) engine/script/CLAUDE.md updated with mode semantics + CMake flag + hot-reload-only-in-EVAL contract; engine/CLAUDE.md style section gets CODEGEN-as-default bullet; (7) fleet-build clean under both IR_LUA_ECS_DEFAULT_MODE=CODEGEN and =EVAL; all tests pass under both
@@ -264,11 +264,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
+- [~] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
   - **ID:** T-109
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-109-codegen-perf-grid
   - **Blocked by:** T-108
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) lua_perf_grid/ migrated to CODEGEN; fleet-build --target IRLuaPerfGrid clean under IR_LUA_ECS_DEFAULT_MODE=CODEGEN; fleet-run produces same populated lattice as C++ baseline; (2) CODEGEN wave-system per-tick measured at 16³ (4096 entities) and 64³ (262144 entities): ≤1.5× C++ perf_grid wave system; actual ratio documented; (3) EVAL build (IR_LUA_ECS_DEFAULT_MODE=EVAL) profiled same configs: ~2–10× C++ (informational, not a gate); (4) docs/design/lua-driven-ecs.md retrospective updated: original ≥10000× failure, LuaJIT-only intermediate, CODEGEN final (gate number), architect rationale; (5) PR #563 rebased + body amended with measurements, merged; epic #293 amended + closed; #566 closed; (6) fleet-build --target IrredenEngineTest clean under both modes; full test suite passes. If gate fails (>1.5×): do NOT close #293; amend docs/design/lua-driven-ecs.md with corrective decision instead
