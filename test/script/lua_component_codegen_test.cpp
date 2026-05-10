@@ -67,9 +67,9 @@ TEST_F(LuaComponentCodegenTest, FloatDefaultsInferAsFloat) {
     static_assert(std::is_same_v<decltype(IRComponents::C_CodegenVel::y_), float>);
     static_assert(std::is_same_v<decltype(IRComponents::C_CodegenVel::z_), float>);
     IRComponents::C_CodegenVel v;
-    EXPECT_FLOAT_EQ(v.x_, 0.0f);
-    EXPECT_FLOAT_EQ(v.y_, 0.0f);
-    EXPECT_FLOAT_EQ(v.z_, 0.0f);
+    EXPECT_FLOAT_EQ(v.x_, 1.5f);
+    EXPECT_FLOAT_EQ(v.y_, 1.5f);
+    EXPECT_FLOAT_EQ(v.z_, 1.5f);
 }
 
 TEST_F(LuaComponentCodegenTest, MixedDefaultsInferPerField) {

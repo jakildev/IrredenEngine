@@ -7,7 +7,7 @@
 # engine/script/CMakeLists.txt). This subdir is added AFTER engine/ in the
 # top-level CMakeLists so both deps resolve.
 
-add_executable(ir_lua_codegen main.cpp)
+add_executable(ir_lua_codegen main.cpp system_dsl.cpp)
 target_link_libraries(ir_lua_codegen PRIVATE lua sol2)
 target_compile_features(ir_lua_codegen PRIVATE cxx_std_20)
 

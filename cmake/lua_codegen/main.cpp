@@ -1,19 +1,31 @@
-// Build-time tool: scans Lua schema files for `IRComponent.register(...)`
-// calls and emits a C++ header containing component structs + Lua bindings
-// + a registration helper. The CODEGEN side of the Lua-driven ECS epic
-// (see docs/design/lua-driven-ecs.md). Runs the input as Lua against a
-// stub `IRComponent` table whose `register` callback captures every call;
-// non-component surfaces (`IRSystem`, `IRTime`, etc.) are no-op stubs so
-// schema files that share a creation's `main.lua` still load cleanly.
+// Build-time tool: scans Lua schema files for `IRComponent.register(...)` and
+// `IRSystem.registerSystem({...})` calls and emits a C++ header containing
+// component structs, Lua bindings, codegen system create-functions, and
+// registration helpers. The CODEGEN side of the Lua-driven ECS epic (see
+// docs/design/lua-driven-ecs.md).
+//
+// Components (T-106): runs the input as Lua against a stub `IRComponent`
+// table whose `register` callback captures every call.
+//
+// Systems (T-107): the `IRSystem.registerSystem` shim captures system
+// metadata + the source location of the `tick = function(arch) ... end`
+// block via Lua's `lua_getinfo` debug API. The body source is then sliced
+// out of the input file, parsed by `system_dsl.{hpp,cpp}` against the DSL
+// subset documented in #587, and emitted as a `IRSystem::createSystem<...>`
+// call wrapped in a per-system create function.
 //
 // Usage: ir_lua_codegen --out <output.hpp> <input1.lua> [input2.lua ...]
 //
 // Field types supported in CODEGEN mode: int32, float, bool, string.
 // Tables and functions in component schemas are an explicit codegen-time
 // error pointing at file/line/field — those fields belong in EVAL mode.
+// CODEGEN system bodies must use only Lua-defined components (declared via
+// `IRComponent.register`); systems that touch C++-bound types stay in EVAL.
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
+
+#include "system_dsl.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -23,6 +35,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -46,15 +59,22 @@ struct Component {
 
 struct Capture {
     std::vector<Component> components_;
+    std::vector<IRLuaCodegen::SystemRecord> systems_;
     std::string currentSource_;
 };
 
 // Caller is the Lua `IRComponent.register` shim. Inspects the schema table
 // and either appends a Component to capture or raises a Lua error with a
 // schema-pointing message (file/component/field).
-[[noreturn]] void schemaError(sol::this_state ts, const std::string &message) {
-    luaL_error(ts, "%s", message.c_str());
-    std::abort(); // unreachable; appeases [[noreturn]]
+// Emit the error immediately to stderr (captured by 2>&1 in subprocess test
+// invocations), then throw to stop execution. luaL_error is avoided here
+// because it uses longjmp, which is UB when unwinding past C++ objects on
+// the stack (sol2 for_each callbacks). LuaJIT's C++ exception integration
+// also loses the exception's what() message (uses the Lua stack top instead),
+// so we print before throwing.
+[[noreturn]] void schemaError(sol::this_state, const std::string &message) {
+    std::cerr << message << "\n";
+    throw std::runtime_error(message);
 }
 
 const char *fieldTypeName(FieldType t) {
@@ -154,10 +174,16 @@ Field inferFromShortValue(
         // collapses them. Push the value back onto the stack so we can
         // call lua_isinteger, which is the authoritative subtype check.
         // (A C++-side round-trip can't distinguish `0` from `0.0` because
-        // both round-trip cleanly through int64.) LuaJIT 2.1 also tags
-        // integer vs float at the TValue level, so lua_isinteger returns
-        // non-zero for integer literals there too — the approach survives
-        // the LuaJIT migration unchanged.
+        // both round-trip cleanly through int64.)
+        //
+        // LuaJIT compat caveat: sol2's compat-5.3 shim implements
+        // lua_isinteger as `lua_tointeger(x) == lua_tonumber(x)`, which
+        // returns true for ANY whole-number float (e.g. `0.0`, `1.0`).
+        // This means a float default like `0.0` is misidentified as int32.
+        // Workaround: use a non-whole-number float literal (e.g. `0.5`) for
+        // fields that must be inferred as float, or use the explicit
+        // `{ type = "float", default = 0 }` form for zero/whole-number
+        // float defaults.
         lua_State *L = ts;
         sol::stack::push(L, value);
         const bool isInt = lua_isinteger(L, -1) != 0;
@@ -336,19 +362,178 @@ void registerComponentCb(
     cap.components_.push_back(std::move(comp));
 }
 
-void writeOutput(const std::string &outPath, const Capture &cap) {
+// Read a Lua array (`{ "A", "B", ... }`) of strings into a std::vector. Raises
+// a Lua error if any entry is not a string. Returns an empty vector if the
+// table is missing or not a table.
+std::vector<std::string> readStringArray(
+    sol::this_state ts,
+    const sol::object &val,
+    const std::string &systemName,
+    const std::string &fieldName
+) {
+    std::vector<std::string> out;
+    if (val.is<sol::nil_t>()) return out;
+    if (val.get_type() != sol::type::table) {
+        schemaError(
+            ts,
+            "lua_codegen: system '" + systemName + "' field '" + fieldName +
+                "' must be a table of component names"
+        );
+    }
+    sol::table tbl = val.as<sol::table>();
+    const std::size_t n = tbl.size();
+    out.reserve(n);
+    for (std::size_t i = 1; i <= n; ++i) {
+        sol::object entry = tbl[i];
+        if (entry.get_type() != sol::type::string) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + systemName + "' field '" + fieldName +
+                    "' entry #" + std::to_string(i) + " is not a string"
+            );
+        }
+        out.push_back(entry.as<std::string>());
+    }
+    return out;
+}
+
+// Push the tick function onto the Lua stack and ask `lua_getinfo` for the
+// source location. Pops the function as a side effect (the `>` flag in the
+// what-string consumes the stack-top function).
+void captureTickSource(
+    lua_State *L,
+    const sol::function &tickFn,
+    const std::string &systemName,
+    std::string &outSource,
+    int &outLineDefined,
+    int &outLastLineDefined
+) {
+    sol::stack::push(L, tickFn);
+    lua_Debug ar;
+    if (lua_getinfo(L, ">S", &ar) == 0) {
+        // `>` already popped the function on failure path per Lua docs.
+        schemaError(
+            sol::this_state{L},
+            "lua_codegen: lua_getinfo failed for system '" + systemName + "' tick function"
+        );
+    }
+    outSource = ar.source ? ar.source : "";
+    outLineDefined = ar.linedefined;
+    outLastLineDefined = ar.lastlinedefined;
+}
+
+// Caller is the Lua `IRSystem.registerSystem` shim. Captures one
+// SystemRecord per call. Body source extraction + DSL parsing are deferred
+// to writeOutput so the full component registry is available when the
+// systems emitter validates `components = {...}` entries.
+void registerSystemCb(
+    sol::this_state ts,
+    Capture &cap,
+    const sol::table &schema
+) {
+    sol::optional<std::string> nameOpt = schema["name"];
+    if (!nameOpt) {
+        schemaError(ts, "lua_codegen: IRSystem.registerSystem requires 'name' field");
+    }
+    const std::string name = *nameOpt;
+
+    sol::object compsVal = schema["components"];
+    if (compsVal.is<sol::nil_t>()) {
+        schemaError(
+            ts, "lua_codegen: system '" + name + "' missing required 'components' field"
+        );
+    }
+    std::vector<std::string> components = readStringArray(ts, compsVal, name, "components");
+    if (components.empty()) {
+        schemaError(
+            ts, "lua_codegen: system '" + name + "' has empty 'components' list"
+        );
+    }
+
+    std::vector<std::string> excludes = readStringArray(ts, schema["excludes"], name, "excludes");
+
+    sol::object tickVal = schema["tick"];
+    if (tickVal.get_type() != sol::type::function) {
+        schemaError(
+            ts, "lua_codegen: system '" + name + "' missing or non-function 'tick' field"
+        );
+    }
+    sol::function tickFn = tickVal.as<sol::function>();
+
+    std::string source;
+    int linedefined = 0;
+    int lastlinedefined = 0;
+    captureTickSource(ts.lua_state(), tickFn, name, source, linedefined, lastlinedefined);
+
+    // Lua's `source` for files starts with '@'; strip it. For inline strings
+    // (`load("...")`) the source starts with '=' and we reject those — codegen
+    // requires a real on-disk file for source extraction.
+    if (source.empty() || source[0] != '@') {
+        schemaError(
+            ts, "lua_codegen: system '" + name +
+                    "' tick must be defined in an on-disk Lua file (got source='" + source + "')"
+        );
+    }
+    std::string file = source.substr(1);
+
+    IRLuaCodegen::SystemRecord rec;
+    rec.name_ = name;
+    rec.components_ = std::move(components);
+    rec.excludes_ = std::move(excludes);
+    rec.sourceFile_ = std::move(file);
+    rec.linedefined_ = linedefined;
+    rec.lastlinedefined_ = lastlinedefined;
+    cap.systems_.push_back(std::move(rec));
+}
+
+// Convert main.cpp's `Component` registry into the `ComponentSchema` shape
+// that system_dsl.hpp consumes. Fields keep their alphabetical order from
+// T-106's sort.
+std::vector<IRLuaCodegen::ComponentSchema>
+toComponentSchemas(const std::vector<Component> &comps) {
+    std::vector<IRLuaCodegen::ComponentSchema> out;
+    out.reserve(comps.size());
+    for (const auto &c : comps) {
+        IRLuaCodegen::ComponentSchema s;
+        s.name_ = c.name_;
+        s.sourceFile_ = c.sourceFile_;
+        s.fields_.reserve(c.fields_.size());
+        for (const auto &f : c.fields_) {
+            IRLuaCodegen::ComponentField sf;
+            sf.name_ = f.name_;
+            switch (f.type_) {
+                case FieldType::INT32:  sf.type_ = IRLuaCodegen::FieldType::INT32; break;
+                case FieldType::FLOAT:  sf.type_ = IRLuaCodegen::FieldType::FLOAT; break;
+                case FieldType::BOOL:   sf.type_ = IRLuaCodegen::FieldType::BOOL; break;
+                case FieldType::STRING: sf.type_ = IRLuaCodegen::FieldType::STRING; break;
+            }
+            s.fields_.push_back(std::move(sf));
+        }
+        out.push_back(std::move(s));
+    }
+    return out;
+}
+
+void writeOutput(const std::string &outPath, Capture &cap) {
     std::ostringstream os;
     os << "// AUTO-GENERATED by cmake/lua_codegen — do not edit by hand.\n";
     os << "// Generated from:\n";
     for (const auto &c : cap.components_) {
         os << "//   " << c.sourceFile_ << " (component " << c.name_ << ")\n";
     }
+    for (const auto &s : cap.systems_) {
+        os << "//   " << s.sourceFile_ << " (system " << s.name_ << ")\n";
+    }
     os << "#pragma once\n\n";
     os << "#include <cstdint>\n";
-    os << "#include <string>\n\n";
+    os << "#include <string>\n";
+    os << "#include <vector>\n\n";
+    os << "#include <irreden/ir_entity.hpp>\n";
+    os << "#include <irreden/ir_math.hpp>\n";
+    os << "#include <irreden/ir_system.hpp>\n";
     os << "#include <irreden/script/lua_binding_traits.hpp>\n";
     os << "#include <irreden/script/lua_script.hpp>\n";
-    os << "#include <irreden/ir_entity.hpp>\n\n";
+    os << "#include <irreden/system/ir_system_types.hpp>\n\n";
 
     os << "namespace IRComponents {\n\n";
     for (const auto &c : cap.components_) {
@@ -410,6 +595,38 @@ void writeOutput(const std::string &outPath, const Capture &cap) {
     }
     os << "} // namespace IRScript\n\n";
 
+    // Codegen system create-functions (T-107). Each captured
+    // `IRSystem.registerSystem({...})` call becomes one
+    // `inline IRSystem::SystemId createSystem_<NAME>()` that wraps a
+    // typed `IRSystem::createSystem<...>` invocation with the translated
+    // tick body. Component validation, intrinsic-whitelist enforcement, and
+    // strict DSL-violation errors all happen here — any reject surfaces as a
+    // codegen-time error pointing at file:line:feature.
+    if (!cap.systems_.empty()) {
+        const auto componentRegistry = toComponentSchemas(cap.components_);
+        os << "namespace IRScript::CodegenRegistry {\n\n";
+        std::string systemsBuf;
+        for (auto &rec : cap.systems_) {
+            int bodyStartLine = 0;
+            try {
+                rec.bodySource_ = IRLuaCodegen::sliceFunctionBody(
+                    rec.sourceFile_, rec.linedefined_, rec.lastlinedefined_, bodyStartLine
+                );
+                rec.bodyStartLine_ = bodyStartLine;
+                IRLuaCodegen::ParsedBody body = IRLuaCodegen::parseSystemBody(
+                    rec.sourceFile_, rec.bodyStartLine_, rec.bodySource_
+                );
+                IRLuaCodegen::emitSystem(systemsBuf, rec, body, componentRegistry);
+            } catch (const IRLuaCodegen::ParseError &err) {
+                std::cerr << "lua_codegen: error in system '" << rec.name_ << "' at "
+                          << err.file_ << ":" << err.line_ << ": " << err.message_ << "\n";
+                std::exit(1);
+            }
+        }
+        os << systemsBuf;
+        os << "} // namespace IRScript::CodegenRegistry\n\n";
+    }
+
     // Registration helper: pre-registers each codegen'd component with the
     // EntityManager (so its ComponentId is allocated up front, matching the
     // EVAL path's behaviour) and binds the Lua usertype via the trait. The
@@ -423,6 +640,26 @@ void writeOutput(const std::string &outPath, const Capture &cap) {
         os << "    luaScript.registerTypeFromTraits<IRComponents::" << structName << ">();\n";
     }
     os << "}\n\n";
+
+    // Systems registry: returns one SystemId per codegen'd system. Test cases
+    // and creations call this once after `registerCodegenComponents`. The
+    // returned struct's field names mirror the system names — direct,
+    // boilerplate-free access without juggling indices.
+    if (!cap.systems_.empty()) {
+        os << "struct CodegenSystemIds {\n";
+        for (const auto &s : cap.systems_) {
+            os << "    IRSystem::SystemId " << s.name_ << ";\n";
+        }
+        os << "};\n\n";
+        os << "inline CodegenSystemIds registerCodegenSystems() {\n";
+        os << "    CodegenSystemIds ids{};\n";
+        for (const auto &s : cap.systems_) {
+            os << "    ids." << s.name_ << " = createSystem_" << s.name_ << "();\n";
+        }
+        os << "    return ids;\n";
+        os << "}\n\n";
+    }
+
     os << "} // namespace IRScript::CodegenRegistry\n";
 
     std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
@@ -483,12 +720,22 @@ int main(int argc, char **argv) {
         }
     );
 
-    // No-op stubs for non-component surfaces. Schema files that share a
-    // creation's runtime main.lua may reference these at top-level; we
-    // accept the calls and discard the args. T-107 will replace
-    // IRSystem.registerSystem with a real codegen path.
+    // T-107: real `IRSystem.registerSystem` shim — captures the system
+    // metadata + tick function source location for later parse + emit. The
+    // remaining IRSystem surface stays stubbed because the codegen tool
+    // doesn't run pipelines or hot-reload systems; only registration is
+    // captured for emission.
     sol::table irSystem = lua.create_named_table("IRSystem");
-    irSystem.set_function("registerSystem", [](sol::variadic_args) { return 0; });
+    irSystem.set_function(
+        "registerSystem",
+        [&cap](sol::this_state ts, const sol::table &schema) {
+            registerSystemCb(ts, cap, schema);
+            // Return a pseudo-system-id (zero) so user-side
+            // `local sysId = IRSystem.registerSystem(...)` captures something.
+            // Pipelines aren't run here, so the value is never read in earnest.
+            return 0;
+        }
+    );
     irSystem.set_function("registerPipeline", [](sol::variadic_args) {});
     irSystem.set_function("systemId", [](sol::variadic_args) { return 0; });
     irSystem.set_function("replaceSystemBody", [](sol::variadic_args) {});
@@ -524,13 +771,19 @@ int main(int argc, char **argv) {
 
     for (const auto &input : inputs) {
         cap.currentSource_ = input;
-        sol::protected_function_result result = lua.safe_script_file(
-            input, sol::script_pass_on_error
-        );
-        if (!result.valid()) {
-            sol::error err = result;
+        try {
+            sol::protected_function_result result = lua.safe_script_file(
+                input, sol::script_pass_on_error
+            );
+            if (!result.valid()) {
+                sol::error err = result;
+                std::cerr << "lua_codegen: error executing '" << input << "':\n  "
+                          << err.what() << "\n";
+                return 1;
+            }
+        } catch (const std::runtime_error &e) {
             std::cerr << "lua_codegen: error executing '" << input << "':\n  "
-                      << err.what() << "\n";
+                      << e.what() << "\n";
             return 1;
         }
     }

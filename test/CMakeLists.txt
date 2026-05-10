@@ -30,6 +30,7 @@ add_executable(IrredenEngineTest
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_pipeline_register_test.cpp
+  script/lua_system_codegen_test.cpp
   script/lua_system_register_test.cpp
   script/modifier_lua_test.cpp
   system/register_system_test.cpp
@@ -69,6 +70,15 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
 )
 add_dependencies(IrredenEngineTest ir_lua_codegen)
+
+# T-107: build lua_system_codegen_fixtures.hpp from the sibling .lua
+# fixture. The codegen tool processes IRSystem.registerSystem({...})
+# calls, slices the tick function source, parses the DSL subset, and
+# emits typed C++ tick bodies + a registry helper.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_system_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_system_codegen_fixtures.hpp
+)
 
 target_include_directories(IrredenEngineTest PRIVATE
     ${googletest_SOURCE_DIR}/googletest/include
