@@ -22,12 +22,6 @@ constexpr float kSunShadowMaxDistance = 64.0f;
 // in detail::resolveSun), otherwise falls back to `IRRender::getSunDirection()`.
 // Returned vector is unit-length when the override is non-zero; the global
 // path is unit-length by `setSunDirection` invariant.
-//
-// Call from a system's beginTick (once per frame), store the result in
-// SystemParams, and read the cached value in the per-entity tick.
-// If a RESOLVE_SUN_DIRECTION system is registered at the head of the pipeline,
-// it may cache the result across all consumers — but each system is responsible
-// for its own beginTick call until that caching system is wired up.
 inline IRMath::vec3 resolveDirection() {
     IRMath::vec3 dir = IRRender::getSunDirection();
     const auto include = IREntity::getArchetype<IRComponents::C_LightSource>();
@@ -48,12 +42,10 @@ inline IRMath::vec3 resolveDirection() {
     return dir;
 }
 
-// Shared accessor for the per-frame resolved sun direction. Both
-// VOXEL_TO_TRIXEL_STAGE_1 and SHAPES_TO_TRIXEL call this from their
-// beginTick and cache the result in SystemParams, so no archetype scan
-// runs inside the per-entity tick. Identical to resolveDirection() today;
-// reserved for future caching by a RESOLVE_SUN_DIRECTION head-of-pipeline
-// system.
+// Per-frame resolved sun direction. Call from a system's beginTick (once per
+// frame), store the result in SystemParams, and read the cached value in the
+// per-entity tick. Identical to resolveDirection() today; reserved for future
+// caching by a RESOLVE_SUN_DIRECTION head-of-pipeline system.
 inline IRMath::vec3 getFrameSunDirection() {
     return resolveDirection();
 }
