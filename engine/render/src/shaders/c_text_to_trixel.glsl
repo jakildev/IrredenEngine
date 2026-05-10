@@ -22,7 +22,7 @@ layout(std430, binding = 12) buffer CommandBuffer {
     GlyphDrawCommand commands[];
 };
 
-layout(rgba8, binding = 0) writeonly uniform image2D canvasColors;
+layout(rgba16f, binding = 0) writeonly uniform image2D canvasColors;
 layout(r32i, binding = 1) uniform iimage2D canvasDistances;
 
 void main() {

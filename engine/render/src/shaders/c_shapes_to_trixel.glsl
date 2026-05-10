@@ -60,7 +60,7 @@ layout(std430, binding = 22) readonly buffer AnimBuffer {
 };
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
-layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
+layout(rgba16f, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
 // Shape-type constants (SHAPE_BOX, SHAPE_SPHERE, …) and the SDF primitive

@@ -9,9 +9,9 @@ layout(std140, binding = 10) uniform FrameDataTrixelToTrixel {
     uniform vec2 texturePos2DIso;
 };
 
-layout(rgba8, binding = 0) uniform image2D trixelColorsTo;
+layout(rgba16f, binding = 0) uniform image2D trixelColorsTo;
 layout(r32i, binding = 1) uniform iimage2D trixelDistancesTo;
-layout(rgba8, binding = 2) readonly uniform image2D trixelColorsFrom;
+layout(rgba16f, binding = 2) readonly uniform image2D trixelColorsFrom;
 layout(r32i, binding = 3) readonly uniform iimage2D trixelDistancesFrom;
 
 void main() {

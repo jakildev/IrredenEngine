@@ -172,7 +172,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 }
 
                 canvasTextures.getTextureColors()
-                    ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                    ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA16F);
                 canvasTextures.getTextureDistances()
                     ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);

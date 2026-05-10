@@ -282,7 +282,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 auto &canvasTextures =
                     IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
                 canvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
+                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA16F
                 );
                 canvasTextures.getTextureDistances()->bindAsImage(
                     1, TextureAccess::WRITE_ONLY, TextureFormat::R32I

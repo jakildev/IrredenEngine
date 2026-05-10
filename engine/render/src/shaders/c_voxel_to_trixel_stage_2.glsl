@@ -43,7 +43,7 @@ layout(std430, binding = 26) readonly buffer IndirectDispatchParams {
     uint visibleCount;
 };
 
-layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
+layout(rgba16f, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 

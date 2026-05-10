@@ -26,6 +26,12 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
     // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
     uniform int   debugOverlayMode;
+    // Additive sky term — `.rgb` is the sky's emissive colour and `.w` is
+    // its intensity. The contribution is `skyColor.rgb * skyColor.w * ao`,
+    // so AO doubles as a sky-visibility proxy (open sky pixels get the
+    // full term; occluded creases see none). `.w == 0.0` disables the
+    // term, which is the default so existing LDR demos render unchanged.
+    uniform vec4  skyColor;
 };
 
 // Mirrors the FrameDataVoxelToTrixel UBO used by VOXEL_TO_TRIXEL stages
@@ -60,7 +66,12 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 sunBufferTexelSize;
 };
 
-layout(rgba8, binding = 0) uniform image2D trixelColors;
+// trixelColors is RGBA16F to preserve HDR contributions from the light
+// volume and the additive sky term; a downstream TONEMAP_TO_TRIXEL pass
+// collapses it back to LDR for TRIXEL_TO_FRAMEBUFFER. Keep the AO and
+// sun-shadow canvases as RGBA8 — those are scalar modulators, not
+// emissives, and don't benefit from extra precision.
+layout(rgba16f, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasAO;
 layout(binding = 3) uniform sampler2D paletteLUT;
@@ -184,7 +195,14 @@ void main() {
             vec3(kLightVolumeSize);
         const vec4 lightSample = texture(lightVolume, sampleCoord);
         const vec3 light = lightSample.rgb * lightSample.a;
-        baseRgb = clamp(baseRgb + src.rgb * light, 0.0, 1.0);
+        // No clamp: trixelColors is RGBA16F now and downstream
+        // TONEMAP_TO_TRIXEL collapses HDR back into LDR. A clamp here
+        // would crush emissive contributions before they reach tonemap.
+        baseRgb = baseRgb + src.rgb * light;
+    }
+
+    if (skyColor.w > 0.0) {
+        baseRgb += src.rgb * skyColor.rgb * skyColor.w * ao;
     }
 
     imageStore(trixelColors, pixel, vec4(baseRgb, src.a));
