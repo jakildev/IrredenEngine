@@ -230,6 +230,84 @@ The hand-test + regression coverage lives at
 (`docs/design/lua-driven-ecs.md` / planning artifacts under `~/.claude/`)
 covers the broader CODEGEN/EVAL split design.
 
+### CODEGEN system bodies (T-107)
+
+The same `irreden_lua_codegen()` invocation also picks up
+`IRSystem.registerSystem({...})` calls and emits typed C++ tick bodies.
+The codegen tool slices the `tick = function(arch) ... end` source via
+Lua's `lua_getinfo` debug API, parses the body against a fixed DSL
+subset, and emits one
+`IRScript::CodegenRegistry::createSystem_<NAME>()` per system that wraps
+a typed `IRSystem::createSystem<...>` call. The generated header also
+exposes a `CodegenSystemIds registerCodegenSystems()` aggregate registry
+so creations / tests can register every codegen'd system in one call.
+
+**DSL subset accepted in CODEGEN system bodies:**
+
+- One canonical loop only: `for i = 0, arch.length - 1 do ... end`. No
+  generic-for `pairs/ipairs`, no negative steps, no nested archetype
+  loops, no `while`/`repeat`/`break`/`goto`.
+- Column ops on **Lua-defined** components only (declared via
+  `IRComponent.register` in the same codegen run): `arch.Comp:at(i)`,
+  `arch.Comp:setAt(i, value)`, `arch.Comp:getField(i, "fieldName")`,
+  `arch.Comp:setField(i, "fieldName", value)`. Field names must be
+  string literals — dynamic field names belong in EVAL.
+- `Comp.new(args...)` constructor calls. Argument order matches the
+  alphabetically-sorted field order in the codegen'd struct.
+- Math + comparisons + branches: `+ - * / %`, `< > <= >= == ~=`, `and
+  or not`, `if`/`elseif`/`else`/`end`. `^` (exponent) is rejected —
+  use a math.* intrinsic.
+- `local <name> = <expr>` declarations with simple-RHS init. Multi-target
+  `local a, b = ...` is rejected.
+- Whitelisted intrinsics — call as `math.sin(x)` / `IRMath.lerp(a,b,t)`
+  / etc. The current set lives in
+  `cmake/lua_codegen/system_dsl.cpp`'s `kIntrinsicRegistry`. Adding an
+  entry is one line: Lua name, C++ expression head, arity. `math.*`
+  routes to `IRMath::*` (the engine's math wrapper layer — the
+  CODEGEN-emitted code never calls `std::sin` etc. directly).
+
+**Forbidden in CODEGEN bodies (build-time error pointing at file:line):**
+
+- C++-bound types in column ops — `arch.TestPos:at(i)` errors if
+  `TestPos` is a hand-written C++ struct rather than a Lua-defined
+  one. Mark the system `mode = "eval"` (T-108) or move the type's
+  declaration to Lua.
+- Closures capturing external upvalues, metatables, dynamic dispatch
+  (`arch.foo[name](...)`), `require`, table constructors beyond
+  `Comp.new`, varargs, `nil`, `_` length operator, side-effecting
+  bare expression statements.
+
+**`excludes = { 'Tag' }`** at registration time materialises as
+`IRSystem::Exclude<C_Tag>` in the generated `IRSystem::createSystem<...>`
+template parameter list. Same archetype-filter behavior as a hand-written
+prefab system, no per-entity branching.
+
+**Test-harness toggle:** EVAL coverage continues at
+`test/script/lua_system_register_test.cpp`. CODEGEN coverage is at
+`test/script/lua_system_codegen_test.cpp` + the sibling
+`lua_system_codegen_fixtures.lua`. Cases that depend on EVAL-unique
+features (mixed C++/Lua component archetypes via runtime-typed
+dispatch, `replaceSystemBody` hot-reload, `entityAt(i)` reads,
+dynamic field-name strings) stay in the EVAL test file by design.
+
+**v1 scope notes (deferred to T-108 / follow-up):**
+
+- Per-system `mode = "codegen"` / `mode = "eval"` override is **T-108**.
+  Today, every `IRSystem.registerSystem` in a file passed to
+  `irreden_lua_codegen()` is captured and codegen-translated; an
+  out-of-DSL violation aborts the build. Until T-108 lands, files that
+  mix CODEGEN and EVAL systems must split into two .lua files.
+- Codegen system create-functions return a fresh `SystemId` each time
+  they're called. Hot-reload via `IRSystem.replaceSystemBody` is
+  EVAL-only; CODEGEN systems are static at build time.
+- The `SystemName`-enum partial generation called out in #587's
+  acceptance is deferred — codegen systems register by string name
+  through `IRSystem::createSystem<...>` directly, which produces a
+  valid `SystemId` in the same id space and works with `SystemManager`'s
+  pipeline machinery without going through `System<NAME>::create()`.
+  Add the enum partial in a follow-up if a creation needs the named
+  prefab-system spelling for a codegen'd system.
+
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
 `bindLuaDrivenEcs()` also exposes `IRSystem.registerSystem`. A Lua
