@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 3.15)
 
 project(luajit LANGUAGES C)
 
-# LuaJIT 2.1 (rolling). Pinned commit chosen for stable feature set
-# across Linux / macOS / MinGW64 builds. Sol2 detects LuaJIT via
-# LUAJIT_VERSION in lua.h and adapts its bindings accordingly, so the
-# C++ surface in engine/script/ does not change with this swap.
+# LuaJIT 2.1 rolling branch — a fresh configure fetches the current
+# v2.1 tip. Override IR_LUAJIT_GIT_TAG to a commit SHA for a
+# reproducible build. Sol2 detects LuaJIT via LUAJIT_VERSION in lua.h
+# and adapts its bindings accordingly, so the C++ surface in
+# engine/script/ does not change with this swap.
 #
 # Vendoring strategy: FetchContent populates the upstream source tree;
 # a custom build target invokes LuaJIT's native Makefile so the
@@ -104,7 +105,3 @@ if(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
     )
 endif()
 
-if(WIN32)
-    # MinGW64: nothing extra. MSVC builds aren't supported in this
-    # repository (BUILD.md uses MSYS2 mingw64).
-endif()
