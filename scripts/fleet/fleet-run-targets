@@ -20,6 +20,15 @@
 
 set -euo pipefail
 
+# --- Shared helpers (detect_engine_root) ---
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ ! -f "$_FLEET_COMMON_SH" ]]; then
+    echo "fleet-run-targets: missing fleet-common.sh (expected next to fleet-run-targets)" >&2
+    exit 1
+fi
+# shellcheck source=fleet-common.sh
+source "$_FLEET_COMMON_SH"
+
 BUILD_DIR=""
 SCOPE_DIR=""
 SCOPE_ALL="${IRREDEN_SCOPE_ALL:-}"
@@ -146,19 +155,6 @@ if $EXPLICIT_BUILT && $EXPLICIT_PLAN; then
     echo "fleet-run-targets: use only one of --built or --plan" >&2
     exit 2
 fi
-
-detect_engine_root() {
-    local root
-    root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
-    if [[ ! -f "$root/CMakePresets.json" ]]; then
-        if [[ -f "$root/../../CMakePresets.json" ]]; then
-            root="$(cd "$root/../.." && pwd)"
-        elif [[ -f "$root/../CMakePresets.json" ]]; then
-            root="$(cd "$root/.." && pwd)"
-        fi
-    fi
-    echo "$root"
-}
 
 if [[ -z "$BUILD_DIR" ]]; then
     WORKTREE_ROOT=$(detect_engine_root)
