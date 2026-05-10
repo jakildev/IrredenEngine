@@ -213,18 +213,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet-claim: hard model-tag gate** — refuse claim when role model mismatches the task's Model: field; exits non-zero with clear error; no-op when task has no Model: field
-  - **ID:** T-137
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-137-fleet-claim-model-gate
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fleet-claim T-X from sonnet-author shell on opus-tagged task exits non-zero with clear error, writes nothing; (2) fleet-claim T-X from opus-worker shell proceeds normally; (3) task with no Model: field claims from either role; (4) each role wrapper sets FLEET_ROLE_MODEL before invoking fleet-claim
-  - **Issue:** #582
-  - **Notes:** Filed from T-130 double-claim incident (PRs #575 + #579). Atomic master-side lock is a separate issue (#583, T-138). Model tag is advisory today — this makes it a hard gate.
-  - **Links:**
-
-
 - [~] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
   - **ID:** T-138
   - **Area:** tooling
@@ -302,6 +290,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-137** — fleet-claim: hard model-tag gate · Owner: claude/T-137-fleet-claim-model-gate · PR: https://github.com/jakildev/IrredenEngine/pull/591
 - [x] **T-134** — C_SpriteSheet: onDestroy GPU texture cleanup · Owner: claude/T-134-sprite-sheet-on-destroy · PR: https://github.com/jakildev/IrredenEngine/pull/590
 - [x] **T-133** — Render: 2x2 PCF in screen-space sun shadow lookup · Owner: claude/T-133-2x2-pcf-sun-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/574
 - [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
@@ -321,4 +310,3 @@ Avoid:
 - [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
 - [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
 - [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-worker-resumption-step · PR: https://github.com/jakildev/IrredenEngine/pull/539
-- [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
