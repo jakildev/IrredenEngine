@@ -656,11 +656,9 @@ void writeOutput(
     // strict DSL-violation errors all happen here — any reject surfaces as a
     // codegen-time error pointing at file:line:feature.
     //
-    // Systems with `mode = "eval"` are deliberately skipped here. The
-    // emitted `kEvalSystemNames` array below carries their names so the
-    // runtime registration path (`IRSystem.registerSystem` → eval shim) can
-    // verify each EVAL system actually registered at script-eval time and
-    // surface a clear error otherwise.
+    // Systems with `mode = "eval"` are deliberately skipped here. Their
+    // names are captured in `kEvalSystemNames` below as a prepared hook for
+    // a future runtime verification loop — not yet consumed.
     const bool hasCodegenSystems = std::any_of(
         cap.systems_.begin(), cap.systems_.end(),
         [](const IRLuaCodegen::SystemRecord &r) {
