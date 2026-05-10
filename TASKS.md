@@ -165,11 +165,11 @@ Avoid:
 
 
 
-- [ ] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
+- [~] **LuaJIT 2.1 runtime migration** — swap Lua 5.4 → LuaJIT 2.1 as the engine's Lua runtime; update cmake dep, audit .lua files for 5.4-only features, verify all bindings and tests pass under LuaJIT, document EVAL-mode perf floor
   - **ID:** T-105
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-105-luajit-runtime
   - **Blocked by:** (none)
   - **Acceptance:** (1) LuaJIT 2.1 replaces Lua 5.4 in cmake/; all sol2 usertype/registerType bindings compile and function; (2) Lua 5.4-only feature audit complete — goto, integer subtypes, <const>/<close>, generational GC, bit32 — findings documented in PR body; (3) fleet-build --target IrredenEngineTest clean + 100% pass; fleet-build --target IRPerfGrid clean; creations/demos/lua_pipeline_demo runs end-to-end; all Lua-driven ECS tests pass; (4) EVAL-mode perf re-run on testbed from PR #563 documented (target 2–10× C++ perf_grid baseline); (5) engine/script/CLAUDE.md updated with LuaJIT 2.1 runtime note (available: bit ops, FFI; not available: 5.4-only features)
   - **Issue:** #585
@@ -186,18 +186,6 @@ Avoid:
   - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
   - **Issue:** #366
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
-  - **Links:**
-
-
-- [~] **Render: 2x2 PCF in screen-space sun shadow lookup** — replace single-texel sun shadow sample with bilinearly-weighted 2x2 kernel to soften shadow boundary aliasing
-  - **ID:** T-133
-  - **Area:** shaders/glsl, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** claude/T-133-2x2-pcf-sun-shadow
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRShapeDebug --auto-screenshot 10 at zoom 4 and zoom 8 — shadow boundaries soften by ~1 sun-space texel, no jaggies or broken-comb edges; (2) main_sun_shadow.cpp and main_combined.cpp show smooth shadow edges at all four cardinal yaws; (3) per-frame cost regression ≤2% of total render-pipeline time (measure via IR_PROFILE_BLOCK("ComputeSunShadow")); (4) linux-debug OpenGL and macos-debug Metal produce visually equivalent softening; (5) fleet-build clean on linux-debug AND macos-debug
-  - **Issue:** #445
-  - **Notes:** Edit c_compute_sun_shadow.glsl:112-128 and metal/c_compute_sun_shadow.metal:85-107. Pseudocode in issue body. Both sibling tickets (T-131 AABB widening, T-132 normal-bias) are independent and can land in any order.
   - **Links:**
 
 
@@ -261,11 +249,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
+- [~] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
   - **ID:** T-106
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-106-lua-codegen-foundation
   - **Blocked by:** T-105
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) new codegen tool at cmake/lua_codegen/ — takes list of .lua files + output .hpp path, language choice documented in PR body; (2) emits struct C_Name in namespace IRComponents + matching _lua.hpp binding (kHasLuaBinding<C_Name>, bindLuaType<C_Name>, sol::usertype with field accessors) + registration helper calling IREntity::EntityManager::registerComponent<C_Name>() for every IRComponent.register("Name", {...}) call found; (3) type inference: int→int32_t, float, bool, string; explicit typed form ({field = {type="float", default=100}}) honored; unsupported defaults error with file/line/field name; (4) CMake helper irreden_lua_codegen(<target> SOURCES <lua_files...> OUTPUT_HPP <path>) with add_custom_command in cmake/ir_functions.cmake; (5) smoke test: C_Hp{current=100, max=100} round-trip (Lua creates entity → C++ reads back) passes; (6) test/script/lua_component_register_test.cpp passes under CODEGEN mode (test-harness toggle EVAL vs. CODEGEN); (7) fleet-build --target IrredenEngineTest clean + all existing tests pass
@@ -274,11 +262,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
+- [~] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
   - **ID:** T-107
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-107-codegen-system-bodies
   - **Blocked by:** T-106
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) codegen tool parses DSL subset: canonical loop (for i=0, arch.length-1 do), column ops (arch.Component:at/setAt/getField/setField), Component.new(), arithmetic/comparison/logical ops, if/elseif/else, local declarations, whitelisted intrinsics; (2) emits template<> struct System<NAME> specialisations in namespace IRSystem with tick(arch_ref) member + static SystemId create() using registerSystem<> (if T-136 landed) or createSystem+setSystemParams; (3) out-of-DSL features produce build errors with file/line/feature name; test cases assert specific error messages for: closures, metatables, require, unsupported loop forms; (4) intrinsic whitelist config table (Lua→C++ template): math.sin/cos/tan/atan/sqrt/abs/floor/ceil/min/max + IRMath.lerp/clamp; extensible by adding table entries; (5) test/script/lua_system_register_test.cpp passes under CODEGEN mode; (6) fleet-build --target IrredenEngineTest clean + all existing tests pass
@@ -287,11 +275,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
+- [~] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
   - **ID:** T-108
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-108-mode-override-coexistence
   - **Blocked by:** T-107
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) IRSystem.registerSystem({mode="eval"|"codegen",...}) opts system out/in; absent mode uses creation default; unknown values are codegen errors; (2) CMake IR_LUA_ECS_DEFAULT_MODE cache var per creation (CODEGEN default or EVAL); irreden_lua_codegen helper gains DEFAULT_MODE param; (3) EVAL-mode systems emit stubs calling bindLuaDrivenEcs() → IRSystem::createSystemDynamic() at runtime; CODEGEN systems emit C++ as in T-107; same SystemId space; (4) coexistence test: two systems in one Lua file (one CODEGEN, one EVAL) — both register, both tick, EVAL is hot-reloadable, CODEGEN hot-reload attempt errors with "hot-reload not supported in CODEGEN mode for system 'Name'; mark mode='eval' or rebuild"; (5) T-103 hot-reload continues working for EVAL systems; (6) engine/script/CLAUDE.md updated with mode semantics + CMake flag + hot-reload-only-in-EVAL contract; engine/CLAUDE.md style section gets CODEGEN-as-default bullet; (7) fleet-build clean under both IR_LUA_ECS_DEFAULT_MODE=CODEGEN and =EVAL; all tests pass under both
@@ -300,11 +288,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
+- [~] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
   - **ID:** T-109
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-109-codegen-perf-grid
   - **Blocked by:** T-108
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) lua_perf_grid/ migrated to CODEGEN; fleet-build --target IRLuaPerfGrid clean under IR_LUA_ECS_DEFAULT_MODE=CODEGEN; fleet-run produces same populated lattice as C++ baseline; (2) CODEGEN wave-system per-tick measured at 16³ (4096 entities) and 64³ (262144 entities): ≤1.5× C++ perf_grid wave system; actual ratio documented; (3) EVAL build (IR_LUA_ECS_DEFAULT_MODE=EVAL) profiled same configs: ~2–10× C++ (informational, not a gate); (4) docs/design/lua-driven-ecs.md retrospective updated: original ≥10000× failure, LuaJIT-only intermediate, CODEGEN final (gate number), architect rationale; (5) PR #563 rebased + body amended with measurements, merged; epic #293 amended + closed; #566 closed; (6) fleet-build --target IrredenEngineTest clean under both modes; full test suite passes. If gate fails (>1.5×): do NOT close #293; amend docs/design/lua-driven-ecs.md with corrective decision instead
@@ -326,6 +314,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-133** — Render: 2x2 PCF in screen-space sun shadow lookup · Owner: claude/T-133-2x2-pcf-sun-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/574
 - [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
 - [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
 - [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
@@ -345,4 +334,3 @@ Avoid:
 - [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-worker-resumption-step · PR: https://github.com/jakildev/IrredenEngine/pull/539
 - [x] **T-121** — Fleet: dispatcher reservation-aware pane selection · Owner: claude/T-121-auto-reserve-on-claim · PR: https://github.com/jakildev/IrredenEngine/pull/538
 - [x] **T-113** — Merger: cascade rebase on upstream force-push for stacked PRs · Owner: claude/T-113-merger-cascade-rebase · PR: https://github.com/jakildev/IrredenEngine/pull/537
-- [x] **T-111** — Scout: pre-compute stackable_blocker_pr field · Owner: claude/T-111-scout-stackable-blocker-pr · PR: https://github.com/jakildev/IrredenEngine/pull/536
