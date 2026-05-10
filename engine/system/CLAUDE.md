@@ -95,37 +95,76 @@ Go to (3) for bulk-processing opportunities (SIMD, sort, partition).
 
 ## Per-system parameters
 
-If a system needs persistent state beyond components (e.g. a GPU buffer
-handle, an accumulator), allocate a `SystemParams` subclass. Call
-`setSystemParams` **after** `createSystem` — the system entity must exist
-first. See the canonical example in the section below.
+When a system needs persistent state beyond components (a GPU buffer
+handle, an accumulator, a snapshot taken at `beginTick` and read by the
+per-entity tick), there are two ways to attach it. Both have the same
+runtime lifetime — params owned by the system entity, freed when the
+system is destroyed — and the same per-tick cost (one pointer capture,
+no per-frame lookup).
+
+### Preferred: member-on-`System<N>` via `registerSystem`
+
+The system's state lives as **member fields on the `System<N>`
+specialization itself**, with `tick` / `beginTick` / `endTick` /
+`relationTick` as named member functions. `registerSystem<N, Cs...>`
+allocates the `System<N>` instance, captures its pointer into the
+per-tick lambdas, and hands ownership to the system entity's params
+slot. No nested `Params` struct, no `setSystemParams` call.
 
 ```cpp
-// After createSystem returns systemId:
-auto& params = getSystemParams<MyParams>(systemId);
+template <> struct System<HITBOX_MOUSE_TEST_GUI> {
+    // Member variables = params. No nested Params struct.
+    vec2 mouseGuiTrixel_ = vec2(0.0f);
+
+    // Per-entity tick — normal member function, no lambda, no captures.
+    void tick(C_HitBox2DGui &hitbox, const C_GuiPosition &guiPos) {
+        const vec2 lo = vec2(guiPos.pos_);
+        const vec2 hi = vec2(guiPos.pos_ + hitbox.size_);
+        hitbox.hovered_ =
+            mouseGuiTrixel_.x >= lo.x && mouseGuiTrixel_.x < hi.x &&
+            mouseGuiTrixel_.y >= lo.y && mouseGuiTrixel_.y < hi.y;
+    }
+
+    void beginTick() {
+        // ... compute frame-scoped state ...
+        mouseGuiTrixel_ = mouseFb / fbRes * guiSize;
+    }
+
+    static SystemId create() {
+        return registerSystem<HITBOX_MOUSE_TEST_GUI,
+                              C_HitBox2DGui,
+                              C_GuiPosition>("HitBoxMouseTestGui");
+    }
+};
 ```
 
-The params are owned by the system entity and freed when the system is
-destroyed. **Do not store raw references to params across frames** — if the
-system is recreated (e.g. via reload), the pointer is invalid.
+`registerSystem<N, Components...>(name, relationParams = {})`:
 
-### Don't use function-local `static` for system state
+- `Components...` may include `Exclude<...>` markers, same as
+  `createSystem`.
+- `tick(...)` is required. Three accepted signatures, mirroring
+  `createSystem`'s three TICK forms (per-component, per-entity-id,
+  per-archetype batch). The helper picks the right one by member
+  detection.
+- `beginTick()`, `endTick()` are optional; presence is detected via
+  concept and they're wired only when defined.
+- `relationTick(RelComps&...)` is optional; pair it with a
+  `RelationParams<RelComps...>` argument so the helper can match
+  the member's signature.
+- The instance is `std::make_unique<System<N>>()` — held in the
+  same `m_systemParams` slot the explicit pattern uses, freed
+  identically when the system is destroyed.
 
-Function-local `static` for system-owned state is an anti-pattern.
-Use `SystemParams` instead.
+`getSystemParams<System<N>>(systemId)` returns the instance pointer
+when you need to reach into the system from outside (tests,
+diagnostics).
 
-**Why it's wrong:**
-- Hidden state — not visible to ECS inspectors or system-walking tools.
-- Lifetime mismatch — persists for program lifetime, doesn't free when the
-  system entity is destroyed.
-- Single-instance assumption — all instances of `System<X>` share the same
-  statics; future multi-instance use silently cross-talks.
-- Conflicts with the ECS "everything on an entity" philosophy.
+### Explicit: `Params` + `setSystemParams` (escape hatch)
 
-**Why the perf argument doesn't hold:** the canonical `SystemParams` pattern
-has the same per-tick access cost as `static`. Capture the pointer once at
-`create()` time and pass into lambdas by value — the pointer lookup happens
-once, not per tick.
+The pre-`registerSystem` pattern. Allocate a separate `Params` struct,
+build the per-tick lambdas with a captured raw pointer, hand the
+allocation to the system entity via `setSystemParams` **after**
+`createSystem` returns:
 
 ```cpp
 SystemId create() {
@@ -141,6 +180,46 @@ SystemId create() {
     return myId;
 }
 ```
+
+Same lifetime, same per-tick cost, more boilerplate. Reach for this
+form when:
+
+- The params type needs a custom lifetime (allocated elsewhere,
+  re-seated by an external owner, etc.).
+- A single system juggles multiple distinct params types and you want
+  them as separate allocations.
+- You're maintaining an existing system already on this pattern and
+  the migration isn't worth the diff right now.
+
+Both forms coexist; new systems should default to `registerSystem`.
+
+```cpp
+// Either path: read the params back from outside the tick.
+auto* params = getSystemParams<MyParams>(systemId);            // explicit
+auto* sys    = getSystemParams<System<MY_NAME>>(systemId);     // member-on-System<N>
+```
+
+**Don't store raw references to params across frames** — if the
+system is recreated (e.g. via reload), the pointer is invalid.
+
+### Don't use function-local `static` for system state
+
+Function-local `static` for system-owned state is an anti-pattern.
+Use one of the two patterns above instead.
+
+**Why it's wrong:**
+- Hidden state — not visible to ECS inspectors or system-walking tools.
+- Lifetime mismatch — persists for program lifetime, doesn't free when the
+  system entity is destroyed.
+- Single-instance assumption — all instances of `System<X>` share the same
+  statics; future multi-instance use silently cross-talks.
+- Conflicts with the ECS "everything on an entity" philosophy.
+
+**Why the perf argument doesn't hold:** both supported patterns
+(`registerSystem` member-on-`System<N>` and the explicit `Params`
+form) have the same per-tick access cost as `static`. The pointer is
+captured by value into the lambdas at `create()` time — the lookup
+happens once, not per tick.
 
 **Exception:** truly invariant data — `constexpr` integer constants,
 named-resource pointers fetched once at engine init that never change — is

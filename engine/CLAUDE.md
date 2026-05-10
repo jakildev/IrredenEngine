@@ -53,6 +53,16 @@ must have its `NAME` added to the `SystemName` enum in
 system under `engine/prefabs/**/systems/` and the enum value doesn't exist,
 the specialization won't link. Add the enum value **first**.
 
+## System-owned state lives on `System<N>` itself
+
+Prefer the **member-on-`System<N>`** form for system-owned state — declare
+the params as fields on the `System<N>` specialization, hooks (`tick`,
+`beginTick`, `endTick`, `relationTick`) as named member functions, and
+register via `IRSystem::registerSystem<N, Components...>("Name")`. The
+explicit `Params` + `setSystemParams` form remains supported as an escape
+hatch. See [`engine/system/CLAUDE.md`](system/CLAUDE.md) "Per-system
+parameters" for both shapes and the migration story.
+
 ## `createEntity` always adds position components
 
 `IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` and
