@@ -355,6 +355,20 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // 0–30 cap rationale as `kBufferIndex_SunShadowDepthMap`.
 constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
 constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
+// GPU particle slots (T-139 Phase 1). Metal caps bindings at 0–30, so we
+// alias the particle SSBO and UBO onto slots whose other consumers run on
+// non-overlapping compute encoders. Both `LightSourceBuffer` (slot 4) and
+// `LightVolumeParams` (slot 23) are bound only by the COMPUTE_LIGHT_VOLUME
+// stage's seed/propagate dispatches; the particle update and particle render
+// passes never run inside that stage's encoder, so the rebind is safe (same
+// rationale as `kBufferIndex_SunShadowDepthMap` above). Note: a creation
+// that registers BOTH a particle render system and COMPUTE_LIGHT_VOLUME on
+// the same canvas must order them so neither dispatch is in flight when the
+// other rebinds — the established pipeline order
+// (COMPUTE_LIGHT_VOLUME → LIGHTING_TO_TRIXEL → particle render) satisfies
+// this.
+constexpr std::uint32_t kBufferIndex_GpuParticleData = kBufferIndex_LightSourceBuffer;
+constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightVolumeParams;
 /// @}
 
 /// Maximum number of light sources uploaded per frame to the
@@ -447,6 +461,51 @@ struct ShapeTileDescriptor {
     int _pad0 = 0;
     ivec2 tileIsoOrigin = ivec2(0);
 };
+
+/// Single GPU particle record uploaded to the `GpuParticleData` SSBO. Phase 1
+/// of T-139 — position + velocity drift + lifetime decay; spawn / collection
+/// query / attraction-point fields land in subsequent phases.
+///
+/// Layout matches std430:
+///   offset 0..11   position_  (vec3, 12 B)
+///   offset 12..15  lifetime_  (float, 4 B — fills vec3 trailing pad)
+///   offset 16..27  velocity_  (vec3, 12 B)
+///   offset 28..31  color_     (uint32, 4 B — fills vec3 trailing pad)
+/// Total 32 B per record. See `c_update_gpu_particles.glsl` and
+/// `c_render_gpu_particles_to_trixel.glsl` for the GPU mirror.
+///
+/// Lifetime semantics: `lifetime_ <= 0.0f` means the slot is dead; both the
+/// update and render compute kernels skip such slots. Setting `lifetime_ = 0`
+/// is the canonical way to despawn from the CPU side.
+struct GpuParticle {
+    vec3 position_ = vec3(0.0f);
+    float lifetime_ = 0.0f;
+    vec3 velocity_ = vec3(0.0f);
+    std::uint32_t color_ = 0u;
+};
+static_assert(sizeof(GpuParticle) == 32, "GpuParticle must match std430 layout");
+
+/// Per-frame UBO for both the update and render-to-trixel particle compute
+/// passes. The render pass ignores the `*Update*` fields and vice versa, but
+/// they share one UBO so a single CPU upload feeds both dispatches.
+struct FrameDataGpuParticles {
+    // Update-pass fields:
+    float deltaTime_ = 0.0f;
+    std::uint32_t particleCount_ = 0u;
+    std::uint32_t _updatePad0_ = 0u;
+    std::uint32_t _updatePad1_ = 0u;
+    // Render-pass fields (mirror the trixel-canvas projection inputs):
+    vec2 cameraTrixelOffset_ = vec2(0.0f);
+    ivec2 trixelCanvasOffsetZ1_ = ivec2(0);
+    ivec2 canvasSizePixels_ = ivec2(0);
+    int _renderPad0_ = 0;
+    int _renderPad1_ = 0;
+};
+static_assert(sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout");
+
+/// GPU particle pool capacity per pool entity. Phase 1 caps the pool at this
+/// fixed size; per-biome configurable capacity lands in Phase 2.
+constexpr std::uint32_t kGpuParticlePoolCapacity = 4096u;
 
 struct VoxelIndirectDispatchParams {
     std::uint32_t numGroupsX = 0;
