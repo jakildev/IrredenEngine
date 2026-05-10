@@ -201,18 +201,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Systems: member-on-System<N> registration helper** — add registerSystem<> to ir_system.hpp so systems use member fields/functions instead of explicit Params + setSystemParams boilerplate; migrate all prefab systems; update CLAUDE.md
-  - **ID:** T-136
-  - **Area:** engine/system, engine/prefabs/irreden/render, engine/prefabs/irreden/input
-  - **Model:** opus
-  - **Owner:** claude/T-136-register-system-helper
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) registerSystem<SystemName, Components...>(name) lands in ir_system.hpp with concepts for tick/beginTick/endTick/relationTick hooks; (2) all prefab systems using setSystemParams migrated to member-on-System<N> shape (grep -l "setSystemParams(systemId" engine/prefabs/); (3) engine/system/CLAUDE.md "Per-system parameters" section rewritten with preferred/escape-hatch forms; (4) new test covers all four hooks with per-tick field persistence; (5) no frame-time regression on IRShapeDebug; (6) fleet-build clean on linux-debug
-  - **Issue:** #580
-  - **Notes:** Multiple PRs expected: PR 1 lands helper + CLAUDE.md update; subsequent PRs migrate one system cluster each. Full spec and migration list in #580. Backward-compat preserved — createSystem/setSystemParams/getSystemParams stay public.
-  - **Links:**
-
-
 - [~] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
   - **ID:** T-138
   - **Area:** tooling
@@ -290,6 +278,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
 - [x] **T-137** — fleet-claim: hard model-tag gate · Owner: claude/T-137-fleet-claim-model-gate · PR: https://github.com/jakildev/IrredenEngine/pull/591
 - [x] **T-134** — C_SpriteSheet: onDestroy GPU texture cleanup · Owner: claude/T-134-sprite-sheet-on-destroy · PR: https://github.com/jakildev/IrredenEngine/pull/590
 - [x] **T-133** — Render: 2x2 PCF in screen-space sun shadow lookup · Owner: claude/T-133-2x2-pcf-sun-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/574
@@ -306,7 +295,6 @@ Avoid:
 - [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
-- [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
 - [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
+- [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
 - [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
-- [x] **T-122** — Fleet: role docs startup reservation check · Owner: claude/T-122-worker-resumption-step · PR: https://github.com/jakildev/IrredenEngine/pull/539
