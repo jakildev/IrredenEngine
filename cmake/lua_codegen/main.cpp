@@ -438,11 +438,11 @@ void registerSystemCb(
     }
     const std::string name = *nameOpt;
 
-    // T-108: per-system mode override. Absent → use codegen-tool's default mode
+    // Per-system mode override. Absent → use codegen-tool's default mode
     // (set via --default-mode flag, threaded from the creation's
     // IR_LUA_ECS_DEFAULT_MODE CMake cache variable). Unknown values are
-    // codegen-time errors per the architect plan ("mode = 'potato'" must
-    // surface, not silently fall back).
+    // codegen-time errors ("mode = 'potato'" must surface, not silently
+    // fall back).
     IRLuaCodegen::SystemMode resolvedMode = defaultMode;
     sol::object modeVal = schema["mode"];
     if (!modeVal.is<sol::nil_t>()) {
@@ -603,10 +603,10 @@ void writeOutput(
     os << "namespace IRScript {\n\n";
     for (const auto &c : cap.components_) {
         const std::string structName = "C_" + c.name_;
-        // T-108: bind the sol2 usertype under the unprefixed component
-        // name (`Foo`, not `C_Foo`). Lua user code (DSL bodies, EVAL
-        // bodies in coexistence mode, runtime `Foo.new(...)` calls) all
-        // use the unprefixed name. The Lua-side name in `registerType`
+        // Bind the sol2 usertype under the unprefixed component name
+        // (`Foo`, not `C_Foo`). Lua user code (DSL bodies, EVAL bodies
+        // in coexistence mode, runtime `Foo.new(...)` calls) all use
+        // the unprefixed name. The Lua-side name in `registerType`
         // also gates the `IRComponent.<name>` handle binding via
         // `recordComponentLuaName`, which is what `IRComponent.register`
         // checks for the coexistence-mode idempotency carve-out.
@@ -629,10 +629,10 @@ void writeOutput(
         os << ">(\n";
         os << "        \"" << c.name_ << "\"";
         for (const auto &f : c.fields_) {
-            // T-108: bind each field by member pointer (`&C_X::field_`)
-            // under its unprefixed Lua name (`field`). sol2 exposes
-            // member pointers as read+write properties — EVAL bodies
-            // in coexistence mode can read and write `pos.x` directly.
+            // Bind each field by member pointer (`&C_X::field_`) under
+            // its unprefixed Lua name (`field`). sol2 exposes member
+            // pointers as read+write properties — EVAL bodies in
+            // coexistence mode can read and write `pos.x` directly.
             // The trailing `_` on the C++ side stays per the engine's
             // component-naming convention; sol2 hides that detail
             // behind whatever Lua key is supplied. CODEGEN bodies
@@ -647,7 +647,7 @@ void writeOutput(
     }
     os << "} // namespace IRScript\n\n";
 
-    // Codegen system create-functions (T-107). Each captured
+    // Codegen system create-functions. Each captured
     // `IRSystem.registerSystem({...})` call with `mode = "codegen"` (or with
     // mode absent under a CODEGEN creation default) becomes one
     // `inline IRSystem::SystemId createSystem_<NAME>()` that wraps a
@@ -656,7 +656,7 @@ void writeOutput(
     // strict DSL-violation errors all happen here — any reject surfaces as a
     // codegen-time error pointing at file:line:feature.
     //
-    // T-108: systems with `mode = "eval"` are deliberately skipped here. The
+    // Systems with `mode = "eval"` are deliberately skipped here. The
     // emitted `kEvalSystemNames` array below carries their names so the
     // runtime registration path (`IRSystem.registerSystem` → eval shim) can
     // verify each EVAL system actually registered at script-eval time and
@@ -714,7 +714,7 @@ void writeOutput(
     // returned struct's field names mirror the system names — direct,
     // boilerplate-free access without juggling indices.
     //
-    // T-108: EVAL systems are deliberately excluded from the registry struct
+    // EVAL systems are deliberately excluded from the registry struct
     // — they register at runtime via Lua-side `IRSystem.registerSystem` and
     // the user retrieves their SystemId from Lua, not from C++. Coexistence
     // pattern: `registerCodegenSystems()` for CODEGEN ids, then
@@ -739,7 +739,7 @@ void writeOutput(
         os << "}\n\n";
     }
 
-    // T-108: creation-default mode constant. Mirrors the
+    // Creation-default mode constant. Mirrors the
     // IR_LUA_ECS_DEFAULT_MODE CMake cache var that drove this codegen run.
     // Runtime side reads it via `LuaScript::setEcsDefaultMode()` so that
     // `IRSystem.registerSystem` calls without an explicit `mode` field
@@ -748,11 +748,11 @@ void writeOutput(
        << (defaultMode == IRLuaCodegen::SystemMode::CODEGEN ? "CODEGEN" : "EVAL")
        << ";\n\n";
 
-    // T-108: EVAL system names captured from this codegen run. The runtime
-    // registration helper iterates this list at script-eval boundary to
-    // verify the corresponding Lua `IRSystem.registerSystem({...})` call
-    // actually fired (catches typos / mode mismatches at startup, not
-    // months later when a pipeline reaches a missing SystemId).
+    // EVAL system names captured from this codegen run. Emitted as a
+    // hook for a future runtime-side verification loop (will iterate the
+    // list at script-eval boundary and confirm each name registered, to
+    // catch typos / mode mismatches at startup rather than months later
+    // when a pipeline reaches a missing SystemId). Not yet consumed.
     os << "inline constexpr const char *kEvalSystemNames[] = {\n";
     for (const auto &s : cap.systems_) {
         if (s.mode_ != IRLuaCodegen::SystemMode::EVAL) continue;
@@ -796,7 +796,7 @@ bool parseModeArg(const std::string &val, IRLuaCodegen::SystemMode &out) {
 int main(int argc, char **argv) {
     std::string outPath;
     std::vector<std::string> inputs;
-    // T-108: creation-default mode for systems without an explicit
+    // Creation-default mode for systems without an explicit
     // `mode = "..."` field. Threaded from the CMake helper's
     // DEFAULT_MODE param (sourced from IR_LUA_ECS_DEFAULT_MODE cache var).
     IRLuaCodegen::SystemMode defaultMode = IRLuaCodegen::SystemMode::CODEGEN;
@@ -809,7 +809,8 @@ int main(int argc, char **argv) {
             }
             outPath = argv[++i];
         } else if (arg.rfind("--default-mode=", 0) == 0) {
-            const std::string val = arg.substr(std::string{"--default-mode="}.size());
+            constexpr std::string_view kDefaultModePrefix = "--default-mode=";
+            const std::string val = arg.substr(kDefaultModePrefix.size());
             if (!parseModeArg(val, defaultMode)) {
                 std::cerr << "lua_codegen: --default-mode must be codegen or eval (got '"
                           << val << "')\n";

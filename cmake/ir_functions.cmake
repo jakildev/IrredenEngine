@@ -136,7 +136,7 @@ endfunction()
 #   irreden_lua_codegen(<target>
 #       SOURCES <input1.lua> [input2.lua ...]
 #       OUTPUT_HPP <path/to/generated.hpp>
-#       [DEFAULT_MODE <CODEGEN|EVAL>]   # T-108; default CODEGEN
+#       [DEFAULT_MODE <CODEGEN|EVAL>]   # default CODEGEN
 #   )
 #
 # Behaviour:
@@ -148,7 +148,7 @@ endfunction()
 #     the codegen binary is built first on a clean tree without a separate
 #     add_dependencies() edge.
 #
-# T-108: DEFAULT_MODE selects how systems without an explicit Lua
+# DEFAULT_MODE selects how systems without an explicit Lua
 # `mode = "..."` field are emitted. CODEGEN (default) emits a typed C++
 # `IRSystem::createSystem<...>` per system; EVAL skips C++ emission and
 # the system registers at runtime via the existing Lua-driven path. The
@@ -175,7 +175,7 @@ function(
         message(FATAL_ERROR "irreden_lua_codegen: SOURCES is required")
     endif()
 
-    # T-108: DEFAULT_MODE precedence — explicit param > IR_LUA_ECS_DEFAULT_MODE
+    # DEFAULT_MODE precedence — explicit param > IR_LUA_ECS_DEFAULT_MODE
     # cache var > CODEGEN. The cache var lets `cmake -DIR_LUA_ECS_DEFAULT_MODE=EVAL`
     # flip a build flavor without editing creation CMakeLists.
     if(NOT IRLC_DEFAULT_MODE)

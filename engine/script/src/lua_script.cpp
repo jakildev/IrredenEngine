@@ -351,19 +351,20 @@ void LuaScript::bindLuaDrivenEcs() {
     auto registerComponent =
         [this](const std::string &componentName, sol::table defaults) -> sol::object {
         auto &em = IREntity::getEntityManager();
-        // T-108: in coexistence mode, the same .lua file is consumed by the
-        // build-time codegen tool AND loaded again at runtime. Components
-        // declared via `IRComponent.register("Foo", {...})` get codegen'd
-        // as C++ structs (`IRComponents::C_Foo`) and pre-registered by
-        // `registerCodegenComponents()`; the runtime call would otherwise
-        // create a parallel IComponentDataLuaTyped under the same Lua name,
-        // splitting archetype storage. Detect the C++-codegen'd case via
-        // the LuaScript-side `componentByLuaName` map (populated by
-        // `registerType<T>` → `recordComponentLuaName<T>`) and return the
-        // existing handle without re-registering. Lua code paths that
-        // depend on `handle.fields.<name>.bindingId` (modifier framework)
-        // do not work for codegen'd-as-C++ components in coexistence mode
-        // — that's an EVAL-only feature documented in CLAUDE.md.
+        // Coexistence-mode idempotency. The same .lua file is consumed by
+        // the build-time codegen tool AND loaded again at runtime;
+        // components declared via `IRComponent.register("Foo", {...})` get
+        // codegen'd as C++ structs (`IRComponents::C_Foo`) and pre-
+        // registered by `registerCodegenComponents()`. The runtime call
+        // would otherwise create a parallel IComponentDataLuaTyped under
+        // the same Lua name, splitting archetype storage. Detect the
+        // C++-codegen'd case via the LuaScript-side `componentByLuaName`
+        // map (populated by `registerType<T>` → `recordComponentLuaName<T>`)
+        // and return the existing handle without re-registering. Lua code
+        // paths that depend on `handle.fields.<name>.bindingId` (modifier
+        // framework) do not work for codegen'd-as-C++ components in
+        // coexistence mode — that's an EVAL-only feature documented in
+        // CLAUDE.md.
         const IREntity::ComponentId existingCpp = componentIdByLuaName(componentName);
         if (existingCpp != IREntity::kNullComponent) {
             sol::object existingHandle = m_lua["IRComponent"][componentName];
@@ -644,7 +645,7 @@ void LuaScript::bindLuaDrivenSystems() {
         }
         const std::string systemName = *nameOpt;
 
-        // T-108: per-system mode override + creation default. Codegen-bound
+        // Per-system mode override + creation default. Codegen-bound
         // systems (`mode = "codegen"`, or absent under a CODEGEN creation
         // default) are deliberate no-ops at runtime — the codegen-emitted
         // `createSystem_<NAME>()` already created the system and the
@@ -788,7 +789,7 @@ void LuaScript::bindLuaDrivenSystems() {
         const auto systemId = static_cast<IRSystem::SystemId>(systemIdLua);
         auto it = m_luaSystemTicks.find(systemId);
         if (it == m_luaSystemTicks.end()) {
-            // T-108: hot-reload is an EVAL-only feature. CODEGEN systems and
+            // Hot-reload is an EVAL-only feature. CODEGEN systems and
             // prefab systems are static at build time; the
             // `m_luaSystemTicks` miss covers both, but the error string
             // names CODEGEN explicitly so the dev sees the next step

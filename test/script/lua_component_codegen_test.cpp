@@ -138,11 +138,11 @@ TEST_F(LuaComponentCodegenTest, ArchetypeMovePreservesFieldValues) {
 
 TEST_F(LuaComponentCodegenTest, RegisterCodegenComponentsExposesLuaHandle) {
     // After registerCodegenComponents(), the C++ component types are
-    // recorded under their unprefixed Lua-visible names (T-108 — was
-    // `C_CodegenHp` before, now `CodegenHp` to match the user-facing
-    // form in `IRComponent.register('Hp', ...)`); the IRComponent.<name>
-    // handle should resolve via the same machinery the EVAL path uses
-    // for handwritten lua_component_pack types.
+    // recorded under their unprefixed Lua-visible names (`CodegenHp`,
+    // not `C_CodegenHp`) to match the user-facing form in
+    // `IRComponent.register('Hp', ...)`; the IRComponent.<name> handle
+    // should resolve via the same machinery the EVAL path uses for
+    // handwritten lua_component_pack types.
     auto &lua = m_lua.lua();
     auto result =
         lua.safe_script("return type(IRComponent.CodegenHp), IRComponent.CodegenHp.componentId");
@@ -155,11 +155,11 @@ TEST_F(LuaComponentCodegenTest, RegisterCodegenComponentsExposesLuaHandle) {
 // ---- Lua usertype field accessors ------------------------------------------
 
 TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
-    // T-108: codegen-emitted usertype is bound under the unprefixed name
-    // (`CodegenHp`, was `C_CodegenHp`) and fields are member-pointer
-    // properties (`hp.current`, was `hp:current()`). Both shifts came in
-    // to support EVAL bodies in coexistence mode reading and writing
-    // fields with property syntax instead of getter-call syntax.
+    // Codegen-emitted usertype is bound under the unprefixed name
+    // (`CodegenHp`, not `C_CodegenHp`) and fields are member-pointer
+    // properties (`hp.current`, not `hp:current()`). Both shifts support
+    // EVAL bodies in coexistence mode reading and writing fields with
+    // property syntax instead of getter-call syntax.
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
         "local hp = CodegenHp.new(7, 11)\n"

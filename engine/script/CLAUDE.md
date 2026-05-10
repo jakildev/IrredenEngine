@@ -186,8 +186,9 @@ The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-dr
 
 The same `IRComponent.register("Name", { ... })` schema can be **statically
 emitted** as a C++ struct + Lua usertype binding at build time, instead of
-allocated at runtime via `IComponentDataLuaTyped`. Components-only path is
-T-106; system bodies (T-107) and per-system mode override (T-108) follow.
+allocated at runtime via `IComponentDataLuaTyped`. Three layers ship today:
+components, system bodies, and per-system mode override (CODEGEN/EVAL
+coexistence) — all driven by the same `irreden_lua_codegen()` helper.
 
 **Build pipeline:**
 
@@ -230,7 +231,7 @@ The hand-test + regression coverage lives at
 (`docs/design/lua-driven-ecs.md` / planning artifacts under `~/.claude/`)
 covers the broader CODEGEN/EVAL split design.
 
-### CODEGEN system bodies (T-107)
+### CODEGEN system bodies
 
 The same `irreden_lua_codegen()` invocation also picks up
 `IRSystem.registerSystem({...})` calls and emits typed C++ tick bodies.
@@ -270,8 +271,8 @@ so creations / tests can register every codegen'd system in one call.
 
 - C++-bound types in column ops — `arch.TestPos:at(i)` errors if
   `TestPos` is a hand-written C++ struct rather than a Lua-defined
-  one. Mark the system `mode = "eval"` (T-108) or move the type's
-  declaration to Lua.
+  one. Mark the system `mode = "eval"` or move the type's declaration
+  to Lua.
 - Closures capturing external upvalues, metatables, dynamic dispatch
   (`arch.foo[name](...)`), `require`, table constructors beyond
   `Comp.new`, varargs, `nil`, `_` length operator, side-effecting
@@ -294,7 +295,7 @@ dynamic field-name strings) stay in the EVAL test file by design.
 
 - Codegen system create-functions return a fresh `SystemId` each time
   they're called. Hot-reload via `IRSystem.replaceSystemBody` is
-  EVAL-only (T-108); CODEGEN systems are static at build time.
+  EVAL-only; CODEGEN systems are static at build time.
 - The `SystemName`-enum partial generation called out in #587's
   acceptance is deferred — codegen systems register by string name
   through `IRSystem::createSystem<...>` directly, which produces a
@@ -303,7 +304,7 @@ dynamic field-name strings) stay in the EVAL test file by design.
   Add the enum partial in a follow-up if a creation needs the named
   prefab-system spelling for a codegen'd system.
 
-### Per-system mode override + CODEGEN/EVAL coexistence (T-108)
+### Per-system mode override + CODEGEN/EVAL coexistence
 
 Every `IRSystem.registerSystem({...})` call accepts an optional
 `mode` field that overrides the creation default for that one system:
@@ -401,6 +402,15 @@ EVAL or rebuild the binary.
 verifies both modes register, both tick, EVAL is hot-reloadable,
 CODEGEN is not, and `IRComponent.register` is idempotent in the
 coexistence path.
+
+**Future-hook note.** The codegen tool emits a
+`IRScript::CodegenRegistry::kEvalSystemNames[]` array carrying the
+names of every EVAL system declared in the codegen run. The intent
+is a runtime verification loop at script-eval boundary (each name
+must register, otherwise raise — catches typos / mode mismatches at
+startup rather than months later). The array is emitted today as a
+prepared hook; no consumer reads it yet. File a follow-up task if
+the verification loop proves load-bearing for a creation.
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
 

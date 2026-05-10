@@ -50,18 +50,18 @@ target_link_libraries(IrredenEngineTest PUBLIC
     gtest_main
 )
 
-# T-106: build lua_component_codegen_fixtures.hpp from the sibling
-# .lua schema and add the include path. The hand-test demo for the
-# codegen tool — exercises the full pipeline (Lua schema → C++
-# struct + Lua binding + EntityManager registration) and runs as
-# part of the standard test suite.
+# Build lua_component_codegen_fixtures.hpp from the sibling .lua
+# schema and add the include path. The hand-test demo for the codegen
+# tool — exercises the full pipeline (Lua schema → C++ struct + Lua
+# binding + EntityManager registration) and runs as part of the
+# standard test suite.
 irreden_lua_codegen(IrredenEngineTest
     SOURCES script/lua_component_codegen_fixtures.lua
     OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_component_codegen_fixtures.hpp
     DEFAULT_MODE CODEGEN
 )
 
-# T-106 schema-error regression: feed the codegen binary a fixture with an
+# Schema-error regression: feed the codegen binary a fixture with an
 # int32 overflow default in the explicit form (subprocess invocation in
 # lua_component_codegen_test.cpp). Path constants are passed via compile
 # definitions so the test resolves both at runtime regardless of cwd, and
@@ -73,21 +73,20 @@ target_compile_definitions(IrredenEngineTest PRIVATE
 )
 add_dependencies(IrredenEngineTest ir_lua_codegen)
 
-# T-107: build lua_system_codegen_fixtures.hpp from the sibling .lua
-# fixture. The codegen tool processes IRSystem.registerSystem({...})
-# calls, slices the tick function source, parses the DSL subset, and
-# emits typed C++ tick bodies + a registry helper. T-108 explicit
-# DEFAULT_MODE CODEGEN pins the existing T-107 systems to CODEGEN
-# regardless of the IR_LUA_ECS_DEFAULT_MODE cache var — those tests
-# verify the typed-emission path and would silently skip if the
-# global flag flipped them to EVAL.
+# Build lua_system_codegen_fixtures.hpp from the sibling .lua fixture.
+# The codegen tool processes IRSystem.registerSystem({...}) calls, slices
+# the tick function source, parses the DSL subset, and emits typed C++
+# tick bodies + a registry helper. The explicit DEFAULT_MODE CODEGEN here
+# pins these fixtures to CODEGEN regardless of the IR_LUA_ECS_DEFAULT_MODE
+# cache var — these tests verify the typed-emission path and would
+# silently skip if the global flag flipped them to EVAL.
 irreden_lua_codegen(IrredenEngineTest
     SOURCES script/lua_system_codegen_fixtures.lua
     OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_system_codegen_fixtures.hpp
     DEFAULT_MODE CODEGEN
 )
 
-# T-108: coexistence fixture — one .lua file declaring one CODEGEN system
+# Coexistence fixture — one .lua file declaring one CODEGEN system
 # (no mode field, follows DEFAULT_MODE) and one EVAL system (explicit
 # mode='eval'). Exercises the helper's DEFAULT_MODE param path AND the
 # runtime mode-dispatch in IRSystem.registerSystem. The test also loads

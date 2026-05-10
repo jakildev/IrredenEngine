@@ -37,13 +37,13 @@ struct LuaEntity {
 /// `LuaScript::setEcsDefaultMode()`; the codegen tool emits a matching
 /// `kDefaultEcsMode` constant from the build-time
 /// `IR_LUA_ECS_DEFAULT_MODE` cache var so build-side and runtime-side
-/// dispatch agree. T-108 architect plan; see `engine/script/CLAUDE.md`
-/// "Lua-driven ECS modes".
+/// dispatch agree. See `engine/script/CLAUDE.md` "Per-system mode
+/// override + CODEGEN/EVAL coexistence".
 enum class EcsMode {
     CODEGEN, ///< Default. Runtime registration is a no-op; the codegen-emitted
              ///< `createSystem_<NAME>()` already created the system.
-    EVAL,    ///< Runtime registers via `IRSystem::createSystemDynamic` (the existing T-100/T-101
-             ///< path); body is hot-reloadable via `IRSystem.replaceSystemBody`.
+    EVAL,    ///< Runtime registers via `IRSystem::createSystemDynamic`; body
+             ///< is hot-reloadable via `IRSystem.replaceSystemBody`.
 };
 
 /// Callable type that constructs a single component from entity-creation parameters.

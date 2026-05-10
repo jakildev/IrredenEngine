@@ -73,7 +73,7 @@ per-row work runs at native speed. EVAL (LuaJIT-backed sol2 dispatch via
 `mode = "eval"` in the Lua source, or per-creation via
 `-DIR_LUA_ECS_DEFAULT_MODE=EVAL` for a hot-reloadable build flavor. See
 `engine/script/CLAUDE.md` "Per-system mode override + CODEGEN/EVAL
-coexistence (T-108)" for the DSL subset, the per-system override, the
+coexistence" for the DSL subset, the per-system override, the
 CMake flag, and the hot-reload-only-in-EVAL contract.
 
 ## `createEntity` always adds position components

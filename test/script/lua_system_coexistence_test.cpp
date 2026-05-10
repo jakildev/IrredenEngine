@@ -1,4 +1,4 @@
-// T-108 regression coverage: the per-system `mode` override + CODEGEN/EVAL
+// Coexistence regression coverage: the per-system `mode` override + CODEGEN/EVAL
 // coexistence path. One Lua fixture file declares two systems that touch
 // the same Lua-defined component — one CODEGEN (no mode field, follows
 // the build-time --default-mode=codegen) and one EVAL (explicit mode =
@@ -137,10 +137,10 @@ TEST_F(LuaSystemCoexistenceTest, CodegenSystemBodyIsNotHotReloadable) {
     m_lua.scriptFile(fixturePath().c_str());
 
     // Attempting to hot-reload the CODEGEN system's body must surface a
-    // clear Lua error pointing at the mode requirement (the architect plan
-    // specifies the message must mention CODEGEN and the eval-mode escape
-    // hatch). The CODEGEN SystemId is in SystemManager but absent from
-    // m_luaSystemTicks, so the runtime path fires the T-108 error string.
+    // clear Lua error pointing at the mode requirement: the message must
+    // mention CODEGEN and the eval-mode escape hatch. The CODEGEN
+    // SystemId is in SystemManager but absent from m_luaSystemTicks, so
+    // the runtime path fires the hot-reload-not-supported error.
     const std::string script = "IRSystem.replaceSystemBody(" +
                                std::to_string(ids.CoexistAddOneCodegen) + ", function() end)";
     sol::protected_function_result reload =

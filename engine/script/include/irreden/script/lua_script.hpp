@@ -46,7 +46,7 @@ class LuaScript {
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
 
-    // T-108: set the creation-default mode used by
+    // Set the creation-default mode used by
     // `IRSystem.registerSystem({...})` when the call has no explicit
     // `mode = "..."` field. Mirrors the build-time
     // `IR_LUA_ECS_DEFAULT_MODE` CMake cache var; creations using the
@@ -54,9 +54,9 @@ class LuaScript {
     // `IRScript::CodegenRegistry::kDefaultEcsMode` after
     // `registerCodegenComponents()` so runtime dispatch matches
     // build-time dispatch. Default is `EVAL` so creations that don't
-    // touch the codegen pipeline (the T-100..T-103 path) work without
-    // ceremony. Can be changed before any `IRSystem.registerSystem`
-    // call fires; later calls observe the new value.
+    // touch the codegen pipeline keep working without ceremony. Can be
+    // changed before any `IRSystem.registerSystem` call fires; later
+    // calls observe the new value.
     void setEcsDefaultMode(EcsMode mode) {
         m_ecsDefaultMode = mode;
     }
@@ -253,11 +253,11 @@ class LuaScript {
     std::unordered_map<IRSystem::SystemId, std::shared_ptr<sol::protected_function>>
         m_luaSystemTicks;
 
-    // T-108: creation-default ECS mode (CODEGEN vs EVAL). Read by
+    // Creation-default ECS mode (CODEGEN vs EVAL). Read by
     // `IRSystem.registerSystem({...})` when the call has no explicit
     // `mode` field. EVAL by default so creations that don't use the
-    // codegen pipeline (T-100..T-103 path) keep working without
-    // ceremony. Codegen-using creations call
+    // codegen pipeline keep working without ceremony. Codegen-using
+    // creations call
     // `setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode)`
     // after `registerCodegenComponents()` so the runtime mirrors the
     // build-time default driven by `IR_LUA_ECS_DEFAULT_MODE`.

@@ -1,4 +1,4 @@
--- T-108 regression coverage: one .lua file declaring one CODEGEN system
+-- Coexistence regression coverage: one .lua file declaring one CODEGEN system
 -- (no `mode` field, so it follows the codegen tool's --default-mode=codegen)
 -- and one EVAL system (explicit `mode = "eval"`). Exercises the per-system
 -- mode override path: at build time the codegen tool emits
