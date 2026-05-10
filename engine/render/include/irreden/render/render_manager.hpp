@@ -7,15 +7,14 @@
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/renderer_impl.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
-#include <tuple>
 #include <string>
-#include <span>
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -86,20 +85,9 @@ class RenderManager {
     void presentFrame();
     void printRenderInfo();
 
-    std::tuple<
-        std::span<C_Position3D>,
-        std::span<C_PositionOffset3D>,
-        std::span<C_PositionGlobal3D>,
-        std::span<C_Voxel>>
-    allocateVoxels(unsigned int size, std::string canvasName = "main");
+    VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main");
 
-    void deallocateVoxels(
-        std::span<C_Position3D> positions,
-        std::span<C_PositionOffset3D> positionsOffset,
-        std::span<C_PositionGlobal3D> positionsGlobal,
-        std::span<C_Voxel> voxels,
-        std::string canvasName = "main"
-    );
+    void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main");
 
     EntityId createCanvas(
         std::string name, ivec3 voxelPoolSize, ivec2 trixelSize, EntityId framebuffer = EntityId{}

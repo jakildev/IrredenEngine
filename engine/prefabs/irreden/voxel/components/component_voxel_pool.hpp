@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_offset_3d.hpp>
@@ -73,12 +74,7 @@ struct C_VoxelPool {
 
     // EntityId addVoxel
 
-    std::tuple<
-        std::span<C_Position3D>,
-        std::span<C_PositionOffset3D>,
-        std::span<C_PositionGlobal3D>,
-        std::span<C_Voxel>>
-    allocateVoxels(unsigned int size) {
+    IRRender::VoxelPoolAllocation allocateVoxels(unsigned int size) {
         auto freeSpan = findFreeSpan(size);
         if (freeSpan.has_value()) {
             size_t startIndex = freeSpan->first;
@@ -88,49 +84,51 @@ struct C_VoxelPool {
                 m_freeSpanLookup.erase(size);
             }
             m_chunkBoundsDirty = true;
-            return std::make_tuple(
+            return IRRender::VoxelPoolAllocation{
+                startIndex,
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
                 std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
-            );
+            };
         }
 
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
-            int startIndex = m_voxelPoolIndex;
+            size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
             m_chunkBoundsDirty = true;
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
-            return std::make_tuple(
+            return IRRender::VoxelPoolAllocation{
+                startIndex,
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
                 std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
-            );
+            };
         }
 
         IR_ASSERT(false, "Ran out of voxels");
 
-        return std::make_tuple(
+        return IRRender::VoxelPoolAllocation{
+            0,
             std::span<C_Position3D>{},
             std::span<C_PositionOffset3D>{},
             std::span<C_PositionGlobal3D>{},
             std::span<C_Voxel>{}
-        );
+        };
     }
 
-    void deallocateVoxels(
-        std::span<C_Position3D> positions,
-        std::span<C_PositionOffset3D> positionOffsets,
-        std::span<C_PositionGlobal3D> positionGlobals,
-        std::span<C_Voxel> colors
-    ) {
-        for (size_t i = 0; i < colors.size(); i++) {
-            C_Voxel &voxel = colors[i];
-            voxel.color_ = Color{0, 0, 0, 0};
+    void deallocateVoxels(size_t startIndex, size_t size) {
+        IR_ASSERT(
+            startIndex + size <= static_cast<size_t>(m_voxelPoolSize),
+            "deallocateVoxels out of bounds: startIndex={}, size={}, poolSize={}",
+            startIndex,
+            size,
+            m_voxelPoolSize
+        );
+        for (size_t i = 0; i < size; i++) {
+            m_voxelColors[startIndex + i].color_ = Color{0, 0, 0, 0};
         }
-        size_t startIndex = positions.data() - m_voxelPositions.data();
-        size_t size = positions.size();
 
         std::fill(
             m_voxelEntities.begin() + startIndex,
@@ -184,6 +182,13 @@ struct C_VoxelPool {
     }
 
     void setEntityIdForRange(size_t startIdx, size_t count, EntityId entityId) {
+        IR_ASSERT(
+            startIdx + count <= m_voxelEntities.size(),
+            "setEntityIdForRange out of bounds: startIdx={}, count={}, poolSize={}",
+            startIdx,
+            count,
+            m_voxelEntities.size()
+        );
         std::fill(
             m_voxelEntities.begin() + startIdx,
             m_voxelEntities.begin() + startIdx + count,
@@ -217,14 +222,17 @@ struct C_VoxelPool {
     }
 
     void rebuildChunkBounds() {
-        if (!m_chunkBoundsDirty) return;
+        if (!m_chunkBoundsDirty)
+            return;
 
         int chunkCount = getChunkCount();
         m_chunkBounds.resize(chunkCount);
-        for (auto &cb : m_chunkBounds) cb.reset();
+        for (auto &cb : m_chunkBounds)
+            cb.reset();
 
         for (int i = 0; i < m_voxelPoolIndex; ++i) {
-            if (m_voxelColors[i].color_.alpha_ == 0) continue;
+            if (m_voxelColors[i].color_.alpha_ == 0)
+                continue;
             int chunk = i / IRRender::kVoxelChunkSize;
             vec2 isoPos = IRMath::pos3DtoPos2DIso(m_voxelPositionsGlobal[i].pos_);
             m_chunkBounds[chunk].expand(isoPos);

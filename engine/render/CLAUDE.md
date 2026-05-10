@@ -16,7 +16,10 @@ Key exposed surface:
 - Resource CRUD: `createResource<T>()`, `getResource<T>()`,
   `destroyResource<T>()`, plus `createNamed<T>(name, ...)` and
   `getNamedResource<T>(name)`.
-- Voxel pool: `allocateVoxels(count)`, `deallocateVoxels(span)`.
+- Voxel pool: `allocateVoxels(count)` returns a `VoxelPoolAllocation`
+  (`startIndex_` + the four co-indexed spans); `deallocateVoxels(startIndex,
+  size)` releases the span. The start index is the source of truth — never
+  recompute it from `positions.data() - basePtr`.
 - Canvases: `createCanvas(name, size, ...)`, `getCanvas(name)`,
   `setActiveCanvas(name)`.
 - Camera and viewport: `getCameraPosition2DIso()`, `getCameraZoom()`,

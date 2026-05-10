@@ -8,47 +8,37 @@
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <unordered_map>
-
 using namespace IRComponents;
 using namespace IRMath;
 
 namespace IRSystem {
 template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     static SystemId create() {
-        // Cached per-canvas pool pointers. Only a handful of canvases exist,
-        // so this map stays tiny and lookups are negligible.
-        // TODO: replace with relation-based archetype grouping (RENDERS_ON)
-        // so the pool is resolved once per archetype node, not per entity.
-        static std::unordered_map<IREntity::EntityId, C_VoxelPool *> poolCache;
-
         return createSystem<C_VoxelSetNew, C_PositionGlobal3D>(
             "UpdateVoxelSetChildren",
             [](IREntity::EntityId &entityId,
                C_VoxelSetNew &voxelSet,
                C_PositionGlobal3D &position) {
-                IREntity::EntityId canvas = voxelSet.canvasEntity_;
-                if (canvas == IREntity::kNullEntity) {
-                    canvas = IRRender::getActiveCanvasEntity();
-                }
-
-                auto it = poolCache.find(canvas);
-                if (it == poolCache.end()) {
-                    it = poolCache.emplace(
-                        canvas, &IREntity::getComponent<C_VoxelPool>(canvas)
-                    ).first;
-                }
-                C_VoxelPool *pool = it->second;
-
                 voxelSet.updateAsChild(position.pos_);
 
                 if (voxelSet.ownerEntityId_ == IREntity::kNullEntity &&
-                    entityId != IREntity::kNullEntity &&
-                    voxelSet.numVoxels_ > 0) {
+                    entityId != IREntity::kNullEntity && voxelSet.numVoxels_ > 0) {
                     voxelSet.ownerEntityId_ = entityId;
-                    size_t startIdx = voxelSet.globalPositions_.data() -
-                                      pool->getPositionGlobalsBasePtr();
-                    pool->setEntityIdForRange(startIdx, voxelSet.numVoxels_, entityId);
+                    // The pool pointer is fetched fresh per call rather than
+                    // cached: a canvas archetype mutation invalidates any
+                    // cached @c C_VoxelPool* and a subsequent pointer-diff
+                    // against `voxelSet.globalPositions_.data()` then yields
+                    // a wild index. The gate above keeps this getComponent a
+                    // one-shot per voxel-set lifetime.
+                    IREntity::EntityId canvas = voxelSet.canvasEntity_;
+                    if (canvas == IREntity::kNullEntity) {
+                        canvas = IRRender::getActiveCanvasEntity();
+                    }
+                    IREntity::getComponent<C_VoxelPool>(canvas).setEntityIdForRange(
+                        voxelSet.voxelStartIdx_,
+                        static_cast<size_t>(voxelSet.numVoxels_),
+                        entityId
+                    );
                 }
             }
         );

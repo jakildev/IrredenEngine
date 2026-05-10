@@ -193,12 +193,7 @@ void RenderManager::presentFrame() {
     IRRender::device()->present();
 }
 
-std::tuple<
-    std::span<C_Position3D>,
-    std::span<C_PositionOffset3D>,
-    std::span<C_PositionGlobal3D>,
-    std::span<C_Voxel>>
-RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
+VoxelPoolAllocation RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
     auto it = m_canvasMap.find(canvasName);
     IR_ASSERT(it != m_canvasMap.end(), "Canvas not found: {}", canvasName);
     auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
@@ -296,13 +291,7 @@ void RenderManager::zoomMainBackgroundPatternOut() {
     (*zoomLevel.value()).zoomOut();
 }
 
-void RenderManager::deallocateVoxels(
-    std::span<C_Position3D> positions,
-    std::span<C_PositionOffset3D> positionOffsets,
-    std::span<C_PositionGlobal3D> positionGlobals,
-    std::span<C_Voxel> voxels,
-    std::string canvasName
-) {
+void RenderManager::deallocateVoxels(size_t startIndex, size_t size, std::string canvasName) {
     auto it = m_canvasMap.find(canvasName);
     if (it == m_canvasMap.end()) {
         return;
@@ -314,7 +303,7 @@ void RenderManager::deallocateVoxels(
     if (!poolOpt.has_value()) {
         return;
     }
-    (*poolOpt.value()).deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
+    (*poolOpt.value()).deallocateVoxels(startIndex, size);
 }
 
 EntityId RenderManager::getCanvas(std::string canvasName) {
