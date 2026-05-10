@@ -43,6 +43,8 @@
 
 #include "common.hpp"
 
+using namespace IRComponents;
+
 namespace {
 
 // Radians per screen pixel of mouse X movement.
@@ -114,9 +116,8 @@ void initSystems() {
 
             // Per-voxel entity pick + left-click flash effect
             IREntity::EntityId hovered = IRRender::getEntityIdAtMouseTrixel();
-            bool leftClick = IRInput::checkKeyMouseButton(
-                IRInput::kMouseButtonLeft, IRInput::PRESSED
-            );
+            bool leftClick =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
             if (leftClick && hovered != IREntity::kNullEntity) {
                 g_clickFlashFrames = kClickFlashDuration;
                 IR_LOG_INFO("Entity {} clicked (per-voxel pick confirmed)", hovered);
@@ -184,9 +185,11 @@ void initEntities() {
     // South-west: voxel-pool sphere
     {
         constexpr float kSphereRadius = 4.0f;
-        ivec3 half{static_cast<int>(kSphereRadius) + 1,
-                   static_cast<int>(kSphereRadius) + 1,
-                   static_cast<int>(kSphereRadius) + 1};
+        ivec3 half{
+            static_cast<int>(kSphereRadius) + 1,
+            static_cast<int>(kSphereRadius) + 1,
+            static_cast<int>(kSphereRadius) + 1
+        };
         ivec3 size = half * 2 + ivec3(1);
         EntityId e = IREntity::createEntity(
             C_Position3D{vec3(0.0f, kRingRadius, 0.0f)},
@@ -199,12 +202,16 @@ void initEntities() {
     // Point light between the shapes so lighting shows depth on all four.
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, -4.0f)},
-        C_LightSource{LightType::EMISSIVE, Color{200, 220, 255, 255}, 1.5f, static_cast<uint8_t>(20)}
+        C_LightSource{
+            LightType::EMISSIVE,
+            Color{200, 220, 255, 255},
+            1.5f,
+            static_cast<uint8_t>(20)
+        }
     );
 
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-    const ivec2 canvasSize =
-        IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});

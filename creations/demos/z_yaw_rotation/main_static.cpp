@@ -31,10 +31,12 @@
 
 #include "common.hpp"
 
+using namespace IRComponents;
+
 namespace {
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
-constexpr float kYawDeltaPerFrame = 3.14159265f / 360.0f;
+constexpr float kYawDeltaPerFrame = IRMath::kPi / 360.0f;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), "zoom1_yaw0"},
@@ -138,9 +140,11 @@ void initEntities() {
     // South-west: voxel-pool sphere
     {
         constexpr float kSphereRadius = 4.0f;
-        ivec3 half{static_cast<int>(kSphereRadius) + 1,
-                   static_cast<int>(kSphereRadius) + 1,
-                   static_cast<int>(kSphereRadius) + 1};
+        ivec3 half{
+            static_cast<int>(kSphereRadius) + 1,
+            static_cast<int>(kSphereRadius) + 1,
+            static_cast<int>(kSphereRadius) + 1
+        };
         ivec3 size = half * 2 + ivec3(1);
         EntityId e = IREntity::createEntity(
             C_Position3D{vec3(0.0f, kRingRadius, 0.0f)},
@@ -152,6 +156,4 @@ void initEntities() {
 
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-
-    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 }

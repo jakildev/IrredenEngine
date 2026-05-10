@@ -18,6 +18,14 @@
 
 namespace IRMath {
 
+/// Pi to float precision. Mirrors `glm::pi<float>()` but routes through the
+/// IRMath wrapper so callers don't have to reach for `glm::` directly.
+constexpr float kPi = 3.14159265358979323846f;
+/// Half pi (π/2). Used by cardinal-yaw snapping (see `rasterYawCardinalIndex`).
+constexpr float kHalfPi = 1.57079632679489661923f;
+/// Two pi (2π). Useful for full-revolution math and angle wrap.
+constexpr float kTwoPi = 6.28318530717958647692f;
+
 /// Loads a color palette from a file and returns it as a vector of Colors.
 std::vector<Color> createColorPaletteFromFile(const char *filename);
 
@@ -209,7 +217,6 @@ enum class CardinalIndex : int {
 /// fold via `(q mod 4 + 4) mod 4` into [0, 3]. CPU and GPU MUST resolve
 /// the same cardinal index for any picking ↔ raster handshake.
 constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
-    constexpr float kHalfPi = 1.5707963267948966f;
     const int q = static_cast<int>(glm::round(rasterYaw / kHalfPi));
     return static_cast<CardinalIndex>(((q % 4) + 4) % 4);
 }
@@ -439,11 +446,7 @@ inline IsoBounds2D visibleIsoViewport(
 /// @p sunDir is the direction from the world toward the sun (engine
 /// convention: +Z is down). @p sweepDistance is the maximum shadow throw
 /// length in voxels; pass 0 (or negative) to return @p visible unchanged.
-inline IsoBounds2D shadowFeederIsoBounds(
-    IsoBounds2D visible,
-    vec3 sunDir,
-    float sweepDistance
-) {
+inline IsoBounds2D shadowFeederIsoBounds(IsoBounds2D visible, vec3 sunDir, float sweepDistance) {
     if (sweepDistance <= 0.0f) {
         return visible;
     }
