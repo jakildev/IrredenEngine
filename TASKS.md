@@ -177,25 +177,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
-  - **ID:** T-106
-  - **Area:** engine/script, build
-  - **Model:** opus
-  - **Owner:** claude/T-106-lua-codegen-foundation
-  - **Blocked by:** (none)
-  - **Stack:** T-106..T-109 codegen-pipeline
-  - **Acceptance:** (1) new codegen tool at cmake/lua_codegen/ — takes list of .lua files + output .hpp path, language choice documented in PR body; (2) emits struct C_Name in namespace IRComponents + matching _lua.hpp binding (kHasLuaBinding<C_Name>, bindLuaType<C_Name>, sol::usertype with field accessors) + registration helper calling IREntity::EntityManager::registerComponent<C_Name>() for every IRComponent.register("Name", {...}) call found; (3) type inference: int→int32_t, float, bool, string; explicit typed form ({field = {type="float", default=100}}) honored; unsupported defaults error with file/line/field name; (4) CMake helper irreden_lua_codegen(<target> SOURCES <lua_files...> OUTPUT_HPP <path>) with add_custom_command in cmake/ir_functions.cmake; (5) smoke test: C_Hp{current=100, max=100} round-trip (Lua creates entity → C++ reads back) passes; (6) test/script/lua_component_register_test.cpp passes under CODEGEN mode (test-harness toggle EVAL vs. CODEGEN); (7) fleet-build --target IrredenEngineTest clean + all existing tests pass
-  - **Issue:** #586
-  - **Notes:** PR 1 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-105 (LuaJIT migration). Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Precedent for add_custom_command shape: creations/demos/lua_pipeline_demo/CMakeLists.txt lines 21–36. Out of scope: system bodies (T-107), mode override (T-108), demo migration (T-109).
-  - **Links:**
-
-
 - [~] **Codegen system bodies — DSL parser + C++ emitter** — extend codegen tool to handle Lua system bodies; define DSL subset with strict build-time error for anything outside it
   - **ID:** T-107
   - **Area:** engine/script, build
   - **Model:** opus
   - **Owner:** claude/T-107-codegen-system-bodies
-  - **Blocked by:** T-106
+  - **Blocked by:** (none)
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) codegen tool parses DSL subset: canonical loop (for i=0, arch.length-1 do), column ops (arch.Component:at/setAt/getField/setField), Component.new(), arithmetic/comparison/logical ops, if/elseif/else, local declarations, whitelisted intrinsics; (2) emits template<> struct System<NAME> specialisations in namespace IRSystem with tick(arch_ref) member + static SystemId create() using registerSystem<> (if T-136 landed) or createSystem+setSystemParams; (3) out-of-DSL features produce build errors with file/line/feature name; test cases assert specific error messages for: closures, metatables, require, unsupported loop forms; (4) intrinsic whitelist config table (Lua→C++ template): math.sin/cos/tan/atan/sqrt/abs/floor/ceil/min/max + IRMath.lerp/clamp; extensible by adding table entries; (5) test/script/lua_system_register_test.cpp passes under CODEGEN mode; (6) fleet-build --target IrredenEngineTest clean + all existing tests pass
   - **Issue:** #587
@@ -242,6 +229,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-106** — Codegen pipeline foundation — components only · Owner: claude/T-106-lua-codegen-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/596
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
@@ -261,4 +249,3 @@ Avoid:
 - [x] **T-126** — Render: migrate light-volume propagation off CPU-built OccupancyGrid SSBO · Owner: claude/T-126-occupancy-ssbo-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/546
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
-- [x] **T-102** — Lua-driven ECS: pipeline composition + enum bindings + modifier-framework bindings · Owner: claude/T-102-lua-pipeline-modifier-bindings · PR: https://github.com/jakildev/IrredenEngine/pull/544
