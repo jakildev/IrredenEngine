@@ -27,6 +27,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_system_register_test.cpp
@@ -46,6 +47,28 @@ target_link_libraries(IrredenEngineTest PUBLIC
     IrredenEngine
     gtest_main
 )
+
+# T-106: build lua_component_codegen_fixtures.hpp from the sibling
+# .lua schema and add the include path. The hand-test demo for the
+# codegen tool — exercises the full pipeline (Lua schema → C++
+# struct + Lua binding + EntityManager registration) and runs as
+# part of the standard test suite.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_component_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_component_codegen_fixtures.hpp
+)
+
+# T-106 schema-error regression: feed the codegen binary a fixture with an
+# int32 overflow default in the explicit form (subprocess invocation in
+# lua_component_codegen_test.cpp). Path constants are passed via compile
+# definitions so the test resolves both at runtime regardless of cwd, and
+# the fixture file is added to the dependency graph so an edit triggers
+# a test rebuild.
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
+    IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
+)
+add_dependencies(IrredenEngineTest ir_lua_codegen)
 
 target_include_directories(IrredenEngineTest PRIVATE
     ${googletest_SOURCE_DIR}/googletest/include

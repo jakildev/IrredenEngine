@@ -129,6 +129,73 @@ function(
     add_custom_target(copy_all_lua_files ALL DEPENDS ${COPY_COMMANDS})
 endfunction()
 
+# irreden_lua_codegen — build a C++ header from one or more Lua component
+# schemas. Wraps cmake/lua_codegen/main.cpp's CLI as a CMake-friendly helper.
+#
+# Usage:
+#   irreden_lua_codegen(<target>
+#       SOURCES <input1.lua> [input2.lua ...]
+#       OUTPUT_HPP <path/to/generated.hpp>
+#   )
+#
+# Behaviour:
+#   - Adds a custom command that runs `ir_lua_codegen` whenever any of the
+#     SOURCES change, regenerating OUTPUT_HPP.
+#   - Adds OUTPUT_HPP to <target>'s sources so CMake tracks the dependency.
+#   - Adds OUTPUT_HPP's parent directory to <target>'s include path.
+#   - The custom command's DEPENDS list already includes ir_lua_codegen, so
+#     the codegen binary is built first on a clean tree without a separate
+#     add_dependencies() edge.
+#
+# All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
+# unless absolute. The generated header is regenerated on Lua-source change
+# but not on tool-source change (the codegen tool target's link dependency
+# already handles tool rebuilds; CMake re-runs the custom command when its
+# input checksums shift).
+function(
+    irreden_lua_codegen target
+)
+    cmake_parse_arguments(IRLC "" "OUTPUT_HPP" "SOURCES" ${ARGN})
+    if(NOT IRLC_OUTPUT_HPP)
+        message(FATAL_ERROR "irreden_lua_codegen: OUTPUT_HPP is required")
+    endif()
+    if(NOT IRLC_SOURCES)
+        message(FATAL_ERROR "irreden_lua_codegen: SOURCES is required")
+    endif()
+
+    # Resolve OUTPUT_HPP to an absolute path so add_custom_command's OUTPUT
+    # is unambiguous regardless of caller cwd.
+    if(NOT IS_ABSOLUTE "${IRLC_OUTPUT_HPP}")
+        set(IRLC_OUTPUT_HPP "${CMAKE_CURRENT_BINARY_DIR}/${IRLC_OUTPUT_HPP}")
+    endif()
+
+    # Resolve sources to absolute paths so the custom command's DEPENDS list
+    # is stable across configures.
+    set(_resolved_sources "")
+    foreach(_src IN LISTS IRLC_SOURCES)
+        if(NOT IS_ABSOLUTE "${_src}")
+            set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
+        endif()
+        list(APPEND _resolved_sources "${_src}")
+    endforeach()
+
+    get_filename_component(_output_dir "${IRLC_OUTPUT_HPP}" DIRECTORY)
+
+    add_custom_command(
+        OUTPUT "${IRLC_OUTPUT_HPP}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
+        COMMAND $<TARGET_FILE:ir_lua_codegen>
+            --out "${IRLC_OUTPUT_HPP}"
+            ${_resolved_sources}
+        DEPENDS ir_lua_codegen ${_resolved_sources}
+        COMMENT "lua_codegen: ${IRLC_OUTPUT_HPP}"
+        VERBATIM
+    )
+
+    target_sources(${target} PRIVATE "${IRLC_OUTPUT_HPP}")
+    target_include_directories(${target} PRIVATE "${_output_dir}")
+endfunction()
+
 # copyDLL copies dll file on windows build into dest path
 function(
     IR_copyDLL
