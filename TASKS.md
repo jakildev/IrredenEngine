@@ -189,18 +189,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet-up.conf concurrency cap — design refinement** — implement fleet-up.conf bash-sourceable config for per-role concurrency caps in fleet-dispatcher, resolving design questions from T-125 pickup attempt
-  - **ID:** T-135
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-135-fleet-up-conf-concurrency-cap
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) ~/.fleet/fleet-up.conf created by fleet-up on first run with documented defaults (FLEET_CAP_OPUS_WORKER=2, FLEET_CAP_SONNET_AUTHOR=4); (2) dispatcher honors cap edits on next tick; (3) removing conf file restores no-cap behavior; (4) with cap=1 and both opus-worker panes idle, only one picks up the trigger; (5) cap-defer reason logged when cap kicks in
-  - **Issue:** #547
-  - **Notes:** Design questions resolved in issue body: sonnet-fleet key maps to FLEET_CAP_SONNET_AUTHOR (canonical role name); bash-sourceable format at ~/.fleet/fleet-up.conf; count = active dispatch records + reservations mapped to role; absent conf → no cap. Full design spec in #547.
-  - **Links:**
-
-
 - [~] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
   - **ID:** T-106
   - **Area:** engine/script, build
@@ -266,6 +254,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
 - [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
 - [x] **T-137** — fleet-claim: hard model-tag gate · Owner: claude/T-137-fleet-claim-model-gate · PR: https://github.com/jakildev/IrredenEngine/pull/591
@@ -285,4 +274,3 @@ Avoid:
 - [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
 - [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
-- [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
