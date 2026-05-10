@@ -216,6 +216,66 @@ Avoid:
   - **Links:**
 
 
+- [ ] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
+  - **ID:** T-139
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) GPU particle pool in SSBO; pool size configurable per creation; (2) compute shader update pass: position, velocity, lifetime, per-frame drift; (3) indirect draw pass: particles rendered as world-space sprites or voxel-like quads in iso camera; (4) Lua spawn API: spawnParticle(pos, velocity, lifetime, type) queues for next dispatch; (5) GPU radius-cull query: returns particle indices within radius for ability-effect integration; (6) attraction-point compute pass: pull-force toward target position; (7) benchmark: 10K active particles at 60 fps on linux-debug and macos-debug; (8) demo creation IRParticleField with 1K drifting particles + one pull-toward-point test; fleet-build --target IRParticleField clean on linux-debug
+  - **Issue:** #209
+  - **Notes:** Engine infrastructure only — no game-specific content. Owner comment: integrate particle system that does not rely on CPU iteration or per-entity voxel positioning. See midi projects in creations/ for CPU particle patterns to replace. Existing compute shaders in engine/render/src/shaders/ for precedent.
+  - **Links:**
+
+
+- [ ] **fleet: extract detect_engine_root into fleet-common.sh** — eliminate duplicated root-detection logic across fleet-build, fleet-run, and fleet-run-targets
+  - **ID:** T-140
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) scripts/fleet/fleet-common.sh created with detect_engine_root() as the authoritative implementation; (2) fleet-build sources fleet-common.sh and removes its own inline root-detection (lines 28-35); (3) fleet-run sources fleet-common.sh and removes its own inline copy (lines 127-134); (4) fleet-run-targets sources fleet-common.sh instead of defining detect_engine_root() locally (lines 150-161); (5) fleet-common.sh symlink entry added to scripts/fleet/install.sh; (6) fleet-build, fleet-run, fleet-run-targets all still work correctly from ~/bin symlinks (source path resolved via git rev-parse --show-toplevel)
+  - **Issue:** #451
+  - **Notes:** Flagged as a nit in PR #446 review. Scripts run via ~/bin symlinks so the source path must be resolved dynamically, not hardcoded.
+  - **Links:**
+
+
+- [ ] **Demo: Z-Yaw world rotation showcase** — demo creation(s) exercising Z-Yaw world rotation with SDF/voxel entities, mouse-controlled rotation, and per-voxel hover/click detection
+  - **ID:** T-141
+  - **Area:** creations/demos
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) at least two demo modes: (a) SDF + voxel-pool entities rotating under Z-Yaw; (b) rotation tied to mouse movement with toggle key for mouse lock; (2) clickable entities: hover highlights, click triggers a visual effect; (3) hover and click detection work correctly under rotation (per-voxel, not separate hitboxes); (4) any unimplemented per-voxel detection functionality is documented as filed issues or linked; (5) fleet-build --target IR<DemoName> clean on linux-debug; fleet-run produces visually correct rotating scene
+  - **Issue:** #569
+  - **Notes:** Epic #310 rotation functionality believed implemented. Issue notes possible blocker at #354 — verify whether #354 is resolved or still blocks per-voxel collision under rotation; file/link follow-up if needed.
+  - **Links:**
+
+
+- [ ] **macOS: fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN** — diagnose and fix wild pointer-difference in C_VoxelPool::setEntityIdForRange causing SIGBUS; include Lua-binding rename fix
+  - **ID:** T-142
+  - **Area:** engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) repro verified on Linux (document whether Linux also crashes or allocator silently tolerates wild index); (2) root cause identified: startIdx from data()-getPositionGlobalsBasePtr() pointer arithmetic on non-same-allocation vectors, or stale poolCache C_VoxelPool* after archetype mutation; (3) debug assertion added in setEntityIdForRange: startIdx + count <= m_voxelEntities.size(); (4) IRShapeDebug runs without crash on macos-debug; --auto-screenshot 10 produces frames; (5) Lua-binding fix: IR_BIND_SYS(BUILD_OCCUPANCY_GRID) → IR_BIND_SYS(BUILD_LIGHT_OCCLUSION_GRID) in engine/script/include/irreden/script/lua_pipeline_bindings.hpp:148; (6) IrredenEngineTest passes; fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #577
+  - **Notes:** Crash: EXC_BAD_ACCESS / SIGBUS in std::fill inside C_VoxelPool::setEntityIdForRange. startIdx computed as data()-getPositionGlobalsBasePtr() may be wild if vectors not from same allocation. static poolCache unordered_map<EntityId,C_VoxelPool*> may hold stale pointer post archetype-mutation. Owner comment: confirm still reproduces on current master, then fix for macOS.
+  - **Links:**
+
+
+- [ ] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
+  - **ID:** T-143
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new system RESOLVE_SUN_DIRECTION added to SystemName enum; registered at head of RENDER pipeline; resolves C_LightSource DIRECTIONAL override once per frame (respects IRRender::getSunShadowsEnabled()); (2) IRPrefab::SunShadow::getFrameSunDirection() accessor reads from system params; (3) VOXEL_TO_TRIXEL_STAGE_1 and SHAPES_TO_TRIXEL use getFrameSunDirection() — no direct C_LightSource scans; (4) sun-direction lookup in system_voxel_to_trixel hoisted from per-entity tick lambda to beginTick; (5) BAKE_SUN_SHADOW_MAP retains or unifies its own detail::resolveSun() — author's call, must be deliberate; (6) no behavioral change to shadow casting in shape_debug at zoom 4 / zoom 8; (7) fleet-build clean on linux-debug
+  - **Issue:** #578
+  - **Notes:** Low-priority follow-up flagged in PR #576 review. C_LightSource is small (1-3 entities) so cost is microseconds today; structural concern is per-entity tick placement and future consumer count. Prefer approach 1 (new resolver system) over writing back to IRRender::setSunDirection() per issue analysis.
+  - **Links:**
+
+
 ---
 
 ## In progress
