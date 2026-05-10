@@ -20,7 +20,7 @@ namespace IRRender {
 // pointer-diff produces an out-of-bounds index that on macOS walks off into
 // unmapped VM space.
 struct VoxelPoolAllocation {
-    size_t startIndex_;
+    size_t startIndex_ = 0;
     std::span<IRComponents::C_Position3D> positions_;
     std::span<IRComponents::C_PositionOffset3D> positionOffsets_;
     std::span<IRComponents::C_PositionGlobal3D> positionGlobals_;
