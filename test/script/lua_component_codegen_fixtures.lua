@@ -13,10 +13,14 @@ IRComponent.register("CodegenHp", {
     max = 100,
 })
 
+-- Non-integer float defaults (e.g. 1.5) are required so the LuaJIT compat
+-- shim's lua_isinteger correctly identifies them as float. Whole-number
+-- defaults like 0.0 are indistinguishable from 0 at the C level under LuaJIT;
+-- use `{ type = "float", default = 0 }` for those instead.
 IRComponent.register("CodegenVel", {
-    x = 0.0,
-    y = 0.0,
-    z = 0.0,
+    x = 1.5,
+    y = 1.5,
+    z = 1.5,
 })
 
 IRComponent.register("CodegenMixed", {

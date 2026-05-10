@@ -35,6 +35,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -65,9 +66,15 @@ struct Capture {
 // Caller is the Lua `IRComponent.register` shim. Inspects the schema table
 // and either appends a Component to capture or raises a Lua error with a
 // schema-pointing message (file/component/field).
-[[noreturn]] void schemaError(sol::this_state ts, const std::string &message) {
-    luaL_error(ts, "%s", message.c_str());
-    std::abort(); // unreachable; appeases [[noreturn]]
+// Emit the error immediately to stderr (captured by 2>&1 in subprocess test
+// invocations), then throw to stop execution. luaL_error is avoided here
+// because it uses longjmp, which is UB when unwinding past C++ objects on
+// the stack (sol2 for_each callbacks). LuaJIT's C++ exception integration
+// also loses the exception's what() message (uses the Lua stack top instead),
+// so we print before throwing.
+[[noreturn]] void schemaError(sol::this_state, const std::string &message) {
+    std::cerr << message << "\n";
+    throw std::runtime_error(message);
 }
 
 const char *fieldTypeName(FieldType t) {
@@ -167,10 +174,16 @@ Field inferFromShortValue(
         // collapses them. Push the value back onto the stack so we can
         // call lua_isinteger, which is the authoritative subtype check.
         // (A C++-side round-trip can't distinguish `0` from `0.0` because
-        // both round-trip cleanly through int64.) LuaJIT 2.1 also tags
-        // integer vs float at the TValue level, so lua_isinteger returns
-        // non-zero for integer literals there too — the approach survives
-        // the LuaJIT migration unchanged.
+        // both round-trip cleanly through int64.)
+        //
+        // LuaJIT compat caveat: sol2's compat-5.3 shim implements
+        // lua_isinteger as `lua_tointeger(x) == lua_tonumber(x)`, which
+        // returns true for ANY whole-number float (e.g. `0.0`, `1.0`).
+        // This means a float default like `0.0` is misidentified as int32.
+        // Workaround: use a non-whole-number float literal (e.g. `0.5`) for
+        // fields that must be inferred as float, or use the explicit
+        // `{ type = "float", default = 0 }` form for zero/whole-number
+        // float defaults.
         lua_State *L = ts;
         sol::stack::push(L, value);
         const bool isInt = lua_isinteger(L, -1) != 0;
@@ -758,13 +771,19 @@ int main(int argc, char **argv) {
 
     for (const auto &input : inputs) {
         cap.currentSource_ = input;
-        sol::protected_function_result result = lua.safe_script_file(
-            input, sol::script_pass_on_error
-        );
-        if (!result.valid()) {
-            sol::error err = result;
+        try {
+            sol::protected_function_result result = lua.safe_script_file(
+                input, sol::script_pass_on_error
+            );
+            if (!result.valid()) {
+                sol::error err = result;
+                std::cerr << "lua_codegen: error executing '" << input << "':\n  "
+                          << err.what() << "\n";
+                return 1;
+            }
+        } catch (const std::runtime_error &e) {
             std::cerr << "lua_codegen: error executing '" << input << "':\n  "
-                      << err.what() << "\n";
+                      << e.what() << "\n";
             return 1;
         }
     }
