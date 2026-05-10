@@ -2,7 +2,7 @@ add_library(IrredenEngineScripting STATIC
     src/lua_script.cpp
 )
 
-add_subdirectory(third_party/lua54)
+add_subdirectory(third_party/luajit)
 
 target_compile_options(
     IrredenEngineProfile
@@ -10,37 +10,9 @@ target_compile_options(
     -O3
 )
 
-# FetchContent_Declare(
-#     lua54
-#     URL http://www.lua.org/ftp/lua-5.4.6.tar.gz
-# )
-
-# Use precompiled lua54 and include files
-
-# target_link_libraries(
-#     IrredenEngineScripting PUBLIC
-#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/static/liblua54.a
-#     IrredenEngineProfile
-# )
-# target_include_directories(
-#     IrredenEngineScripting
-#     PUBLIC
-#     ${CMAKE_CURRENT_SOURCE_DIR}/include
-#     ${CMAKE_CURRENT_SOURCE_DIR}/include/lua54
-# )
-
-# IR_copyDLL(
-#     IrredenEngineScripting
-#     lua54
-#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic
-# )
-
-# configure_file(
-#     ${CMAKE_CURRENT_SOURCE_DIR}/lib/dynamic/lua54.dll
-#     ${PROJECT_BINARY_DIR}/lua54.dll COPYONLY
-# )
-
-# Use sol2 library for C++ binding
+# Use sol2 library for C++ binding. Sol2's main branch supports both
+# Lua 5.x and LuaJIT 2.x; it detects LuaJIT via LUAJIT_VERSION in
+# lua.h and adapts its bindings automatically.
 FetchContent_Declare(
     sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git
@@ -54,17 +26,23 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
 )
+# Force sol2 to use its try/catch trampoline rather than letting C++
+# exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
+# default is exception propagation; in practice the exception message
+# is lost between the LuaJIT unwind path and pcall's error capture
+# (the caller observes the generic "C++ exception" string instead of
+# what() text). Forcing SOL_EXCEPTIONS_ALWAYS_UNSAFE means sol2 catches
+# the std::exception in-trampoline, extracts what(), and forwards via
+# lua_error — preserving the specific message in protected_function
+# results. The "unsafe" name is a sol2 convention referring to "no
+# native unwind"; it is the safer choice for our tooling.
+target_compile_definitions(
+    IrredenEngineScripting PUBLIC
+    SOL_EXCEPTIONS_ALWAYS_UNSAFE=1
+)
 target_include_directories(
     IrredenEngineScripting
     PUBLIC
     ${sol2_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-
-# add_custom_command(
-#     TARGET IrredenEngineInput
-#     POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy
-#         ${glfw_BINARY_DIR}/src/glfw3d.dll
-#         ${PROJECT_BINARY_DIR}/glfw3d.dll
-# )

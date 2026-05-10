@@ -1,8 +1,6 @@
 #ifndef LUA_SCRIPT_H
 #define LUA_SCRIPT_H
 
-// #include <lua54/lua.hpp>
-
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 #include <stdexcept>

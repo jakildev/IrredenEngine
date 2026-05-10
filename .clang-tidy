@@ -5,7 +5,7 @@ Checks: >
   readability-identifier-naming
 
 WarningsAsErrors: ''
-HeaderFilterRegex: '^(?!.*(third_party|build|_deps|engine/render/include/glad|engine/render/include/KHR|engine/render/include/irreden/render/gl_wrap|engine/script/include/lua54|engine/render/third_party/metal-cpp)).*'
+HeaderFilterRegex: '^(?!.*(third_party|build|_deps|engine/render/include/glad|engine/render/include/KHR|engine/render/include/irreden/render/gl_wrap|engine/render/third_party/metal-cpp)).*'
 
 CheckOptions:
   - key: readability-identifier-naming.PrivateMemberPrefix

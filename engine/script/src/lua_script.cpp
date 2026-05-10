@@ -48,8 +48,12 @@ LuaFieldType inferTypeFromDefault(const sol::object &value) {
         return LuaFieldType::STRING;
     if (value.is<sol::function>())
         return LuaFieldType::FUNCTION;
-    // Numeric values that aren't ints (Lua 5.4 distinguishes integer
-    // and float subtypes; sol2 maps `5.0` to float and `5` to int).
+    // Numeric values with a fractional part: under LuaJIT (Lua 5.1
+    // base, no integer subtype), `is<int>` already classified
+    // whole-number literals like `0.0` as INT32 above — only values
+    // with a non-zero fractional part reach this fallback. See
+    // engine/script/CLAUDE.md "Lua runtime: LuaJIT 2.1" for the
+    // user-visible disambiguation contract.
     if (value.is<double>())
         return LuaFieldType::FLOAT;
     // Anything else — including nested tables — is a registration-time
@@ -448,11 +452,8 @@ void LuaScript::bindLuaDrivenEcs() {
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
     };
 
-    m_lua["IREntity"]["getLuaField"] = [this](
-                                           IRScript::LuaEntity entity,
-                                           sol::table componentDef,
-                                           int fieldIndex
-                                       ) -> sol::object {
+    m_lua["IREntity"]["getLuaField"] =
+        [this](IRScript::LuaEntity entity, sol::table componentDef, int fieldIndex) -> sol::object {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         auto &em = IREntity::getEntityManager();
         auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
