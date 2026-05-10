@@ -26,8 +26,8 @@ LuaWaveTickSysId = IRSystem.registerSystem({
     tick = function(arch)
         for i = 0, arch.length - 1 do
             local s = arch.LuaWaveState:at(i)
-            local new_time = s.time + 0.016666667
-            local angle = (new_time / s.period) * 6.2831853 + s.phase
+            local new_time = s.time + 0.016666667 -- 1/60 s fixed step
+            local angle = (new_time / s.period) * 6.2831853 + s.phase -- 2*pi (math.pi unsupported by codegen DSL)
             local out_value = s.amp * math.sin(angle)
             arch.LuaWaveState:setAt(
                 i,
