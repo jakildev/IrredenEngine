@@ -201,18 +201,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet-claim: atomic master-side TASKS.md lock** — push [~] + Owner to master as part of claim handshake so concurrent claims fail fast on non-fast-forward rather than silently racing to [~]
-  - **ID:** T-138
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-138-fleet-claim-master-lock
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) two concurrent fleet-claim T-X invocations: exactly one succeeds, other exits "already claimed" and writes nothing; (2) after successful claim, TASKS.md on master shows [~] + Owner within 30s; (3) fleet-claim --reclaim T-X resets [~] → [ ] if Owner branch doesn't exist on remote
-  - **Issue:** #583
-  - **Notes:** Filed from T-130 double-claim incident (PRs #575 + #579). Model-tag gate is a separate issue (#582, T-137). Implementation: ephemeral branch claude/queue-claim-T-NNN, one-line TASKS.md update pushed before worker starts feature branch; direct push or tiny merger-handled PR both viable.
-  - **Links:**
-
-
 - [~] **Codegen pipeline foundation — components only** — build the Lua → C++ codegen tool that emits component definitions from Lua schemas at build time
   - **ID:** T-106
   - **Area:** engine/script, build
@@ -278,6 +266,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
 - [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
 - [x] **T-137** — fleet-claim: hard model-tag gate · Owner: claude/T-137-fleet-claim-model-gate · PR: https://github.com/jakildev/IrredenEngine/pull/591
 - [x] **T-134** — C_SpriteSheet: onDestroy GPU texture cleanup · Owner: claude/T-134-sprite-sheet-on-destroy · PR: https://github.com/jakildev/IrredenEngine/pull/590
@@ -297,4 +286,3 @@ Avoid:
 - [x] **T-112** — Worker role docs: stackable-blocked fallback pickup tier · Owner: claude/T-112-stackable-blocked-pickup · PR: https://github.com/jakildev/IrredenEngine/pull/545
 - [x] **T-124** — Fleet: stuck-worktree staleness escalation · Owner: claude/T-124-stuck-worktree-escalation · PR: https://github.com/jakildev/IrredenEngine/pull/542
 - [x] **T-116** — Render: per-canvas light scope via CHILD_OF relation · Owner: claude/T-116-per-canvas-light-scope · PR: https://github.com/jakildev/IrredenEngine/pull/541
-- [x] **T-123** — Fleet: worktree naming migration (opus-worker-N → worktree-N) · Owner: claude/T-123-fleet-up-boot-reconciliation · PR: https://github.com/jakildev/IrredenEngine/pull/540
