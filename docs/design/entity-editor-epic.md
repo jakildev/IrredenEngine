@@ -6,7 +6,7 @@ tickets (F-0.1 — F-0.9) will be filed once this doc is on master.
 **Umbrella:** [`#213`](https://github.com/jakildev/IrredenEngine/issues/213).
 This doc is the long-form expansion of `#213` into 11 phases (`#603` —
 `#613`). It is the engine-side source of truth; the game-side companion at
-[`creations/game/irreden/docs/editor-needs.md`](../../creations/game/irreden/docs/editor-needs.md)
+[`creations/game/irreden/docs/editor-needs.md`](https://github.com/jakildev/irreden/blob/master/irreden/docs/editor-needs.md)
 (filed under `jakildev/irreden#60`) is the game-side source of truth for
 what the editor must let authors create.
 
@@ -73,7 +73,7 @@ to scope/plan flow through normal review.
 
 - **Author 200 – 400 entity forms in-engine** — animals, plants, fungus,
   hybrids, parasites, special entities. Specifics in the
-  [game-side editor-needs doc](../../creations/game/irreden/docs/editor-needs.md).
+  [game-side editor-needs doc](https://github.com/jakildev/irreden/blob/master/irreden/docs/editor-needs.md).
 - **Trixel-rendered editor UI** — no dear-imgui, no third-party UI libs.
   Reuses the existing trixel font + SDF/voxel rendering stack.
 - **Skeletal animation + IK in-engine** — wire the existing
@@ -672,7 +672,7 @@ re-explanation per phase.
 ### Game-side authoring catalog
 
 Specifics live in the
-[game-side editor-needs doc](../../creations/game/irreden/docs/editor-needs.md).
+[game-side editor-needs doc](https://github.com/jakildev/irreden/blob/master/irreden/docs/editor-needs.md).
 Engine implementation tickets pull bind-point naming, component pack
 schemas, and animation-needs-by-category from there.
 
