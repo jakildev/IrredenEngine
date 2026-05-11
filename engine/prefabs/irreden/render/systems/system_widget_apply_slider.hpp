@@ -19,7 +19,6 @@ template <> struct System<WIDGET_APPLY_SLIDER> {
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetSlider &slider
     ) {
-        if (widget.kind_ != IRComponents::WidgetKind::SLIDER) return;
         if (!state.pressed_) return;
         slider.currentValue_ =
             slider.minValue_ + state.dragValue_ * (slider.maxValue_ - slider.minValue_);

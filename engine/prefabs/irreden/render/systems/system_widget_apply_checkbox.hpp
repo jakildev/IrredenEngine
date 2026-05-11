@@ -18,7 +18,6 @@ template <> struct System<WIDGET_APPLY_CHECKBOX> {
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetCheckbox &checkbox
     ) {
-        if (widget.kind_ != IRComponents::WidgetKind::CHECKBOX) return;
         if (state.fireAction_) checkbox.checked_ = !checkbox.checked_;
     }
 

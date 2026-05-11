@@ -33,7 +33,6 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.kind_ != IRComponents::WidgetKind::SLIDER) return;
         if (!canvas_) return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();

@@ -29,7 +29,6 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.kind_ != IRComponents::WidgetKind::BUTTON) return;
         if (!canvas_) return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();

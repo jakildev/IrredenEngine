@@ -36,7 +36,6 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.kind_ != IRComponents::WidgetKind::PANEL) return;
         if (!canvas_) return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
@@ -62,7 +61,7 @@ template <> struct System<WIDGET_RENDER_PANEL> {
             IRPrefab::Widget::detail::drawCenteredText(
                 *canvas_,
                 panel.title_,
-                IRMath::ivec2(guiPos.pos_.x, guiPos.pos_.y),
+                guiPos.pos_,
                 IRMath::ivec2(widget.size_.x, titleBarH),
                 IRPrefab::Widget::detail::stateText(theme, widget)
             );
