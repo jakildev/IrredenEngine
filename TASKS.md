@@ -227,18 +227,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **macOS: fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN** — diagnose and fix wild pointer-difference in C_VoxelPool::setEntityIdForRange causing SIGBUS; include Lua-binding rename fix
-  - **ID:** T-142
-  - **Area:** engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-142-voxel-set-children-crash
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) repro verified on Linux (document whether Linux also crashes or allocator silently tolerates wild index); (2) root cause identified: startIdx from data()-getPositionGlobalsBasePtr() pointer arithmetic on non-same-allocation vectors, or stale poolCache C_VoxelPool* after archetype mutation; (3) debug assertion added in setEntityIdForRange: startIdx + count <= m_voxelEntities.size(); (4) IRShapeDebug runs without crash on macos-debug; --auto-screenshot 10 produces frames; (5) Lua-binding fix: IR_BIND_SYS(BUILD_OCCUPANCY_GRID) → IR_BIND_SYS(BUILD_LIGHT_OCCLUSION_GRID) in engine/script/include/irreden/script/lua_pipeline_bindings.hpp:148; (6) IrredenEngineTest passes; fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #577
-  - **Notes:** Crash: EXC_BAD_ACCESS / SIGBUS in std::fill inside C_VoxelPool::setEntityIdForRange. startIdx computed as data()-getPositionGlobalsBasePtr() may be wild if vectors not from same allocation. static poolCache unordered_map<EntityId,C_VoxelPool*> may hold stale pointer post archetype-mutation. Owner comment: confirm still reproduces on current master, then fix for macOS.
-  - **Links:**
-
-
 - [~] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
   - **ID:** T-143
   - **Area:** engine/prefabs/irreden/render
@@ -264,6 +252,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
 - [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
 - [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
 - [x] **T-106** — Codegen pipeline foundation — components only · Owner: claude/T-106-lua-codegen-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/596
@@ -283,4 +272,3 @@ Avoid:
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
 - [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
-- [x] **T-125** — Fleet: per-role concurrency cap config + dispatcher enforcement · Owner: claude/T-125-fleet-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/548
