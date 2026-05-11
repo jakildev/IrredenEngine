@@ -33,6 +33,11 @@ No opt-outs.
   `IRSystem.systemId(SystemName.X)`, and a Lua-defined system mixed
   into the UPDATE list alongside prefab systems and the modifier
   resolver chain. Reference for the T-102 Lua-driven-ECS pattern.
+- `z_yaw_rotation/` — Z-axis world-rotation showcase. Two executables:
+  `IRZYawStatic` (four SDF/voxel shapes auto-rotating in a ring, good
+  as a visual-regression canary for `SCREEN_SPACE_RESIDUAL_ROTATE`) and
+  `IRZYawInteractive` (same scene with `R`-key-toggled mouse-driven yaw
+  and left-click per-voxel entity-pick via `getEntityIdAtMouseTrixel`).
 
 ## Adding a new demo
 
