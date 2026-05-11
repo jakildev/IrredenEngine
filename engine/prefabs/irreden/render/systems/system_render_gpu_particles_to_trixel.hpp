@@ -34,11 +34,6 @@ namespace IRSystem {
 /// recommended slot is between `LIGHTING_TO_TRIXEL` and `FOG_TO_TRIXEL` —
 /// late enough that the canvas color buffer holds final lit voxels, early
 /// enough that fog still masks particles like everything else.
-///
-/// On Metal, this system additionally requires `distanceScratch` (slot 16)
-/// to be pre-bound by a prior voxel or shapes dispatch in the same compute
-/// encoder; a pure-particle pipeline without those stages is unsupported in
-/// Phase 1.
 template <> struct System<RENDER_GPU_PARTICLES_TO_TRIXEL> {
     struct Params {
         ShaderProgram *renderProgram_ = nullptr;
