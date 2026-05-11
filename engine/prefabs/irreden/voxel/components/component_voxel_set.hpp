@@ -31,6 +31,12 @@ struct C_VoxelSetNew {
     vec3 lastParentPosition_ = vec3(0.0f);
     bool hasLastParentPosition_ = false;
 
+    // Index into the canvas voxel pool's underlying arrays. Captured at
+    // allocation time so consumers never recompute it from a pointer-diff
+    // against a separately-cached @c C_VoxelPool* (a stale cached pool
+    // pointer made the diff resolve to a wild index).
+    size_t voxelStartIdx_ = 0;
+
     // local voxel position
     std::span<C_Position3D> positions_;
 
@@ -50,11 +56,12 @@ struct C_VoxelSetNew {
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
         canvasEntity_ = IRRender::getActiveCanvasEntity();
-        auto voxels = IRRender::allocateVoxels(requestedVoxels);
-        positions_ = std::get<0>(voxels);
-        positionOffsets_ = std::get<1>(voxels);
-        globalPositions_ = std::get<2>(voxels);
-        voxels_ = std::get<3>(voxels);
+        auto allocation = IRRender::allocateVoxels(requestedVoxels);
+        voxelStartIdx_ = allocation.startIndex_;
+        positions_ = allocation.positions_;
+        positionOffsets_ = allocation.positionOffsets_;
+        globalPositions_ = allocation.positionGlobals_;
+        voxels_ = allocation.voxels_;
 
         // Keep runtime-safe bounds even if allocation returns an unexpected span size.
         numVoxels_ = static_cast<int>(IRMath::min(
@@ -76,8 +83,8 @@ struct C_VoxelSetNew {
         }
 
         vec3 offset = centerAroundOrigin
-            ? vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f)
-            : vec3(0.0f);
+                          ? vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f)
+                          : vec3(0.0f);
         for (int x = 0; x < size.x; x++) {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
@@ -104,7 +111,11 @@ struct C_VoxelSetNew {
     // voxels, just in case the constructor might be called in more than
     // one place?
     void onDestroy() {
-        IRRender::deallocateVoxels(positions_, positionOffsets_, globalPositions_, voxels_);
+        // numVoxels_ equals requestedVoxels on all non-error paths (the
+        // constructor min-span guard fires IR_ASSERT before returning a
+        // mismatched allocation), so deallocateVoxels releases exactly
+        // what allocateVoxels reserved.
+        IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
         IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
     }
 

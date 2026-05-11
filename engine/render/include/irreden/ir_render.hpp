@@ -60,28 +60,22 @@ template <typename T> T *getNamedResource(std::string resourceName) {
 /// @{
 /// @name Voxel pool
 /// Allocate / release contiguous spans of voxel component arrays from the named canvas
-/// pool. All four spans are co-indexed — element [i] of each span belongs to voxel i.
+/// pool. The four spans returned by @c allocateVoxels are co-indexed — element [i] of
+/// each span belongs to voxel i — and @c VoxelPoolAllocation::startIndex_ is the offset
+/// of those spans inside the pool's underlying voxel arrays. Pass that index back to
+/// @c deallocateVoxels (and to @c C_VoxelPool::setEntityIdForRange); never recompute it
+/// from `positions.data() - basePtr` against a separately-cached @c C_VoxelPool*, since
+/// a canvas archetype mutation can leave such a cache pointing at a different pool.
 /// @param size        Number of voxels to allocate.
 /// @param canvasName  Canvas pool to allocate from (default @c "main").
-inline std::tuple<
-    std::span<C_Position3D>,
-    std::span<C_PositionOffset3D>,
-    std::span<C_PositionGlobal3D>,
-    std::span<C_Voxel>>
-allocateVoxels(unsigned int size, std::string canvasName = "main") {
+inline VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main") {
     return getRenderManager().allocateVoxels(size, canvasName);
 }
 
-/// Release voxel spans previously returned by @c allocateVoxels back to the pool.
-inline void deallocateVoxels(
-    std::span<C_Position3D> positions,
-    std::span<C_PositionOffset3D> positionOffsets,
-    std::span<C_PositionGlobal3D> positionGlobals,
-    std::span<C_Voxel> voxels,
-    std::string canvasName = "main"
-) {
-    getRenderManager()
-        .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels, canvasName);
+/// Release a previously-allocated voxel span back to the pool. Pass the start index
+/// returned by @c allocateVoxels and the same size used to allocate.
+inline void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main") {
+    getRenderManager().deallocateVoxels(startIndex, size, canvasName);
 }
 /// @}
 
