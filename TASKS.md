@@ -201,6 +201,30 @@ Avoid:
   - **Notes:** Engine infrastructure only — no game-specific content. Owner comment: integrate particle system that does not rely on CPU iteration or per-entity voxel positioning. See midi projects in creations/ for CPU particle patterns to replace. Existing compute shaders in engine/render/src/shaders/ for precedent.
   - **Links:**
 
+
+- [ ] **Docs: land entity-editor-epic.md canonical reference** — land docs/design/entity-editor-epic.md expanding umbrella #213 into the phased plan across all 11 editor phases
+  - **ID:** T-144
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) docs/design/entity-editor-epic.md exists on master; (2) doc covers all 11 phases (0–10) with scope, sub-task list, acceptance, blocked-by chain, and per-phase risks; (3) doc cross-references game-side companion at creations/game/irreden/docs/editor-needs.md; (4) doc explains the no-dear-imgui trixel-UI bet up front; (5) each later phase epic body links back to its doc section
+  - **Issue:** #619
+  - **Notes:** A stash (ref 7000195) at stash@{0} on the engine repo contains a partial draft ("auto-stash entity-editor-epic doc") — recover with git stash show -p stash@{0} before writing from scratch. Phase epics #603–#613 are source material. Game-side companion editor-needs.md lands via jakildev/irreden#60 (approved, MERGEABLE). Landing this unblocks F-0.1 (#620) and the remaining 8 Phase 0 tickets.
+  - **Links:**
+
+
+- [ ] **Editor F-0.1: trixel UI primitives** — implement 10-widget trixel-rendered UI primitive set for voxel editor; no dear-imgui
+  - **ID:** T-145
+  - **Area:** engine/prefabs/irreden/render, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-144
+  - **Acceptance:** (1) all 10 primitives (panel, label, button, slider, list, dropdown, checkbox, radio, text input, scroll) render correctly at multiple DPI/scale factors via trixel canvas; (2) hover/pressed/focused/disabled states wired for each interactive primitive; (3) test harness exe or scene in IRVoxelEditor shows all 10 primitives in single window; (4) style configurable through single theme struct; (5) fleet-build --target IRVoxelEditor (or equivalent) clean on linux-debug
+  - **Issue:** #620
+  - **Notes:** Blocked by T-144 (epic doc, #619). Parent epic #603 (Phase 0). Umbrella #213. Highest-risk ticket in Phase 0 — escalate early if stalled, do not burn time-box silently. F-0.2 (layout) and F-0.3 (input routing) build directly on top. Game companion jakildev/irreden#60.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
