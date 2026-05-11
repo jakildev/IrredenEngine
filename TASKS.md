@@ -226,11 +226,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.6: per-voxel metadata extension (.txl v2)** — add material_id, flags, bone_id per voxel; bump .txl to v2 with version-aware loader preserving backward compat
+- [~] **Editor F-0.6: per-voxel metadata extension (.txl v2)** — add material_id, flags, bone_id per voxel; bump .txl to v2 with version-aware loader preserving backward compat
   - **ID:** T-146
   - **Area:** engine/prefabs/irreden/voxel, creations/editors
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-146-txl-v2-metadata
   - **Blocked by:** T-144
   - **Acceptance:** (1) .txl v2 format spec written and committed alongside loader; (2) version-aware loader: reads v1 unchanged (zero-fills new fields), reads v2 with full fidelity, rejects unknown versions with clear error; (3) round-trip test: load v1 → save as v2 → reload v2 → equality on original voxel data; (4) existing demos/assets loading .txl keep working without code changes; (5) accessor API: voxel.material_id(), voxel.flags(), voxel.bone_id() on engine voxel type; (6) fleet-build clean on linux-debug
   - **Issue:** #621
