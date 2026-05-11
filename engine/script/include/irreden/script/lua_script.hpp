@@ -46,6 +46,24 @@ class LuaScript {
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
 
+    // Set the creation-default mode used by
+    // `IRSystem.registerSystem({...})` when the call has no explicit
+    // `mode = "..."` field. Mirrors the build-time
+    // `IR_LUA_ECS_DEFAULT_MODE` CMake cache var; creations using the
+    // codegen pipeline call this with
+    // `IRScript::CodegenRegistry::kDefaultEcsMode` after
+    // `registerCodegenComponents()` so runtime dispatch matches
+    // build-time dispatch. Default is `EVAL` so creations that don't
+    // touch the codegen pipeline keep working without ceremony. Can be
+    // changed before any `IRSystem.registerSystem` call fires; later
+    // calls observe the new value.
+    void setEcsDefaultMode(EcsMode mode) {
+        m_ecsDefaultMode = mode;
+    }
+    EcsMode ecsDefaultMode() const {
+        return m_ecsDefaultMode;
+    }
+
     // T-102: register a prefab system NAME so the Lua side's
     // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
     // Calls `IRSystem::createSystem<NAME>()` once and caches the
@@ -234,6 +252,16 @@ class LuaScript {
     // ids with a Lua error rather than silently no-oping.
     std::unordered_map<IRSystem::SystemId, std::shared_ptr<sol::protected_function>>
         m_luaSystemTicks;
+
+    // Creation-default ECS mode (CODEGEN vs EVAL). Read by
+    // `IRSystem.registerSystem({...})` when the call has no explicit
+    // `mode` field. EVAL by default so creations that don't use the
+    // codegen pipeline keep working without ceremony. Codegen-using
+    // creations call
+    // `setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode)`
+    // after `registerCodegenComponents()` so the runtime mirrors the
+    // build-time default driven by `IR_LUA_ECS_DEFAULT_MODE`.
+    EcsMode m_ecsDefaultMode = EcsMode::EVAL;
 
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the

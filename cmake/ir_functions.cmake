@@ -136,6 +136,7 @@ endfunction()
 #   irreden_lua_codegen(<target>
 #       SOURCES <input1.lua> [input2.lua ...]
 #       OUTPUT_HPP <path/to/generated.hpp>
+#       [DEFAULT_MODE <CODEGEN|EVAL>]   # default CODEGEN
 #   )
 #
 # Behaviour:
@@ -147,6 +148,17 @@ endfunction()
 #     the codegen binary is built first on a clean tree without a separate
 #     add_dependencies() edge.
 #
+# DEFAULT_MODE selects how systems without an explicit Lua
+# `mode = "..."` field are emitted. CODEGEN (default) emits a typed C++
+# `IRSystem::createSystem<...>` per system; EVAL skips C++ emission and
+# the system registers at runtime via the existing Lua-driven path. The
+# emitted header exports `IRScript::CodegenRegistry::kDefaultEcsMode`
+# matching this value so runtime dispatch via
+# `LuaScript::setEcsDefaultMode()` agrees with the build-time decision.
+# Per-creation override via the `IR_LUA_ECS_DEFAULT_MODE` cache variable
+# (set in the creation's CMakeLists.txt or on the cmake command line)
+# takes precedence when DEFAULT_MODE is omitted.
+#
 # All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
 # unless absolute. The generated header is regenerated on Lua-source change
 # but not on tool-source change (the codegen tool target's link dependency
@@ -155,12 +167,29 @@ endfunction()
 function(
     irreden_lua_codegen target
 )
-    cmake_parse_arguments(IRLC "" "OUTPUT_HPP" "SOURCES" ${ARGN})
+    cmake_parse_arguments(IRLC "" "OUTPUT_HPP;DEFAULT_MODE" "SOURCES" ${ARGN})
     if(NOT IRLC_OUTPUT_HPP)
         message(FATAL_ERROR "irreden_lua_codegen: OUTPUT_HPP is required")
     endif()
     if(NOT IRLC_SOURCES)
         message(FATAL_ERROR "irreden_lua_codegen: SOURCES is required")
+    endif()
+
+    # DEFAULT_MODE precedence — explicit param > IR_LUA_ECS_DEFAULT_MODE
+    # cache var > CODEGEN. The cache var lets `cmake -DIR_LUA_ECS_DEFAULT_MODE=EVAL`
+    # flip a build flavor without editing creation CMakeLists.
+    if(NOT IRLC_DEFAULT_MODE)
+        if(DEFINED IR_LUA_ECS_DEFAULT_MODE)
+            set(IRLC_DEFAULT_MODE "${IR_LUA_ECS_DEFAULT_MODE}")
+        else()
+            set(IRLC_DEFAULT_MODE "CODEGEN")
+        endif()
+    endif()
+    if(NOT IRLC_DEFAULT_MODE STREQUAL "CODEGEN" AND NOT IRLC_DEFAULT_MODE STREQUAL "EVAL")
+        message(FATAL_ERROR
+            "irreden_lua_codegen: DEFAULT_MODE must be CODEGEN or EVAL "
+            "(got '${IRLC_DEFAULT_MODE}')"
+        )
     endif()
 
     # Resolve OUTPUT_HPP to an absolute path so add_custom_command's OUTPUT
@@ -181,14 +210,22 @@ function(
 
     get_filename_component(_output_dir "${IRLC_OUTPUT_HPP}" DIRECTORY)
 
+    # CMake 3.31+ added a CODEGEN positional keyword to add_custom_command;
+    # any bare "CODEGEN" token in the call (even after variable expansion
+    # inside COMMAND) trips its policy gate and aborts configure. Pass the
+    # value lowercased to the CLI tool so the literal "CODEGEN" never
+    # appears in the add_custom_command argument list.
+    string(TOLOWER "${IRLC_DEFAULT_MODE}" _mode_lower)
+
     add_custom_command(
         OUTPUT "${IRLC_OUTPUT_HPP}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
         COMMAND $<TARGET_FILE:ir_lua_codegen>
             --out "${IRLC_OUTPUT_HPP}"
+            "--default-mode=${_mode_lower}"
             ${_resolved_sources}
         DEPENDS ir_lua_codegen ${_resolved_sources}
-        COMMENT "lua_codegen: ${IRLC_OUTPUT_HPP}"
+        COMMENT "lua_codegen [${_mode_lower}]: ${IRLC_OUTPUT_HPP}"
         VERBATIM
     )
 

@@ -63,6 +63,19 @@ explicit `Params` + `setSystemParams` form remains supported as an escape
 hatch. See [`engine/system/CLAUDE.md`](system/CLAUDE.md) "Per-system
 parameters" for both shapes and the migration story.
 
+## Lua-driven ECS uses build-time codegen by default
+
+CODEGEN is the production runtime for Lua-defined components and systems
+— the build-time tool at `cmake/lua_codegen/` emits typed C++ struct +
+`IRSystem::createSystem<...>` specialisations from `.lua` schemas, so
+per-row work runs at native speed. EVAL (LuaJIT-backed sol2 dispatch via
+`bindLuaDrivenEcs()`) is the dev-iteration opt-out: per-system via
+`mode = "eval"` in the Lua source, or per-creation via
+`-DIR_LUA_ECS_DEFAULT_MODE=EVAL` for a hot-reloadable build flavor. See
+`engine/script/CLAUDE.md` "Per-system mode override + CODEGEN/EVAL
+coexistence" for the DSL subset, the per-system override, the
+CMake flag, and the hot-reload-only-in-EVAL contract.
+
 ## `createEntity` always adds position components
 
 `IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` and
