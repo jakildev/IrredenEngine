@@ -182,7 +182,7 @@ Avoid:
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
   - **Owner:** claude/T-109-codegen-perf-grid
-  - **Blocked by:** (none)
+  - **Blocked by:** T-104
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) lua_perf_grid/ migrated to CODEGEN; fleet-build --target IRLuaPerfGrid clean under IR_LUA_ECS_DEFAULT_MODE=CODEGEN; fleet-run produces same populated lattice as C++ baseline; (2) CODEGEN wave-system per-tick measured at 16³ (4096 entities) and 64³ (262144 entities): ≤1.5× C++ perf_grid wave system; actual ratio documented; (3) EVAL build (IR_LUA_ECS_DEFAULT_MODE=EVAL) profiled same configs: ~2–10× C++ (informational, not a gate); (4) docs/design/lua-driven-ecs.md retrospective updated: original ≥10000× failure, LuaJIT-only intermediate, CODEGEN final (gate number), architect rationale; (5) PR #563 rebased + body amended with measurements, merged; epic #293 amended + closed; #566 closed; (6) fleet-build --target IrredenEngineTest clean under both modes; full test suite passes. If gate fails (>1.5×): do NOT close #293; amend docs/design/lua-driven-ecs.md with corrective decision instead
   - **Issue:** #589
@@ -223,6 +223,102 @@ Avoid:
   - **Acceptance:** (1) all 10 primitives (panel, label, button, slider, list, dropdown, checkbox, radio, text input, scroll) render correctly at multiple DPI/scale factors via trixel canvas; (2) hover/pressed/focused/disabled states wired for each interactive primitive; (3) test harness exe or scene in IRVoxelEditor shows all 10 primitives in single window; (4) style configurable through single theme struct; (5) fleet-build --target IRVoxelEditor (or equivalent) clean on linux-debug
   - **Issue:** #620
   - **Notes:** Blocked by T-144 (epic doc, #619). Parent epic #603 (Phase 0). Umbrella #213. Highest-risk ticket in Phase 0 — escalate early if stalled, do not burn time-box silently. F-0.2 (layout) and F-0.3 (input routing) build directly on top. Game companion jakildev/irreden#60.
+  - **Links:**
+
+
+- [ ] **Editor F-0.6: per-voxel metadata extension (.txl v2)** — add material_id, flags, bone_id per voxel; bump .txl to v2 with version-aware loader preserving backward compat
+  - **ID:** T-146
+  - **Area:** engine/prefabs/irreden/voxel, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-144
+  - **Acceptance:** (1) .txl v2 format spec written and committed alongside loader; (2) version-aware loader: reads v1 unchanged (zero-fills new fields), reads v2 with full fidelity, rejects unknown versions with clear error; (3) round-trip test: load v1 → save as v2 → reload v2 → equality on original voxel data; (4) existing demos/assets loading .txl keep working without code changes; (5) accessor API: voxel.material_id(), voxel.flags(), voxel.bone_id() on engine voxel type; (6) fleet-build clean on linux-debug
+  - **Issue:** #621
+  - **Notes:** Phase 0 (F-0.6) of entity-editor epic. Parent epic: #603. Umbrella: #213. Epic doc: #619. Engine reserves full byte for material_id (16–32 cap is game-side concern per irreden#60). Per-voxel size growth has perf implications worth measuring at implementation time.
+  - **Links:**
+
+
+- [ ] **Editor F-0.8: editor exe scaffold at creations/editors/voxel_editor/** — stand up IRVoxelEditor target with main loop, window, empty dockspace, and 3D viewport reference grid
+  - **ID:** T-147
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-144
+  - **Acceptance:** (1) fleet-build --target IRVoxelEditor clean on linux-debug; (2) fleet-run IRVoxelEditor launches window with 3D viewport showing reference grid; (3) window close + Esc both shut cleanly; (4) source layout follows creations/demos/shape_debug/ patterns per creations/CLAUDE.md; (5) builds on macos-debug and windows-debug
+  - **Issue:** #622
+  - **Notes:** Phase 0 (F-0.8) of entity-editor epic. Parent epic: #603. Umbrella: #213. All later Phase 0 tickets (F-0.4 camera, F-0.5 gizmos, F-0.9 picking) and Phase 1+ live inside this exe. Reference: creations/demos/shape_debug/CMakeLists.txt.
+  - **Links:**
+
+
+- [ ] **Editor F-0.2: layout system (rows, columns, dock targets, splitters)** — flex-like containers, draggable splitters, dockable panels building the editor dockspace on top of F-0.1 primitives
+  - **ID:** T-148
+  - **Area:** engine/prefabs/irreden/render, creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-144, T-145
+  - **Acceptance:** (1) compose fixed editor dockspace (left + center viewport + right + bottom) using layout API; (2) splitters resize live with min/max constraints respected; (3) drag panel by title bar → dock-target previews appear → drop to dock; layout persists in memory until shutdown; (4) layout serializes/deserializes from JSON blob in-memory (file IO deferred, serialization path must work)
+  - **Issue:** #623
+  - **Notes:** Phase 0 (F-0.2) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Every editor panel composes through this.
+  - **Links:**
+
+
+- [ ] **Editor F-0.3: input routing (mouse hover/click/drag, keyboard focus, hotkey table)** — z-order-aware event dispatch to widgets, single-widget keyboard focus, capture/release, centralized hotkey registry
+  - **ID:** T-149
+  - **Area:** engine/prefabs/irreden/input, creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-144, T-145
+  - **Acceptance:** (1) click on button under panel overlay does NOT fire the button (z-order respected); (2) drag-from-slider updates value live; release outside slider rect still completes drag (capture works); (3) Tab cycles focus across text inputs in a panel; (4) register action editor.toggle_grid with Ctrl+G → fires on keypress; duplicate binding on same combo logs a warning
+  - **Issue:** #624
+  - **Notes:** Phase 0 (F-0.3) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Hotkey table unblocks Phase 1+ editor shortcuts (paint, erase, copy, paste, save).
+  - **Links:**
+
+
+- [ ] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
+  - **ID:** T-150
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-144, T-147
+  - **Acceptance:** (1) editor opens with sane default framing showing reference grid centered; (2) orbit/pan/zoom/snap/re-center all work responsively at 60 fps on linux-debug; (3) close editor + re-open → framing restored; (4) snap views give pixel-aligned axis-aligned projection
+  - **Issue:** #625
+  - **Notes:** Phase 0 (F-0.4) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-147 (F-0.8 scaffold). Human note: engine has one yaw rotation so far; suggests voxel entity rotation rather than full camera orbit since entities turn in the world — verify approach with architect/human before full implementation. Look at existing demo cameras before designing from scratch.
+  - **Links:**
+
+
+- [ ] **Editor F-0.7: JSON sidecar format for .txl** — .txl.json alongside every .txl save; stores bind-points, component-pack fields, material-registry references; silent when absent
+  - **ID:** T-151
+  - **Area:** engine/prefabs/irreden/voxel, creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-144, T-146
+  - **Acceptance:** (1) editor writes .txl.json next to .txl save (omit file if content empty); (2) loader reads sidecar if present; missing sidecar = empty bind-point list, empty component-pack, identity material map, no log; (3) round-trip test: write voxel grid + bind-points → reload → bind-points match exactly; (4) schema documented in same doc as .txl v2 spec from F-0.6
+  - **Issue:** #626
+  - **Notes:** Phase 0 (F-0.7) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-146 (F-0.6 per-voxel metadata). Bind-point name vocabulary in game-side editor-needs.md (irreden#60). Engine stores component-pack values as untyped JSON; game side reads via its own registry.
+  - **Links:**
+
+
+- [ ] **Editor F-0.5: gizmo primitives (translate/rotate/scale handles, joint/bind-point/IK markers)** — screen-space-sized depth-aware 3D gizmos rendered into the editor viewport on top of the voxel scene
+  - **ID:** T-152
+  - **Area:** engine/render, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-144, T-150
+  - **Acceptance:** (1) select voxel → translate gizmo at center; drag X arrow → moves only in X; release applies; (2) rotate gizmo drag around Y ring rotates selection around Y; Shift held snaps to 15°; (3) scale gizmo drag-uniform-center scales uniformly; (4) all gizmos render at constant screen-space size regardless of camera distance, depth-aware (hidden faces dimmed); (5) hover highlights handle under cursor; (6) joint/bind-point/IK marker primitives render at constant screen-space size and are clickable
+  - **Issue:** #627
+  - **Notes:** Phase 0 (F-0.5) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-150 (F-0.4 camera — gizmos need a working camera viewport). Render-pipeline integration required: custom shader pass for screen-space sizing and depth-aware rendering. Phase 2 (skeletal) and Phase 5 (bind-points) author rigs via these gizmos.
+  - **Links:**
+
+
+- [ ] **Editor F-0.9: voxel mouse picking (ray cast → world-space voxel selection)** — cursor-to-ray, DDA voxel grid intersection, single-voxel selection state with visual highlight
+  - **ID:** T-153
+  - **Area:** engine/render, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-144, T-147, T-150
+  - **Acceptance:** (1) left-click on voxel in 3D viewport → selected and visually highlighted; (2) left-click on empty space → selection clears; (3) selection survives camera orbit/pan/zoom (only highlight redraws); (4) picking respects camera projection (orthographic + perspective); (5) selected voxel world-space position queryable via editor selection state for Phase 1+ tools
+  - **Issue:** #628
+  - **Notes:** Phase 0 (F-0.9) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc), T-147 (F-0.8 editor scaffold), T-150 (F-0.4 camera). Selection-state design must anticipate Phase 1+ multi-selection. Phase 0 acceptance criterion in #603 explicitly requires mouse picking.
   - **Links:**
 
 ## Done — last 20
