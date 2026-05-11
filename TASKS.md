@@ -238,11 +238,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.8: editor exe scaffold at creations/editors/voxel_editor/** — stand up IRVoxelEditor target with main loop, window, empty dockspace, and 3D viewport reference grid
+- [~] **Editor F-0.8: editor exe scaffold at creations/editors/voxel_editor/** — stand up IRVoxelEditor target with main loop, window, empty dockspace, and 3D viewport reference grid
   - **ID:** T-147
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-147-voxel-editor-scaffold
   - **Blocked by:** T-144
   - **Acceptance:** (1) fleet-build --target IRVoxelEditor clean on linux-debug; (2) fleet-run IRVoxelEditor launches window with 3D viewport showing reference grid; (3) window close + Esc both shut cleanly; (4) source layout follows creations/demos/shape_debug/ patterns per creations/CLAUDE.md; (5) builds on macos-debug and windows-debug
   - **Issue:** #622
