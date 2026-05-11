@@ -177,25 +177,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Per-system mode override + CODEGEN/EVAL coexistence in one creation** — add mode field so CODEGEN and EVAL systems can coexist; T-103 hot-reload stays EVAL-only
-  - **ID:** T-108
-  - **Area:** engine/script, build
-  - **Model:** opus
-  - **Owner:** claude/T-108-mode-override-coexistence
-  - **Blocked by:** (none)
-  - **Stack:** T-106..T-109 codegen-pipeline
-  - **Acceptance:** (1) IRSystem.registerSystem({mode="eval"|"codegen",...}) opts system out/in; absent mode uses creation default; unknown values are codegen errors; (2) CMake IR_LUA_ECS_DEFAULT_MODE cache var per creation (CODEGEN default or EVAL); irreden_lua_codegen helper gains DEFAULT_MODE param; (3) EVAL-mode systems emit stubs calling bindLuaDrivenEcs() → IRSystem::createSystemDynamic() at runtime; CODEGEN systems emit C++ as in T-107; same SystemId space; (4) coexistence test: two systems in one Lua file (one CODEGEN, one EVAL) — both register, both tick, EVAL is hot-reloadable, CODEGEN hot-reload attempt errors with "hot-reload not supported in CODEGEN mode for system 'Name'; mark mode='eval' or rebuild"; (5) T-103 hot-reload continues working for EVAL systems; (6) engine/script/CLAUDE.md updated with mode semantics + CMake flag + hot-reload-only-in-EVAL contract; engine/CLAUDE.md style section gets CODEGEN-as-default bullet; (7) fleet-build clean under both IR_LUA_ECS_DEFAULT_MODE=CODEGEN and =EVAL; all tests pass under both
-  - **Issue:** #588
-  - **Notes:** PR 3 of 4 for Lua codegen stack (T-106..T-109 codegen-pipeline). Blocked by T-107. Architect decision in #566; design plan at ~/.claude/plans/fuzzy-singing-stardust.md. Out of scope: demo migration (T-109).
-  - **Links:**
-
-
 - [~] **Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293** — apply CODEGEN to creations/demos/lua_perf_grid/, re-profile vs. C++ perf_grid, close Lua-driven ECS epic
   - **ID:** T-109
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
   - **Owner:** claude/T-109-codegen-perf-grid
-  - **Blocked by:** T-108
+  - **Blocked by:** (none)
   - **Stack:** T-106..T-109 codegen-pipeline
   - **Acceptance:** (1) lua_perf_grid/ migrated to CODEGEN; fleet-build --target IRLuaPerfGrid clean under IR_LUA_ECS_DEFAULT_MODE=CODEGEN; fleet-run produces same populated lattice as C++ baseline; (2) CODEGEN wave-system per-tick measured at 16³ (4096 entities) and 64³ (262144 entities): ≤1.5× C++ perf_grid wave system; actual ratio documented; (3) EVAL build (IR_LUA_ECS_DEFAULT_MODE=EVAL) profiled same configs: ~2–10× C++ (informational, not a gate); (4) docs/design/lua-driven-ecs.md retrospective updated: original ≥10000× failure, LuaJIT-only intermediate, CODEGEN final (gate number), architect rationale; (5) PR #563 rebased + body amended with measurements, merged; epic #293 amended + closed; #566 closed; (6) fleet-build --target IrredenEngineTest clean under both modes; full test suite passes. If gate fails (>1.5×): do NOT close #293; amend docs/design/lua-driven-ecs.md with corrective decision instead
   - **Issue:** #589
@@ -240,6 +227,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-108** — Per-system mode override + CODEGEN/EVAL coexistence · Owner: claude/T-108-mode-override-coexistence · PR: https://github.com/jakildev/IrredenEngine/pull/598
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
 - [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
@@ -259,4 +247,3 @@ Avoid:
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
-- [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
