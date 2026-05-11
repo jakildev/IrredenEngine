@@ -42,6 +42,14 @@ inline IRMath::vec3 resolveDirection() {
     return dir;
 }
 
+// Per-frame resolved sun direction. Call from a system's beginTick (once per
+// frame), store the result in SystemParams, and read the cached value in the
+// per-entity tick. Identical to resolveDirection() today; reserved for future
+// caching by a RESOLVE_SUN_DIRECTION head-of-pipeline system.
+inline IRMath::vec3 getFrameSunDirection() {
+    return resolveDirection();
+}
+
 } // namespace IRPrefab::SunShadow
 
 #endif /* IRREDEN_RENDER_SUN_SHADOW_CONSTANTS_H */
