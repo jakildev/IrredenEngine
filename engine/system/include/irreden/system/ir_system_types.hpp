@@ -114,6 +114,14 @@ enum SystemName {
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
+    WIDGET_INPUT,
+    WIDGET_APPLY_SLIDER,
+    WIDGET_APPLY_CHECKBOX,
+    WIDGET_RENDER_PANEL,
+    WIDGET_RENDER_LABEL,
+    WIDGET_RENDER_BUTTON,
+    WIDGET_RENDER_SLIDER,
+    WIDGET_RENDER_CHECKBOX,
 
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.

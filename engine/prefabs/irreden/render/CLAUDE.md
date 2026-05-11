@@ -93,6 +93,65 @@ backing field to `RenderManager`. See `engine/render/CLAUDE.md`
 full principle, the rule of thumb, and the list of existing violations being
 cleaned up.
 
+## Trixel UI widget framework
+
+`widgets.hpp` exposes `IRPrefab::Widget::make<kind>(...)` builders and
+`wasClicked` / `sliderValue` / `checkboxState` readers for the five Phase 0
+F-0.1 primitives: **panel, label, button, slider, checkbox**. Each builder
+produces a single ECS entity that carries `C_Widget` (kind + size +
+disabled flag), `C_GuiPosition`, optionally `C_WidgetState` +
+`C_HitBox2DGui` (interactive kinds only), and a kind-specific data
+component (`C_WidgetPanel` / `C_WidgetLabel` / `C_WidgetButton` /
+`C_WidgetSlider` / `C_WidgetCheckbox`). Theme lives in
+`widget_theme.hpp::defaultTheme()` — a single inline header-level
+instance a creation mutates once at init.
+
+**Pipeline wiring (required order):**
+
+```
+INPUT:  HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT
+        → WIDGET_APPLY_SLIDER → WIDGET_APPLY_CHECKBOX
+RENDER: ... → TEXT_TO_TRIXEL → WIDGET_RENDER_PANEL
+        → WIDGET_RENDER_LABEL → WIDGET_RENDER_BUTTON
+        → WIDGET_RENDER_SLIDER → WIDGET_RENDER_CHECKBOX
+        → TRIXEL_TO_FRAMEBUFFER → ...
+```
+
+`WIDGET_INPUT` reads `C_HitBox2DGui::hovered_` populated by
+`HITBOX_MOUSE_TEST_GUI` and writes the generic state machine into
+`C_WidgetState` (hovered / pressed / fireAction / dragValue). The two
+per-kind apply followers exist so the input system itself never calls
+`getComponent` on per-entity kind-specific data — slider value and
+checkbox toggle land on their own dedicated systems whose archetype
+filter already includes the kind-specific component.
+
+`WIDGET_RENDER_*` is split per kind for the same reason. Each renders
+its own backgrounds, borders, and label text onto the **GUI canvas**
+via `trixel_rect.hpp::fillRect` (one batched `subImage2D` per rect) +
+`trixel_text.hpp::renderText`. These systems run **after**
+`TEXT_TO_TRIXEL` so the canvas clear in TEXT_TO_TRIXEL's `beginTick` has
+already happened — widget pixels overpaint where they overlap with
+unrelated GUI overlay text. Place widgets away from the perf-stats
+overlay region (top-right by default) until the canvas-clear contract
+gets extracted into its own system (follow-up).
+
+**Distance bands** (`trixel_rect.hpp`):
+
+- `kWidgetBackgroundDistance` — solid fill behind everything else.
+- `kWidgetBorderDistance` — borders + slider thumb.
+- `kWidgetLabelDistance` — checkbox fill (the closest layer; below
+  TEXT_TO_TRIXEL glyphs at `kGuiTextDistance` from `trixel_text.hpp`).
+
+Distances govern only the framebuffer composite, not the per-canvas
+write order — within a single widget tick the system draws bg → border
+→ label in painter order to overwrite consistently.
+
+**Adding the sixth + widgets** (LIST, DROPDOWN, RADIO, TEXT_INPUT,
+SCROLL) follows the same recipe: a `C_Widget<Kind>` data component, a
+`WIDGET_RENDER_<KIND>` system iterating `C_Widget + C_Widget<Kind> +
+C_WidgetState + C_GuiPosition`, optionally a `WIDGET_APPLY_<KIND>`
+follower if the kind needs to mutate its own state on interaction.
+
 ## Gotchas
 
 - **Canvas texture lifetime.** The 3 GPU textures owned by

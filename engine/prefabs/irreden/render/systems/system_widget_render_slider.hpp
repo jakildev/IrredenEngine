@@ -1,0 +1,123 @@
+#ifndef SYSTEM_WIDGET_RENDER_SLIDER_H
+#define SYSTEM_WIDGET_RENDER_SLIDER_H
+
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_render.hpp>
+#include <irreden/ir_math.hpp>
+
+#include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/widget_theme.hpp>
+#include <irreden/render/widget_draw.hpp>
+#include <irreden/render/trixel_rect.hpp>
+
+#include <cstdio>
+#include <string>
+
+namespace IRSystem {
+
+template <> struct System<WIDGET_RENDER_SLIDER> {
+    IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRRender::RectFillScratch scratch_;
+
+    void beginTick() {
+        IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
+        canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+    }
+
+    void tick(
+        const IRComponents::C_Widget &widget,
+        const IRComponents::C_WidgetSlider &slider,
+        const IRComponents::C_WidgetState &state,
+        const IRComponents::C_GuiPosition &guiPos
+    ) {
+        if (widget.kind_ != IRComponents::WidgetKind::SLIDER) return;
+        if (!canvas_) return;
+
+        const auto &theme = IRPrefab::Widget::defaultTheme();
+        const int W = widget.size_.x;
+        const int H = widget.size_.y;
+        if (W <= 0 || H <= 0) return;
+
+        // Top half is the optional label, bottom half is track + thumb.
+        const int labelH = slider.label_.empty() ? 0 : IRRender::kGlyphStepY;
+        const int trackY = guiPos.pos_.y + labelH + (H - labelH - theme.sliderTrackThickness_) / 2;
+        const int trackX = guiPos.pos_.x;
+
+        if (!slider.label_.empty()) {
+            IRPrefab::Widget::detail::drawLeftText(
+                *canvas_,
+                slider.label_,
+                guiPos.pos_,
+                labelH,
+                IRPrefab::Widget::detail::stateText(theme, widget)
+            );
+        }
+
+        // Track
+        IRRender::fillRect(
+            *canvas_,
+            IRMath::ivec2(trackX, trackY),
+            IRMath::ivec2(W, theme.sliderTrackThickness_),
+            theme.sliderTrack_,
+            IRRender::kWidgetBackgroundDistance,
+            scratch_
+        );
+
+        // Thumb
+        const float range =
+            (slider.maxValue_ - slider.minValue_) != 0.0f ? (slider.maxValue_ - slider.minValue_) : 1.0f;
+        const float t = IRMath::clamp(
+            (slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f
+        );
+        const int thumbW = theme.sliderThumbWidth_;
+        const int thumbH = H - labelH;
+        const int thumbX = guiPos.pos_.x + static_cast<int>(t * static_cast<float>(W - thumbW));
+        const int thumbY = guiPos.pos_.y + labelH;
+        const IRMath::Color thumbColor =
+            widget.disabled_   ? theme.backgroundDisabled_
+            : state.hovered_   ? theme.sliderThumbHover_
+                               : theme.sliderThumbIdle_;
+        IRRender::fillRect(
+            *canvas_,
+            IRMath::ivec2(thumbX, thumbY),
+            IRMath::ivec2(thumbW, thumbH),
+            thumbColor,
+            IRRender::kWidgetBorderDistance,
+            scratch_
+        );
+
+        // Value text at the right edge of the label row.
+        if (!slider.label_.empty()) {
+            char buf[16];
+            std::snprintf(buf, sizeof(buf), "%.2f", slider.currentValue_);
+            const std::string valueStr = buf;
+            const IRMath::ivec2 ts = IRPrefab::Widget::detail::measureSingleLine(valueStr);
+            const IRMath::ivec2 vpos =
+                IRMath::ivec2(guiPos.pos_.x + W - ts.x, guiPos.pos_.y);
+            IRPrefab::Widget::detail::drawLeftText(
+                *canvas_,
+                valueStr,
+                vpos,
+                labelH,
+                IRPrefab::Widget::detail::stateText(theme, widget)
+            );
+        }
+    }
+
+    static SystemId create() {
+        return registerSystem<
+            WIDGET_RENDER_SLIDER,
+            IRComponents::C_Widget,
+            IRComponents::C_WidgetSlider,
+            IRComponents::C_WidgetState,
+            IRComponents::C_GuiPosition
+        >("WidgetRenderSlider");
+    }
+};
+
+} // namespace IRSystem
+
+#endif /* SYSTEM_WIDGET_RENDER_SLIDER_H */
