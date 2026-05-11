@@ -32,8 +32,7 @@ config = {
 }
 
 lua_perf_grid = {
-    -- Note: grid_size >= 8 may SIGBUS on macOS Metal without Xcode precompilation; use 4 for local iteration
-    grid_size = 16,
+    grid_size = 64,
     spacing = 2.0,
     wave_amplitude = 6.0,
     wave_period_seconds = 4.0,
