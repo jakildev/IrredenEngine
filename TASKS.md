@@ -201,32 +201,11 @@ Avoid:
   - **Notes:** Engine infrastructure only — no game-specific content. Owner comment: integrate particle system that does not rely on CPU iteration or per-entity voxel positioning. See midi projects in creations/ for CPU particle patterns to replace. Existing compute shaders in engine/render/src/shaders/ for precedent.
   - **Links:**
 
-
-- [~] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
-  - **ID:** T-143
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-143-resolve-sun-direction
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) new system RESOLVE_SUN_DIRECTION added to SystemName enum; registered at head of RENDER pipeline; resolves C_LightSource DIRECTIONAL override once per frame (respects IRRender::getSunShadowsEnabled()); (2) IRPrefab::SunShadow::getFrameSunDirection() accessor reads from system params; (3) VOXEL_TO_TRIXEL_STAGE_1 and SHAPES_TO_TRIXEL use getFrameSunDirection() — no direct C_LightSource scans; (4) sun-direction lookup in system_voxel_to_trixel hoisted from per-entity tick lambda to beginTick; (5) BAKE_SUN_SHADOW_MAP retains or unifies its own detail::resolveSun() — author's call, must be deliberate; (6) no behavioral change to shadow casting in shape_debug at zoom 4 / zoom 8; (7) fleet-build clean on linux-debug
-  - **Issue:** #578
-  - **Notes:** Low-priority follow-up flagged in PR #576 review. C_LightSource is small (1-3 entities) so cost is microseconds today; structural concern is per-entity tick placement and future consumer count. Prefer approach 1 (new resolver system) over writing back to IRRender::setSunDirection() per issue analysis.
-  - **Links:**
-
-
----
-
-## In progress
-
-<!-- Tasks currently being worked on. Mirror of [~] items above. -->
-
-
----
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
 - [x] **T-108** — Per-system mode override + CODEGEN/EVAL coexistence · Owner: claude/T-108-mode-override-coexistence · PR: https://github.com/jakildev/IrredenEngine/pull/598
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
@@ -246,4 +225,3 @@ Avoid:
 - [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
 - [x] **T-092** — Render: final occupancy-grid teardown — comment cleanup · Owner: claude/T-092-occupancy-grid-teardown · PR: https://github.com/jakildev/IrredenEngine/pull/567
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
-- [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
