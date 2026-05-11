@@ -188,21 +188,36 @@ struct C_VoxelSetNew {
 
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
-    bool updateAsChild(C_Position3D parentPosition) {
+    //
+    // `poolGlobalsOut` is the canvas pool's `m_voxelPositionsGlobal` vector
+    // (fetched by the caller). We write through the pool by `voxelStartIdx_`
+    // rather than through `globalPositions_` because the span was captured
+    // at allocation time and is invalidated when the canvas archetype
+    // migrates (deep-copy of C_VoxelPool freed the old storage). Writing by
+    // index keeps the live pool in sync regardless of how many migrations
+    // happened between allocation and now.
+    bool updateAsChild(
+        C_Position3D parentPosition,
+        std::vector<C_PositionGlobal3D> &poolGlobalsOut
+    ) {
         if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
             return false;
         }
         lastParentPosition_ = parentPosition.pos_;
         hasLastParentPosition_ = true;
-        int safeCount = IRMath::min(
+        const size_t writableTail = poolGlobalsOut.size() > voxelStartIdx_
+            ? poolGlobalsOut.size() - voxelStartIdx_
+            : 0u;
+        const int safeCount = IRMath::min(
             numVoxels_,
             static_cast<int>(IRMath::min(
                 IRMath::min(positions_.size(), positionOffsets_.size()),
-                IRMath::min(globalPositions_.size(), voxels_.size())
+                IRMath::min(static_cast<size_t>(voxels_.size()), writableTail)
             ))
         );
         for (int i = 0; i < safeCount; i++) {
-            globalPositions_[i].pos_ = getLocalPosition(i) + parentPosition.pos_;
+            poolGlobalsOut[voxelStartIdx_ + i].pos_ =
+                getLocalPosition(i) + parentPosition.pos_;
         }
         return safeCount > 0;
     }
