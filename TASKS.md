@@ -190,11 +190,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
+- [ ] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
   - **ID:** T-139
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** claude/T-139-gpu-particle-foundation
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) GPU particle pool in SSBO; pool size configurable per creation; (2) compute shader update pass: position, velocity, lifetime, per-frame drift; (3) indirect draw pass: particles rendered as world-space sprites or voxel-like quads in iso camera; (4) Lua spawn API: spawnParticle(pos, velocity, lifetime, type) queues for next dispatch; (5) GPU radius-cull query: returns particle indices within radius for ability-effect integration; (6) attraction-point compute pass: pull-force toward target position; (7) benchmark: 10K active particles at 60 fps on linux-debug and macos-debug; (8) demo creation IRParticleField with 1K drifting particles + one pull-toward-point test; fleet-build --target IRParticleField clean on linux-debug
   - **Issue:** #209
@@ -202,11 +202,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Docs: land entity-editor-epic.md canonical reference** — land docs/design/entity-editor-epic.md expanding umbrella #213 into the phased plan across all 11 editor phases
+- [~] **Docs: land entity-editor-epic.md canonical reference** — land docs/design/entity-editor-epic.md expanding umbrella #213 into the phased plan across all 11 editor phases
   - **ID:** T-144
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-144-entity-editor-epic-doc
   - **Blocked by:** (none)
   - **Acceptance:** (1) docs/design/entity-editor-epic.md exists on master; (2) doc covers all 11 phases (0–10) with scope, sub-task list, acceptance, blocked-by chain, and per-phase risks; (3) doc cross-references game-side companion at creations/game/irreden/docs/editor-needs.md; (4) doc explains the no-dear-imgui trixel-UI bet up front; (5) each later phase epic body links back to its doc section
   - **Issue:** #619
@@ -214,11 +214,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.1: trixel UI primitives** — implement 10-widget trixel-rendered UI primitive set for voxel editor; no dear-imgui
+- [~] **Editor F-0.1: trixel UI primitives** — implement 10-widget trixel-rendered UI primitive set for voxel editor; no dear-imgui
   - **ID:** T-145
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-145-trixel-ui-primitives
   - **Blocked by:** T-144
   - **Acceptance:** (1) all 10 primitives (panel, label, button, slider, list, dropdown, checkbox, radio, text input, scroll) render correctly at multiple DPI/scale factors via trixel canvas; (2) hover/pressed/focused/disabled states wired for each interactive primitive; (3) test harness exe or scene in IRVoxelEditor shows all 10 primitives in single window; (4) style configurable through single theme struct; (5) fleet-build --target IRVoxelEditor (or equivalent) clean on linux-debug
   - **Issue:** #620
