@@ -215,18 +215,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Demo: Z-Yaw world rotation showcase** — demo creation(s) exercising Z-Yaw world rotation with SDF/voxel entities, mouse-controlled rotation, and per-voxel hover/click detection
-  - **ID:** T-141
-  - **Area:** creations/demos
-  - **Model:** sonnet
-  - **Owner:** claude/T-141-z-yaw-rotation-demo
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) at least two demo modes: (a) SDF + voxel-pool entities rotating under Z-Yaw; (b) rotation tied to mouse movement with toggle key for mouse lock; (2) clickable entities: hover highlights, click triggers a visual effect; (3) hover and click detection work correctly under rotation (per-voxel, not separate hitboxes); (4) any unimplemented per-voxel detection functionality is documented as filed issues or linked; (5) fleet-build --target IR<DemoName> clean on linux-debug; fleet-run produces visually correct rotating scene
-  - **Issue:** #569
-  - **Notes:** Epic #310 rotation functionality believed implemented. Issue notes possible blocker at #354 — verify whether #354 is resolved or still blocks per-voxel collision under rotation; file/link follow-up if needed.
-  - **Links:**
-
-
 - [~] **Render: cache resolved sun direction once per frame** — introduce RESOLVE_SUN_DIRECTION system at head of RENDER pipeline; eliminate per-entity and duplicate C_LightSource scans in rasterizers
   - **ID:** T-143
   - **Area:** engine/prefabs/irreden/render
@@ -252,6 +240,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
 - [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
 - [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
@@ -271,4 +260,3 @@ Avoid:
 - [x] **T-129** — Fleet: fleet-up bootstrap-trigger extension for worker/reviewer roles · Owner: claude/T-129-fleet-up-bootstrap-triggers · PR: https://github.com/jakildev/IrredenEngine/pull/562
 - [x] **T-128** — Fleet: demote queue-manager to scout-driven script — add fleet-queue-tick, remove LLM pane · Owner: claude/T-128-relanded · PR: https://github.com/jakildev/IrredenEngine/pull/564
 - [x] **T-115** — Docs: cross-author stacking lifecycle in FLEET.md · Owner: claude/T-115-cross-author-stacking-docs · PR: https://github.com/jakildev/IrredenEngine/pull/557
-- [x] **T-127** — Fleet: queue-manager role doc — replace hand-edit loop with fleet-tasks-render call · Owner: claude/T-127-queue-manager-fleet-tasks-render · PR: https://github.com/jakildev/IrredenEngine/pull/556
