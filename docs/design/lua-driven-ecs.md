@@ -502,30 +502,53 @@ specialisations. Per-row work runs at native speed; no `sol::function`
 or sol2 column dispatch on the hot path. T-109 then applied CODEGEN
 mode to `creations/demos/lua_perf_grid/` and re-measured.
 
+The Lua schema + tick body in `creations/demos/lua_perf_grid/main.lua`
+mirror `C_PeriodicIdle` and `system_periodic_idle.hpp` for the 2-stage
+SineEaseInOut wave perf_grid runs: same field set (flattened to flat
+scalars: `vec3` → 3 floats, `std::vector<PeriodStage>` → two hardcoded
+stage blocks), same per-tick arithmetic, same branch structure
+(pause / cycle-wrap / stage-advance / map+ease+lerp + amplitude),
+even bug-for-bug parity on `mapAngleToStageTValue`'s unused
+`clampedAngle`. The `while`-loop stage advance is unrolled into a
+single `if` (the DSL forbids `while` in CODEGEN bodies; correct for
+2 stages — the loop body could only fire once).
+
 | Demo                                  | Grid           | Wave-system per-tick    |
 |---------------------------------------|----------------|-------------------------|
 | `perf_grid` (C++) — `PeriodicIdle`    | 4³ = 64        | 0.004 ms (avg/call)     |
 | `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 4³ = 64    | 0.003 ms (avg/call)     |
 | `perf_grid` (C++) — `PeriodicIdle`    | 64³ = 262 144  | 1.750 ms (avg/call)     |
-| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 64³ = 262 144 | 0.497 ms (avg/call) |
+| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 64³ = 262 144 | 0.958 ms (avg/call) |
 
-**Ratio at grid_size=4: ~0.7×; ratio at grid_size=64: ~0.28×.** Both
-well under the 1.5× gate. Per-entity normalised at grid_size=64:
-~6.7 ns/entity (C++ `PeriodicIdle`) vs. ~1.9 ns/entity (Lua-CODEGEN
-`LuaWaveTick`). The Lua wave kernel is structurally simpler than
-`C_PeriodicIdle::tick` (the C++ system runs a two-stage easing
-table with `addStageDurationSeconds`; the Lua kernel is a single
-`amp * sin(angle)`), so the Lua port lands faster by a structural
-margin — not a "Lua beats C++" claim but confirmation that
-codegen-emitted code reaches and exceeds C++ throughput where the
-authored kernel is leaner. The ratio improves with grid size because
-fixed per-call setup amortises over more entities.
+**Ratio at grid_size=64: ~0.55×** — well under the 1.5× gate, and
+this is the apples-to-apples comparison with logic-parity Lua.
+Per-entity normalised at 64³: ~6.7 ns/entity (C++ `PeriodicIdle`) vs.
+~3.65 ns/entity (Lua-CODEGEN `LuaWaveTick`).
 
-**Frame-rate at 64³ (macOS Metal, MBP):** avg 15.52 ms / p50 12.36 ms /
-p95 19.59 ms for the Lua demo — comfortably inside the 16.67 ms 60 Hz
-budget. The C++ baseline at the same grid runs avg 17.19 ms / p50
-14.06 ms; difference is the Lua kernel's structural simplicity, not
-the runtime path.
+Lua-CODEGEN beats C++ here because the *implementation* differs even
+though the *logic* matches:
+
+1. **Easing dispatch.** The engine's `kEasingFunctions` is a
+   `std::unordered_map<IREasingFunctions, std::function<float(float)>>`.
+   `kEasingFunctions.at(stage.easingFunction_)(mappedAngle)` is a
+   hashmap lookup + indirect call through `std::function`. The
+   codegen inlines `glm::sineEaseInOut(t) := -0.5 * (cos(pi*t) - 1)`
+   directly — no hashmap, no `std::function`.
+2. **Stage storage.** C++ uses `std::vector<PeriodStage> stages_` —
+   heap indirection per access. Codegen unrolls the 2 stages into
+   flat struct fields in one cache line.
+
+Both are addressable on the C++ side (constexpr easing dispatch +
+`std::array<PeriodStage, N>`) and would close the gap. The numbers
+here are not a "Lua beats C++" claim — they're evidence that the
+codegen path is structurally as fast as native, and that the C++
+baseline has its own optimisation headroom.
+
+**Frame-rate at 64³ (macOS Metal, MBP):** avg 16.19 ms / p50 12.92 ms /
+p95 20.72 ms for the Lua demo — right at the 60 Hz budget. The C++
+baseline at the same grid runs avg 17.19 ms / p50 14.06 ms; difference
+is the easing-dispatch + stage-storage cost noted above, not the
+runtime path.
 
 > *Stage 3 grid_size=64 numbers measured on macOS Metal (the earlier
 > SIGBUS at grid_size ≥ 8 was resolved upstream and both demos now run

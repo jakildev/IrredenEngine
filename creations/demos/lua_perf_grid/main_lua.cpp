@@ -185,18 +185,45 @@ vec3 positionForCell(int x, int y, int z) {
 }
 
 C_LuaWaveState makeWaveState(int x, int y, int z) {
+    // Mirrors creations/demos/perf_grid/main.cpp:makeWaveIdle() — same
+    // amplitude (vec3(0,0,amp_z)), same phase wavelength, same 2-stage
+    // SineEaseInOut setup, same C_PeriodicIdle constructor pre-computed
+    // angleIncrementPerTick = 2*pi / period / kFPS.
     const float tau = 2.0f * std::numbers::pi_v<float>;
+    const float pi = std::numbers::pi_v<float>;
     const float wavelength = std::max(8.0f, static_cast<float>(g_settings.gridSize_) * 0.5f);
     const float phase = tau * static_cast<float>(x + y + z) / wavelength;
-    // Field order on the codegen-emitted struct is alphabetical (T-106
-    // invariant): amp, out, period, phase, time. The constructor takes
-    // them in the same order.
+    const float period = g_settings.wavePeriodSeconds_;
+    const float angleInc = tau / period / static_cast<float>(IRConstants::kFPS);
+
+    // Field order on the codegen-emitted struct + LuaWaveState.new(...)
+    // constructor is alphabetical (T-106 invariant).
     return C_LuaWaveState{
-        g_settings.waveAmplitude_,
-        0.0f,
-        g_settings.wavePeriodSeconds_,
-        phase,
-        0.0f
+        /* amp_x            */ 0.0f,
+        /* amp_y            */ 0.0f,
+        /* amp_z            */ g_settings.waveAmplitude_,
+        /* angle            */ phase,
+        /* angle_inc        */ angleInc,
+        /* current_stage    */ 0,
+        /* cycle_completed  */ false,
+        /* out_x            */ 0.0f,
+        /* out_y            */ 0.0f,
+        /* out_z            */ 0.0f,
+        /* pause_requested  */ false,
+        /* paused           */ false,
+        /* period           */ period,
+        /* resume_countdown */ 0.0f,
+        /* s0_end_angle     */ pi,
+        /* s0_end_t         */  1.0f,
+        /* s0_reversed      */ false,
+        /* s0_start_angle   */ 0.0f,
+        /* s0_start_t       */ -1.0f,
+        /* s1_end_angle     */ tau,
+        /* s1_end_t         */ -1.0f,
+        /* s1_reversed      */ false,
+        /* s1_start_angle   */ pi,
+        /* s1_start_t       */  1.0f,
+        /* tick_count       */ 0,
     };
 }
 
