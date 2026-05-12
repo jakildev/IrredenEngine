@@ -298,11 +298,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Stateless procedural particle system — UBO-driven emitters** — Phase 1: types, C_StatelessParticleEmitters component, one compute render pass, GLSL + Metal parity, demo (64 emitters × 64 particles, gravity-with-jitter)
+- [~] **Stateless procedural particle system — UBO-driven emitters** — Phase 1: types, C_StatelessParticleEmitters component, one compute render pass, GLSL + Metal parity, demo (64 emitters × 64 particles, gravity-with-jitter)
   - **ID:** T-163
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) GpuParticleEmitter and FrameDataStatelessParticles types in ir_render_types.hpp (std140-friendly, 80 B per emitter); (2) C_StatelessParticleEmitters component (per-canvas std::vector<GpuParticleEmitter> + UBO) defined in engine/prefabs; (3) compute render pass GLSL shader with closed-form gravity-with-jitter trajectory, deterministic per (emitterId, subIndex, cycle) via pcg3d/hash3; (4) Metal parity using same scratch-buffer workaround as T-139 render kernel; (5) demo: 64 emitters × 64 particles drifting under gravity with color and position jitter; (6) fleet-build clean on linux-debug and macos-debug; (7) composites correctly on same canvas as T-139 SSBO particles via imageAtomicMin
   - **Issue:** #647
