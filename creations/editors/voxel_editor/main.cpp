@@ -54,6 +54,7 @@ constexpr float kRotationSensitivity = 0.004f;
 bool g_firstRotFrame = true;
 float g_prevMouseX = 0.0f;
 EntityId g_cameraEntity = kNullEntity;
+int g_scrollDelta = 0;
 
 } // namespace
 
@@ -82,13 +83,22 @@ void initSystems() {
     auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
         "EditorScrollZoom",
         [](C_MouseScroll &scroll) {
-            auto &zoom = IREntity::getComponent<C_ZoomLevel>(g_cameraEntity);
             if (scroll.yoffset_ > 0.0)
-                zoom.zoomIn();
+                ++g_scrollDelta;
             else if (scroll.yoffset_ < 0.0)
-                zoom.zoomOut();
+                --g_scrollDelta;
         },
-        []() { g_cameraEntity = IREntity::getEntity("camera"); }
+        []() { g_cameraEntity = IREntity::getEntity("camera"); },
+        []() {
+            if (g_scrollDelta != 0) {
+                auto &zoom = IREntity::getComponent<C_ZoomLevel>(g_cameraEntity);
+                for (int i = 0; i < g_scrollDelta; ++i)
+                    zoom.zoomIn();
+                for (int i = 0; i > g_scrollDelta; --i)
+                    zoom.zoomOut();
+                g_scrollDelta = 0;
+            }
+        }
     );
 
     IRSystem::registerPipeline(
@@ -160,7 +170,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonQ,
         []() {
-            int q = IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi);
+            auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
             IRPrefab::Camera::setYaw(static_cast<float>(q - 1) * IRMath::kHalfPi);
         }
     );
@@ -171,7 +181,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonE,
         []() {
-            int q = IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi);
+            auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
             IRPrefab::Camera::setYaw(static_cast<float>(q + 1) * IRMath::kHalfPi);
         }
     );
