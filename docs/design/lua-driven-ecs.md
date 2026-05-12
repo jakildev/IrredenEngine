@@ -547,8 +547,9 @@ baseline has its own optimisation headroom.
 **Frame-rate at 64³ (macOS Metal, MBP):** avg 15.62 ms / p50 15.23 ms /
 p95 18.53 ms for the Lua demo — comfortably under the 16.67 ms (60 Hz)
 budget. The C++ baseline at the same grid runs avg 17.82 ms / p50
-18.09 ms / p95 22.93 ms; difference is the easing-dispatch +
-stage-storage cost noted above, not the runtime path.
+18.09 ms / p95 22.93 ms (p50 slightly above mean — consistent with
+bursty fast frames in the warmup window); difference is the
+easing-dispatch + stage-storage cost noted above, not the runtime path.
 
 > *Stage 3 grid_size=64 numbers measured on macOS Metal across two
 > independent runs: T-109 first-pass (1.750 ms C++ / 0.958 ms Lua,
