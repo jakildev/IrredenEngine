@@ -83,9 +83,9 @@ Result<std::vector<ChunkTableEntry>> readChunkTable(BinaryReader &r, const Asset
         }
         e.size_ = szR.value_;
 
-        // Validate the chunk body lies fully within the source. Catch overflow
-        // by checking the addends separately — `offset + size` could wrap.
-        if (e.offset_ > totalSize || e.size_ > totalSize || e.offset_ + e.size_ > totalSize) {
+        // Validate the chunk body lies fully within the source. The second guard
+        // is evaluated only when e.offset_ <= totalSize, so the subtraction is safe.
+        if (e.offset_ > totalSize || e.size_ > totalSize - e.offset_) {
             return Result<std::vector<ChunkTableEntry>>::error(
                 BinaryIOError::ChunkOutOfBounds,
                 "chunk '" + tagToString(e.tag_) + "' at offset " + std::to_string(e.offset_) +

@@ -64,6 +64,7 @@ class NameTable {
     std::optional<std::uint32_t> idByName(std::string_view name) const;
 
     /// Returns the disk-side name for @p id, or `nullopt` if absent.
+    /// Invalidated by any subsequent call to `add()`.
     std::optional<std::string_view> nameById(std::uint32_t id) const;
 
     const std::vector<NameTableEntry> &entries() const {
