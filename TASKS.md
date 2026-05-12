@@ -370,11 +370,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
+- [~] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
   - **ID:** T-169
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-166
   - **Acceptance:** (1) IRAsset::saveRig/loadRig ship; (2) .rig v1 format: IRRG magic + uint32 version + chunk-count; JNTS chunk: array of {uint16 version, vec4 rotation, vec4 translation, uint32 parentIndex, string name}; (3) loader produces C_JointHierarchy ready for toGPUFormat(); (4) round-trip 30-bone snake rig: toGPUFormat() produces identical GPU matrices pre/post round-trip; (5) JSON sidecar emits per-joint name + parent index; (6) unknown chunks handled forward-compat (Extensibility Rule #1); (7) unit tests: round-trip, unknown-chunk forward compat; (8) fleet-build clean on linux-debug
   - **Issue:** #666
