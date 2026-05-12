@@ -529,18 +529,22 @@ static_assert(
 /// fixed size; per-biome configurable capacity lands in Phase 2.
 constexpr std::uint32_t kGpuParticlePoolCapacity = 4096u;
 
-/// Cap on the number of stateless emitters per canvas. Sized to fit Phase 1
-/// workloads comfortably within the 16 KB UBO guarantee — 64 × 80 B emitters
-/// + 32 B header = 5 152 B, far inside any backend's constant-buffer cap.
-/// Tunable via a Phase 2 follow-up when real biome workloads land; the cap
-/// can grow alongside a switch to an SSBO if a larger upload turns out
-/// cheaper per dispatch.
+/// Cap on the number of stateless emitters per canvas. The 32 B header lives
+/// in a UBO (slot 0); the emitter descriptors live in an SSBO (slot 4) —
+/// only the header is subject to the 16 KB UBO guarantee. At 64 emitters
+/// × 80 B = 5 120 B, the SSBO is a comfortable fit for Phase 1 workloads.
+/// Tunable via a Phase 2 follow-up when real biome workloads land.
 constexpr std::uint32_t kMaxStatelessEmitters = 64u;
 
 /// Cap on particles per stateless emitter. The render dispatch fires
 /// `emitterCount * kMaxParticlesPerEmitter` threads; threads with
 /// `subIndex >= particlesPerEmitter` early-out, so a per-emitter
 /// runtime cap of less than this constant pays its own way.
+/// SYNC: kMaxParticlesPerEmitter must match the identically-named define in
+/// c_render_stateless_particles_to_trixel.glsl and the Metal constant in
+/// c_render_stateless_particles_to_trixel.metal — all three decompose gid
+/// the same way; a value change in one that misses the others silently
+/// breaks thread ID decomposition.
 constexpr std::uint32_t kMaxParticlesPerEmitter = 256u;
 
 /// T-163 Phase 1 — single stateless particle emitter descriptor. Particles
@@ -549,8 +553,9 @@ constexpr std::uint32_t kMaxParticlesPerEmitter = 256u;
 /// a closed-form gravity-with-jitter trajectory. The descriptor is purely an
 /// input — the GPU never mutates it.
 ///
-/// Layout matches std140 (vec3 fields padded to 16 B, trailing scalar uses
-/// the pad slot). Each row is 16 B; five rows total = 80 B per emitter.
+/// Layout is std430 (vec3 fields naturally followed by a trailing float use
+/// the 4-byte pad slot, so each row is 16 B — coincidentally std140-
+/// compatible). Five rows total = 80 B per emitter.
 ///   row 0: origin_.xyz                 | baseLifetimeSeconds_
 ///   row 1: baseVelocity_.xyz           | spawnRate_
 ///   row 2: gravity_.xyz                | baseColorPacked_
@@ -570,7 +575,7 @@ struct GpuParticleEmitter {
 };
 static_assert(
     sizeof(GpuParticleEmitter) == 80,
-    "GpuParticleEmitter must match std140 layout (80 B per emitter)"
+    "GpuParticleEmitter must match std430 layout (80 B per emitter)"
 );
 
 /// T-163 Phase 1 — per-frame UBO for the stateless particle render pass.

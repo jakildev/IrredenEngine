@@ -35,6 +35,8 @@ layout(local_size_x = 64) in;
 // keeps the depth test correct under rare same-pixel collisions; a
 // one-frame color smear on a tie is invisible for ambient particle fields.
 
+// SYNC: must match kMaxParticlesPerEmitter in ir_render_types.hpp and
+// the Metal constant in c_render_stateless_particles_to_trixel.metal.
 #define kMaxParticlesPerEmitter 256u
 
 struct GpuParticleEmitter {

@@ -13,6 +13,8 @@
 // same-pixel collisions can produce a one-frame color smear, invisible for
 // ambient particle fields.
 
+// SYNC: must match kMaxParticlesPerEmitter in ir_render_types.hpp and
+// the GLSL define in c_render_stateless_particles_to_trixel.glsl.
 constant uint kMaxParticlesPerEmitter = 256u;
 
 struct GpuParticleEmitter {
