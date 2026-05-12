@@ -608,17 +608,60 @@ usage_gate_open() {
 
 # Print the count of unique active worktrees for a role. "Active" =
 # (in-flight dispatch record for this role) ∪ (reservation whose task's
-# Model maps to this role). Dedup keys on worktree-basename, which is
-# shared between dispatch records (via the pane's pane_current_path) and
-# reservations (whose filename IS the worktree basename).
+# Model maps to this role AND whose matching pane is currently busy).
+# Dedup keys on worktree-basename, which is shared between dispatch
+# records (via the pane's pane_current_path) and reservations (whose
+# filename IS the worktree basename).
+#
+# A reservation on an idle pane is NOT counted. That case is the
+# resume-after-crash signal that role docs (see role-sonnet-author.md
+# step 0.5) consume on the next iteration — counting it would pin the
+# cap and prevent the resume from ever dispatching, which is the exact
+# stuck-fleet failure mode this guards against. The matching pane's
+# busy state is the disambiguator: a busy pane means an iteration is
+# live (the normal dispatch+reservation pairing); an idle pane means
+# the prior iteration crashed and the reservation is queued for the
+# next dispatch to consume.
 #
 # When tmux isn't running (shouldn't happen for a live dispatcher, but
 # the standalone --count-active CLI invokes this without a session),
 # dispatch records key on pane id instead — same dedup contract still
-# holds across two dispatch records for the same pane.
+# holds across two dispatch records for the same pane. Reservations in
+# that mode fall back to the legacy "always count" behavior since we
+# can't probe pane state; the tests that exercise --count-active
+# without tmux depend on this fallback.
 count_active_for_role() {
     local role="$1"
     declare -A seen=()
+
+    # Build worktree → busy map for panes tagged with this role. Used
+    # by the reservation pass below to skip idle-pane reservations.
+    declare -A worktree_busy=()
+    local have_tmux=0
+    if session_exists; then
+        have_tmux=1
+        local pane_id pane_role pane_cmd wt_path wt_name
+        while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+            [[ "$pane_role" == "$role" ]] || continue
+            wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
+            [[ -n "$wt_path" ]] || continue
+            wt_name=$(basename "$wt_path")
+            case "$pane_cmd" in
+                bash|zsh|sh|fish)
+                    # Shell allowlist matches find_idle_panes_for_role's
+                    # idle detection — but a fleet-dispatch-wrap child
+                    # still means the pane is mid-iteration even though
+                    # tmux reports the parent shell's name.
+                    if pane_has_running_wrapper "$pane_id"; then
+                        worktree_busy["$wt_name"]=1
+                    fi
+                    ;;
+                *)
+                    worktree_busy["$wt_name"]=1
+                    ;;
+            esac
+        done < <(list_pane_state)
+    fi
 
     if [[ -d "$DISPATCH_DIR" ]]; then
         local f r p wt_path wt_name
@@ -629,7 +672,7 @@ count_active_for_role() {
             p=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
             [[ -n "$p" ]] || continue
             wt_path=""
-            if session_exists; then
+            if (( have_tmux )); then
                 wt_path=$(tmux display-message -t "$p" -p '#{pane_current_path}' 2>/dev/null || true)
             fi
             if [[ -n "$wt_path" ]]; then
@@ -647,7 +690,19 @@ count_active_for_role() {
             [[ -e "$rfile" ]] || continue
             wt_name=$(basename "$rfile" .json)
             rrole=$(fleet-claim reservation-role "$wt_name" 2>/dev/null || true)
-            if [[ "$rrole" == "$role" ]]; then
+            [[ "$rrole" == "$role" ]] || continue
+            # With tmux available, only count the reservation when its
+            # worktree's pane is actually busy. An idle pane with a
+            # leftover reservation is the resume-after-crash case and
+            # must not pin the cap. Without tmux (CLI invocation
+            # outside a live fleet), fall back to the legacy "always
+            # count" behavior so test harnesses that don't stub tmux
+            # keep matching the documented contract.
+            if (( have_tmux )); then
+                if [[ -n "${worktree_busy[$wt_name]+x}" ]]; then
+                    seen["$wt_name"]=1
+                fi
+            else
                 seen["$wt_name"]=1
             fi
         done
