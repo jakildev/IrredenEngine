@@ -297,6 +297,78 @@ Avoid:
   - **Notes:** Joints-only first slice; bind-points (#669) adds BIND chunk; Phase 3 animation tracks (#606) adds ANIM chunk — both without bumping .rig v1. Referenced by .prefab.lua files (#671) for rig sharing. Parent epic: #605 (Phase 2 — Hierarchies & skeletal voxels).
   - **Links:**
 
+
+- [ ] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
+  - **ID:** T-170
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-167, T-168
+  - **Acceptance:** (1) MODE chunk gains HYBRID tag; (2) IRAsset::saveVoxelSet accepts both dense records + shape descriptors in one call; (3) loader returns struct with both populated; (4) .vxs.json sidecar emitted via json_sidecar.hpp (version, mode, bounds, material_registry_refs, layer_names, frame_count, shape_primitives_summary); (5) test suite covers dense round-trip, shape-group round-trip, hybrid (5 shapes + 50 dense voxels) round-trip, corrupt-magic, truncated mid-VOXR, version-too-new, unknown chunk tag, unknown ShapeType id; (6) fleet-build clean on linux-debug
+  - **Issue:** #668
+  - **Notes:** Synthesis ticket combining T-167 (dense) + T-168 (shape-group) into hybrid mode. Extends voxel_set_format.cpp; test suite in test_voxel_set_format.cpp. Parent epic: #604. Blocks T-173 (prefab Lua format).
+  - **Links:**
+
+
+- [ ] **asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints** — additive BIND chunk in .rig format persisting per-joint named anchor transforms; no version bump to .rig v1
+  - **ID:** T-171
+  - **Area:** engine/asset, engine/prefabs/irreden/voxel
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-169
+  - **Acceptance:** (1) BIND chunk: array of {string name, uint32 bone_id, vec3 offset, vec4 rotation}; O(string-hash) lookup at load time; (2) IRAsset::saveRig/loadRig round-trip bind points alongside joints; (3) JSON sidecar lists bind-point names + bone ids; (4) round-trip test: 5 bind points on 30-bone snake rig, entity:bindPoint() returns identical world-space transforms pre/post; (5) forward compat: .rig without BIND loads with empty bind-point map; (6) forward compat: old build skips unknown BIND chunk (Extensibility Rule #1); (7) fleet-build clean on linux-debug
+  - **Issue:** #669
+  - **Notes:** Phase 5 of editor epic (#608). Purely additive to .rig v1 — no version bump. component_bind_points.hpp may be defined here or in #608 depending on phase order. Blocks T-173 (prefab Lua format).
+  - **Links:**
+
+
+- [ ] **tooling: simplify + review-pr serialized-struct version-bump check** — pre-commit and PR-review check that flags serialized struct field changes not accompanied by a kSaveVersion bump
+  - **ID:** T-172
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** #667
+  - **Acceptance:** (1) simplify check grep-walks diff for changes inside serialized-tagged structs and emits a finding if kSaveVersion not bumped; (2) review-pr posts same finding as reviewer comment; (3) false-positive gate: current master (.vxs, .rig, world-snapshot formats) all pass without warnings; (4) engine/asset/CLAUDE.md cross-references the check
+  - **Issue:** #670
+  - **Notes:** Implements Extensibility Rule #3 enforcement. Blocked by #667 (world snapshot epic) because the check needs real kSaveVersion usage on master to test against without false positives. T-166 (binary-I/O) is already merged (PR #678).
+  - **Links:**
+
+
+- [ ] **prefab: Lua prefab format — entity template referencing .vxs + .rig + component pack** — Prefab.spawn/register API; Lua schema with voxel_ref, rig_ref, components, bind_point_overrides
+  - **ID:** T-173
+  - **Area:** engine/script, engine/prefabs/irreden
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-170, T-171
+  - **Acceptance:** (1) Lua prefab schema: prefab_version=1, voxel_ref, rig_ref (optional), components pack, bind_point_overrides; (2) Prefab.spawn(id, position) C++ API + Lua binding; (3) Prefab.register(id, path) registry; (4) asset path resolution for voxel_ref/rig_ref via existing resolver; (5) round-trip test: register prefab, spawn, verify components attached with correct values, verify entity:bindPoint() returns expected world-space transform; (6) prefab_version enforced on load with clear diagnostic on unknown version; (7) additive component packs load without version bump
+  - **Issue:** #671
+  - **Notes:** Phase 5 of editor epic (#608). Lua-defined components are out of scope (separate epic). Component palette UI in #608 produces prefab Lua tables matching this schema. New files: prefab_api.hpp, prefab_api.cpp, lua_bindings_prefab.cpp.
+  - **Links:**
+
+
+- [ ] **Editor: migrate LayoutState to C_LayoutState singleton component** — replace inline g_layout header variable with a singleton ECS component; update all systems to fetch via getOrCreateSingleton
+  - **ID:** T-174
+  - **Area:** engine/prefabs/irreden/render, creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) C_LayoutState component defined with all fields from LayoutState struct (nodes_, root_, rootPos_, rootSize_, splitter/panel drag fields); (2) layout.hpp free functions fetch state via IREntity::getOrCreateSingleton<C_LayoutState>(); (3) WIDGET_RENDER_DOCK_PREVIEW filters on C_LayoutState (tick fires once per frame, no-op body removed); (4) inline LayoutState g_layout and struct LayoutState fully removed; (5) IRUiDockspace serialize/deserialize round-trip still logs OK; (6) fleet-build clean on linux-debug
+  - **Issue:** #674
+  - **Notes:** Escalated from PR #641 (T-148 Opus recheck). The inline g_layout deviates from the engine's prefab-scoped singleton pattern (see fog_of_war.hpp, IREntity::getOrCreateSingleton). Migration is a forward-looking refactor enabling multi-dockspace, serialization via ECS save path, and inspector tooling.
+  - **Links:**
+
+
+- [ ] **Move C_Voxel into namespace IRComponents** — restore namespace symmetry with VoxelFlags; update all callers in engine/ and creations/
+  - **ID:** T-175
+  - **Area:** engine/prefabs/irreden/voxel/components
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) C_Voxel struct moved into IRComponents namespace in component_voxel.hpp; (2) VoxelFlags in same namespace (symmetry restored); (3) all callers in engine/ and creations/ updated; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #680
+  - **Notes:** Pre-existing asymmetry surfaced in PR #635 review. Mechanical rename; touches all callers. No behavioral change.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
