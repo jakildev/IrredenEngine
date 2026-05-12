@@ -297,11 +297,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate hitbox GUI system to member-on-System<N>** — mechanical refactor of system_hitbox_mouse_test_gui.hpp to member-on-System<N> via registerSystem; canonical example PR for the 5-PR migration chain from #580
+- [~] **Migrate hitbox GUI system to member-on-System<N>** — mechanical refactor of system_hitbox_mouse_test_gui.hpp to member-on-System<N> via registerSystem; canonical example PR for the 5-PR migration chain from #580
   - **ID:** T-154
   - **Area:** engine/prefabs/irreden/input
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-154-hitbox-gui-register-system
   - **Blocked by:** (none)
   - **Acceptance:** (1) system_hitbox_mouse_test_gui.hpp migrated: Params fields become System<N> members, lambdas become named member functions (tick/beginTick/endTick), create() body collapses to registerSystem<N, Cs...>("Name"); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest both clean on linux-debug; (3) fleet-run IRShapeDebug runs without crash; (4) IrredenEngineTest 100% pass; (5) PR touches only this one file — no CLAUDE.md edits, no .fleet/status/ edits
   - **Issue:** (none)
@@ -309,11 +309,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate GPU-compute cluster to member-on-System<N>** — migrate 5 compute/bake systems (compute_sun_shadow, compute_light_volume, compute_voxel_ao, bake_sun_shadow_map, build_light_occlusion_grid) to registerSystem via GPU-resource two-step
+- [~] **Migrate GPU-compute cluster to member-on-System<N>** — migrate 5 compute/bake systems (compute_sun_shadow, compute_light_volume, compute_voxel_ao, bake_sun_shadow_map, build_light_occlusion_grid) to registerSystem via GPU-resource two-step
   - **ID:** T-155
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-155-gpu-compute-register-system
   - **Blocked by:** (none)
   - **Acceptance:** (1) all 5 GPU-compute systems migrated using GPU-resource two-step (registerSystem + post-registration getSystemParams pointer assignment for cached program/buffer handles); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 runs without crash; (4) attach-screenshots and render-debug-loop invoked per engine/render/CLAUDE.md verification rule; (5) PR touches only the 5 cluster files
   - **Issue:** (none)
