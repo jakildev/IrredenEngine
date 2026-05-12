@@ -454,7 +454,8 @@ struct LightOcclusionGridHeader {
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(
-    sizeof(LightOcclusionGridHeader) == 16, "LightOcclusionGridHeader must match std430 layout"
+    sizeof(LightOcclusionGridHeader) == 16,
+    "LightOcclusionGridHeader must match std430 layout"
 );
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
@@ -505,9 +506,7 @@ struct FrameDataGpuParticles {
     int _renderPad0_ = 0;
     int _renderPad1_ = 0;
 };
-static_assert(
-    sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout"
-);
+static_assert(sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout");
 
 /// GPU particle pool capacity per pool entity. Phase 1 caps the pool at this
 /// fixed size; per-biome configurable capacity lands in Phase 2.

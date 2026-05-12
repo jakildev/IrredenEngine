@@ -1039,10 +1039,10 @@ kernel void c_shapes_to_trixel(
                     // gizmo) owns this pixel. Blend the gizmo color over
                     // the existing canvas color at reduced alpha so the
                     // handle still reads as a faint silhouette through
-                    // the occluder. Non-atomic RMW: overlapping gizmos
-                    // race here, but editor handles rarely overlap in
-                    // practice and the worst-case visual is which
-                    // gizmo's silhouette wins, not a corrupted pixel.
+                    // the occluder.
+                    // Non-atomic RMW: racing stores produce one mix level
+                    // instead of two — the dimming is visually
+                    // indistinguishable; no coord-level race risk.
                     const float4 existing = triangleCanvasColors.read(pix);
                     const float3 blended = mix(existing.rgb, baseColor.rgb,
                                                kGizmoOccludedAlpha);
