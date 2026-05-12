@@ -274,6 +274,54 @@ Avoid:
   - **Links:**
 
 
+- [ ] **GPU particles Phase 2: batch CPU-side Metal spawns** — accumulate per-frame spawn staging buffer in C_GPUParticlePool; eliminate per-spawn Metal buffer orphan overhead before continuous-emitter Lua API lands
+  - **ID:** T-159
+  - **Area:** engine/render, engine/prefabs/irreden/render, creations/demos/gpu_particles
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) continuous-emitter demo spawning N particles/frame at N ∈ {10, 100, 1000} reports steady-state Metal buffer subData allocation counts ≤ 1/frame regardless of N; (2) cross-backend visual parity (OpenGL vs Metal) under continuous emission; (3) fleet-build --target IRGpuParticles clean on both backends; (4) per-frame frame time on Metal not regressed vs OpenGL for same emission rate
+  - **Issue:** #632
+  - **Notes:** Phase 2 follow-up to PR #614 (T-139). Metal subData orphans whole MTL buffer per call; at 100 spawns/frame on 4096-slot pool that is ~12.8 MB/frame overhead. Approach (a): frame-scoped staging vector in C_GPUParticlePool — simplest, backend-agnostic. Approach (b): Metal BufferImpl frame-coherent batch mode — more invasive. OpenGL unaffected (glNamedBufferSubData is a true partial patch). CPU lifetime_ mirror silent-drop-after-4096-spawns is a separate carry-over.
+  - **Links:**
+
+
+- [ ] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
+  - **ID:** T-160
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IREntity::getComponent no longer appears in System<TEXT_TO_TRIXEL>::tick; (2) IRShapeDebug and any text-bearing demo render identically to pre-fix output (single-frame visual regression check); (3) fleet-build --target IRShapeDebug clean on linux-debug
+  - **Issue:** #644
+  - **Notes:** Pre-existing ECS hot-loop smell surfaced as nit N2 in T-156 Opus recheck (PR #638). Hoist EntityId guiCanvas_ and C_TriangleCanvasTextures* as members on System<TEXT_TO_TRIXEL>; resolve in beginTick; tick reads cached value. system_text_to_trixel.hpp:210-211 is the change site. Related duplicate: #642 (flagged fleet:needs-info).
+  - **Links:**
+
+
+- [ ] **C_CanvasFogOfWar: evaluate per-write subData vs full-buffer dirty-flag upload** — profile fog upload cost under realistic workloads; implement faster strategy or document rationale for deferral
+  - **ID:** T-161
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) per-frame fog upload cost measured under three workloads: single-cell update, radius reveal, full clear; (2) code change implementing chosen strategy OR note in design doc deferring change with rationale; (3) IRFogOfWar (or equivalent demo) renders identically
+  - **Issue:** #645
+  - **Notes:** Pre-existing pattern surfaced as nit N3 in T-156 Opus recheck (PR #638). Current: dirty_ flag gates whole-buffer subImage2D upload in FOG_TO_TRIXEL::tick. Alternative: per-write subData with dirty tile list in C_CanvasFogOfWar::setCell. Tradeoff: per-write cheaper for few-cell updates, whole-buffer cheaper for large diffs. Measurement required before implementation. Related duplicate: #643 (flagged fleet:needs-info).
+  - **Links:**
+
+
+- [ ] **engine/entity: ECS singleton-component infrastructure** — generalize C_GlobalModifiers lazy-init pattern into IRECS::singleton<T>() API; retrofit modifier framework as design-validation gate
+  - **ID:** T-162
+  - **Area:** engine/entity, engine/script, engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRECS::singleton<T>() exists, returns stable reference across calls; (2) modifier framework globals access uses new API; modifier-framework behavior identical (existing tests pass unchanged); (3) Lua test script creates singleton component, reads/writes it; (4) engine/entity/CLAUDE.md documents API + conventions; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #646
+  - **Notes:** Prerequisite for #200 (deterministic sim-clock substrate). Engine has one production singleton pattern today: C_GlobalModifiers on "modifierGlobals" entity via detail::globalsEntityId() and currentGlobalModifiersPtr() in modifier.hpp:185-191. API also includes singletonOrNull<T>() and singletonEntity<T>() variants. Architect plan at .fleet/plans/T-162.md. Worker should file follow-up ticket to evaluate/migrate existing singleton-shaped components after landing.
+  - **Links:**
+
+
 
 
 
