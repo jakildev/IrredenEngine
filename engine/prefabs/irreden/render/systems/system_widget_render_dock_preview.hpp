@@ -6,7 +6,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/render/components/component_layout_leaf.hpp>
+#include <irreden/render/components/component_layout_state.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/trixel_rect.hpp>
@@ -38,7 +38,7 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
     }
 
-    void tick(const IRComponents::C_LayoutLeaf &) {
+    void tick(const IRComponents::C_LayoutState &) {
         // work is done in endTick
     }
 
@@ -74,7 +74,7 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
     }
 
     static SystemId create() {
-        return registerSystem<WIDGET_RENDER_DOCK_PREVIEW, IRComponents::C_LayoutLeaf>(
+        return registerSystem<WIDGET_RENDER_DOCK_PREVIEW, IRComponents::C_LayoutState>(
             "WidgetRenderDockPreview"
         );
     }
