@@ -32,9 +32,6 @@ updates straight to master alongside `TASKS.md` and
   yet justified by profile data).
 - `render-api-relocations.md` — features still on the `IRRender::`
   surface that should move to feature-specific prefab namespaces.
-- `system-static-deviations.md` — render system headers that still
-  use `function-local static` for system state instead of the
-  canonical `SystemParams` pattern.
 
 ## Adding a new status file
 

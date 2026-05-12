@@ -177,17 +177,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Editor F-0.1: trixel UI primitives** — implement 10-widget trixel-rendered UI primitive set for voxel editor; no dear-imgui
-  - **ID:** T-145
-  - **Area:** engine/prefabs/irreden/render, creations/editors
-  - **Model:** opus
-  - **Owner:** claude/T-145-trixel-ui-primitives
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all 10 primitives (panel, label, button, slider, list, dropdown, checkbox, radio, text input, scroll) render correctly at multiple DPI/scale factors via trixel canvas; (2) hover/pressed/focused/disabled states wired for each interactive primitive; (3) test harness exe or scene in IRVoxelEditor shows all 10 primitives in single window; (4) style configurable through single theme struct; (5) fleet-build --target IRVoxelEditor (or equivalent) clean on linux-debug
-  - **Issue:** #620
-  - **Notes:** Blocked by T-144 (epic doc, #619). Parent epic #603 (Phase 0). Umbrella #213. Highest-risk ticket in Phase 0 — escalate early if stalled, do not burn time-box silently. F-0.2 (layout) and F-0.3 (input routing) build directly on top. Game companion jakildev/irreden#60.
-  - **Links:**
-
 
 - [~] **Editor F-0.6: per-voxel metadata extension (.txl v2)** — add material_id, flags, bone_id per voxel; bump .txl to v2 with version-aware loader preserving backward compat
   - **ID:** T-146
@@ -218,7 +207,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** sonnet
   - **Owner:** claude/T-148-layout-system
-  - **Blocked by:** T-145
+  - **Blocked by:** (none)
   - **Acceptance:** (1) compose fixed editor dockspace (left + center viewport + right + bottom) using layout API; (2) splitters resize live with min/max constraints respected; (3) drag panel by title bar → dock-target previews appear → drop to dock; layout persists in memory until shutdown; (4) layout serializes/deserializes from JSON blob in-memory (file IO deferred, serialization path must work)
   - **Issue:** #623
   - **Notes:** Phase 0 (F-0.2) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Every editor panel composes through this.
@@ -230,7 +219,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/input, creations/editors
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-145
+  - **Blocked by:** (none)
   - **Acceptance:** (1) click on button under panel overlay does NOT fire the button (z-order respected); (2) drag-from-slider updates value live; release outside slider rect still completes drag (capture works); (3) Tab cycles focus across text inputs in a panel; (4) register action editor.toggle_grid with Ctrl+G → fires on keypress; duplicate binding on same combo logs a warning
   - **Issue:** #624
   - **Notes:** Phase 0 (F-0.3) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Hotkey table unblocks Phase 1+ editor shortcuts (paint, erase, copy, paste, save).
@@ -285,69 +274,21 @@ Avoid:
   - **Links:**
 
 
-- [~] **Migrate hitbox GUI system to member-on-System<N>** — mechanical refactor of system_hitbox_mouse_test_gui.hpp to member-on-System<N> via registerSystem; canonical example PR for the 5-PR migration chain from #580
-  - **ID:** T-154
-  - **Area:** engine/prefabs/irreden/input
-  - **Model:** sonnet
-  - **Owner:** claude/T-154-hitbox-gui-register-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) system_hitbox_mouse_test_gui.hpp migrated: Params fields become System<N> members, lambdas become named member functions (tick/beginTick/endTick), create() body collapses to registerSystem<N, Cs...>("Name"); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest both clean on linux-debug; (3) fleet-run IRShapeDebug runs without crash; (4) IrredenEngineTest 100% pass; (5) PR touches only this one file — no CLAUDE.md edits, no .fleet/status/ edits
-  - **Issue:** (none)
-  - **Notes:** PR 1 of 5 for issue #580 migration. Helper (registerSystem<N>) already landed in PR #592 (T-136). Intentionally one file so reviewers can validate the migrated shape end-to-end before larger clusters. Plan at .fleet/plans/T-154.md (full recipe including GPU-resource two-step, gotchas, and per-PR acceptance).
-  - **Links:**
 
 
-- [~] **Migrate GPU-compute cluster to member-on-System<N>** — migrate 5 compute/bake systems (compute_sun_shadow, compute_light_volume, compute_voxel_ao, bake_sun_shadow_map, build_light_occlusion_grid) to registerSystem via GPU-resource two-step
-  - **ID:** T-155
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-155-gpu-compute-register-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all 5 GPU-compute systems migrated using GPU-resource two-step (registerSystem + post-registration getSystemParams pointer assignment for cached program/buffer handles); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 runs without crash; (4) attach-screenshots and render-debug-loop invoked per engine/render/CLAUDE.md verification rule; (5) PR touches only the 5 cluster files
-  - **Issue:** (none)
-  - **Notes:** PR 2 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp, system_compute_light_volume.hpp, system_compute_voxel_ao.hpp, system_bake_sun_shadow_map.hpp, system_build_light_occlusion_grid.hpp. GPU-resource two-step: call registerSystem, then immediately getSystemParams<System<N>>(id) to assign cached resource pointers to member fields. Forgetting the post-registration assignment null-pointer-crashes at first render tick. Plan at .fleet/plans/T-155.md.
-  - **Links:**
 
 
-- [~] **Migrate trixel-canvas content systems to member-on-System<N>** — migrate voxel_to_trixel (2 systems), shapes_to_trixel, text_to_trixel, fog_to_trixel to registerSystem pattern
-  - **ID:** T-156
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-156-trixel-canvas-register-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 5 systems across 4 files migrated (voxel_to_trixel.hpp has 2 specializations — STAGE_1 and STAGE_2 — migrate both in same PR); (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no cross-cluster changes
-  - **Issue:** (none)
-  - **Notes:** PR 3 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp (2 specializations), system_shapes_to_trixel.hpp, system_text_to_trixel.hpp, system_fog_to_trixel.hpp. Note: voxel_to_trixel.hpp has TWO System<N> specializations in one file; both must be migrated together. Plan at .fleet/plans/T-156.md.
-  - **Links:**
-
-
-- [~] **Migrate lighting + debug cluster to member-on-System<N>** — migrate lighting_to_trixel, trixel_to_trixel, debug_culling_minimap to registerSystem pattern
-  - **ID:** T-157
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-157-lighting-debug-register-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 3 systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only
-  - **Issue:** (none)
-  - **Notes:** PR 4 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp, system_trixel_to_trixel.hpp, system_debug_culling_minimap.hpp. Visual regressions show immediately in IRShapeDebug screenshots. Plan at .fleet/plans/T-157.md.
-  - **Links:**
-
-
-- [~] **Migrate final composite + sprites cluster to member-on-System<N>** — migrate trixel_to_framebuffer, framebuffer_to_screen, screen_residual_rotate, sprites_to_screen to registerSystem; closes #580
-  - **ID:** T-158
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-158-final-composite-register-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 4 final-stage systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash or visual regression; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no .fleet/status/ edits (queue-manager retires system-static-deviations.md after this lands)
-  - **Issue:** #580
-  - **Notes:** PR 5 of 5 (final) for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp, system_framebuffer_to_screen.hpp, system_screen_residual_rotate.hpp, system_sprites_to_screen.hpp. After this PR merges, queue-manager will retire .fleet/status/system-static-deviations.md. Plan at .fleet/plans/T-158.md.
-  - **Links:**
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
+- [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
+- [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
+- [x] **T-155** — Migrate GPU-compute cluster to member-on-System<N> · Owner: claude/T-155-gpu-compute-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/637
+- [x] **T-154** — Migrate hitbox GUI system to member-on-System<N> · Owner: claude/T-154-hitbox-gui-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/636
+- [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
 - [x] **T-139** — GPU particle system — compute-shader-driven dense particle field · Owner: claude/T-139-gpu-particle-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/614
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-109** — Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293 · Owner: claude/T-109-codegen-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/599
@@ -362,9 +303,3 @@ Avoid:
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
 - [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
-- [x] **T-137** — fleet-claim: hard model-tag gate · Owner: claude/T-137-fleet-claim-model-gate · PR: https://github.com/jakildev/IrredenEngine/pull/591
-- [x] **T-134** — C_SpriteSheet: onDestroy GPU texture cleanup · Owner: claude/T-134-sprite-sheet-on-destroy · PR: https://github.com/jakildev/IrredenEngine/pull/590
-- [x] **T-133** — Render: 2x2 PCF in screen-space sun shadow lookup · Owner: claude/T-133-2x2-pcf-sun-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/574
-- [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
-- [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
-- [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
