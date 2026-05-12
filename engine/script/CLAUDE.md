@@ -131,6 +131,11 @@ local entity = IREntity.create_some_entity()
 IREntity.addLuaComponent(entity, C_Hp, { current = 50 })  -- optional overrides
 local hp = IREntity.getLuaComponent(entity, C_Hp)         -- table snapshot
 IREntity.removeLuaComponent(entity, C_Hp)
+
+-- Singleton-component access (one entity per component type, lazily
+-- created and cached by ComponentId; see engine/entity/CLAUDE.md):
+local rules = IREntity.singleton(C_Hp)                    -- LuaEntity
+IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
 ```
 
 - **Type inference:** integer literal → `int32`; float literal → `float`;

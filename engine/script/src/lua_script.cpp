@@ -473,6 +473,20 @@ void LuaScript::bindLuaDrivenEcs() {
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
     };
 
+    // ECS singleton-component lookup. One entity per component type,
+    // lazily created on first call and cached by `ComponentId`. Returns
+    // a `LuaEntity` so callers can chain into the standard
+    // `getLuaComponent` / `setLuaField` accessors. Works for both
+    // codegen'd-as-C++ components and runtime-registered Lua-defined
+    // components — both paths share the same `ComponentId` space and the
+    // same singleton cache on `EntityManager`.
+    m_lua["IREntity"]["singleton"] = [](sol::table componentDef) -> IRScript::LuaEntity {
+        const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        return IRScript::LuaEntity{
+            IREntity::getEntityManager().getOrCreateSingletonByComponentId(componentId)
+        };
+    };
+
     m_lua["IREntity"]["getLuaField"] =
         [this](IRScript::LuaEntity entity, sol::table componentDef, int fieldIndex) -> sol::object {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");

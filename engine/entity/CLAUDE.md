@@ -120,6 +120,85 @@ to remember a manual cleanup step before `destroyEntity`. Per-component
 cleanup belongs in the component's `onDestroy()` member, not in a hook
 — see `engine/prefabs/CLAUDE.md` "Documented exceptions".
 
+## Singleton components
+
+A "singleton component" is a component for which exactly one record
+exists per world — framework-level globals, per-world settings, scratch
+state. The canonical example is the modifier framework's
+`C_GlobalModifiers` (one `"modifierGlobals"` entity per world); the
+sim-clock substrate (#200) and future per-world game-rules holders will
+adopt the same shape.
+
+`IREntity::singleton<T>()` is the public API for this pattern. Lazy-init
+on first call (creates an entity with default-constructed `T` and caches
+the id by `ComponentId`); subsequent calls return the same reference at
+the cost of one hash-map lookup. Singleton entities are normal ECS
+entities and participate in archetype iteration — a `forEachComponent<T>`
+that matches `T` will see the singleton row.
+
+```cpp
+// Typed C++ entry points (engine/entity/include/irreden/ir_entity.hpp):
+template <typename C> IREntity::EntityId singletonEntity();        // lazy-create
+template <typename C> IREntity::EntityId singletonEntityOrNull();  // no-create
+template <typename C> C& singleton();                              // lazy-create + ref
+template <typename C> C* singletonOrNull();                        // no-create + ptr
+```
+
+Lua: `IREntity.singleton(componentDef) -> LuaEntity`. Works for
+codegen'd-as-C++ components and runtime-registered Lua-defined
+components — both share the same `ComponentId` space and the same
+cache. Pass the returned `LuaEntity` to the standard
+`IREntity.getLuaComponent` / `IREntity.setLuaField` accessors.
+
+```lua
+local C_GameRules = IRComponent.register("GameRules", { score = 0 })
+local entity = IREntity.singleton(C_GameRules)         -- lazy-creates first time
+IREntity.setLuaField(entity, C_GameRules, scoreIdx, 1) -- normal field accessor
+```
+
+### Conventions
+
+- **Default-constructible.** The typed `singleton<T>()` path calls
+  `createEntity(T{})`. If `T` cannot be default-constructed, expose a
+  feature-specific factory wrapping `singletonEntity<T>` so callers can
+  seed the row with explicit values.
+- **Lazy validation.** The cache is keyed by `ComponentId` and validated
+  against `entityExists` on every lookup. If a singleton entity is
+  destroyed externally (manual `destroyEntity` call, end-of-world
+  `destroyAllEntities` reset), the next access lazy-recreates (typed
+  path) or returns `kNullEntity` / `nullptr` (or-null path).
+- **`destroyAllEntities` resets the cache.** Tests that tear down and
+  rebuild the world between cases get a fresh singleton on the first
+  post-reset access.
+- **Naming is optional.** The API does NOT auto-name the entity; callers
+  who want diagnostic visibility can `setName(singletonEntity<T>(),
+  "myThing")`. The modifier framework names its globals
+  `"modifierGlobals"` for the existing tooling that scans by name.
+- **Use the API for what it's for.** Singleton-shaped *components* — yes.
+  Things that should live on a manager (graphics device handles,
+  RenderManager fields) — no; manager fields are still the right
+  shape for device-level state. Rule of thumb: if the data is naturally
+  an ECS column (composable, iterable, save/load-friendly), use a
+  singleton component; if it's a pointer to an external resource that
+  the manager already owns, leave it on the manager.
+
+### Archetype implications
+
+A singleton entity is a normal entity in the archetype graph. Adding or
+removing components on it moves it between archetype nodes the same way
+any other entity does. Iteration order across nodes is implementation-
+defined, so don't assume the singleton appears first or last in a
+`forEachComponent` walk — query by `singletonEntity<T>()` when you need
+the specific row.
+
+### Save/load implications
+
+Per-component save/load (#199) treats singleton entities like any other:
+the entity id round-trips and the cache rebuilds on first access against
+the loaded entity. Workers retrofitting #199 into the singleton API should
+verify the cache invalidates on load (typically a `destroyAllEntities`
+precedes the load, which already clears the cache).
+
 ## Position components are automatic
 
 `createEntity(...)` always adds `C_PositionGlobal3D` and

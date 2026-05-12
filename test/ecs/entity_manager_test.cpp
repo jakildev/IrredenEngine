@@ -21,11 +21,9 @@ static_assert(
 );
 
 namespace {
-struct TestMarker {
-};
+struct TestMarker {};
 
-struct TestRemovable {
-};
+struct TestRemovable {};
 
 struct TestPayload {
     int value_ = 0;
@@ -128,16 +126,13 @@ TEST_F(IREntityTest, PreDestroyHookFiresWithEntityIdBeforeDestruction) {
     IREntity::EntityId entity = IREntity::createEntity(TestMarker{});
     IREntity::EntityId observed = IREntity::kNullEntity;
     bool componentVisibleInHook = false;
-    auto id = m_entity_manager.registerPreDestroyHook(
-        [&, entity](IREntity::EntityId destroyed) {
-            observed = destroyed;
-            // The entity must still be queryable at hook time — that's
-            // the whole point of "pre-destroy", as opposed to post-.
-            componentVisibleInHook =
-                IREntity::getComponentOptional<TestMarker>(destroyed).has_value();
-            EXPECT_EQ(destroyed, entity);
-        }
-    );
+    auto id = m_entity_manager.registerPreDestroyHook([&, entity](IREntity::EntityId destroyed) {
+        observed = destroyed;
+        // The entity must still be queryable at hook time — that's
+        // the whole point of "pre-destroy", as opposed to post-.
+        componentVisibleInHook = IREntity::getComponentOptional<TestMarker>(destroyed).has_value();
+        EXPECT_EQ(destroyed, entity);
+    });
     EXPECT_NE(id, IREntity::kInvalidPreDestroyHookId);
 
     m_entity_manager.destroyEntity(entity);
@@ -148,15 +143,9 @@ TEST_F(IREntityTest, PreDestroyHookFiresWithEntityIdBeforeDestruction) {
 
 TEST_F(IREntityTest, PreDestroyHooksFireInRegistrationOrder) {
     std::vector<int> order;
-    m_entity_manager.registerPreDestroyHook(
-        [&](IREntity::EntityId) { order.push_back(1); }
-    );
-    m_entity_manager.registerPreDestroyHook(
-        [&](IREntity::EntityId) { order.push_back(2); }
-    );
-    m_entity_manager.registerPreDestroyHook(
-        [&](IREntity::EntityId) { order.push_back(3); }
-    );
+    m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { order.push_back(1); });
+    m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { order.push_back(2); });
+    m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { order.push_back(3); });
 
     auto entity = IREntity::createEntity(TestMarker{});
     m_entity_manager.destroyEntity(entity);
@@ -169,9 +158,7 @@ TEST_F(IREntityTest, PreDestroyHooksFireInRegistrationOrder) {
 
 TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
     int fireCount = 0;
-    auto id = m_entity_manager.registerPreDestroyHook(
-        [&](IREntity::EntityId) { ++fireCount; }
-    );
+    auto id = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { ++fireCount; });
 
     auto entityA = IREntity::createEntity(TestMarker{});
     m_entity_manager.destroyEntity(entityA);
@@ -182,6 +169,55 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
     auto entityB = IREntity::createEntity(TestMarker{});
     m_entity_manager.destroyEntity(entityB);
     EXPECT_EQ(fireCount, 1);
+}
+
+// Singleton-component API (T-162): one entity per component type, lazily
+// created on first access, cached by ComponentId in EntityManager.
+struct TestSingleton {
+    int counter_ = 0;
+};
+
+TEST_F(IREntityTest, SingletonReturnsSameReferenceAcrossCalls) {
+    auto &a = IREntity::singleton<TestSingleton>();
+    auto &b = IREntity::singleton<TestSingleton>();
+    EXPECT_EQ(&a, &b);
+}
+
+TEST_F(IREntityTest, SingletonEntityIsCachedById) {
+    auto entityA = IREntity::singletonEntity<TestSingleton>();
+    auto entityB = IREntity::singletonEntity<TestSingleton>();
+    EXPECT_NE(entityA, IREntity::kNullEntity);
+    EXPECT_EQ(entityA, entityB);
+}
+
+TEST_F(IREntityTest, SingletonMutationPersistsAcrossCalls) {
+    IREntity::singleton<TestSingleton>().counter_ = 42;
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 42);
+    IREntity::singleton<TestSingleton>().counter_++;
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 43);
+}
+
+TEST_F(IREntityTest, SingletonOrNullReturnsNullBeforeFirstCreate) {
+    EXPECT_EQ(IREntity::singletonOrNull<TestSingleton>(), nullptr);
+    EXPECT_EQ(IREntity::singletonEntityOrNull<TestSingleton>(), IREntity::kNullEntity);
+}
+
+TEST_F(IREntityTest, SingletonOrNullReturnsValidAfterCreate) {
+    IREntity::singleton<TestSingleton>().counter_ = 7;
+    auto *ptr = IREntity::singletonOrNull<TestSingleton>();
+    ASSERT_NE(ptr, nullptr);
+    EXPECT_EQ(ptr->counter_, 7);
+}
+
+TEST_F(IREntityTest, SingletonLazyRecreateAfterExternalDestroy) {
+    auto firstEntity = IREntity::singletonEntity<TestSingleton>();
+    IREntity::singleton<TestSingleton>().counter_ = 99;
+    m_entity_manager.destroyEntity(firstEntity);
+
+    // Next access lazy-recreates with a default-constructed component.
+    auto secondEntity = IREntity::singletonEntity<TestSingleton>();
+    EXPECT_NE(secondEntity, firstEntity);
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 0);
 }
 
 // setComponent must construct the new archetype slot directly from the

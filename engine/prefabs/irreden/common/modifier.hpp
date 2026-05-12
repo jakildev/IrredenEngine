@@ -60,12 +60,12 @@ inline void push(
     IREntity::EntityId source,
     std::int32_t ticksRemaining = -1
 ) {
-    if (field == IRComponents::kInvalidFieldId) return;
+    if (field == IRComponents::kInvalidFieldId)
+        return;
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
-    if (!c) return;
-    c->modifiers_.push_back(IRComponents::Modifier{
-        field, kind, param, source, ticksRemaining
-    });
+    if (!c)
+        return;
+    c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
 }
 
 inline void pushGlobal(
@@ -75,14 +75,16 @@ inline void pushGlobal(
     IREntity::EntityId source,
     std::int32_t ticksRemaining = -1
 ) {
-    if (field == IRComponents::kInvalidFieldId) return;
+    if (field == IRComponents::kInvalidFieldId)
+        return;
     auto entity = detail::globalsEntityId();
-    if (entity == IREntity::kNullEntity) return;
-    auto *c = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
-    if (!c) return;
-    c->modifiers_.push_back(IRComponents::Modifier{
-        field, kind, param, source, ticksRemaining
-    });
+    if (entity == IREntity::kNullEntity)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
 }
 
 // `ticksRemaining` is honored by `LAMBDA_MODIFIER_DECAY`, registered alongside
@@ -97,12 +99,15 @@ inline void pushLambda(
     IREntity::EntityId source,
     std::int32_t ticksRemaining = -1
 ) {
-    if (field == IRComponents::kInvalidFieldId) return;
-    auto *c = IREntity::getComponentOptional<IRComponents::C_LambdaModifiers>(target).value_or(nullptr);
-    if (!c) return;
-    c->modifiers_.push_back(IRComponents::LambdaModifier{
-        field, std::move(fn), source, ticksRemaining
-    });
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_LambdaModifiers>(target).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiers_.push_back(
+        IRComponents::LambdaModifier{field, std::move(fn), source, ticksRemaining}
+    );
 }
 
 // Sweep both per-entity and global modifier vectors, removing any whose
@@ -125,9 +130,9 @@ inline void removeBySource(IREntity::EntityId source) {
         );
     };
 
-    IREntity::forEachComponent<IRComponents::C_Modifiers>(
-        [&](IRComponents::C_Modifiers &c) { stripVec(c.modifiers_); }
-    );
+    IREntity::forEachComponent<IRComponents::C_Modifiers>([&](IRComponents::C_Modifiers &c) {
+        stripVec(c.modifiers_);
+    });
     IREntity::forEachComponent<IRComponents::C_GlobalModifiers>(
         [&](IRComponents::C_GlobalModifiers &c) { stripVec(c.modifiers_); }
     );
@@ -141,19 +146,19 @@ inline void removeBySource(IREntity::EntityId source) {
 // without touching C_ResolvedFields. The resolver pipeline and
 // applyToField share `composeForField`, so the two read paths give
 // the same answer for the same input.
-inline float applyToField(
-    IREntity::EntityId target,
-    IRComponents::FieldBindingId field,
-    float baseValue
-) {
+inline float
+applyToField(IREntity::EntityId target, IRComponents::FieldBindingId field, float baseValue) {
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     const auto &entityMods = c ? c->modifiers_ : detail::emptyModifiers();
 
     const std::vector<IRComponents::Modifier> *globalsPtr = nullptr;
     auto entity = detail::globalsEntityId();
     if (entity != IREntity::kNullEntity) {
-        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
-        if (g) globalsPtr = &g->modifiers_;
+        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(
+            nullptr
+        );
+        if (g)
+            globalsPtr = &g->modifiers_;
     }
     const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiers();
 
@@ -180,24 +185,26 @@ struct ResolverPipelineSystems {
 
 inline ResolverPipelineSystems registerResolverPipeline() {
     static bool registered = false;
-    IR_ASSERT(!registered, "registerResolverPipeline called more than once — duplicate decay/resolve systems would double-apply per tick");
+    IR_ASSERT(
+        !registered,
+        "registerResolverPipeline called more than once — duplicate decay/resolve systems would "
+        "double-apply per tick"
+    );
     registered = true;
-    auto &globalsEntity = detail::globalsEntityId();
-    if (globalsEntity == IREntity::kNullEntity) {
-        globalsEntity = IREntity::createEntity(
-            IRComponents::C_GlobalModifiers{}
-        );
-        IREntity::setName(globalsEntity, "modifierGlobals");
-    }
+    // Name the singleton globals entity so tooling that scans named
+    // entities (and `globalsEntity()` below) can find it by lookup
+    // rather than by re-resolving the singleton.
+    auto globalsEntity = IREntity::singletonEntity<IRComponents::C_GlobalModifiers>();
+    IREntity::setName(globalsEntity, "modifierGlobals");
     // Auto-sweep source-attributed modifiers when their source entity is
     // destroyed. Without this, a target outliving its source keeps the
     // dead source's modifiers applied indefinitely; recycled EntityIds
     // would then inherit them on a future allocation. Linear sweep is
     // acceptable for v1 — see CLAUDE.md "Open follow-ups" for the
     // reverse-index option if churn becomes a profile hotspot.
-    (void)IREntity::getEntityManager().registerPreDestroyHook(
-        [](IREntity::EntityId destroyed) { removeBySource(destroyed); }
-    );
+    (void)IREntity::getEntityManager().registerPreDestroyHook([](IREntity::EntityId destroyed) {
+        removeBySource(destroyed);
+    });
     return ResolverPipelineSystems{
         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
         IRSystem::createSystem<IRSystem::GLOBAL_MODIFIER_DECAY>(),
