@@ -231,20 +231,137 @@ static_assert(
 );
 
 template <> struct System<COMPUTE_LIGHT_VOLUME> {
-    struct Params {
-        ShaderProgram *clearProgram_ = nullptr;
-        ShaderProgram *seedProgram_ = nullptr;
-        ShaderProgram *propagateProgram_ = nullptr;
-        Buffer *lightSourceBuf_ = nullptr;
-        Buffer *paramsBuf_ = nullptr;
-        Buffer *occlusionBuf_ = nullptr;
-        std::vector<GPULightSource> lightStaging_{};
-        LightVolumeParams params_{};
-        // Set of out-of-bounds light origins we have already warned
-        // about — prevents the per-frame gather from spamming a stable
-        // misplaced light. Keyed via `detail::packOriginKey`.
-        std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
-    };
+    ShaderProgram *clearProgram_ = nullptr;
+    ShaderProgram *seedProgram_ = nullptr;
+    ShaderProgram *propagateProgram_ = nullptr;
+    Buffer *lightSourceBuf_ = nullptr;
+    Buffer *paramsBuf_ = nullptr;
+    Buffer *occlusionBuf_ = nullptr;
+    std::vector<GPULightSource> lightStaging_{};
+    LightVolumeParams params_{};
+    // Set of out-of-bounds light origins we have already warned
+    // about — prevents the per-frame gather from spamming a stable
+    // misplaced light. Keyed via `detail::packOriginKey`.
+    std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
+
+    void tick(
+        IREntity::EntityId canvasEntity,
+        C_CanvasLightVolume &volume,
+        const C_TrixelCanvasRenderBehavior &behavior
+    ) {
+        if (!behavior.useCameraPositionIso_)
+            return;
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        auto &phaseTiming = IRRender::computeLightVolumeTiming();
+
+        constexpr int kClearGroupSize = 8;
+        constexpr int kPropagateGroupX = 8;
+        constexpr int kPropagateGroupY = 8;
+        constexpr int kPropagateGroupZ = 4;
+        constexpr int kSeedGroupSize = 64;
+        constexpr int kVolumeSize = kLightVolumeSize;
+
+        // Phase: gather + upload light SSBO.
+        {
+            detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
+            IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
+            // Phase 1c (#360): re-anchor the volume on the
+            // iso camera each frame; the seed/propagate/
+            // lighting shaders subtract this origin before
+            // indexing, so a panned camera keeps lights in
+            // range without resizing the texture.
+            const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
+            volume.setWorldOriginVoxel(volumeOrigin);
+            params_.worldOriginVoxel_ = ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
+            const std::uint32_t count = detail::gatherLightSources(
+                lightStaging_,
+                canvasEntity,
+                volumeOrigin,
+                warnedOOBOrigins_
+            );
+            params_.lightCount_ = static_cast<int>(count);
+            if (count > 0) {
+                lightSourceBuf_->subData(0, sizeof(GPULightSource) * count, lightStaging_.data());
+            }
+            paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
+        }
+
+        // Phase: dispatch the GPU clear + seed + propagate
+        // chain. The Clear bucket is reserved for the clear
+        // pass alone; Populate covers seed + N propagate
+        // iterations so the legacy column name still maps
+        // to "where the bulk of the work lives".
+        paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+
+        {
+            detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
+            IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
+            clearProgram_->use();
+            volume.getReadTexture()
+                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
+            IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
+
+        {
+            detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
+            IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
+
+            // Seed pass: one thread per light, writes one
+            // bright texel into the read texture.
+            if (params_.lightCount_ > 0) {
+                seedProgram_->use();
+                lightSourceBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_LightSourceBuffer
+                );
+                volume.getReadTexture()
+                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                const int seedGroups = IRMath::divCeil(params_.lightCount_, kSeedGroupSize);
+                IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
+
+            // Propagate dilation chain. With no lights the
+            // chain still runs but every iteration reads
+            // zeros so the cost is bounded; we elide it for
+            // a tighter early-out.
+            if (params_.lightCount_ > 0) {
+                propagateProgram_->use();
+                // Light-occlusion SSBO slot 28 also aliases
+                // the sun-shadow depth map — rebind for this
+                // pipeline (Metal compute encoders don't
+                // preserve bindings across program switches).
+                // The SSBO's first 16 bytes are a header
+                // carrying the camera-anchored
+                // worldOriginVoxel — the propagate shader
+                // reads it directly.
+                if (occlusionBuf_ != nullptr) {
+                    occlusionBuf_->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_LightOcclusionGrid
+                    );
+                }
+                const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
+                const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
+                const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
+                for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
+                    volume.getReadTexture()
+                        ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    volume.getWriteTexture()
+                        ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    IRRender::device()->dispatchCompute(
+                        static_cast<std::uint32_t>(gx),
+                        static_cast<std::uint32_t>(gy),
+                        static_cast<std::uint32_t>(gz)
+                    );
+                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                    volume.swap();
+                }
+            }
+        }
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -276,8 +393,11 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             kBufferIndex_LightVolumeParams
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
+        SystemId systemId =
+            registerSystem<COMPUTE_LIGHT_VOLUME, C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
+                "ComputeLightVolume"
+            );
+        auto *p = getSystemParams<System<COMPUTE_LIGHT_VOLUME>>(systemId);
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearLightVolumeProgram");
         p->seedProgram_ = IRRender::getNamedResource<ShaderProgram>("SeedLightVolumeProgram");
         p->propagateProgram_ =
@@ -293,142 +413,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         // origin from the same binding.
         p->occlusionBuf_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->lightStaging_.reserve(kLightVolumeMaxSources);
-
-        SystemId systemId =
-            createSystem<C_CanvasLightVolume, C_TrixelCanvasRenderBehavior>(
-                "ComputeLightVolume",
-                [p](const IREntity::EntityId canvasEntity,
-                    C_CanvasLightVolume &volume,
-                    const C_TrixelCanvasRenderBehavior &behavior) {
-                    if (!behavior.useCameraPositionIso_)
-                        return;
-                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-                    auto &phaseTiming = IRRender::computeLightVolumeTiming();
-
-                    constexpr int kClearGroupSize = 8;
-                    constexpr int kPropagateGroupX = 8;
-                    constexpr int kPropagateGroupY = 8;
-                    constexpr int kPropagateGroupZ = 4;
-                    constexpr int kSeedGroupSize = 64;
-                    constexpr int kVolumeSize = kLightVolumeSize;
-
-                    // Phase: gather + upload light SSBO.
-                    {
-                        detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
-                        IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
-                        // Phase 1c (#360): re-anchor the volume on the
-                        // iso camera each frame; the seed/propagate/
-                        // lighting shaders subtract this origin before
-                        // indexing, so a panned camera keeps lights in
-                        // range without resizing the texture.
-                        const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
-                        volume.setWorldOriginVoxel(volumeOrigin);
-                        p->params_.worldOriginVoxel_ =
-                            ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
-                        const std::uint32_t count = detail::gatherLightSources(
-                            p->lightStaging_,
-                            canvasEntity,
-                            volumeOrigin,
-                            p->warnedOOBOrigins_
-                        );
-                        p->params_.lightCount_ = static_cast<int>(count);
-                        if (count > 0) {
-                            p->lightSourceBuf_->subData(
-                                0,
-                                sizeof(GPULightSource) * count,
-                                p->lightStaging_.data()
-                            );
-                        }
-                        p->paramsBuf_->subData(0, sizeof(LightVolumeParams), &p->params_);
-                    }
-
-                    // Phase: dispatch the GPU clear + seed + propagate
-                    // chain. The Clear bucket is reserved for the clear
-                    // pass alone; Populate covers seed + N propagate
-                    // iterations so the legacy column name still maps
-                    // to "where the bulk of the work lives".
-                    p->paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
-
-                    {
-                        detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
-                        IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
-                        p->clearProgram_->use();
-                        volume.getReadTexture()
-                            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                        const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
-                        IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
-                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                    }
-
-                    {
-                        detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
-                        IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
-
-                        // Seed pass: one thread per light, writes one
-                        // bright texel into the read texture.
-                        if (p->params_.lightCount_ > 0) {
-                            p->seedProgram_->use();
-                            p->lightSourceBuf_->bindBase(
-                                BufferTarget::SHADER_STORAGE,
-                                kBufferIndex_LightSourceBuffer
-                            );
-                            volume.getReadTexture()
-                                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                            const int seedGroups =
-                                IRMath::divCeil(p->params_.lightCount_, kSeedGroupSize);
-                            IRRender::device()
-                                ->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
-                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                        }
-
-                        // Propagate dilation chain. With no lights the
-                        // chain still runs but every iteration reads
-                        // zeros so the cost is bounded; we elide it for
-                        // a tighter early-out.
-                        if (p->params_.lightCount_ > 0) {
-                            p->propagateProgram_->use();
-                            // Light-occlusion SSBO slot 28 also aliases
-                            // the sun-shadow depth map — rebind for this
-                            // pipeline (Metal compute encoders don't
-                            // preserve bindings across program switches).
-                            // The SSBO's first 16 bytes are a header
-                            // carrying the camera-anchored
-                            // worldOriginVoxel — the propagate shader
-                            // reads it directly.
-                            if (p->occlusionBuf_ != nullptr) {
-                                p->occlusionBuf_->bindBase(
-                                    BufferTarget::SHADER_STORAGE,
-                                    kBufferIndex_LightOcclusionGrid
-                                );
-                            }
-                            const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
-                            const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
-                            const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
-                            for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
-                                volume.getReadTexture()->bindAsImage(
-                                    0,
-                                    TextureAccess::READ_ONLY,
-                                    TextureFormat::RGBA8
-                                );
-                                volume.getWriteTexture()->bindAsImage(
-                                    1,
-                                    TextureAccess::WRITE_ONLY,
-                                    TextureFormat::RGBA8
-                                );
-                                IRRender::device()->dispatchCompute(
-                                    static_cast<std::uint32_t>(gx),
-                                    static_cast<std::uint32_t>(gy),
-                                    static_cast<std::uint32_t>(gz)
-                                );
-                                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                                volume.swap();
-                            }
-                        }
-                    }
-                }
-            );
         IRRender::tagGpuStage(systemId, "computeLightVolume");
-        setSystemParams(systemId, std::move(paramsOwner));
         return systemId;
     }
 };

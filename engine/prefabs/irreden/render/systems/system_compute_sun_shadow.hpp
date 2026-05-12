@@ -34,14 +34,45 @@ namespace IRSystem {
 constexpr int kComputeSunShadowGroupSize = 16;
 
 template <> struct System<COMPUTE_SUN_SHADOW> {
-    struct Params {
-        ShaderProgram *program_ = nullptr;
-        Buffer *sunShadowFrameDataBuf_ = nullptr;
-        Buffer *voxelFrameDataBuf_ = nullptr;
-        // Created by BAKE_SUN_SHADOW_MAP. Resolved lazily so this lookup
-        // links even when the bake system isn't registered.
-        Buffer *sunShadowDepthMap_ = nullptr;
-    };
+    ShaderProgram *program_ = nullptr;
+    Buffer *sunShadowFrameDataBuf_ = nullptr;
+    Buffer *voxelFrameDataBuf_ = nullptr;
+    // Created by BAKE_SUN_SHADOW_MAP. Resolved lazily so this lookup
+    // links even when the bake system isn't registered.
+    Buffer *sunShadowDepthMap_ = nullptr;
+
+    void tick(
+        const C_TriangleCanvasTextures &canvasTextures,
+        const C_CanvasSunShadow &shadow,
+        const C_TrixelCanvasRenderBehavior &behavior
+    ) {
+        // Skip GUI-only canvases — same rationale as the AO pass.
+        if (!behavior.useCameraPositionIso_)
+            return;
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
+        canvasTextures.getTextureDistances()
+            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        shadow.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        if (sunShadowDepthMap_ == nullptr) {
+            sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
+        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+
+        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
+        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
+        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+    }
+
+    void beginTick() {
+        program_->use();
+        // BAKE_SUN_SHADOW_MAP owns FrameDataSun uploads — its
+        // beginTick writes the full struct (sun direction +
+        // basis + AABB + flags) before this pass reads it.
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -57,60 +88,15 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             kBufferIndex_FrameDataSun
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
+        SystemId systemId = registerSystem<
+            COMPUTE_SUN_SHADOW,
+            C_TriangleCanvasTextures,
+            C_CanvasSunShadow,
+            C_TrixelCanvasRenderBehavior>("ComputeSunShadow");
+        auto *p = getSystemParams<System<COMPUTE_SUN_SHADOW>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowProgram");
         p->sunShadowFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-
-        SystemId systemId =
-            createSystem<C_TriangleCanvasTextures, C_CanvasSunShadow, C_TrixelCanvasRenderBehavior>(
-                "ComputeSunShadow",
-                [p](const C_TriangleCanvasTextures &canvasTextures,
-                    const C_CanvasSunShadow &shadow,
-                    const C_TrixelCanvasRenderBehavior &behavior) {
-                    // Skip GUI-only canvases — same rationale as the AO pass.
-                    if (!behavior.useCameraPositionIso_)
-                        return;
-                    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-
-                    canvasTextures.getTextureDistances()
-                        ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                    shadow.getTexture()
-                        ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                    if (p->sunShadowDepthMap_ == nullptr) {
-                        p->sunShadowDepthMap_ =
-                            IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
-                    }
-                    p->sunShadowDepthMap_->bindBase(
-                        BufferTarget::SHADER_STORAGE,
-                        kBufferIndex_SunShadowDepthMap
-                    );
-                    p->voxelFrameDataBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_FrameDataVoxelToCanvas
-                    );
-                    p->sunShadowFrameDataBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_FrameDataSun
-                    );
-
-                    const int groupsX =
-                        IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
-                    const int groupsY =
-                        IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
-                    IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                },
-                [p]() {
-                    p->program_->use();
-                    // BAKE_SUN_SHADOW_MAP owns FrameDataSun uploads — its
-                    // beginTick writes the full struct (sun direction +
-                    // basis + AABB + flags) before this pass reads it.
-                }
-            );
-
-        setSystemParams(systemId, std::move(paramsOwner));
         IRRender::tagGpuStage(systemId, "computeSunShadow");
         return systemId;
     }
