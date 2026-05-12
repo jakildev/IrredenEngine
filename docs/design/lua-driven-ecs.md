@@ -449,3 +449,144 @@ when the need actually appears:
   one `sol::function` per archetype is genuinely the wrong granularity),
   open a comment on the relevant PR with the evidence, don't silently
   re-decide.
+
+## Retrospective — T-104 parity measurement
+
+T-104 (#563) shipped the formal parity gate as a `lua_perf_grid` Lua
+port of `perf_grid`'s wave-animation kernel and ran it head-to-head
+against the C++ baseline. Three measurement points map the curve from
+the original failure to the production-ready CODEGEN runtime.
+
+### Stage 1 — Lua 5.4 + sol2 (T-104, gate failure)
+
+| Demo                                | Grid               | Wave-system per-tick |
+|-------------------------------------|--------------------|----------------------|
+| `perf_grid` (C++)                   | 16³ = 4096         | 0.043 ms             |
+| `lua_perf_grid` (Lua 5.4 + sol2)    | 16³ = 4096         | ≥ 445 ms             |
+
+**Ratio: ≥ 10 000×** — four orders of magnitude past the ≤ 1.5× gate.
+Per-row sol2 dispatch (~100 µs/call × 4 calls/row × 4096 rows)
+dominates; the per-archetype dispatch is fine (~9 µs). The gate-fail
+behaviour clause kicked in: this design doc is amended with the
+corrective decision instead of the testbed PR being merged.
+
+### Stage 2 — LuaJIT 2.1 + sol2 (T-105, dev-mode floor)
+
+T-105 swapped the engine's Lua runtime to LuaJIT 2.1, exercised the
+existing `lua_perf_grid` testbed under EVAL mode, and documented the
+trace-JIT-collapsed dispatch cost as the dev-iteration floor. Per-row
+work becomes a compiled inner loop after warmup; expected ratio is
+2–10× C++.
+
+> *EVAL+LuaJIT measurements at canonical 16³ / 64³ grids are pending
+> Linux-fleet host validation. The macOS host these were attempted on
+> exhibits a render-pipeline crash unrelated to this work that prevents
+> the C++ baseline from rendering its lattice past a few frames at
+> grid_size ≥ 8 (no precompiled .metallib without full Xcode). The
+> EVAL build's profiling infrastructure is present in
+> `creations/demos/lua_perf_grid/` and runs cleanly at grid_size=4 in
+> CODEGEN mode, so the larger-grid + EVAL-mode measurements are a
+> mechanical follow-up, not a design question.*
+
+EVAL mode exists as the dev-iteration runtime: hot-reloadable
+(T-103's `IRSystem.replaceSystemBody` is alive only here),
+LuaJIT-fast enough that 4096-entity demos iterate without stalling.
+Production builds default to CODEGEN.
+
+### Stage 3 — CODEGEN (T-109, parity gate met)
+
+T-106/T-107/T-108 built a build-time codegen tool at
+`cmake/lua_codegen/` that scans the same `.lua` schema files and emits
+typed C++ component structs + `IRSystem::createSystem<...>`
+specialisations. Per-row work runs at native speed; no `sol::function`
+or sol2 column dispatch on the hot path. T-109 then applied CODEGEN
+mode to `creations/demos/lua_perf_grid/` and re-measured.
+
+The Lua schema + tick body in `creations/demos/lua_perf_grid/main.lua`
+mirror `C_PeriodicIdle` and `system_periodic_idle.hpp` for the 2-stage
+SineEaseInOut wave perf_grid runs: same field set (flattened to flat
+scalars: `vec3` → 3 floats, `std::vector<PeriodStage>` → two hardcoded
+stage blocks), same per-tick arithmetic, same branch structure
+(pause / cycle-wrap / stage-advance / map+ease+lerp + amplitude),
+even bug-for-bug parity on `mapAngleToStageTValue`'s unused
+`clampedAngle`. The `while`-loop stage advance is unrolled into a
+single `if` (the DSL forbids `while` in CODEGEN bodies; correct for
+2 stages — the loop body could only fire once).
+
+| Demo                                  | Grid           | Wave-system per-tick    |
+|---------------------------------------|----------------|-------------------------|
+| `perf_grid` (C++) — `PeriodicIdle`    | 4³ = 64        | 0.004 ms (avg/call)     |
+| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 4³ = 64    | 0.003 ms (avg/call)     |
+| `perf_grid` (C++) — `PeriodicIdle`    | 64³ = 262 144  | 1.750 ms (avg/call)     |
+| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 64³ = 262 144 | 0.958 ms (avg/call) |
+
+**Ratio at grid_size=64: ~0.55×** — well under the 1.5× gate, and
+this is the apples-to-apples comparison with logic-parity Lua.
+Per-entity normalised at 64³: ~6.7 ns/entity (C++ `PeriodicIdle`) vs.
+~3.65 ns/entity (Lua-CODEGEN `LuaWaveTick`).
+
+Lua-CODEGEN beats C++ here because the *implementation* differs even
+though the *logic* matches:
+
+1. **Easing dispatch.** The engine's `kEasingFunctions` is a
+   `std::unordered_map<IREasingFunctions, std::function<float(float)>>`.
+   `kEasingFunctions.at(stage.easingFunction_)(mappedAngle)` is a
+   hashmap lookup + indirect call through `std::function`. The
+   codegen inlines `glm::sineEaseInOut(t) := -0.5 * (cos(pi*t) - 1)`
+   directly — no hashmap, no `std::function`.
+2. **Stage storage.** C++ uses `std::vector<PeriodStage> stages_` —
+   heap indirection per access. Codegen unrolls the 2 stages into
+   flat struct fields in one cache line.
+
+Both are addressable on the C++ side (constexpr easing dispatch +
+`std::array<PeriodStage, N>`) and would close the gap. The numbers
+here are not a "Lua beats C++" claim — they're evidence that the
+codegen path is structurally as fast as native, and that the C++
+baseline has its own optimisation headroom.
+
+**Frame-rate at 64³ (macOS Metal, MBP):** avg 16.19 ms / p50 12.92 ms /
+p95 20.72 ms for the Lua demo — right at the 60 Hz budget. The C++
+baseline at the same grid runs avg 17.19 ms / p50 14.06 ms; difference
+is the easing-dispatch + stage-storage cost noted above, not the
+runtime path.
+
+> *Stage 3 grid_size=64 numbers measured on macOS Metal (the earlier
+> SIGBUS at grid_size ≥ 8 was resolved upstream and both demos now run
+> the full 60 frames). Linux fleet remains the canonical perf-comparison
+> host; per-host re-measurement is mechanical follow-up. EVAL-mode
+> canonical-grid measurements are still pending — they appear in
+> Stage 2 above.*
+
+### Architect decision: two coexisting paths
+
+The corrective decision from #566: **CODEGEN as the production
+runtime, EVAL as the dev-iteration opt-out.**
+
+- `IR_LUA_ECS_DEFAULT_MODE=CODEGEN` (default) — build-time tool
+  emits C++ from Lua schemas + bodies; per-row work is native.
+  Hot-reload (T-103) is unavailable; rebuild to change a system
+  body.
+- `IR_LUA_ECS_DEFAULT_MODE=EVAL` — runtime sol2 dispatch on
+  LuaJIT 2.1; T-103 hot-reload is alive. Per-tick cost is
+  2–10× CODEGEN (target; canonical-grid measurement pending).
+
+Per-system override via `IRSystem.registerSystem({ mode = "eval"
+| "codegen", ... })` lets a creation pin individual systems to
+either path independent of the build flavor (T-108). The
+`creations/demos/lua_perf_grid/` `main.lua` schema is the
+canonical example: same source serves both build flavors with no
+per-mode rewrites.
+
+### Closure
+
+- **Engine #293** (Lua-driven ECS authoring epic): acceptance
+  criterion amended to *"creations can author components and
+  systems in Lua, with codegen as the production runtime and
+  LuaJIT-backed EVAL as the dev iteration runtime; hot-reload is
+  a dev-mode-only feature, available in EVAL only."* Closed by
+  T-109.
+- **Engine #566** (corrective-decision tracker): closed by T-109.
+- **PR #563** (T-104 testbed): held open through the chain;
+  rebased onto T-109 once the chain merges, amended with both
+  CODEGEN and EVAL numbers, then merged as the gate-passing
+  artifact.

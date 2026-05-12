@@ -720,22 +720,27 @@ void writeOutput(
     // path. Runtime-side `IRSystem.registerSystem` skips `mode="codegen"`
     // calls so the .lua file can be reloaded without re-registering CODEGEN
     // systems.
-    if (hasCodegenSystems) {
-        os << "struct CodegenSystemIds {\n";
-        for (const auto &s : cap.systems_) {
-            if (s.mode_ != IRLuaCodegen::SystemMode::CODEGEN) continue;
-            os << "    IRSystem::SystemId " << s.name_ << ";\n";
-        }
-        os << "};\n\n";
-        os << "inline CodegenSystemIds registerCodegenSystems() {\n";
-        os << "    CodegenSystemIds ids{};\n";
-        for (const auto &s : cap.systems_) {
-            if (s.mode_ != IRLuaCodegen::SystemMode::CODEGEN) continue;
-            os << "    ids." << s.name_ << " = createSystem_" << s.name_ << "();\n";
-        }
-        os << "    return ids;\n";
-        os << "}\n\n";
+    //
+    // The struct + helper are emitted unconditionally so creations that
+    // toggle between CODEGEN and EVAL via `IR_LUA_ECS_DEFAULT_MODE` do not
+    // get a header that disappears symbols on the EVAL side. Empty struct
+    // + empty body when no codegen systems exist; the caller's `if
+    // constexpr (kDefaultEcsMode == CODEGEN)` guard then governs whether
+    // the ids are actually consumed.
+    os << "struct CodegenSystemIds {\n";
+    for (const auto &s : cap.systems_) {
+        if (s.mode_ != IRLuaCodegen::SystemMode::CODEGEN) continue;
+        os << "    IRSystem::SystemId " << s.name_ << ";\n";
     }
+    os << "};\n\n";
+    os << "inline CodegenSystemIds registerCodegenSystems() {\n";
+    os << "    CodegenSystemIds ids{};\n";
+    for (const auto &s : cap.systems_) {
+        if (s.mode_ != IRLuaCodegen::SystemMode::CODEGEN) continue;
+        os << "    ids." << s.name_ << " = createSystem_" << s.name_ << "();\n";
+    }
+    os << "    return ids;\n";
+    os << "}\n\n";
 
     // Creation-default mode constant. Mirrors the
     // IR_LUA_ECS_DEFAULT_MODE CMake cache var that drove this codegen run.

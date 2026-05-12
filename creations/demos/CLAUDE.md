@@ -38,6 +38,14 @@ No opt-outs.
   as a visual-regression canary for `SCREEN_SPACE_RESIDUAL_ROTATE`) and
   `IRZYawInteractive` (same scene with `R`-key-toggled mouse-driven yaw
   and left-click per-voxel entity-pick via `getEntityIdAtMouseTrixel`).
+- `lua_perf_grid/` — Lua port of `perf_grid`'s wave-animation kernel
+  built on the T-106..T-108 codegen toolchain. The Lua-defined
+  `LuaWaveState` component and `LuaWaveTick` system body live in
+  `main.lua`; cmake/lua_codegen emits a typed C++ struct + System
+  specialisation at build time. Toggle `-DIR_LUA_ECS_DEFAULT_MODE=EVAL`
+  to flip the same source to LuaJIT-backed runtime dispatch. The
+  parity gate from `docs/design/lua-driven-ecs.md` "Retrospective"
+  closes here.
 
 ## Adding a new demo
 
