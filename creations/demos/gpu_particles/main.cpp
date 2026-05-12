@@ -23,6 +23,8 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <list>
 
 using namespace IRComponents;
@@ -31,9 +33,9 @@ using namespace IRMath;
 namespace {
 
 constexpr int kInitialParticleCount = 1024;
-constexpr float kSpawnExtent = 24.0f;     // half-extent of the spawn cube (voxels)
-constexpr float kVelocityRange = 6.0f;    // ± voxels/second
-constexpr float kLifetimeSeconds = 8.0f;  // long enough that all 6 shots see live particles
+constexpr float kSpawnExtent = 24.0f;    // half-extent of the spawn cube (voxels)
+constexpr float kVelocityRange = 6.0f;   // ± voxels/second
+constexpr float kLifetimeSeconds = 8.0f; // long enough that all 6 shots see live particles
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.5f, vec2(0, 0), "fit_field"},
@@ -42,9 +44,17 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 };
 
 int g_autoWarmupFrames = 0;
+int g_spawnsPerFrame = 0; // T-159 continuous-emitter verification knob
 
 void parseArgs(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--spawns-per-frame") == 0 && i + 1 < argc) {
+            const int n = std::atoi(argv[i + 1]);
+            g_spawnsPerFrame = n < 0 ? 0 : n;
+            ++i;
+        }
+    }
 }
 
 void seedParticles() {
@@ -60,6 +70,32 @@ void configureCanvas() {
     const IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
     IREntity::setComponent(mainCanvas, C_GPUParticlePool{});
+}
+
+// Continuous-emitter spawner registered ahead of UPDATE_GPU_PARTICLES.
+// One pool-iterating system that calls writeSlot N times per frame —
+// every call is appended to the pool's pending list and flushed by
+// UPDATE_GPU_PARTICLES as a single contiguous-run subData (the common
+// case for sequential indices from `reserveSlot()`).
+IRSystem::SystemId createContinuousSpawnerSystem(int spawnsPerFrame) {
+    return IRSystem::createSystem<C_GPUParticlePool>(
+        "GpuParticleContinuousSpawn",
+        [spawnsPerFrame](C_GPUParticlePool &pool) {
+            for (int i = 0; i < spawnsPerFrame; ++i) {
+                const std::uint32_t slot = pool.reserveSlot();
+                if (slot == C_GPUParticlePool::kInvalidSlot) {
+                    return;
+                }
+                const vec3 pos = IRMath::randomVec(vec3(-kSpawnExtent), vec3(kSpawnExtent));
+                const vec3 vel = IRMath::randomVec(vec3(-kVelocityRange), vec3(kVelocityRange));
+                const Color color = IRMath::randomColor();
+                pool.writeSlot(
+                    slot,
+                    IRRender::GpuParticle{pos, kLifetimeSeconds, vel, color.toPackedRGBA()}
+                );
+            }
+        }
+    );
 }
 
 } // namespace
@@ -96,11 +132,16 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::UPDATE_GPU_PARTICLES>(),
-        IRSystem::createSystem<IRSystem::RENDER_GPU_PARTICLES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
     };
+    if (g_spawnsPerFrame > 0) {
+        // Insert spawner ahead of UPDATE_GPU_PARTICLES so its writes land
+        // in the same-frame pending-list flush.
+        renderPipeline.push_back(createContinuousSpawnerSystem(g_spawnsPerFrame));
+    }
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_GPU_PARTICLES>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::RENDER_GPU_PARTICLES_TO_TRIXEL>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>());
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};

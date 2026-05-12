@@ -26,6 +26,7 @@ full chain context.
 - [Architectural decisions (locked)](#architectural-decisions-locked)
 - [Engine vs. game work split](#engine-vs-game-work-split)
 - [Per-voxel record extension](#per-voxel-record-extension)
+- [Save format extensibility rules](#save-format-extensibility-rules)
 - [Phase 0 — Foundation (UI layer + scaffold)](#phase-0--foundation-ui-layer--scaffold)
 - [Phase 1 — Static voxel authoring](#phase-1--static-voxel-authoring)
 - [Phase 2 — Hierarchies & skeletal voxels](#phase-2--hierarchies--skeletal-voxels)
@@ -45,8 +46,9 @@ full chain context.
 
 ## Why this exists
 
-The original `#213` was a static voxel painter scoped to author `.txl`
-files. During planning the scope expanded into a full **entity creation
+The original `#213` was a static voxel painter scoped to author static
+voxel assets (originally framed as `.txl` files, before the `.vxs`
+voxel-set format was carved out — see [Per-voxel record extension](#per-voxel-record-extension)). During planning the scope expanded into a full **entity creation
 mode** covering voxel authoring, bone hierarchies, IK with constraints,
 keyframe + procedural animation, named bind-points, ECS component
 attachment, and a trixel-rendered editor UI — because every one of those
@@ -160,7 +162,7 @@ revisited per-phase:
 | **GUI rendered via trixel** | See above. No dear-imgui. No third-party UI lib. |
 | **Skeletal animation + IK in-engine** | Wires existing `C_JointHierarchy`. FABRIK + Two-Bone. Foot-IK + interaction-IK at runtime. |
 | **Modular interpolation** | Registry of built-in C++ curves; Lua-defined custom interpolators per keyframe. Zero-overhead for built-ins. |
-| **Editor exe lives at `creations/editors/voxel_editor/`** | Gitignored — internal tool. |
+| **Editor exe lives at `creations/editors/voxel_editor/`** | Tracked in the engine repo (gitignore exception added in F-0.8). Private editor tools such as `font_maker` remain gitignored. |
 | **Per-voxel record extends to 12 B** | `{material_id, flags, bone_id}` added. `bone_id = 0` is identity (zero-cost back-compat). |
 | **Prefab format is Lua tables** | Consistent with the rest of the engine's Lua scripting story. Round-trips through `Prefab.spawn(...)`. |
 | **Single-window invariant lifted only at Phase 8** | Real multi-window has cost; defer until single-window editor proves valuable first. |
@@ -171,7 +173,7 @@ The work split is roughly **85 % engine, 15 % game** by code volume.
 
 | Side | Scope |
 |---|---|
-| **Engine (~85 %)** | UI layer, editor app, all skeletal/IK/animation systems, `.txl` v2 extension, prefab format, voxel-rendering changes, multi-window, particle/light/audio bind-point components, Lua APIs. |
+| **Engine (~85 %)** | UI layer, editor app, all skeletal/IK/animation systems, voxel-set asset format (`.vxs`), rig asset format (`.rig`), prefab format, voxel-rendering changes, multi-window, particle/light/audio bind-point components, Lua APIs. |
 | **Game (~15 %)** | Actually authoring the ~200–400 entities; bind-point name conventions; the gameplay component pack the prefab UI exposes. |
 
 The game-side companion doc enumerates the catalog, the bind-point
@@ -181,27 +183,53 @@ as game design evolves without re-touching the engine plan.
 
 ## Per-voxel record extension
 
-The current `.txl` v1 per-voxel record is **4 bytes** — a packed color
-index. The editor needs three additional fields, growing the record to
-**12 bytes**:
+The current in-memory `C_Voxel` is **4 bytes** — a packed color (RGBA8).
+The editor needs three additional fields, growing the in-memory record
+to **12 bytes**:
 
 | Field | Size | Purpose |
 |---|---|---|
 | `material_id` | 1 B | Index into a material registry (wood, chitin, flesh, scale, fungal tissue, …). Drives shader treatment (specularity, softness, translucency). |
 | `flags` | 1 B | Bit-packed: `AO_CONTRIB`, `EMISSIVE`, `INTERACTIVE`, reserved bits. |
-| `bone_id` | 1 B | Index into the per-entity bone array. `bone_id = 0` is identity (zero-cost compatibility with v1 scenes). |
+| `bone_id` | 1 B | Index into the per-entity bone array. `bone_id = 0` is identity (zero-cost compatibility with unrigged voxels). |
 
 Total padding bytes inside the 12 B record give room for additional
 flags without re-versioning later.
 
-### Back-compat
+### What `.txl` is and isn't
 
-- **v1 → v2 load:** the version-aware loader (`#603` F-0.6) widens v1
-  records to v2 with `material_id = 0`, `flags = AO_CONTRIB`,
-  `bone_id = 0`. Identity bone keeps existing scenes rendering the
-  same — no editor or game change required.
-- **v2 → v1 save:** unsupported. Once an asset is upgraded, it stays
-  v2. Editor warns on v1 open and writes v2 on save.
+`.txl` on `master` is the **trixel-texture** format (per-trixel-texel
+SDF + color blobs) owned by `IRAsset::saveTrixelTextureData` /
+`loadTrixelTextureData` and consumed by `C_TriangleCanvasTextures`. It
+has nothing to do with per-voxel data, has never carried voxel records,
+and is not changed by the per-voxel record extension. `.txl` stays
+trixel-texture indefinitely.
+
+The on-disk **voxel-set** format gets its own extension — **`.vxs`** —
+introduced as a new asset format. `.vxs` is versioned binary +
+`.vxs.json` sidecar; see [Save format extensibility rules](#save-format-extensibility-rules)
+below and the per-phase tickets for `.vxs` v1 dense mode, shape-group
+mode, and hybrid mode.
+
+### In-memory back-compat (F-0.6 narrow scope)
+
+`C_Voxel(Color)` defaults the new fields to
+`material_id = 0, flags = AO_CONTRIB, bone_id = 0`. Identity bone keeps
+existing scenes rendering the same — no editor or game change required.
+This is the **narrow scope of F-0.6**: widen `C_Voxel` in-memory, update
+the voxel-pool SSBO stride, update the compute shader. No `.txl` disk
+format change.
+
+### On-disk: dual representation in `.vxs`
+
+`.vxs` v1 supports **both** dense per-voxel records (one 12 B record per
+voxel, the hand-painted case) **and** SDF shape groups (a composition of
+`C_ShapeDescriptor`-shaped primitives — sphere / box / capsule / etc. —
+rendered directly via SHAPES_TO_TRIXEL without voxelization). A `MODE`
+chunk at the head tags the asset as `DENSE`, `SHAPES`, or `HYBRID`. New
+SDF primitives extend the `ShapeType` enum + add an `sdf<NAME>`
+GLSL/Metal pair — **no format version bump required** (extensibility
+rule #2 below).
 
 ### GPU upload
 
@@ -209,6 +237,71 @@ The compute shader (`c_voxel_to_trixel_stage_1.glsl`) reads `bone_id`
 to multiply by `bone_matrix[bone_id]` before placing the trixel.
 `bone_matrix[0]` is the identity matrix maintained by the rig system —
 no branching in the shader, no special-case path for unrigged voxels.
+
+---
+
+## Save format extensibility rules
+
+Every binary asset format the engine ships (`.vxs`, `.rig`, the ECS
+world snapshot, any future format) obeys the seven rules below. Adding
+a new SDF primitive, a new relation type, a new component, or a new
+chunk **never breaks existing saves and never requires a format version
+bump.** These rules are the constitution for the binary-I/O primitives
+in `engine/asset/` (`BinaryWriter`/`Reader`, chunk-table header,
+name-table encoding, JSON sidecar emitter) and every consumer of them;
+they're what makes Phases 2 – 10 layer cleanly on top of Phase 0
+without re-versioning each time.
+
+Module placement: all asset formats (`.vxs`, `.rig`, `.prefab.lua`)
+and the I/O primitives they share live in `engine/asset/`. The ECS
+world snapshot lives in `engine/world/` (it walks the archetype graph
+and needs `engine/entity/` access, so it stays above the asset module
+in the dependency layering) and consumes the same primitives.
+
+1. **Chunk-table forward compatibility.** Every binary file is
+   `header (magic + uint32 version + chunk count)` followed by a chunk
+   table — each entry `{ char tag[4]; uint64 offset; uint64 size; }` —
+   followed by the chunk bodies. Loaders iterate the chunk table and
+   **silently skip unknown chunk tags.** Writers append new chunk types
+   without bumping the file version. Order in the chunk table is not
+   load-bearing.
+2. **Enums travel by name + id.** Anywhere a registered enum is stored
+   (`ShapeType`, `ComponentId`, `RelationType`, `MaterialId`,
+   `ShapeFlags`, bind-point semantic role), the format writes both the
+   numeric id and a string-name table at the head of the chunk. On
+   load: prefer name → current enum lookup, fall back to id only when
+   the name table is absent. A save written by a future build with a
+   new `ShapeType::TORUS_KNOT` loads on an older build as "unknown
+   shape, skipped, diagnostic logged" — not "corrupt file."
+3. **Per-component / per-record additive-only versioning.** Each
+   component (in the world snapshot) and each record type (per-voxel
+   record, joint, bind-point, shape primitive) carries a `uint16
+   version` alongside its blob. Field additions append to the struct
+   and bump the version; the load migration reads old versions and
+   defaults the appended fields. Field removals/renames require an
+   explicit migration function in a registry keyed by `(typeId,
+   oldVersion)`. **No silent structural changes.** A reviewer-side
+   check (filed in a separate tooling ticket) flags any PR that changes
+   a serialized struct without bumping its version.
+4. **Relations as first-class data, not hard-coded.** `RelationType`
+   is enum `{ NONE, CHILD_OF, PARENT_TO, SIBLING_OF }` today. The
+   world-snapshot relation chunk stores `(relationTypeId, entityA,
+   entityB)` triples with the string-name table at the chunk head —
+   adding `OWNS`, `ATTACHED_TO`, `EQUIPPED_BY`, etc. is a one-line
+   enum extension that requires no format change.
+5. **Unknown is recoverable, never fatal.** Bad magic, truncated file,
+   version newer than the loader knows about → clear diagnostic with
+   file path + offset, return an empty/default value, never crash.
+   Test fixtures: corrupt-magic, truncated-mid-chunk, version-too-new,
+   unknown-chunk-tag, unknown-enum-value cases all covered by the
+   round-trip unit test suite for each format.
+6. **JSON sidecar is regenerated from the binary, never the source of
+   truth.** The sidecar is emitted on save and ignored on load. This
+   means extending the binary side never forces a sidecar schema
+   migration; the sidecar emitter just learns the new field.
+7. **Save/load surface is documented in one place per format.** Each
+   asset format gets a header block in its `.hpp` describing the chunk
+   table, current chunks, version history, and the migration registry.
 
 ---
 
@@ -220,8 +313,9 @@ no branching in the shader, no special-case path for unrigged voxels.
 ### Scope
 
 Foundational primitives every later phase depends on: trixel-rendered UI
-layer, 3D editor camera, gizmo primitives, per-voxel metadata extension,
-`.txl` v2 + JSON sidecar, editor-app scaffold, voxel mouse picking.
+layer, 3D editor camera, gizmo primitives, per-voxel metadata extension
+(in-memory `C_Voxel` widening), `.vxs` voxel-set asset format +
+`.vxs.json` sidecar, editor-app scaffold, voxel mouse picking.
 
 ### Sub-tasks
 
@@ -233,9 +327,17 @@ layer, 3D editor camera, gizmo primitives, per-voxel metadata extension,
 - **F-0.4** 3D editor camera (orbit + pan + zoom).
 - **F-0.5** Gizmo primitives (translate/rotate/scale handles,
   joint/bind-point/IK markers).
-- **F-0.6** Per-voxel metadata extension (`material_id`, `flags`,
-  `bone_id`); `.txl` v2 with version-aware loader.
-- **F-0.7** JSON sidecar format for `.txl` (human-diffable companion).
+- **F-0.6** Per-voxel metadata extension — widen `C_Voxel` in-memory to
+  12 B with `material_id`, `flags`, `bone_id`. Update voxel-pool SSBO
+  stride and the compute shader. **No on-disk format change in this
+  sub-task** — `.txl` stays trixel-texture; the new on-disk voxel-set
+  format lands in a separate ticket as `.vxs` (see F-1.5 and the
+  `engine/asset/` binary-I/O primitives that ship alongside it).
+- **F-0.7** `.vxs` v1 voxel-set asset format — versioned binary
+  (`IRVS` magic + chunk table) supporting both dense per-voxel records
+  and SDF shape groups (`C_ShapeDescriptor` composition), with
+  `.vxs.json` sidecar as the human-diffable companion. Obeys all seven
+  [Save format extensibility rules](#save-format-extensibility-rules).
 - **F-0.8** Editor exe scaffold at `creations/editors/voxel_editor/`.
 - **F-0.9** Voxel mouse picking → world-space voxel selection.
 
@@ -250,9 +352,17 @@ works, mouse picks a voxel under the cursor.
 - **F-0.1 trixel-UI slip.** Highest-risk single sub-task in the entire
   epic. See [the big bet](#the-big-bet-trixel-rendered-ui-no-dear-imgui)
   above. Time-box and escalate if it stalls.
-- **F-0.6 `.txl` v2 back-compat.** Touching the on-disk format risks
-  corrupting existing `.txl` assets if the loader's version detection
-  is wrong. Land version-detection unit tests before the writer.
+- **F-0.6 in-memory layout migration.** Widening `C_Voxel` from 4 B to
+  12 B touches the voxel-pool SSBO stride and the compute shader in
+  lockstep. Mismatched stride between CPU writer and GPU reader =
+  silently garbled rendering. Land the GPU SSBO/compute-shader update
+  in the same PR as the CPU `C_Voxel` change.
+- **F-0.7 `.vxs` format stability.** Touching an on-disk format risks
+  corrupting future assets if the loader's chunk-table parsing is
+  wrong. Land corrupt-magic / truncated / version-too-new /
+  unknown-chunk fixture tests **before** the writer ships — the
+  extensibility rules require recoverable diagnostics on every bad
+  input path.
 - **F-0.9 picking precision.** Voxel picking from screen ray needs to
   match the compute-shader trixel placement exactly, including bone
   transform once Phase 2 lands. Picking on the unrigged base mesh is
@@ -284,9 +394,9 @@ editor minimally useful even if no later phase ships.
 
 ### Acceptance
 
-A 20³ voxel creature can be authored, saved as `.txl`, and loaded in
-`IRShapeDebug`. Per-voxel metadata round-trips through `.txl` v2. JSON
-sidecar is human-diffable.
+A 20³ voxel creature can be authored, saved as `.vxs`, and loaded in
+`IRShapeDebug`. Per-voxel metadata round-trips through the `.vxs` dense
+mode. `.vxs.json` sidecar is human-diffable.
 
 ### Risks
 
@@ -326,8 +436,9 @@ FK pose editing works in the editor.
 ### Acceptance
 
 Rig a 30-segment snake; all segments deform when a joint matrix changes.
-Existing v1 `.txl` files continue to render via identity-bone fallback
-(`bone_id = 0`).
+Unrigged voxels (`bone_id = 0`) continue to render via identity-bone
+fallback, so any pre-rigging entity keeps rendering after the C_Voxel
+widening lands.
 
 ### Risks
 

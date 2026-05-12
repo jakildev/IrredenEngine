@@ -226,11 +226,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
+- [~] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
   - **ID:** T-150
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-150-editor-camera
   - **Blocked by:** T-147
   - **Acceptance:** (1) editor opens with sane default framing showing reference grid centered; (2) orbit/pan/zoom/snap/re-center all work responsively at 60 fps on linux-debug; (3) close editor + re-open → framing restored; (4) snap views give pixel-aligned axis-aligned projection
   - **Issue:** #625
@@ -238,11 +238,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.7: JSON sidecar format for .txl** — .txl.json alongside every .txl save; stores bind-points, component-pack fields, material-registry references; silent when absent
+- [~] **Editor F-0.7: JSON sidecar format for .txl** — .txl.json alongside every .txl save; stores bind-points, component-pack fields, material-registry references; silent when absent
   - **ID:** T-151
   - **Area:** engine/prefabs/irreden/voxel, creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-151-txl-json-sidecar
   - **Blocked by:** T-146
   - **Acceptance:** (1) editor writes .txl.json next to .txl save (omit file if content empty); (2) loader reads sidecar if present; missing sidecar = empty bind-point list, empty component-pack, identity material map, no log; (3) round-trip test: write voxel grid + bind-points → reload → bind-points match exactly; (4) schema documented in same doc as .txl v2 spec from F-0.6
   - **Issue:** #626
@@ -250,11 +250,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.5: gizmo primitives (translate/rotate/scale handles, joint/bind-point/IK markers)** — screen-space-sized depth-aware 3D gizmos rendered into the editor viewport on top of the voxel scene
+- [~] **Editor F-0.5: gizmo primitives (translate/rotate/scale handles, joint/bind-point/IK markers)** — screen-space-sized depth-aware 3D gizmos rendered into the editor viewport on top of the voxel scene
   - **ID:** T-152
   - **Area:** engine/render, creations/editors
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-152-gizmo-primitives
   - **Blocked by:** T-150
   - **Acceptance:** (1) select voxel → translate gizmo at center; drag X arrow → moves only in X; release applies; (2) rotate gizmo drag around Y ring rotates selection around Y; Shift held snaps to 15°; (3) scale gizmo drag-uniform-center scales uniformly; (4) all gizmos render at constant screen-space size regardless of camera distance, depth-aware (hidden faces dimmed); (5) hover highlights handle under cursor; (6) joint/bind-point/IK marker primitives render at constant screen-space size and are clickable
   - **Issue:** #627
@@ -274,23 +274,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **GPU particles Phase 2: batch CPU-side Metal spawns** — accumulate per-frame spawn staging buffer in C_GPUParticlePool; eliminate per-spawn Metal buffer orphan overhead before continuous-emitter Lua API lands
-  - **ID:** T-159
-  - **Area:** engine/render, engine/prefabs/irreden/render, creations/demos/gpu_particles
-  - **Model:** opus
-  - **Owner:** claude/T-159-gpu-particle-spawn-batching
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) continuous-emitter demo spawning N particles/frame at N ∈ {10, 100, 1000} reports steady-state Metal buffer subData allocation counts ≤ 1/frame regardless of N; (2) cross-backend visual parity (OpenGL vs Metal) under continuous emission; (3) fleet-build --target IRGpuParticles clean on both backends; (4) per-frame frame time on Metal not regressed vs OpenGL for same emission rate
-  - **Issue:** #632
-  - **Notes:** Phase 2 follow-up to PR #614 (T-139). Metal subData orphans whole MTL buffer per call; at 100 spawns/frame on 4096-slot pool that is ~12.8 MB/frame overhead. Approach (a): frame-scoped staging vector in C_GPUParticlePool — simplest, backend-agnostic. Approach (b): Metal BufferImpl frame-coherent batch mode — more invasive. OpenGL unaffected (glNamedBufferSubData is a true partial patch). CPU lifetime_ mirror silent-drop-after-4096-spawns is a separate carry-over.
-  - **Links:**
-
-
-- [ ] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
+- [~] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
   - **ID:** T-160
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-160-text-trixel-canvas-hoist
   - **Blocked by:** (none)
   - **Acceptance:** (1) IREntity::getComponent no longer appears in System<TEXT_TO_TRIXEL>::tick; (2) IRShapeDebug and any text-bearing demo render identically to pre-fix output (single-frame visual regression check); (3) fleet-build --target IRShapeDebug clean on linux-debug
   - **Issue:** #644
@@ -309,10 +297,95 @@ Avoid:
   - **Notes:** Pre-existing pattern surfaced as nit N3 in T-156 Opus recheck (PR #638). Current: dirty_ flag gates whole-buffer subImage2D upload in FOG_TO_TRIXEL::tick. Alternative: per-write subData with dirty tile list in C_CanvasFogOfWar::setCell. Tradeoff: per-write cheaper for few-cell updates, whole-buffer cheaper for large diffs. Measurement required before implementation. Related duplicate: #643 (flagged fleet:needs-info).
   - **Links:**
 
+
+- [~] **Stateless procedural particle system — UBO-driven emitters** — Phase 1: types, C_StatelessParticleEmitters component, one compute render pass, GLSL + Metal parity, demo (64 emitters × 64 particles, gravity-with-jitter)
+  - **ID:** T-163
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** claude/T-163-stateless-particles
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) GpuParticleEmitter and FrameDataStatelessParticles types in ir_render_types.hpp (std140-friendly, 80 B per emitter); (2) C_StatelessParticleEmitters component (per-canvas std::vector<GpuParticleEmitter> + UBO) defined in engine/prefabs; (3) compute render pass GLSL shader with closed-form gravity-with-jitter trajectory, deterministic per (emitterId, subIndex, cycle) via pcg3d/hash3; (4) Metal parity using same scratch-buffer workaround as T-139 render kernel; (5) demo: 64 emitters × 64 particles drifting under gravity with color and position jitter; (6) fleet-build clean on linux-debug and macos-debug; (7) composites correctly on same canvas as T-139 SSBO particles via imageAtomicMin
+  - **Issue:** #647
+  - **Notes:** Alternative/complement to T-139 SSBO pool (#209, PR #614) — stateless path for ambient/decorative emitters (biome motes, rain, weather) with zero per-particle state and near-zero CPU→GPU sync cost. Phase 1 only; Phases 2–5 (Lua bindings, combined demo, benchmark, color ramps) filed as follow-ups after Phase 1 lands. ECS option (a) locked in by architect comment. UBO slot: pick unused 0–30, do not alias T-139's slot 23. Reuse iso-projection helpers from ir_iso_common.glsl and canvas binding pattern from system_render_gpu_particles_to_trixel.hpp (PR #614).
+  - **Links:**
+
+
+- [~] **Editor F-0.5 Phase 2: screen-space gizmo sizing + depth-aware dimming** — constant pixel-size gizmo handles across zoom range; depth-aware alpha dimming for occluded gizmos
+  - **ID:** T-164
+  - **Area:** engine/prefabs/irreden/render, engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** claude/T-164-gizmo-screen-space
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) gizmos render at constant pixel size across full zoom range; (2) gizmo fragments behind world geometry show with reduced alpha (faint silhouette when occluded); (3) GLSL + Metal backends agree on dimming behavior; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #675
+  - **Notes:** Phase 2 follow-up to T-152 (Phase 1 shipped via PR #672). New UPDATE system scales C_ShapeDescriptor params_ inversely to camera zoom (member pixelSize_ on System<N>). New SHAPE_FLAG_GIZMO bit + depth-aware alpha path in c_shapes_to_trixel.glsl + shapes_to_trixel.metal. Touch points: system_gizmo_screen_space_size.hpp, shape_descriptor_flags.hpp, both shaders, gizmo.hpp, editor main.cpp, ir_system_types.hpp.
+  - **Links:**
+
+
+- [ ] **Editor F-0.5 Phase 3: gizmo hover + drag interaction** — hover highlight via entity-id texture readback; drag-axis-constrained translate/scale; Shift-snap rotate
+  - **ID:** T-165
+  - **Area:** engine/prefabs/irreden/render, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-153
+  - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
+  - **Issue:** #676
+  - **Notes:** Phase 3 follow-up to T-152 (Phase 1 shipped via PR #672). Hover reuses entity-id texture readback built by T-153. New systems: system_gizmo_hover.hpp (reads canvas entity-id texture for cursor pixel, sets C_GizmoHandle::hover_), system_gizmo_drag.hpp (drag state per handle kind). Touch points: component_gizmo_handle.hpp, editor main.cpp, ir_system_types.hpp.
+  - **Links:**
+
+
+- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+  - **ID:** T-166
+  - **Area:** engine/asset
+  - **Model:** opus
+  - **Owner:** opus-worker-2
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #663
+  - **Notes:** Foundation for .vxs, .rig, and world-snapshot formats (T-167, T-168, T-169, #667). Blocker #662 (doc rename) merged as PR #673. No functional consumer until T-167+. World-snapshot (#667) lives in engine/world/ and consumes these primitives; engine/asset/ must not depend on engine/entity/ or engine/world/.
+  - **Links:**
+
+
+- [ ] **asset: .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks)** — first end-to-end asset format: 3D bounded voxel volume with 12-byte per-voxel records, layers, and animation frame poses
+  - **ID:** T-167
+  - **Area:** engine/asset
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-166, T-146
+  - **Acceptance:** (1) IRAsset::saveVoxelSet/loadVoxelSet ship; (2) .vxs v1 dense format: IRVS magic + uint32 version + chunk-count; MODE=DENSE; BNDS (ivec3 min/max); VOXR (12-byte records: Color + material_id + flags + bone_id + pad); LAYR (named layer bitmasks); FRAM (frame-index → per-voxel offset); META (free-form key/value); (3) unknown chunk tags silently skipped; (4) clear diagnostics on bad magic, version-too-new, truncated chunk, malformed BNDS; (5) round-trip unit test: 20³ fixture save → load → byte-compare VOXR + BNDS; (6) edge cases: empty set, full set, bad magic, truncated mid-VOXR; (7) chunk table documented in .hpp header block; (8) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #664
+  - **Notes:** First consumer of T-166 binary-I/O primitives. Dense-mode only; shape-group mode is T-168; hybrid + sidecar is #668. C_Voxel layout (12 B) must match T-146 per-voxel widening — coordinate landing order matters. Replacement for txl v2 intent in PR #635 / #621.
+  - **Links:**
+
+
+- [~] **asset: .vxs v1 shape-group mode (SHPG, SREF chunks) — SDF primitive composition save format** — persist C_ShapeDescriptor instances as SDF primitive composition; new ShapeType values never break existing saves
+  - **ID:** T-168
+  - **Area:** engine/asset, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** opus-worker-1
+  - **Blocked by:** T-166
+  - **Acceptance:** (1) SHPG chunk: per-primitive record {uint32 shapeTypeId, uint16 version, vec4 params, Color, uint32 flags, uint8 bone_id, vec3 offset, quat rotation, uint8 csgOp}; csgOp ∈ {UNION, SMOOTH_UNION, SUBTRACT, INTERSECT, NONE}; (2) SREF chunk: string name-table for ShapeType enum + material registry refs; (3) MODE chunk gains SHAPES tag; (4) IRAsset::saveVoxelSet overload accepts span<const C_ShapeDescriptor> + optional per-primitive csgOp/transform; (5) loader returns list of C_ShapeDescriptor-shaped records for entity spawning; (6) round-trip test: 5-primitive shape group (sphere/box/capsule mix) save → load → byte-compare; (7) forward-compat test: unknown ShapeType numeric id → logs "unknown shape ID=N name=…, skipped", rest loads; (8) "How to add a new SDF primitive" walkthrough in engine/asset/CLAUDE.md; (9) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #665
+  - **Notes:** Can run in parallel with T-167 after T-166 lands. Persists inputs to SHAPES_TO_TRIXEL pipeline — renders directly via that system, no voxelization needed. CSG tree can land in SHPT chunk later without bumping v1. Hybrid mode (#668) combines SHPG + VOXR.
+  - **Links:**
+
+
+- [~] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
+  - **ID:** T-169
+  - **Area:** engine/asset, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** opus-worker-2
+  - **Blocked by:** T-166
+  - **Acceptance:** (1) IRAsset::saveRig/loadRig ship; (2) .rig v1 format: IRRG magic + uint32 version + chunk-count; JNTS chunk: array of {uint16 version, vec4 rotation, vec4 translation, uint32 parentIndex, string name}; (3) loader produces C_JointHierarchy ready for toGPUFormat(); (4) round-trip 30-bone snake rig: toGPUFormat() produces identical GPU matrices pre/post round-trip; (5) JSON sidecar emits per-joint name + parent index; (6) unknown chunks handled forward-compat (Extensibility Rule #1); (7) unit tests: round-trip, unknown-chunk forward compat; (8) fleet-build clean on linux-debug
+  - **Issue:** #666
+  - **Notes:** Joints-only first slice; bind-points (#669) adds BIND chunk; Phase 3 animation tracks (#606) adds ANIM chunk — both without bumping .rig v1. Referenced by .prefab.lua files (#671) for rig sharing. Parent epic: #605 (Phase 2 — Hierarchies & skeletal voxels).
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
@@ -332,4 +405,3 @@ Avoid:
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
-- [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592

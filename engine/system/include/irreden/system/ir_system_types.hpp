@@ -125,6 +125,13 @@ enum SystemName {
     WIDGET_RENDER_SLIDER,
     WIDGET_RENDER_CHECKBOX,
 
+    // Layout system (F-0.2)
+    LAYOUT_COMPUTE,
+    WIDGET_INPUT_SPLITTER,
+    WIDGET_RENDER_SPLITTER,
+    WIDGET_INPUT_PANEL_DRAG,
+    WIDGET_RENDER_DOCK_PREVIEW,
+
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.
     TEST_REGISTER_SYSTEM_A,
