@@ -195,6 +195,35 @@ fi
 # (fleet-queue-tick, spawned by fleet-state-scout on projection change).
 PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 
+# Boot fan-out window. During the first N seconds after dispatcher start,
+# `dispatch_role` keeps the per-role trigger in place after a successful
+# dispatch when the post-dispatch active count is still below cap. This
+# guards against a race that surfaces at `fleet-up`: tmux applies the
+# `@fleet-role` tags to panes asynchronously, so the dispatcher's first
+# tick can see only a subset of role-tagged panes (e.g. one of two
+# sonnet-author panes). With the existing single-shot trigger semantic
+# that subset gets dispatched, the bootstrap trigger is consumed, and
+# the late-tagged panes sit idle until scout notices a projection
+# delta — which can take an arbitrarily long time when the same task
+# set was already actionable before the boot. Keeping the trigger for
+# the boot window gives subsequent ticks a chance to dispatch into the
+# missed panes; the dispatch records written here prevent
+# double-dispatch into the already-running panes.
+#
+# Scoped to the boot window so steady-state trigger semantics
+# (consume-on-success) are unchanged. 60s is generous — the race
+# typically resolves in 1–2 ticks (10–20s after start).
+BOOT_FANOUT_WINDOW_SECONDS="${FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS:-60}"
+# Validate-and-clamp: a non-numeric override (operator typo,
+# trailing-suffix like "9999s") would otherwise emit arithmetic errors
+# every tick or, under `set -u`, kill the daemon outright. Fall back
+# to the default and log a one-shot warning instead.
+if ! [[ "$BOOT_FANOUT_WINDOW_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] BOOT_FANOUT_WINDOW_SECONDS=%q is not a non-negative integer; falling back to 60\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$BOOT_FANOUT_WINDOW_SECONDS" >&2
+    BOOT_FANOUT_WINDOW_SECONDS=60
+fi
+
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Aligned with the worker / reviewer /
 # queue-mgr / merger roles in fleet-up.
@@ -821,7 +850,25 @@ dispatch_role() {
     done <<< "$idle_panes"
 
     if (( dispatched > 0 )); then
-        # At least one pane took the work; consume the trigger.
+        # Boot fan-out guard. If the role's post-dispatch active count
+        # is still below cap AND we're within the boot fan-out window,
+        # keep the trigger so the next tick can catch a pane whose
+        # `@fleet-role` tag landed late (the fleet-up tmux setup race).
+        # Dispatch records already written on this tick prevent
+        # double-dispatch into the panes we just fired. After the
+        # window, fall through to the legacy consume-on-success
+        # semantics so steady-state iterations don't loop just because
+        # of cap headroom.
+        local active
+        active=$(count_active_for_role "$role")
+        if should_retain_trigger_for_fanout_race "$role" "$active"; then
+            local cap="${ROLE_CONCURRENCY[$role]:-0}"
+            log "$role: dispatched $dispatched, active=$active < cap=$cap within boot fan-out window (${SECONDS}s < ${BOOT_FANOUT_WINDOW_SECONDS}s); keeping trigger for late-tag race"
+            return
+        fi
+        # Steady state (or boot window with cap saturated): at least
+        # one pane took the work and headroom is filled, consume the
+        # trigger.
         rm -f "$trigger_file"
     else
         # Every idle pane already had a record (still settling in
@@ -829,6 +876,25 @@ dispatch_role() {
         # the trigger for the next tick.
         log "no fresh dispatch for $role; trigger kept for retry"
     fi
+}
+
+# Decide whether to retain a per-role trigger after a successful
+# dispatch tick to catch the fleet-up tmux-tag race. Returns 0
+# (retain) if all of: cap is configured (>0), the dispatcher is still
+# inside its boot fan-out window, and the post-dispatch active count
+# is below cap. Returns 1 (consume) otherwise — including any time
+# `BOOT_FANOUT_WINDOW_SECONDS=0` is set, which tests use to simulate
+# the post-window steady state.
+#
+# Extracted so the dispatcher's concurrency tests can drive the
+# decision without spinning up the full main loop.
+should_retain_trigger_for_fanout_race() {
+    local role="$1" active="$2"
+    local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    if (( cap > 0 && SECONDS < BOOT_FANOUT_WINDOW_SECONDS && active < cap )); then
+        return 0
+    fi
+    return 1
 }
 
 # --- Main loop -------------------------------------------------------------
@@ -1017,6 +1083,28 @@ case "${1:-}" in
         # Used by operators to inspect the 5-hour-window state without
         # tailing the dispatcher log.
         usage_gate_status
+        exit 0
+        ;;
+    --retain-trigger-check)
+        # Test/debug: print `retain` or `consume` for this role given a
+        # post-dispatch active count. Honors BOOT_FANOUT_WINDOW_SECONDS
+        # (env override), so tests set it to 0 to simulate the
+        # post-window steady state or to a large value to simulate the
+        # boot window. SECONDS in a fresh CLI invocation is ~0, so the
+        # boot window is "in" by default unless the override drops it.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --retain-trigger-check <role> <active-count>" >&2
+            exit 2
+        fi
+        if ! [[ "$3" =~ ^[0-9]+$ ]]; then
+            echo "fleet-dispatcher --retain-trigger-check: <active-count> must be a non-negative integer (got: $3)" >&2
+            exit 2
+        fi
+        if should_retain_trigger_for_fanout_race "$2" "$3"; then
+            echo "retain"
+        else
+            echo "consume"
+        fi
         exit 0
         ;;
 esac

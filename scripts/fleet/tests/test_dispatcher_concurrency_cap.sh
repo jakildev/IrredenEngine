@@ -315,6 +315,64 @@ echo "T8: env var has higher priority than conf"
 cap=$(FLEET_CONCURRENCY_OPUS_WORKER=7 "$DISPATCHER" --print-cap opus-worker)
 assert_eq "$cap" "7" "env var beats conf file"
 
+# --- Test 9: boot fan-out trigger retention --------------------------------
+#
+# When a successful dispatch leaves the role under cap and the dispatcher
+# is still inside its boot fan-out window, the trigger must be retained
+# (so the next tick can dispatch into a pane whose @fleet-role tag landed
+# late at fleet-up). Outside the window, the legacy consume-on-success
+# behavior applies regardless of cap headroom.
+# Clear the conf override so opus-worker is back at default cap=2 for T9+.
+rm -f "$FLEET_CONF"
+
+echo "T9: boot fan-out — active < cap inside window → retain"
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    "$DISPATCHER" --retain-trigger-check opus-worker 1)
+assert_eq "$out" "retain" "active=1 < cap=2 inside window → retain"
+
+echo "T10: boot fan-out — active == cap inside window → consume"
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    "$DISPATCHER" --retain-trigger-check opus-worker 2)
+assert_eq "$out" "consume" "active=2 == cap=2 inside window → consume"
+
+echo "T11: boot fan-out — window expired → consume even if under cap"
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=0 \
+    "$DISPATCHER" --retain-trigger-check opus-worker 1)
+assert_eq "$out" "consume" "active=1 < cap=2 but window expired → consume"
+
+echo "T12: boot fan-out — single-pane role saturated → consume"
+# Merger has cap=1; in the real dispatch flow, a successful dispatch
+# means the merger pane just got a dispatch record so active==cap, which
+# is the only realistic post-dispatch state for cap=1 roles.
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    "$DISPATCHER" --retain-trigger-check merger 1)
+assert_eq "$out" "consume" "merger cap=1 with active=1 → consume (cap saturated)"
+
+echo "T13: boot fan-out — cap=0 (unconfigured role) → consume"
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    FLEET_CONCURRENCY_OPUS_WORKER=0 \
+    "$DISPATCHER" --retain-trigger-check opus-worker 0)
+assert_eq "$out" "consume" "cap=0 short-circuits the retention check"
+
+# --- Test 14: numeric guard on --retain-trigger-check active arg -----------
+echo "T14: non-numeric active arg → usage error, no daemon crash"
+if FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    "$DISPATCHER" --retain-trigger-check opus-worker notanumber >/dev/null 2>&1; then
+    rc=0
+else
+    rc=$?
+fi
+assert_eq "$rc" "2" "non-numeric active arg exits with rc=2 (usage error)"
+
+# --- Test 15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to default -----
+echo "T15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to 60s default"
+# Default-window (60s) + fresh CLI invocation (SECONDS≈0) + active<cap → retain.
+# If the validate-and-clamp at startup fails, the bash arithmetic would either
+# emit a stderr error (silent flip to consume) or trip set -u (rc=1).
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS="9999s" \
+    "$DISPATCHER" --retain-trigger-check opus-worker 1 2>/dev/null)
+assert_eq "$out" "retain" "non-numeric env override clamps to 60s → in-window retain"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 if (( FAIL > 0 )); then
