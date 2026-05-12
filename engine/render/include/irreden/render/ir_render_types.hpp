@@ -345,14 +345,14 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // this aliasing goes away in T-09Y once light-volume LOS moves off the
 // world-space bitfield.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
-// SPRITE_TO_SCREEN runs at the FRAMEBUFFER_TO_SCREEN stage, after every
-// compute pass has completed; the slots it borrows belong to compute-only
-// buffers whose data is no longer needed by the time the sprite stage
-// dispatches. Slot 0 is the long-reserved-but-unused FrameDataUniform
-// constant; slot 25 (CompactedVoxelIndices) is written by
-// VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2 — both finished by the
-// time the FRAMEBUFFER_TO_SCREEN-stage sprites pass binds it. Same Metal
-// 0–30 cap rationale as `kBufferIndex_SunShadowDepthMap`.
+// SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the
+// sprite draw. Safety is enforced by a defensive rebind in
+// `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the
+// sprite resources immediately before each draw call, displacing any earlier
+// occupant. Slot 0 (FrameDataUniform) is also used by the T-163 stateless
+// particle UBO; slot 25 (CompactedVoxelIndices) is written by
+// VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2. Same Metal 0–30 cap
+// rationale as `kBufferIndex_SunShadowDepthMap`.
 constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
 constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
 // GPU particle slots (T-139 Phase 1). Metal caps bindings at 0–30, so we
@@ -378,9 +378,12 @@ constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightV
 //
 // UBO slot: aliases the long-reserved-but-unused `FrameDataUniform` slot 0
 // — same slot the sprite pipeline borrows for `SpritesFrameData`. The
-// aliasing is safe because the only other consumer of slot 0 as a UBO is
-// `SPRITE_TO_SCREEN`, which runs at the FRAMEBUFFER_TO_SCREEN stage well
-// after the trixel compute pipeline finishes.
+// aliasing is safe because `SPRITE_TO_SCREEN::bindPipeline()` defensively
+// rebinds slot 0 to `SpritesFrameData` immediately before each draw call,
+// so any prior stateless-particle UBO occupying slot 0 is always displaced
+// before the sprite vertex shader reads it (OpenGL has global binding
+// state; Metal compute and render encoders maintain independent argument
+// tables, so the alias is inherently safe there).
 // SSBO slot: aliases `kBufferIndex_LightSourceBuffer` (slot 4), already
 // shared with `kBufferIndex_GpuParticleData` — both T-139 SSBO particles
 // and T-163 stateless emitters can register on the same canvas, and each
