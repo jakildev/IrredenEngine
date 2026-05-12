@@ -67,8 +67,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     void beginTick() {
         program_->use();
         // BAKE_SUN_SHADOW_MAP owns FrameDataSun uploads — its
-        // beginTick writes the full struct (sun direction +
-        // basis + AABB + flags) before this pass reads it.
+        // tick is the authoritative writer for the full struct
+        // (sun direction + basis + AABB + flags), uploaded via
+        // subData after BAKE's beginTick populates frameData_.
+        // This pass runs after BAKE so the struct is fresh.
         if (sunShadowDepthMap_ == nullptr) {
             sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         }
