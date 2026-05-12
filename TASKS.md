@@ -309,6 +309,30 @@ Avoid:
   - **Notes:** Alternative/complement to T-139 SSBO pool (#209, PR #614) — stateless path for ambient/decorative emitters (biome motes, rain, weather) with zero per-particle state and near-zero CPU→GPU sync cost. Phase 1 only; Phases 2–5 (Lua bindings, combined demo, benchmark, color ramps) filed as follow-ups after Phase 1 lands. ECS option (a) locked in by architect comment. UBO slot: pick unused 0–30, do not alias T-139's slot 23. Reuse iso-projection helpers from ir_iso_common.glsl and canvas binding pattern from system_render_gpu_particles_to_trixel.hpp (PR #614).
   - **Links:**
 
+
+- [ ] **Editor F-0.5 Phase 2: screen-space gizmo sizing + depth-aware dimming** — constant pixel-size gizmo handles across zoom range; depth-aware alpha dimming for occluded gizmos
+  - **ID:** T-164
+  - **Area:** engine/prefabs/irreden/render, engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) gizmos render at constant pixel size across full zoom range; (2) gizmo fragments behind world geometry show with reduced alpha (faint silhouette when occluded); (3) GLSL + Metal backends agree on dimming behavior; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #675
+  - **Notes:** Phase 2 follow-up to T-152 (Phase 1 shipped via PR #672). New UPDATE system scales C_ShapeDescriptor params_ inversely to camera zoom (member pixelSize_ on System<N>). New SHAPE_FLAG_GIZMO bit + depth-aware alpha path in c_shapes_to_trixel.glsl + shapes_to_trixel.metal. Touch points: system_gizmo_screen_space_size.hpp, shape_descriptor_flags.hpp, both shaders, gizmo.hpp, editor main.cpp, ir_system_types.hpp.
+  - **Links:**
+
+
+- [ ] **Editor F-0.5 Phase 3: gizmo hover + drag interaction** — hover highlight via entity-id texture readback; drag-axis-constrained translate/scale; Shift-snap rotate
+  - **ID:** T-165
+  - **Area:** engine/prefabs/irreden/render, creations/editors
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-153
+  - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
+  - **Issue:** #676
+  - **Notes:** Phase 3 follow-up to T-152 (Phase 1 shipped via PR #672). Hover reuses entity-id texture readback built by T-153. New systems: system_gizmo_hover.hpp (reads canvas entity-id texture for cursor pixel, sets C_GizmoHandle::hover_), system_gizmo_drag.hpp (drag state per handle kind). Touch points: component_gizmo_handle.hpp, editor main.cpp, ir_system_types.hpp.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
