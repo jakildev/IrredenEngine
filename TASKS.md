@@ -238,18 +238,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **C_CanvasFogOfWar: evaluate per-write subData vs full-buffer dirty-flag upload** — profile fog upload cost under realistic workloads; implement faster strategy or document rationale for deferral
-  - **ID:** T-161
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-161-fog-upload-eval
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) per-frame fog upload cost measured under three workloads: single-cell update, radius reveal, full clear; (2) code change implementing chosen strategy OR note in design doc deferring change with rationale; (3) IRFogOfWar (or equivalent demo) renders identically
-  - **Issue:** #645
-  - **Notes:** Pre-existing pattern surfaced as nit N3 in T-156 Opus recheck (PR #638). Current: dirty_ flag gates whole-buffer subImage2D upload in FOG_TO_TRIXEL::tick. Alternative: per-write subData with dirty tile list in C_CanvasFogOfWar::setCell. Tradeoff: per-write cheaper for few-cell updates, whole-buffer cheaper for large diffs. Measurement required before implementation. Related duplicate: #643 (flagged fleet:needs-info).
-  - **Links:**
-
-
 - [~] **Stateless procedural particle system — UBO-driven emitters** — Phase 1: types, C_StatelessParticleEmitters component, one compute render pass, GLSL + Metal parity, demo (64 emitters × 64 particles, gravity-with-jitter)
   - **ID:** T-163
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -337,6 +325,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
 - [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-146** — Editor F-0.6 — per-voxel metadata extension (.txl v2) · Owner: claude/T-146-txl-v2-metadata · PR: https://github.com/jakildev/IrredenEngine/pull/635
 - [x] **T-147** — Editor F-0.8 -- editor exe scaffold at creations/editors/voxel_editor/ · Owner: claude/T-147-voxel-editor-scaffold · PR: https://github.com/jakildev/IrredenEngine/pull/634
@@ -356,4 +345,3 @@ Avoid:
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
 - [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
-- [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
