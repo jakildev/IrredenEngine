@@ -42,8 +42,10 @@ else()
 endif()
 
 function(_collect_git_diff range out_var)
-    # `range` is a CMake list (semicolon-separated tokens) passed
-    # whole into the git command line.
+    # `range` is passed as a CMake unquoted variable below; any
+    # semicolons in it expand into separate git arguments. Current
+    # call sites pass a single-string git range ("base...HEAD" or
+    # "HEAD"), but multi-token ranges would also work.
     execute_process(
         COMMAND git -C "${PROJECT_ROOT}" diff --name-only ${range}
         OUTPUT_VARIABLE _out
