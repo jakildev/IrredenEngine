@@ -8,6 +8,37 @@ Tiny module. Today it covers two file formats:
   extension `.irsprite`. The PNG itself is loaded by `engine/render/`'s
   `ImageData`; this module owns only the sidecar.
 
+## What this module is and isn't
+
+`.txl` is the **trixel-texture** format and stays that way. Do not
+extend `.txl` to carry voxel data; the two existing trixel-texture
+call sites (`engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp`)
+would have to thread a multi-format reader through unrelated
+trixel-canvas code. If you find yourself reaching for that, file an
+issue instead.
+
+This module is the engine's general asset-format home — meaning the
+new voxel-set, rig, and prefab formats land here alongside the
+existing trixel-texture and sprite-sheet I/O:
+
+- `.vxs` — voxel-set asset (dense per-voxel records and/or SDF
+  shape-group composition; see editor-epic design doc).
+- `.rig` — joint hierarchy + bind points + skeletal animation tracks.
+- `.prefab.lua` — Lua prefab template referencing `.vxs` + `.rig` +
+  component pack.
+
+The binary-I/O primitives (`BinaryWriter`/`Reader`, chunk-table header
+helpers, name-table encoding, JSON sidecar emitter) used by every new
+format also live here so consumers have one place to look. All formats
+obey the seven "Save format extensibility rules" documented in the
+editor-epic design doc.
+
+The one save/load surface that does **not** live here is the ECS world
+snapshot (issue #199). It walks the archetype graph, so it lives in
+`engine/world/` and consumes this module's binary primitives —
+`engine/asset/` stays at its current dependency level (below `world/`,
+`entity/`) and does not depend on either.
+
 `IRAsset::` exposes:
 
 - `saveTrixelTextureData(name, path, size, colors, distances)` /
