@@ -68,11 +68,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         program_->use();
         // AO only writes `aoEnabled_` into the shared FrameDataSun
         // buffer. All other fields carry the previous frame's values
-        // written by COMPUTE_SUN_SHADOW's beginTick — AO must not
-        // read them. COMPUTE_SUN_SHADOW's beginTick is the
-        // authoritative writer for the full struct; AO runs before
-        // it in pipeline order, so this partial write is safe and
-        // the two systems agree on `aoEnabled_` via the same
+        // written by BAKE_SUN_SHADOW_MAP's tick — AO must not read
+        // them. BAKE_SUN_SHADOW_MAP's tick is the authoritative
+        // writer for the full struct (subData(0, sizeof(FrameDataSun),
+        // &frameData_) after its beginTick populates frameData_); AO
+        // runs before it in pipeline order, so this partial write is
+        // safe and the two systems agree on `aoEnabled_` via the same
         // IRRender::getAOEnabled() source.
         if (sunFrameDataBuf_ == nullptr) {
             sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");

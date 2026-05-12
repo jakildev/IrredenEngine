@@ -54,9 +54,6 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         shadow.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        if (sunShadowDepthMap_ == nullptr) {
-            sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
-        }
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
@@ -72,6 +69,9 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         // BAKE_SUN_SHADOW_MAP owns FrameDataSun uploads — its
         // beginTick writes the full struct (sun direction +
         // basis + AABB + flags) before this pass reads it.
+        if (sunShadowDepthMap_ == nullptr) {
+            sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
     }
 
     static SystemId create() {
