@@ -87,6 +87,7 @@ static_assert(offsetof(C_Voxel, color_) == 0, "C_Voxel::color_ must be at offset
 static_assert(offsetof(C_Voxel, material_id_) == 4, "C_Voxel::material_id_ must be at offset 4");
 static_assert(offsetof(C_Voxel, flags_) == 5, "C_Voxel::flags_ must be at offset 5");
 static_assert(offsetof(C_Voxel, bone_id_) == 6, "C_Voxel::bone_id_ must be at offset 6");
+static_assert(offsetof(C_Voxel, pad0_) == 7, "C_Voxel::pad0_ must be at offset 7");
 static_assert(offsetof(C_Voxel, reserved_) == 8, "C_Voxel::reserved_ must be at offset 8");
 
 #endif /* COMPONENT_VOXEL_H */

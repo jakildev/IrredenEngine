@@ -45,6 +45,10 @@ struct Voxel {
     uint reserved;
 };
 
+// Stage 1 writes distances only; voxels[] is unused here. It is bound so the
+// buffer slot layout stays identical across all three voxel-to-trixel stages
+// and for Phase 2 (#605), where stage 1 will multiply each voxel position by
+// bone_matrix[bone_id] before projecting.
 layout(std430, binding = 6) readonly buffer ColorBuffer {
     Voxel voxels[];
 };
