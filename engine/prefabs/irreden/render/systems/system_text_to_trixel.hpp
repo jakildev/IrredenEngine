@@ -35,7 +35,8 @@ inline std::vector<uint32_t> buildFontBuffer() {
     std::vector<uint32_t> buf(kFontBufferSize, 0);
     for (int ascii = 0; ascii < kFontTableEntries; ++ascii) {
         const IRRender::Glyph *g = IRRender::getGlyph(static_cast<char>(ascii));
-        if (!g) continue;
+        if (!g)
+            continue;
         for (int row = 0; row < kFontRowsPerGlyph; ++row) {
             buf[ascii * kFontRowsPerGlyph + row] = static_cast<uint32_t>((*g)[row]);
         }
@@ -43,12 +44,24 @@ inline std::vector<uint32_t> buildFontBuffer() {
     return buf;
 }
 
-inline int glyphWidth(int fontSize) { return IRRender::kGlyphWidth * fontSize; }
-inline int glyphHeight(int fontSize) { return IRRender::kGlyphHeight * fontSize; }
-inline int glyphStepX(int fontSize) { return IRRender::kGlyphStepX * fontSize; }
-inline int glyphStepY(int fontSize) { return IRRender::kGlyphStepY * fontSize; }
-inline int glyphSpacingX(int fontSize) { return IRRender::kGlyphSpacingX * fontSize; }
-inline int glyphSpacingY(int fontSize) { return IRRender::kGlyphSpacingY * fontSize; }
+inline int glyphWidth(int fontSize) {
+    return IRRender::kGlyphWidth * fontSize;
+}
+inline int glyphHeight(int fontSize) {
+    return IRRender::kGlyphHeight * fontSize;
+}
+inline int glyphStepX(int fontSize) {
+    return IRRender::kGlyphStepX * fontSize;
+}
+inline int glyphStepY(int fontSize) {
+    return IRRender::kGlyphStepY * fontSize;
+}
+inline int glyphSpacingX(int fontSize) {
+    return IRRender::kGlyphSpacingX * fontSize;
+}
+inline int glyphSpacingY(int fontSize) {
+    return IRRender::kGlyphSpacingY * fontSize;
+}
 
 inline int nextWordWidth(const std::string &text, size_t i, int fontSize) {
     int width = 0;
@@ -80,14 +93,17 @@ inline void expandTextToCommands(
     const int stepY = glyphStepY(fontSize);
     const int spacX = glyphSpacingX(fontSize);
     const int spacY = glyphSpacingY(fontSize);
-    const int effectiveWrap = (wrapWidth > 0)
-        ? aligned.x + wrapWidth
-        : (wrapWidth < 0 ? canvasSize.x : 0);
+    const int effectiveWrap =
+        (wrapWidth > 0) ? aligned.x + wrapWidth : (wrapWidth < 0 ? canvasSize.x : 0);
     uint32_t packed = color.toPackedRGBA();
 
     const size_t firstCmd = commands.size();
 
-    struct LineInfo { size_t firstIndex_; size_t count_; int width_; };
+    struct LineInfo {
+        size_t firstIndex_;
+        size_t count_;
+        int width_;
+    };
     std::vector<LineInfo> lines;
     lines.push_back({firstCmd, 0, 0});
 
@@ -144,20 +160,25 @@ inline void expandTextToCommands(
     if (lines.back().width_ > 0)
         lines.back().width_ -= spacX;
 
-    if (alignH == TextAlignH::LEFT && alignV == TextAlignV::TOP) return;
+    if (alignH == TextAlignH::LEFT && alignV == TextAlignV::TOP)
+        return;
 
     const int refW = (boxWidth > 0) ? boxWidth : canvasSize.x;
     const int refH = (boxHeight > 0) ? boxHeight : canvasSize.y;
     const int totalTextH = static_cast<int>(lines.size()) * stepY - spacY;
 
     int offsetY = 0;
-    if (alignV == TextAlignV::CENTER) offsetY = (refH - totalTextH) / 2;
-    else if (alignV == TextAlignV::BOTTOM) offsetY = refH - totalTextH;
+    if (alignV == TextAlignV::CENTER)
+        offsetY = (refH - totalTextH) / 2;
+    else if (alignV == TextAlignV::BOTTOM)
+        offsetY = refH - totalTextH;
 
     for (auto &line : lines) {
         int offsetX = 0;
-        if (alignH == TextAlignH::CENTER) offsetX = (refW - line.width_) / 2;
-        else if (alignH == TextAlignH::RIGHT) offsetX = refW - line.width_;
+        if (alignH == TextAlignH::CENTER)
+            offsetX = (refW - line.width_) / 2;
+        else if (alignH == TextAlignH::RIGHT)
+            offsetX = refW - line.width_;
 
         int roundedX = (offsetX / 2) * 2;
         int roundedY = (offsetY / 2) * 2;
@@ -166,28 +187,101 @@ inline void expandTextToCommands(
             auto &cmd = commands[line.firstIndex_ + j];
             int cx = static_cast<int>(cmd.positionPacked & 0xFFFF) + roundedX;
             int cy = static_cast<int>(cmd.positionPacked >> 16) + roundedY;
-            cmd.positionPacked = static_cast<uint32_t>(cx & 0xFFFF) |
-                                 (static_cast<uint32_t>(cy & 0xFFFF) << 16);
+            cmd.positionPacked =
+                static_cast<uint32_t>(cx & 0xFFFF) | (static_cast<uint32_t>(cy & 0xFFFF) << 16);
         }
     }
 }
 
 template <> struct System<TEXT_TO_TRIXEL> {
-    struct Params {
-        ShaderProgram *textProgram_ = nullptr;
-        Buffer *fontDataBuf_ = nullptr;
-        Buffer *glyphCmdBuf_ = nullptr;
-        std::vector<GlyphDrawCommand> drawCommands_;
-        std::string commandList_;
-        bool fontUploaded_ = false;
-    };
+    ShaderProgram *textProgram_ = nullptr;
+    Buffer *fontDataBuf_ = nullptr;
+    Buffer *glyphCmdBuf_ = nullptr;
+    std::vector<GlyphDrawCommand> drawCommands_;
+    std::string commandList_;
+    bool fontUploaded_ = false;
+
+    void tick(
+        const C_TextSegment &text,
+        const C_GuiPosition &guiPos,
+        const C_GuiElement &,
+        const C_TextStyle &style
+    ) {
+        EntityId guiCanvas = IRRender::getCanvas("gui");
+        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
+
+        expandTextToCommands(
+            drawCommands_,
+            text.text_,
+            guiPos.pos_,
+            canvasTextures.size_,
+            style.color_,
+            style.wrapWidth_,
+            style.alignH_,
+            style.alignV_,
+            style.boxWidth_,
+            style.boxHeight_,
+            style.fontSize_
+        );
+    }
+
+    void beginTick() {
+        textProgram_->use();
+
+        if (!fontUploaded_) {
+            auto fontData = buildFontBuffer();
+            fontDataBuf_->subData(0, fontData.size() * sizeof(uint32_t), fontData.data());
+            fontUploaded_ = true;
+        }
+
+        EntityId guiCanvas = IRRender::getCanvas("gui");
+        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
+        canvasTextures.clear();
+
+        drawCommands_.clear();
+
+        if (IRRender::isGuiVisible()) {
+            if (commandList_.empty()) {
+                commandList_ = IRCommand::buildCommandListText();
+            }
+            expandTextToCommands(
+                drawCommands_,
+                commandList_,
+                kGuiOverlayPadding,
+                canvasTextures.size_,
+                IRMath::IRColors::kWhite,
+                0
+            );
+        }
+    }
+
+    void endTick() {
+        if (drawCommands_.empty())
+            return;
+
+        int count = static_cast<int>(drawCommands_.size());
+        if (count > kMaxGlyphCommands) {
+            count = kMaxGlyphCommands;
+        }
+
+        glyphCmdBuf_->subData(0, count * sizeof(GlyphDrawCommand), drawCommands_.data());
+
+        EntityId guiCanvas = IRRender::getCanvas("gui");
+        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
+        canvasTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        canvasTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+
+        IRRender::device()->dispatchCompute(count, 1, 1);
+        // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "TextToTrixelProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompTextToTrixel, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompTextToTrixel, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "FontDataBuffer",
@@ -206,95 +300,14 @@ template <> struct System<TEXT_TO_TRIXEL> {
             kBufferIndex_GlyphDrawCommands
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
+        SystemId systemId =
+            registerSystem<TEXT_TO_TRIXEL, C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
+                "TextToTrixel"
+            );
+        auto *p = getSystemParams<System<TEXT_TO_TRIXEL>>(systemId);
         p->textProgram_ = IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram");
         p->fontDataBuf_ = IRRender::getNamedResource<Buffer>("FontDataBuffer");
         p->glyphCmdBuf_ = IRRender::getNamedResource<Buffer>("GlyphDrawCommandBuffer");
-
-        SystemId systemId = createSystem<C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
-            "TextToTrixel",
-            [p](const C_TextSegment &text,
-                const C_GuiPosition &guiPos,
-                const C_GuiElement &,
-                const C_TextStyle &style) {
-                EntityId guiCanvas = IRRender::getCanvas("gui");
-                auto &canvasTextures =
-                    IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-
-                expandTextToCommands(
-                    p->drawCommands_,
-                    text.text_,
-                    guiPos.pos_,
-                    canvasTextures.size_,
-                    style.color_,
-                    style.wrapWidth_,
-                    style.alignH_,
-                    style.alignV_,
-                    style.boxWidth_,
-                    style.boxHeight_,
-                    style.fontSize_
-                );
-            },
-            [p]() {
-                p->textProgram_->use();
-
-                if (!p->fontUploaded_) {
-                    auto fontData = buildFontBuffer();
-                    p->fontDataBuf_->subData(
-                        0, fontData.size() * sizeof(uint32_t), fontData.data());
-                    p->fontUploaded_ = true;
-                }
-
-                EntityId guiCanvas = IRRender::getCanvas("gui");
-                auto &canvasTextures =
-                    IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-                canvasTextures.clear();
-
-                p->drawCommands_.clear();
-
-                if (IRRender::isGuiVisible()) {
-                    if (p->commandList_.empty()) {
-                        p->commandList_ = IRCommand::buildCommandListText();
-                    }
-                    expandTextToCommands(
-                        p->drawCommands_,
-                        p->commandList_,
-                        kGuiOverlayPadding,
-                        canvasTextures.size_,
-                        IRMath::IRColors::kWhite,
-                        0
-                    );
-                }
-            },
-            [p]() {
-                if (p->drawCommands_.empty()) return;
-
-                int count = static_cast<int>(p->drawCommands_.size());
-                if (count > kMaxGlyphCommands) {
-                    count = kMaxGlyphCommands;
-                }
-
-                p->glyphCmdBuf_->subData(
-                    0, count * sizeof(GlyphDrawCommand), p->drawCommands_.data());
-
-                EntityId guiCanvas = IRRender::getCanvas("gui");
-                auto &canvasTextures =
-                    IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-                canvasTextures.getTextureColors()->bindAsImage(
-                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                );
-                canvasTextures.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::WRITE_ONLY, TextureFormat::R32I
-                );
-
-                IRRender::device()->dispatchCompute(count, 1, 1);
-                // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
-                IRRender::device()->memoryBarrier(BarrierType::ALL);
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
         IRRender::tagGpuStage(systemId, "textToTrixel");
         return systemId;
     }
