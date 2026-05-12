@@ -346,11 +346,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor: migrate LayoutState to C_LayoutState singleton component** — replace inline g_layout header variable with a singleton ECS component; update all systems to fetch via getOrCreateSingleton
+- [~] **Editor: migrate LayoutState to C_LayoutState singleton component** — replace inline g_layout header variable with a singleton ECS component; update all systems to fetch via getOrCreateSingleton
   - **ID:** T-174
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_LayoutState component defined with all fields from LayoutState struct (nodes_, root_, rootPos_, rootSize_, splitter/panel drag fields); (2) layout.hpp free functions fetch state via IREntity::getOrCreateSingleton<C_LayoutState>(); (3) WIDGET_RENDER_DOCK_PREVIEW filters on C_LayoutState (tick fires once per frame, no-op body removed); (4) inline LayoutState g_layout and struct LayoutState fully removed; (5) IRUiDockspace serialize/deserialize round-trip still logs OK; (6) fleet-build clean on linux-debug
   - **Issue:** #674
