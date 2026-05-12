@@ -226,18 +226,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
-  - **ID:** T-160
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-160-text-trixel-canvas-hoist
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IREntity::getComponent no longer appears in System<TEXT_TO_TRIXEL>::tick; (2) IRShapeDebug and any text-bearing demo render identically to pre-fix output (single-frame visual regression check); (3) fleet-build --target IRShapeDebug clean on linux-debug
-  - **Issue:** #644
-  - **Notes:** Pre-existing ECS hot-loop smell surfaced as nit N2 in T-156 Opus recheck (PR #638). Hoist EntityId guiCanvas_ and C_TriangleCanvasTextures* as members on System<TEXT_TO_TRIXEL>; resolve in beginTick; tick reads cached value. system_text_to_trixel.hpp:210-211 is the change site. Related duplicate: #642 (flagged fleet:needs-info).
-  - **Links:**
-
-
 - [~] **Stateless procedural particle system — UBO-driven emitters** — Phase 1: types, C_StatelessParticleEmitters component, one compute render pass, GLSL + Metal parity, demo (64 emitters × 64 particles, gravity-with-jitter)
   - **ID:** T-163
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -325,6 +313,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
 - [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
 - [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-146** — Editor F-0.6 — per-voxel metadata extension (.txl v2) · Owner: claude/T-146-txl-v2-metadata · PR: https://github.com/jakildev/IrredenEngine/pull/635
@@ -344,4 +333,3 @@ Avoid:
 - [x] **T-108** — Per-system mode override + CODEGEN/EVAL coexistence · Owner: claude/T-108-mode-override-coexistence · PR: https://github.com/jakildev/IrredenEngine/pull/598
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
-- [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
