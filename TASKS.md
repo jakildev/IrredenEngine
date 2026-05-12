@@ -230,7 +230,7 @@ Avoid:
   - **ID:** T-150
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-150-editor-camera
   - **Blocked by:** T-147
   - **Acceptance:** (1) editor opens with sane default framing showing reference grid centered; (2) orbit/pan/zoom/snap/re-center all work responsively at 60 fps on linux-debug; (3) close editor + re-open → framing restored; (4) snap views give pixel-aligned axis-aligned projection
   - **Issue:** #625
@@ -242,7 +242,7 @@ Avoid:
   - **ID:** T-151
   - **Area:** engine/prefabs/irreden/voxel, creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-151-txl-json-sidecar
   - **Blocked by:** T-146
   - **Acceptance:** (1) editor writes .txl.json next to .txl save (omit file if content empty); (2) loader reads sidecar if present; missing sidecar = empty bind-point list, empty component-pack, identity material map, no log; (3) round-trip test: write voxel grid + bind-points → reload → bind-points match exactly; (4) schema documented in same doc as .txl v2 spec from F-0.6
   - **Issue:** #626
@@ -254,7 +254,7 @@ Avoid:
   - **ID:** T-152
   - **Area:** engine/render, creations/editors
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-152-gizmo-primitives
   - **Blocked by:** T-150
   - **Acceptance:** (1) select voxel → translate gizmo at center; drag X arrow → moves only in X; release applies; (2) rotate gizmo drag around Y ring rotates selection around Y; Shift held snaps to 15°; (3) scale gizmo drag-uniform-center scales uniformly; (4) all gizmos render at constant screen-space size regardless of camera distance, depth-aware (hidden faces dimmed); (5) hover highlights handle under cursor; (6) joint/bind-point/IK marker primitives render at constant screen-space size and are clickable
   - **Issue:** #627
@@ -302,7 +302,7 @@ Avoid:
   - **ID:** T-163
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-163-stateless-particles
   - **Blocked by:** (none)
   - **Acceptance:** (1) GpuParticleEmitter and FrameDataStatelessParticles types in ir_render_types.hpp (std140-friendly, 80 B per emitter); (2) C_StatelessParticleEmitters component (per-canvas std::vector<GpuParticleEmitter> + UBO) defined in engine/prefabs; (3) compute render pass GLSL shader with closed-form gravity-with-jitter trajectory, deterministic per (emitterId, subIndex, cycle) via pcg3d/hash3; (4) Metal parity using same scratch-buffer workaround as T-139 render kernel; (5) demo: 64 emitters × 64 particles drifting under gravity with color and position jitter; (6) fleet-build clean on linux-debug and macos-debug; (7) composites correctly on same canvas as T-139 SSBO particles via imageAtomicMin
   - **Issue:** #647
