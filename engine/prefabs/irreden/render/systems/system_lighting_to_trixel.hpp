@@ -59,23 +59,69 @@ struct FrameDataLightingToTrixel {
 // `C_TrixelCanvasRenderBehavior::useCameraPositionIso_ == false` early-
 // return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
-    struct Params {
-        ShaderProgram *program_ = nullptr;
-        Buffer *frameDataBuf_ = nullptr;
-        // Reuse the voxel pipeline's per-frame UBO so we can recover the
-        // world voxel position of each pixel via the same iso math the AO
-        // pass uses. Created by VOXEL_TO_TRIXEL_STAGE_1; this system runs
-        // later in the pipeline so the buffer is always populated.
-        Buffer *voxelFrameDataBuf_ = nullptr;
-        Buffer *sunFrameDataBuf_ = nullptr;
-        // Phase 1c (#360): camera-anchored light-volume params UBO. Owned
-        // + uploaded by COMPUTE_LIGHT_VOLUME; the lighting pass needs to
-        // know the volume's world origin to map a pixel's world voxel
-        // back into the volume texel.
-        Buffer *lightVolumeParamsBuf_ = nullptr;
-        Texture2D *paletteLUT_ = nullptr;
-        FrameDataLightingToTrixel frameData_{};
-    };
+    ShaderProgram *program_ = nullptr;
+    Buffer *frameDataBuf_ = nullptr;
+    // Reuse the voxel pipeline's per-frame UBO so we can recover the
+    // world voxel position of each pixel via the same iso math the AO
+    // pass uses. Created by VOXEL_TO_TRIXEL_STAGE_1; this system runs
+    // later in the pipeline so the buffer is always populated.
+    Buffer *voxelFrameDataBuf_ = nullptr;
+    Buffer *sunFrameDataBuf_ = nullptr;
+    // Phase 1c (#360): camera-anchored light-volume params UBO. Owned
+    // + uploaded by COMPUTE_LIGHT_VOLUME; the lighting pass needs to
+    // know the volume's world origin to map a pixel's world voxel
+    // back into the volume texel.
+    Buffer *lightVolumeParamsBuf_ = nullptr;
+    Texture2D *paletteLUT_ = nullptr;
+    FrameDataLightingToTrixel frameData_{};
+
+    void tick(
+        const C_TriangleCanvasTextures &canvasTextures,
+        const C_TrixelCanvasRenderBehavior &behavior,
+        const C_CanvasAOTexture &ao,
+        const C_CanvasSunShadow &shadow,
+        const C_CanvasLightVolume &lightVolume
+    ) {
+        if (!behavior.useCameraPositionIso_) {
+            return;
+        }
+
+        canvasTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+        canvasTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // Texture/image unit layout (must match GLSL + MSL):
+        //   3: paletteLUT (sampler2D)
+        //   4: canvasSunShadow (image2D, R/O)
+        //   5: lightVolume (sampler3D)
+        // Metal flattens the sampler and image namespaces into a
+        // shared setTexture slot space, so all three slots must be
+        // unique across both kinds.
+        paletteLUT_->bind(3);
+        shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // `getReadTexture()` returns whichever ping-pong texture
+        // the GPU light-volume producer last wrote to, so this
+        // sampler always sees the latest dilation result.
+        lightVolume.getReadTexture()->bind(5);
+        frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
+        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+
+        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
+        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
+        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+    }
+
+    void beginTick() {
+        program_->use();
+        frameData_.lightingEnabled_ = 1;
+        frameData_.lightVolumeEnabled_ = 1;
+        frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+        frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -109,17 +155,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             TextureFilter::LINEAR
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
-        p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
-        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
-        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
-        // LightVolumeParamsBuffer is created by COMPUTE_LIGHT_VOLUME,
-        // which is registered ahead of LIGHTING_TO_TRIXEL in the render
-        // pipeline; safe to look up at init time.
-        p->lightVolumeParamsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
-        p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         // Upload default LUT: cool-shadow (x=0) → full-white (x=255) gradient.
         // Same data for both filter variants; the difference is sampling mode.
         {
@@ -134,15 +169,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                     data[idx + 3] = 255u;
                 }
             }
-            p->paletteLUT_->subImage2D(
-                0,
-                0,
-                256,
-                16,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                data.data()
-            );
+            IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest")
+                ->subImage2D(
+                    0,
+                    0,
+                    256,
+                    16,
+                    PixelDataFormat::RGBA,
+                    PixelDataType::UNSIGNED_BYTE,
+                    data.data()
+                );
             IRRender::getNamedResource<Texture2D>("PaletteLUT_Linear")
                 ->subImage2D(
                     0,
@@ -155,71 +191,23 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 );
         }
 
-        SystemId systemId = createSystem<
+        SystemId systemId = registerSystem<
+            LIGHTING_TO_TRIXEL,
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
             C_CanvasAOTexture,
             C_CanvasSunShadow,
-            C_CanvasLightVolume>(
-            "LightingToTrixel",
-            [p](const C_TriangleCanvasTextures &canvasTextures,
-                const C_TrixelCanvasRenderBehavior &behavior,
-                const C_CanvasAOTexture &ao,
-                const C_CanvasSunShadow &shadow,
-                const C_CanvasLightVolume &lightVolume) {
-                if (!behavior.useCameraPositionIso_) {
-                    return;
-                }
-
-                canvasTextures.getTextureColors()
-                    ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-                canvasTextures.getTextureDistances()
-                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                // Texture/image unit layout (must match GLSL + MSL):
-                //   3: paletteLUT (sampler2D)
-                //   4: canvasSunShadow (image2D, R/O)
-                //   5: lightVolume (sampler3D)
-                // Metal flattens the sampler and image namespaces into a
-                // shared setTexture slot space, so all three slots must be
-                // unique across both kinds.
-                p->paletteLUT_->bind(3);
-                shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                // `getReadTexture()` returns whichever ping-pong texture
-                // the GPU light-volume producer last wrote to, so this
-                // sampler always sees the latest dilation result.
-                lightVolume.getReadTexture()->bind(5);
-                p->frameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_FrameDataLightingToTrixel
-                );
-                p->voxelFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_FrameDataVoxelToCanvas
-                );
-                p->sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
-                p->lightVolumeParamsBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_LightVolumeParams
-                );
-
-                const int groupsX =
-                    IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
-                const int groupsY =
-                    IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
-                IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            },
-            [p]() {
-                p->program_->use();
-                p->frameData_.lightingEnabled_ = 1;
-                p->frameData_.lightVolumeEnabled_ = 1;
-                p->frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
-                p->frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &p->frameData_);
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
+            C_CanvasLightVolume>("LightingToTrixel");
+        auto *p = getSystemParams<System<LIGHTING_TO_TRIXEL>>(systemId);
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
+        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
+        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+        // LightVolumeParamsBuffer is created by COMPUTE_LIGHT_VOLUME,
+        // which is registered ahead of LIGHTING_TO_TRIXEL in the render
+        // pipeline; safe to look up at init time.
+        p->lightVolumeParamsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
+        p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         IRRender::tagGpuStage(systemId, "lightingToTrixel");
         return systemId;
     }

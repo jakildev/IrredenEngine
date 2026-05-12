@@ -50,11 +50,16 @@ struct MinimapLayout {
     float width_;
     float height_;
 
-    vec2 center() const { return origin_ + vec2(width_, height_) * 0.5f; }
-    IsoBounds2D screenBounds() const { return {origin_, origin_ + vec2(width_, height_)}; }
+    vec2 center() const {
+        return origin_ + vec2(width_, height_) * 0.5f;
+    }
+    IsoBounds2D screenBounds() const {
+        return {origin_, origin_ + vec2(width_, height_)};
+    }
 };
 
-inline MinimapLayout computeLayout(ivec2 viewport, float screenWidthFraction, float aspectRatio, float padding) {
+inline MinimapLayout
+computeLayout(ivec2 viewport, float screenWidthFraction, float aspectRatio, float padding) {
     float width = viewport.x * screenWidthFraction;
     float height = width / aspectRatio;
     vec2 origin = vec2((viewport.x - width) * 0.5f, padding);
@@ -66,30 +71,31 @@ struct EntityRecord {
     bool isVisible_;
 };
 
+struct PendingEntity {
+    IREntity::EntityId entityId_;
+    vec2 isoPosition_;
+};
+
 inline float computeAutoFitExtent(
-    const std::vector<EntityRecord> &entityRecords,
-    vec2 viewCenterIso,
-    vec2 cullExtent
+    const std::vector<EntityRecord> &entityRecords, vec2 viewCenterIso, vec2 cullExtent
 ) {
     float autoExtent = IRMath::max(cullExtent.x, cullExtent.y) * 0.5f;
     for (const auto &record : entityRecords) {
-        vec2 distanceFromCenter = glm::abs(record.isoPosition_ - viewCenterIso);
-        autoExtent = IRMath::max(autoExtent, IRMath::max(distanceFromCenter.x, distanceFromCenter.y));
+        vec2 distanceFromCenter = IRMath::abs(record.isoPosition_ - viewCenterIso);
+        autoExtent =
+            IRMath::max(autoExtent, IRMath::max(distanceFromCenter.x, distanceFromCenter.y));
     }
     return autoExtent * 1.2f;
 }
 
-inline vec2 isoToMinimapScreen(vec2 isoPosition, vec2 viewCenterIso, float scale, vec2 minimapCenter) {
+inline vec2
+isoToMinimapScreen(vec2 isoPosition, vec2 viewCenterIso, float scale, vec2 minimapCenter) {
     vec2 relativeOffset = (isoPosition - viewCenterIso) * scale;
     return minimapCenter + vec2(relativeOffset.x, -relativeOffset.y);
 }
 
 inline void drawViewportOutline(
-    IsoBounds2D isoViewport,
-    vec2 viewCenterIso,
-    float scale,
-    vec2 minimapCenter,
-    vec4 borderColor
+    IsoBounds2D isoViewport, vec2 viewCenterIso, float scale, vec2 minimapCenter, vec4 borderColor
 ) {
     vec2 mappedMin = isoToMinimapScreen(isoViewport.min_, viewCenterIso, scale, minimapCenter);
     vec2 mappedMax = isoToMinimapScreen(isoViewport.max_, viewCenterIso, scale, minimapCenter);
@@ -109,7 +115,8 @@ inline void drawEntityDots(
     const vec4 kCulledColor(1.0f, 0.0f, 0.0f, 0.7f);
 
     for (const auto &record : entityRecords) {
-        vec2 dotPosition = isoToMinimapScreen(record.isoPosition_, viewCenterIso, scale, minimapCenter);
+        vec2 dotPosition =
+            isoToMinimapScreen(record.isoPosition_, viewCenterIso, scale, minimapCenter);
         if (!minimapScreenBounds.contains(dotPosition)) {
             continue;
         }
@@ -127,121 +134,136 @@ inline void drawFrozenIndicator(vec2 minimapOrigin, float minimapWidth, float mi
 } // namespace detail
 
 template <> struct System<DEBUG_CULLING_MINIMAP> {
+    // Layout configuration — settable via create(Params).
+    float screenWidthFraction_ = 0.15f;
+    float aspectRatio_ = 12.0f / 7.0f;
+    float padding_ = 10.0f;
+
+    // Per-frame scratch buffers (reused across ticks).
+    std::vector<detail::EntityRecord> entityRecords_;
+    IRRender::IsoSpatialHash spatialHash_{32};
+    std::vector<detail::PendingEntity> pendingEntities_;
+
+    // External config type for the two-argument create() overload.
     struct Params {
         float screenWidthFraction_ = 0.15f;
         float aspectRatio_ = 12.0f / 7.0f;
         float padding_ = 10.0f;
     };
 
-    static SystemId create() { return create(Params{}); }
+    void tick(
+        IREntity::EntityId entityId,
+        const C_ShapeDescriptor &shape,
+        const C_PositionGlobal3D &position
+    ) {
+        vec2 isoPosition = IRMath::pos3DtoPos2DIso(position.pos_);
+        vec2 isoHalfExtent = IRMath::shapeIsoHalfExtent(vec3(shape.params_));
 
-    static SystemId create(const Params &initialParams) {
-        auto paramsOwner = std::make_unique<Params>(initialParams);
-        Params *params = paramsOwner.get();
+        spatialHash_.insert(entityId, isoPosition - isoHalfExtent, isoPosition + isoHalfExtent);
+        pendingEntities_.push_back({entityId, isoPosition});
+    }
 
-        static std::vector<detail::EntityRecord> entityRecords;
+    void beginTick() {
+        spatialHash_.clear();
+        pendingEntities_.clear();
+    }
 
-        static IRRender::IsoSpatialHash spatialHash(32);
+    void endTick() {
+        const auto &cullState = IRRender::getCullViewport();
+        bool isCullingFrozen = cullState.frozen_;
+        vec2 liveCameraIso = IRRender::getCameraPosition2DIso();
+        vec2 liveCameraZoom = IRRender::getCameraZoom();
+        ivec2 viewportSize = IRRender::getViewport();
 
-        struct PendingEntity {
-            IREntity::EntityId entityId_;
-            vec2 isoPosition_;
-        };
-        static std::vector<PendingEntity> pendingEntities;
+        auto cullViewport = cullState.isoViewport();
+        auto visibleEntityIds = spatialHash_.query(cullViewport.min_, cullViewport.max_);
 
-        SystemId systemId = createSystem<C_ShapeDescriptor, C_PositionGlobal3D>(
-            "DebugCullingMinimap",
-            [](IREntity::EntityId &entityId,
-               const C_ShapeDescriptor &shape,
-               const C_PositionGlobal3D &position) {
-                vec2 isoPosition = IRMath::pos3DtoPos2DIso(position.pos_);
-                vec2 isoHalfExtent = IRMath::shapeIsoHalfExtent(vec3(shape.params_));
+        entityRecords_.clear();
+        for (const auto &pending : pendingEntities_) {
+            bool isVisible =
+                std::find(visibleEntityIds.begin(), visibleEntityIds.end(), pending.entityId_) !=
+                visibleEntityIds.end();
+            entityRecords_.push_back({pending.isoPosition_, isVisible});
+        }
 
-                spatialHash.insert(entityId, isoPosition - isoHalfExtent, isoPosition + isoHalfExtent);
-                pendingEntities.push_back({entityId, isoPosition});
-            },
-            []() {
-                spatialHash.clear();
-                pendingEntities.clear();
-            },
-            [params]() {
-                const auto &cullState = IRRender::getCullViewport();
-                bool isCullingFrozen = cullState.frozen_;
-                vec2 liveCameraIso = IRRender::getCameraPosition2DIso();
-                vec2 liveCameraZoom = IRRender::getCameraZoom();
-                ivec2 viewportSize = IRRender::getViewport();
+        auto layout =
+            detail::computeLayout(viewportSize, screenWidthFraction_, aspectRatio_, padding_);
 
-                auto cullViewport = cullState.isoViewport();
-                auto visibleEntityIds = spatialHash.query(cullViewport.min_, cullViewport.max_);
-
-                entityRecords.clear();
-                for (const auto &pending : pendingEntities) {
-                    bool isVisible =
-                        std::find(visibleEntityIds.begin(), visibleEntityIds.end(), pending.entityId_)
-                        != visibleEntityIds.end();
-                    entityRecords.push_back({pending.isoPosition_, isVisible});
-                }
-
-                auto layout = detail::computeLayout(
-                    viewportSize, params->screenWidthFraction_,
-                    params->aspectRatio_, params->padding_
-                );
-
-                IRDebug::drawRectScreen(
-                    layout.origin_,
-                    layout.origin_ + vec2(layout.width_, layout.height_),
-                    vec4(0.0f, 0.0f, 0.0f, 0.4f),
-                    vec4(0.5f, 0.5f, 0.5f, 0.8f)
-                );
-
-                vec2 viewCenterIso = cullViewport.center();
-                vec2 cullExtent = cullViewport.extent();
-
-                float autoFitExtent = detail::computeAutoFitExtent(
-                    entityRecords, viewCenterIso, cullExtent
-                );
-
-                float isoToMinimapScale = layout.width_ / (autoFitExtent * 2.0f);
-                vec2 minimapCenter = layout.center();
-
-                detail::drawViewportOutline(
-                    cullViewport, viewCenterIso, isoToMinimapScale,
-                    minimapCenter, vec4(1.0f, 1.0f, 1.0f, 0.9f)
-                );
-
-                if (isCullingFrozen) {
-                    ivec2 liveCanvasSize = ivec2(0);
-                    {
-                        IREntity::EntityId mainCanvasEntity = IRRender::getActiveCanvasEntity();
-                        auto texturesOptional =
-                            IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvasEntity);
-                        if (texturesOptional.has_value()) {
-                            liveCanvasSize = texturesOptional.value()->size_;
-                        }
-                    }
-                    auto liveViewport = IRMath::visibleIsoViewport(
-                        liveCameraIso,
-                        IRMath::trixelOriginOffsetZ1(liveCanvasSize),
-                        liveCanvasSize, liveCameraZoom
-                    );
-                    detail::drawViewportOutline(
-                        liveViewport, viewCenterIso, isoToMinimapScale,
-                        minimapCenter, vec4(0.2f, 0.8f, 1.0f, 0.7f)
-                    );
-                }
-
-                detail::drawEntityDots(
-                    entityRecords, viewCenterIso, isoToMinimapScale,
-                    minimapCenter, layout.screenBounds()
-                );
-
-                if (isCullingFrozen) {
-                    detail::drawFrozenIndicator(layout.origin_, layout.width_, layout.height_);
-                }
-            }
+        IRDebug::drawRectScreen(
+            layout.origin_,
+            layout.origin_ + vec2(layout.width_, layout.height_),
+            vec4(0.0f, 0.0f, 0.0f, 0.4f),
+            vec4(0.5f, 0.5f, 0.5f, 0.8f)
         );
 
-        setSystemParams(systemId, std::move(paramsOwner));
+        vec2 viewCenterIso = cullViewport.center();
+        vec2 cullExtent = cullViewport.extent();
+
+        float autoFitExtent =
+            detail::computeAutoFitExtent(entityRecords_, viewCenterIso, cullExtent);
+
+        float isoToMinimapScale = layout.width_ / (autoFitExtent * 2.0f);
+        vec2 minimapCenter = layout.center();
+
+        detail::drawViewportOutline(
+            cullViewport,
+            viewCenterIso,
+            isoToMinimapScale,
+            minimapCenter,
+            vec4(1.0f, 1.0f, 1.0f, 0.9f)
+        );
+
+        if (isCullingFrozen) {
+            ivec2 liveCanvasSize = ivec2(0);
+            {
+                IREntity::EntityId mainCanvasEntity = IRRender::getActiveCanvasEntity();
+                auto texturesOptional =
+                    IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvasEntity);
+                if (texturesOptional.has_value()) {
+                    liveCanvasSize = texturesOptional.value()->size_;
+                }
+            }
+            auto liveViewport = IRMath::visibleIsoViewport(
+                liveCameraIso,
+                IRMath::trixelOriginOffsetZ1(liveCanvasSize),
+                liveCanvasSize,
+                liveCameraZoom
+            );
+            detail::drawViewportOutline(
+                liveViewport,
+                viewCenterIso,
+                isoToMinimapScale,
+                minimapCenter,
+                vec4(0.2f, 0.8f, 1.0f, 0.7f)
+            );
+        }
+
+        detail::drawEntityDots(
+            entityRecords_,
+            viewCenterIso,
+            isoToMinimapScale,
+            minimapCenter,
+            layout.screenBounds()
+        );
+
+        if (isCullingFrozen) {
+            detail::drawFrozenIndicator(layout.origin_, layout.width_, layout.height_);
+        }
+    }
+
+    static SystemId create() {
+        return create(Params{});
+    }
+
+    static SystemId create(const Params &initialParams) {
+        SystemId systemId =
+            registerSystem<DEBUG_CULLING_MINIMAP, C_ShapeDescriptor, C_PositionGlobal3D>(
+                "DebugCullingMinimap"
+            );
+        auto *p = getSystemParams<System<DEBUG_CULLING_MINIMAP>>(systemId);
+        p->screenWidthFraction_ = initialParams.screenWidthFraction_;
+        p->aspectRatio_ = initialParams.aspectRatio_;
+        p->padding_ = initialParams.padding_;
         return systemId;
     }
 };
