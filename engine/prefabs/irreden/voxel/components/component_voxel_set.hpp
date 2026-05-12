@@ -182,10 +182,6 @@ struct C_VoxelSetNew {
         }
     }
 
-    vec3 getLocalPosition(int index) {
-        return positions_[index].pos_ + positionOffsets_[index].pos_;
-    }
-
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
     //
@@ -215,10 +211,7 @@ struct C_VoxelSetNew {
             poolOffsets.size() > voxelStartIdx_ ? poolOffsets.size() - voxelStartIdx_ : 0u;
         const int safeCount = IRMath::min(
             numVoxels_,
-            static_cast<int>(IRMath::min(
-                IRMath::min(availPositions, availOffsets),
-                IRMath::min(static_cast<size_t>(voxels_.size()), writableTail)
-            ))
+            static_cast<int>(IRMath::min(IRMath::min(availPositions, availOffsets), writableTail))
         );
         for (int i = 0; i < safeCount; i++) {
             poolGlobalsOut[voxelStartIdx_ + i].pos_ = poolPositions[voxelStartIdx_ + i].pos_ +
