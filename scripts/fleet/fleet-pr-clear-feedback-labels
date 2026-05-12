@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# fleet-pr-clear-feedback-labels — idempotently strip a known set of
+# feedback labels from a PR.
+#
+# Why this exists:
+#   `gh pr edit <N> --remove-label A --remove-label B ...` is NOT
+#   atomic. gh processes removals left-to-right and exits non-zero
+#   on the first absent label, leaving every label removed BEFORE
+#   the missing one already stripped. The role files combine the
+#   canonical AMEND-path label clear into one such call and have
+#   burned multiple worker iterations on PRs with a mixed-presence
+#   feedback label set (observed on PR #637 — opus-worker-2 at
+#   2026-05-11 20:05 and opus-worker-1 at 2026-05-12 03:11).
+#
+# This wrapper queries the live label set first and only fires a
+# remove-label call for labels actually present, one per call so a
+# single failure doesn't strand the others. The default label list
+# is the worker AMEND set; override with --labels for other callers.
+#
+# Usage:
+#   fleet-pr-clear-feedback-labels <N> [--repo <slug>] [--labels <csv>]
+#
+# Options:
+#   --repo <slug>     Target repo (e.g. jakildev/IrredenEngine). Default:
+#                     the current git remote.
+#   --labels <csv>    Comma-separated label set to clear. Default:
+#                     the worker AMEND set.
+#
+# Exit status:
+#   0  every label in --labels that was present has been removed
+#   1  one or more removals failed (PR labels may be partially cleared)
+#   2  usage error
+#
+# Source of truth: scripts/fleet/fleet-pr-clear-feedback-labels in the
+# engine repo. Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+DEFAULT_LABELS="human:needs-fix,human:blocker,fleet:needs-fix,fleet:has-nits,fleet:human-deferred,fleet:design-unblocked"
+
+pr_number=""
+repo_slug=""
+labels_csv="$DEFAULT_LABELS"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            repo_slug="$2"
+            shift 2
+            ;;
+        --labels)
+            labels_csv="$2"
+            shift 2
+            ;;
+        -h|--help)
+            sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "fleet-pr-clear-feedback-labels: unknown option '$1'" >&2
+            exit 2
+            ;;
+        *)
+            if [[ -z "$pr_number" ]]; then
+                pr_number="$1"
+            else
+                echo "fleet-pr-clear-feedback-labels: unexpected arg '$1'" >&2
+                exit 2
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$pr_number" ]]; then
+    echo "fleet-pr-clear-feedback-labels: PR number required" >&2
+    echo "usage: fleet-pr-clear-feedback-labels <N> [--repo <slug>] [--labels <csv>]" >&2
+    exit 2
+fi
+
+repo_args=()
+if [[ -n "$repo_slug" ]]; then
+    repo_args=(--repo "$repo_slug")
+fi
+
+# Read live labels in one call so the set is consistent against the
+# moment we decide what to remove.
+if ! live_labels=$(gh pr view "$pr_number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>&1); then
+    echo "fleet-pr-clear-feedback-labels: gh pr view failed:" >&2
+    echo "$live_labels" >&2
+    exit 1
+fi
+
+# Convert the CSV target set into a newline-delimited list for grep.
+target_labels=$(echo "$labels_csv" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
+
+removed=()
+failed=()
+for label in $target_labels; do
+    if printf '%s\n' "$live_labels" | grep -Fxq -- "$label"; then
+        if gh pr edit "$pr_number" "${repo_args[@]}" --remove-label "$label" >/dev/null 2>&1; then
+            removed+=("$label")
+        else
+            failed+=("$label")
+        fi
+    fi
+done
+
+if [[ ${#removed[@]} -gt 0 ]]; then
+    echo "fleet-pr-clear-feedback-labels: removed ${#removed[@]} label(s) from PR #$pr_number: ${removed[*]}"
+fi
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+    echo "fleet-pr-clear-feedback-labels: failed to remove ${#failed[@]} label(s) from PR #$pr_number: ${failed[*]}" >&2
+    exit 1
+fi
+
+if [[ ${#removed[@]} -eq 0 ]]; then
+    echo "fleet-pr-clear-feedback-labels: no feedback labels present on PR #$pr_number; nothing to do."
+fi

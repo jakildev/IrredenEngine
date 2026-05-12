@@ -178,6 +178,10 @@ Parallel-agent fleet (tmux + Claude)
   witness [--once]               detect stale heartbeats (architects only)
   fleet-pr view|diff|comments <N> [--repo engine|game]
                                  read scout's per-PR cache + gh fallback
+  fleet-pr-clear-feedback-labels <N> [--repo …] [--labels …]
+                                 idempotently strip feedback labels from a PR
+                                 (skips absent labels; one --remove-label per
+                                 present label so partial failure can't strand)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
 
