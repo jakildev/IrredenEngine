@@ -286,11 +286,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
+- [~] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
   - **ID:** T-160
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) IREntity::getComponent no longer appears in System<TEXT_TO_TRIXEL>::tick; (2) IRShapeDebug and any text-bearing demo render identically to pre-fix output (single-frame visual regression check); (3) fleet-build --target IRShapeDebug clean on linux-debug
   - **Issue:** #644
