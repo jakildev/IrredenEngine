@@ -76,8 +76,8 @@ No checksum, no magic bytes, no compression. Treat the file as volatile.
 ## Trixel JSON sidecar format (`.txl.json`)
 
 Written/read by `saveTxlSidecar` / `loadTxlSidecar`. Stored as
-`<name>.txl.json` next to the binary `<name>.txl`. The file is omitted when
-the sidecar is empty; a missing file loads as all-defaults with no log.
+`<name>.txl.json` next to the binary `<name>.txl`. Saving an empty sidecar
+removes any pre-existing file; a missing file loads as all-defaults with no log.
 
 ```json
 {

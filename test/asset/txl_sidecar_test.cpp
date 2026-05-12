@@ -119,4 +119,31 @@ TEST(TxlSidecar, EmptySidecarNotWritten) {
         fclose(f);
 }
 
+TEST(TxlSidecar, ClearedSidecarRemovesFile) {
+    const std::string name = "ir_test_txl_sidecar_cleared";
+    const std::string path = kTmpDir + "/" + name + ".txl.json";
+
+    IRAsset::TxlSidecar sidecar;
+    IRAsset::BindPoint bp;
+    bp.name_ = "root";
+    bp.boneId_ = 0;
+    sidecar.bindPoints_.push_back(bp);
+    IRAsset::saveTxlSidecar(name, kTmpDir, sidecar);
+
+    FILE *f = fopen(path.c_str(), "r");
+    ASSERT_NE(f, nullptr) << "sidecar should exist after saving with bind-points";
+    if (f)
+        fclose(f);
+
+    IRAsset::saveTxlSidecar(name, kTmpDir, IRAsset::TxlSidecar{});
+
+    FILE *f2 = fopen(path.c_str(), "r");
+    EXPECT_EQ(f2, nullptr) << "empty sidecar save should remove pre-existing file";
+    if (f2)
+        fclose(f2);
+
+    const IRAsset::TxlSidecar loaded = IRAsset::loadTxlSidecar(name, kTmpDir);
+    EXPECT_TRUE(loaded.empty());
+}
+
 } // namespace

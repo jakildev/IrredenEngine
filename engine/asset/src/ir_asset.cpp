@@ -130,8 +130,11 @@ SpriteSheetMeta loadSpriteSheetMeta(const std::string &name, const std::string &
 }
 
 void saveTxlSidecar(const std::string &name, const std::string &path, const TxlSidecar &sidecar) {
-    if (sidecar.empty())
+    const std::string filename = IRUtility::joinPath(path, name, kTxlSidecarExtension);
+    if (sidecar.empty()) {
+        std::remove(filename.c_str());
         return;
+    }
 
     nlohmann::json j;
 
@@ -163,7 +166,6 @@ void saveTxlSidecar(const std::string &name, const std::string &path, const TxlS
     }
     j["material_refs"] = std::move(refArray);
 
-    const std::string filename = IRUtility::joinPath(path, name, kTxlSidecarExtension);
     std::ofstream f(filename);
     if (!f) {
         IRE_LOG_ERROR("Failed to open file for writing: {}", filename);
@@ -189,42 +191,54 @@ TxlSidecar loadTxlSidecar(const std::string &name, const std::string &path) {
 
     TxlSidecar sidecar;
 
-    if (j.contains("bind_points") && j["bind_points"].is_array()) {
-        for (const auto &bp : j["bind_points"]) {
-            BindPoint entry;
-            entry.name_ = bp.value("name", "");
-            entry.boneId_ = bp.value("bone_id", 0);
-            if (bp.contains("offset") && bp["offset"].is_array() && bp["offset"].size() == 3) {
-                entry.offset_ = vec3{
-                    bp["offset"][0].get<float>(),
-                    bp["offset"][1].get<float>(),
-                    bp["offset"][2].get<float>()
-                };
+    try {
+        if (j.contains("bind_points") && j["bind_points"].is_array()) {
+            for (const auto &bp : j["bind_points"]) {
+                BindPoint entry;
+                entry.name_ = bp.value("name", "");
+                entry.boneId_ = bp.value("bone_id", 0);
+                if (bp.contains("offset") && bp["offset"].is_array() && bp["offset"].size() == 3) {
+                    entry.offset_ = vec3{
+                        bp["offset"][0].get<float>(),
+                        bp["offset"][1].get<float>(),
+                        bp["offset"][2].get<float>()
+                    };
+                }
+                if (bp.contains("rotation") && bp["rotation"].is_array() &&
+                    bp["rotation"].size() == 4) {
+                    entry.rotation_ = vec4{
+                        bp["rotation"][0].get<float>(),
+                        bp["rotation"][1].get<float>(),
+                        bp["rotation"][2].get<float>(),
+                        bp["rotation"][3].get<float>()
+                    };
+                }
+                sidecar.bindPoints_.push_back(std::move(entry));
             }
-            if (bp.contains("rotation") && bp["rotation"].is_array() &&
-                bp["rotation"].size() == 4) {
-                entry.rotation_ = vec4{
-                    bp["rotation"][0].get<float>(),
-                    bp["rotation"][1].get<float>(),
-                    bp["rotation"][2].get<float>(),
-                    bp["rotation"][3].get<float>()
-                };
+        }
+
+        if (j.contains("component_pack") && j["component_pack"].is_object()) {
+            sidecar.componentPackJson_ = j["component_pack"].dump();
+        }
+
+        if (j.contains("material_refs") && j["material_refs"].is_array()) {
+            for (const auto &ref : j["material_refs"]) {
+                MaterialRef entry;
+                entry.name_ = ref.value("name", "");
+                const int id = ref.value("material_id", 0);
+                IR_ASSERT(
+                    id >= 0 && id <= 255,
+                    "material_id {} out of uint8_t range in '{}'",
+                    id,
+                    filename
+                );
+                entry.materialId_ = static_cast<uint8_t>(id);
+                sidecar.materialRefs_.push_back(std::move(entry));
             }
-            sidecar.bindPoints_.push_back(std::move(entry));
         }
-    }
-
-    if (j.contains("component_pack") && j["component_pack"].is_object()) {
-        sidecar.componentPackJson_ = j["component_pack"].dump();
-    }
-
-    if (j.contains("material_refs") && j["material_refs"].is_array()) {
-        for (const auto &ref : j["material_refs"]) {
-            MaterialRef entry;
-            entry.name_ = ref.value("name", "");
-            entry.materialId_ = static_cast<uint8_t>(ref.value("material_id", 0));
-            sidecar.materialRefs_.push_back(std::move(entry));
-        }
+    } catch (const nlohmann::json::exception &e) {
+        IRE_LOG_ERROR("loadTxlSidecar: type error in '{}': {}", filename, e.what());
+        return {};
     }
 
     IRE_LOG_INFO("Loaded trixel sidecar from {}", filename);

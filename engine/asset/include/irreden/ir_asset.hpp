@@ -89,7 +89,7 @@ struct BindPoint {
     std::string name_;
     int boneId_ = 0;
     vec3 offset_ = vec3{0.0f, 0.0f, 0.0f};
-    vec4 rotation_ = vec4{1.0f, 0.0f, 0.0f, 0.0f};
+    vec4 rotation_ = vec4{1.0f, 0.0f, 0.0f, 0.0f}; // {qw, qx, qy, qz} in .x .y .z .w
 };
 
 /// Maps a human-readable material name to the `material_id` byte from the
@@ -101,14 +101,16 @@ struct MaterialRef {
 
 /// JSON sidecar metadata stored alongside a `.txl` binary file.
 ///
-/// Persisted as `<name>.txl.json` next to `<name>.txl`.  The file is omitted
-/// on save when the sidecar is empty — callers should treat a missing sidecar
-/// as all-defaults (empty bind-point list, empty component-pack, identity
-/// material map).
+/// Persisted as `<name>.txl.json` next to `<name>.txl`.  Saving an empty
+/// sidecar removes any pre-existing file; callers should treat a missing
+/// sidecar as all-defaults (empty bind-point list, empty component-pack,
+/// identity material map).
 ///
 /// `componentPackJson_` is an opaque JSON object string that the engine
 /// stores verbatim; the game-side component registry interprets the per-
-/// component key→value entries at entity spawn time.
+/// component key→value entries at entity spawn time. Round-trip through
+/// `saveTxlSidecar`/`loadTxlSidecar` preserves structure but not byte
+/// order — do not hash the string for change detection.
 struct TxlSidecar {
     std::vector<BindPoint> bindPoints_;
     std::string componentPackJson_;
@@ -120,7 +122,8 @@ struct TxlSidecar {
 };
 
 /// Writes a `.txl.json` sidecar to `path`/`name`.txl.json.
-/// Does nothing (no file created) if `sidecar.empty()`.
+/// If `sidecar.empty()`, removes any pre-existing sidecar file and returns
+/// without creating a new one.
 void saveTxlSidecar(const std::string &name, const std::string &path, const TxlSidecar &sidecar);
 
 /// Reads a `.txl.json` sidecar from `path`/`name`.txl.json.
