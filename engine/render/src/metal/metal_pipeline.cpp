@@ -41,7 +41,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(8, 8, 1);
     }
     if (functionName == "c_voxel_visibility_compact" ||
-        functionName == "c_update_voxel_positions") {
+        functionName == "c_update_voxel_positions" ||
+        functionName == "c_update_gpu_particles" ||
+        functionName == "c_render_gpu_particles_to_trixel" ||
+        functionName == "c_render_stateless_particles_to_trixel") {
         return MTL::Size(64, 1, 1);
     }
     if (functionName == "c_trixel_to_trixel") {
