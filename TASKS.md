@@ -314,7 +314,7 @@ Avoid:
   - **ID:** T-164
   - **Area:** engine/prefabs/irreden/render, engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-164-gizmo-screen-space
   - **Blocked by:** (none)
   - **Acceptance:** (1) gizmos render at constant pixel size across full zoom range; (2) gizmo fragments behind world geometry show with reduced alpha (faint silhouette when occluded); (3) GLSL + Metal backends agree on dimming behavior; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #675
@@ -331,6 +331,54 @@ Avoid:
   - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
   - **Issue:** #676
   - **Notes:** Phase 3 follow-up to T-152 (Phase 1 shipped via PR #672). Hover reuses entity-id texture readback built by T-153. New systems: system_gizmo_hover.hpp (reads canvas entity-id texture for cursor pixel, sets C_GizmoHandle::hover_), system_gizmo_drag.hpp (drag state per handle kind). Touch points: component_gizmo_handle.hpp, editor main.cpp, ir_system_types.hpp.
+  - **Links:**
+
+
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+  - **ID:** T-166
+  - **Area:** engine/asset
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #663
+  - **Notes:** Foundation for .vxs, .rig, and world-snapshot formats (T-167, T-168, T-169, #667). Blocker #662 (doc rename) merged as PR #673. No functional consumer until T-167+. World-snapshot (#667) lives in engine/world/ and consumes these primitives; engine/asset/ must not depend on engine/entity/ or engine/world/.
+  - **Links:**
+
+
+- [ ] **asset: .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks)** — first end-to-end asset format: 3D bounded voxel volume with 12-byte per-voxel records, layers, and animation frame poses
+  - **ID:** T-167
+  - **Area:** engine/asset
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-166, T-146
+  - **Acceptance:** (1) IRAsset::saveVoxelSet/loadVoxelSet ship; (2) .vxs v1 dense format: IRVS magic + uint32 version + chunk-count; MODE=DENSE; BNDS (ivec3 min/max); VOXR (12-byte records: Color + material_id + flags + bone_id + pad); LAYR (named layer bitmasks); FRAM (frame-index → per-voxel offset); META (free-form key/value); (3) unknown chunk tags silently skipped; (4) clear diagnostics on bad magic, version-too-new, truncated chunk, malformed BNDS; (5) round-trip unit test: 20³ fixture save → load → byte-compare VOXR + BNDS; (6) edge cases: empty set, full set, bad magic, truncated mid-VOXR; (7) chunk table documented in .hpp header block; (8) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #664
+  - **Notes:** First consumer of T-166 binary-I/O primitives. Dense-mode only; shape-group mode is T-168; hybrid + sidecar is #668. C_Voxel layout (12 B) must match T-146 per-voxel widening — coordinate landing order matters. Replacement for txl v2 intent in PR #635 / #621.
+  - **Links:**
+
+
+- [ ] **asset: .vxs v1 shape-group mode (SHPG, SREF chunks) — SDF primitive composition save format** — persist C_ShapeDescriptor instances as SDF primitive composition; new ShapeType values never break existing saves
+  - **ID:** T-168
+  - **Area:** engine/asset, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-166
+  - **Acceptance:** (1) SHPG chunk: per-primitive record {uint32 shapeTypeId, uint16 version, vec4 params, Color, uint32 flags, uint8 bone_id, vec3 offset, quat rotation, uint8 csgOp}; csgOp ∈ {UNION, SMOOTH_UNION, SUBTRACT, INTERSECT, NONE}; (2) SREF chunk: string name-table for ShapeType enum + material registry refs; (3) MODE chunk gains SHAPES tag; (4) IRAsset::saveVoxelSet overload accepts span<const C_ShapeDescriptor> + optional per-primitive csgOp/transform; (5) loader returns list of C_ShapeDescriptor-shaped records for entity spawning; (6) round-trip test: 5-primitive shape group (sphere/box/capsule mix) save → load → byte-compare; (7) forward-compat test: unknown ShapeType numeric id → logs "unknown shape ID=N name=…, skipped", rest loads; (8) "How to add a new SDF primitive" walkthrough in engine/asset/CLAUDE.md; (9) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #665
+  - **Notes:** Can run in parallel with T-167 after T-166 lands. Persists inputs to SHAPES_TO_TRIXEL pipeline — renders directly via that system, no voxelization needed. CSG tree can land in SHPT chunk later without bumping v1. Hybrid mode (#668) combines SHPG + VOXR.
+  - **Links:**
+
+
+- [ ] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
+  - **ID:** T-169
+  - **Area:** engine/asset, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-166
+  - **Acceptance:** (1) IRAsset::saveRig/loadRig ship; (2) .rig v1 format: IRRG magic + uint32 version + chunk-count; JNTS chunk: array of {uint16 version, vec4 rotation, vec4 translation, uint32 parentIndex, string name}; (3) loader produces C_JointHierarchy ready for toGPUFormat(); (4) round-trip 30-bone snake rig: toGPUFormat() produces identical GPU matrices pre/post round-trip; (5) JSON sidecar emits per-joint name + parent index; (6) unknown chunks handled forward-compat (Extensibility Rule #1); (7) unit tests: round-trip, unknown-chunk forward compat; (8) fleet-build clean on linux-debug
+  - **Issue:** #666
+  - **Notes:** Joints-only first slice; bind-points (#669) adds BIND chunk; Phase 3 animation tracks (#606) adds ANIM chunk — both without bumping .rig v1. Referenced by .prefab.lua files (#671) for rig sharing. Parent epic: #605 (Phase 2 — Hierarchies & skeletal voxels).
   - **Links:**
 
 ## Done — last 20
