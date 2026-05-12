@@ -26,12 +26,37 @@ namespace IRSystem {
 /// (passthrough branch in the fragment shader bypasses the bilinear blend),
 /// rotated bilinear sample otherwise.
 template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
-    struct Params {
-        Buffer *frameDataBuf_ = nullptr;
-        ShaderProgram *program_ = nullptr;
-        VAO *quadVao_ = nullptr;
-        FrameDataScreenResidualRotate frameData_{};
-    };
+    Buffer *frameDataBuf_ = nullptr;
+    ShaderProgram *program_ = nullptr;
+    VAO *quadVao_ = nullptr;
+    FrameDataScreenResidualRotate frameData_{};
+
+    void tick(
+        const C_TrixelCanvasFramebuffer &framebuffer,
+        const C_Position3D &cameraPosition,
+        const C_Name &name
+    ) {
+        framebuffer.bindTextures(0, 1);
+        frameData_.mvpMatrix =
+            calcProjectionMatrix() * calcModelMatrix(
+                                         framebuffer.getResolution(),
+                                         framebuffer.getResolutionPlusBuffer(),
+                                         cameraPosition.pos_,
+                                         IRRender::getCameraPosition2DIso(),
+                                         name.name_
+                                     );
+        frameData_.residualYaw = IRPrefab::Camera::getResidualYaw();
+        frameDataBuf_->subData(0, sizeof(FrameDataScreenResidualRotate), &frameData_);
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
+    }
+
+    void beginTick() {
+        bindDefaultFramebuffer();
+        clearDefaultFramebuffer();
+        program_->use();
+        quadVao_->bind();
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -50,42 +75,18 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
             kBufferIndex_FrameDataScreenResidualRotate
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
-        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("ScreenSpaceResidualRotateFrameData");
-        p->program_ = IRRender::getNamedResource<ShaderProgram>("ScreenSpaceResidualRotateProgram");
-        p->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
-
-        SystemId systemId = createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
-            "ScreenSpaceResidualRotate",
-            [p](const C_TrixelCanvasFramebuffer &framebuffer,
-                const C_Position3D &cameraPosition,
-                const C_Name &name) {
-                framebuffer.bindTextures(0, 1);
-                p->frameData_.mvpMatrix =
-                    calcProjectionMatrix() * calcModelMatrix(
-                                                 framebuffer.getResolution(),
-                                                 framebuffer.getResolutionPlusBuffer(),
-                                                 cameraPosition.pos_,
-                                                 IRRender::getCameraPosition2DIso(),
-                                                 name.name_
-                                             );
-                p->frameData_.residualYaw = IRPrefab::Camera::getResidualYaw();
-                p->frameDataBuf_->subData(0, sizeof(FrameDataScreenResidualRotate), &p->frameData_);
-                IRRender::device()->setPolygonMode(PolygonMode::FILL);
-                IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
-            },
-            [p]() {
-                bindDefaultFramebuffer();
-                clearDefaultFramebuffer();
-                p->program_->use();
-                p->quadVao_->bind();
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
-        IRRender::tagGpuStage(systemId, "screenSpaceResidualRotate");
-        return systemId;
+        SystemId id = registerSystem<SCREEN_SPACE_RESIDUAL_ROTATE,
+                                     C_TrixelCanvasFramebuffer,
+                                     C_Position3D,
+                                     C_Name>("ScreenSpaceResidualRotate");
+        auto *sys = getSystemParams<System<SCREEN_SPACE_RESIDUAL_ROTATE>>(id);
+        sys->frameDataBuf_ =
+            IRRender::getNamedResource<Buffer>("ScreenSpaceResidualRotateFrameData");
+        sys->program_ =
+            IRRender::getNamedResource<ShaderProgram>("ScreenSpaceResidualRotateProgram");
+        sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
+        IRRender::tagGpuStage(id, "screenSpaceResidualRotate");
+        return id;
     }
 
   private:
