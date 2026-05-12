@@ -310,11 +310,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.5 Phase 2: screen-space gizmo sizing + depth-aware dimming** — constant pixel-size gizmo handles across zoom range; depth-aware alpha dimming for occluded gizmos
+- [~] **Editor F-0.5 Phase 2: screen-space gizmo sizing + depth-aware dimming** — constant pixel-size gizmo handles across zoom range; depth-aware alpha dimming for occluded gizmos
   - **ID:** T-164
   - **Area:** engine/prefabs/irreden/render, engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) gizmos render at constant pixel size across full zoom range; (2) gizmo fragments behind world geometry show with reduced alpha (faint silhouette when occluded); (3) GLSL + Metal backends agree on dimming behavior; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #675
