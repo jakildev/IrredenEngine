@@ -9,6 +9,7 @@
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/widget_theme.hpp>
+#include <irreden/render/widget_hotkeys.hpp>
 
 #include <string>
 
@@ -26,6 +27,12 @@ namespace IRPrefab::Widget {
 //                    CHECKBOX. PANEL and LABEL skip the hitbox so they
 //                    do not consume mouse hover.)
 //
+// Z-order routing (C_Widget::zOrder_) resolves overlap only among entities
+// that carry C_HitBox2DGui. PANEL and LABEL have no hitbox and therefore
+// do not participate in z-order routing — a panel placed over a button
+// does NOT block the button's click. To make a panel click-blocking, add
+// C_HitBox2DGui manually: IREntity::setComponent(panelId, C_HitBox2DGui{panelSize});
+//
 // Returned `EntityId` is the widget's address; consumers use
 // `wasClicked`, `sliderValue`, `checkboxState` to read interaction
 // results between frames.
@@ -34,10 +41,11 @@ inline IREntity::EntityId makePanel(
     IRMath::ivec2 pos,
     IRMath::ivec2 size,
     std::string title = "",
-    bool drawBorder = true
+    bool drawBorder = true,
+    int zOrder = 0
 ) {
     return IREntity::createEntity(
-        IRComponents::C_Widget{IRComponents::WidgetKind::PANEL, size},
+        IRComponents::C_Widget{IRComponents::WidgetKind::PANEL, size, zOrder},
         IRComponents::C_GuiPosition{pos},
         IRComponents::C_GuiElement{},
         IRComponents::C_WidgetState{},
@@ -46,9 +54,7 @@ inline IREntity::EntityId makePanel(
 }
 
 inline IREntity::EntityId makeLabel(
-    IRMath::ivec2 pos,
-    std::string text,
-    IRMath::Color colorOverride = IRMath::Color{0, 0, 0, 0}
+    IRMath::ivec2 pos, std::string text, IRMath::Color colorOverride = IRMath::Color{0, 0, 0, 0}
 ) {
     IRComponents::C_WidgetLabel labelData;
     labelData.text_ = std::move(text);
@@ -61,11 +67,7 @@ inline IREntity::EntityId makeLabel(
     );
 }
 
-inline IREntity::EntityId makeButton(
-    IRMath::ivec2 pos,
-    IRMath::ivec2 size,
-    std::string label
-) {
+inline IREntity::EntityId makeButton(IRMath::ivec2 pos, IRMath::ivec2 size, std::string label) {
     IRComponents::C_WidgetButton buttonData;
     buttonData.label_ = std::move(label);
     return IREntity::createEntity(
@@ -102,10 +104,7 @@ inline IREntity::EntityId makeSlider(
 }
 
 inline IREntity::EntityId makeCheckbox(
-    IRMath::ivec2 pos,
-    IRMath::ivec2 size,
-    std::string label,
-    bool initialChecked = false
+    IRMath::ivec2 pos, IRMath::ivec2 size, std::string label, bool initialChecked = false
 ) {
     IRComponents::C_WidgetCheckbox checkboxData;
     checkboxData.label_ = std::move(label);
