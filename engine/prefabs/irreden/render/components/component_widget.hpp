@@ -28,11 +28,13 @@ struct C_Widget {
     WidgetKind kind_ = WidgetKind::PANEL;
     IRMath::ivec2 size_ = IRMath::ivec2(0, 0);
     bool disabled_ = false;
+    int zOrder_ = 0; // higher = drawn on top; wins hover when widgets overlap
 
     C_Widget() = default;
-    C_Widget(WidgetKind kind, IRMath::ivec2 size)
+    C_Widget(WidgetKind kind, IRMath::ivec2 size, int zOrder = 0)
         : kind_{kind}
-        , size_{size} {}
+        , size_{size}
+        , zOrder_{zOrder} {}
 };
 
 // Interactive state — written by the WIDGET_INPUT system, read by the
@@ -41,16 +43,16 @@ struct C_Widget {
 // keep this at default — the input system iterates `C_Widget +
 // C_HitBox2DGui + C_WidgetState` so the non-hitbox kinds are skipped.
 struct C_WidgetState {
-    bool hovered_ = false;        // mouse currently inside hitbox
-    bool pressed_ = false;        // left button held since press-on-hover
-    bool focused_ = false;        // keyboard focus (reserved for Phase 0 follow-up)
-    bool fireAction_ = false;     // true for one frame on click-released-over-widget
-    float dragValue_ = 0.0f;      // slider's normalized drag value while pressed
+    bool hovered_ = false;    // mouse currently inside hitbox
+    bool pressed_ = false;    // left button held since press-on-hover
+    bool focused_ = false;    // keyboard focus; set by WIDGET_INPUT (Tab/click)
+    bool fireAction_ = false; // true for one frame on click-released-over-widget
+    float dragValue_ = 0.0f;  // slider's normalized drag value while pressed
 };
 
 // PANEL — bounded rectangle container with an optional title bar.
 struct C_WidgetPanel {
-    std::string title_;           // empty = no title bar
+    std::string title_; // empty = no title bar
     bool drawBorder_ = true;
 };
 
