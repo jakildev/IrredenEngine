@@ -100,6 +100,7 @@ inline IREntity::EntityId spawnHandle(
     Color color,
     const char *name
 ) {
+    // C_PositionGlobal3D + C_PositionOffset3D injected by createEntity
     IREntity::EntityId handle = IREntity::createEntity(
         C_Position3D{localPos},
         C_ShapeDescriptor{shapeType, shapeParams, color},

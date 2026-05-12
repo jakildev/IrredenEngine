@@ -20,7 +20,7 @@ enum class GizmoKind : std::uint8_t {
     SCALE_CENTER,      ///< Center box for uniform scale.
     JOINT_MARKER,      ///< Sphere at a skeletal joint.
     BIND_POINT_MARKER, ///< Small cross at a bind-point.
-    IK_MARKER,         ///< Tetrahedron at an IK target.
+    IK_MARKER,         ///< Cone (Phase 1) / tetrahedron (Phase 2) at an IK target.
 };
 
 enum class GizmoAxis : std::uint8_t {
