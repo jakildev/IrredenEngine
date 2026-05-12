@@ -214,6 +214,15 @@ PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 # (consume-on-success) are unchanged. 60s is generous — the race
 # typically resolves in 1–2 ticks (10–20s after start).
 BOOT_FANOUT_WINDOW_SECONDS="${FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS:-60}"
+# Validate-and-clamp: a non-numeric override (operator typo,
+# trailing-suffix like "9999s") would otherwise emit arithmetic errors
+# every tick or, under `set -u`, kill the daemon outright. Fall back
+# to the default and log a one-shot warning instead.
+if ! [[ "$BOOT_FANOUT_WINDOW_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] BOOT_FANOUT_WINDOW_SECONDS=%q is not a non-negative integer; falling back to 60\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$BOOT_FANOUT_WINDOW_SECONDS" >&2
+    BOOT_FANOUT_WINDOW_SECONDS=60
+fi
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Aligned with the worker / reviewer /
@@ -853,7 +862,8 @@ dispatch_role() {
         local active
         active=$(count_active_for_role "$role")
         if should_retain_trigger_for_fanout_race "$role" "$active"; then
-            log "$role: dispatched $dispatched, active=$active < cap=${ROLE_CONCURRENCY[$role]} within boot fan-out window (${SECONDS}s < ${BOOT_FANOUT_WINDOW_SECONDS}s); keeping trigger for late-tag race"
+            local cap="${ROLE_CONCURRENCY[$role]:-0}"
+            log "$role: dispatched $dispatched, active=$active < cap=$cap within boot fan-out window (${SECONDS}s < ${BOOT_FANOUT_WINDOW_SECONDS}s); keeping trigger for late-tag race"
             return
         fi
         # Steady state (or boot window with cap saturated): at least
@@ -1084,6 +1094,10 @@ case "${1:-}" in
         # boot window is "in" by default unless the override drops it.
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
             echo "usage: fleet-dispatcher --retain-trigger-check <role> <active-count>" >&2
+            exit 2
+        fi
+        if ! [[ "$3" =~ ^[0-9]+$ ]]; then
+            echo "fleet-dispatcher --retain-trigger-check: <active-count> must be a non-negative integer (got: $3)" >&2
             exit 2
         fi
         if should_retain_trigger_for_fanout_race "$2" "$3"; then

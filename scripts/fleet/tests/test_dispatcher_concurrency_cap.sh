@@ -354,6 +354,25 @@ out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
     "$DISPATCHER" --retain-trigger-check opus-worker 0)
 assert_eq "$out" "consume" "cap=0 short-circuits the retention check"
 
+# --- Test 14: numeric guard on --retain-trigger-check active arg -----------
+echo "T14: non-numeric active arg → usage error, no daemon crash"
+if FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
+    "$DISPATCHER" --retain-trigger-check opus-worker notanumber >/dev/null 2>&1; then
+    rc=0
+else
+    rc=$?
+fi
+assert_eq "$rc" "2" "non-numeric active arg exits with rc=2 (usage error)"
+
+# --- Test 15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to default -----
+echo "T15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to 60s default"
+# Default-window (60s) + fresh CLI invocation (SECONDS≈0) + active<cap → retain.
+# If the validate-and-clamp at startup fails, the bash arithmetic would either
+# emit a stderr error (silent flip to consume) or trip set -u (rc=1).
+out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS="9999s" \
+    "$DISPATCHER" --retain-trigger-check opus-worker 1 2>/dev/null)
+assert_eq "$out" "retain" "non-numeric env override clamps to 60s → in-window retain"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 if (( FAIL > 0 )); then
