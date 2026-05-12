@@ -43,6 +43,16 @@ namespace IRSystem {
 // `IRPrefab::Widget::getHotkeyRegistry()` for any matching PRESSED key
 // + modifier combo. Register via `IRPrefab::Widget::registerHotkey`.
 //
+// **Stale capture / focus on widget destruction**: `capturedWidgetId_`
+// and `focusedWidgetId_` are `EntityId` values, not pointers, so they
+// cannot dangle. If the entity they point to is destroyed during a
+// drag or while focused, behavior is benign: the captured ID resolves
+// to no matching tick body (the iterator skips dead entities), and the
+// stored ID is cleared on the next mouse-button-release / Tab / click.
+// Editor widgets are not destroyed mid-interaction in practice; if a
+// future use case needs to destroy interactive widgets during a drag,
+// add an entity-validity guard in `beginTick`.
+//
 // Pipeline order requirement: HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT →
 // WIDGET_APPLY_SLIDER → WIDGET_APPLY_CHECKBOX, all in the INPUT pipeline.
 template <> struct System<WIDGET_INPUT> {

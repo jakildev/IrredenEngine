@@ -31,10 +31,15 @@ namespace IRPrefab::Widget {
 // `wasClicked`, `sliderValue`, `checkboxState` to read interaction
 // results between frames.
 
-inline IREntity::EntityId
-makePanel(IRMath::ivec2 pos, IRMath::ivec2 size, std::string title = "", bool drawBorder = true) {
+inline IREntity::EntityId makePanel(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::string title = "",
+    bool drawBorder = true,
+    int zOrder = 0
+) {
     return IREntity::createEntity(
-        IRComponents::C_Widget{IRComponents::WidgetKind::PANEL, size},
+        IRComponents::C_Widget{IRComponents::WidgetKind::PANEL, size, zOrder},
         IRComponents::C_GuiPosition{pos},
         IRComponents::C_GuiElement{},
         IRComponents::C_WidgetState{},
