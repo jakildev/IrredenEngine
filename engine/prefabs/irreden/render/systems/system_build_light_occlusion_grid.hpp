@@ -109,13 +109,8 @@ inline std::size_t gridFlatIndex(int wx, int wy, int wz, const ivec3 &origin) {
     return (z * kSize + y) * kSize + x;
 }
 
-inline void gridSetBit(
-    std::vector<std::uint32_t> &bitfield,
-    int wx,
-    int wy,
-    int wz,
-    const ivec3 &origin
-) {
+inline void
+gridSetBit(std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, const ivec3 &origin) {
     if (!gridInBounds(wx, wy, wz, origin))
         return;
     const std::size_t flat = gridFlatIndex(wx, wy, wz, origin);
@@ -138,8 +133,7 @@ inline void rasterizeShapeBlocker(
     std::vector<std::uint32_t> &bitfield,
     const ivec3 &origin
 ) {
-    const IRMath::SDF::ShapeType shapeType =
-        static_cast<IRMath::SDF::ShapeType>(shape.shapeType_);
+    const IRMath::SDF::ShapeType shapeType = static_cast<IRMath::SDF::ShapeType>(shape.shapeType_);
     const vec4 effectiveParams = IRMath::SDF::effectiveParams(shapeType, shape.params_);
     const vec3 boundingHalf = IRMath::SDF::boundingHalf(shapeType, effectiveParams);
 
@@ -155,12 +149,24 @@ inline void rasterizeShapeBlocker(
     // samples that round to a neighbor cell. Clipped to the grid window
     // so an off-camera shape contributes nothing without iterating
     // out-of-range cells.
-    const int xMin = IRMath::max(static_cast<int>(IRMath::floor(shapeWorldPos.x - boundingHalf.x)) - 1, gridXMin);
-    const int xMax = IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.x + boundingHalf.x)) + 1, gridXMax);
-    const int yMin = IRMath::max(static_cast<int>(IRMath::floor(shapeWorldPos.y - boundingHalf.y)) - 1, gridYMin);
-    const int yMax = IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.y + boundingHalf.y)) + 1, gridYMax);
-    const int zMin = IRMath::max(static_cast<int>(IRMath::floor(shapeWorldPos.z - boundingHalf.z)) - 1, gridZMin);
-    const int zMax = IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.z + boundingHalf.z)) + 1, gridZMax);
+    const int xMin = IRMath::max(
+        static_cast<int>(IRMath::floor(shapeWorldPos.x - boundingHalf.x)) - 1,
+        gridXMin
+    );
+    const int xMax =
+        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.x + boundingHalf.x)) + 1, gridXMax);
+    const int yMin = IRMath::max(
+        static_cast<int>(IRMath::floor(shapeWorldPos.y - boundingHalf.y)) - 1,
+        gridYMin
+    );
+    const int yMax =
+        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.y + boundingHalf.y)) + 1, gridYMax);
+    const int zMin = IRMath::max(
+        static_cast<int>(IRMath::floor(shapeWorldPos.z - boundingHalf.z)) - 1,
+        gridZMin
+    );
+    const int zMax =
+        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.z + boundingHalf.z)) + 1, gridZMax);
 
     if (xMin > xMax || yMin > yMax || zMin > zMax)
         return;
@@ -187,14 +193,9 @@ inline void rasterizeShapeBlocker(
 /// rasterized so the caller can skip the subData upload when no
 /// blockers exist (the common case for demos that opt out at the
 /// `C_LightBlocker{false, ...}` flag level).
-inline std::size_t rasterizeAllBlockers(
-    std::vector<std::uint32_t> &bitfield,
-    const ivec3 &origin
-) {
-    const auto include = IREntity::getArchetype<
-        C_ShapeDescriptor,
-        C_LightBlocker,
-        C_PositionGlobal3D>();
+inline std::size_t rasterizeAllBlockers(std::vector<std::uint32_t> &bitfield, const ivec3 &origin) {
+    const auto include =
+        IREntity::getArchetype<C_ShapeDescriptor, C_LightBlocker, C_PositionGlobal3D>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     std::size_t rasterized = 0;
     for (auto *node : nodes) {
@@ -214,31 +215,116 @@ inline std::size_t rasterizeAllBlockers(
 } // namespace detail
 
 template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
-    struct Params {
-        Buffer *ssbo_ = nullptr;
-        LightOcclusionGridHeader header_{};
-        /// CPU mirror of the voxel-existence bitfield, allocated once
-        /// at `create()` and reused every frame.
-        std::vector<std::uint32_t> voxelBitfield_{};
-        /// CPU mirror of the light-blocker bitfield. Allocated once at
-        /// `create()` and reused every frame.
-        std::vector<std::uint32_t> blockerBitfield_{};
-        /// True when the previous frame uploaded a non-empty blocker
-        /// bitfield. We need to do an explicit zero-upload one more
-        /// time after the last blocker disappears, so the GPU side
-        /// stops blocking light. After that, both CPU clear and GPU
-        /// upload are skipped while the scene contains zero
-        /// `C_LightBlocker(blocksLOS_=true)` shapes — the common case.
-        bool prevFrameHadBlockers_ = false;
-        /// Camera-anchored origin of the current frame's grid. Set by
-        /// the per-entity tick, consumed by the end-tick upload.
-        ivec3 origin_{};
-        /// Set true by the per-entity tick, false at the end of
-        /// end-tick. Guards the SSBO upload when no canvas matched the
-        /// archetype this frame (defensive — the system normally runs
-        /// once per frame on the main canvas).
-        bool ranThisFrame_ = false;
-    };
+    Buffer *ssbo_ = nullptr;
+    LightOcclusionGridHeader header_{};
+    /// CPU mirror of the voxel-existence bitfield, allocated once
+    /// at `create()` and reused every frame.
+    std::vector<std::uint32_t> voxelBitfield_{};
+    /// CPU mirror of the light-blocker bitfield. Allocated once at
+    /// `create()` and reused every frame.
+    std::vector<std::uint32_t> blockerBitfield_{};
+    /// True when the previous frame uploaded a non-empty blocker
+    /// bitfield. We need to do an explicit zero-upload one more
+    /// time after the last blocker disappears, so the GPU side
+    /// stops blocking light. After that, both CPU clear and GPU
+    /// upload are skipped while the scene contains zero
+    /// `C_LightBlocker(blocksLOS_=true)` shapes — the common case.
+    bool prevFrameHadBlockers_ = false;
+    /// Camera-anchored origin of the current frame's grid. Set by
+    /// the per-entity tick, consumed by the end-tick upload.
+    ivec3 origin_{};
+    /// Set true by the per-entity tick, false at the end of
+    /// end-tick. Guards the SSBO upload when no canvas matched the
+    /// archetype this frame (defensive — the system normally runs
+    /// once per frame on the main canvas).
+    bool ranThisFrame_ = false;
+
+    void tick(IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        if (!behavior.useCameraPositionIso_)
+            return;
+
+        // Phase 1c (#360): re-center on the iso camera each
+        // frame. The CPU bitfield producer and the GPU consumer
+        // both translate world→local against `origin_` /
+        // `worldOriginVoxel` so the populate path stays origin-
+        // agnostic.
+        origin_ = IRRender::detail::cameraAnchorVoxel();
+
+        {
+            IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Clear", IR_PROFILER_COLOR_RENDER);
+            std::fill(voxelBitfield_.begin(), voxelBitfield_.end(), 0u);
+        }
+
+        const auto &globals = pool.getPositionGlobals();
+        const auto &colors = pool.getColors();
+        const int liveCount = pool.getLiveVoxelCount();
+
+        {
+            IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Populate", IR_PROFILER_COLOR_RENDER);
+            for (int i = 0; i < liveCount; ++i) {
+                if (colors[i].color_.alpha_ == 0)
+                    continue;
+                const vec3 &wp = globals[i].pos_;
+                // Round-half-up — must match the `roundHalfUp(...)`
+                // helper in shaders/ir_iso_common.glsl + .metal. See
+                // IRMath::roundVec3HalfUp doc-comment for why this
+                // rule (vs std::lround / glm::round) is required for
+                // the CPU↔GPU light-occlusion-grid handshake.
+                const ivec3 cell = IRMath::roundVec3HalfUp(wp);
+                detail::gridSetBit(voxelBitfield_, cell.x, cell.y, cell.z, origin_);
+            }
+        }
+
+        ranThisFrame_ = true;
+    }
+
+    void beginTick() {
+        ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid);
+    }
+
+    void endTick() {
+        if (!ranThisFrame_)
+            return;
+        std::size_t blockerCount = 0;
+        {
+            IR_PROFILE_BLOCK("BuildLightOcclusionGrid::PopulateBlockers", IR_PROFILER_COLOR_RENDER);
+            // Skip the 2 MB memset + rasterize when we know the
+            // bitfield is already all-zero. After the last
+            // blocker disappears we still need one trailing
+            // clear+upload to drain stale bits from the GPU
+            // bitfield, but every subsequent frame can skip
+            // both the CPU fill and the GPU subData.
+            if (prevFrameHadBlockers_) {
+                std::fill(blockerBitfield_.begin(), blockerBitfield_.end(), 0u);
+            }
+            blockerCount = detail::rasterizeAllBlockers(blockerBitfield_, origin_);
+        }
+
+        {
+            IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Upload", IR_PROFILER_COLOR_RENDER);
+            header_.worldOriginVoxel_ = ivec4(origin_.x, origin_.y, origin_.z, 0);
+            ssbo_->subData(0, kLightOcclusionHeaderByteSize, &header_);
+            ssbo_->subData(
+                static_cast<std::ptrdiff_t>(kLightOcclusionHeaderByteSize),
+                voxelBitfield_.size() * sizeof(std::uint32_t),
+                voxelBitfield_.data()
+            );
+            // Upload the blocker region only when there are
+            // blockers this frame, OR when there were blockers
+            // last frame (so the GPU's stale bits are zeroed
+            // exactly once on the transition to empty).
+            if (blockerCount > 0 || prevFrameHadBlockers_) {
+                ssbo_->subData(
+                    static_cast<std::ptrdiff_t>(kLightBlockerBitfieldByteOffset),
+                    blockerBitfield_.size() * sizeof(std::uint32_t),
+                    blockerBitfield_.data()
+                );
+            }
+        }
+        prevFrameHadBlockers_ = (blockerCount > 0);
+        ranThisFrame_ = false;
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<Buffer>(
@@ -250,8 +336,11 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
             kBufferIndex_LightOcclusionGrid
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
+        SystemId systemId =
+            registerSystem<BUILD_LIGHT_OCCLUSION_GRID, C_VoxelPool, C_TrixelCanvasRenderBehavior>(
+                "BuildLightOcclusionGrid"
+            );
+        auto *p = getSystemParams<System<BUILD_LIGHT_OCCLUSION_GRID>>(systemId);
         p->ssbo_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->voxelBitfield_.assign(kLightOcclusionBitfieldUintCount, 0u);
         p->blockerBitfield_.assign(kLightOcclusionBitfieldUintCount, 0u);
@@ -265,94 +354,6 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
             p->blockerBitfield_.size() * sizeof(std::uint32_t),
             p->blockerBitfield_.data()
         );
-
-        SystemId systemId = createSystem<C_VoxelPool, C_TrixelCanvasRenderBehavior>(
-            "BuildLightOcclusionGrid",
-            [p](IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
-                IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-                if (!behavior.useCameraPositionIso_)
-                    return;
-
-                // Phase 1c (#360): re-center on the iso camera each
-                // frame. The CPU bitfield producer and the GPU consumer
-                // both translate world→local against `origin_` /
-                // `worldOriginVoxel` so the populate path stays origin-
-                // agnostic.
-                p->origin_ = IRRender::detail::cameraAnchorVoxel();
-
-                {
-                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Clear", IR_PROFILER_COLOR_RENDER);
-                    std::fill(p->voxelBitfield_.begin(), p->voxelBitfield_.end(), 0u);
-                }
-
-                const auto &globals = pool.getPositionGlobals();
-                const auto &colors = pool.getColors();
-                const int liveCount = pool.getLiveVoxelCount();
-
-                {
-                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Populate", IR_PROFILER_COLOR_RENDER);
-                    for (int i = 0; i < liveCount; ++i) {
-                        if (colors[i].color_.alpha_ == 0)
-                            continue;
-                        const vec3 &wp = globals[i].pos_;
-                        // Round-half-up — must match the `roundHalfUp(...)`
-                        // helper in shaders/ir_iso_common.glsl + .metal. See
-                        // IRMath::roundVec3HalfUp doc-comment for why this
-                        // rule (vs std::lround / glm::round) is required for
-                        // the CPU↔GPU light-occlusion-grid handshake.
-                        const ivec3 cell = IRMath::roundVec3HalfUp(wp);
-                        detail::gridSetBit(p->voxelBitfield_, cell.x, cell.y, cell.z, p->origin_);
-                    }
-                }
-
-                p->ranThisFrame_ = true;
-            },
-            [p]() { p->ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid); },
-            [p]() {
-                if (!p->ranThisFrame_)
-                    return;
-                std::size_t blockerCount = 0;
-                {
-                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::PopulateBlockers", IR_PROFILER_COLOR_RENDER);
-                    // Skip the 2 MB memset + rasterize when we know the
-                    // bitfield is already all-zero. After the last
-                    // blocker disappears we still need one trailing
-                    // clear+upload to drain stale bits from the GPU
-                    // bitfield, but every subsequent frame can skip
-                    // both the CPU fill and the GPU subData.
-                    if (p->prevFrameHadBlockers_) {
-                        std::fill(p->blockerBitfield_.begin(), p->blockerBitfield_.end(), 0u);
-                    }
-                    blockerCount = detail::rasterizeAllBlockers(p->blockerBitfield_, p->origin_);
-                }
-
-                {
-                    IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Upload", IR_PROFILER_COLOR_RENDER);
-                    p->header_.worldOriginVoxel_ = ivec4(p->origin_.x, p->origin_.y, p->origin_.z, 0);
-                    p->ssbo_->subData(0, kLightOcclusionHeaderByteSize, &p->header_);
-                    p->ssbo_->subData(
-                        static_cast<std::ptrdiff_t>(kLightOcclusionHeaderByteSize),
-                        p->voxelBitfield_.size() * sizeof(std::uint32_t),
-                        p->voxelBitfield_.data()
-                    );
-                    // Upload the blocker region only when there are
-                    // blockers this frame, OR when there were blockers
-                    // last frame (so the GPU's stale bits are zeroed
-                    // exactly once on the transition to empty).
-                    if (blockerCount > 0 || p->prevFrameHadBlockers_) {
-                        p->ssbo_->subData(
-                            static_cast<std::ptrdiff_t>(kLightBlockerBitfieldByteOffset),
-                            p->blockerBitfield_.size() * sizeof(std::uint32_t),
-                            p->blockerBitfield_.data()
-                        );
-                    }
-                }
-                p->prevFrameHadBlockers_ = (blockerCount > 0);
-                p->ranThisFrame_ = false;
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
         IRRender::tagGpuStage(systemId, "buildLightOcclusionGrid");
         return systemId;
     }
