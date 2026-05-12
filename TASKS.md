@@ -274,11 +274,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **GPU particles Phase 2: batch CPU-side Metal spawns** — accumulate per-frame spawn staging buffer in C_GPUParticlePool; eliminate per-spawn Metal buffer orphan overhead before continuous-emitter Lua API lands
+- [~] **GPU particles Phase 2: batch CPU-side Metal spawns** — accumulate per-frame spawn staging buffer in C_GPUParticlePool; eliminate per-spawn Metal buffer orphan overhead before continuous-emitter Lua API lands
   - **ID:** T-159
   - **Area:** engine/render, engine/prefabs/irreden/render, creations/demos/gpu_particles
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-159-gpu-particle-spawn-batching
   - **Blocked by:** (none)
   - **Acceptance:** (1) continuous-emitter demo spawning N particles/frame at N ∈ {10, 100, 1000} reports steady-state Metal buffer subData allocation counts ≤ 1/frame regardless of N; (2) cross-backend visual parity (OpenGL vs Metal) under continuous emission; (3) fleet-build --target IRGpuParticles clean on both backends; (4) per-frame frame time on Metal not regressed vs OpenGL for same emission rate
   - **Issue:** #632
@@ -298,11 +298,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **C_CanvasFogOfWar: evaluate per-write subData vs full-buffer dirty-flag upload** — profile fog upload cost under realistic workloads; implement faster strategy or document rationale for deferral
+- [~] **C_CanvasFogOfWar: evaluate per-write subData vs full-buffer dirty-flag upload** — profile fog upload cost under realistic workloads; implement faster strategy or document rationale for deferral
   - **ID:** T-161
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-161-fog-upload-eval
   - **Blocked by:** (none)
   - **Acceptance:** (1) per-frame fog upload cost measured under three workloads: single-cell update, radius reveal, full clear; (2) code change implementing chosen strategy OR note in design doc deferring change with rationale; (3) IRFogOfWar (or equivalent demo) renders identically
   - **Issue:** #645
@@ -310,11 +310,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **engine/entity: ECS singleton-component infrastructure** — generalize C_GlobalModifiers lazy-init pattern into IRECS::singleton<T>() API; retrofit modifier framework as design-validation gate
+- [~] **engine/entity: ECS singleton-component infrastructure** — generalize C_GlobalModifiers lazy-init pattern into IRECS::singleton<T>() API; retrofit modifier framework as design-validation gate
   - **ID:** T-162
   - **Area:** engine/entity, engine/script, engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-162-ecs-singleton
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRECS::singleton<T>() exists, returns stable reference across calls; (2) modifier framework globals access uses new API; modifier-framework behavior identical (existing tests pass unchanged); (3) Lua test script creates singleton component, reads/writes it; (4) engine/entity/CLAUDE.md documents API + conventions; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #646
