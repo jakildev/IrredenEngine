@@ -238,11 +238,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.5 Phase 3: gizmo hover + drag interaction** — hover highlight via entity-id texture readback; drag-axis-constrained translate/scale; Shift-snap rotate
+- [~] **Editor F-0.5 Phase 3: gizmo hover + drag interaction** — hover highlight via entity-id texture readback; drag-axis-constrained translate/scale; Shift-snap rotate
   - **ID:** T-165
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-153
   - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
   - **Issue:** #676
