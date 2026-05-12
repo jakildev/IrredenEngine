@@ -321,11 +321,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate trixel-canvas content systems to member-on-System<N>** — migrate voxel_to_trixel (2 systems), shapes_to_trixel, text_to_trixel, fog_to_trixel to registerSystem pattern
+- [~] **Migrate trixel-canvas content systems to member-on-System<N>** — migrate voxel_to_trixel (2 systems), shapes_to_trixel, text_to_trixel, fog_to_trixel to registerSystem pattern
   - **ID:** T-156
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-156-trixel-canvas-register-system
   - **Blocked by:** (none)
   - **Acceptance:** (1) 5 systems across 4 files migrated (voxel_to_trixel.hpp has 2 specializations — STAGE_1 and STAGE_2 — migrate both in same PR); (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no cross-cluster changes
   - **Issue:** (none)
