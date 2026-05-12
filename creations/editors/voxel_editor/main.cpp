@@ -3,6 +3,8 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_window.hpp>
+#include <irreden/ir_input.hpp>
+#include <irreden/ir_math.hpp>
 
 // Components
 #include <irreden/common/components/component_position_3d.hpp>
@@ -12,10 +14,14 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/input/components/component_mouse_scroll.hpp>
 
 // Systems
 #include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
+#include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -31,8 +37,25 @@
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
+// Camera prefab namespace (Z-yaw API)
+#include <irreden/render/camera.hpp>
+
 // Command suites
 #include <irreden/common/command_suite_camera.hpp>
+
+using namespace IRComponents;
+using namespace IRMath;
+
+namespace {
+
+// Radians per screen-pixel of horizontal mouse movement during right-drag.
+constexpr float kRotationSensitivity = 0.004f;
+
+bool g_firstRotFrame = true;
+float g_prevMouseX = 0.0f;
+EntityId g_cameraEntity = kNullEntity;
+
+} // namespace
 
 void initSystems();
 void initCommands();
@@ -40,6 +63,11 @@ void initEntities();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: voxel_editor");
+    IR_LOG_INFO("  Right-drag: rotate model view (Z-yaw turntable)");
+    IR_LOG_INFO("  Middle-drag: pan camera");
+    IR_LOG_INFO("  Scroll: zoom in/out");
+    IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
+    IR_LOG_INFO("  Space: re-center + reset yaw");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -49,18 +77,62 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
+    // Scroll zoom iterates C_MouseScroll entities, which are ephemeral (C_Lifetime{1}).
+    // Register in INPUT so they are still alive; LIFETIME in UPDATE destroys them.
+    auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
+        "EditorScrollZoom",
+        [](C_MouseScroll &scroll) {
+            auto &zoom = IREntity::getComponent<C_ZoomLevel>(g_cameraEntity);
+            if (scroll.yoffset_ > 0.0)
+                zoom.zoomIn();
+            else if (scroll.yoffset_ < 0.0)
+                zoom.zoomOut();
+        },
+        []() { g_cameraEntity = IREntity::getEntity("camera"); }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
+         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(), scrollZoomSystem}
     );
+
+    // Right-click drag rotates the camera Z-yaw (turntable), which in the
+    // isometric engine is equivalent to rotating the entity being edited.
+    auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
+        "EditorViewportRotate",
+        [](C_CameraYaw &) {},
+        []() {
+            bool rightPressed =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
+            bool rightHeld =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
+
+            if (rightPressed) {
+                g_firstRotFrame = true;
+            }
+
+            if (rightHeld) {
+                vec2 mouse = IRInput::getMousePositionScreen();
+                if (!g_firstRotFrame) {
+                    float deltaX = mouse.x - g_prevMouseX;
+                    IRPrefab::Camera::rotateYaw(deltaX * kRotationSensitivity);
+                }
+                g_prevMouseX = mouse.x;
+                g_firstRotFrame = false;
+            }
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::RENDER,
         {
+            rotateSystem,
             IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
@@ -81,6 +153,39 @@ void initSystems() {
 
 void initCommands() {
     IRCommand::registerCameraCommands();
+
+    // Q: snap yaw to nearest 90 degrees counterclockwise
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonQ,
+        []() {
+            int q = IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi);
+            IRPrefab::Camera::setYaw(static_cast<float>(q - 1) * IRMath::kHalfPi);
+        }
+    );
+
+    // E: snap yaw to nearest 90 degrees clockwise
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonE,
+        []() {
+            int q = IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi);
+            IRPrefab::Camera::setYaw(static_cast<float>(q + 1) * IRMath::kHalfPi);
+        }
+    );
+
+    // Space: re-center camera pan and reset yaw to default front view
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonSpace,
+        []() {
+            IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
+            IRPrefab::Camera::setYaw(0.0f);
+        }
+    );
 }
 
 void initEntities() {
