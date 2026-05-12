@@ -310,16 +310,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **engine/entity: ECS singleton-component infrastructure** — generalize C_GlobalModifiers lazy-init pattern into IRECS::singleton<T>() API; retrofit modifier framework as design-validation gate
-  - **ID:** T-162
-  - **Area:** engine/entity, engine/script, engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-162-ecs-singleton
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRECS::singleton<T>() exists, returns stable reference across calls; (2) modifier framework globals access uses new API; modifier-framework behavior identical (existing tests pass unchanged); (3) Lua test script creates singleton component, reads/writes it; (4) engine/entity/CLAUDE.md documents API + conventions; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #646
-  - **Notes:** Prerequisite for #200 (deterministic sim-clock substrate). Engine has one production singleton pattern today: C_GlobalModifiers on "modifierGlobals" entity via detail::globalsEntityId() and currentGlobalModifiersPtr() in modifier.hpp:185-191. API also includes singletonOrNull<T>() and singletonEntity<T>() variants. Architect plan at .fleet/plans/T-162.md. Worker should file follow-up ticket to evaluate/migrate existing singleton-shaped components after landing.
-  - **Links:**
 
 
 
@@ -331,6 +321,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
 - [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
@@ -350,4 +341,3 @@ Avoid:
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
-- [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
