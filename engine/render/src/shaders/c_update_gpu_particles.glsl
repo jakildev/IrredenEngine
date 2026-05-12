@@ -6,10 +6,13 @@ layout(local_size_x = 64) in;
 // One thread per particle slot; dead slots (lifetime <= 0) early-out so the
 // pool can hold a high-water-mark capacity even when the live count is small.
 // Drift is integrated by `velocity * deltaTime`; lifetime decays by deltaTime.
-// Spawning is CPU-side: `C_GPUParticlePool::writeSlot` pushes a single slot
-// to this SSBO via subData at spawn time, so the GPU is the source of truth
-// between mutations. A future phase adds a GPU spawn pass for compute-driven
-// emitters.
+// Spawning is CPU-side and batched: `C_GPUParticlePool::writeSlot` queues
+// new particles into a per-frame pending list; the host system flushes
+// them via `pool.flushPendingSpawns()` immediately before dispatching this
+// shader, coalescing into one `subData` per contiguous run of touched
+// slot indices. Between mutations the GPU is the source of truth — the
+// CPU never reads back. A future phase adds a GPU spawn pass for
+// compute-driven emitters.
 
 layout(std140, binding = 23) uniform FrameDataGpuParticles {
     float deltaTime;
