@@ -27,6 +27,12 @@ namespace IRPrefab::Widget {
 //                    CHECKBOX. PANEL and LABEL skip the hitbox so they
 //                    do not consume mouse hover.)
 //
+// Z-order routing (C_Widget::zOrder_) resolves overlap only among entities
+// that carry C_HitBox2DGui. PANEL and LABEL have no hitbox and therefore
+// do not participate in z-order routing — a panel placed over a button
+// does NOT block the button's click. To make a panel click-blocking, add
+// C_HitBox2DGui manually: IREntity::setComponent(panelId, C_HitBox2DGui{panelSize});
+//
 // Returned `EntityId` is the widget's address; consumers use
 // `wasClicked`, `sliderValue`, `checkboxState` to read interaction
 // results between frames.
