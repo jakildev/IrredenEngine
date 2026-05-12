@@ -226,11 +226,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
+- [~] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
   - **ID:** T-150
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** T-147
   - **Acceptance:** (1) editor opens with sane default framing showing reference grid centered; (2) orbit/pan/zoom/snap/re-center all work responsively at 60 fps on linux-debug; (3) close editor + re-open → framing restored; (4) snap views give pixel-aligned axis-aligned projection
   - **Issue:** #625
