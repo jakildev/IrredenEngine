@@ -189,35 +189,41 @@ struct C_VoxelSetNew {
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
     //
-    // `poolGlobalsOut` is the canvas pool's `m_voxelPositionsGlobal` vector
-    // (fetched by the caller). We write through the pool by `voxelStartIdx_`
-    // rather than through `globalPositions_` because the span was captured
-    // at allocation time and is invalidated when the canvas archetype
-    // migrates (deep-copy of C_VoxelPool freed the old storage). Writing by
-    // index keeps the live pool in sync regardless of how many migrations
-    // happened between allocation and now.
+    // Reads positions and offsets from the live pool vectors (by index) so
+    // that between-frame canvas archetype migrations — which deep-copy
+    // C_VoxelPool and free the old storage — cannot produce dangling reads.
+    // All four span members captured at allocation time (`positions_`,
+    // `positionOffsets_`, `globalPositions_`, `voxels_`) become invalid
+    // after such a migration; only `voxelStartIdx_` and `numVoxels_` remain
+    // stable because they are plain scalars on this struct.
     bool updateAsChild(
         C_Position3D parentPosition,
-        std::vector<C_PositionGlobal3D> &poolGlobalsOut
+        std::vector<C_PositionGlobal3D> &poolGlobalsOut,
+        const std::vector<C_Position3D> &poolPositions,
+        const std::vector<C_PositionOffset3D> &poolOffsets
     ) {
         if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
             return false;
         }
         lastParentPosition_ = parentPosition.pos_;
         hasLastParentPosition_ = true;
-        const size_t writableTail = poolGlobalsOut.size() > voxelStartIdx_
-            ? poolGlobalsOut.size() - voxelStartIdx_
-            : 0u;
+        const size_t writableTail =
+            poolGlobalsOut.size() > voxelStartIdx_ ? poolGlobalsOut.size() - voxelStartIdx_ : 0u;
+        const size_t availPositions =
+            poolPositions.size() > voxelStartIdx_ ? poolPositions.size() - voxelStartIdx_ : 0u;
+        const size_t availOffsets =
+            poolOffsets.size() > voxelStartIdx_ ? poolOffsets.size() - voxelStartIdx_ : 0u;
         const int safeCount = IRMath::min(
             numVoxels_,
             static_cast<int>(IRMath::min(
-                IRMath::min(positions_.size(), positionOffsets_.size()),
+                IRMath::min(availPositions, availOffsets),
                 IRMath::min(static_cast<size_t>(voxels_.size()), writableTail)
             ))
         );
         for (int i = 0; i < safeCount; i++) {
-            poolGlobalsOut[voxelStartIdx_ + i].pos_ =
-                getLocalPosition(i) + parentPosition.pos_;
+            poolGlobalsOut[voxelStartIdx_ + i].pos_ = poolPositions[voxelStartIdx_ + i].pos_ +
+                                                      poolOffsets[voxelStartIdx_ + i].pos_ +
+                                                      parentPosition.pos_;
         }
         return safeCount > 0;
     }
