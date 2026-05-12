@@ -14,7 +14,7 @@ namespace {
 constexpr const char *kRigExtension = ".rig";
 constexpr const char *kRigSidecarExtension = ".rig.json";
 
-const std::array<char, 4> kJntsTag{'J', 'N', 'T', 'S'};
+constexpr std::array<char, 4> kJntsTag{'J', 'N', 'T', 'S'};
 
 void encodeVec4(BinaryWriter &w, const IRMath::vec4 &v) {
     w.writeF32(v.x);
@@ -61,7 +61,10 @@ Result<Rig> decodeJntsChunk(const LoadedChunk &chunk, const std::string &sourceN
     if (!countR.ok()) {
         return Result<Rig>::error(countR.status_.code_, std::move(countR.status_.message_));
     }
-    rig.joints_.reserve(static_cast<std::size_t>(countR.value_));
+    // Cap the upfront reserve to the remaining bytes so a corrupted
+    // jointCount claiming billions of joints can't pre-allocate.
+    const std::uint64_t cap = r.remaining();
+    rig.joints_.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
     for (std::uint64_t i = 0; i < countR.value_; ++i) {
         auto verR = r.readU16();
         if (!verR.ok()) {
