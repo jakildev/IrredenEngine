@@ -95,7 +95,7 @@ Allowed exception: the destination resource is **strictly CPU-authored, GPU-read
 
 ### Live deviations
 
-- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). Migrate to per-region `subImage2D` if the upload becomes a hotspot.
+- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.
 
 ## Allocations in hot tick paths
 
