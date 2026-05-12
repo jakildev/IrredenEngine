@@ -30,8 +30,10 @@ existing trixel-texture and sprite-sheet I/O:
 The binary-I/O primitives (`BinaryWriter`/`Reader`, chunk-table header
 helpers, name-table encoding, JSON sidecar emitter) used by every new
 format also live here so consumers have one place to look. All formats
-obey the seven "Save format extensibility rules" documented in the
-editor-epic design doc.
+obey the seven [Save format extensibility rules](#save-format-extensibility-rules)
+below — the same list lives in `docs/design/entity-editor-epic.md` as
+the design-doc home of the rules; this module's contract is to provide
+the primitives that make those rules cheap to follow.
 
 The one save/load surface that does **not** live here is the ECS world
 snapshot (issue #199). It walks the archetype graph, so it lives in
@@ -86,6 +88,120 @@ this at write time.
 Creations call this during tool runs (e.g. the `shape_debug` demo dumps
 generated trixel shapes to disk for later loading) and during
 import/export. Runtime gameplay code generally does not touch this module.
+
+## Binary-I/O primitives (shared across all new formats)
+
+The headers under `engine/asset/include/irreden/asset/` provide the
+read/write building blocks every new asset format uses. Existing
+formats (`.txl`, `.irsprite`) predate the contract; new formats must
+use these.
+
+### `binary_io.hpp` — `BinaryWriter` / `BinaryReader`
+
+Abstract sinks/sources with two backends each:
+
+- `FileBinaryWriter` / `FileBinaryReader` — wraps a `FILE*` in `wb`/`rb`
+  mode.
+- `MemoryBinaryWriter` / `MemoryBinaryReader` — backed by a
+  `std::vector<uint8_t>` (writer) or a borrowed byte span (reader).
+
+All primitives are little-endian, fixed-width:
+
+- `writeU8/U16/U32/U64`, signed `writeI*`, and matching `read*` returning
+  `Result<T>`.
+- `writeF32/F64` / `readF32/F64` — IEEE 754 bit pattern, host-byte-order
+  agnostic.
+- `writeVarUInt(u64)` / `readVarUInt()` — ULEB128 (Protocol Buffers
+  style). 1 byte for values < 128, up to 10 bytes for `u64`.
+- `writeString(string_view)` / `readString()` — UTF-8 with a varuint
+  byte-length prefix.
+
+Reads return `Result<T>` with a `BinaryStatus status_` and the typed
+`value_`. Check `r.ok()` before consuming `r.value_`. Truncated files,
+malformed varints, and length-prefixed strings that exceed the
+remaining buffer all surface as recoverable errors with file path +
+byte offset in the diagnostic.
+
+### `chunk_header.hpp` — file header + chunk table
+
+Every binary asset format starts with the 12-byte header
+
+```
+char magic[4];
+uint32 version;
+uint32 chunkCount;
+```
+
+followed by `chunkCount` entries of `{ char tag[4]; uint64 offset;
+uint64 size; }` (20 bytes each), then the chunk bodies. Use
+`writeChunked(writer, magic, version, span<ChunkPayload>)` on save —
+it computes offsets and writes header + table + bodies in one pass.
+On load, `readChunks(reader, expectedMagic, maxKnownVersion)` returns
+a `std::vector<LoadedChunk>` (every chunk's bytes copied into memory)
+plus the header. Unknown chunks come through with their raw bytes
+intact so loaders silently skip them (**Extensibility Rule #1** — no
+version bump needed when a future writer adds a new chunk).
+
+### `name_table.hpp` — enum name-table chunk
+
+`writeNameTable(w, span<NameTableEntry>)` and `readNameTable(r)`
+serialize `(uint32 id, string name)` pairs into a chunk body.
+`NameTable` is the in-memory lookup helper (`idByName(name)` and
+`nameById(id)`) consumers use to translate disk-side ids to the
+current build's enum values. **Extensibility Rule #2**: prefer
+`name → current enum` lookup, fall back to id only when the name
+table is absent, so a save written by a future build with a new
+`ShapeType` value loads on an older build as "unknown shape, skipped"
+— not "corrupt file."
+
+### `json_sidecar.hpp` — write-only JSON emitter
+
+`JsonSidecarWriter` builds a pretty-printed JSON document via
+`beginObject` / `endObject` / `beginArray` / `endArray` /
+`key(string_view)` / `value*` calls. No third-party dep. **Read side
+is intentionally not implemented** — sidecars are regenerated from the
+binary on every save (**Extensibility Rule #6**). Extending the binary
+side never forces a sidecar schema migration; the emitter just learns
+the new field.
+
+## Save format extensibility rules
+
+Every binary asset format the engine ships (`.vxs`, `.rig`, the ECS
+world snapshot in `engine/world/`, any future format) obeys the seven
+rules below. They're the constitution for the binary-I/O primitives
+in this module and every consumer of them; the long-form rationale and
+worked examples live in `docs/design/entity-editor-epic.md`. The summary:
+
+1. **Chunk-table forward compatibility.** Loaders silently skip
+   unknown chunk tags. Writers append new chunks without bumping the
+   file version. Order in the chunk table is not load-bearing.
+2. **Enums travel by name + id.** Anywhere a registered enum is
+   stored (`ShapeType`, `ComponentId`, `RelationType`, `MaterialId`,
+   bind-point semantic role), write both the numeric id and a
+   string-name table. On load, prefer name → current enum lookup; fall
+   back to id only when the name table is absent.
+3. **Per-component / per-record additive-only versioning.** Each
+   component (in the world snapshot) and each record type (per-voxel
+   record, joint, bind-point, shape primitive) carries a `uint16`
+   version alongside its blob. Field additions append + bump the
+   version; the load migration defaults the appended fields. Removals
+   and renames require an explicit migration function keyed by
+   `(typeId, oldVersion)`. **No silent structural changes.**
+4. **Relations as first-class data, not hard-coded.** The relation
+   chunk stores `(relationTypeId, entityA, entityB)` triples with the
+   name table at the chunk head — adding `OWNS`, `ATTACHED_TO`,
+   `EQUIPPED_BY` is a one-line enum extension.
+5. **Unknown is recoverable, never fatal.** Bad magic, truncated
+   file, version newer than the loader knows about → clear diagnostic
+   with file path + offset, return an empty/default value, never
+   crash. Test fixtures: corrupt-magic, truncated-mid-chunk,
+   version-too-new, unknown-chunk-tag, unknown-enum-value.
+6. **JSON sidecar is regenerated from the binary, never the source
+   of truth.** Emit on save, ignore on load.
+7. **Save/load surface is documented in one place per format.** Each
+   asset format gets a header block in its `.hpp` describing the
+   chunk table, current chunks, version history, and the migration
+   registry.
 
 ## Gotchas
 
