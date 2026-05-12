@@ -246,9 +246,17 @@ Every binary asset format the engine ships (`.vxs`, `.rig`, the ECS
 world snapshot, any future format) obeys the seven rules below. Adding
 a new SDF primitive, a new relation type, a new component, or a new
 chunk **never breaks existing saves and never requires a format version
-bump.** These rules are the constitution for `engine/persist/` and
-every consumer of it; they're what makes Phases 2 – 10 layer cleanly on
-top of Phase 0 without re-versioning each time.
+bump.** These rules are the constitution for the binary-I/O primitives
+in `engine/asset/` (`BinaryWriter`/`Reader`, chunk-table header,
+name-table encoding, JSON sidecar emitter) and every consumer of them;
+they're what makes Phases 2 – 10 layer cleanly on top of Phase 0
+without re-versioning each time.
+
+Module placement: all asset formats (`.vxs`, `.rig`, `.prefab.lua`)
+and the I/O primitives they share live in `engine/asset/`. The ECS
+world snapshot lives in `engine/world/` (it walks the archetype graph
+and needs `engine/entity/` access, so it stays above the asset module
+in the dependency layering) and consumes the same primitives.
 
 1. **Chunk-table forward compatibility.** Every binary file is
    `header (magic + uint32 version + chunk count)` followed by a chunk
@@ -324,7 +332,7 @@ layer, 3D editor camera, gizmo primitives, per-voxel metadata extension
   stride and the compute shader. **No on-disk format change in this
   sub-task** — `.txl` stays trixel-texture; the new on-disk voxel-set
   format lands in a separate ticket as `.vxs` (see F-1.5 and the
-  `engine/persist/` foundation work).
+  `engine/asset/` binary-I/O primitives that ship alongside it).
 - **F-0.7** `.vxs` v1 voxel-set asset format — versioned binary
   (`IRVS` magic + chunk table) supporting both dense per-voxel records
   and SDF shape groups (`C_ShapeDescriptor` composition), with
