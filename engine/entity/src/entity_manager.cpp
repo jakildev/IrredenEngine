@@ -253,6 +253,36 @@ void EntityManager::destroyAllEntities() {
             destroyEntity(entity);
         }
     }
+
+    m_singletonEntityByComponent.clear();
+}
+
+EntityId EntityManager::getOrCreateSingletonByComponentId(ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    auto it = m_singletonEntityByComponent.find(componentType);
+    if (it != m_singletonEntityByComponent.end() && entityExists(it->second)) {
+        return it->second;
+    }
+    if (it != m_singletonEntityByComponent.end()) {
+        m_singletonEntityByComponent.erase(it);
+    }
+    EntityId entity = createEntity();
+    addComponentDynamic(entity, componentType);
+    m_singletonEntityByComponent[componentType] = entity;
+    return entity;
+}
+
+EntityId EntityManager::getSingletonByComponentIdOrNull(ComponentId componentType) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    auto it = m_singletonEntityByComponent.find(componentType);
+    if (it == m_singletonEntityByComponent.end()) {
+        return kNullEntity;
+    }
+    if (!entityExists(it->second)) {
+        m_singletonEntityByComponent.erase(it);
+        return kNullEntity;
+    }
+    return it->second;
 }
 
 EntityRecord &EntityManager::getRecord(EntityId entity) {

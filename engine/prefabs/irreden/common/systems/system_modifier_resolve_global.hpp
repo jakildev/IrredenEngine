@@ -36,9 +36,15 @@ inline const std::vector<IRComponents::Modifier> *&currentGlobalModifiersPtr() {
     return p;
 }
 
-inline IREntity::EntityId &globalsEntityId() {
-    static IREntity::EntityId id = IREntity::kNullEntity;
-    return id;
+// No-create accessor for the singleton globals entity. Returns
+// `kNullEntity` if `registerResolverPipeline` has not yet wired up
+// the singleton, so `beginTick` below can no-op cleanly when the
+// modifier framework is registered later in init order than this
+// system's first tick. Use `IREntity::singletonEntity<C_GlobalModifiers>`
+// directly when you intend to lazy-create.
+inline IREntity::EntityId globalsEntityId() {
+    using IRComponents::C_GlobalModifiers;
+    return IREntity::singletonEntityOrNull<C_GlobalModifiers>();
 }
 
 } // namespace IRPrefab::Modifier::detail
@@ -50,32 +56,32 @@ template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
         return createSystem<
             IRComponents::C_Modifiers,
             IRComponents::C_ResolvedFields,
-            Exclude<IRComponents::C_NoGlobalModifiers>
-        >(
+            Exclude<IRComponents::C_NoGlobalModifiers>>(
             "ModifierResolveGlobal",
-            [](IRComponents::C_Modifiers &m,
-               IRComponents::C_ResolvedFields &resolved) {
-                const auto *globalsPtr =
-                    IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
-                const auto &globals = globalsPtr ? *globalsPtr
-                                                 : IRPrefab::Modifier::detail::emptyModifiers();
+            [](IRComponents::C_Modifiers &m, IRComponents::C_ResolvedFields &resolved) {
+                const auto *globalsPtr = IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
+                const auto &globals =
+                    globalsPtr ? *globalsPtr : IRPrefab::Modifier::detail::emptyModifiers();
                 for (auto &rf : resolved.fields_) {
                     rf.value_ = IRPrefab::Modifier::detail::composeForField(
-                        rf.value_, rf.field_, globals, m.modifiers_
+                        rf.value_,
+                        rf.field_,
+                        globals,
+                        m.modifiers_
                     );
                 }
             },
             // beginTick: cache the singleton's modifier vector pointer.
             []() {
                 using IRComponents::C_GlobalModifiers;
-                auto &cachedPtr =
-                    IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
+                auto &cachedPtr = IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
                 auto entity = IRPrefab::Modifier::detail::globalsEntityId();
                 if (entity == IREntity::kNullEntity) {
                     cachedPtr = nullptr;
                     return;
                 }
-                auto *gm = IREntity::getComponentOptional<C_GlobalModifiers>(entity).value_or(nullptr);
+                auto *gm =
+                    IREntity::getComponentOptional<C_GlobalModifiers>(entity).value_or(nullptr);
                 cachedPtr = gm ? &gm->modifiers_ : nullptr;
             }
         );

@@ -371,6 +371,41 @@ class EntityManager {
     PreDestroyHookId registerPreDestroyHook(PreDestroyHook hook);
     void unregisterPreDestroyHook(PreDestroyHookId id);
 
+    /// Singleton-component support. One entity per component type, cached
+    /// by `ComponentId`. The cache is lazily validated: if the cached
+    /// entity has been destroyed (e.g. by `destroyAllEntities`), the next
+    /// lookup discards the stale entry and either lazy-creates (typed
+    /// path) or returns `kNullEntity` (or-null path).
+    ///
+    /// Typed C++ entry point: `singleton<T>()` (templated). Uses
+    /// `createEntity(T{})` so `T` must be default-constructible.
+    template <typename Component> EntityId getOrCreateSingleton() {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        const ComponentId componentType = getComponentType<Component>();
+        auto it = m_singletonEntityByComponent.find(componentType);
+        if (it != m_singletonEntityByComponent.end() && entityExists(it->second)) {
+            return it->second;
+        }
+        if (it != m_singletonEntityByComponent.end()) {
+            m_singletonEntityByComponent.erase(it);
+        }
+        EntityId entity = createEntity(Component{});
+        m_singletonEntityByComponent[componentType] = entity;
+        return entity;
+    }
+
+    /// Untyped entry point used by Lua-defined components — the component
+    /// is attached via the dynamic-add path so this works uniformly for
+    /// both `registerComponent<T>` and `registerComponentDynamic` types.
+    /// For typed C++ components, prefer `getOrCreateSingleton<T>()`.
+    EntityId getOrCreateSingletonByComponentId(ComponentId componentType);
+
+    /// No-create variant. Returns the cached singleton entity for this
+    /// component type if previously created (and still alive), else
+    /// `kNullEntity`. Useful for query sites that should not implicitly
+    /// instantiate the singleton when called before initial setup.
+    EntityId getSingletonByComponentIdOrNull(ComponentId componentType);
+
   private:
     std::queue<EntityId> m_entityPool;
     std::unordered_map<EntityId, EntityRecord> m_entityIndex;
@@ -388,6 +423,11 @@ class EntityManager {
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
     bool m_preDestroyHookIterating{false};
+    // Singleton-component cache. Key is `ComponentId`, value is the entity
+    // owning that component. Stale entries (entity destroyed externally)
+    // are evicted lazily via the `entityExists` check on lookup. Cleared
+    // unconditionally by `destroyAllEntities`.
+    std::unordered_map<ComponentId, EntityId> m_singletonEntityByComponent;
 
     EntityId allocateEntity();
     void addNewEntityToBaseNode(EntityId entity);

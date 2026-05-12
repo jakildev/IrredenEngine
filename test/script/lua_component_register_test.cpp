@@ -461,4 +461,49 @@ TEST_F(LuaComponentTest, IndexStyleOutOfRangeRaisesLuaError) {
     EXPECT_NE(std::string(setErr.what()).find("999"), std::string::npos);
 }
 
+// ---- Singleton (T-162) -----------------------------------------------------
+
+// `LuaEntity` is opaque to Lua under `bindLuaDrivenEcs()` alone (no
+// usertype registration). The behavior we care about is "subsequent
+// calls land on the same entity", which is observable via field-state
+// persistence: write through the first handle, read through a second,
+// and a properly cached singleton returns the written value.
+TEST_F(LuaComponentTest, SingletonCachesAcrossCalls) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('GameRules', { score = 0, level = 1 })\n"
+        "local a = IREntity.singleton(C)\n"
+        "IREntity.setLuaField(a, C, C.fields.score.index, 42)\n"
+        "IREntity.setLuaField(a, C, C.fields.level.index, 7)\n"
+        // Re-fetch the singleton; mutations must persist on a second call.
+        "local b = IREntity.singleton(C)\n"
+        "return IREntity.getLuaField(b, C, C.fields.score.index), "
+        "       IREntity.getLuaField(b, C, C.fields.level.index)"
+    );
+    ASSERT_TRUE(result.valid());
+    auto [score, level] = result.get<std::tuple<lua_Integer, lua_Integer>>();
+    EXPECT_EQ(score, 42);
+    EXPECT_EQ(level, 7);
+}
+
+TEST_F(LuaComponentTest, SingletonInteropsWithCppApi) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                       "C_Counter = IRComponent.register('Counter', { value = 0 })\n"
+                       "IREntity.setLuaField(IREntity.singleton(C_Counter), C_Counter, "
+                       "                     C_Counter.fields.value.index, 17)"
+    )
+                    .valid());
+
+    // C++ side reaches the same singleton via the typeName lookup.
+    const IREntity::ComponentId cid = m_entity_manager.getComponentTypeByName("Counter");
+    ASSERT_NE(cid, IREntity::kNullComponent);
+    const IREntity::EntityId cppEntity = m_entity_manager.getOrCreateSingletonByComponentId(cid);
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(cppEntity, cid);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+    sol::object value = typed->readFieldAt(row, 0, lua);
+    EXPECT_EQ(value.as<lua_Integer>(), 17);
+}
+
 } // namespace
