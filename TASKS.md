@@ -274,23 +274,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **GPU particles Phase 2: batch CPU-side Metal spawns** — accumulate per-frame spawn staging buffer in C_GPUParticlePool; eliminate per-spawn Metal buffer orphan overhead before continuous-emitter Lua API lands
-  - **ID:** T-159
-  - **Area:** engine/render, engine/prefabs/irreden/render, creations/demos/gpu_particles
-  - **Model:** opus
-  - **Owner:** claude/T-159-gpu-particle-spawn-batching
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) continuous-emitter demo spawning N particles/frame at N ∈ {10, 100, 1000} reports steady-state Metal buffer subData allocation counts ≤ 1/frame regardless of N; (2) cross-backend visual parity (OpenGL vs Metal) under continuous emission; (3) fleet-build --target IRGpuParticles clean on both backends; (4) per-frame frame time on Metal not regressed vs OpenGL for same emission rate
-  - **Issue:** #632
-  - **Notes:** Phase 2 follow-up to PR #614 (T-139). Metal subData orphans whole MTL buffer per call; at 100 spawns/frame on 4096-slot pool that is ~12.8 MB/frame overhead. Approach (a): frame-scoped staging vector in C_GPUParticlePool — simplest, backend-agnostic. Approach (b): Metal BufferImpl frame-coherent batch mode — more invasive. OpenGL unaffected (glNamedBufferSubData is a true partial patch). CPU lifetime_ mirror silent-drop-after-4096-spawns is a separate carry-over.
-  - **Links:**
-
-
 - [~] **TEXT_TO_TRIXEL: hoist gui canvas lookup out of per-entity tick** — eliminate per-entity foreign-entity getComponent in TEXT_TO_TRIXEL::tick by caching canvas entity and textures in beginTick
   - **ID:** T-160
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-160-text-trixel-canvas-hoist
   - **Blocked by:** (none)
   - **Acceptance:** (1) IREntity::getComponent no longer appears in System<TEXT_TO_TRIXEL>::tick; (2) IRShapeDebug and any text-bearing demo render identically to pre-fix output (single-frame visual regression check); (3) fleet-build --target IRShapeDebug clean on linux-debug
   - **Issue:** #644
@@ -313,6 +301,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
@@ -332,4 +321,3 @@ Avoid:
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
-- [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
