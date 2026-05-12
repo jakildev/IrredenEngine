@@ -20,14 +20,18 @@
 // see `.claude/rules/cpp-ecs.md` § "No dirty flags on components".
 // The exception applies because the texture is CPU-authored,
 // GPU-read-only, and a per-cell `subImage2D` would split
-// `revealRadius`'s loop into hundreds of API calls. Population is
-// driver-side: gameplay calls `IRPrefab::Fog::setCell` /
-// `IRPrefab::Fog::revealRadius` (see `render/fog_of_war.hpp`) to drive
-// the visibility set directly. LOS ray casting against the occupancy
-// grid (`castLOS`), heightmap-aware LOS, and the visible→explored fade
-// callback (`fadeExplored`) are deferred to follow-up tasks — the
-// fog-of-war foundation here lets the render pass and Lua-side scripts
-// ship before those algorithms land.
+// `revealRadius`'s loop into hundreds of API calls. T-161 evaluated
+// migrating to per-region `subImage2D` and deferred — see
+// `docs/design/fog-of-war-upload-strategy.md` for the analysis, the
+// trigger conditions for revisiting, and the mechanical migration
+// sketch. Population is driver-side: gameplay calls
+// `IRPrefab::Fog::setCell` / `IRPrefab::Fog::revealRadius` (see
+// `render/fog_of_war.hpp`) to drive the visibility set directly. LOS
+// ray casting against the occupancy grid (`castLOS`), heightmap-aware
+// LOS, and the visible→explored fade callback (`fadeExplored`) are
+// deferred to follow-up tasks — the fog-of-war foundation here lets
+// the render pass and Lua-side scripts ship before those algorithms
+// land.
 //
 // Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
