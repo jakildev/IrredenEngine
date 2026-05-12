@@ -250,11 +250,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.5: gizmo primitives (translate/rotate/scale handles, joint/bind-point/IK markers)** — screen-space-sized depth-aware 3D gizmos rendered into the editor viewport on top of the voxel scene
+- [~] **Editor F-0.5: gizmo primitives (translate/rotate/scale handles, joint/bind-point/IK markers)** — screen-space-sized depth-aware 3D gizmos rendered into the editor viewport on top of the voxel scene
   - **ID:** T-152
   - **Area:** engine/render, creations/editors
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-150
   - **Acceptance:** (1) select voxel → translate gizmo at center; drag X arrow → moves only in X; release applies; (2) rotate gizmo drag around Y ring rotates selection around Y; Shift held snaps to 15°; (3) scale gizmo drag-uniform-center scales uniformly; (4) all gizmos render at constant screen-space size regardless of camera distance, depth-aware (hidden faces dimmed); (5) hover highlights handle under cursor; (6) joint/bind-point/IK marker primitives render at constant screen-space size and are clickable
   - **Issue:** #627
