@@ -357,7 +357,15 @@ Do the work, then exit cleanly:
 
       With checkout confirmed, **remove the feedback label** to
       prevent another agent from also picking it up:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred" --remove-label "fleet:design-unblocked"`
+      `fleet-pr-clear-feedback-labels <N>`
+
+      The wrapper is idempotent: it queries the live label set
+      first and only fires a `gh pr edit --remove-label` call per
+      label actually present. Plain `gh pr edit --remove-label X
+      --remove-label Y ...` is NOT atomic — it exits non-zero on
+      the first absent label, leaving every label removed BEFORE
+      the missing one already stripped. Observed on PR #637 on
+      2026-05-11 and 2026-05-12.
 
       For `human:needs-fix` / `human:blocker` specifically, also
       mark the PR as in-progress and clear the prior approval so
