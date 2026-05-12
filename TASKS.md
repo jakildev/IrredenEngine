@@ -178,60 +178,12 @@ Avoid:
 
 
 
-- [~] **Editor F-0.6: per-voxel metadata extension (.txl v2)** — add material_id, flags, bone_id per voxel; bump .txl to v2 with version-aware loader preserving backward compat
-  - **ID:** T-146
-  - **Area:** engine/prefabs/irreden/voxel, creations/editors
-  - **Model:** opus
-  - **Owner:** claude/T-146-txl-v2-metadata
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) .txl v2 format spec written and committed alongside loader; (2) version-aware loader: reads v1 unchanged (zero-fills new fields), reads v2 with full fidelity, rejects unknown versions with clear error; (3) round-trip test: load v1 → save as v2 → reload v2 → equality on original voxel data; (4) existing demos/assets loading .txl keep working without code changes; (5) accessor API: voxel.material_id(), voxel.flags(), voxel.bone_id() on engine voxel type; (6) fleet-build clean on linux-debug
-  - **Issue:** #621
-  - **Notes:** Phase 0 (F-0.6) of entity-editor epic. Parent epic: #603. Umbrella: #213. Epic doc: #619. Engine reserves full byte for material_id (16–32 cap is game-side concern per irreden#60). Per-voxel size growth has perf implications worth measuring at implementation time.
-  - **Links:**
-
-
-- [~] **Editor F-0.8: editor exe scaffold at creations/editors/voxel_editor/** — stand up IRVoxelEditor target with main loop, window, empty dockspace, and 3D viewport reference grid
-  - **ID:** T-147
-  - **Area:** creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-147-voxel-editor-scaffold
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fleet-build --target IRVoxelEditor clean on linux-debug; (2) fleet-run IRVoxelEditor launches window with 3D viewport showing reference grid; (3) window close + Esc both shut cleanly; (4) source layout follows creations/demos/shape_debug/ patterns per creations/CLAUDE.md; (5) builds on macos-debug and windows-debug
-  - **Issue:** #622
-  - **Notes:** Phase 0 (F-0.8) of entity-editor epic. Parent epic: #603. Umbrella: #213. All later Phase 0 tickets (F-0.4 camera, F-0.5 gizmos, F-0.9 picking) and Phase 1+ live inside this exe. Reference: creations/demos/shape_debug/CMakeLists.txt.
-  - **Links:**
-
-
-- [~] **Editor F-0.2: layout system (rows, columns, dock targets, splitters)** — flex-like containers, draggable splitters, dockable panels building the editor dockspace on top of F-0.1 primitives
-  - **ID:** T-148
-  - **Area:** engine/prefabs/irreden/render, creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-148-layout-system
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) compose fixed editor dockspace (left + center viewport + right + bottom) using layout API; (2) splitters resize live with min/max constraints respected; (3) drag panel by title bar → dock-target previews appear → drop to dock; layout persists in memory until shutdown; (4) layout serializes/deserializes from JSON blob in-memory (file IO deferred, serialization path must work)
-  - **Issue:** #623
-  - **Notes:** Phase 0 (F-0.2) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Every editor panel composes through this.
-  - **Links:**
-
-
-- [~] **Editor F-0.3: input routing (mouse hover/click/drag, keyboard focus, hotkey table)** — z-order-aware event dispatch to widgets, single-widget keyboard focus, capture/release, centralized hotkey registry
-  - **ID:** T-149
-  - **Area:** engine/prefabs/irreden/input, creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-149-input-routing
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) click on button under panel overlay does NOT fire the button (z-order respected); (2) drag-from-slider updates value live; release outside slider rect still completes drag (capture works); (3) Tab cycles focus across text inputs in a panel; (4) register action editor.toggle_grid with Ctrl+G → fires on keypress; duplicate binding on same combo logs a warning
-  - **Issue:** #624
-  - **Notes:** Phase 0 (F-0.3) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-145 (F-0.1 UI primitives). Hotkey table unblocks Phase 1+ editor shortcuts (paint, erase, copy, paste, save).
-  - **Links:**
-
-
 - [~] **Editor F-0.4: 3D editor camera (orbit + pan + zoom)** — editor viewport camera with orbit/pan/zoom/snap-views/persistence; human note: may pivot to entity-rotation vs camera-orbit approach
   - **ID:** T-150
   - **Area:** creations/editors
   - **Model:** sonnet
   - **Owner:** claude/T-150-editor-camera
-  - **Blocked by:** T-147
+  - **Blocked by:** (none)
   - **Acceptance:** (1) editor opens with sane default framing showing reference grid centered; (2) orbit/pan/zoom/snap/re-center all work responsively at 60 fps on linux-debug; (3) close editor + re-open → framing restored; (4) snap views give pixel-aligned axis-aligned projection
   - **Issue:** #625
   - **Notes:** Phase 0 (F-0.4) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-147 (F-0.8 scaffold). Human note: engine has one yaw rotation so far; suggests voxel entity rotation rather than full camera orbit since entities turn in the world — verify approach with architect/human before full implementation. Look at existing demo cameras before designing from scratch.
@@ -243,7 +195,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/voxel, creations/editors
   - **Model:** sonnet
   - **Owner:** claude/T-151-txl-json-sidecar
-  - **Blocked by:** T-146
+  - **Blocked by:** (none)
   - **Acceptance:** (1) editor writes .txl.json next to .txl save (omit file if content empty); (2) loader reads sidecar if present; missing sidecar = empty bind-point list, empty component-pack, identity material map, no log; (3) round-trip test: write voxel grid + bind-points → reload → bind-points match exactly; (4) schema documented in same doc as .txl v2 spec from F-0.6
   - **Issue:** #626
   - **Notes:** Phase 0 (F-0.7) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-146 (F-0.6 per-voxel metadata). Bind-point name vocabulary in game-side editor-needs.md (irreden#60). Engine stores component-pack values as untyped JSON; game side reads via its own registry.
@@ -267,7 +219,7 @@ Avoid:
   - **Area:** engine/render, creations/editors
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-147, T-150
+  - **Blocked by:** T-150
   - **Acceptance:** (1) left-click on voxel in 3D viewport → selected and visually highlighted; (2) left-click on empty space → selection clears; (3) selection survives camera orbit/pan/zoom (only highlight redraws); (4) picking respects camera projection (orthographic + perspective); (5) selected voxel world-space position queryable via editor selection state for Phase 1+ tools
   - **Issue:** #628
   - **Notes:** Phase 0 (F-0.9) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc), T-147 (F-0.8 editor scaffold), T-150 (F-0.4 camera). Selection-state design must anticipate Phase 1+ multi-selection. Phase 0 acceptance criterion in #603 explicitly requires mouse picking.
@@ -334,11 +286,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -351,7 +303,7 @@ Avoid:
   - **Area:** engine/asset
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-166, T-146
+  - **Blocked by:** T-166
   - **Acceptance:** (1) IRAsset::saveVoxelSet/loadVoxelSet ship; (2) .vxs v1 dense format: IRVS magic + uint32 version + chunk-count; MODE=DENSE; BNDS (ivec3 min/max); VOXR (12-byte records: Color + material_id + flags + bone_id + pad); LAYR (named layer bitmasks); FRAM (frame-index → per-voxel offset); META (free-form key/value); (3) unknown chunk tags silently skipped; (4) clear diagnostics on bad magic, version-too-new, truncated chunk, malformed BNDS; (5) round-trip unit test: 20³ fixture save → load → byte-compare VOXR + BNDS; (6) edge cases: empty set, full set, bad magic, truncated mid-VOXR; (7) chunk table documented in .hpp header block; (8) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #664
   - **Notes:** First consumer of T-166 binary-I/O primitives. Dense-mode only; shape-group mode is T-168; hybrid + sidecar is #668. C_Voxel layout (12 B) must match T-146 per-voxel widening — coordinate landing order matters. Replacement for txl v2 intent in PR #635 / #621.
@@ -362,7 +314,7 @@ Avoid:
   - **ID:** T-168
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-168-vxs-shape-group
   - **Blocked by:** T-166
   - **Acceptance:** (1) SHPG chunk: per-primitive record {uint32 shapeTypeId, uint16 version, vec4 params, Color, uint32 flags, uint8 bone_id, vec3 offset, quat rotation, uint8 csgOp}; csgOp ∈ {UNION, SMOOTH_UNION, SUBTRACT, INTERSECT, NONE}; (2) SREF chunk: string name-table for ShapeType enum + material registry refs; (3) MODE chunk gains SHAPES tag; (4) IRAsset::saveVoxelSet overload accepts span<const C_ShapeDescriptor> + optional per-primitive csgOp/transform; (5) loader returns list of C_ShapeDescriptor-shaped records for entity spawning; (6) round-trip test: 5-primitive shape group (sphere/box/capsule mix) save → load → byte-compare; (7) forward-compat test: unknown ShapeType numeric id → logs "unknown shape ID=N name=…, skipped", rest loads; (8) "How to add a new SDF primitive" walkthrough in engine/asset/CLAUDE.md; (9) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #665
@@ -374,7 +326,7 @@ Avoid:
   - **ID:** T-169
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-169-rig-v1
   - **Blocked by:** T-166
   - **Acceptance:** (1) IRAsset::saveRig/loadRig ship; (2) .rig v1 format: IRRG magic + uint32 version + chunk-count; JNTS chunk: array of {uint16 version, vec4 rotation, vec4 translation, uint32 parentIndex, string name}; (3) loader produces C_JointHierarchy ready for toGPUFormat(); (4) round-trip 30-bone snake rig: toGPUFormat() produces identical GPU matrices pre/post round-trip; (5) JSON sidecar emits per-joint name + parent index; (6) unknown chunks handled forward-compat (Extensibility Rule #1); (7) unit tests: round-trip, unknown-chunk forward compat; (8) fleet-build clean on linux-debug
   - **Issue:** #666
@@ -385,6 +337,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
+- [x] **T-146** — Editor F-0.6 — per-voxel metadata extension (.txl v2) · Owner: claude/T-146-txl-v2-metadata · PR: https://github.com/jakildev/IrredenEngine/pull/635
+- [x] **T-147** — Editor F-0.8 -- editor exe scaffold at creations/editors/voxel_editor/ · Owner: claude/T-147-voxel-editor-scaffold · PR: https://github.com/jakildev/IrredenEngine/pull/634
+- [x] **T-148** — Editor F-0.2 — layout system (rows, columns, dock targets, splitters) · Owner: claude/T-148-layout-system · PR: https://github.com/jakildev/IrredenEngine/pull/641
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
@@ -401,7 +357,3 @@ Avoid:
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
 - [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
 - [x] **T-107** — Codegen system bodies — DSL parser + C++ emitter · Owner: claude/T-107-codegen-system-bodies · PR: https://github.com/jakildev/IrredenEngine/pull/597
-- [x] **T-106** — Codegen pipeline foundation — components only · Owner: claude/T-106-lua-codegen-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/596
-- [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
-- [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
-- [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
