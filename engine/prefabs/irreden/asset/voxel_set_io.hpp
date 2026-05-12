@@ -27,10 +27,9 @@ namespace IRAsset {
 /// not carry (offset / rotation / CSG op / bone-id binding).
 ///
 /// Empty parallel spans take the per-record default (identity
-/// transform, `CsgOp::NONE`, `boneId = 0`). Non-empty spans must match
-/// `descriptors.size()` — mismatched lengths are a programmer error,
-/// asserted with a logged warning and treated as "stop at the shorter
-/// length" rather than UB.
+/// transform, `CsgOp::NONE`, `boneId = 0`). Non-empty spans should
+/// match `descriptors.size()` — mismatched lengths log a warning and
+/// degrade gracefully by stopping at the shorter span, not UB.
 inline BinaryStatus saveVoxelSet(
     const std::string &path,
     std::span<const IRComponents::C_ShapeDescriptor> descriptors,
