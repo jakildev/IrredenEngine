@@ -31,6 +31,8 @@ const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_
 const char *const kFileCompClearLightVolume = "shaders/c_clear_light_volume.glsl";
 const char *const kFileCompSeedLightVolume = "shaders/c_seed_light_volume.glsl";
 const char *const kFileCompPropagateLightVolume = "shaders/c_propagate_light_volume.glsl";
+const char *const kFileCompUpdateGpuParticles = "shaders/c_update_gpu_particles.glsl";
+const char *const kFileCompRenderGpuParticlesToTrixel = "shaders/c_render_gpu_particles_to_trixel.glsl";
 
 const char *const kFileVertDebugOverlay = "shaders/v_debug_overlay.glsl";
 const char *const kFileFragDebugOverlay = "shaders/f_debug_overlay.glsl";

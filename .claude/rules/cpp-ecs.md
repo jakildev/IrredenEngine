@@ -73,6 +73,30 @@ These patterns *look* like (c) but are accepted because the alternatives are wor
 
 Anything outside (a)/(b) and not on the exceptions list above is a (c) violation and should be moved to a system, builder, or namespace.
 
+## No dirty flags on components
+
+Rule:
+
+> **Never** add a `bool dirty_` (or `bool needsUpload_`, `bool changed_`, etc.) field to a component to gate a per-frame CPU→GPU sync step. Choose one of the two honest patterns instead.
+
+A dirty flag papers over a question the design needs to answer: *who owns the data between mutations?* Either:
+
+1. **Push at mutation time.** Each mutating method (`writeSlot`, `setCell`, `clear`) writes the affected range directly to the destination resource — `Buffer::subData` for a slice, `Texture2D::subImage2D` for a region. The destination is always current; the system never gates an upload. Canonical example: `C_GPUParticlePool::writeSlot` issues a one-slot `subData` so the next compute dispatch reads the new particle without any per-frame sync step.
+
+2. **GPU owns ongoing state.** If the GPU mutates the same resource every frame (compute-shader simulation, GPU-side accumulation), the CPU mirror is a one-shot seed only. Initialize the GPU resource once in the component ctor (`subData` immediately after `createResource`) and never read from the CPU mirror again — its values are stale by frame 1 anyway. The CPU vector remains useful for allocator-side bookkeeping (e.g. dead-slot scans) but is no longer a source of truth.
+
+Why the dirty-flag pattern is wrong:
+
+- **Hides the ownership contract.** A `dirty_` field reads as "CPU has the truth; GPU mirrors it." When the GPU also mutates the buffer (Phase 1 particle update), re-uploading on dirty clobbers the GPU's per-frame writes. The bug is invisible until a continuous-emitter use case lands.
+- **Defers the correct fix.** Per-write `subData` is `O(bytes changed)` on OpenGL (true partial patch); on Metal it orphans the whole buffer per call (`O(buffer size)` regardless of patch size, for synchronization). A dirty-gated full re-upload is `O(buffer size)` per dirty frame on both backends. The "optimization" is usually a pessimization unless mutations are dense across the buffer in a single frame — at which point the right shape is a sparse dirty-range tracker (start/end indices), not a single boolean. On Metal specifically, high-rate per-frame mutators should also batch CPU-side writes into a single per-frame `subData` to amortize the orphan churn.
+- **Encourages sync drift.** "Set dirty when X" sites accumulate over time; eventually a mutator forgets the flag and writes silently fail to propagate. Per-write upload is its own audit.
+
+Allowed exception: the destination resource is **strictly CPU-authored, GPU-read-only, and re-uploading the whole buffer is genuinely expensive enough** that the optimization pays off. The fog-of-war texture is the only current example — `C_CanvasFogOfWar` uploads a 256×256 RGBA8 texture (256 KiB), the GPU never writes back, and per-cell `subImage2D` would split `revealRadius`'s loop into ~hundreds of API calls. Document the exception in the component header and in the `## Live deviations` block below; new components should not introduce dirty flags.
+
+### Live deviations
+
+- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). Migrate to per-region `subImage2D` if the upload becomes a hotspot.
+
 ## Allocations in hot tick paths
 
 Allocating memory inside a per-entity tick (`new`, `std::vector::push_back`, `std::string` concatenation, `std::map::operator[]` insertion, `std::make_unique`) is a frame-time landmine. Reserve once at `beginTick`; reuse capacity across frames; clear without releasing.
