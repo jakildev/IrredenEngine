@@ -198,9 +198,10 @@ sub="$1"; shift
 case "$sub" in
     has-session) exit 0 ;;
     list-panes)
-        # Pane reports `zsh` (idle shell) and no fleet-dispatch-wrap
-        # child (pgrep on the fake pid will find nothing). The new
-        # count_active_for_role semantics: reservation skipped.
+        # Pane reports `zsh` (idle shell). The pgrep stub alongside
+        # this tmux stub forces the wrapper-child probe to "not
+        # running" → the new count_active_for_role semantics skip
+        # the reservation as a queued resume signal.
         printf '%%5\topus-worker\tzsh\n'
         exit 0
         ;;
@@ -216,9 +217,7 @@ case "$sub" in
         if [[ "$fmt" == *pane_current_path* ]]; then
             echo "/fake/worktrees/opus-worker-2"
         elif [[ "$fmt" == *pane_pid* ]]; then
-            # Fake pid that pgrep will not match → wrapper-child probe
-            # returns "not running" → pane is genuinely idle.
-            echo "999999"
+            echo "1"
         fi
         exit 0
         ;;
@@ -226,6 +225,18 @@ case "$sub" in
 esac
 TMUXEOF
 chmod +x "$TMPROOT/bin-tmux-idle/tmux"
+
+# Stub `pgrep` alongside the tmux stub so the wrapper-child probe is
+# decoupled from the host's process table. Without this the test would
+# rely on no real process matching `pgrep -P <fake-pid> -f
+# fleet-dispatch-wrap`, which is true in practice on the fleet box but
+# brittle in principle on a Linux host with a high kernel.pid_max.
+cat >"$TMPROOT/bin-tmux-idle/pgrep" <<'PGREPEOF'
+#!/usr/bin/env bash
+# No match for the wrapper-child probe → pane reads as idle.
+exit 1
+PGREPEOF
+chmod +x "$TMPROOT/bin-tmux-idle/pgrep"
 
 n=$(PATH="$TMPROOT/bin-tmux-idle:$PATH" "$DISPATCHER" --count-active opus-worker)
 assert_eq "$n" "0" "reservation on idle pane is the resume signal — does not pin the cap"
