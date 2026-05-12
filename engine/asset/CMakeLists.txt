@@ -1,5 +1,9 @@
 add_library(IrredenEngineAsset STATIC
     src/ir_asset.cpp
+    src/binary_io.cpp
+    src/chunk_header.cpp
+    src/name_table.cpp
+    src/json_sidecar.cpp
 )
 
 target_compile_options(
