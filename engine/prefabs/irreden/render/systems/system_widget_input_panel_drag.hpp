@@ -10,8 +10,6 @@
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_layout_leaf.hpp>
-#include <irreden/render/components/component_triangle_canvas_textures.hpp>
-#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/layout.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/trixel_font.hpp>
@@ -34,15 +32,7 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
     bool mouseLeftDown_ = false;
 
     void beginTick() {
-        IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
-        const auto &canvasTextures =
-            IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
-        const auto &framebuffer =
-            IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
-        const IRMath::vec2 fbRes = IRMath::vec2(framebuffer.getResolutionPlusBuffer());
-        const IRMath::vec2 guiSize = IRMath::vec2(canvasTextures.size_);
-        const IRMath::vec2 mouseFb = IRRender::getMousePositionOutputView();
-        mouseGuiTrixel_ = mouseFb / fbRes * guiSize;
+        mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
 
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
             IRInput::KeyMouseButtons::kMouseButtonLeft,

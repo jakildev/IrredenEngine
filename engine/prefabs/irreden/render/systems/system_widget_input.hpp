@@ -9,9 +9,8 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
-#include <irreden/render/components/component_triangle_canvas_textures.hpp>
-#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
+#include <irreden/render/layout.hpp>
 
 namespace IRSystem {
 
@@ -41,15 +40,7 @@ template <> struct System<WIDGET_INPUT> {
     bool mouseLeftReleasedThisFrame_ = false;
 
     void beginTick() {
-        IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
-        auto &canvasTextures =
-            IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
-        auto &framebuffer =
-            IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
-        const IRMath::vec2 fbRes = IRMath::vec2(framebuffer.getResolutionPlusBuffer());
-        const IRMath::vec2 guiSize = IRMath::vec2(canvasTextures.size_);
-        const IRMath::vec2 mouseFb = IRRender::getMousePositionOutputView();
-        mouseGuiTrixel_ = mouseFb / fbRes * guiSize;
+        mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
 
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
             IRInput::KeyMouseButtons::kMouseButtonLeft,

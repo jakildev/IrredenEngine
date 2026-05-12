@@ -3,12 +3,15 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_layout_leaf.hpp>
 #include <irreden/render/components/component_splitter.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 
 #include <string>
@@ -246,17 +249,17 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
 // -----------------------------------------------------------------------
 
 inline void buildSplitters() {
-    for (auto& node : g_layout.nodes_) {
+    for (int pi = 0; pi < static_cast<int>(g_layout.nodes_.size()); ++pi) {
+        auto& node = g_layout.nodes_[pi];
         if (node.type_ == LayoutNode::Type::LEAF) continue;
         const int numChildren = static_cast<int>(node.children_.size());
-        const int parentIdx = static_cast<int>(&node - &g_layout.nodes_[0]);
         const bool isRow = (node.type_ == LayoutNode::Type::ROW);
 
         node.splitterEntities_.resize(numChildren > 0 ? numChildren - 1 : 0, IREntity::kNullEntity);
 
         for (int i = 0; i < numChildren - 1; ++i) {
             IRComponents::C_Splitter splitterData;
-            splitterData.parentNodeIdx_ = parentIdx;
+            splitterData.parentNodeIdx_ = pi;
             splitterData.childIdx_ = i;
             splitterData.isRow_ = isRow;
 
@@ -410,6 +413,23 @@ inline void endPanelDrag(IRMath::ivec2 mousePos) {
         dockPanel(g_layout.draggedPanelNodeIdx_, dropTarget);
     }
     cancelPanelDrag();
+}
+
+// -----------------------------------------------------------------------
+// Input helpers (shared by widget input systems)
+// -----------------------------------------------------------------------
+
+// Returns current mouse position in GUI trixel space. Call once per frame
+// in beginTick() and cache on System<N>.
+inline IRMath::vec2 mousePositionInGuiTrixels() {
+    const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
+    const auto &canvasTextures =
+        IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+    const auto &framebuffer =
+        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    const IRMath::vec2 fbRes = IRMath::vec2(framebuffer.getResolutionPlusBuffer());
+    const IRMath::vec2 guiSize = IRMath::vec2(canvasTextures.size_);
+    return IRRender::getMousePositionOutputView() / fbRes * guiSize;
 }
 
 // -----------------------------------------------------------------------
