@@ -201,20 +201,22 @@ template <> struct System<TEXT_TO_TRIXEL> {
     std::string commandList_;
     bool fontUploaded_ = false;
 
+    // Cached once per frame in beginTick; the gui canvas entity is permanent so
+    // the pointer remains valid through endTick without re-resolving.
+    EntityId guiCanvas_ = IREntity::kNullEntity;
+    C_TriangleCanvasTextures *canvasTextures_ = nullptr;
+
     void tick(
         const C_TextSegment &text,
         const C_GuiPosition &guiPos,
         const C_GuiElement &,
         const C_TextStyle &style
     ) {
-        EntityId guiCanvas = IRRender::getCanvas("gui");
-        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-
         expandTextToCommands(
             drawCommands_,
             text.text_,
             guiPos.pos_,
-            canvasTextures.size_,
+            canvasTextures_->size_,
             style.color_,
             style.wrapWidth_,
             style.alignH_,
@@ -234,9 +236,9 @@ template <> struct System<TEXT_TO_TRIXEL> {
             fontUploaded_ = true;
         }
 
-        EntityId guiCanvas = IRRender::getCanvas("gui");
-        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-        canvasTextures.clear();
+        guiCanvas_ = IRRender::getCanvas("gui");
+        canvasTextures_ = &IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas_);
+        canvasTextures_->clear();
 
         drawCommands_.clear();
 
@@ -248,7 +250,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
                 drawCommands_,
                 commandList_,
                 kGuiOverlayPadding,
-                canvasTextures.size_,
+                canvasTextures_->size_,
                 IRMath::IRColors::kWhite,
                 0
             );
@@ -266,11 +268,9 @@ template <> struct System<TEXT_TO_TRIXEL> {
 
         glyphCmdBuf_->subData(0, count * sizeof(GlyphDrawCommand), drawCommands_.data());
 
-        EntityId guiCanvas = IRRender::getCanvas("gui");
-        auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-        canvasTextures.getTextureColors()
+        canvasTextures_->getTextureColors()
             ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        canvasTextures.getTextureDistances()
+        canvasTextures_->getTextureDistances()
             ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
 
         IRRender::device()->dispatchCompute(count, 1, 1);
