@@ -921,8 +921,12 @@ Do the work, then exit cleanly:
    If your task ID is `T-010`, you read `T-010.md` — that's it.
    Anything else in `~/.fleet/plans/` is not yours and not authoritative
    (stale prose, drafts, abandoned files). If none of those three
-   files exist, read the issue thread for the plan comment:
-   `gh issue view <N> --repo jakildev/IrredenEngine`
+   files exist, read the **full issue thread** (body + every comment —
+   the plan is often posted as a comment, and the human may have left
+   scope refinements there too) via the same wrapper used in step 2:
+   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
+   Do **not** fall back to bare `gh issue view <N>` — it omits comments
+   by default and silently drops the plan.
 
 6. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick

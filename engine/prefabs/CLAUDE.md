@@ -164,3 +164,10 @@ and should be moved to a system, builder, or namespace.
   per-tick cost, correct lifetime, and are multi-instance safe.
   See `engine/system/CLAUDE.md` "Per-system parameters" for the
   rule, rationale, and canonical patterns.
+- ❌ `bool dirty_` (or `needsUpload_`, `changed_`) on a component to
+  gate a per-frame CPU→GPU sync step. Push at mutation time (per-write
+  `subData` / `subImage2D`) or let the GPU own ongoing state and seed
+  the resource once in the ctor. The only documented exception is
+  `C_CanvasFogOfWar` (CPU-authored, GPU-read-only, full-texture upload).
+  See [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) "No
+  dirty flags on components".
