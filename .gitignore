@@ -32,11 +32,15 @@ Thumbs.db
 .merger-body.md
 __pycache__/
 
-# creations: keep demos + top-level CLAUDE.md, ignore other folders
+# creations: keep demos, voxel editor scaffold, and top-level CLAUDE.md; ignore private tools
 creations/*
 !creations/CLAUDE.md
 !creations/demos/
 !creations/demos/**
+!creations/editors/
+creations/editors/font_maker
+!creations/editors/voxel_editor/
+!creations/editors/voxel_editor/**
 
 # claude code: share skills + roles + path-scoped rules + worker subagents, ignore worktrees and local session state
 .claude/*

@@ -13,26 +13,31 @@ No opt-outs.
 
 ```
 creations/
-├── demos/                  ← checked into git; shareable examples
-├── bazel_test/             ← gitignored
-├── editors/                ← gitignored
-└── <private creations>/    ← gitignored (games, experiments, tools)
+├── demos/                       ← checked into git; shareable examples
+├── editors/voxel_editor/        ← checked into git; engine editor tool
+├── editors/<other>/             ← gitignored (personal tools)
+├── bazel_test/                  ← gitignored
+└── <private creations>/         ← gitignored (games, experiments, tools)
 ```
 
 The top-level `.gitignore` says:
 
 ```
 creations/*
+!creations/CLAUDE.md
 !creations/demos/
 !creations/demos/**
-!creations/CLAUDE.md
+!creations/editors/
+creations/editors/font_maker
+!creations/editors/voxel_editor/
+!creations/editors/voxel_editor/**
 ```
 
-Everything directly under `creations/` is ignored **except**
-`creations/demos/` and this file. Private creations (games, personal
-tools, experimental editors) live locally and are never pushed to the
-engine repo. A private creation may have its own repo, its own
-conventions, its own review criteria, even its own CLAUDE.md hierarchy.
+`creations/demos/` and `creations/editors/voxel_editor/` are checked into
+the engine repo. All other creations (games, personal tools, experimental
+editors) live locally and are never pushed to the engine repo. A private
+creation may have its own repo, its own conventions, its own review
+criteria, even its own CLAUDE.md hierarchy.
 
 ## Engine vs. creation separation
 
