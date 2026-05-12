@@ -190,11 +190,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
+- [~] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
   - **ID:** T-139
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-139-gpu-particle-foundation
   - **Blocked by:** (none)
   - **Acceptance:** (1) GPU particle pool in SSBO; pool size configurable per creation; (2) compute shader update pass: position, velocity, lifetime, per-frame drift; (3) indirect draw pass: particles rendered as world-space sprites or voxel-like quads in iso camera; (4) Lua spawn API: spawnParticle(pos, velocity, lifetime, type) queues for next dispatch; (5) GPU radius-cull query: returns particle indices within radius for ability-effect integration; (6) attraction-point compute pass: pull-force toward target position; (7) benchmark: 10K active particles at 60 fps on linux-debug and macos-debug; (8) demo creation IRParticleField with 1K drifting particles + one pull-toward-point test; fleet-build --target IRParticleField clean on linux-debug
   - **Issue:** #209
@@ -319,6 +319,66 @@ Avoid:
   - **Acceptance:** (1) left-click on voxel in 3D viewport → selected and visually highlighted; (2) left-click on empty space → selection clears; (3) selection survives camera orbit/pan/zoom (only highlight redraws); (4) picking respects camera projection (orthographic + perspective); (5) selected voxel world-space position queryable via editor selection state for Phase 1+ tools
   - **Issue:** #628
   - **Notes:** Phase 0 (F-0.9) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc), T-147 (F-0.8 editor scaffold), T-150 (F-0.4 camera). Selection-state design must anticipate Phase 1+ multi-selection. Phase 0 acceptance criterion in #603 explicitly requires mouse picking.
+  - **Links:**
+
+
+- [ ] **Migrate hitbox GUI system to member-on-System<N>** — mechanical refactor of system_hitbox_mouse_test_gui.hpp to member-on-System<N> via registerSystem; canonical example PR for the 5-PR migration chain from #580
+  - **ID:** T-154
+  - **Area:** engine/prefabs/irreden/input
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) system_hitbox_mouse_test_gui.hpp migrated: Params fields become System<N> members, lambdas become named member functions (tick/beginTick/endTick), create() body collapses to registerSystem<N, Cs...>("Name"); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest both clean on linux-debug; (3) fleet-run IRShapeDebug runs without crash; (4) IrredenEngineTest 100% pass; (5) PR touches only this one file — no CLAUDE.md edits, no .fleet/status/ edits
+  - **Issue:** (none)
+  - **Notes:** PR 1 of 5 for issue #580 migration. Helper (registerSystem<N>) already landed in PR #592 (T-136). Intentionally one file so reviewers can validate the migrated shape end-to-end before larger clusters. Plan at .fleet/plans/T-154.md (full recipe including GPU-resource two-step, gotchas, and per-PR acceptance).
+  - **Links:**
+
+
+- [ ] **Migrate GPU-compute cluster to member-on-System<N>** — migrate 5 compute/bake systems (compute_sun_shadow, compute_light_volume, compute_voxel_ao, bake_sun_shadow_map, build_light_occlusion_grid) to registerSystem via GPU-resource two-step
+  - **ID:** T-155
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) all 5 GPU-compute systems migrated using GPU-resource two-step (registerSystem + post-registration getSystemParams pointer assignment for cached program/buffer handles); (2) fleet-build --target IRShapeDebug and fleet-build --target IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 runs without crash; (4) attach-screenshots and render-debug-loop invoked per engine/render/CLAUDE.md verification rule; (5) PR touches only the 5 cluster files
+  - **Issue:** (none)
+  - **Notes:** PR 2 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp, system_compute_light_volume.hpp, system_compute_voxel_ao.hpp, system_bake_sun_shadow_map.hpp, system_build_light_occlusion_grid.hpp. GPU-resource two-step: call registerSystem, then immediately getSystemParams<System<N>>(id) to assign cached resource pointers to member fields. Forgetting the post-registration assignment null-pointer-crashes at first render tick. Plan at .fleet/plans/T-155.md.
+  - **Links:**
+
+
+- [ ] **Migrate trixel-canvas content systems to member-on-System<N>** — migrate voxel_to_trixel (2 systems), shapes_to_trixel, text_to_trixel, fog_to_trixel to registerSystem pattern
+  - **ID:** T-156
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 5 systems across 4 files migrated (voxel_to_trixel.hpp has 2 specializations — STAGE_1 and STAGE_2 — migrate both in same PR); (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no cross-cluster changes
+  - **Issue:** (none)
+  - **Notes:** PR 3 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp (2 specializations), system_shapes_to_trixel.hpp, system_text_to_trixel.hpp, system_fog_to_trixel.hpp. Note: voxel_to_trixel.hpp has TWO System<N> specializations in one file; both must be migrated together. Plan at .fleet/plans/T-156.md.
+  - **Links:**
+
+
+- [ ] **Migrate lighting + debug cluster to member-on-System<N>** — migrate lighting_to_trixel, trixel_to_trixel, debug_culling_minimap to registerSystem pattern
+  - **ID:** T-157
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 3 systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only
+  - **Issue:** (none)
+  - **Notes:** PR 4 of 5 for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp, system_trixel_to_trixel.hpp, system_debug_culling_minimap.hpp. Visual regressions show immediately in IRShapeDebug screenshots. Plan at .fleet/plans/T-157.md.
+  - **Links:**
+
+
+- [ ] **Migrate final composite + sprites cluster to member-on-System<N>** — migrate trixel_to_framebuffer, framebuffer_to_screen, screen_residual_rotate, sprites_to_screen to registerSystem; closes #580
+  - **ID:** T-158
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 4 final-stage systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash or visual regression; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no .fleet/status/ edits (queue-manager retires system-static-deviations.md after this lands)
+  - **Issue:** #580
+  - **Notes:** PR 5 of 5 (final) for issue #580 migration. Files: engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp, system_framebuffer_to_screen.hpp, system_screen_residual_rotate.hpp, system_sprites_to_screen.hpp. After this PR merges, queue-manager will retire .fleet/status/system-static-deviations.md. Plan at .fleet/plans/T-158.md.
   - **Links:**
 
 ## Done — last 20
