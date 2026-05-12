@@ -24,12 +24,36 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<FRAMEBUFFER_TO_SCREEN> {
-    struct Params {
-        Buffer *frameDataBuf_ = nullptr;
-        ShaderProgram *program_ = nullptr;
-        VAO *quadVao_ = nullptr;
-        FrameDataFramebuffer frameData_{};
-    };
+    Buffer *frameDataBuf_ = nullptr;
+    ShaderProgram *program_ = nullptr;
+    VAO *quadVao_ = nullptr;
+    FrameDataFramebuffer frameData_{};
+
+    void tick(
+        const C_TrixelCanvasFramebuffer &framebuffer,
+        const C_Position3D &cameraPosition,
+        const C_Name &name
+    ) {
+        framebuffer.bindTextures(0, 1);
+        frameData_.mvpMatrix =
+            calcProjectionMatrix() * calcModelMatrix(
+                                         framebuffer.getResolution(),
+                                         framebuffer.getResolutionPlusBuffer(),
+                                         cameraPosition.pos_,
+                                         IRRender::getCameraPosition2DIso(),
+                                         name.name_
+                                     );
+        frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &frameData_);
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
+    }
+
+    void beginTick() {
+        bindDefaultFramebuffer();
+        clearDefaultFramebuffer();
+        program_->use();
+        quadVao_->bind();
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -48,41 +72,16 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             kBufferIndex_FramebufferFrameDataUniform
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
-        p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
-        p->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");
-        p->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
-
-        SystemId systemId = createSystem<C_TrixelCanvasFramebuffer, C_Position3D, C_Name>(
-            "FramebufferToScreen",
-            [p](const C_TrixelCanvasFramebuffer &framebuffer,
-                const C_Position3D &cameraPosition,
-                const C_Name &name) {
-                framebuffer.bindTextures(0, 1);
-                p->frameData_.mvpMatrix =
-                    calcProjectionMatrix() * calcModelMatrix(
-                                                 framebuffer.getResolution(),
-                                                 framebuffer.getResolutionPlusBuffer(),
-                                                 cameraPosition.pos_,
-                                                 IRRender::getCameraPosition2DIso(),
-                                                 name.name_
-                                             );
-                p->frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &p->frameData_);
-                IRRender::device()->setPolygonMode(PolygonMode::FILL);
-                IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
-            },
-            [p]() {
-                bindDefaultFramebuffer();
-                clearDefaultFramebuffer();
-                p->program_->use();
-                p->quadVao_->bind();
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
-        IRRender::tagGpuStage(systemId, "fbToScreen");
-        return systemId;
+        SystemId id = registerSystem<FRAMEBUFFER_TO_SCREEN,
+                                     C_TrixelCanvasFramebuffer,
+                                     C_Position3D,
+                                     C_Name>("FramebufferToScreen");
+        auto *sys = getSystemParams<System<FRAMEBUFFER_TO_SCREEN>>(id);
+        sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
+        sys->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");
+        sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
+        IRRender::tagGpuStage(id, "fbToScreen");
+        return id;
     }
 
   private:
@@ -98,11 +97,10 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         // also known as screen center
         float xOffset = IRRender::getViewport().x / 2.0f;
         float yOffset = IRRender::getViewport().y / 2.0f;
-        vec2 offset = vec2(xOffset, yOffset) +
-                      isoDeltaToScreenDelta(
-                          pos3DtoPos2DIso(cameraPosition),
-                          IRRender::getTriangleStepSizeScreen()
-                      );
+        vec2 offset = vec2(xOffset, yOffset) + isoDeltaToScreenDelta(
+                                                   pos3DtoPos2DIso(cameraPosition),
+                                                   IRRender::getTriangleStepSizeScreen()
+                                               );
 
         mat4 model = mat4(1.0f);
 

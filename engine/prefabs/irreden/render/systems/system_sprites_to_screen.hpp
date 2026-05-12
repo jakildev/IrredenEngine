@@ -48,17 +48,85 @@ template <> struct System<SPRITE_TO_SCREEN> {
         std::size_t count_;
     };
 
-    struct Params {
-        IRRender::Buffer *frameDataBuf_ = nullptr;
-        IRRender::Buffer *instancesBuf_ = nullptr;
-        IRRender::ShaderProgram *program_ = nullptr;
-        IRRender::VAO *quadVao_ = nullptr;
-        bool overflowWarned_ = false;
-        IRRender::FrameDataSpritesToScreen frameData_{};
-        std::vector<IRRender::SpriteRenderEntry> entries_;
-        std::vector<IRRender::GpuSpriteInstance> gpuScratch_;
-        std::vector<Group> groups_;
-    };
+    IRRender::Buffer *frameDataBuf_ = nullptr;
+    IRRender::Buffer *instancesBuf_ = nullptr;
+    IRRender::ShaderProgram *program_ = nullptr;
+    IRRender::VAO *quadVao_ = nullptr;
+    bool overflowWarned_ = false;
+    IRRender::FrameDataSpritesToScreen frameData_{};
+    std::vector<IRRender::SpriteRenderEntry> entries_;
+    std::vector<IRRender::GpuSpriteInstance> gpuScratch_;
+    std::vector<Group> groups_;
+
+    void tick(
+        const IRComponents::C_Sprite &sprite,
+        const IRComponents::C_PositionGlobal3D &global,
+        const IRComponents::C_PositionOffset3D &offset
+    ) {
+        if (sprite.textureHandle_ == 0) {
+            return;
+        }
+        if (entries_.size() >= kMaxSprites) {
+            if (!overflowWarned_) {
+                IR_LOG_WARN(
+                    "SpritesToScreen: sprite count exceeded kMaxSprites={} — extras "
+                    "dropped this frame",
+                    kMaxSprites
+                );
+                overflowWarned_ = true;
+            }
+            return;
+        }
+        const vec3 worldPos = global.pos_ + offset.pos_;
+        IRRender::SpriteRenderEntry entry{};
+        entry.textureHandle_ = sprite.textureHandle_;
+        entry.isoDepth_ = static_cast<int>(pos3DtoDistance(worldPos));
+        entry.size_ = sprite.size_;
+        entry.uvRect_ = sprite.uvRect_;
+        entry.tintRgba_ = vec4(
+            static_cast<float>(sprite.tint_.red_) / 255.0f,
+            static_cast<float>(sprite.tint_.green_) / 255.0f,
+            static_cast<float>(sprite.tint_.blue_) / 255.0f,
+            static_cast<float>(sprite.tint_.alpha_) / 255.0f
+        );
+        entry.screenPos_ = computeScreenAnchor(worldPos) - sprite.anchor_ * sprite.size_;
+        entries_.push_back(entry);
+    }
+
+    void beginTick() {
+        entries_.clear();
+        groups_.clear();
+    }
+
+    void endTick() {
+        if (entries_.empty()) {
+            return;
+        }
+        std::sort(entries_.begin(), entries_.end(), entryLess);
+        groups_ = buildGroups(entries_);
+        uploadFrameData();
+        bindPipeline();
+        for (const Group &g : groups_) {
+            auto *atlas = IRRender::getResource<IRRender::Texture2D>(g.textureHandle_);
+            if (atlas == nullptr) {
+                continue;
+            }
+            packGroupToScratch(g);
+            instancesBuf_->subData(
+                0,
+                gpuScratch_.size() * sizeof(IRRender::GpuSpriteInstance),
+                gpuScratch_.data()
+            );
+            atlas->bind(0);
+            IRRender::device()->drawArraysInstanced(
+                IRRender::DrawMode::TRIANGLES,
+                0,
+                6,
+                static_cast<int>(g.count_)
+            );
+        }
+        unbindPipeline();
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<IRRender::ShaderProgram>(
@@ -91,61 +159,21 @@ template <> struct System<SPRITE_TO_SCREEN> {
             IRRender::kBufferIndex_SpritesInstances
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
-        p->frameDataBuf_ = IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenFrameData");
-        p->instancesBuf_ = IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenInstances");
-        p->program_ = IRRender::getNamedResource<IRRender::ShaderProgram>("SpritesToScreenProgram");
-        p->quadVao_ = IRRender::getNamedResource<IRRender::VAO>("QuadVAOArrays");
-        p->entries_.reserve(256);
-        p->gpuScratch_.reserve(256);
-
-        SystemId systemId = createSystem<
-            IRComponents::C_Sprite,
-            IRComponents::C_PositionGlobal3D,
-            IRComponents::C_PositionOffset3D>(
-            "SpritesToScreen",
-            [p](const IRComponents::C_Sprite &sprite,
-                const IRComponents::C_PositionGlobal3D &global,
-                const IRComponents::C_PositionOffset3D &offset) {
-                if (sprite.textureHandle_ == 0) {
-                    return;
-                }
-                if (p->entries_.size() >= kMaxSprites) {
-                    if (!p->overflowWarned_) {
-                        IR_LOG_WARN(
-                            "SpritesToScreen: sprite count exceeded kMaxSprites={} — extras "
-                            "dropped this frame",
-                            kMaxSprites
-                        );
-                        p->overflowWarned_ = true;
-                    }
-                    return;
-                }
-                const vec3 worldPos = global.pos_ + offset.pos_;
-                IRRender::SpriteRenderEntry entry{};
-                entry.textureHandle_ = sprite.textureHandle_;
-                entry.isoDepth_ = static_cast<int>(pos3DtoDistance(worldPos));
-                entry.size_ = sprite.size_;
-                entry.uvRect_ = sprite.uvRect_;
-                entry.tintRgba_ = vec4(
-                    static_cast<float>(sprite.tint_.red_) / 255.0f,
-                    static_cast<float>(sprite.tint_.green_) / 255.0f,
-                    static_cast<float>(sprite.tint_.blue_) / 255.0f,
-                    static_cast<float>(sprite.tint_.alpha_) / 255.0f
-                );
-                entry.screenPos_ = computeScreenAnchor(worldPos) - sprite.anchor_ * sprite.size_;
-                p->entries_.push_back(entry);
-            },
-            [p]() {
-                p->entries_.clear();
-                p->groups_.clear();
-            },
-            [p]() { endTick(*p); }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
-        return systemId;
+        SystemId id = registerSystem<SPRITE_TO_SCREEN,
+                                     IRComponents::C_Sprite,
+                                     IRComponents::C_PositionGlobal3D,
+                                     IRComponents::C_PositionOffset3D>("SpritesToScreen");
+        auto *sys = getSystemParams<System<SPRITE_TO_SCREEN>>(id);
+        sys->frameDataBuf_ =
+            IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenFrameData");
+        sys->instancesBuf_ =
+            IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenInstances");
+        sys->program_ =
+            IRRender::getNamedResource<IRRender::ShaderProgram>("SpritesToScreenProgram");
+        sys->quadVao_ = IRRender::getNamedResource<IRRender::VAO>("QuadVAOArrays");
+        sys->entries_.reserve(256);
+        sys->gpuScratch_.reserve(256);
+        return id;
     }
 
     /// Stable build-order rule used by the sort: equal-handle sprites
@@ -193,50 +221,20 @@ template <> struct System<SPRITE_TO_SCREEN> {
         return viewport * 0.5f + isoDelta * stepSize * screenSign;
     }
 
-    static void endTick(Params &p) {
-        if (p.entries_.empty()) {
-            return;
-        }
-        std::sort(p.entries_.begin(), p.entries_.end(), entryLess);
-        p.groups_ = buildGroups(p.entries_);
-        uploadFrameData(p);
-        bindPipeline(p);
-        for (const Group &g : p.groups_) {
-            auto *atlas = IRRender::getResource<IRRender::Texture2D>(g.textureHandle_);
-            if (atlas == nullptr) {
-                continue;
-            }
-            packGroupToScratch(p, g);
-            p.instancesBuf_->subData(
-                0,
-                p.gpuScratch_.size() * sizeof(IRRender::GpuSpriteInstance),
-                p.gpuScratch_.data()
-            );
-            atlas->bind(0);
-            IRRender::device()->drawArraysInstanced(
-                IRRender::DrawMode::TRIANGLES,
-                0,
-                6,
-                static_cast<int>(g.count_)
-            );
-        }
-        unbindPipeline();
-    }
-
-    static void packGroupToScratch(Params &p, const Group &g) {
-        p.gpuScratch_.resize(g.count_);
+    void packGroupToScratch(const Group &g) {
+        gpuScratch_.resize(g.count_);
         for (std::size_t i = 0; i < g.count_; ++i) {
-            const IRRender::SpriteRenderEntry &e = p.entries_[g.firstEntry_ + i];
-            p.gpuScratch_[i].screenPosSize_ =
+            const IRRender::SpriteRenderEntry &e = entries_[g.firstEntry_ + i];
+            gpuScratch_[i].screenPosSize_ =
                 vec4(e.screenPos_.x, e.screenPos_.y, e.size_.x, e.size_.y);
-            p.gpuScratch_[i].uvRect_ = e.uvRect_;
-            p.gpuScratch_[i].tintRgba_ = e.tintRgba_;
+            gpuScratch_[i].uvRect_ = e.uvRect_;
+            gpuScratch_[i].tintRgba_ = e.tintRgba_;
         }
     }
 
-    static void uploadFrameData(Params &p) {
+    void uploadFrameData() {
         const ivec2 viewport = IRRender::getViewport();
-        p.frameData_.projection_ = IRMath::ortho(
+        frameData_.projection_ = IRMath::ortho(
             0.0f,
             static_cast<float>(viewport.x),
             0.0f,
@@ -244,12 +242,12 @@ template <> struct System<SPRITE_TO_SCREEN> {
             -1.0f,
             100.0f
         );
-        p.frameDataBuf_->subData(0, sizeof(IRRender::FrameDataSpritesToScreen), &p.frameData_);
+        frameDataBuf_->subData(0, sizeof(IRRender::FrameDataSpritesToScreen), &frameData_);
     }
 
-    static void bindPipeline(Params &p) {
-        p.program_->use();
-        p.quadVao_->bind();
+    void bindPipeline() {
+        program_->use();
+        quadVao_->bind();
         IRRender::device()->setDepthTest(false);
         IRRender::device()->setDepthWrite(false);
         IRRender::device()->enableBlending();
