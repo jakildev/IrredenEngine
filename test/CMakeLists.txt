@@ -3,6 +3,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(IrredenEngineTest
   asset/binary_io_test.cpp
+  asset/rig_format_test.cpp
   asset/sprite_sheet_test.cpp
   asset/voxel_set_shapes_test.cpp
   audio/music_theory_test.cpp
