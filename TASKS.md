@@ -177,18 +177,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **GPU particle system — compute-shader-driven dense particle field** — SSBO-based particle pool with compute update, indirect draw, and Lua spawn API for dense ambient particle fields
-  - **ID:** T-139
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-139-gpu-particle-foundation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) GPU particle pool in SSBO; pool size configurable per creation; (2) compute shader update pass: position, velocity, lifetime, per-frame drift; (3) indirect draw pass: particles rendered as world-space sprites or voxel-like quads in iso camera; (4) Lua spawn API: spawnParticle(pos, velocity, lifetime, type) queues for next dispatch; (5) GPU radius-cull query: returns particle indices within radius for ability-effect integration; (6) attraction-point compute pass: pull-force toward target position; (7) benchmark: 10K active particles at 60 fps on linux-debug and macos-debug; (8) demo creation IRParticleField with 1K drifting particles + one pull-toward-point test; fleet-build --target IRParticleField clean on linux-debug
-  - **Issue:** #209
-  - **Notes:** Engine infrastructure only — no game-specific content. Owner comment: integrate particle system that does not rely on CPU iteration or per-entity voxel positioning. See midi projects in creations/ for CPU particle patterns to replace. Existing compute shaders in engine/render/src/shaders/ for precedent.
-  - **Links:**
-
-
 - [~] **Editor F-0.1: trixel UI primitives** — implement 10-widget trixel-rendered UI primitive set for voxel editor; no dear-imgui
   - **ID:** T-145
   - **Area:** engine/prefabs/irreden/render, creations/editors
@@ -225,11 +213,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.2: layout system (rows, columns, dock targets, splitters)** — flex-like containers, draggable splitters, dockable panels building the editor dockspace on top of F-0.1 primitives
+- [~] **Editor F-0.2: layout system (rows, columns, dock targets, splitters)** — flex-like containers, draggable splitters, dockable panels building the editor dockspace on top of F-0.1 primitives
   - **ID:** T-148
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-148-layout-system
   - **Blocked by:** T-145
   - **Acceptance:** (1) compose fixed editor dockspace (left + center viewport + right + bottom) using layout API; (2) splitters resize live with min/max constraints respected; (3) drag panel by title bar → dock-target previews appear → drop to dock; layout persists in memory until shutdown; (4) layout serializes/deserializes from JSON blob in-memory (file IO deferred, serialization path must work)
   - **Issue:** #623
@@ -333,11 +321,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate lighting + debug cluster to member-on-System<N>** — migrate lighting_to_trixel, trixel_to_trixel, debug_culling_minimap to registerSystem pattern
+- [~] **Migrate lighting + debug cluster to member-on-System<N>** — migrate lighting_to_trixel, trixel_to_trixel, debug_culling_minimap to registerSystem pattern
   - **ID:** T-157
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-157-lighting-debug-register-system
   - **Blocked by:** (none)
   - **Acceptance:** (1) 3 systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only
   - **Issue:** (none)
@@ -345,11 +333,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Migrate final composite + sprites cluster to member-on-System<N>** — migrate trixel_to_framebuffer, framebuffer_to_screen, screen_residual_rotate, sprites_to_screen to registerSystem; closes #580
+- [~] **Migrate final composite + sprites cluster to member-on-System<N>** — migrate trixel_to_framebuffer, framebuffer_to_screen, screen_residual_rotate, sprites_to_screen to registerSystem; closes #580
   - **ID:** T-158
   - **Area:** engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-158-final-composite-register-system
   - **Blocked by:** (none)
   - **Acceptance:** (1) 4 final-stage systems migrated via GPU-resource two-step; (2) fleet-build --target IRShapeDebug and IrredenEngineTest clean on linux-debug; (3) fleet-run IRShapeDebug --auto-screenshot 10 no crash or visual regression; (4) attach-screenshots and render-debug-loop per render-CLAUDE.md; (5) cluster files only — no .fleet/status/ edits (queue-manager retires system-static-deviations.md after this lands)
   - **Issue:** #580
@@ -360,6 +348,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-139** — GPU particle system — compute-shader-driven dense particle field · Owner: claude/T-139-gpu-particle-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/614
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-109** — Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293 · Owner: claude/T-109-codegen-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/599
 - [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
@@ -379,4 +368,3 @@ Avoid:
 - [x] **T-130** — Hover: unify GUI / world / trixel sources in SYSTEM_ENTITY_HOVER_DETECT · Owner: claude/T-130-gui-hitbox-source · PR: https://github.com/jakildev/IrredenEngine/pull/575
 - [x] **T-131** — Render — widen iso rasterization to shadow-feeder AABB · Owner: claude/T-131-shadow-feeder-aabb · PR: https://github.com/jakildev/IrredenEngine/pull/576
 - [x] **T-132** — Render: sun shadow normal-bias offset + slope-scale bias tuning · Owner: claude/T-132-shadow-normal-bias · PR: https://github.com/jakildev/IrredenEngine/pull/573
-- [x] **T-103** — Lua-driven ECS — hot-reload of Lua system bodies · Owner: claude/T-103-lua-system-body-hot-reload · PR: https://github.com/jakildev/IrredenEngine/pull/559
