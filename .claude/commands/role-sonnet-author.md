@@ -629,8 +629,12 @@ Each iteration:
    If any exists, read it with the Read tool — it contains the
    implementation approach, affected files, and gotchas. Use it to
    guide your work. If no plan file exists at any path, read the
-   issue thread for the plan comment:
-   `gh issue view <N> --repo jakildev/IrredenEngine`
+   **full issue thread** (body + every comment — the plan is often
+   posted as a comment, and the human may have left scope refinements
+   there too) via the cache-aware wrapper:
+   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
+   Do **not** fall back to bare `gh issue view <N>` — it omits comments
+   by default and silently drops the plan.
 
 5. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick

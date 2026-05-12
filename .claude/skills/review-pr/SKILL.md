@@ -77,10 +77,22 @@ it as a first pass, and focus on what Sonnet could not confirm. See
 
 ### 1. Resolve the PR and pull its metadata
 
+Read author/human PR comments before walking the diff — they're how
+authors flag deliberate scope ("I deferred X to a follow-up") and how
+humans pre-flag concerns ("watch out for Y on macOS"). Missing them
+leads to reviews that re-raise points the author already addressed in
+conversation.
+
 ```bash
-gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable
+gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews
+gh api repos/jakildev/IrredenEngine/pulls/<N>/comments
 gh pr diff <N>
 ```
+
+The first command returns issue-level comments (`comments`) and review
+summaries (`reviews`). The second returns inline code-review comments
+(line-attached) — `gh pr view --json` does not include these. Together
+the two commands cover every kind of PR conversation.
 
 If the user said "latest" / "most recent":
 
