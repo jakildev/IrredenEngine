@@ -202,6 +202,11 @@ enum ShapeFlags : std::uint32_t {
     /// normalized to [0, 1] over the shape's own depth extent. Useful for
     /// visually distinguishing individual shapes regardless of world position.
     SHAPE_FLAG_DEPTH_COLOR = 1u << 6,
+    /// Editor gizmo handle. When set, `c_shapes_to_trixel` blends the gizmo
+    /// color at reduced alpha over the existing canvas color where the gizmo
+    /// is occluded by world geometry, so the handle remains visible as a
+    /// faint silhouette through walls / voxels (T-164).
+    SHAPE_FLAG_GIZMO = 1u << 7,
 };
 
 struct GPUShapeDescriptor {
@@ -449,8 +454,7 @@ struct LightOcclusionGridHeader {
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(
-    sizeof(LightOcclusionGridHeader) == 16,
-    "LightOcclusionGridHeader must match std430 layout"
+    sizeof(LightOcclusionGridHeader) == 16, "LightOcclusionGridHeader must match std430 layout"
 );
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
@@ -501,7 +505,9 @@ struct FrameDataGpuParticles {
     int _renderPad0_ = 0;
     int _renderPad1_ = 0;
 };
-static_assert(sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout");
+static_assert(
+    sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout"
+);
 
 /// GPU particle pool capacity per pool entity. Phase 1 caps the pool at this
 /// fixed size; per-biome configurable capacity lands in Phase 2.

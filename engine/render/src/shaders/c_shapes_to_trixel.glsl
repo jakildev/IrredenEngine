@@ -60,7 +60,10 @@ layout(std430, binding = 22) readonly buffer AnimBuffer {
 };
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
-layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
+// `triangleCanvasColors` is read+write (not `writeonly`) so the gizmo
+// occluded-blend branch in pass 1 can load the existing pixel and blend
+// SHAPE_FLAG_GIZMO output on top at reduced alpha (T-164).
+layout(rgba8, binding = 0) uniform image2D triangleCanvasColors;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
 // Shape-type constants (SHAPE_BOX, SHAPE_SPHERE, …) and the SDF primitive
@@ -70,6 +73,13 @@ const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
 const uint FLAG_CHECKERBOARD = 32u;
 const uint FLAG_DEPTH_COLOR = 64u;
+const uint FLAG_GIZMO = 128u;
+
+// Editor-gizmo silhouette intensity. When a SHAPE_FLAG_GIZMO fragment
+// loses the atomicMin contest against world geometry, pass 1 blends the
+// gizmo color over the existing canvas pixel at this alpha so the handle
+// remains visible as a faint silhouette through walls.
+const float kGizmoOccludedAlpha = 0.25;
 
 // FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
 // FMA-reordered across GPU scheduling, so a mathematically-integer entry
@@ -893,6 +903,8 @@ void main() {
         }
     }
 
+    bool isGizmo = (shape.flags & FLAG_GIZMO) != 0u;
+
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);
 
@@ -912,6 +924,24 @@ void main() {
                     imageStore(triangleCanvasColors, canvasPixel, baseColor);
                     imageStore(triangleCanvasEntityIds, canvasPixel,
                                uvec4(shape.entityId, 0u, 0u, 0u));
+                } else if (isGizmo && depthEncoded > stored) {
+                    // Gizmo lost the atomicMin contest — something closer
+                    // (a voxel or a non-gizmo shape, occasionally another
+                    // gizmo) owns this pixel. Blend the gizmo color over
+                    // the existing canvas color at reduced alpha so the
+                    // handle still reads as a faint silhouette through
+                    // the occluder. Non-atomic RMW: overlapping gizmos
+                    // race here, but editor handles rarely overlap in
+                    // practice and the worst-case visual is which gizmo's
+                    // silhouette wins, not a corrupted pixel.
+                    vec4 existing = imageLoad(triangleCanvasColors,
+                                              canvasPixel);
+                    vec3 blended = mix(existing.rgb, baseColor.rgb,
+                                       kGizmoOccludedAlpha);
+                    imageStore(triangleCanvasColors, canvasPixel,
+                               vec4(blended, existing.a));
+                    // Deliberately do not write entity id: picking should
+                    // still resolve to the occluder, not the silhouette.
                 }
             }
         }

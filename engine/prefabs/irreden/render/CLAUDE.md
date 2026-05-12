@@ -35,11 +35,17 @@ the ECS surface.
   full data model, depth semantics, and cross-task scope.
 - `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
   (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
-  bind-point / IK marker) + axis + a `hover_` flag reserved for the F-0.9
-  picking pass. Visible geometry comes from a sibling `C_ShapeDescriptor`
-  on the same entity (SDF primitive rendered by `SHAPES_TO_TRIXEL`); the
-  marker carries no rendering state itself. Builders live in
-  `IRPrefab::Gizmo::` (see "Exposing system public API" below).
+  bind-point / IK marker) + axis. Carries the Phase 2 (T-164) baseline
+  fields: `referenceParams_` (the unscaled shape descriptor params written
+  at construction), `referenceLocalPos_` (the unscaled local position),
+  and `isAnchor_` (true for single-entity markers whose own
+  `C_Position3D` is the world-space anchor — false for child handles
+  parented under a group root). The `hover_` flag is reserved for the
+  F-0.9 picking pass. Visible geometry comes from a sibling
+  `C_ShapeDescriptor` on the same entity (SDF primitive rendered by
+  `SHAPES_TO_TRIXEL`); the marker carries no rendering state itself.
+  Builders live in `IRPrefab::Gizmo::` (see "Exposing system public API"
+  below).
 
 ## Key systems (all RENDER pipeline)
 
@@ -118,10 +124,17 @@ EntityId gizmo = IRPrefab::Gizmo::createTranslateGizmo();
 IREntity::getComponent<C_Position3D>(gizmo).pos_ = anchor;
 ```
 
-Phase 1 renders handles at fixed world-space size. Screen-space sizing
-(constant pixel size regardless of camera zoom) and depth-aware "hidden
-faces dimmed" shading are deferred to follow-up F-0.5 phases; hover +
-drag interaction lands once T-153 mouse picking is in place.
+Phase 2 (T-164) wires the runtime polish: the
+`GIZMO_SCREEN_SPACE_SIZE` UPDATE-pipeline system scales each handle's
+`C_ShapeDescriptor::params_` (and the child-handle local position)
+inversely with camera zoom so handles render at constant pixel size
+across the editor's zoom range. The same task adds a `SHAPE_FLAG_GIZMO`
+bit to `ShapeFlags` plus a matching path in
+`c_shapes_to_trixel.glsl` / `c_shapes_to_trixel.metal` that blends the
+gizmo color over the existing canvas pixel at reduced alpha where the
+handle sits behind world geometry — the faint silhouette is what makes
+occluded handles still readable. Hover + drag interaction lands once
+T-153 mouse picking is in place (Phase 3, blocked by T-153).
 
 ## Trixel UI widget framework
 

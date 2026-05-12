@@ -26,6 +26,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/render/systems/system_gizmo_screen_space_size.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
@@ -106,9 +107,15 @@ void initSystems() {
 
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+        {// Rescale gizmo handles to constant pixel size BEFORE the
+         // global-position propagation system reads `C_Position3D`, so
+         // the new local positions reach the SHAPES_TO_TRIXEL pass in
+         // the same frame.
+         IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
+         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::LIFETIME>()}
+         IRSystem::createSystem<IRSystem::LIFETIME>()
+        }
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
