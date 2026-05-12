@@ -37,8 +37,16 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
 layout(std430, binding = 6) readonly buffer ColorBuffer {
-    uint colors[];
+    Voxel voxels[];
 };
 
 layout(std430, binding = 25) readonly buffer CompactedIndices {

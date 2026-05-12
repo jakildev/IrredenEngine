@@ -34,10 +34,18 @@ constant uint kSlotNumGroupsZ     = 2;
 constant uint kSlotVisibleCount   = 3;
 constant uint kSlotCompletedGroups = 4;
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
 kernel void c_voxel_visibility_compact(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
-    device const uint* colors [[buffer(6)]],
+    device const Voxel* voxels [[buffer(6)]],
     device const uint* chunkVisible [[buffer(24)]],
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
@@ -53,7 +61,7 @@ kernel void c_voxel_visibility_compact(
     if (idx < uint(frameData.voxelCount)) {
         const uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
         if (chunkVisible[chunkIdx] != 0u) {
-            const uint packedColor = colors[idx];
+            const uint packedColor = voxels[idx].colorPacked;
             const uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
                 int3 voxelPos = int3(round(positions[idx].xyz));
