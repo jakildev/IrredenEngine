@@ -16,20 +16,28 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-/// T-139 Phase 1 — GPU particle update pass.
+/// T-139 Phase 1 — GPU particle update pass; T-159 Phase 2 — folds in
+/// the per-frame spawn flush so per-spawn Metal `subData` orphan churn
+/// is replaced by one coalesced upload per frame.
 ///
 /// Per matched canvas (one entity owning a `C_GPUParticlePool`):
-///   1. Upload per-frame data (deltaTime, particleCount).
-///   2. Bind particle SSBO + UBO; dispatch the update kernel with one thread
+///   1. Flush any spawn writes queued this frame via
+///      `C_GPUParticlePool::writeSlot` — one `subData` per contiguous
+///      run of touched slot indices; typical case is one call total.
+///   2. Upload per-frame data (deltaTime, particleCount).
+///   3. Bind particle SSBO + UBO; dispatch the update kernel with one thread
 ///      per particle slot.
 ///
-/// No per-frame CPU→GPU pool sync — `C_GPUParticlePool::writeSlot` and
-/// `clear` push directly to the SSBO at mutation time, and the GPU owns
-/// the per-particle position/lifetime decay between mutations.
+/// `writeSlot` no longer touches the SSBO directly — the flush at step
+/// 1 is the only CPU→GPU sync, and it only uploads slots that were
+/// just written this frame, never untouched ranges (the CPU mirror's
+/// position/lifetime is stale relative to the GPU update kernel).
 ///
 /// Pipeline placement: belongs in the RENDER pipeline ahead of the particle
 /// render pass (so positions and lifetimes advance before the rasterization
-/// reads them). Recommended slot: between `SHAPES_TO_TRIXEL` and
+/// reads them). Any system that calls `IRPrefab::GpuParticles::spawn`
+/// must run before this one so its writes land in the same-frame flush.
+/// Recommended slot: between `SHAPES_TO_TRIXEL` and
 /// `RENDER_GPU_PARTICLES_TO_TRIXEL`.
 template <> struct System<UPDATE_GPU_PARTICLES> {
     struct Params {
@@ -61,6 +69,10 @@ template <> struct System<UPDATE_GPU_PARTICLES> {
             createSystem<C_GPUParticlePool>("UpdateGpuParticles", [p](C_GPUParticlePool &pool) {
                 if (pool.capacity_ == 0u || pool.buffer_.second == nullptr)
                     return;
+
+                // Phase 2 (T-159): flush spawns queued this frame in one
+                // coalesced upload before the update kernel reads the SSBO.
+                pool.flushPendingSpawns();
 
                 p->frameData_.deltaTime_ =
                     static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER));
