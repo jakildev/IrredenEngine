@@ -279,6 +279,9 @@ Result<ShapeGroupLoadResult> readShapeGroupChunk(
                 csgR.status_.code_,
                 std::move(csgR.status_.message_)
             );
+        // CsgOp is stable — future composition modes land in a separate
+        // SHPT chunk, not new CsgOp values, so no name-resolution fallback
+        // is needed (unlike ShapeType, which uses SREF for Rule #2).
         rec.csgOp_ = static_cast<CsgOp>(csgR.value_);
 
         // Resolve the disk shape id to the current build's enum.
