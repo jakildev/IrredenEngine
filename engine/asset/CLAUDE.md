@@ -47,6 +47,10 @@ snapshot (issue #199). It walks the archetype graph, so it lives in
   `loadTrixelTextureData(...)` — trixel binary round-trip.
 - `saveSpriteSheetMeta(name, path, meta)` /
   `loadSpriteSheetMeta(name, path)` — sidecar text round-trip.
+- `saveShapeGroup(path, span<ShapeRecord>)` / `loadShapeGroup(path)` —
+  `.vxs` SHAPES-mode SDF primitive composition round-trip. See
+  `voxel_set_format.hpp` for record layout and the
+  "How to add a new SDF primitive" walkthrough below.
 
 The `name` is embedded in the trixel file header; the `path` is the
 output directory. For sprite sheets, `name` is the basename shared
@@ -153,6 +157,85 @@ current build's enum values. **Extensibility Rule #2**: prefer
 table is absent, so a save written by a future build with a new
 `ShapeType` value loads on an older build as "unknown shape, skipped"
 — not "corrupt file."
+
+### `voxel_set_format.hpp` — `.vxs` voxel-set asset
+
+The voxel-set container holds three persistence modes — DENSE (per-voxel
+records, T-167), SHAPES (SDF composition, T-168), HYBRID (DENSE + SHAPES,
+T-668) — under one magic (`VXS1`) and one version (`kVoxelSetVersion = 1`).
+Magic + version together govern the **container**; per-record additive
+versioning (`kShapeRecordVersion`) covers field-level evolution inside
+records (Extensibility Rule #3).
+
+Container chunks:
+
+- `MODE` — 4-byte ASCII mode tag (`DENS` / `SHPS` / `HYBR`). Missing →
+  defaults to SHAPES (legacy single-mode files). Unknown tag → returns
+  `VoxelSetMode::UNKNOWN` with a logged warning; the caller decides
+  whether to refuse the asset or render what's parseable.
+- `SREF` — `ShapeType` id↔name table; `buildCurrentShapeTypeNameTable()`
+  emits the writer's view of the canonical enum so a future build's
+  save survives the read on an older build (name lookup misses → record
+  skipped, no failure).
+- `SHPG` — SHAPES-mode primitive records (`ShapeRecord` array). Records
+  with an unresolvable disk-side `ShapeType` are skipped and counted
+  in `unknownShapesSkipped_`.
+
+SHPG record layout (one per primitive):
+
+```
+uint32  shapeTypeId      // numeric; resolve via SREF name lookup
+uint16  recordVersion    // additive-only field evolution (Rule #3)
+float32 params[4]        // SDF parameters (semantics per ShapeType)
+uint32  packedRGBA       // Color::toPackedRGBA()
+uint32  flags            // IRRender::ShapeFlags bit field
+uint8   boneId           // joint binding (T-146 / T-169); 0 = none
+float32 offset[3]        // local translation
+float32 rotation[4]      // quaternion (x, y, z, w)
+uint8   csgOp            // CsgOp: NONE | UNION | SMOOTH_UNION | SUBTRACT | INTERSECT
+```
+
+High-level entry points:
+
+- `saveShapeGroup(path, span<ShapeRecord>)` — writes MODE=SHAPES, SREF,
+  SHPG chunks under the `VXS1` header.
+- `loadShapeGroup(path)` — returns `VoxelSetFile { mode_, shapeRecords_,
+  unknownShapesSkipped_ }` after resolving SREF and SHPG. Container
+  errors (`BadMagic`, `VersionTooNew`, truncation, chunk-out-of-bounds)
+  surface as `BinaryIOError` results.
+
+For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
+`engine/prefabs/irreden/asset/voxel_set_io.hpp` (`#include
+<irreden/asset/voxel_set_io.hpp>`) exposes
+`IRAsset::saveVoxelSet(span<const C_ShapeDescriptor>, ...)` with parallel
+offset / rotation / csgOp / boneId arrays — the per-entity composition
+metadata `C_ShapeDescriptor` does not itself carry. The adapter lives in
+prefabs to keep `engine/asset/` from depending on the component layer.
+
+#### How to add a new SDF primitive
+
+Adding a new shape that participates in `.vxs` shape-group saves is
+designed to require **no format change**:
+
+1. Append the new enum value to `IRMath::SDF::ShapeType` in
+   `engine/math/include/irreden/math/sdf.hpp` (e.g. `TORUS_KNOT = 10`).
+2. Append the corresponding `(id, name)` pair to the `kShapeTypeTable`
+   constant in `engine/asset/src/voxel_set_format.cpp`. The name string
+   is the disk-side identity; older builds use it to recognize the new
+   type via SREF name-lookup, drop a "unknown shape, skipped" warning,
+   and load the rest of the asset cleanly.
+3. Add the SDF evaluator: a new `inline float yourShape(vec3 p, ...)`
+   in `sdf.hpp`, a new `IRMath::SDF::ShapeType` dispatch case in
+   `IRMath::SDF::evaluate` / `boundingHalf`, and matching GLSL +
+   Metal implementations under `engine/render/src/shaders/`. The
+   trixel pipeline (`SHAPES_TO_TRIXEL`) picks it up automatically once
+   the dispatch tables route to your evaluator.
+
+Steps 1 + 2 + the shader pair are sufficient for an old `.vxs` save to
+keep loading after a future build adds `TORUS_KNOT`. The format version
+stays at `1`; the per-record `recordVersion_` field is the lever for
+future field additions inside the record itself (Rule #3 — append +
+bump + default the new field in the older-build load path).
 
 ### `json_sidecar.hpp` — write-only JSON emitter
 
