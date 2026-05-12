@@ -36,32 +36,229 @@ constexpr int kShapeTileSize = 8;
 template <> struct System<SHAPES_TO_TRIXEL> {
     using CanvasId = IREntity::EntityId;
 
-    struct Params {
-        ShaderProgram *shapesProgram_ = nullptr;
-        Buffer *shapeDescBuf_ = nullptr;
-        Buffer *shapesFrameDataBuf_ = nullptr;
-        Buffer *shapeTileDescBuf_ = nullptr;
-        GPUShapesFrameData frameData_{};
-        std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
-        std::optional<IsoBounds2D> cullBounds_;
-        // Camera Z-yaw snapshotted at beginTick so the cull pass and the
-        // per-tile dispatch share byte-identical values even if a script
-        // mutates yaw mid-frame. visualYaw_ is split via computeYawSplit
-        // into rasterYaw_ (cardinal multiple of pi/2) + residualYaw_; the
-        // shapes shader rasterizes at rasterYaw_ so its output aligns with
-        // the voxel pool's cardinal-snap raster, and yawCos_/yawSin_ are
-        // the cos/sin of rasterYaw_ (always exact ±1 / 0). yawZero_ is
-        // the rasterYaw==0 fast path; it stays true for visualYaw inside
-        // (-pi/4, +pi/4) where rasterYaw rounds to 0. residualYaw_ is
-        // mirrored into the UBO for shaders downstream of this pass; the
-        // CPU side of this system does not consume it.
-        float visualYaw_ = 0.0f;
-        float rasterYaw_ = 0.0f;
-        float residualYaw_ = 0.0f;
-        float yawCos_ = 1.0f;
-        float yawSin_ = 0.0f;
-        bool yawZero_ = true;
-    };
+    ShaderProgram *shapesProgram_ = nullptr;
+    Buffer *shapeDescBuf_ = nullptr;
+    Buffer *shapesFrameDataBuf_ = nullptr;
+    Buffer *shapeTileDescBuf_ = nullptr;
+    GPUShapesFrameData frameData_{};
+    std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
+    std::optional<IsoBounds2D> cullBounds_;
+    // Camera Z-yaw snapshotted at beginTick so the cull pass and the
+    // per-tile dispatch share byte-identical values even if a script
+    // mutates yaw mid-frame. visualYaw_ is split via computeYawSplit
+    // into rasterYaw_ (cardinal multiple of pi/2) + residualYaw_; the
+    // shapes shader rasterizes at rasterYaw_ so its output aligns with
+    // the voxel pool's cardinal-snap raster, and yawCos_/yawSin_ are
+    // the cos/sin of rasterYaw_ (always exact ±1 / 0). yawZero_ is
+    // the rasterYaw==0 fast path; it stays true for visualYaw inside
+    // (-pi/4, +pi/4) where rasterYaw rounds to 0. residualYaw_ is
+    // mirrored into the UBO for shaders downstream of this pass; the
+    // CPU side of this system does not consume it.
+    float visualYaw_ = 0.0f;
+    float rasterYaw_ = 0.0f;
+    float residualYaw_ = 0.0f;
+    float yawCos_ = 1.0f;
+    float yawSin_ = 0.0f;
+    bool yawZero_ = true;
+
+    void tick(
+        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_PositionGlobal3D &pos
+    ) {
+        if (cullBounds_.has_value()) {
+            vec3 viewPos = pos.pos_;
+            vec3 sizeForExtent = vec3(shape.params_);
+            if (!yawZero_) {
+                viewPos = vec3(
+                    yawCos_ * pos.pos_.x + yawSin_ * pos.pos_.y,
+                    -yawSin_ * pos.pos_.x + yawCos_ * pos.pos_.y,
+                    pos.pos_.z
+                );
+                const float absC = IRMath::abs(yawCos_);
+                const float absS = IRMath::abs(yawSin_);
+                sizeForExtent = vec3(
+                    sizeForExtent.x * absC + sizeForExtent.y * absS,
+                    sizeForExtent.x * absS + sizeForExtent.y * absC,
+                    sizeForExtent.z
+                );
+            }
+            vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
+            vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
+            if (shapeIsoPosition.x + shapeIsoHalfExtent.x < cullBounds_->min_.x ||
+                shapeIsoPosition.x - shapeIsoHalfExtent.x > cullBounds_->max_.x ||
+                shapeIsoPosition.y + shapeIsoHalfExtent.y < cullBounds_->min_.y ||
+                shapeIsoPosition.y - shapeIsoHalfExtent.y > cullBounds_->max_.y) {
+                return;
+            }
+        }
+
+        CanvasId canvas = shape.canvasEntity_;
+        if (canvas == IREntity::kNullEntity) {
+            canvas = IRRender::getActiveCanvasEntity();
+        }
+
+        auto &bucket = gpuShapesByCanvas_[canvas];
+        if (static_cast<int>(bucket.size()) >= kMaxShapeDescriptors) {
+            return;
+        }
+        GPUShapeDescriptor desc{};
+        desc.worldPosition = vec4(pos.pos_, 1.0f);
+        desc.params = shape.params_;
+        desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
+        desc.color = shape.color_.toPackedRGBA();
+        desc.entityId = entityId;
+        desc.jointIndex = 0;
+        desc.flags = shape.flags_;
+        desc.lodLevel = shape.lodLevel_;
+        bucket.push_back(desc);
+    }
+
+    void beginTick() {
+        gpuShapesByCanvas_.clear();
+
+        // Snapshot camera yaw once for the whole tick so the cull
+        // pass and the per-tile dispatch share the same value, even
+        // if a script mutates yaw mid-frame. The shape SDF
+        // rasterizes at rasterYaw (cardinal-snap) so it lines up
+        // trixel-for-trixel with the voxel pool's cardinal-snap
+        // raster (T-055); the screen-space residual rotate pass
+        // (T-058) handles the leftover residualYaw on screen.
+        visualYaw_ = IRPrefab::Camera::getYaw();
+        const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(visualYaw_);
+        rasterYaw_ = rasterYaw;
+        residualYaw_ = residualYaw;
+        static constexpr float kCardinalCos[4] = {1.f, 0.f, -1.f, 0.f};
+        static constexpr float kCardinalSin[4] = {0.f, 1.f, 0.f, -1.f};
+        constexpr float kHalfPi = 1.5707963267948966f;
+        const int q = IRMath::round(rasterYaw / kHalfPi);
+        const int cardinalIdx = ((q % 4) + 4) % 4;
+        yawCos_ = kCardinalCos[cardinalIdx];
+        yawSin_ = kCardinalSin[cardinalIdx];
+        yawZero_ = (rasterYaw_ == 0.0f);
+
+        IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+        auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
+        if (texOpt.has_value()) {
+            IRRender::updateCullViewport(
+                IRRender::getCameraPosition2DIso(),
+                IRRender::getCameraZoom(),
+                texOpt.value()->size_
+            );
+            constexpr int kMargin = 4;
+            // Widen to the shadow-feeder AABB (visible ∪ swept along
+            // -sunDir by kSunShadowMaxDistance) so off-screen SDF
+            // casters still write distances into trixelDistances and
+            // feed BAKE_SUN_SHADOW_MAP. The same widened bounds are
+            // uploaded as cullIsoMin/Max in endTick so per-tile
+            // shaders never clip a shadow-feeder pixel. Sun-direction
+            // resolution is gated on the shadow flag so a disabled-
+            // shadow creation skips the C_LightSource archetype scan.
+            const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+            const vec3 sunDir =
+                shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
+            const float sweepDistance =
+                shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
+            cullBounds_ = IRMath::shadowFeederIsoBounds(
+                IRRender::getCullViewport().isoViewport(kMargin),
+                sunDir,
+                sweepDistance
+            );
+        } else {
+            cullBounds_.reset();
+        }
+    }
+
+    void endTick() {
+        IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+        const float visualYaw = visualYaw_;
+        const float rasterYaw = rasterYaw_;
+        const float residualYaw = residualYaw_;
+
+        for (auto &[canvasId, gpuShapes] : gpuShapesByCanvas_) {
+            if (gpuShapes.empty()) {
+                continue;
+            }
+
+            auto texturesOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(canvasId);
+            if (!texturesOpt.has_value()) {
+                continue;
+            }
+            auto &canvasTextures = *texturesOpt.value();
+
+            if (canvasId == mainCanvas) {
+                frameData_.cameraTrixelOffset = IRRender::getCameraPosition2DIso();
+            } else {
+                canvasTextures.clear();
+                vec3 entityPos = vec3(gpuShapes[0].worldPosition);
+                frameData_.cameraTrixelOffset = -pos3DtoPos2DIso(entityPos);
+            }
+            frameData_.trixelCanvasOffsetZ1 = IRMath::trixelOriginOffsetZ1(canvasTextures.size_);
+            frameData_.canvasSize = canvasTextures.size_;
+            frameData_.shapeCount = static_cast<int>(gpuShapes.size());
+            const auto renderMode = IRRender::getSubdivisionMode();
+            const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
+            frameData_.voxelRenderOptions = ivec2(static_cast<int>(renderMode), effectiveSub);
+            if (cullBounds_.has_value() && canvasId == mainCanvas) {
+                frameData_.cullIsoMin = ivec2(IRMath::floor(cullBounds_->min_));
+                frameData_.cullIsoMax = ivec2(IRMath::ceil(cullBounds_->max_));
+            } else {
+                frameData_.cullIsoMin = ivec2(-999999);
+                frameData_.cullIsoMax = ivec2(999999);
+            }
+            frameData_.visualYaw = visualYaw;
+            frameData_.rasterYaw = rasterYaw;
+            frameData_.residualYaw = residualYaw;
+
+            shapeDescBuf_
+                ->subData(0, gpuShapes.size() * sizeof(GPUShapeDescriptor), gpuShapes.data());
+
+            // Tile bounds are computed at rasterYaw — same rotation
+            // the shader uses to rasterize each shape — so the
+            // per-tile iso footprint matches the SDF surface that
+            // pixel ends up writing.
+            const int tileCount = buildAndUploadTileDescriptors(
+                gpuShapes,
+                shapeTileDescBuf_,
+                effectiveSub,
+                renderMode,
+                rasterYaw,
+                yawCos_,
+                yawSin_
+            );
+            if (tileCount == 0) {
+                continue;
+            }
+
+            shapesProgram_->use();
+            shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
+            canvasTextures.getTextureDistances()
+                ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+
+            shapesFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
+
+            // Pass 0: depth via imageAtomicMin
+            frameData_.passIndex = 0;
+            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+
+            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            // Pass 1: color + entity ID where depth matches
+            canvasTextures.getTextureColors()
+                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            canvasTextures.getTextureEntityIds()
+                ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+
+            frameData_.passIndex = 1;
+            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+
+            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            auto &timing = IRRender::gpuStageTiming();
+            timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
+            timing.shapeGroupsZ_ = 0;
+        }
+    }
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
@@ -109,229 +306,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             kBufferIndex_ShapeTileDescriptors
         );
 
-        auto paramsOwner = std::make_unique<Params>();
-        Params *p = paramsOwner.get();
+        SystemId systemId = registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_PositionGlobal3D>(
+            "ShapesToTrixel"
+        );
+        auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
         p->shapesProgram_ = IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
         p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
-
-        SystemId systemId = createSystem<C_ShapeDescriptor, C_PositionGlobal3D>(
-            "ShapesToTrixel",
-            [p](IREntity::EntityId &entityId,
-                const C_ShapeDescriptor &shape,
-                const C_PositionGlobal3D &pos) {
-                if (p->cullBounds_.has_value()) {
-                    vec3 viewPos = pos.pos_;
-                    vec3 sizeForExtent = vec3(shape.params_);
-                    if (!p->yawZero_) {
-                        viewPos = vec3(
-                            p->yawCos_ * pos.pos_.x + p->yawSin_ * pos.pos_.y,
-                            -p->yawSin_ * pos.pos_.x + p->yawCos_ * pos.pos_.y,
-                            pos.pos_.z
-                        );
-                        const float absC = IRMath::abs(p->yawCos_);
-                        const float absS = IRMath::abs(p->yawSin_);
-                        sizeForExtent = vec3(
-                            sizeForExtent.x * absC + sizeForExtent.y * absS,
-                            sizeForExtent.x * absS + sizeForExtent.y * absC,
-                            sizeForExtent.z
-                        );
-                    }
-                    vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
-                    vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
-                    if (shapeIsoPosition.x + shapeIsoHalfExtent.x < p->cullBounds_->min_.x ||
-                        shapeIsoPosition.x - shapeIsoHalfExtent.x > p->cullBounds_->max_.x ||
-                        shapeIsoPosition.y + shapeIsoHalfExtent.y < p->cullBounds_->min_.y ||
-                        shapeIsoPosition.y - shapeIsoHalfExtent.y > p->cullBounds_->max_.y) {
-                        return;
-                    }
-                }
-
-                CanvasId canvas = shape.canvasEntity_;
-                if (canvas == IREntity::kNullEntity) {
-                    canvas = IRRender::getActiveCanvasEntity();
-                }
-
-                auto &bucket = p->gpuShapesByCanvas_[canvas];
-                if (static_cast<int>(bucket.size()) >= kMaxShapeDescriptors) {
-                    return;
-                }
-                GPUShapeDescriptor desc{};
-                desc.worldPosition = vec4(pos.pos_, 1.0f);
-                desc.params = shape.params_;
-                desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
-                desc.color = shape.color_.toPackedRGBA();
-                desc.entityId = entityId;
-                desc.jointIndex = 0;
-                desc.flags = shape.flags_;
-                desc.lodLevel = shape.lodLevel_;
-                bucket.push_back(desc);
-            },
-            [p]() {
-                p->gpuShapesByCanvas_.clear();
-
-                // Snapshot camera yaw once for the whole tick so the cull
-                // pass and the per-tile dispatch share the same value, even
-                // if a script mutates yaw mid-frame. The shape SDF
-                // rasterizes at rasterYaw (cardinal-snap) so it lines up
-                // trixel-for-trixel with the voxel pool's cardinal-snap
-                // raster (T-055); the screen-space residual rotate pass
-                // (T-058) handles the leftover residualYaw on screen.
-                p->visualYaw_ = IRPrefab::Camera::getYaw();
-                const auto [rasterYaw, residualYaw] =
-                    IRPrefab::Camera::computeYawSplit(p->visualYaw_);
-                p->rasterYaw_ = rasterYaw;
-                p->residualYaw_ = residualYaw;
-                static constexpr float kCardinalCos[4] = {1.f, 0.f, -1.f, 0.f};
-                static constexpr float kCardinalSin[4] = {0.f, 1.f, 0.f, -1.f};
-                constexpr float kHalfPi = 1.5707963267948966f;
-                const int q = IRMath::round(rasterYaw / kHalfPi);
-                const int cardinalIdx = ((q % 4) + 4) % 4;
-                p->yawCos_ = kCardinalCos[cardinalIdx];
-                p->yawSin_ = kCardinalSin[cardinalIdx];
-                p->yawZero_ = (p->rasterYaw_ == 0.0f);
-
-                IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-                auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
-                if (texOpt.has_value()) {
-                    IRRender::updateCullViewport(
-                        IRRender::getCameraPosition2DIso(),
-                        IRRender::getCameraZoom(),
-                        texOpt.value()->size_
-                    );
-                    constexpr int kMargin = 4;
-                    // Widen to the shadow-feeder AABB (visible ∪ swept along
-                    // -sunDir by kSunShadowMaxDistance) so off-screen SDF
-                    // casters still write distances into trixelDistances and
-                    // feed BAKE_SUN_SHADOW_MAP. The same widened bounds are
-                    // uploaded as cullIsoMin/Max in endTick so per-tile
-                    // shaders never clip a shadow-feeder pixel. Sun-direction
-                    // resolution is gated on the shadow flag so a disabled-
-                    // shadow creation skips the C_LightSource archetype scan.
-                    const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-                    const vec3 sunDir =
-                        shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
-                    const float sweepDistance =
-                        shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
-                    p->cullBounds_ = IRMath::shadowFeederIsoBounds(
-                        IRRender::getCullViewport().isoViewport(kMargin),
-                        sunDir,
-                        sweepDistance
-                    );
-                } else {
-                    p->cullBounds_.reset();
-                }
-            },
-            [p]() {
-                IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-                const float visualYaw = p->visualYaw_;
-                const float rasterYaw = p->rasterYaw_;
-                const float residualYaw = p->residualYaw_;
-
-                for (auto &[canvasId, gpuShapes] : p->gpuShapesByCanvas_) {
-                    if (gpuShapes.empty()) {
-                        continue;
-                    }
-
-                    auto texturesOpt =
-                        IREntity::getComponentOptional<C_TriangleCanvasTextures>(canvasId);
-                    if (!texturesOpt.has_value()) {
-                        continue;
-                    }
-                    auto &canvasTextures = *texturesOpt.value();
-
-                    if (canvasId == mainCanvas) {
-                        p->frameData_.cameraTrixelOffset = IRRender::getCameraPosition2DIso();
-                    } else {
-                        canvasTextures.clear();
-                        vec3 entityPos = vec3(gpuShapes[0].worldPosition);
-                        p->frameData_.cameraTrixelOffset = -pos3DtoPos2DIso(entityPos);
-                    }
-                    p->frameData_.trixelCanvasOffsetZ1 =
-                        IRMath::trixelOriginOffsetZ1(canvasTextures.size_);
-                    p->frameData_.canvasSize = canvasTextures.size_;
-                    p->frameData_.shapeCount = static_cast<int>(gpuShapes.size());
-                    const auto renderMode = IRRender::getSubdivisionMode();
-                    const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
-                    p->frameData_.voxelRenderOptions =
-                        ivec2(static_cast<int>(renderMode), effectiveSub);
-                    if (p->cullBounds_.has_value() && canvasId == mainCanvas) {
-                        p->frameData_.cullIsoMin = ivec2(IRMath::floor(p->cullBounds_->min_));
-                        p->frameData_.cullIsoMax = ivec2(IRMath::ceil(p->cullBounds_->max_));
-                    } else {
-                        p->frameData_.cullIsoMin = ivec2(-999999);
-                        p->frameData_.cullIsoMax = ivec2(999999);
-                    }
-                    p->frameData_.visualYaw = visualYaw;
-                    p->frameData_.rasterYaw = rasterYaw;
-                    p->frameData_.residualYaw = residualYaw;
-
-                    p->shapeDescBuf_->subData(
-                        0,
-                        gpuShapes.size() * sizeof(GPUShapeDescriptor),
-                        gpuShapes.data()
-                    );
-
-                    // Tile bounds are computed at rasterYaw — same rotation
-                    // the shader uses to rasterize each shape — so the
-                    // per-tile iso footprint matches the SDF surface that
-                    // pixel ends up writing.
-                    const int tileCount = buildAndUploadTileDescriptors(
-                        gpuShapes,
-                        p->shapeTileDescBuf_,
-                        effectiveSub,
-                        renderMode,
-                        rasterYaw,
-                        p->yawCos_,
-                        p->yawSin_
-                    );
-                    if (tileCount == 0) {
-                        continue;
-                    }
-
-                    p->shapesProgram_->use();
-                    p->shapeDescBuf_->bindBase(
-                        BufferTarget::SHADER_STORAGE,
-                        kBufferIndex_ShapeDescriptors
-                    );
-                    canvasTextures.getTextureDistances()
-                        ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-
-                    p->shapesFrameDataBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_ShapesFrameData
-                    );
-
-                    // Pass 0: depth via imageAtomicMin
-                    p->frameData_.passIndex = 0;
-                    p->shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &p->frameData_);
-
-                    IRRender::device()
-                        ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
-                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                    // Pass 1: color + entity ID where depth matches
-                    canvasTextures.getTextureColors()
-                        ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                    canvasTextures.getTextureEntityIds()
-                        ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-
-                    p->frameData_.passIndex = 1;
-                    p->shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &p->frameData_);
-
-                    IRRender::device()
-                        ->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
-                    IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-                    auto &timing = IRRender::gpuStageTiming();
-                    timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
-                    timing.shapeGroupsZ_ = 0;
-                }
-            }
-        );
-
-        setSystemParams(systemId, std::move(paramsOwner));
         // Per-system bracket covers both pass 0 (depth) and pass 1 (color/id);
         // the formerly-separate shapePass0 slot stays at 0.0f for API stability.
         IRRender::tagGpuStage(systemId, "shapePass1");
