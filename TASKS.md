@@ -309,14 +309,6 @@ Avoid:
   - **Notes:** Pre-existing pattern surfaced as nit N3 in T-156 Opus recheck (PR #638). Current: dirty_ flag gates whole-buffer subImage2D upload in FOG_TO_TRIXEL::tick. Alternative: per-write subData with dirty tile list in C_CanvasFogOfWar::setCell. Tradeoff: per-write cheaper for few-cell updates, whole-buffer cheaper for large diffs. Measurement required before implementation. Related duplicate: #643 (flagged fleet:needs-info).
   - **Links:**
 
-
-
-
-
-
-
-
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
@@ -328,7 +320,6 @@ Avoid:
 - [x] **T-155** — Migrate GPU-compute cluster to member-on-System<N> · Owner: claude/T-155-gpu-compute-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/637
 - [x] **T-154** — Migrate hitbox GUI system to member-on-System<N> · Owner: claude/T-154-hitbox-gui-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/636
 - [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
-- [x] **T-139** — GPU particle system — compute-shader-driven dense particle field · Owner: claude/T-139-gpu-particle-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/614
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-109** — Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293 · Owner: claude/T-109-codegen-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/599
 - [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
@@ -341,3 +332,4 @@ Avoid:
 - [x] **T-105** — LuaJIT 2.1 runtime migration · Owner: claude/T-105-luajit-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/595
 - [x] **T-135** — fleet-up.conf concurrency cap · Owner: claude/T-135-fleet-up-conf-concurrency-cap · PR: https://github.com/jakildev/IrredenEngine/pull/594
 - [x] **T-138** — fleet-claim: atomic master-side TASKS.md lock · Owner: claude/T-138-fleet-claim-master-lock · PR: https://github.com/jakildev/IrredenEngine/pull/593
+- [x] **T-136** — Systems: registerSystem<N> helper to retire Params + setSystemParams boilerplate · Owner: claude/T-136-register-system-helper · PR: https://github.com/jakildev/IrredenEngine/pull/592
