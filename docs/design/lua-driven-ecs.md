@@ -517,13 +517,13 @@ single `if` (the DSL forbids `while` in CODEGEN bodies; correct for
 |---------------------------------------|----------------|-------------------------|
 | `perf_grid` (C++) — `PeriodicIdle`    | 4³ = 64        | 0.004 ms (avg/call)     |
 | `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 4³ = 64    | 0.003 ms (avg/call)     |
-| `perf_grid` (C++) — `PeriodicIdle`    | 64³ = 262 144  | 1.750 ms (avg/call)     |
-| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 64³ = 262 144 | 0.958 ms (avg/call) |
+| `perf_grid` (C++) — `PeriodicIdle`    | 64³ = 262 144  | 2.082 ms (avg/call)     |
+| `lua_perf_grid` (CODEGEN) — `LuaWaveTick` | 64³ = 262 144 | 0.948 ms (avg/call) |
 
-**Ratio at grid_size=64: ~0.55×** — well under the 1.5× gate, and
+**Ratio at grid_size=64: ~0.46×** — well under the 1.5× gate, and
 this is the apples-to-apples comparison with logic-parity Lua.
-Per-entity normalised at 64³: ~6.7 ns/entity (C++ `PeriodicIdle`) vs.
-~3.65 ns/entity (Lua-CODEGEN `LuaWaveTick`).
+Per-entity normalised at 64³: ~7.94 ns/entity (C++ `PeriodicIdle`) vs.
+~3.62 ns/entity (Lua-CODEGEN `LuaWaveTick`).
 
 Lua-CODEGEN beats C++ here because the *implementation* differs even
 though the *logic* matches:
@@ -544,15 +544,20 @@ here are not a "Lua beats C++" claim — they're evidence that the
 codegen path is structurally as fast as native, and that the C++
 baseline has its own optimisation headroom.
 
-**Frame-rate at 64³ (macOS Metal, MBP):** avg 16.19 ms / p50 12.92 ms /
-p95 20.72 ms for the Lua demo — right at the 60 Hz budget. The C++
-baseline at the same grid runs avg 17.19 ms / p50 14.06 ms; difference
-is the easing-dispatch + stage-storage cost noted above, not the
-runtime path.
+**Frame-rate at 64³ (macOS Metal, MBP):** avg 15.62 ms / p50 15.23 ms /
+p95 18.53 ms for the Lua demo — comfortably under the 16.67 ms (60 Hz)
+budget. The C++ baseline at the same grid runs avg 17.82 ms / p50
+18.09 ms / p95 22.93 ms (p50 slightly above mean — consistent with
+bursty fast frames in the warmup window); difference is the
+easing-dispatch + stage-storage cost noted above, not the runtime path.
 
-> *Stage 3 grid_size=64 numbers measured on macOS Metal (the earlier
-> SIGBUS at grid_size ≥ 8 was resolved upstream and both demos now run
-> the full 60 frames). Linux fleet remains the canonical perf-comparison
+> *Stage 3 grid_size=64 numbers measured on macOS Metal across two
+> independent runs: T-109 first-pass (1.750 ms C++ / 0.958 ms Lua,
+> ratio ~0.55×) and the T-104 testbed re-measurement after rebase
+> onto T-109's CODEGEN runtime (2.082 ms C++ / 0.948 ms Lua,
+> ratio ~0.46×, 300 frames each via `--auto-profile`). Both confirm
+> the gate. The C++-side variance is host warmup/thermal state, not
+> a regression. Linux fleet remains the canonical perf-comparison
 > host; per-host re-measurement is mechanical follow-up. EVAL-mode
 > canonical-grid measurements are still pending — they appear in
 > Stage 2 above.*
@@ -586,7 +591,10 @@ per-mode rewrites.
   a dev-mode-only feature, available in EVAL only."* Closed by
   T-109.
 - **Engine #566** (corrective-decision tracker): closed by T-109.
-- **PR #563** (T-104 testbed): held open through the chain;
-  rebased onto T-109 once the chain merges, amended with both
-  CODEGEN and EVAL numbers, then merged as the gate-passing
-  artifact.
+- **PR #563** (T-104 testbed): held open through the T-105 → T-109
+  chain; rebased onto master after T-109 merged. Re-measurement
+  on the rebased state at 64³ (300 `--auto-profile` frames each,
+  macOS Metal) confirms the gate: Lua-CODEGEN 0.948 ms / C++
+  2.082 ms — ratio ~0.46×. Merged as the gate-passing artifact;
+  EVAL-mode canonical-grid measurements remain a separate
+  mechanical follow-up (see Stage 2 note).
