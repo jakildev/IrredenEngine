@@ -214,11 +214,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Editor F-0.3: input routing (mouse hover/click/drag, keyboard focus, hotkey table)** — z-order-aware event dispatch to widgets, single-widget keyboard focus, capture/release, centralized hotkey registry
+- [~] **Editor F-0.3: input routing (mouse hover/click/drag, keyboard focus, hotkey table)** — z-order-aware event dispatch to widgets, single-widget keyboard focus, capture/release, centralized hotkey registry
   - **ID:** T-149
   - **Area:** engine/prefabs/irreden/input, creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-149-input-routing
   - **Blocked by:** (none)
   - **Acceptance:** (1) click on button under panel overlay does NOT fire the button (z-order respected); (2) drag-from-slider updates value live; release outside slider rect still completes drag (capture works); (3) Tab cycles focus across text inputs in a panel; (4) register action editor.toggle_grid with Ctrl+G → fires on keypress; duplicate binding on same combo logs a warning
   - **Issue:** #624
