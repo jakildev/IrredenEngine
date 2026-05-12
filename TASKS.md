@@ -358,11 +358,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **asset: .vxs v1 shape-group mode (SHPG, SREF chunks) — SDF primitive composition save format** — persist C_ShapeDescriptor instances as SDF primitive composition; new ShapeType values never break existing saves
+- [~] **asset: .vxs v1 shape-group mode (SHPG, SREF chunks) — SDF primitive composition save format** — persist C_ShapeDescriptor instances as SDF primitive composition; new ShapeType values never break existing saves
   - **ID:** T-168
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-166
   - **Acceptance:** (1) SHPG chunk: per-primitive record {uint32 shapeTypeId, uint16 version, vec4 params, Color, uint32 flags, uint8 bone_id, vec3 offset, quat rotation, uint8 csgOp}; csgOp ∈ {UNION, SMOOTH_UNION, SUBTRACT, INTERSECT, NONE}; (2) SREF chunk: string name-table for ShapeType enum + material registry refs; (3) MODE chunk gains SHAPES tag; (4) IRAsset::saveVoxelSet overload accepts span<const C_ShapeDescriptor> + optional per-primitive csgOp/transform; (5) loader returns list of C_ShapeDescriptor-shaped records for entity spawning; (6) round-trip test: 5-primitive shape group (sphere/box/capsule mix) save → load → byte-compare; (7) forward-compat test: unknown ShapeType numeric id → logs "unknown shape ID=N name=…, skipped", rest loads; (8) "How to add a new SDF primitive" walkthrough in engine/asset/CLAUDE.md; (9) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #665
