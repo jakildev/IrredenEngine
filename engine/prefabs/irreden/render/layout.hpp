@@ -81,7 +81,9 @@ struct LayoutState {
 };
 
 inline LayoutState g_layout;
-inline LayoutState& getLayout() { return g_layout; }
+inline LayoutState &getLayout() {
+    return g_layout;
+}
 
 // -----------------------------------------------------------------------
 // Tree-building API (called once at init)
@@ -149,14 +151,17 @@ inline void setRoot(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
 inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size);
 
 inline void compute() {
-    if (g_layout.root_ < 0) return;
+    if (g_layout.root_ < 0)
+        return;
     computeNode(g_layout.root_, g_layout.rootPos_, g_layout.rootSize_);
 }
 
-inline const LayoutNode& getNode(int idx) { return g_layout.nodes_[idx]; }
+inline const LayoutNode &getNode(int idx) {
+    return g_layout.nodes_[idx];
+}
 
 inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
-    auto& node = g_layout.nodes_[nodeIdx];
+    auto &node = g_layout.nodes_[nodeIdx];
     node.pos_ = pos;
     node.size_ = size;
 
@@ -170,7 +175,8 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
     const int cross = isRow ? 1 : 0;
 
     const int numChildren = static_cast<int>(node.children_.size());
-    if (numChildren == 0) return;
+    if (numChildren == 0)
+        return;
 
     const int numSplitters = numChildren - 1;
     const int splitterTotalPx = numSplitters * kSplitterThickness;
@@ -180,10 +186,12 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
     int fixedTotal = 0;
     float fractionTotal = 0.0f;
     for (int ci : node.children_) {
-        auto& child = g_layout.nodes_[ci];
+        auto &child = g_layout.nodes_[ci];
         if (child.spec_.mode_ == SizeMode::FIXED_PX) {
             fixedTotal += IRMath::clamp(
-                static_cast<int>(child.spec_.value_), child.spec_.minPx_, child.spec_.maxPx_
+                static_cast<int>(child.spec_.value_),
+                child.spec_.minPx_,
+                child.spec_.maxPx_
             );
         } else {
             fractionTotal += child.spec_.value_;
@@ -195,16 +203,17 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
     int cursor = pos[axis];
     for (int i = 0; i < numChildren; ++i) {
         const int ci = node.children_[i];
-        auto& child = g_layout.nodes_[ci];
+        auto &child = g_layout.nodes_[ci];
 
         int childMain;
         if (child.spec_.mode_ == SizeMode::FIXED_PX) {
             childMain = IRMath::clamp(
-                static_cast<int>(child.spec_.value_), child.spec_.minPx_, child.spec_.maxPx_
+                static_cast<int>(child.spec_.value_),
+                child.spec_.minPx_,
+                child.spec_.maxPx_
             );
         } else {
-            const float frac =
-                (fractionTotal > 0.0f) ? (child.spec_.value_ / fractionTotal) : 1.0f;
+            const float frac = (fractionTotal > 0.0f) ? (child.spec_.value_ / fractionTotal) : 1.0f;
             childMain = IRMath::clamp(
                 static_cast<int>(frac * static_cast<float>(fractionPool)),
                 child.spec_.minPx_,
@@ -226,7 +235,7 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
         if (i < numSplitters && i < static_cast<int>(node.splitterEntities_.size())) {
             const IREntity::EntityId se = node.splitterEntities_[i];
             if (se != IREntity::kNullEntity) {
-                auto& sp = IREntity::getComponent<IRComponents::C_GuiPosition>(se);
+                auto &sp = IREntity::getComponent<IRComponents::C_GuiPosition>(se);
                 sp.pos_[axis] = cursor;
                 sp.pos_[cross] = pos[cross];
 
@@ -234,9 +243,9 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
                 splitterSize[axis] = kSplitterThickness;
                 splitterSize[cross] = size[cross];
 
-                auto& sw = IREntity::getComponent<IRComponents::C_Widget>(se);
+                auto &sw = IREntity::getComponent<IRComponents::C_Widget>(se);
                 sw.size_ = splitterSize;
-                auto& sh = IREntity::getComponent<IRComponents::C_HitBox2DGui>(se);
+                auto &sh = IREntity::getComponent<IRComponents::C_HitBox2DGui>(se);
                 sh.size_ = splitterSize;
             }
             cursor += kSplitterThickness;
@@ -250,8 +259,9 @@ inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
 
 inline void buildSplitters() {
     for (int pi = 0; pi < static_cast<int>(g_layout.nodes_.size()); ++pi) {
-        auto& node = g_layout.nodes_[pi];
-        if (node.type_ == LayoutNode::Type::LEAF) continue;
+        auto &node = g_layout.nodes_[pi];
+        if (node.type_ == LayoutNode::Type::LEAF)
+            continue;
         const int numChildren = static_cast<int>(node.children_.size());
         const bool isRow = (node.type_ == LayoutNode::Type::ROW);
 
@@ -282,15 +292,14 @@ inline void buildSplitters() {
 // Splitter drag
 // -----------------------------------------------------------------------
 
-inline bool isDraggingSplitter() { return g_layout.dragSplitterParent_ >= 0; }
+inline bool isDraggingSplitter() {
+    return g_layout.dragSplitterParent_ >= 0;
+}
 
-inline void beginSplitterDrag(
-    int parentNodeIdx,
-    int childIdx,
-    IRMath::ivec2 mousePosGui
-) {
-    auto& node = g_layout.nodes_[parentNodeIdx];
-    if (childIdx < 0 || childIdx + 1 >= static_cast<int>(node.children_.size())) return;
+inline void beginSplitterDrag(int parentNodeIdx, int childIdx, IRMath::ivec2 mousePosGui) {
+    auto &node = g_layout.nodes_[parentNodeIdx];
+    if (childIdx < 0 || childIdx + 1 >= static_cast<int>(node.children_.size()))
+        return;
 
     g_layout.dragSplitterParent_ = parentNodeIdx;
     g_layout.dragSplitterChildIdx_ = childIdx;
@@ -303,25 +312,25 @@ inline void beginSplitterDrag(
 }
 
 inline void updateSplitterDrag(IRMath::ivec2 mousePosGui) {
-    if (!isDraggingSplitter()) return;
+    if (!isDraggingSplitter())
+        return;
 
-    auto& parentNode = g_layout.nodes_[g_layout.dragSplitterParent_];
+    auto &parentNode = g_layout.nodes_[g_layout.dragSplitterParent_];
     const bool isRow = (parentNode.type_ == LayoutNode::Type::ROW);
     const int axis = isRow ? 0 : 1;
 
     const int delta = mousePosGui[axis] - g_layout.dragStartMouse_[axis];
 
-    auto& childA = g_layout.nodes_[parentNode.children_[g_layout.dragSplitterChildIdx_]];
-    auto& childB = g_layout.nodes_[parentNode.children_[g_layout.dragSplitterChildIdx_ + 1]];
+    auto &childA = g_layout.nodes_[parentNode.children_[g_layout.dragSplitterChildIdx_]];
+    auto &childB = g_layout.nodes_[parentNode.children_[g_layout.dragSplitterChildIdx_ + 1]];
 
     const int totalPx = g_layout.dragStartSizeA_ + g_layout.dragStartSizeB_;
     const int newA = IRMath::clamp(
-        g_layout.dragStartSizeA_ + delta, childA.spec_.minPx_,
+        g_layout.dragStartSizeA_ + delta,
+        childA.spec_.minPx_,
         totalPx - childB.spec_.minPx_
     );
-    const int newB = IRMath::clamp(
-        totalPx - newA, childB.spec_.minPx_, childB.spec_.maxPx_
-    );
+    const int newB = IRMath::clamp(totalPx - newA, childB.spec_.minPx_, childB.spec_.maxPx_);
 
     // Convert to FIXED_PX so the result is stable across frames
     childA.spec_.mode_ = SizeMode::FIXED_PX;
@@ -343,15 +352,18 @@ inline bool isDraggingPanel() {
     return g_layout.draggedPanelEntity_ != IREntity::kNullEntity;
 }
 
-inline IREntity::EntityId getDraggedPanelEntity() { return g_layout.draggedPanelEntity_; }
-inline int getDraggedPanelNodeIdx() { return g_layout.draggedPanelNodeIdx_; }
-inline IRMath::ivec2 getDragCurrentPos() { return g_layout.dragCurrentPos_; }
+inline IREntity::EntityId getDraggedPanelEntity() {
+    return g_layout.draggedPanelEntity_;
+}
+inline int getDraggedPanelNodeIdx() {
+    return g_layout.draggedPanelNodeIdx_;
+}
+inline IRMath::ivec2 getDragCurrentPos() {
+    return g_layout.dragCurrentPos_;
+}
 
 inline void beginPanelDrag(
-    int nodeIdx,
-    IREntity::EntityId entity,
-    IRMath::ivec2 mousePos,
-    IRMath::ivec2 panelPos
+    int nodeIdx, IREntity::EntityId entity, IRMath::ivec2 mousePos, IRMath::ivec2 panelPos
 ) {
     g_layout.draggedPanelNodeIdx_ = nodeIdx;
     g_layout.draggedPanelEntity_ = entity;
@@ -370,9 +382,11 @@ inline int checkDropTarget(IRMath::ivec2 mousePos) {
     int best = -1;
     int bestDist2 = kDockTargetSize * kDockTargetSize;
     for (int i = 0; i < static_cast<int>(g_layout.nodes_.size()); ++i) {
-        if (i == g_layout.draggedPanelNodeIdx_) continue;
-        const auto& n = g_layout.nodes_[i];
-        if (n.type_ != LayoutNode::Type::LEAF) continue;
+        if (i == g_layout.draggedPanelNodeIdx_)
+            continue;
+        const auto &n = g_layout.nodes_[i];
+        if (n.type_ != LayoutNode::Type::LEAF)
+            continue;
         const IRMath::ivec2 center = n.pos_ + n.size_ / 2;
         const int dx = mousePos.x - center.x;
         const int dy = mousePos.y - center.y;
@@ -387,11 +401,14 @@ inline int checkDropTarget(IRMath::ivec2 mousePos) {
 
 // Swap the widget entities of two LEAF nodes, updating their C_LayoutLeaf
 // components.
-inline void dockPanel(int fromNodeIdx, int toNodeIdx) {
-    if (fromNodeIdx < 0 || toNodeIdx < 0) return;
-    auto& from = g_layout.nodes_[fromNodeIdx];
-    auto& to = g_layout.nodes_[toNodeIdx];
-    if (from.type_ != LayoutNode::Type::LEAF || to.type_ != LayoutNode::Type::LEAF) return;
+// Private to endPanelDrag; call endPanelDrag instead to ensure drag state is cleared.
+inline void endPanelDragImpl(int fromNodeIdx, int toNodeIdx) {
+    if (fromNodeIdx < 0 || toNodeIdx < 0)
+        return;
+    auto &from = g_layout.nodes_[fromNodeIdx];
+    auto &to = g_layout.nodes_[toNodeIdx];
+    if (from.type_ != LayoutNode::Type::LEAF || to.type_ != LayoutNode::Type::LEAF)
+        return;
 
     std::swap(from.widgetEntity_, to.widgetEntity_);
 
@@ -410,7 +427,7 @@ inline void cancelPanelDrag() {
 inline void endPanelDrag(IRMath::ivec2 mousePos) {
     const int dropTarget = checkDropTarget(mousePos);
     if (dropTarget >= 0) {
-        dockPanel(g_layout.draggedPanelNodeIdx_, dropTarget);
+        endPanelDragImpl(g_layout.draggedPanelNodeIdx_, dropTarget);
     }
     cancelPanelDrag();
 }
@@ -434,7 +451,8 @@ inline IRMath::vec2 mousePositionInGuiTrixels() {
 
 // -----------------------------------------------------------------------
 // Serialization — stores each leaf's stable `id_` → current pixel size.
-// Format: {"v":1,"leafSizes":[{"id":"left","w":240,"h":600},...],"splitters":[{"parent":0,"i":0,"a":240,"b":600},...]}
+// Format:
+// {"v":1,"leafSizes":[{"id":"left","w":240,"h":600},...],"splitters":[{"parent":0,"i":0,"a":240,"b":600},...]}
 // -----------------------------------------------------------------------
 
 inline std::string serialize() {
@@ -442,9 +460,11 @@ inline std::string serialize() {
     out.reserve(256);
     out += "{\"v\":1,\"leafSizes\":[";
     bool firstLeaf = true;
-    for (const auto& n : g_layout.nodes_) {
-        if (n.type_ != LayoutNode::Type::LEAF || n.id_.empty()) continue;
-        if (!firstLeaf) out += ',';
+    for (const auto &n : g_layout.nodes_) {
+        if (n.type_ != LayoutNode::Type::LEAF || n.id_.empty())
+            continue;
+        if (!firstLeaf)
+            out += ',';
         firstLeaf = false;
         out += "{\"id\":\"";
         out += n.id_;
@@ -457,14 +477,16 @@ inline std::string serialize() {
     out += "],\"splitters\":[";
     bool firstSpl = true;
     for (int pi = 0; pi < static_cast<int>(g_layout.nodes_.size()); ++pi) {
-        const auto& pn = g_layout.nodes_[pi];
-        if (pn.type_ == LayoutNode::Type::LEAF) continue;
+        const auto &pn = g_layout.nodes_[pi];
+        if (pn.type_ == LayoutNode::Type::LEAF)
+            continue;
         const bool isRow = (pn.type_ == LayoutNode::Type::ROW);
         const int axis = isRow ? 0 : 1;
         for (int i = 0; i + 1 < static_cast<int>(pn.children_.size()); ++i) {
-            const auto& a = g_layout.nodes_[pn.children_[i]];
-            const auto& b = g_layout.nodes_[pn.children_[i + 1]];
-            if (!firstSpl) out += ',';
+            const auto &a = g_layout.nodes_[pn.children_[i]];
+            const auto &b = g_layout.nodes_[pn.children_[i + 1]];
+            if (!firstSpl)
+                out += ',';
             firstSpl = false;
             out += "{\"p\":";
             out += std::to_string(pi);
@@ -484,45 +506,57 @@ inline std::string serialize() {
 // Minimal parser for the above format. Restores splitter sizes (not leaf
 // IDs since those are always driven by compute). Returns true on success.
 inline bool deserialize(std::string_view json) {
-    auto findField = [&](std::string_view key, size_t from) -> size_t {
+    auto findField = [&](std::string_view key, size_t from, size_t to) -> size_t {
         const std::string needle = std::string("\"") + std::string(key) + "\":";
         const size_t pos = json.find(needle, from);
-        return pos != std::string_view::npos ? pos + needle.size() : std::string_view::npos;
+        return (pos != std::string_view::npos && pos < to) ? pos + needle.size()
+                                                           : std::string_view::npos;
     };
     auto readInt = [&](size_t pos) -> int {
-        if (pos == std::string_view::npos) return -1;
+        if (pos == std::string_view::npos)
+            return -1;
         size_t end = pos;
-        while (end < json.size() && (std::isdigit(json[end]) || json[end] == '-')) ++end;
+        while (end < json.size() && (std::isdigit(json[end]) || json[end] == '-'))
+            ++end;
         int val = 0;
         bool neg = false;
         size_t s = pos;
-        if (s < end && json[s] == '-') { neg = true; ++s; }
-        for (; s < end; ++s) val = val * 10 + (json[s] - '0');
+        if (s < end && json[s] == '-') {
+            neg = true;
+            ++s;
+        }
+        for (; s < end; ++s)
+            val = val * 10 + (json[s] - '0');
         return neg ? -val : val;
     };
 
     // Read splitters array
     size_t splPos = json.find("\"splitters\":[");
-    if (splPos == std::string_view::npos) return false;
+    if (splPos == std::string_view::npos)
+        return false;
     splPos += 13; // skip past "\"splitters\":["
 
     size_t cur = splPos;
     while (cur < json.size() && json[cur] != ']') {
-        if (json[cur] != '{') { ++cur; continue; }
+        if (json[cur] != '{') {
+            ++cur;
+            continue;
+        }
         size_t entryEnd = json.find('}', cur);
-        if (entryEnd == std::string_view::npos) break;
-        std::string_view entry = json.substr(cur, entryEnd - cur + 1);
+        if (entryEnd == std::string_view::npos)
+            break;
 
-        const int pi = readInt(findField("p", cur));
-        const int idx = readInt(findField("i", cur));
-        const int sizeA = readInt(findField("a", cur));
-        const int sizeB = readInt(findField("b", cur));
+        const int pi = readInt(findField("p", cur, entryEnd));
+        const int idx = readInt(findField("i", cur, entryEnd));
+        const int sizeA = readInt(findField("a", cur, entryEnd));
+        const int sizeB = readInt(findField("b", cur, entryEnd));
 
-        if (pi >= 0 && pi < static_cast<int>(g_layout.nodes_.size()) && idx >= 0 && sizeA > 0 && sizeB > 0) {
-            auto& pn = g_layout.nodes_[pi];
+        if (pi >= 0 && pi < static_cast<int>(g_layout.nodes_.size()) && idx >= 0 && sizeA > 0 &&
+            sizeB > 0) {
+            auto &pn = g_layout.nodes_[pi];
             if (idx + 1 < static_cast<int>(pn.children_.size())) {
-                auto& childA = g_layout.nodes_[pn.children_[idx]];
-                auto& childB = g_layout.nodes_[pn.children_[idx + 1]];
+                auto &childA = g_layout.nodes_[pn.children_[idx]];
+                auto &childB = g_layout.nodes_[pn.children_[idx + 1]];
                 childA.spec_.mode_ = SizeMode::FIXED_PX;
                 childA.spec_.value_ = static_cast<float>(sizeA);
                 childB.spec_.mode_ = SizeMode::FIXED_PX;

@@ -6,8 +6,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/render/components/component_widget.hpp>
-#include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_layout_leaf.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/trixel_rect.hpp>
@@ -33,17 +32,19 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
 
     void beginTick() {
         canvas_ = nullptr;
-        if (!IRPrefab::Layout::isDraggingPanel()) return;
+        if (!IRPrefab::Layout::isDraggingPanel())
+            return;
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
     }
 
-    void tick(const IRComponents::C_Widget &) {
+    void tick(const IRComponents::C_LayoutLeaf &) {
         // work is done in endTick
     }
 
     void endTick() {
-        if (!canvas_ || !IRPrefab::Layout::isDraggingPanel()) return;
+        if (!canvas_ || !IRPrefab::Layout::isDraggingPanel())
+            return;
 
         const auto &ls = IRPrefab::Layout::getLayout();
         const IRMath::ivec2 dragPos = IRPrefab::Layout::getDragCurrentPos();
@@ -55,8 +56,10 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
         const auto &nodes = ls.nodes_;
         for (int i = 0; i < static_cast<int>(nodes.size()); ++i) {
             const auto &node = nodes[i];
-            if (node.type_ != IRPrefab::Layout::LayoutNode::Type::LEAF) continue;
-            if (i == ls.draggedPanelNodeIdx_) continue;
+            if (node.type_ != IRPrefab::Layout::LayoutNode::Type::LEAF)
+                continue;
+            if (i == ls.draggedPanelNodeIdx_)
+                continue;
 
             const IRMath::Color color = (i == nearestIdx) ? highlightColor : overlayColor;
             IRRender::fillRect(
@@ -71,10 +74,9 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
     }
 
     static SystemId create() {
-        return registerSystem<
-            WIDGET_RENDER_DOCK_PREVIEW,
-            IRComponents::C_Widget
-        >("WidgetRenderDockPreview");
+        return registerSystem<WIDGET_RENDER_DOCK_PREVIEW, IRComponents::C_LayoutLeaf>(
+            "WidgetRenderDockPreview"
+        );
     }
 };
 
