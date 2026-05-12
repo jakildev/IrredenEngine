@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 
@@ -42,6 +43,7 @@
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
+#include <irreden/render/systems/system_voxel_picking.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -75,6 +77,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space: re-center + reset yaw");
+    IR_LOG_INFO("  Left-click: pick voxel (click empty to clear)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -162,6 +165,7 @@ void initSystems() {
         {
             rotateSystem,
             IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+            IRSystem::createSystem<IRSystem::VOXEL_PICKING>(),
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
@@ -287,6 +291,24 @@ void initEntities() {
         EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
         IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
     }
+
+    // Selection-highlight entity: a slightly oversized box marker
+    // positioned at the picked voxel. Created hidden — system_voxel_picking
+    // toggles SHAPE_FLAG_VISIBLE on/off and rewrites position on each click.
+    // The 1.4× sizing reads as a halo around the underlying voxel rather
+    // than z-fighting with it.
+    EntityId highlight = IREntity::createEntity(
+        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_ShapeDescriptor{
+            IRRender::ShapeType::BOX,
+            vec4(1.4f, 1.4f, 1.4f, 0.0f),
+            Color{255, 220, 80, 255}
+        },
+        C_VoxelSelection{},
+        C_VoxelSelectionHighlight{}
+    );
+    auto &highlightShape = IREntity::getComponent<C_ShapeDescriptor>(highlight);
+    highlightShape.flags_ &= ~IRRender::SHAPE_FLAG_VISIBLE;
 
     // Canvas setup
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
