@@ -330,6 +330,6 @@ Avoid:
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-109** — Migrate Lua perf-grid to CODEGEN, re-run parity gate, close #293 · Owner: claude/T-109-codegen-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/599
 - [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
-- [x] **T-108** — Per-system mode override + CODEGEN/EVAL coexistence · Owner: claude/T-108-mode-override-coexistence · PR: https://github.com/jakildev/IrredenEngine/pull/598
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
 - [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
+- [x] **T-140** — fleet: extract detect_engine_root into fleet-common.sh · Owner: claude/T-140-fleet-common-sh · PR: https://github.com/jakildev/IrredenEngine/pull/600
