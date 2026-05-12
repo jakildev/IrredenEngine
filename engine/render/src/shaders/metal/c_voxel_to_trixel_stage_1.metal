@@ -35,10 +35,18 @@ inline void writeDistanceTap(
     );
 }
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
 kernel void c_voxel_to_trixel_stage_1(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
-    device const uint* colors [[buffer(6)]],
+    device const Voxel* voxels [[buffer(6)]],  // unused in stage 1; bound for Phase 2 bone transform (#605)
     device const uint* compactedVoxelIndices [[buffer(25)]],
     device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
     device atomic_int* distanceScratch [[buffer(16)]],

@@ -25,8 +25,16 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;       // [0:3]  RGBA8
+    uint materialFlagBone;  // [4]    material_id | [5] flags | [6] bone_id | [7] pad
+    uint reserved;          // [8:11] reserved
+};
+
 layout(std430, binding = 6) readonly buffer ColorBuffer {
-    uint colors[];
+    Voxel voxels[];
 };
 
 layout(std430, binding = 24) readonly buffer ChunkVisibility {
@@ -53,7 +61,7 @@ void main() {
     if (idx < uint(voxelCount)) {
         uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
         if (chunkVisible[chunkIdx] != 0u) {
-            uint packedColor = colors[idx];
+            uint packedColor = voxels[idx].colorPacked;
             uint alpha = (packedColor >> 24) & 0xFFu;
             if (alpha != 0u) {
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
