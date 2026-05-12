@@ -8,6 +8,19 @@ Tiny module. Today it covers two file formats:
   extension `.irsprite`. The PNG itself is loaded by `engine/render/`'s
   `ImageData`; this module owns only the sidecar.
 
+## What this module is NOT
+
+`.txl` is the **trixel-texture** format and stays that way. Voxel-set
+authoring (per-voxel records, SDF shape groups) is **not** owned by
+this module — it lives in the new `engine/persist/` module under its
+own extension `.vxs` (see the editor-epic design doc's
+"Per-voxel record extension" and "Save format extensibility rules"
+sections). Do not extend `.txl` to carry voxel data; the two existing
+trixel-texture call sites
+(`engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp`)
+would have to thread a multi-format reader through unrelated trixel-canvas
+code. If you find yourself reaching for that, file an issue instead.
+
 `IRAsset::` exposes:
 
 - `saveTrixelTextureData(name, path, size, colors, distances)` /
