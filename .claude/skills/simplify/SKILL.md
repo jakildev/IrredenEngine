@@ -472,14 +472,18 @@ After applying fixes, run the formatter and rebuild (code diffs
 only; doc-only diffs can skip the build):
 
 ```bash
-fleet-build --target format
+fleet-build --target format-changed
 fleet-build --target <touched-target>
 ```
 
-If `format` rewrote anything, those changes are part of the polish —
-keep them. If the build broke, **revert your simplify changes** (or
-fix the break before continuing) — never push a simplify pass that
-broke the build.
+`format-changed` scopes clang-format to files changed on the
+current branch (committed vs upstream + working tree). The bare
+`format` target is whole-tree and will pull every drift in the
+repo into your PR — use it only on intentional cleanup PRs, never
+mid-iteration. If `format-changed` rewrote anything, those changes
+are part of the polish — keep them. If the build broke, **revert
+your simplify changes** (or fix the break before continuing) —
+never push a simplify pass that broke the build.
 
 ### 11. Report
 

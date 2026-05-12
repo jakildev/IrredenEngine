@@ -101,6 +101,20 @@ function(irreden_add_quality_targets)
             COMMENT "Checking source formatting with clang-format"
             VERBATIM
         )
+
+        # Diff-scoped formatter: only rewrites files changed on the
+        # current branch (committed vs upstream + working tree).
+        # Safe to invoke mid-iteration; the bare `format` target is
+        # whole-tree and should only run on intentional cleanup PRs.
+        add_custom_target(format-changed
+            COMMAND ${CMAKE_COMMAND}
+                -DCLANG_FORMAT_BIN="${IRREDEN_CLANG_FORMAT_BIN}"
+                -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
+                -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/run_clang_format_changed.cmake"
+            COMMENT "Formatting branch-changed source files with clang-format"
+            VERBATIM
+        )
     else()
         message(STATUS "clang-format not found; format targets will print install guidance.")
         add_custom_target(format
@@ -111,6 +125,13 @@ function(irreden_add_quality_targets)
         )
 
         add_custom_target(format-check
+            COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --red
+                "clang-format not found. Install LLVM/clang tools and ensure clang-format is on PATH."
+            COMMAND ${CMAKE_COMMAND} -E false
+            VERBATIM
+        )
+
+        add_custom_target(format-changed
             COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --red
                 "clang-format not found. Install LLVM/clang tools and ensure clang-format is on PATH."
             COMMAND ${CMAKE_COMMAND} -E false

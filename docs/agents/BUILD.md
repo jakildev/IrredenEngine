@@ -90,10 +90,16 @@ issues and how to attack them are documented in
 Utility targets (Linux):
 
 ```bash
-cmake --build build --target format        # auto-format
-cmake --build build --target format-check  # check only
-cmake --build build --target lint          # clang-tidy
+cmake --build build --target format          # auto-format (whole tree)
+cmake --build build --target format-changed  # auto-format current-branch diff only
+cmake --build build --target format-check    # check only
+cmake --build build --target lint            # clang-tidy
 ```
+
+`format-changed` is what you want mid-iteration: it only touches files
+your branch has modified (committed vs `@{upstream}` plus working
+tree). The bare `format` target rewrites every formattable file in the
+repo and should only run on intentional cleanup PRs.
 
 ---
 
