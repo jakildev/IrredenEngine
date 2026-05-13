@@ -6,6 +6,11 @@
 // descriptor from the SSBO at [[buffer(4)]], and reconstructs the
 // particle's position from a closed-form gravity-with-jitter trajectory.
 //
+// Each particle emits a full 2×3 voxel diamond (3 faces × 2 subpixels),
+// using the same `faceOffset_2x3` + face-priority depth encoding as the
+// voxel and SDF paths so LIGHTING_TO_TRIXEL shades each face with its own
+// outward normal. See the GLSL twin for the full rationale.
+//
 // Same MSL image-atomic workaround as the voxel-to-trixel and T-139 render
 // stages: distance writes go through a `device atomic_int*` scratch buffer
 // (slot 16), and the color write reads back the post-min value to decide
@@ -70,24 +75,30 @@ kernel void c_render_stateless_particles_to_trixel(
                           + 0.5f * float3(e.gravity) * age * age;
 
     const int3 posI = int3(round(position));
-    const int particleDistance = encodeDepthWithFace(pos3DtoDistance(posI), kZFace);
+    const int baseDepth = pos3DtoDistance(posI);
 
     const int2 frameOffset =
         frameData.trixelCanvasOffsetZ1 + int2(floor(frameData.cameraTrixelOffset));
-    const int2 canvasPixel = frameOffset + pos3DtoPos2DIso(posI);
+    const int2 baseCanvasPixel = frameOffset + pos3DtoPos2DIso(posI);
+    const float4 baseColor = unpackColor(e.baseColor);
 
-    if (!isInsideCanvas(canvasPixel, frameData.canvasSizePixels)) return;
-
-    const uint linearIndex =
-        uint(canvasPixel.y) * uint(frameData.canvasSizePixels.x) + uint(canvasPixel.x);
-    const int prevDistance = atomic_fetch_min_explicit(
-        &distanceScratch[linearIndex],
-        particleDistance,
-        memory_order_relaxed
-    );
-    if (particleDistance <= prevDistance) {
-        const uint2 pixel = uint2(canvasPixel);
-        triangleCanvasColors.write(unpackColor(e.baseColor), pixel);
-        triangleCanvasDistances.write(int4(particleDistance, 0, 0, 0), pixel);
+    for (int face = 0; face < 3; face++) {
+        const int faceDepth = encodeDepthWithFace(baseDepth, face);
+        for (int subPixel = 0; subPixel < 2; subPixel++) {
+            const int2 canvasPixel = baseCanvasPixel + faceOffset_2x3(face, subPixel);
+            if (!isInsideCanvas(canvasPixel, frameData.canvasSizePixels)) continue;
+            const uint linearIndex =
+                uint(canvasPixel.y) * uint(frameData.canvasSizePixels.x) + uint(canvasPixel.x);
+            const int prevDistance = atomic_fetch_min_explicit(
+                &distanceScratch[linearIndex],
+                faceDepth,
+                memory_order_relaxed
+            );
+            if (faceDepth <= prevDistance) {
+                const uint2 pixel = uint2(canvasPixel);
+                triangleCanvasColors.write(baseColor, pixel);
+                triangleCanvasDistances.write(int4(faceDepth, 0, 0, 0), pixel);
+            }
+        }
     }
 }

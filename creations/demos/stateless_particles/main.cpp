@@ -5,12 +5,21 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_stateless_particle_emitters.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_compute_light_volume.hpp>
+#include <irreden/render/systems/system_compute_sun_shadow.hpp>
+#include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_render_stateless_particles_to_trixel.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -52,8 +61,30 @@ void parseArgs(int argc, char **argv) {
 
 void configureCanvas() {
     const IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+    const ivec2 canvasSize =
+        IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    // Particles render as 2x3 voxel diamonds with face-priority depth
+    // encoding; the lighting pass uses the per-pixel face normal to apply
+    // 3-tone shading. Without these canvas-side textures bound the
+    // particles read as flat-color diamonds.
+    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
     IREntity::setComponent(mainCanvas, C_StatelessParticleEmitters{});
+}
+
+void configureLighting() {
+    // Match lighting_demo_scene.hpp's slight off-axis sun pose so face
+    // ordering reads Z > X > Y on visible voxel diamonds. The dot-product
+    // lambert is positive on all three visible iso faces (-X, -Y, -Z
+    // outward normals), so each face takes a distinct shade rather than
+    // collapsing to flat top-light.
+    IRRender::setSunDirection(vec3(-0.3f, -0.2f, -0.93f));
+    IRRender::setSunIntensity(1.0f);
+    IRRender::setSunAmbient(0.4f);
+    IRRender::setSunShadowsEnabled(true);
+    IRRender::setAOEnabled(true);
 }
 
 void seedEmitters() {
@@ -116,10 +147,16 @@ void initSystems() {
 
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
     };
@@ -143,5 +180,6 @@ void initCommands() {
 
 void initEntities() {
     configureCanvas();
+    configureLighting();
     seedEmitters();
 }
