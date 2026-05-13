@@ -24,9 +24,7 @@ struct VoxelPoolAllocation {
     std::span<IRComponents::C_Position3D> positions_;
     std::span<IRComponents::C_PositionOffset3D> positionOffsets_;
     std::span<IRComponents::C_PositionGlobal3D> positionGlobals_;
-    // C_Voxel lives at global scope (not in IRComponents) — see
-    // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
-    std::span<C_Voxel> voxels_;
+    std::span<IRComponents::C_Voxel> voxels_;
 };
 
 } // namespace IRRender

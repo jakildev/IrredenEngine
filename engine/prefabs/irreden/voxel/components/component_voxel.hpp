@@ -21,8 +21,6 @@ constexpr std::uint8_t kEmissive = 1u << 1;
 constexpr std::uint8_t kInteractive = 1u << 2;
 } // namespace VoxelFlags
 
-} // namespace IRComponents
-
 /// Per-voxel record. 12 B std430 layout — matches the v2 entity-editor record
 /// budget (`docs/design/entity-editor-epic.md` "Per-voxel record extension").
 ///
@@ -49,7 +47,7 @@ struct C_Voxel {
     C_Voxel(
         IRMath::Color color,
         std::uint8_t material_id = 0,
-        std::uint8_t flags = IRComponents::VoxelFlags::kAoContrib,
+        std::uint8_t flags = VoxelFlags::kAoContrib,
         std::uint8_t bone_id = 0
     )
         : color_{color}
@@ -89,5 +87,7 @@ static_assert(offsetof(C_Voxel, flags_) == 5, "C_Voxel::flags_ must be at offset
 static_assert(offsetof(C_Voxel, bone_id_) == 6, "C_Voxel::bone_id_ must be at offset 6");
 static_assert(offsetof(C_Voxel, pad0_) == 7, "C_Voxel::pad0_ must be at offset 7");
 static_assert(offsetof(C_Voxel, reserved_) == 8, "C_Voxel::reserved_ must be at offset 8");
+
+} // namespace IRComponents
 
 #endif /* COMPONENT_VOXEL_H */
