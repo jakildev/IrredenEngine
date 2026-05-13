@@ -33,6 +33,13 @@ the ECS surface.
   call `destroyResource` manually. See
   [`docs/design/sprites.md`](../../../../docs/design/sprites.md) for the
   full data model, depth semantics, and cross-task scope.
+- `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
+  (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
+  bind-point / IK marker) + axis + a `hover_` flag reserved for the F-0.9
+  picking pass. Visible geometry comes from a sibling `C_ShapeDescriptor`
+  on the same entity (SDF primitive rendered by `SHAPES_TO_TRIXEL`); the
+  marker carries no rendering state itself. Builders live in
+  `IRPrefab::Gizmo::` (see "Exposing system public API" below).
 
 ## Key systems (all RENDER pipeline)
 
@@ -92,6 +99,29 @@ backing field to `RenderManager`. See `engine/render/CLAUDE.md`
 §"What belongs in engine/render/ vs engine/prefabs/irreden/render/" for the
 full principle, the rule of thumb, and the list of existing violations being
 cleaned up.
+
+## Editor gizmo primitives
+
+`gizmo.hpp` exposes `IRPrefab::Gizmo::` builders that spawn the editor's
+transform handles (translate / rotate / scale) and marker primitives
+(joint / bind-point / IK) as small groups of child entities under a
+returned group root. Each emitted handle carries `C_PositionGlobal3D +
+C_PositionOffset3D + C_Position3D + C_ShapeDescriptor + C_GizmoHandle +
+C_Name`; geometry comes from the SDF primitives in `IRMath::SDF::ShapeType`
+(`CYLINDER`, `CONE`, `TORUS`, `SPHERE`, `BOX`) rendered by the existing
+`SHAPES_TO_TRIXEL` pass — no new render stage is introduced.
+
+```cpp
+// Place a translate gizmo at the origin, then attach it to a selection
+// target by re-parenting or by writing C_Position3D::pos_.
+EntityId gizmo = IRPrefab::Gizmo::createTranslateGizmo();
+IREntity::getComponent<C_Position3D>(gizmo).pos_ = anchor;
+```
+
+Phase 1 renders handles at fixed world-space size. Screen-space sizing
+(constant pixel size regardless of camera zoom) and depth-aware "hidden
+faces dimmed" shading are deferred to follow-up F-0.5 phases; hover +
+drag interaction lands once T-153 mouse picking is in place.
 
 ## Trixel UI widget framework
 

@@ -18,6 +18,9 @@
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 
+// Gizmo primitives (T-152, F-0.5 Phase 1)
+#include <irreden/render/gizmo.hpp>
+
 // Systems
 #include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -246,6 +249,29 @@ void initEntities() {
             Color{220, 220, 240, 255}
         }
     );
+
+    // F-0.5 Phase 1: place one of each gizmo primitive at fixed offsets
+    // around the origin so the geometry is inspectable. Hover, drag, and
+    // screen-space sizing are deferred to follow-up tasks; see T-152 plan.
+    {
+        EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
+        IREntity::getComponent<C_Position3D>(translateGizmo).pos_ = vec3(-12.0f, 12.0f, -3.0f);
+
+        EntityId rotateGizmo = IRPrefab::Gizmo::createRotateGizmo();
+        IREntity::getComponent<C_Position3D>(rotateGizmo).pos_ = vec3(12.0f, 12.0f, -3.0f);
+
+        EntityId scaleGizmo = IRPrefab::Gizmo::createScaleGizmo();
+        IREntity::getComponent<C_Position3D>(scaleGizmo).pos_ = vec3(-12.0f, -12.0f, -3.0f);
+
+        EntityId jointMarker = IRPrefab::Gizmo::createJointMarker();
+        IREntity::getComponent<C_Position3D>(jointMarker).pos_ = vec3(8.0f, -12.0f, -3.0f);
+
+        EntityId bindPointMarker = IRPrefab::Gizmo::createBindPointMarker();
+        IREntity::getComponent<C_Position3D>(bindPointMarker).pos_ = vec3(12.0f, -12.0f, -3.0f);
+
+        EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
+        IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
+    }
 
     // Canvas setup
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
