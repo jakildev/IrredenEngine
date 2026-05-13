@@ -286,18 +286,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **tooling: simplify + review-pr serialized-struct version-bump check** — pre-commit and PR-review check that flags serialized struct field changes not accompanied by a kSaveVersion bump
-  - **ID:** T-172
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-172-serialized-struct-version-check
-  - **Blocked by:** #667
-  - **Acceptance:** (1) simplify check grep-walks diff for changes inside serialized-tagged structs and emits a finding if kSaveVersion not bumped; (2) review-pr posts same finding as reviewer comment; (3) false-positive gate: current master (.vxs, .rig, world-snapshot formats) all pass without warnings; (4) engine/asset/CLAUDE.md cross-references the check
-  - **Issue:** #670
-  - **Notes:** Implements Extensibility Rule #3 enforcement. Blocked by #667 (world snapshot epic) because the check needs real kSaveVersion usage on master to test against without false positives. T-166 (binary-I/O) is already merged (PR #678).
-  - **Links:**
-
-
 - [ ] **prefab: Lua prefab format — entity template referencing .vxs + .rig + component pack** — Prefab.spawn/register API; Lua schema with voxel_ref, rig_ref, components, bind_point_overrides
   - **ID:** T-173
   - **Area:** engine/script, engine/prefabs/irreden
@@ -313,6 +301,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/684
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/683
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
@@ -332,4 +321,3 @@ Avoid:
 - [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
 - [x] **T-155** — Migrate GPU-compute cluster to member-on-System<N> · Owner: claude/T-155-gpu-compute-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/637
 - [x] **T-154** — Migrate hitbox GUI system to member-on-System<N> · Owner: claude/T-154-hitbox-gui-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/636
-- [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
