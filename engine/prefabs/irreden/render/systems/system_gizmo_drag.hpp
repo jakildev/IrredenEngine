@@ -62,8 +62,16 @@ template <> struct System<GIZMO_DRAG> {
     IRMath::vec2 dragAnchorScreenIso_ = IRMath::vec2(0.0f);
     float dragStartRotateAngle_ = 0.0f;
 
-    // Per-anchor accumulated state. Stays attached to the same anchor
-    // across drag sessions so successive rotate / scale gestures stack.
+    // Per-drag readouts for the rotate / scale gestures. applyDrag()
+    // OVERWRITES each frame with a fresh delta from THAT drag's press
+    // point — successive drags do NOT numerically stack here. Storage
+    // is keyed by anchor so beginDrag() can reset to identity when the
+    // gizmo target changes, keeping stale values from a previous
+    // gizmo's drag from appearing as the new gizmo's current state.
+    // endTick() reads these on the press→release transition to log the
+    // final per-drag value. Wiring rotate / scale to an accumulating
+    // render-side component is a follow-up once a canonical
+    // C_Rotation / C_Scale pair lands.
     IREntity::EntityId accumOwner_ = IREntity::kNullEntity;
     float accumRotateAngle_ = 0.0f;
     float accumScaleUniform_ = 1.0f;
