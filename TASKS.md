@@ -358,11 +358,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Move C_Voxel into namespace IRComponents** — restore namespace symmetry with VoxelFlags; update all callers in engine/ and creations/
+- [~] **Move C_Voxel into namespace IRComponents** — restore namespace symmetry with VoxelFlags; update all callers in engine/ and creations/
   - **ID:** T-175
   - **Area:** engine/prefabs/irreden/voxel/components
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_Voxel struct moved into IRComponents namespace in component_voxel.hpp; (2) VoxelFlags in same namespace (symmetry restored); (3) all callers in engine/ and creations/ updated; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #680
