@@ -186,7 +186,9 @@ def revert_orphan_label(repo: str, number: int) -> bool:
              "PR's branch, so the prior agent's iteration was interrupted "
              "before reaching `fleet:changes-made`. Reverting "
              "`fleet:human-amending` → `human:needs-fix` so the standard "
-             "feedback-pickup path resumes on the next dispatcher tick. "
+             "feedback-pickup path resumes on the next dispatcher tick.\n\n"
+             "Source: `scripts/fleet/fleet-reconcile-amendments` "
+             "(invoked from `fleet-up` Step 1.7).\n\n"
              "— fleet-up reconciler"],
             capture_output=True, text=True, timeout=30, check=False,
         )
@@ -232,7 +234,14 @@ def reconcile_repo(repo: str, wt_root: pathlib.Path) -> None:
 
 
 def _env_or_cache(env_var: str, cache_key: str, cache: dict | None) -> str:
-    """Honors env-set values (even empty) over the repos.json cache."""
+    """Resolves a repo slug.
+
+    Precedence:
+      1. env var if present (even when empty — empty means "disable").
+      2. repos.json cache value (if cache loaded and key present).
+      3. empty string (caller decides whether to apply a hardcoded
+         fallback or treat as disabled).
+    """
     if env_var in os.environ:
         return os.environ[env_var]
     if cache is not None:
@@ -252,6 +261,11 @@ def main() -> int:
         except (OSError, json.JSONDecodeError):
             repos_cache = None
 
+    # Engine repo has a built-in last-resort default so a fresh
+    # install with no cache and no env still reconciles the engine
+    # side. Game repo has no such fallback — an empty result here
+    # means "skip the game reconcile entirely", which is the right
+    # default for installs that don't have the game checked out.
     engine_repo = _env_or_cache(
         "FLEET_AMEND_RECONCILE_ENGINE_REPO", "engine", repos_cache,
     ) or "jakildev/IrredenEngine"

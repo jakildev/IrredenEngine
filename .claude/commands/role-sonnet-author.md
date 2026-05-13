@@ -272,19 +272,20 @@ Each iteration:
       reviewer-flagged feedback doesn't trigger the human-amending
       state.)
 
-      **Reserve this worktree for the in-flight amendment.** Extract
-      the task ID from the PR's branch (`claude/T-NNN-…`) and write
-      the reservation file so the amendment becomes a durable fleet
-      artifact — not just a PR label. If `fleet-down` or a mid-flight
-      crash interrupts this iteration before `commit-and-push` lands,
-      the reservation keeps the worktree pinned to this branch and
-      the next iteration's step 0.5 resumes the amendment instead of
+      **Reserve this worktree for the in-flight amendment** (only
+      for `human:needs-fix` / `human:blocker` paths — skip for
+      `fleet:needs-fix` / `fleet:has-nits`, which don't enter the
+      human-amending state and complete quickly). Extract the task
+      ID from the PR's branch (`claude/T-NNN-…`) and write the
+      reservation file so the amendment becomes a durable fleet
+      artifact rather than relying on the `fleet:human-amending`
+      label alone. If `fleet-down` or a mid-flight crash interrupts
+      this iteration before `commit-and-push` lands, the
+      reservation keeps the worktree pinned to this branch and the
+      next iteration's step 0.5 resumes the amendment instead of
       starting a fresh task and clobbering the in-progress work:
       `fleet-claim reserve <task-id> <your-worktree-basename> <branch>`
       (Example: `fleet-claim reserve T-163 sonnet-fleet-2 claude/T-163-stateless-particles`.)
-      Skip for `fleet:needs-fix` / `fleet:has-nits` paths — those
-      don't enter the human-amending state and complete quickly,
-      so the reservation cost isn't worth the bookkeeping.
    c. Address every piece of feedback. Make the edits, build with
       `fleet-build --target <name>`.
    d. Push fixes using `commit-and-push`.
