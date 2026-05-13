@@ -191,6 +191,12 @@ constexpr float sqrt(float value) {
     return glm::sqrt(value);
 }
 
+/// Two-argument arctangent (radians). Result is in (-π, π]; sign matches
+/// GLSL/std::atan2 convention. GLM wrapper.
+inline float atan2(float y, float x) {
+    return glm::atan(y, x);
+}
+
 /// 2D rotation of @p v by @p angle radians around the origin. The rotation
 /// is CCW for positive angle in a Y-up coordinate system; the visible
 /// direction reverses when applied in a Y-down system.

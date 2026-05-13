@@ -40,6 +40,8 @@
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
+#include <irreden/render/systems/system_gizmo_hover.hpp>
+#include <irreden/render/systems/system_gizmo_drag.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -117,9 +119,15 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::LIFETIME>()
         }
     );
+    // GIZMO_HOVER reads the previous frame's entity-id GPU readback;
+    // GIZMO_DRAG runs immediately after so press detection sees a fresh
+    // hover flag in the same INPUT pipeline pass.
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(), scrollZoomSystem}
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
+         scrollZoomSystem,
+         IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
+         IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
     );
 
     // Right-click drag rotates the camera Z-yaw (turntable), which in the
