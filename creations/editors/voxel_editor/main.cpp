@@ -59,10 +59,15 @@ namespace {
 // Radians per screen-pixel of horizontal mouse movement during right-drag.
 constexpr float kRotationSensitivity = 0.004f;
 
-bool g_firstRotFrame = true;
-float g_prevMouseX = 0.0f;
-EntityId g_cameraEntity = kNullEntity;
-int g_scrollDelta = 0;
+struct ScrollZoomParams {
+    EntityId cameraEntity_ = kNullEntity;
+    int scrollDelta_ = 0;
+};
+
+struct RotateParams {
+    bool firstRotFrame_ = true;
+    float prevMouseX_ = 0.0f;
+};
 
 } // namespace
 
@@ -89,26 +94,29 @@ int main(int argc, char **argv) {
 void initSystems() {
     // Scroll zoom iterates C_MouseScroll entities, which are ephemeral (C_Lifetime{1}).
     // Register in INPUT so they are still alive; LIFETIME in UPDATE destroys them.
+    auto scrollParams = std::make_unique<ScrollZoomParams>();
+    auto *sp = scrollParams.get();
     auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
         "EditorScrollZoom",
-        [](C_MouseScroll &scroll) {
+        [sp](C_MouseScroll &scroll) {
             if (scroll.yoffset_ > 0.0)
-                ++g_scrollDelta;
+                ++sp->scrollDelta_;
             else if (scroll.yoffset_ < 0.0)
-                --g_scrollDelta;
+                --sp->scrollDelta_;
         },
-        []() { g_cameraEntity = IREntity::getEntity("camera"); },
-        []() {
-            if (g_scrollDelta != 0) {
-                auto &zoom = IREntity::getComponent<C_ZoomLevel>(g_cameraEntity);
-                for (int i = 0; i < g_scrollDelta; ++i)
+        [sp]() { sp->cameraEntity_ = IREntity::getEntity("camera"); },
+        [sp]() {
+            if (sp->scrollDelta_ != 0) {
+                auto &zoom = IREntity::getComponent<C_ZoomLevel>(sp->cameraEntity_);
+                for (int i = 0; i < sp->scrollDelta_; ++i)
                     zoom.zoomIn();
-                for (int i = 0; i > g_scrollDelta; --i)
+                for (int i = 0; i > sp->scrollDelta_; --i)
                     zoom.zoomOut();
-                g_scrollDelta = 0;
+                sp->scrollDelta_ = 0;
             }
         }
     );
+    IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
 
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
@@ -135,30 +143,33 @@ void initSystems() {
 
     // Right-click drag rotates the camera Z-yaw (turntable), which in the
     // isometric engine is equivalent to rotating the entity being edited.
+    auto rotParams = std::make_unique<RotateParams>();
+    auto *rp = rotParams.get();
     auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
         "EditorViewportRotate",
         [](C_CameraYaw &) {},
-        []() {
+        [rp]() {
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
 
             if (rightPressed) {
-                g_firstRotFrame = true;
+                rp->firstRotFrame_ = true;
             }
 
             if (rightHeld) {
                 vec2 mouse = IRInput::getMousePositionScreen();
-                if (!g_firstRotFrame) {
-                    float deltaX = mouse.x - g_prevMouseX;
+                if (!rp->firstRotFrame_) {
+                    float deltaX = mouse.x - rp->prevMouseX_;
                     IRPrefab::Camera::rotateYaw(deltaX * kRotationSensitivity);
                 }
-                g_prevMouseX = mouse.x;
-                g_firstRotFrame = false;
+                rp->prevMouseX_ = mouse.x;
+                rp->firstRotFrame_ = false;
             }
         }
     );
+    IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
     IRSystem::registerPipeline(
         IRTime::Events::RENDER,

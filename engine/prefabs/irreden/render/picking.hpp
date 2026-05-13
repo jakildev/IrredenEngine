@@ -60,6 +60,10 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
             if (!(sd.flags_ & IRRender::SHAPE_FLAG_VISIBLE))
                 return;
 
+            // forEachComponent iterates one component type; positions are
+            // fetched per-entity because the API has no multi-component
+            // form. Safe: createEntity guarantees both components on every
+            // entity. Acceptable: this path fires on click frames only.
             auto &gpos = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(id);
             auto &opos = IREntity::getComponent<IRComponents::C_PositionOffset3D>(id);
             const IRMath::vec3 worldPos = gpos.pos_ + opos.pos_;

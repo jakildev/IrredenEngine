@@ -53,6 +53,7 @@ template <> struct System<VOXEL_PICKING> {
 
             const IRMath::vec3 worldVoxel = IRMath::vec3(hit->voxelPos_);
             pos.pos_ = worldVoxel;
+            // Highlight has no parent — global == local for this entity.
             globalPos.pos_ = worldVoxel;
             highlightShape.flags_ |= IRRender::SHAPE_FLAG_VISIBLE;
         } else {
