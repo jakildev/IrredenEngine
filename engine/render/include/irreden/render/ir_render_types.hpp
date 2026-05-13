@@ -352,14 +352,14 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // this aliasing goes away in T-09Y once light-volume LOS moves off the
 // world-space bitfield.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
-// SPRITE_TO_SCREEN runs at the FRAMEBUFFER_TO_SCREEN stage, after every
-// compute pass has completed; the slots it borrows belong to compute-only
-// buffers whose data is no longer needed by the time the sprite stage
-// dispatches. Slot 0 is the long-reserved-but-unused FrameDataUniform
-// constant; slot 25 (CompactedVoxelIndices) is written by
-// VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2 — both finished by the
-// time the FRAMEBUFFER_TO_SCREEN-stage sprites pass binds it. Same Metal
-// 0–30 cap rationale as `kBufferIndex_SunShadowDepthMap`.
+// SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the
+// sprite draw. Safety is enforced by a defensive rebind in
+// `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the
+// sprite resources immediately before each draw call, displacing any earlier
+// occupant. Slot 0 (FrameDataUniform) is also used by the T-163 stateless
+// particle UBO; slot 25 (CompactedVoxelIndices) is written by
+// VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2. Same Metal 0–30 cap
+// rationale as `kBufferIndex_SunShadowDepthMap`.
 constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
 constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
 // GPU particle slots (T-139 Phase 1). Metal caps bindings at 0–30, so we
@@ -376,6 +376,30 @@ constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVo
 // this.
 constexpr std::uint32_t kBufferIndex_GpuParticleData = kBufferIndex_LightSourceBuffer;
 constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightVolumeParams;
+// Stateless particle slots (T-163 Phase 1). Split into a small per-frame
+// UBO (header: currentTime, emitterCount, projection inputs) and a separate
+// SSBO holding the emitter descriptor array. Splitting sidesteps the
+// observed Metal-side flakiness when nested-struct arrays live in a
+// `constant` (UBO) buffer at this size class — the SSBO path uses
+// straightforward `device` storage with no implicit layout assumptions.
+//
+// UBO slot: aliases the long-reserved-but-unused `FrameDataUniform` slot 0
+// — same slot the sprite pipeline borrows for `SpritesFrameData`. The
+// aliasing is safe because `SPRITE_TO_SCREEN::bindPipeline()` defensively
+// rebinds slot 0 to `SpritesFrameData` immediately before each draw call,
+// so any prior stateless-particle UBO occupying slot 0 is always displaced
+// before the sprite vertex shader reads it (OpenGL has global binding
+// state; Metal compute and render encoders maintain independent argument
+// tables, so the alias is inherently safe there).
+// SSBO slot: aliases `kBufferIndex_LightSourceBuffer` (slot 4), already
+// shared with `kBufferIndex_GpuParticleData` — both T-139 SSBO particles
+// and T-163 stateless emitters can register on the same canvas, and each
+// dispatch rebinds slot 4 to its own SSBO immediately before its dispatch
+// (the established trixel pipeline order COMPUTE_LIGHT_VOLUME → particle
+// passes guarantees the light volume's seed dispatch finishes before
+// either particle pass binds the slot).
+constexpr std::uint32_t kBufferIndex_FrameDataStatelessParticles = kBufferIndex_FrameDataUniform;
+constexpr std::uint32_t kBufferIndex_StatelessParticleEmitters = kBufferIndex_LightSourceBuffer;
 /// @}
 
 /// Maximum number of light sources uploaded per frame to the
@@ -456,8 +480,7 @@ struct LightOcclusionGridHeader {
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(
-    sizeof(LightOcclusionGridHeader) == 16,
-    "LightOcclusionGridHeader must match std430 layout"
+    sizeof(LightOcclusionGridHeader) == 16, "LightOcclusionGridHeader must match std430 layout"
 );
 
 // One entry per dispatched tile in the batched shapes→trixel pass.
@@ -508,11 +531,90 @@ struct FrameDataGpuParticles {
     int _renderPad0_ = 0;
     int _renderPad1_ = 0;
 };
-static_assert(sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout");
+static_assert(
+    sizeof(FrameDataGpuParticles) == 48, "FrameDataGpuParticles must match std140 layout"
+);
 
 /// GPU particle pool capacity per pool entity. Phase 1 caps the pool at this
 /// fixed size; per-biome configurable capacity lands in Phase 2.
 constexpr std::uint32_t kGpuParticlePoolCapacity = 4096u;
+
+/// Cap on the number of stateless emitters per canvas. The 32 B header lives
+/// in a UBO (slot 0); the emitter descriptors live in an SSBO (slot 4) —
+/// only the header is subject to the 16 KB UBO guarantee. At 64 emitters
+/// × 80 B = 5 120 B, the SSBO is a comfortable fit for Phase 1 workloads.
+/// Tunable via a Phase 2 follow-up when real biome workloads land.
+constexpr std::uint32_t kMaxStatelessEmitters = 64u;
+
+/// Cap on particles per stateless emitter. The render dispatch fires
+/// `emitterCount * kMaxParticlesPerEmitter` threads; threads with
+/// `subIndex >= particlesPerEmitter` early-out, so a per-emitter
+/// runtime cap of less than this constant pays its own way.
+/// SYNC: kMaxParticlesPerEmitter must match the identically-named define in
+/// c_render_stateless_particles_to_trixel.glsl and the Metal constant in
+/// c_render_stateless_particles_to_trixel.metal — all three decompose gid
+/// the same way; a value change in one that misses the others silently
+/// breaks thread ID decomposition.
+constexpr std::uint32_t kMaxParticlesPerEmitter = 256u;
+
+/// T-163 Phase 1 — single stateless particle emitter descriptor. Particles
+/// have no per-frame stored state; each shader thread reconstructs its
+/// particle's position and color from `(emitter, subIndex, currentTime)` via
+/// a closed-form gravity-with-jitter trajectory. The descriptor is purely an
+/// input — the GPU never mutates it.
+///
+/// Layout is std430 (vec3 fields naturally followed by a trailing float use
+/// the 4-byte pad slot, so each row is 16 B — coincidentally std140-
+/// compatible). Five rows total = 80 B per emitter.
+///   row 0: origin_.xyz                 | baseLifetimeSeconds_
+///   row 1: baseVelocity_.xyz           | spawnRate_
+///   row 2: gravity_.xyz                | baseColorPacked_
+///   row 3: positionJitter_.xyz         | emitterFlags_
+///   row 4: velocityJitter_.xyz         | particlesPerEmitter_
+struct GpuParticleEmitter {
+    vec3 origin_ = vec3(0.0f);
+    float baseLifetimeSeconds_ = 1.0f;
+    vec3 baseVelocity_ = vec3(0.0f);
+    float spawnRate_ = 1.0f;
+    vec3 gravity_ = vec3(0.0f);
+    std::uint32_t baseColorPacked_ = 0u;
+    vec3 positionJitter_ = vec3(0.0f);
+    std::uint32_t emitterFlags_ = 0u;
+    vec3 velocityJitter_ = vec3(0.0f);
+    std::uint32_t particlesPerEmitter_ = 0u;
+};
+static_assert(
+    sizeof(GpuParticleEmitter) == 80,
+    "GpuParticleEmitter must match std430 layout (80 B per emitter)"
+);
+
+/// T-163 Phase 1 — per-frame UBO for the stateless particle render pass.
+/// Header only: per-frame inputs (`currentTime_`, canvas projection
+/// parameters) plus emitter count. The descriptor array lives in a
+/// separate SSBO so the layout is straightforward `device` storage on
+/// Metal rather than `constant` (UBO) storage, which sidestepped layout
+/// flakiness with nested-struct arrays during Phase 1 bring-up.
+///
+/// `voxelRenderOptions_` mirrors `FrameDataVoxelToCanvas::voxelRenderOptions_`
+/// (renderMode, effectiveSubdivisions). The particle pass reads it so each
+/// particle paints a subdivision-scaled voxel diamond — same micro-position
+/// walk the voxel pool uses — instead of a single 2×3 diamond regardless of
+/// zoom. Without this the particle "voxels" stay at base resolution while
+/// the voxel/SDF paths refine to sub² micro-cells per voxel under FULL mode,
+/// and the two read as different sizes in the same frame.
+struct FrameDataStatelessParticles {
+    float currentTime_ = 0.0f;
+    std::uint32_t emitterCount_ = 0u;
+    vec2 cameraTrixelOffset_ = vec2(0.0f);
+    ivec2 trixelCanvasOffsetZ1_ = ivec2(0);
+    ivec2 canvasSizePixels_ = ivec2(0);
+    ivec2 voxelRenderOptions_ = ivec2(0);
+    ivec2 _padding_ = ivec2(0);
+};
+static_assert(
+    sizeof(FrameDataStatelessParticles) == 48,
+    "FrameDataStatelessParticles must match std140 layout (48 B header)"
+);
 
 struct VoxelIndirectDispatchParams {
     std::uint32_t numGroupsX = 0;

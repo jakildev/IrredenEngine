@@ -159,10 +159,11 @@ template <> struct System<SPRITE_TO_SCREEN> {
             IRRender::kBufferIndex_SpritesInstances
         );
 
-        SystemId id = registerSystem<SPRITE_TO_SCREEN,
-                                     IRComponents::C_Sprite,
-                                     IRComponents::C_PositionGlobal3D,
-                                     IRComponents::C_PositionOffset3D>("SpritesToScreen");
+        SystemId id = registerSystem<
+            SPRITE_TO_SCREEN,
+            IRComponents::C_Sprite,
+            IRComponents::C_PositionGlobal3D,
+            IRComponents::C_PositionOffset3D>("SpritesToScreen");
         auto *sys = getSystemParams<System<SPRITE_TO_SCREEN>>(id);
         sys->frameDataBuf_ =
             IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenFrameData");
@@ -246,6 +247,17 @@ template <> struct System<SPRITE_TO_SCREEN> {
     }
 
     void bindPipeline() {
+        // Defensive rebind: other compute passes (e.g. RENDER_STATELESS_PARTICLES_TO_TRIXEL)
+        // rebind slot 0 and slot 25 to their own resources earlier in the frame. OpenGL has
+        // a single global binding state, so we must re-assert our own before drawing.
+        frameDataBuf_->bindBase(
+            IRRender::BufferTarget::UNIFORM,
+            IRRender::kBufferIndex_SpritesFrameData
+        );
+        instancesBuf_->bindBase(
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_SpritesInstances
+        );
         program_->use();
         quadVao_->bind();
         IRRender::device()->setDepthTest(false);
