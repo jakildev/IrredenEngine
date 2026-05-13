@@ -364,7 +364,7 @@ TEST(RigFormat, BindPointVersionTooNewIsRecoverable) {
         jntsBody.writeString(j.name_);
     }
 
-    // One bind point with a record version far above kBindPointRecordVersion.
+    // One bind point with a record version far above RigBindPoint::kSaveVersion.
     MemoryBinaryWriter bindBody;
     bindBody.writeVarUInt(1u);
     bindBody.writeU16(0xFFFF); // future record version

@@ -17,6 +17,25 @@ constexpr const char *kRigSidecarExtension = ".rig.json";
 constexpr std::array<char, 4> kJntsTag{'J', 'N', 'T', 'S'};
 constexpr std::array<char, 4> kBindTag{'B', 'I', 'N', 'D'};
 
+void encodeVec3(BinaryWriter &w, const IRMath::vec3 &v) {
+    w.writeF32(v.x);
+    w.writeF32(v.y);
+    w.writeF32(v.z);
+}
+
+Result<IRMath::vec3> decodeVec3(BinaryReader &r) {
+    auto x = r.readF32();
+    if (!x.ok())
+        return Result<IRMath::vec3>::error(x.status_.code_, std::move(x.status_.message_));
+    auto y = r.readF32();
+    if (!y.ok())
+        return Result<IRMath::vec3>::error(y.status_.code_, std::move(y.status_.message_));
+    auto z = r.readF32();
+    if (!z.ok())
+        return Result<IRMath::vec3>::error(z.status_.code_, std::move(z.status_.message_));
+    return Result<IRMath::vec3>::success(IRMath::vec3(x.value_, y.value_, z.value_));
+}
+
 void encodeVec4(BinaryWriter &w, const IRMath::vec4 &v) {
     w.writeF32(v.x);
     w.writeF32(v.y);
@@ -104,15 +123,10 @@ Result<Rig> decodeJntsChunk(const LoadedChunk &chunk, const std::string &sourceN
 BinaryStatus encodeBindChunk(MemoryBinaryWriter &body, const Rig &rig) {
     body.writeVarUInt(rig.bindPoints_.size());
     for (const auto &bp : rig.bindPoints_) {
-        body.writeU16(kBindPointRecordVersion);
+        body.writeU16(RigBindPoint::kSaveVersion);
         body.writeU32(bp.boneId_);
-        body.writeF32(bp.offset_.x);
-        body.writeF32(bp.offset_.y);
-        body.writeF32(bp.offset_.z);
-        body.writeF32(bp.rotation_.x);
-        body.writeF32(bp.rotation_.y);
-        body.writeF32(bp.rotation_.z);
-        body.writeF32(bp.rotation_.w);
+        encodeVec3(body, bp.offset_);
+        encodeVec4(body, bp.rotation_);
         body.writeString(bp.name_);
     }
     if (body.failed()) {
@@ -134,11 +148,11 @@ BinaryStatus decodeBindChunk(const LoadedChunk &chunk, const std::string &source
         if (!verR.ok()) {
             return BinaryStatus::error(verR.status_.code_, std::move(verR.status_.message_));
         }
-        if (verR.value_ > kBindPointRecordVersion) {
+        if (verR.value_ > RigBindPoint::kSaveVersion) {
             return BinaryStatus::error(
                 BinaryIOError::VersionTooNew,
                 "bind-point record version " + std::to_string(verR.value_) + " above max known " +
-                    std::to_string(kBindPointRecordVersion) + " in " + r.sourceName()
+                    std::to_string(RigBindPoint::kSaveVersion) + " in " + r.sourceName()
             );
         }
         RigBindPoint bp;
@@ -147,16 +161,10 @@ BinaryStatus decodeBindChunk(const LoadedChunk &chunk, const std::string &source
             return BinaryStatus::error(boneR.status_.code_, std::move(boneR.status_.message_));
         }
         bp.boneId_ = boneR.value_;
-        auto ox = r.readF32();
-        if (!ox.ok())
-            return BinaryStatus::error(ox.status_.code_, std::move(ox.status_.message_));
-        auto oy = r.readF32();
-        if (!oy.ok())
-            return BinaryStatus::error(oy.status_.code_, std::move(oy.status_.message_));
-        auto oz = r.readF32();
-        if (!oz.ok())
-            return BinaryStatus::error(oz.status_.code_, std::move(oz.status_.message_));
-        bp.offset_ = IRMath::vec3(ox.value_, oy.value_, oz.value_);
+        auto off = decodeVec3(r);
+        if (!off.ok())
+            return BinaryStatus::error(off.status_.code_, std::move(off.status_.message_));
+        bp.offset_ = off.value_;
         auto rot = decodeVec4(r);
         if (!rot.ok())
             return BinaryStatus::error(rot.status_.code_, std::move(rot.status_.message_));

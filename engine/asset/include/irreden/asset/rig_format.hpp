@@ -63,9 +63,6 @@ constexpr std::uint32_t kRigFormatVersion = 1;
 /// Extensibility Rule #3.
 constexpr std::uint16_t kJointRecordVersion = 1;
 
-/// Per-bind-point record version. Same additive-only contract as joints.
-constexpr std::uint16_t kBindPointRecordVersion = 1;
-
 /// Asset representation of a single joint. Mirrors `IRComponents::Joint`
 /// (engine/prefabs/irreden/voxel/components/component_joint_hierarchy.hpp)
 /// with the addition of an optional designer-facing name. The rotation
@@ -82,7 +79,10 @@ struct RigJoint {
 /// parented to, a local-space offset (vec3) and orientation (quaternion)
 /// relative to that bone, and an optional designer-facing name. Used by
 /// the editor (#669) to define where props, weapons, or VFX attach.
+// IRAsset: serialized
 struct RigBindPoint {
+    static constexpr std::uint16_t kSaveVersion = 1;
+
     std::uint32_t boneId_ = 0;
     IRMath::vec3 offset_{0.0f, 0.0f, 0.0f};
     IRMath::vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
