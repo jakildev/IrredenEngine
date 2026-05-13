@@ -155,7 +155,7 @@ Avoid:
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-104-lua-perf-grid-parity
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
