@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** claude/T-104-lua-perf-grid-parity
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
@@ -211,18 +211,6 @@ Avoid:
   - **Acceptance:** (1) GpuParticleEmitter and FrameDataStatelessParticles types in ir_render_types.hpp (std140-friendly, 80 B per emitter); (2) C_StatelessParticleEmitters component (per-canvas std::vector<GpuParticleEmitter> + UBO) defined in engine/prefabs; (3) compute render pass GLSL shader with closed-form gravity-with-jitter trajectory, deterministic per (emitterId, subIndex, cycle) via pcg3d/hash3; (4) Metal parity using same scratch-buffer workaround as T-139 render kernel; (5) demo: 64 emitters × 64 particles drifting under gravity with color and position jitter; (6) fleet-build clean on linux-debug and macos-debug; (7) composites correctly on same canvas as T-139 SSBO particles via imageAtomicMin
   - **Issue:** #647
   - **Notes:** Alternative/complement to T-139 SSBO pool (#209, PR #614) — stateless path for ambient/decorative emitters (biome motes, rain, weather) with zero per-particle state and near-zero CPU→GPU sync cost. Phase 1 only; Phases 2–5 (Lua bindings, combined demo, benchmark, color ramps) filed as follow-ups after Phase 1 lands. ECS option (a) locked in by architect comment. UBO slot: pick unused 0–30, do not alias T-139's slot 23. Reuse iso-projection helpers from ir_iso_common.glsl and canvas binding pattern from system_render_gpu_particles_to_trixel.hpp (PR #614).
-  - **Links:**
-
-
-- [~] **Editor F-0.5 Phase 2: screen-space gizmo sizing + depth-aware dimming** — constant pixel-size gizmo handles across zoom range; depth-aware alpha dimming for occluded gizmos
-  - **ID:** T-164
-  - **Area:** engine/prefabs/irreden/render, engine/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-164-gizmo-screen-space
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) gizmos render at constant pixel size across full zoom range; (2) gizmo fragments behind world geometry show with reduced alpha (faint silhouette when occluded); (3) GLSL + Metal backends agree on dimming behavior; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #675
-  - **Notes:** Phase 2 follow-up to T-152 (Phase 1 shipped via PR #672). New UPDATE system scales C_ShapeDescriptor params_ inversely to camera zoom (member pixelSize_ on System<N>). New SHAPE_FLAG_GIZMO bit + depth-aware alpha path in c_shapes_to_trixel.glsl + shapes_to_trixel.metal. Touch points: system_gizmo_screen_space_size.hpp, shape_descriptor_flags.hpp, both shaders, gizmo.hpp, editor main.cpp, ir_system_types.hpp.
   - **Links:**
 
 
@@ -349,6 +337,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
@@ -368,4 +357,3 @@ Avoid:
 - [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
-- [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
