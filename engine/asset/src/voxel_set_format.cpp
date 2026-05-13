@@ -314,6 +314,330 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
     return Result<ShapeGroupLoadResult>::success(std::move(out));
 }
 
+// ---- BNDS chunk -------------------------------------------------------
+
+ChunkPayload makeBoundsChunk(const ivec3 &boundsMin, const ivec3 &boundsMax) {
+    MemoryBinaryWriter w;
+    w.writeI32(boundsMin.x);
+    w.writeI32(boundsMin.y);
+    w.writeI32(boundsMin.z);
+    w.writeI32(boundsMax.x);
+    w.writeI32(boundsMax.y);
+    w.writeI32(boundsMax.z);
+    ChunkPayload out;
+    out.tag_ = kChunkTagBounds;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<BoundsPair> readBoundsChunk(std::span<const std::uint8_t> body) {
+    MemoryBinaryReader r(body.data(), body.size(), "<BNDS chunk>");
+    BoundsPair out;
+    auto minX = r.readI32();
+    if (!minX.ok())
+        return Result<BoundsPair>::error(minX.status_.code_, std::move(minX.status_.message_));
+    auto minY = r.readI32();
+    if (!minY.ok())
+        return Result<BoundsPair>::error(minY.status_.code_, std::move(minY.status_.message_));
+    auto minZ = r.readI32();
+    if (!minZ.ok())
+        return Result<BoundsPair>::error(minZ.status_.code_, std::move(minZ.status_.message_));
+    auto maxX = r.readI32();
+    if (!maxX.ok())
+        return Result<BoundsPair>::error(maxX.status_.code_, std::move(maxX.status_.message_));
+    auto maxY = r.readI32();
+    if (!maxY.ok())
+        return Result<BoundsPair>::error(maxY.status_.code_, std::move(maxY.status_.message_));
+    auto maxZ = r.readI32();
+    if (!maxZ.ok())
+        return Result<BoundsPair>::error(maxZ.status_.code_, std::move(maxZ.status_.message_));
+    out.boundsMin_ = ivec3(minX.value_, minY.value_, minZ.value_);
+    out.boundsMax_ = ivec3(maxX.value_, maxY.value_, maxZ.value_);
+    return Result<BoundsPair>::success(out);
+}
+
+// ---- VOXR chunk -------------------------------------------------------
+
+ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
+    MemoryBinaryWriter w;
+    w.writeU16(kVoxelRecordVersion);
+    w.writeVarUInt(static_cast<std::uint64_t>(voxels.size()));
+    for (const auto &v : voxels) {
+        writeColorPacked(w, v.color_);
+        w.writeU8(v.material_id_);
+        w.writeU8(v.flags_);
+        w.writeU8(v.bone_id_);
+        w.writeU8(v.pad0_);
+        w.writeU32(v.reserved_);
+    }
+    ChunkPayload out;
+    out.tag_ = kChunkTagVoxelRecords;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<VoxelRecordsLoadResult> readVoxelRecordsChunk(
+    std::span<const std::uint8_t> body,
+    std::size_t expectedCount
+) {
+    MemoryBinaryReader r(body.data(), body.size(), "<VOXR chunk>");
+    auto verR = r.readU16();
+    if (!verR.ok()) {
+        return Result<VoxelRecordsLoadResult>::error(
+            verR.status_.code_, std::move(verR.status_.message_)
+        );
+    }
+    auto countR = r.readVarUInt();
+    if (!countR.ok()) {
+        return Result<VoxelRecordsLoadResult>::error(
+            countR.status_.code_, std::move(countR.status_.message_)
+        );
+    }
+    if (countR.value_ != static_cast<std::uint64_t>(expectedCount)) {
+        IRE_LOG_WARN(
+            "readVoxelRecordsChunk: chunk count={} != bounds-derived count={}",
+            countR.value_,
+            expectedCount
+        );
+    }
+    // Cap upfront reserve to remaining bytes / record size (12 B) so a
+    // corrupted count claiming billions of records doesn't pre-allocate.
+    constexpr std::uint64_t kRecordBytes = 12;
+    const std::uint64_t maxRecords = r.remaining() / kRecordBytes;
+    VoxelRecordsLoadResult out;
+    out.recordVersion_ = verR.value_;
+    out.voxels_.reserve(
+        static_cast<std::size_t>(countR.value_ < maxRecords ? countR.value_ : maxRecords)
+    );
+    for (std::uint64_t i = 0; i < countR.value_; ++i) {
+        VoxelRecord v{};
+        auto colorR = r.readU32();
+        if (!colorR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                colorR.status_.code_, std::move(colorR.status_.message_)
+            );
+        v.color_ = unpackColor(colorR.value_);
+        auto matR = r.readU8();
+        if (!matR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                matR.status_.code_, std::move(matR.status_.message_)
+            );
+        v.material_id_ = matR.value_;
+        auto flagsR = r.readU8();
+        if (!flagsR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                flagsR.status_.code_, std::move(flagsR.status_.message_)
+            );
+        v.flags_ = flagsR.value_;
+        auto boneR = r.readU8();
+        if (!boneR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                boneR.status_.code_, std::move(boneR.status_.message_)
+            );
+        v.bone_id_ = boneR.value_;
+        auto padR = r.readU8();
+        if (!padR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                padR.status_.code_, std::move(padR.status_.message_)
+            );
+        v.pad0_ = padR.value_;
+        auto resR = r.readU32();
+        if (!resR.ok())
+            return Result<VoxelRecordsLoadResult>::error(
+                resR.status_.code_, std::move(resR.status_.message_)
+            );
+        v.reserved_ = resR.value_;
+        out.voxels_.push_back(v);
+    }
+    return Result<VoxelRecordsLoadResult>::success(std::move(out));
+}
+
+// ---- LAYR chunk -------------------------------------------------------
+
+ChunkPayload makeLayersChunk(std::span<const LayerInfo> layers) {
+    MemoryBinaryWriter w;
+    w.writeVarUInt(static_cast<std::uint64_t>(layers.size()));
+    for (const auto &layer : layers) {
+        w.writeString(layer.name_);
+        w.writeVarUInt(static_cast<std::uint64_t>(layer.bitmask_.size()));
+        for (std::uint64_t word : layer.bitmask_) {
+            w.writeU64(word);
+        }
+    }
+    ChunkPayload out;
+    out.tag_ = kChunkTagLayers;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<std::vector<LayerInfo>> readLayersChunk(std::span<const std::uint8_t> body) {
+    MemoryBinaryReader r(body.data(), body.size(), "<LAYR chunk>");
+    auto countR = r.readVarUInt();
+    if (!countR.ok()) {
+        return Result<std::vector<LayerInfo>>::error(
+            countR.status_.code_, std::move(countR.status_.message_)
+        );
+    }
+    std::vector<LayerInfo> out;
+    const std::uint64_t cap = r.remaining();
+    out.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
+    for (std::uint64_t i = 0; i < countR.value_; ++i) {
+        LayerInfo layer;
+        auto nameR = r.readString();
+        if (!nameR.ok())
+            return Result<std::vector<LayerInfo>>::error(
+                nameR.status_.code_, std::move(nameR.status_.message_)
+            );
+        layer.name_ = std::move(nameR.value_);
+        auto wordCountR = r.readVarUInt();
+        if (!wordCountR.ok())
+            return Result<std::vector<LayerInfo>>::error(
+                wordCountR.status_.code_, std::move(wordCountR.status_.message_)
+            );
+        // Cap u64 word count by remaining bytes / 8 to defuse a corrupted
+        // count that claims billions of words.
+        const std::uint64_t maxWords = r.remaining() / 8;
+        layer.bitmask_.reserve(
+            static_cast<std::size_t>(
+                wordCountR.value_ < maxWords ? wordCountR.value_ : maxWords
+            )
+        );
+        for (std::uint64_t w_i = 0; w_i < wordCountR.value_; ++w_i) {
+            auto wordR = r.readU64();
+            if (!wordR.ok())
+                return Result<std::vector<LayerInfo>>::error(
+                    wordR.status_.code_, std::move(wordR.status_.message_)
+                );
+            layer.bitmask_.push_back(wordR.value_);
+        }
+        out.push_back(std::move(layer));
+    }
+    return Result<std::vector<LayerInfo>>::success(std::move(out));
+}
+
+// ---- FRAM chunk -------------------------------------------------------
+
+ChunkPayload makeFramesChunk(std::span<const FramePose> frames) {
+    MemoryBinaryWriter w;
+    w.writeVarUInt(static_cast<std::uint64_t>(frames.size()));
+    for (const auto &frame : frames) {
+        w.writeU32(frame.frameIndex_);
+        w.writeVarUInt(static_cast<std::uint64_t>(frame.offsets_.size()));
+        for (const auto &off : frame.offsets_) {
+            writeVec3(w, off);
+        }
+    }
+    ChunkPayload out;
+    out.tag_ = kChunkTagFrames;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<FramesLoadResult> readFramesChunk(
+    std::span<const std::uint8_t> body,
+    std::size_t voxelCount
+) {
+    MemoryBinaryReader r(body.data(), body.size(), "<FRAM chunk>");
+    auto frameCountR = r.readVarUInt();
+    if (!frameCountR.ok()) {
+        return Result<FramesLoadResult>::error(
+            frameCountR.status_.code_, std::move(frameCountR.status_.message_)
+        );
+    }
+    FramesLoadResult out;
+    const std::uint64_t cap = r.remaining();
+    out.frames_.reserve(
+        static_cast<std::size_t>(frameCountR.value_ < cap ? frameCountR.value_ : cap)
+    );
+    for (std::uint64_t i = 0; i < frameCountR.value_; ++i) {
+        auto frameIdxR = r.readU32();
+        if (!frameIdxR.ok())
+            return Result<FramesLoadResult>::error(
+                frameIdxR.status_.code_, std::move(frameIdxR.status_.message_)
+            );
+        auto offCountR = r.readVarUInt();
+        if (!offCountR.ok())
+            return Result<FramesLoadResult>::error(
+                offCountR.status_.code_, std::move(offCountR.status_.message_)
+            );
+        FramePose frame;
+        frame.frameIndex_ = frameIdxR.value_;
+        // Cap reserve by remaining bytes / 12 B per vec3.
+        constexpr std::uint64_t kVec3Bytes = 12;
+        const std::uint64_t maxOffsets = r.remaining() / kVec3Bytes;
+        frame.offsets_.reserve(
+            static_cast<std::size_t>(
+                offCountR.value_ < maxOffsets ? offCountR.value_ : maxOffsets
+            )
+        );
+        for (std::uint64_t off_i = 0; off_i < offCountR.value_; ++off_i) {
+            auto vR = readVec3(r);
+            if (!vR.ok())
+                return Result<FramesLoadResult>::error(
+                    vR.status_.code_, std::move(vR.status_.message_)
+                );
+            frame.offsets_.push_back(vR.value_);
+        }
+        if (frame.offsets_.size() != voxelCount) {
+            IRE_LOG_WARN(
+                "readFramesChunk: frame {} has {} offsets, expected {} (dropping)",
+                frame.frameIndex_,
+                frame.offsets_.size(),
+                voxelCount
+            );
+            ++out.skippedFrames_;
+            continue;
+        }
+        out.frames_.push_back(std::move(frame));
+    }
+    return Result<FramesLoadResult>::success(std::move(out));
+}
+
+// ---- META chunk -------------------------------------------------------
+
+ChunkPayload makeMetaChunk(std::span<const MetaEntry> entries) {
+    MemoryBinaryWriter w;
+    w.writeVarUInt(static_cast<std::uint64_t>(entries.size()));
+    for (const auto &entry : entries) {
+        w.writeString(entry.key_);
+        w.writeString(entry.value_);
+    }
+    ChunkPayload out;
+    out.tag_ = kChunkTagMeta;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body) {
+    MemoryBinaryReader r(body.data(), body.size(), "<META chunk>");
+    auto countR = r.readVarUInt();
+    if (!countR.ok()) {
+        return Result<std::vector<MetaEntry>>::error(
+            countR.status_.code_, std::move(countR.status_.message_)
+        );
+    }
+    std::vector<MetaEntry> out;
+    const std::uint64_t cap = r.remaining();
+    out.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
+    for (std::uint64_t i = 0; i < countR.value_; ++i) {
+        MetaEntry entry;
+        auto keyR = r.readString();
+        if (!keyR.ok())
+            return Result<std::vector<MetaEntry>>::error(
+                keyR.status_.code_, std::move(keyR.status_.message_)
+            );
+        entry.key_ = std::move(keyR.value_);
+        auto valR = r.readString();
+        if (!valR.ok())
+            return Result<std::vector<MetaEntry>>::error(
+                valR.status_.code_, std::move(valR.status_.message_)
+            );
+        entry.value_ = std::move(valR.value_);
+        out.push_back(std::move(entry));
+    }
+    return Result<std::vector<MetaEntry>>::success(std::move(out));
+}
+
 // ---- High-level save/load ---------------------------------------------
 
 BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord> records) {
@@ -375,6 +699,113 @@ Result<VoxelSetFile> loadShapeGroup(const std::string &path) {
         out.unknownShapesSkipped_ = recR.value_.unknownShapesSkipped_;
     }
     return Result<VoxelSetFile>::success(std::move(out));
+}
+
+BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &dense) {
+    FileBinaryWriter fw(path);
+    if (!fw.ok()) {
+        return BinaryStatus::error(
+            BinaryIOError::OpenFailed,
+            "saveDenseVoxelSet: could not open '" + path + "' for write"
+        );
+    }
+    // Build the chunk set in order: MODE, BNDS, VOXR (always); LAYR /
+    // FRAM / META only if the caller has data (Rule #1 — extra chunks
+    // are additive, missing chunks degrade to empty on load).
+    std::vector<ChunkPayload> chunks;
+    chunks.reserve(6);
+    chunks.push_back(makeModeChunk(VoxelSetMode::DENSE));
+    chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
+    chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
+    if (!dense.layers_.empty()) {
+        chunks.push_back(makeLayersChunk(dense.layers_));
+    }
+    if (!dense.frames_.empty()) {
+        chunks.push_back(makeFramesChunk(dense.frames_));
+    }
+    if (!dense.meta_.empty()) {
+        chunks.push_back(makeMetaChunk(dense.meta_));
+    }
+    return writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+}
+
+Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
+    FileBinaryReader fr(path);
+    if (!fr.ok()) {
+        return Result<DenseVoxelSetFile>::error(
+            BinaryIOError::OpenFailed,
+            "loadDenseVoxelSet: could not open '" + path + "' for read"
+        );
+    }
+    auto chunksR = readChunks(fr, kVoxelSetMagic, kVoxelSetVersion);
+    if (!chunksR.ok()) {
+        return Result<DenseVoxelSetFile>::error(
+            chunksR.status_.code_,
+            std::move(chunksR.status_.message_)
+        );
+    }
+    DenseVoxelSetFile out;
+    out.mode_ = readModeChunk(chunksR.value_);
+
+    // BNDS must be present for DENSE mode to populate; absent BNDS
+    // means this is a SHAPES-only save (the SHPG branch above stays
+    // empty in the dense file view).
+    const LoadedChunk *bndsChunk = findChunk(chunksR.value_, kChunkTagBounds);
+    if (bndsChunk == nullptr) {
+        return Result<DenseVoxelSetFile>::success(std::move(out));
+    }
+    auto boundsR = readBoundsChunk(bndsChunk->data_);
+    if (!boundsR.ok()) {
+        return Result<DenseVoxelSetFile>::error(
+            boundsR.status_.code_, std::move(boundsR.status_.message_)
+        );
+    }
+    out.dense_.boundsMin_ = boundsR.value_.boundsMin_;
+    out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
+    const std::size_t expectedCount = out.dense_.voxelCount();
+
+    if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
+        auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
+        if (!vR.ok()) {
+            return Result<DenseVoxelSetFile>::error(
+                vR.status_.code_, std::move(vR.status_.message_)
+            );
+        }
+        out.dense_.recordVersion_ = vR.value_.recordVersion_;
+        out.dense_.voxels_ = std::move(vR.value_.voxels_);
+    }
+
+    if (const LoadedChunk *layr = findChunk(chunksR.value_, kChunkTagLayers)) {
+        auto lR = readLayersChunk(layr->data_);
+        if (!lR.ok()) {
+            return Result<DenseVoxelSetFile>::error(
+                lR.status_.code_, std::move(lR.status_.message_)
+            );
+        }
+        out.dense_.layers_ = std::move(lR.value_);
+    }
+
+    if (const LoadedChunk *fram = findChunk(chunksR.value_, kChunkTagFrames)) {
+        auto fR = readFramesChunk(fram->data_, expectedCount);
+        if (!fR.ok()) {
+            return Result<DenseVoxelSetFile>::error(
+                fR.status_.code_, std::move(fR.status_.message_)
+            );
+        }
+        out.dense_.frames_ = std::move(fR.value_.frames_);
+        out.skippedFrames_ = fR.value_.skippedFrames_;
+    }
+
+    if (const LoadedChunk *meta = findChunk(chunksR.value_, kChunkTagMeta)) {
+        auto mR = readMetaChunk(meta->data_);
+        if (!mR.ok()) {
+            return Result<DenseVoxelSetFile>::error(
+                mR.status_.code_, std::move(mR.status_.message_)
+            );
+        }
+        out.dense_.meta_ = std::move(mR.value_);
+    }
+    return Result<DenseVoxelSetFile>::success(std::move(out));
 }
 
 } // namespace IRAsset

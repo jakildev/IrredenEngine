@@ -238,8 +238,8 @@ The voxel-set container holds three persistence modes — DENSE (per-voxel
 records, T-167), SHAPES (SDF composition, T-168), HYBRID (DENSE + SHAPES,
 T-668) — under one magic (`VXS1`) and one version (`kVoxelSetVersion = 1`).
 Magic + version together govern the **container**; per-record additive
-versioning (`kShapeRecordVersion`) covers field-level evolution inside
-records (Extensibility Rule #3).
+versioning (`kShapeRecordVersion`, `kVoxelRecordVersion`) covers
+field-level evolution inside records (Extensibility Rule #3).
 
 Container chunks:
 
@@ -254,6 +254,21 @@ Container chunks:
 - `SHPG` — SHAPES-mode primitive records (`ShapeRecord` array). Records
   with an unresolvable disk-side `ShapeType` are skipped and counted
   in `unknownShapesSkipped_`.
+- `BNDS` — DENSE-mode bounds. Six i32 (`min.xyz, max.xyz`); inclusive
+  min, exclusive max. `voxelCount() = (max - min).x * .y * .z`.
+- `VOXR` — DENSE-mode per-voxel records. `kVoxelRecordVersion` u16 +
+  varuint count + tightly-packed 12 B records matching `C_Voxel`. A
+  count mismatch against the bounds-derived voxel volume logs a warning
+  and proceeds with the chunk's count (Rule #5).
+- `LAYR` — DENSE-mode named layer membership bitmasks. One layer is
+  `(name, ceil(voxelCount/64) u64 words)`; bit i = membership of voxel
+  i.
+- `FRAM` — DENSE-mode per-frame position offsets. Each frame is
+  `(frameIndex u32, varuint offsetCount, offsetCount × vec3)`. A frame
+  whose `offsetCount != voxelCount` is dropped and counted in
+  `skippedFrames_` so a corrupt or partial frame can't corrupt the
+  whole asset.
+- `META` — DENSE-mode free-form `(key, value)` UTF-8 string pairs.
 
 SHPG record layout (one per primitive):
 
@@ -277,6 +292,14 @@ High-level entry points:
   unknownShapesSkipped_ }` after resolving SREF and SHPG. Container
   errors (`BadMagic`, `VersionTooNew`, truncation, chunk-out-of-bounds)
   surface as `BinaryIOError` results.
+- `saveDenseVoxelSet(path, DenseVoxelSet)` — writes MODE=DENSE plus
+  BNDS, VOXR, and (if non-empty) LAYR / FRAM / META chunks.
+- `loadDenseVoxelSet(path)` — returns `DenseVoxelSetFile { mode_,
+  dense_, skippedFrames_ }`. Loading a SHAPES-only file through this
+  path is a no-op: `mode_ = SHAPES` and `dense_` stays empty. Callers
+  that need both halves of a HYBRID save invoke `loadShapeGroup` and
+  `loadDenseVoxelSet` against the same path until T-668 ships the
+  unified entry point.
 
 For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
 `engine/prefabs/irreden/asset/voxel_set_io.hpp` (`#include
