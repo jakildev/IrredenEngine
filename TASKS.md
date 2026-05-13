@@ -310,11 +310,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints** — additive BIND chunk in .rig format persisting per-joint named anchor transforms; no version bump to .rig v1
+- [~] **asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints** — additive BIND chunk in .rig format persisting per-joint named anchor transforms; no version bump to .rig v1
   - **ID:** T-171
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** T-169
   - **Acceptance:** (1) BIND chunk: array of {string name, uint32 bone_id, vec3 offset, vec4 rotation}; O(string-hash) lookup at load time; (2) IRAsset::saveRig/loadRig round-trip bind points alongside joints; (3) JSON sidecar lists bind-point names + bone ids; (4) round-trip test: 5 bind points on 30-bone snake rig, entity:bindPoint() returns identical world-space transforms pre/post; (5) forward compat: .rig without BIND loads with empty bind-point map; (6) forward compat: old build skips unknown BIND chunk (Extensibility Rule #1); (7) fleet-build clean on linux-debug
   - **Issue:** #669
