@@ -2,7 +2,6 @@
 
 #include <irreden/ir_profile.hpp>
 
-#include <cstring>
 #include <utility>
 
 namespace IRAsset {
@@ -105,10 +104,11 @@ ChunkPayload makeModeChunk(VoxelSetMode mode) {
         IRE_LOG_ERROR("makeModeChunk: refusing to persist VoxelSetMode::UNKNOWN");
         return ChunkPayload{kChunkTagMode, {}};
     }
+    MemoryBinaryWriter w;
+    w.writeBytes(tag.data(), tag.size());
     ChunkPayload out;
     out.tag_ = kChunkTagMode;
-    out.data_.resize(4);
-    std::memcpy(out.data_.data(), tag.data(), 4);
+    out.data_ = w.takeBuffer();
     return out;
 }
 
@@ -122,7 +122,8 @@ VoxelSetMode readModeChunk(std::span<const LoadedChunk> chunks) {
         return VoxelSetMode::UNKNOWN;
     }
     std::array<char, 4> tag{};
-    std::memcpy(tag.data(), mode->data_.data(), 4);
+    MemoryBinaryReader r(mode->data_.data(), 4, "<MODE chunk>");
+    r.readBytes(tag.data(), 4);
     if (tagsEqual(tag, kModeTagDense))
         return VoxelSetMode::DENSE;
     if (tagsEqual(tag, kModeTagShapes))
@@ -184,10 +185,8 @@ ChunkPayload makeShapeGroupChunk(std::span<const ShapeRecord> records) {
     return out;
 }
 
-Result<ShapeGroupLoadResult> readShapeGroupChunk(
-    std::span<const std::uint8_t> body,
-    const NameTable &diskShapeTypes
-) {
+Result<ShapeGroupLoadResult>
+readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskShapeTypes) {
     MemoryBinaryReader r(body.data(), body.size(), "<SHPG chunk>");
     auto countR = r.readVarUInt();
     if (!countR.ok()) {
@@ -200,9 +199,7 @@ Result<ShapeGroupLoadResult> readShapeGroupChunk(
     // claiming billions of records doesn't pre-allocate that much.
     const std::uint64_t cap = r.remaining();
     ShapeGroupLoadResult out;
-    out.records_.reserve(
-        static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap)
-    );
+    out.records_.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
 
     NameTable currentTable(buildCurrentShapeTypeNameTable());
 
