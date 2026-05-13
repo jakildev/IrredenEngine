@@ -9,8 +9,9 @@
 // root entity of the group so callers can re-parent or destroy as a unit.
 //
 // Phase 1 renders handles at fixed world-space size. Phase 2 (T-164) adds
-// the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`) and the
-// depth-aware-dimming `SHAPE_FLAG_GIZMO` shader path. Phase 3 will wire
+// the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`) and
+// opts each handle into the generic `SHAPE_FLAG_XRAY_OCCLUDED` shader path
+// so occluded handles still read as a faint silhouette. Phase 3 will wire
 // hover detection + drag interaction once T-153 (mouse picking) lands.
 
 #include <irreden/ir_entity.hpp>
@@ -100,11 +101,11 @@ inline IREntity::EntityId spawnHandle(
     Color color,
     const char *name
 ) {
-    // Tag the shape descriptor with SHAPE_FLAG_GIZMO so the SHAPES_TO_TRIXEL
-    // shader knows to emit the faint-silhouette alpha blend where the handle
-    // sits behind world geometry (T-164 Phase 2).
+    // Opt the handle's shape into the generic xray-occlusion shader path so
+    // SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where the
+    // handle sits behind closer geometry (T-164 Phase 2).
     C_ShapeDescriptor shapeDesc{shapeType, shapeParams, color};
-    shapeDesc.flags_ = IRRender::SHAPE_FLAG_VISIBLE | IRRender::SHAPE_FLAG_GIZMO;
+    shapeDesc.flags_ = IRRender::SHAPE_FLAG_VISIBLE | IRRender::SHAPE_FLAG_XRAY_OCCLUDED;
 
     // Capture the construction-time reference values on the handle. The
     // Phase 2 screen-space sizing system reads `referenceParams_` /

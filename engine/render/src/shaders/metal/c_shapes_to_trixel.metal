@@ -57,13 +57,14 @@ constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_CHECKERBOARD = 32u;
 constant uint FLAG_DEPTH_COLOR  = 64u;
-constant uint FLAG_GIZMO        = 128u;
+constant uint FLAG_XRAY_OCCLUDED = 128u;
 
-// Editor-gizmo silhouette intensity. When a SHAPE_FLAG_GIZMO fragment
-// loses the atomicMin contest against world geometry, pass 1 blends the
-// gizmo color over the existing canvas pixel at this alpha so the handle
-// remains visible as a faint silhouette through walls.
-constant float kGizmoOccludedAlpha = 0.25;
+// X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
+// loses the atomicMin contest against geometry that's already won the
+// pixel, pass 1 blends the shape color over the existing canvas pixel
+// at this alpha so the shape still reads as a faint silhouette through
+// the occluder.
+constant float kXrayOccludedAlpha = 0.25;
 
 // FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
 // FMA-reordered across GPU scheduling, so a mathematically-integer entry
@@ -808,9 +809,10 @@ kernel void c_shapes_to_trixel(
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
     device atomic_int* distanceScratch [[buffer(16)]],
-    // `triangleCanvasColors` is read+write (not write-only) so the gizmo
-    // occluded-blend branch in pass 1 can load the existing pixel and
-    // blend SHAPE_FLAG_GIZMO output on top at reduced alpha (T-164).
+    // `triangleCanvasColors` is read+write (not write-only) so the
+    // SHAPE_FLAG_XRAY_OCCLUDED branch in pass 1 can load the existing
+    // pixel and blend the occluded shape's color on top at reduced alpha
+    // (T-164).
     texture2d<float, access::read_write> triangleCanvasColors [[texture(0)]],
     texture2d<int, access::write> triangleCanvasDistances [[texture(1)]],
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
@@ -998,7 +1000,7 @@ kernel void c_shapes_to_trixel(
         }
     }
 
-    const bool isGizmo = (shape.flags & FLAG_GIZMO) != 0u;
+    const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
@@ -1033,19 +1035,18 @@ kernel void c_shapes_to_trixel(
                         int4(depthEncoded, 0, 0, 0), pix);
                     triangleCanvasEntityIds.write(
                         uint4(shape.entityId, 0u, 0u, 0u), pix);
-                } else if (isGizmo && depthEncoded > stored) {
-                    // Gizmo lost the atomicMin contest — something closer
-                    // (a voxel or a non-gizmo shape, occasionally another
-                    // gizmo) owns this pixel. Blend the gizmo color over
-                    // the existing canvas color at reduced alpha so the
-                    // handle still reads as a faint silhouette through
-                    // the occluder.
+                } else if (xrayOccluded && depthEncoded > stored) {
+                    // This shape lost the atomicMin contest — something
+                    // closer owns the pixel. Blend its color over the
+                    // existing canvas color at reduced alpha so the shape
+                    // still reads as a faint silhouette through the
+                    // occluder.
                     // Non-atomic RMW: racing stores produce one mix level
                     // instead of two — the dimming is visually
                     // indistinguishable; no coord-level race risk.
                     const float4 existing = triangleCanvasColors.read(pix);
                     const float3 blended = mix(existing.rgb, baseColor.rgb,
-                                               kGizmoOccludedAlpha);
+                                               kXrayOccludedAlpha);
                     triangleCanvasColors.write(
                         float4(blended, existing.a), pix);
                     // Deliberately do not write entity id: picking should

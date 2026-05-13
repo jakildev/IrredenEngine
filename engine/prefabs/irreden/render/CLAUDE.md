@@ -128,13 +128,17 @@ Phase 2 (T-164) wires the runtime polish: the
 `GIZMO_SCREEN_SPACE_SIZE` UPDATE-pipeline system scales each handle's
 `C_ShapeDescriptor::params_` (and the child-handle local position)
 inversely with camera zoom so handles render at constant pixel size
-across the editor's zoom range. The same task adds a `SHAPE_FLAG_GIZMO`
-bit to `ShapeFlags` plus a matching path in
-`c_shapes_to_trixel.glsl` / `c_shapes_to_trixel.metal` that blends the
-gizmo color over the existing canvas pixel at reduced alpha where the
-handle sits behind world geometry — the faint silhouette is what makes
-occluded handles still readable. Hover + drag interaction lands once
-T-153 mouse picking is in place (Phase 3, blocked by T-153).
+across the editor's zoom range. The same task adds the generic
+`SHAPE_FLAG_XRAY_OCCLUDED` bit to `ShapeFlags` and the matching path in
+`c_shapes_to_trixel.glsl` / `c_shapes_to_trixel.metal` — the shader
+knows nothing about gizmos; it blends a flagged shape's color over the
+existing canvas pixel at reduced alpha wherever it loses the depth
+contest. The gizmo builders opt every spawned handle into the flag so
+occluded handles still read as a faint silhouette. Any other prefab
+that needs a "see through walls" overlay (selection highlight, debug
+marker) can opt in the same way without touching engine/render/.
+Hover + drag interaction lands once T-153 mouse picking is in place
+(Phase 3, blocked by T-153).
 
 ## Trixel UI widget framework
 
