@@ -270,6 +270,15 @@ or any `c_compute_*shadow*.glsl` / `.metal`)
 - ❌ Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
 - ❌ PlaneIso axis swapped.
 
+**Serialization** (when the diff touches `engine/asset/`, `engine/prefabs/irreden/voxel/`, or `engine/world/`)
+- ❌ A struct annotated `// IRAsset: serialized` gained, lost, or renamed a field without
+  bumping `static constexpr uint16_t kSaveVersion = N;` in the same diff.
+  Fix: increment `kSaveVersion` and add a reader migration keyed on
+  `(structType, oldVersion)` in the format's load function. (Save Format Extensibility Rule #3.)
+- ❌ A new serialized record type with no `// IRAsset: serialized` annotation — the
+  simplify and review-pr checks cannot guard it without the annotation. Add the annotation
+  and set `kSaveVersion = 1` on the struct.
+
 **Naming / style**
 - ❌ `m_` on public members, trailing `_` on private members (backwards).
 - ❌ `MinimapDetail`-style feature-specific helper namespaces instead of
