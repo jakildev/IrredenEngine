@@ -310,18 +310,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Editor: migrate LayoutState to C_LayoutState singleton component** — replace inline g_layout header variable with a singleton ECS component; update all systems to fetch via getOrCreateSingleton
-  - **ID:** T-174
-  - **Area:** engine/prefabs/irreden/render, creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-174-layout-state-singleton
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) C_LayoutState component defined with all fields from LayoutState struct (nodes_, root_, rootPos_, rootSize_, splitter/panel drag fields); (2) layout.hpp free functions fetch state via IREntity::getOrCreateSingleton<C_LayoutState>(); (3) WIDGET_RENDER_DOCK_PREVIEW filters on C_LayoutState (tick fires once per frame, no-op body removed); (4) inline LayoutState g_layout and struct LayoutState fully removed; (5) IRUiDockspace serialize/deserialize round-trip still logs OK; (6) fleet-build clean on linux-debug
-  - **Issue:** #674
-  - **Notes:** Escalated from PR #641 (T-148 Opus recheck). The inline g_layout deviates from the engine's prefab-scoped singleton pattern (see fog_of_war.hpp, IREntity::getOrCreateSingleton). Migration is a forward-looking refactor enabling multi-dockspace, serialization via ECS save path, and inspector tooling.
-  - **Links:**
-
-
 - [~] **Move C_Voxel into namespace IRComponents** — restore namespace symmetry with VoxelFlags; update all callers in engine/ and creations/
   - **ID:** T-175
   - **Area:** engine/prefabs/irreden/voxel/components
@@ -337,6 +325,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/683
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
@@ -356,4 +345,3 @@ Avoid:
 - [x] **T-154** — Migrate hitbox GUI system to member-on-System<N> · Owner: claude/T-154-hitbox-gui-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/636
 - [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
-- [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
