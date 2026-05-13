@@ -309,22 +309,11 @@ Avoid:
   - **Notes:** Phase 5 of editor epic (#608). Lua-defined components are out of scope (separate epic). Component palette UI in #608 produces prefab Lua tables matching this schema. New files: prefab_api.hpp, prefab_api.cpp, lua_bindings_prefab.cpp.
   - **Links:**
 
-
-- [~] **Move C_Voxel into namespace IRComponents** — restore namespace symmetry with VoxelFlags; update all callers in engine/ and creations/
-  - **ID:** T-175
-  - **Area:** engine/prefabs/irreden/voxel/components
-  - **Model:** sonnet
-  - **Owner:** claude/T-175-cvoxel-ircomponents
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) C_Voxel struct moved into IRComponents namespace in component_voxel.hpp; (2) VoxelFlags in same namespace (symmetry restored); (3) all callers in engine/ and creations/ updated; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #680
-  - **Notes:** Pre-existing asymmetry surfaced in PR #635 review. Mechanical rename; touches all callers. No behavioral change.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/684
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/683
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
@@ -344,4 +333,3 @@ Avoid:
 - [x] **T-155** — Migrate GPU-compute cluster to member-on-System<N> · Owner: claude/T-155-gpu-compute-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/637
 - [x] **T-154** — Migrate hitbox GUI system to member-on-System<N> · Owner: claude/T-154-hitbox-gui-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/636
 - [x] **T-145** — Editor F-0.1: trixel UI primitives · Owner: claude/T-145-trixel-ui-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/631
-- [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
