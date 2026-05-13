@@ -124,6 +124,18 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         C_TriangleCanvasTextures &triangleCanvasTextures
     ) {
         const int liveVoxelCount = voxelPool.getLiveVoxelCount();
+
+        // Per-frame canvas clear runs unconditionally — every downstream
+        // writer (shapes, stateless/GPU particles, text overlays, lighting)
+        // assumes the canvas color + distance + entity-id textures start
+        // each frame at their clear values. Gating the clear on
+        // `liveVoxelCount > 0` smeared frame-over-frame content for any
+        // canvas with a voxel pool but zero live voxels (e.g. the
+        // stateless-particles demo, any pure-shape or pure-particle scene).
+        // Keep this above the early-return so an empty voxel pool no
+        // longer dictates whether the canvas refreshes.
+        clearCanvasAndDistances(entity, triangleCanvasTextures);
+
         if (liveVoxelCount == 0)
             return;
 
@@ -151,8 +163,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             previousRenderMode_ = renderMode;
             previousEffectiveSubdivisions_ = effectiveSub;
         }
-
-        clearCanvasAndDistances(entity, triangleCanvasTextures);
 
         // Sun direction and sweep distance are resolved once per
         // frame in beginTick (via IRPrefab::SunShadow::getFrameSunDirection)
