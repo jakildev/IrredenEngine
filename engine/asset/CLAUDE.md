@@ -296,10 +296,14 @@ High-level entry points:
   BNDS, VOXR, and (if non-empty) LAYR / FRAM / META chunks.
 - `loadDenseVoxelSet(path)` — returns `DenseVoxelSetFile { mode_,
   dense_, skippedFrames_ }`. Loading a SHAPES-only file through this
-  path is a no-op: `mode_ = SHAPES` and `dense_` stays empty. Callers
-  that need both halves of a HYBRID save invoke `loadShapeGroup` and
-  `loadDenseVoxelSet` against the same path until T-668 ships the
-  unified entry point.
+  path is a no-op: `mode_ = SHAPES` and `dense_` stays empty.
+- `saveVoxelSet(path, span<ShapeRecord>, DenseVoxelSet)` — writes
+  MODE=HYBRID with SREF + SHPG (shapes) and BNDS + VOXR (dense). Also
+  emits a `.vxs.json` sidecar at `path + ".json"` (Rule #6).
+- `loadVoxelSet(path)` — unified loader; returns `VoxelSetAllFile {
+  mode_, shapeRecords_, dense_, ... }`. Works for all three modes —
+  SHAPES-only leaves `dense_` empty; DENSE-only leaves `shapeRecords_`
+  empty; HYBRID populates both.
 
 For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
 `engine/prefabs/irreden/asset/voxel_set_io.hpp` (`#include
