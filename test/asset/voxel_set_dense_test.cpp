@@ -475,4 +475,35 @@ TEST(VoxelSetDense, UnknownChunkSilentlySkipped) {
     std::remove(path.c_str());
 }
 
+TEST(VoxelSetDense, BoundsPresentVoxRMissingLoadsWithEmptyVoxels) {
+    // Malformed save: BNDS chunk claims a non-zero voxel volume but the
+    // VOXR chunk is absent. Loader must succeed (Rule #5) with bounds
+    // populated and `voxels_` empty — the doc-comment on
+    // `DenseVoxelSetFile` requires the caller to validate
+    // `voxels_.size() == voxelCount()` before indexing.
+    std::vector<ChunkPayload> chunks = {
+        makeModeChunk(VoxelSetMode::DENSE),
+        makeBoundsChunk(ivec3(0), ivec3(2, 2, 2)),
+        // No VOXR.
+    };
+
+    MemoryBinaryWriter w;
+    ASSERT_TRUE(writeChunked(w, kVoxelSetMagic, kVoxelSetVersion, chunks).ok());
+
+    const std::string path = kTmpDir + "/vxs_dense_missing_voxr.vxs";
+    {
+        std::FILE *fp = std::fopen(path.c_str(), "wb");
+        ASSERT_NE(fp, nullptr);
+        std::fwrite(w.buffer().data(), 1, w.buffer().size(), fp);
+        std::fclose(fp);
+    }
+
+    auto loaded = loadDenseVoxelSet(path);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_EQ(loaded.value_.mode_, VoxelSetMode::DENSE);
+    EXPECT_EQ(loaded.value_.dense_.voxelCount(), 8u);
+    EXPECT_TRUE(loaded.value_.dense_.voxels_.empty());
+    std::remove(path.c_str());
+}
+
 } // namespace

@@ -240,13 +240,20 @@ struct DenseVoxelSet {
     std::vector<FramePose> frames_;
     std::vector<MetaEntry> meta_;
 
+    /// Bounds-derived voxel slot count. Adversarially large positive
+    /// dimensions can wrap `std::size_t` (three values near INT32_MAX
+    /// product to ~9.9e27, which exceeds u64). The wrap is benign in
+    /// practice because the downstream `readVoxelRecordsChunk` reserve
+    /// cap (`remaining_bytes / 12`) bounds any actual allocation, so
+    /// the only observable effect is a spurious VOXR count-mismatch
+    /// warning. Callers indexing `DenseVoxelSet::voxels_` must still
+    /// validate `voxels_.size() == voxelCount()` before random access.
     std::size_t voxelCount() const {
         const ivec3 d = boundsMax_ - boundsMin_;
         if (d.x <= 0 || d.y <= 0 || d.z <= 0) {
             return 0;
         }
-        return static_cast<std::size_t>(d.x) *
-               static_cast<std::size_t>(d.y) *
+        return static_cast<std::size_t>(d.x) * static_cast<std::size_t>(d.y) *
                static_cast<std::size_t>(d.z);
     }
 };
@@ -297,10 +304,8 @@ struct ShapeGroupLoadResult {
 /// is dropped and counted in `unknownShapesSkipped_`. If
 /// @p diskShapeTypes is empty, the disk-side numeric id is taken
 /// verbatim (legacy save with no SREF chunk).
-Result<ShapeGroupLoadResult> readShapeGroupChunk(
-    std::span<const std::uint8_t> body,
-    const NameTable &diskShapeTypes
-);
+Result<ShapeGroupLoadResult>
+readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskShapeTypes);
 
 // ---- BNDS chunk --------------------------------------------------------
 
@@ -329,10 +334,8 @@ struct VoxelRecordsLoadResult {
 /// Parse a VOXR chunk body. @p expectedCount comes from the BNDS
 /// volume; a mismatch is logged and the loader trusts the chunk's own
 /// varuint count (Rule #5 — recoverable, never fatal).
-Result<VoxelRecordsLoadResult> readVoxelRecordsChunk(
-    std::span<const std::uint8_t> body,
-    std::size_t expectedCount
-);
+Result<VoxelRecordsLoadResult>
+readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCount);
 
 // ---- LAYR chunk --------------------------------------------------------
 
@@ -361,10 +364,8 @@ struct FramesLoadResult {
 /// Parse a FRAM chunk body. A frame whose `offsetCount != voxelCount`
 /// is read in full (so the next frame's offset is correct) but dropped
 /// from the result; the skip count surfaces in `skippedFrames_`.
-Result<FramesLoadResult> readFramesChunk(
-    std::span<const std::uint8_t> body,
-    std::size_t voxelCount
-);
+Result<FramesLoadResult>
+readFramesChunk(std::span<const std::uint8_t> body, std::size_t voxelCount);
 
 // ---- META chunk --------------------------------------------------------
 
@@ -408,6 +409,13 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
 /// Loader-side view of a DENSE-mode `.vxs` file. `mode_` is read from
 /// the MODE chunk; `dense_` is populated from BNDS + VOXR + LAYR +
 /// FRAM + META. `skippedFrames_` carries the FRAM-chunk diagnostic.
+///
+/// Per Extensibility Rule #5 (unknown is recoverable, never fatal),
+/// partial loads can leave `dense_.voxels_.size() != dense_.voxelCount()`
+/// — e.g. a malformed file with BNDS present but VOXR absent loads as
+/// `dense_.voxels_.empty()` with `dense_.voxelCount() > 0`, plus a
+/// warning log. **Callers that index `dense_.voxels_` must validate
+/// `voxels_.size() == dense_.voxelCount()` before random access.**
 struct DenseVoxelSetFile {
     VoxelSetMode mode_ = VoxelSetMode::UNKNOWN;
     DenseVoxelSet dense_;

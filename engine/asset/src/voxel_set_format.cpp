@@ -376,21 +376,21 @@ ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
     return out;
 }
 
-Result<VoxelRecordsLoadResult> readVoxelRecordsChunk(
-    std::span<const std::uint8_t> body,
-    std::size_t expectedCount
-) {
+Result<VoxelRecordsLoadResult>
+readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCount) {
     MemoryBinaryReader r(body.data(), body.size(), "<VOXR chunk>");
     auto verR = r.readU16();
     if (!verR.ok()) {
         return Result<VoxelRecordsLoadResult>::error(
-            verR.status_.code_, std::move(verR.status_.message_)
+            verR.status_.code_,
+            std::move(verR.status_.message_)
         );
     }
     auto countR = r.readVarUInt();
     if (!countR.ok()) {
         return Result<VoxelRecordsLoadResult>::error(
-            countR.status_.code_, std::move(countR.status_.message_)
+            countR.status_.code_,
+            std::move(countR.status_.message_)
         );
     }
     if (countR.value_ != static_cast<std::uint64_t>(expectedCount)) {
@@ -414,37 +414,43 @@ Result<VoxelRecordsLoadResult> readVoxelRecordsChunk(
         auto colorR = r.readU32();
         if (!colorR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                colorR.status_.code_, std::move(colorR.status_.message_)
+                colorR.status_.code_,
+                std::move(colorR.status_.message_)
             );
         v.color_ = unpackColor(colorR.value_);
         auto matR = r.readU8();
         if (!matR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                matR.status_.code_, std::move(matR.status_.message_)
+                matR.status_.code_,
+                std::move(matR.status_.message_)
             );
         v.material_id_ = matR.value_;
         auto flagsR = r.readU8();
         if (!flagsR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                flagsR.status_.code_, std::move(flagsR.status_.message_)
+                flagsR.status_.code_,
+                std::move(flagsR.status_.message_)
             );
         v.flags_ = flagsR.value_;
         auto boneR = r.readU8();
         if (!boneR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                boneR.status_.code_, std::move(boneR.status_.message_)
+                boneR.status_.code_,
+                std::move(boneR.status_.message_)
             );
         v.bone_id_ = boneR.value_;
         auto padR = r.readU8();
         if (!padR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                padR.status_.code_, std::move(padR.status_.message_)
+                padR.status_.code_,
+                std::move(padR.status_.message_)
             );
         v.pad0_ = padR.value_;
         auto resR = r.readU32();
         if (!resR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                resR.status_.code_, std::move(resR.status_.message_)
+                resR.status_.code_,
+                std::move(resR.status_.message_)
             );
         v.reserved_ = resR.value_;
         out.voxels_.push_back(v);
@@ -475,7 +481,8 @@ Result<std::vector<LayerInfo>> readLayersChunk(std::span<const std::uint8_t> bod
     auto countR = r.readVarUInt();
     if (!countR.ok()) {
         return Result<std::vector<LayerInfo>>::error(
-            countR.status_.code_, std::move(countR.status_.message_)
+            countR.status_.code_,
+            std::move(countR.status_.message_)
         );
     }
     std::vector<LayerInfo> out;
@@ -486,27 +493,28 @@ Result<std::vector<LayerInfo>> readLayersChunk(std::span<const std::uint8_t> bod
         auto nameR = r.readString();
         if (!nameR.ok())
             return Result<std::vector<LayerInfo>>::error(
-                nameR.status_.code_, std::move(nameR.status_.message_)
+                nameR.status_.code_,
+                std::move(nameR.status_.message_)
             );
         layer.name_ = std::move(nameR.value_);
         auto wordCountR = r.readVarUInt();
         if (!wordCountR.ok())
             return Result<std::vector<LayerInfo>>::error(
-                wordCountR.status_.code_, std::move(wordCountR.status_.message_)
+                wordCountR.status_.code_,
+                std::move(wordCountR.status_.message_)
             );
         // Cap u64 word count by remaining bytes / 8 to defuse a corrupted
         // count that claims billions of words.
         const std::uint64_t maxWords = r.remaining() / 8;
         layer.bitmask_.reserve(
-            static_cast<std::size_t>(
-                wordCountR.value_ < maxWords ? wordCountR.value_ : maxWords
-            )
+            static_cast<std::size_t>(wordCountR.value_ < maxWords ? wordCountR.value_ : maxWords)
         );
         for (std::uint64_t w_i = 0; w_i < wordCountR.value_; ++w_i) {
             auto wordR = r.readU64();
             if (!wordR.ok())
                 return Result<std::vector<LayerInfo>>::error(
-                    wordR.status_.code_, std::move(wordR.status_.message_)
+                    wordR.status_.code_,
+                    std::move(wordR.status_.message_)
                 );
             layer.bitmask_.push_back(wordR.value_);
         }
@@ -533,15 +541,14 @@ ChunkPayload makeFramesChunk(std::span<const FramePose> frames) {
     return out;
 }
 
-Result<FramesLoadResult> readFramesChunk(
-    std::span<const std::uint8_t> body,
-    std::size_t voxelCount
-) {
+Result<FramesLoadResult>
+readFramesChunk(std::span<const std::uint8_t> body, std::size_t voxelCount) {
     MemoryBinaryReader r(body.data(), body.size(), "<FRAM chunk>");
     auto frameCountR = r.readVarUInt();
     if (!frameCountR.ok()) {
         return Result<FramesLoadResult>::error(
-            frameCountR.status_.code_, std::move(frameCountR.status_.message_)
+            frameCountR.status_.code_,
+            std::move(frameCountR.status_.message_)
         );
     }
     FramesLoadResult out;
@@ -553,12 +560,14 @@ Result<FramesLoadResult> readFramesChunk(
         auto frameIdxR = r.readU32();
         if (!frameIdxR.ok())
             return Result<FramesLoadResult>::error(
-                frameIdxR.status_.code_, std::move(frameIdxR.status_.message_)
+                frameIdxR.status_.code_,
+                std::move(frameIdxR.status_.message_)
             );
         auto offCountR = r.readVarUInt();
         if (!offCountR.ok())
             return Result<FramesLoadResult>::error(
-                offCountR.status_.code_, std::move(offCountR.status_.message_)
+                offCountR.status_.code_,
+                std::move(offCountR.status_.message_)
             );
         FramePose frame;
         frame.frameIndex_ = frameIdxR.value_;
@@ -566,15 +575,14 @@ Result<FramesLoadResult> readFramesChunk(
         constexpr std::uint64_t kVec3Bytes = 12;
         const std::uint64_t maxOffsets = r.remaining() / kVec3Bytes;
         frame.offsets_.reserve(
-            static_cast<std::size_t>(
-                offCountR.value_ < maxOffsets ? offCountR.value_ : maxOffsets
-            )
+            static_cast<std::size_t>(offCountR.value_ < maxOffsets ? offCountR.value_ : maxOffsets)
         );
         for (std::uint64_t off_i = 0; off_i < offCountR.value_; ++off_i) {
             auto vR = readVec3(r);
             if (!vR.ok())
                 return Result<FramesLoadResult>::error(
-                    vR.status_.code_, std::move(vR.status_.message_)
+                    vR.status_.code_,
+                    std::move(vR.status_.message_)
                 );
             frame.offsets_.push_back(vR.value_);
         }
@@ -613,7 +621,8 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
     auto countR = r.readVarUInt();
     if (!countR.ok()) {
         return Result<std::vector<MetaEntry>>::error(
-            countR.status_.code_, std::move(countR.status_.message_)
+            countR.status_.code_,
+            std::move(countR.status_.message_)
         );
     }
     std::vector<MetaEntry> out;
@@ -624,13 +633,15 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
         auto keyR = r.readString();
         if (!keyR.ok())
             return Result<std::vector<MetaEntry>>::error(
-                keyR.status_.code_, std::move(keyR.status_.message_)
+                keyR.status_.code_,
+                std::move(keyR.status_.message_)
             );
         entry.key_ = std::move(keyR.value_);
         auto valR = r.readString();
         if (!valR.ok())
             return Result<std::vector<MetaEntry>>::error(
-                valR.status_.code_, std::move(valR.status_.message_)
+                valR.status_.code_,
+                std::move(valR.status_.message_)
             );
         entry.value_ = std::move(valR.value_);
         out.push_back(std::move(entry));
@@ -757,7 +768,8 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
     auto boundsR = readBoundsChunk(bndsChunk->data_);
     if (!boundsR.ok()) {
         return Result<DenseVoxelSetFile>::error(
-            boundsR.status_.code_, std::move(boundsR.status_.message_)
+            boundsR.status_.code_,
+            std::move(boundsR.status_.message_)
         );
     }
     out.dense_.boundsMin_ = boundsR.value_.boundsMin_;
@@ -768,18 +780,31 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
         if (!vR.ok()) {
             return Result<DenseVoxelSetFile>::error(
-                vR.status_.code_, std::move(vR.status_.message_)
+                vR.status_.code_,
+                std::move(vR.status_.message_)
             );
         }
         out.dense_.recordVersion_ = vR.value_.recordVersion_;
         out.dense_.voxels_ = std::move(vR.value_.voxels_);
+    } else if (expectedCount > 0) {
+        // BNDS present but VOXR absent → malformed save. Rule #5
+        // requires we proceed (caller may still want the bounds), but
+        // log loudly so the caller knows `voxels_` is empty while
+        // `voxelCount()` reports a positive number.
+        IRE_LOG_WARN(
+            "loadDenseVoxelSet: BNDS present (voxelCount={}) but VOXR "
+            "chunk missing in '{}'; voxels_ left empty",
+            expectedCount,
+            path
+        );
     }
 
     if (const LoadedChunk *layr = findChunk(chunksR.value_, kChunkTagLayers)) {
         auto lR = readLayersChunk(layr->data_);
         if (!lR.ok()) {
             return Result<DenseVoxelSetFile>::error(
-                lR.status_.code_, std::move(lR.status_.message_)
+                lR.status_.code_,
+                std::move(lR.status_.message_)
             );
         }
         out.dense_.layers_ = std::move(lR.value_);
@@ -789,7 +814,8 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         auto fR = readFramesChunk(fram->data_, expectedCount);
         if (!fR.ok()) {
             return Result<DenseVoxelSetFile>::error(
-                fR.status_.code_, std::move(fR.status_.message_)
+                fR.status_.code_,
+                std::move(fR.status_.message_)
             );
         }
         out.dense_.frames_ = std::move(fR.value_.frames_);
@@ -800,7 +826,8 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         auto mR = readMetaChunk(meta->data_);
         if (!mR.ok()) {
             return Result<DenseVoxelSetFile>::error(
-                mR.status_.code_, std::move(mR.status_.message_)
+                mR.status_.code_,
+                std::move(mR.status_.message_)
             );
         }
         out.dense_.meta_ = std::move(mR.value_);
