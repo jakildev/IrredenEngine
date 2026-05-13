@@ -262,11 +262,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
+- [~] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
   - **ID:** T-170
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** T-167
   - **Acceptance:** (1) MODE chunk gains HYBRID tag; (2) IRAsset::saveVoxelSet accepts both dense records + shape descriptors in one call; (3) loader returns struct with both populated; (4) .vxs.json sidecar emitted via json_sidecar.hpp (version, mode, bounds, material_registry_refs, layer_names, frame_count, shape_primitives_summary); (5) test suite covers dense round-trip, shape-group round-trip, hybrid (5 shapes + 50 dense voxels) round-trip, corrupt-magic, truncated mid-VOXR, version-too-new, unknown chunk tag, unknown ShapeType id; (6) fleet-build clean on linux-debug
   - **Issue:** #668
