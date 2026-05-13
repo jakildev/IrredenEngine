@@ -8,10 +8,11 @@
 // `C_GizmoHandle` marker for the upcoming interaction work. Returns the
 // root entity of the group so callers can re-parent or destroy as a unit.
 //
-// Phase 1 renders handles at fixed world-space size. Phase 2 will add a
-// per-frame screen-space scaling system and a depth-aware-dimming shader
-// path; Phase 3 will wire hover detection + drag interaction once
-// T-153 (mouse picking) lands.
+// Phase 1 renders handles at fixed world-space size. Phase 2 (T-164) adds
+// the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`) and
+// opts each handle into the generic `SHAPE_FLAG_XRAY_OCCLUDED` shader path
+// so occluded handles still read as a faint silhouette. Phase 3 will wire
+// hover detection + drag interaction once T-153 (mouse picking) lands.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -100,14 +101,28 @@ inline IREntity::EntityId spawnHandle(
     Color color,
     const char *name
 ) {
-    // C_PositionGlobal3D + C_PositionOffset3D injected by createEntity
+    // Opt the handle's shape into the generic xray-occlusion shader path so
+    // SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where the
+    // handle sits behind closer geometry (T-164 Phase 2).
+    C_ShapeDescriptor shapeDesc{shapeType, shapeParams, color};
+    shapeDesc.flags_ = IRRender::SHAPE_FLAG_VISIBLE | IRRender::SHAPE_FLAG_XRAY_OCCLUDED;
+
+    // Capture the construction-time reference values on the handle. The
+    // Phase 2 screen-space sizing system reads `referenceParams_` /
+    // `referenceLocalPos_` as the unscaled baseline and writes
+    // (baseline × pixelSize / zoom) back to the sibling components each
+    // UPDATE tick. `isAnchor_` is true for single-entity markers whose
+    // own `C_Position3D` is the world-space anchor (the editor writes it
+    // post-construction) — Phase 2 then scales params but leaves pos
+    // alone so the editor placement isn't clobbered.
+    const bool isAnchor = (parent == IREntity::kNullEntity);
     IREntity::EntityId handle = IREntity::createEntity(
         C_Position3D{localPos},
-        C_ShapeDescriptor{shapeType, shapeParams, color},
-        C_GizmoHandle{kind, axis},
+        shapeDesc,
+        C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor},
         C_Name{name}
     );
-    if (parent != IREntity::kNullEntity) {
+    if (!isAnchor) {
         IREntity::setParent(handle, parent);
     }
     return handle;

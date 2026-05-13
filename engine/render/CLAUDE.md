@@ -176,6 +176,38 @@ For the two viable patterns for exposing feature API from the prefab layer, see
 `engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API from
 the prefab layer".
 
+### Name identifiers after the rendering effect, not the caller
+
+The same separation extends past C++ APIs into **type identifiers, shader
+constants, shader variables, and the comments around them.** Anything that
+lives under `engine/render/` — `ir_render_types.hpp`, `engine/render/src/shaders/`
+(GLSL), `engine/render/src/shaders/metal/` (Metal) — names what the renderer
+*does*, not which feature is asking for it.
+
+| Layer                       | Allowed                                  | Not allowed                              |
+|-----------------------------|------------------------------------------|------------------------------------------|
+| `ShapeFlags` enum values    | `SHAPE_FLAG_HOLLOW`, `SHAPE_FLAG_CHECKERBOARD`, `SHAPE_FLAG_DEPTH_COLOR`, `SHAPE_FLAG_XRAY_OCCLUDED` | `SHAPE_FLAG_GIZMO`, `SHAPE_FLAG_BUTTON`, `SHAPE_FLAG_ENEMY_HIGHLIGHT` |
+| Shader `FLAG_*` constants   | mirrors of the C++ flag names above       | feature-named mirrors                    |
+| Shader local variables      | `xrayOccluded`, `isHollow`, `parity`      | `isGizmo`, `isWidget`                    |
+| Shader-side tunables        | `kXrayOccludedAlpha`, `kCheckerScale`     | `kGizmoOccludedAlpha`, `kButtonAlpha`    |
+| Doc comments in the above   | "shapes flagged X behave like Y"          | "editor gizmos use this for …"           |
+
+Why: the shader is feature-blind by design. It transforms inputs into pixels;
+it has no idea whether a shape is a gizmo, a HUD marker, or an enemy
+silhouette. A use-case-named identifier in this layer pulls feature concerns
+into the rendering primitive — a second caller wanting the same effect either
+adds a second redundant flag, or perpetuates the misnomer by riding on the
+first feature's name. A behavior-named identifier (HOLLOW, XRAY_OCCLUDED) is
+reusable from day one; the gizmo prefab just sets the flag and the next
+caller (a selection highlight, a debug marker, a "see through walls" mode)
+sets it too. The same principle covers other engine/render/ surfaces — shader
+texture/SSBO binding names, `RenderImpl` method names, debug-overlay enum
+values, etc. — name the graphics effect, not the first user.
+
+This is a specific application of the wider engine/render/ vs prefab/ split
+above: feature names live in the prefab layer (`IRPrefab::Gizmo::`,
+`C_GizmoHandle`, `gizmo.hpp`), behavior names live in the primitive layer.
+
 ### Current deviations
 
 See `.fleet/status/render-api-relocations.md` (queue-manager-owned;

@@ -242,9 +242,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-            // Pass 1: color + entity ID where depth matches
+            // Pass 1: color + entity ID where depth matches. Colors is bound
+            // READ_WRITE (not WRITE_ONLY) so the SHAPE_FLAG_GIZMO occluded-
+            // blend branch in the shader can imageLoad the existing canvas
+            // color and blend the gizmo silhouette on top at reduced alpha
+            // (T-164). Non-gizmo writes are still pure stores; the read
+            // capability is only exercised on the occluded gizmo path.
             canvasTextures.getTextureColors()
-                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
