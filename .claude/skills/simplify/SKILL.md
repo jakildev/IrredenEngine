@@ -219,9 +219,10 @@ Run this check whenever any `.hpp` or `.cpp` file under `engine/asset/`,
 **Detection:**
 
 1. Scan the diff's `+` lines for struct fields (member variable declarations)
-   inside a struct body that is preceded — anywhere in the same file — by the
-   comment `// IRAsset: serialized`. The struct name is on the line with
-   `struct <Name>`.
+   inside a struct body whose `struct <Name>` declaration is preceded **on
+   the immediately prior line** by the comment `// IRAsset: serialized`.
+   The annotation must be on the line directly above `struct <Name>` — an
+   annotation elsewhere in the file does not apply to subsequent structs.
 
 2. For each struct type whose field layout changed (added/removed/renamed
    field on a `+` or `-` line), check whether the diff also contains a

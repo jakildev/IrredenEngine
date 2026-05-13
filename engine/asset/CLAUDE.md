@@ -205,11 +205,13 @@ worked examples live in `docs/design/entity-editor-epic.md`. The summary:
 
 ## Serialized-struct annotation
 
-Any C++ struct whose fields are **directly mapped to bytes on disk** — per-voxel
-records, joint records, bind-point descriptors, world-snapshot component blobs — must
-carry two markers so automated checks can enforce Rule #3:
+Any C++ struct whose fields are **individually serialized into the asset
+format** — per-voxel records, joint records, bind-point descriptors,
+world-snapshot component blobs — must carry two markers so automated checks
+can enforce Rule #3:
 
-1. A `// IRAsset: serialized` line comment on the `struct` declaration.
+1. A `// IRAsset: serialized` line comment on the line immediately
+   preceding the `struct` declaration.
 2. A `static constexpr uint16_t kSaveVersion = N;` inside the struct body.
 
 Example:
@@ -222,9 +224,15 @@ struct JointRecord {
     IRMath::vec4 rotation_{0.f, 0.f, 0.f, 1.f};
     IRMath::vec4 translation_{0.f, 0.f, 0.f, 0.f};
     std::uint32_t parentIndex_ = 0;
-    std::string name_;
+    std::string name_;  // serialized via writeString(), not raw fwrite
 };
 ```
+
+Fixed-size POD fields (numeric scalars, `IRMath::vec*`) are written by
+direct `fwrite` of their bytes; variable-length fields like `std::string`
+go through `writeString()` / `readString()`. The struct itself is not
+`fwrite`'d as a single blob — the per-field serialization is what
+`kSaveVersion` covers.
 
 **When you add, remove, or rename a field:**
 
