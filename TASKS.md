@@ -262,18 +262,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **asset: .vxs v1 shape-group mode (SHPG, SREF chunks) — SDF primitive composition save format** — persist C_ShapeDescriptor instances as SDF primitive composition; new ShapeType values never break existing saves
-  - **ID:** T-168
-  - **Area:** engine/asset, engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-168-vxs-shape-group
-  - **Blocked by:** T-166
-  - **Acceptance:** (1) SHPG chunk: per-primitive record {uint32 shapeTypeId, uint16 version, vec4 params, Color, uint32 flags, uint8 bone_id, vec3 offset, quat rotation, uint8 csgOp}; csgOp ∈ {UNION, SMOOTH_UNION, SUBTRACT, INTERSECT, NONE}; (2) SREF chunk: string name-table for ShapeType enum + material registry refs; (3) MODE chunk gains SHAPES tag; (4) IRAsset::saveVoxelSet overload accepts span<const C_ShapeDescriptor> + optional per-primitive csgOp/transform; (5) loader returns list of C_ShapeDescriptor-shaped records for entity spawning; (6) round-trip test: 5-primitive shape group (sphere/box/capsule mix) save → load → byte-compare; (7) forward-compat test: unknown ShapeType numeric id → logs "unknown shape ID=N name=…, skipped", rest loads; (8) "How to add a new SDF primitive" walkthrough in engine/asset/CLAUDE.md; (9) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #665
-  - **Notes:** Can run in parallel with T-167 after T-166 lands. Persists inputs to SHAPES_TO_TRIXEL pipeline — renders directly via that system, no voxelization needed. CSG tree can land in SHPT chunk later without bumping v1. Hybrid mode (#668) combines SHPG + VOXR.
-  - **Links:**
-
-
 - [~] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
   - **ID:** T-169
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
@@ -291,7 +279,7 @@ Avoid:
   - **Area:** engine/asset
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-167, T-168
+  - **Blocked by:** T-167
   - **Acceptance:** (1) MODE chunk gains HYBRID tag; (2) IRAsset::saveVoxelSet accepts both dense records + shape descriptors in one call; (3) loader returns struct with both populated; (4) .vxs.json sidecar emitted via json_sidecar.hpp (version, mode, bounds, material_registry_refs, layer_names, frame_count, shape_primitives_summary); (5) test suite covers dense round-trip, shape-group round-trip, hybrid (5 shapes + 50 dense voxels) round-trip, corrupt-magic, truncated mid-VOXR, version-too-new, unknown chunk tag, unknown ShapeType id; (6) fleet-build clean on linux-debug
   - **Issue:** #668
   - **Notes:** Synthesis ticket combining T-167 (dense) + T-168 (shape-group) into hybrid mode. Extends voxel_set_format.cpp; test suite in test_voxel_set_format.cpp. Parent epic: #604. Blocks T-173 (prefab Lua format).
@@ -361,6 +349,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
 - [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
@@ -380,4 +369,3 @@ Avoid:
 - [x] **T-144** — Docs: land entity-editor-epic.md canonical reference · Owner: claude/T-144-entity-editor-epic-doc · PR: https://github.com/jakildev/IrredenEngine/pull/630
 - [x] **T-143** — Render: cache resolved sun direction once per frame · Owner: claude/T-143-resolve-sun-direction · PR: https://github.com/jakildev/IrredenEngine/pull/615
 - [x] **T-141** — Demo: Z-Yaw world rotation showcase · Owner: claude/T-141-z-yaw-rotation-demo · PR: https://github.com/jakildev/IrredenEngine/pull/602
-- [x] **T-142** — macOS — fix IRShapeDebug crash in UPDATE_VOXEL_SET_CHILDREN · Owner: claude/T-142-voxel-set-children-crash · PR: https://github.com/jakildev/IrredenEngine/pull/601
