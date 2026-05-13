@@ -322,11 +322,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **tooling: simplify + review-pr serialized-struct version-bump check** — pre-commit and PR-review check that flags serialized struct field changes not accompanied by a kSaveVersion bump
+- [~] **tooling: simplify + review-pr serialized-struct version-bump check** — pre-commit and PR-review check that flags serialized struct field changes not accompanied by a kSaveVersion bump
   - **ID:** T-172
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** #667
   - **Acceptance:** (1) simplify check grep-walks diff for changes inside serialized-tagged structs and emits a finding if kSaveVersion not bumped; (2) review-pr posts same finding as reviewer comment; (3) false-positive gate: current master (.vxs, .rig, world-snapshot formats) all pass without warnings; (4) engine/asset/CLAUDE.md cross-references the check
   - **Issue:** #670
