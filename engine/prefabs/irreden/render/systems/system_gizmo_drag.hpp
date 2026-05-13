@@ -128,9 +128,6 @@ template <> struct System<GIZMO_DRAG> {
             // Release on previous frame's HELD slipping to RELEASED+up.
             dragHandle_ = IREntity::kNullEntity;
         }
-        if (dragHandle_ != IREntity::kNullEntity && mouseLeftReleasedThisFrame_) {
-            dragHandle_ = IREntity::kNullEntity;
-        }
     }
 
     void tick(IREntity::EntityId id, IRComponents::C_GizmoHandle &handle) {
@@ -144,7 +141,6 @@ template <> struct System<GIZMO_DRAG> {
         if (dragHandle_ == id && mouseLeftDown_) {
             applyDrag();
         }
-        (void)handle;
     }
 
     void endTick() {
