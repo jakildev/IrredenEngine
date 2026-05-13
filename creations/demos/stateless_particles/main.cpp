@@ -51,6 +51,8 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.5f, vec2(0, 0), "fit_field"},
     {1.0f, vec2(0, 0), "zoom1_origin"},
     {2.0f, vec2(0, 0), "zoom2_origin"},
+    {4.0f, vec2(0, 0), "zoom4_origin"},
+    {8.0f, vec2(0, 0), "zoom8_origin"},
 };
 
 int g_autoWarmupFrames = 0;

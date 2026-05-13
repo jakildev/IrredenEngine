@@ -68,6 +68,15 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
         frameHeader_.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
         frameHeader_.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
         frameHeader_.canvasSizePixels_ = canvas.size_;
+        // Mirror the voxel pipeline's (renderMode, effectiveSubdivisions) so
+        // each particle expands into the same sub² × 6-trixel diamond a voxel
+        // does at the current zoom — without this, particles stay at base
+        // resolution while voxels refine, and the two read as different sizes
+        // in the same frame.
+        frameHeader_.voxelRenderOptions_ = ivec2(
+            static_cast<int>(IRRender::getSubdivisionMode()),
+            IRRender::getVoxelRenderEffectiveSubdivisions()
+        );
         emitters.frameBuffer_.second
             ->subData(0, sizeof(FrameDataStatelessParticles), &frameHeader_);
 

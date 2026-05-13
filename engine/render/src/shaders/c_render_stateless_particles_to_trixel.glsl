@@ -25,16 +25,24 @@ layout(local_size_x = 64) in;
 // No per-particle state, no update pass, no spawn/despawn bookkeeping.
 // Every thread is independent.
 //
-// Each particle composites as a full 2×3 voxel diamond — 3 faces × 2
-// subpixels per face — using the same `faceOffset_2x3` + face-priority
-// depth encoding the voxel and SDF paths use. This is what makes a
-// particle read as a voxel in the final composite: the LIGHTING_TO_TRIXEL
-// stage decodes the face index from the depth and shades each of the
-// three visible faces with its own outward normal, so the iso-projected
-// 3-tone face shading kicks in even though the particles never go
-// through the C_Voxel pool. Single-pixel writes (the prior Phase 1
-// design) would all decode as kZFace and read as flat top-shaded
-// pinpricks rather than voxel diamonds.
+// Each particle composites as a subdivision-scaled voxel diamond,
+// matching the voxel-pool path step-for-step:
+//   posScaled = round(position * subdivisions)
+//   for face ∈ {X, Y, Z}, (u, v) ∈ [0, subdivisions)², subPixel ∈ {0, 1}:
+//     microPos      = faceMicroPositionFixed(face, posScaled, u, v, sub)
+//     canvasPixel   = trixelFrameOffset(...) + pos3DtoPos2DIso(microPos)
+//                   + faceOffset_2x3(face, subPixel)
+//     depthEncoded  = encodeDepthWithFace(sum(microPos), face)
+//     imageAtomicMin into the distance texture; write color on win.
+// `voxelRenderOptions` is the same (renderMode, effectiveSubdivisions)
+// pair the voxel pipeline reads — so under FULL subdivision mode (the
+// default), each particle expands to a sub² × 6-trixel diamond just
+// like a voxel does, and the lighting pass's per-face normal shading
+// reads identically across particles, voxels, and SDFs. Without this,
+// particles stayed at the base 6-trixel resolution while voxels refined
+// to sub² micro-cells, so the two read as different sizes in the same
+// frame and zooming amplified the disparity. At sub == 1 (NONE mode)
+// the loop collapses to the prior 3-face × 2-subpixel diamond.
 //
 // Storage split: per-frame inputs live in a small UBO (binding 0); the
 // emitter descriptor array is an SSBO (binding 4) so the layout is plain
@@ -68,6 +76,8 @@ layout(std140, binding = 0) uniform FrameDataStatelessParticles {
     vec2 cameraTrixelOffset;
     ivec2 trixelCanvasOffsetZ1;
     ivec2 canvasSizePixels;
+    ivec2 voxelRenderOptions;
+    ivec2 _padding;
 };
 
 layout(std430, binding = 4) readonly buffer StatelessEmitterBuffer {
@@ -105,25 +115,40 @@ void main() {
                   + (e.baseVelocity + jitterVel) * age
                   + 0.5 * e.gravity * age * age;
 
-    // NONE subdivision mode (matches the T-139 render shader); Phase 1 snaps
-    // every particle to the integer voxel lattice and emits a full voxel
-    // diamond (3 faces × 2 subpixels) per particle.
-    ivec3 posI = ivec3(round(position));
-    int baseDepth = pos3DtoDistance(posI);
+    // Scale the particle position into the same fixed-point grid the voxel
+    // pool uses under FULL subdivision mode. At sub == 1 (NONE) this is a
+    // plain integer round; at sub > 1 the particle gets sub-voxel
+    // positional precision matching the voxel-pool `position * sub` cast
+    // in c_voxel_to_trixel_stage_1.glsl.
+    const int subdivisions = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    const ivec3 posScaled = ivec3(round(position * float(subdivisions)));
 
-    ivec2 frameOffset = trixelCanvasOffsetZ1 + ivec2(floor(cameraTrixelOffset));
-    ivec2 baseCanvasPixel = frameOffset + pos3DtoPos2DIso(posI);
-    vec4 baseColor = unpackColor(e.baseColor);
-    ivec2 canvasSize = imageSize(triangleCanvasDistances);
+    const ivec2 frameOffset =
+        trixelFrameOffset(trixelCanvasOffsetZ1, cameraTrixelOffset, voxelRenderOptions);
+    const vec4 baseColor = unpackColor(e.baseColor);
+    const ivec2 canvasSize = imageSize(triangleCanvasDistances);
 
+    // Walk each face's sub × sub micro grid. Mirrors the voxel-pool dispatch
+    // where numGroupsZ = sub² (one workgroup per (u, v)) and the (2, 3, 1)
+    // workgroup writes (face, subPixel). We collapse the GPU-parallel shape
+    // into an inner loop because particle counts are smaller than voxel
+    // counts (kMaxStatelessEmitters * kMaxParticlesPerEmitter ≈ 16K worst
+    // case) and the loop has fixed bounds the compiler can unroll.
     for (int face = 0; face < 3; face++) {
-        int faceDepth = encodeDepthWithFace(baseDepth, face);
-        for (int subPixel = 0; subPixel < 2; subPixel++) {
-            ivec2 canvasPixel = baseCanvasPixel + faceOffset_2x3(face, subPixel);
-            if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
-            int prevDistance = imageAtomicMin(triangleCanvasDistances, canvasPixel, faceDepth);
-            if (faceDepth <= prevDistance) {
-                imageStore(triangleCanvasColors, canvasPixel, baseColor);
+        for (int u = 0; u < subdivisions; u++) {
+            for (int v = 0; v < subdivisions; v++) {
+                ivec3 microPos = faceMicroPositionFixed(face, posScaled, u, v, subdivisions);
+                int microDepth = pos3DtoDistance(microPos);
+                int faceDepth = encodeDepthWithFace(microDepth, face);
+                ivec2 microIsoBase = frameOffset + pos3DtoPos2DIso(microPos);
+                for (int subPixel = 0; subPixel < 2; subPixel++) {
+                    ivec2 canvasPixel = microIsoBase + faceOffset_2x3(face, subPixel);
+                    if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
+                    int prevDistance = imageAtomicMin(triangleCanvasDistances, canvasPixel, faceDepth);
+                    if (faceDepth <= prevDistance) {
+                        imageStore(triangleCanvasColors, canvasPixel, baseColor);
+                    }
+                }
             }
         }
     }

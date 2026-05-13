@@ -587,16 +587,26 @@ static_assert(
 /// separate SSBO so the layout is straightforward `device` storage on
 /// Metal rather than `constant` (UBO) storage, which sidestepped layout
 /// flakiness with nested-struct arrays during Phase 1 bring-up.
+///
+/// `voxelRenderOptions_` mirrors `FrameDataVoxelToCanvas::voxelRenderOptions_`
+/// (renderMode, effectiveSubdivisions). The particle pass reads it so each
+/// particle paints a subdivision-scaled voxel diamond — same micro-position
+/// walk the voxel pool uses — instead of a single 2×3 diamond regardless of
+/// zoom. Without this the particle "voxels" stay at base resolution while
+/// the voxel/SDF paths refine to sub² micro-cells per voxel under FULL mode,
+/// and the two read as different sizes in the same frame.
 struct FrameDataStatelessParticles {
     float currentTime_ = 0.0f;
     std::uint32_t emitterCount_ = 0u;
     vec2 cameraTrixelOffset_ = vec2(0.0f);
     ivec2 trixelCanvasOffsetZ1_ = ivec2(0);
     ivec2 canvasSizePixels_ = ivec2(0);
+    ivec2 voxelRenderOptions_ = ivec2(0);
+    ivec2 _padding_ = ivec2(0);
 };
 static_assert(
-    sizeof(FrameDataStatelessParticles) == 32,
-    "FrameDataStatelessParticles must match std140 layout (32 B header)"
+    sizeof(FrameDataStatelessParticles) == 48,
+    "FrameDataStatelessParticles must match std140 layout (48 B header)"
 );
 
 struct VoxelIndirectDispatchParams {
