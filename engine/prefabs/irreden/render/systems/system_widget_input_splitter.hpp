@@ -18,7 +18,7 @@ namespace IRSystem {
 // Drives IRPrefab::Layout splitter drag state from mouse input. Runs in
 // the INPUT pipeline after WIDGET_INPUT so C_WidgetState::pressed_ is
 // current. A single splitter drag is active at a time (tracked by
-// g_layout.dragSplitterParent_).
+// C_LayoutState::dragSplitterParent_ via IRPrefab::Layout::getLayout()).
 //
 // Pipeline order requirement (INPUT pipeline):
 //   HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT → WIDGET_INPUT_SPLITTER
