@@ -1,11 +1,9 @@
 #ifndef IR_ASSET_RIG_FORMAT_H
 #define IR_ASSET_RIG_FORMAT_H
 
-/// `.rig` v1 — joint hierarchy for skeletal voxel rigs. First slice of
-/// the rig asset format; subsequent issues add chunks for bind points
-/// (#669) and animation keyframes (#606) without bumping `.rig` v1 —
-/// older readers silently skip the new tags (Save Format Extensibility
-/// Rule #1).
+/// `.rig` v1 — joint hierarchy + bind points for skeletal voxel rigs.
+/// Chunks are added without bumping the file version; older readers
+/// silently skip unknown tags (Save Format Extensibility Rule #1).
 ///
 /// `.rig` is intentionally separate from `.vxs` so the same skeleton can
 /// be shared across voxel variants (same rig, different paint job).
@@ -23,17 +21,27 @@
 ///             float32 translation { x, y, z, w }
 ///             uint32  parentIndex
 ///             string  name             // varuint-prefixed UTF-8, may be empty
+///     BIND chunk body (optional — omitted when no bind points):
+///         varuint  bindPointCount
+///         repeat bindPointCount times:
+///             uint16  recordVersion    (Rule #3, per-record additive-only)
+///             uint32  boneId
+///             float32 offset { x, y, z }
+///             float32 rotation { x, y, z, w }
+///             string  name             // varuint-prefixed UTF-8, may be empty
 ///
 /// Sidecar (regenerated from binary on every save, ignored on load —
 /// Rule #6):
 ///
 ///     <path>/<name>.rig.json    per-joint { index, name, parentIndex }
+///                               per-bind-point { index, name, boneId }
 ///
 /// Version history
 /// ---------------
 /// v1 (initial) — joints-only via JNTS chunk.
+/// v1 + BIND chunk (#669) — bind points added as a second chunk;
+///   no version bump (Rule #1 — older readers skip BIND silently).
 /// Reserved chunk tags for forward compatibility (not yet written):
-///   - "BIND" — bind points (#669)
 ///   - "ANIM" — animation keyframes (#606)
 
 #include <irreden/asset/binary_io.hpp>
@@ -55,6 +63,9 @@ constexpr std::uint32_t kRigFormatVersion = 1;
 /// Extensibility Rule #3.
 constexpr std::uint16_t kJointRecordVersion = 1;
 
+/// Per-bind-point record version. Same additive-only contract as joints.
+constexpr std::uint16_t kBindPointRecordVersion = 1;
+
 /// Asset representation of a single joint. Mirrors `IRComponents::Joint`
 /// (engine/prefabs/irreden/voxel/components/component_joint_hierarchy.hpp)
 /// with the addition of an optional designer-facing name. The rotation
@@ -67,12 +78,24 @@ struct RigJoint {
     std::string name_;
 };
 
-/// Asset-side rig — a flat list of joints. Conversion to/from the
-/// runtime `IRComponents::C_JointHierarchy` lives in the prefab bridge
-/// at `engine/prefabs/irreden/voxel/rig_bridge.hpp` so `engine/asset/`
-/// has no dependency on the voxel component.
+/// A named attachment point on a rig. Records the bone the point is
+/// parented to, a local-space offset (vec3) and orientation (quaternion)
+/// relative to that bone, and an optional designer-facing name. Used by
+/// the editor (#669) to define where props, weapons, or VFX attach.
+struct RigBindPoint {
+    std::uint32_t boneId_ = 0;
+    IRMath::vec3 offset_{0.0f, 0.0f, 0.0f};
+    IRMath::vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
+    std::string name_;
+};
+
+/// Asset-side rig — a flat list of joints and optional bind points.
+/// Conversion to/from `IRComponents::C_JointHierarchy` lives in the
+/// prefab bridge at `engine/prefabs/irreden/voxel/rig_bridge.hpp` so
+/// `engine/asset/` has no dependency on the voxel component.
 struct Rig {
     std::vector<RigJoint> joints_;
+    std::vector<RigBindPoint> bindPoints_;
 };
 
 /// File-mode save. Writes `<path>/<name>.rig` plus a designer-readable
