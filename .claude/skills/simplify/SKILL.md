@@ -205,6 +205,52 @@ Already covered by section 6 (Reuse opportunities) — left here only as
 a cross-reference. The engine has `IRE_LOG_*` and `IR_LOG_*` macros;
 raw stdout/printf in non-debug code is a cleanup target.
 
+### 2c. Serialized-struct version-bump check
+
+When a struct annotated `// IRAsset: serialized` gains, loses, or renames a
+field, the matching `kSaveVersion` constant must be bumped in the same diff
+and a migration entry must exist (or be flagged as a `// TODO: migration`
+comment) in the format's reader. This is Save Format Extensibility Rule #3
+(`engine/asset/CLAUDE.md`).
+
+Run this check whenever any `.hpp` or `.cpp` file under `engine/asset/`,
+`engine/prefabs/irreden/voxel/`, or `engine/world/` is in the diff.
+
+**Detection:**
+
+1. Scan the diff's `+` lines for struct fields (member variable declarations)
+   inside a struct body that is preceded — anywhere in the same file — by the
+   comment `// IRAsset: serialized`. The struct name is on the line with
+   `struct <Name>`.
+
+2. For each struct type whose field layout changed (added/removed/renamed
+   field on a `+` or `-` line), check whether the diff also contains a
+   corresponding `kSaveVersion` change on a `+` line in the same file (or a
+   sibling sidecar file for the format):
+
+   ```
+   static constexpr uint16_t kSaveVersion = N;
+   ```
+
+3. If the field layout changed but no `kSaveVersion` bump appears in the
+   diff, emit a finding — **do not auto-fix**, this needs human judgment:
+
+   ```
+   reported 1 finding for review:
+     - <path>:<line> — <StructName> is annotated // IRAsset: serialized and
+       its field layout changed, but kSaveVersion was not bumped.
+       Add `static constexpr uint16_t kSaveVersion = N+1;` and a migration
+       entry in the format's reader for saves written at the old version.
+   ```
+
+**False-positive guard — do NOT flag:**
+- Changes to method bodies, constructors, or `static` helper functions within
+  the struct (these do not affect binary layout).
+- A struct whose `// IRAsset: serialized` annotation was itself added in the
+  same diff — version 1 never needs a migration.
+- Changes to the `kSaveVersion` line itself.
+- Changes that only touch comments or whitespace inside the struct.
+
 ### 3. Naming convention slips
 
 These are the rules from [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md):

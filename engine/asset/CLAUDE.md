@@ -203,6 +203,46 @@ worked examples live in `docs/design/entity-editor-epic.md`. The summary:
    chunk table, current chunks, version history, and the migration
    registry.
 
+## Serialized-struct annotation
+
+Any C++ struct whose fields are **directly mapped to bytes on disk** — per-voxel
+records, joint records, bind-point descriptors, world-snapshot component blobs — must
+carry two markers so automated checks can enforce Rule #3:
+
+1. A `// IRAsset: serialized` line comment on the `struct` declaration.
+2. A `static constexpr uint16_t kSaveVersion = N;` inside the struct body.
+
+Example:
+
+```cpp
+// IRAsset: serialized
+struct JointRecord {
+    static constexpr uint16_t kSaveVersion = 1;
+
+    IRMath::vec4 rotation_{0.f, 0.f, 0.f, 1.f};
+    IRMath::vec4 translation_{0.f, 0.f, 0.f, 0.f};
+    std::uint32_t parentIndex_ = 0;
+    std::string name_;
+};
+```
+
+**When you add, remove, or rename a field:**
+
+1. Increment `kSaveVersion`.
+2. Add a reader migration in the format's load function keyed on
+   `(structType, oldVersion)`.
+3. Update the per-format save/load header block (Extensibility Rule #7).
+
+The `simplify` skill (pre-commit) and `review-pr` skill both scan for
+`// IRAsset: serialized` structs with changed field layouts and emit a finding
+when `kSaveVersion` was not bumped. See `.claude/skills/simplify/SKILL.md`
+section 2c and `.claude/skills/review-pr/SKILL.md` step 4 "Serialization".
+
+Not every asset-related struct needs this annotation — only those whose fields
+are **directly serialized** into a chunk body byte-for-byte. Framework structs
+(`AssetHeader`, `ChunkTableEntry`, `LoadedChunk`) are governed by the file-level
+version in `AssetHeader.version_`, not per-struct versioning.
+
 ## Gotchas
 
 - **`fwrite`/`fread` return values unchecked.** A truncated file loads as
