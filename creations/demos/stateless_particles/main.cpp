@@ -40,7 +40,11 @@ namespace {
 
 constexpr std::uint32_t kEmitterCount = 64u;
 constexpr std::uint32_t kParticlesPerEmitter = 64u;
-constexpr float kFieldHalfExtent = 48.0f;  // emitters spread across a ±48 voxel band
+// Field sized so the iso footprint (±2·extent in iso x, ±4·extent in iso y at
+// peak particle altitude) fills most of the canvas at zoom=1. Engine clamps
+// camera zoom to [1, 64], so there is no true zoom-out — the lowest valid
+// zoom needs a field big enough to look populated on its own.
+constexpr float kFieldHalfExtent = 160.0f;
 constexpr float kBaseLifetimeSeconds = 4.0f;
 constexpr float kBaseUpwardVelocity = 6.0f;  // voxels/sec along -Z (visually up)
 constexpr float kGravityZ = 4.0f;            // pulls particles back down (+Z is down)
@@ -48,7 +52,6 @@ constexpr float kVelocityJitter = 3.0f;
 constexpr float kPositionJitter = 2.0f;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_field"},
     {1.0f, vec2(0, 0), "zoom1_origin"},
     {2.0f, vec2(0, 0), "zoom2_origin"},
     {4.0f, vec2(0, 0), "zoom4_origin"},
