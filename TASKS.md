@@ -250,11 +250,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **asset: .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks)** — first end-to-end asset format: 3D bounded voxel volume with 12-byte per-voxel records, layers, and animation frame poses
+- [~] **asset: .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks)** — first end-to-end asset format: 3D bounded voxel volume with 12-byte per-voxel records, layers, and animation frame poses
   - **ID:** T-167
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-166
   - **Acceptance:** (1) IRAsset::saveVoxelSet/loadVoxelSet ship; (2) .vxs v1 dense format: IRVS magic + uint32 version + chunk-count; MODE=DENSE; BNDS (ivec3 min/max); VOXR (12-byte records: Color + material_id + flags + bone_id + pad); LAYR (named layer bitmasks); FRAM (frame-index → per-voxel offset); META (free-form key/value); (3) unknown chunk tags silently skipped; (4) clear diagnostics on bad magic, version-too-new, truncated chunk, malformed BNDS; (5) round-trip unit test: 20³ fixture save → load → byte-compare VOXR + BNDS; (6) edge cases: empty set, full set, bad magic, truncated mid-VOXR; (7) chunk table documented in .hpp header block; (8) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #664
