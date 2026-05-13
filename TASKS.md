@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** claude/T-104-lua-perf-grid
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
@@ -242,7 +242,7 @@ Avoid:
   - **ID:** T-165
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-165-gizmo-hover-drag
   - **Blocked by:** T-153
   - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
   - **Issue:** #676
@@ -314,7 +314,7 @@ Avoid:
   - **ID:** T-171
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-171-rig-v2-bind-chunk
   - **Blocked by:** T-169
   - **Acceptance:** (1) BIND chunk: array of {string name, uint32 bone_id, vec3 offset, vec4 rotation}; O(string-hash) lookup at load time; (2) IRAsset::saveRig/loadRig round-trip bind points alongside joints; (3) JSON sidecar lists bind-point names + bone ids; (4) round-trip test: 5 bind points on 30-bone snake rig, entity:bindPoint() returns identical world-space transforms pre/post; (5) forward compat: .rig without BIND loads with empty bind-point map; (6) forward compat: old build skips unknown BIND chunk (Extensibility Rule #1); (7) fleet-build clean on linux-debug
   - **Issue:** #669
@@ -326,7 +326,7 @@ Avoid:
   - **ID:** T-172
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-172-serialized-struct-version-check
   - **Blocked by:** #667
   - **Acceptance:** (1) simplify check grep-walks diff for changes inside serialized-tagged structs and emits a finding if kSaveVersion not bumped; (2) review-pr posts same finding as reviewer comment; (3) false-positive gate: current master (.vxs, .rig, world-snapshot formats) all pass without warnings; (4) engine/asset/CLAUDE.md cross-references the check
   - **Issue:** #670
@@ -350,7 +350,7 @@ Avoid:
   - **ID:** T-174
   - **Area:** engine/prefabs/irreden/render, creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-174-layout-state-singleton
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_LayoutState component defined with all fields from LayoutState struct (nodes_, root_, rootPos_, rootSize_, splitter/panel drag fields); (2) layout.hpp free functions fetch state via IREntity::getOrCreateSingleton<C_LayoutState>(); (3) WIDGET_RENDER_DOCK_PREVIEW filters on C_LayoutState (tick fires once per frame, no-op body removed); (4) inline LayoutState g_layout and struct LayoutState fully removed; (5) IRUiDockspace serialize/deserialize round-trip still logs OK; (6) fleet-build clean on linux-debug
   - **Issue:** #674
@@ -362,7 +362,7 @@ Avoid:
   - **ID:** T-175
   - **Area:** engine/prefabs/irreden/voxel/components
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-175-cvoxel-ircomponents
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_Voxel struct moved into IRComponents namespace in component_voxel.hpp; (2) VoxelFlags in same namespace (symmetry restored); (3) all callers in engine/ and creations/ updated; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #680
