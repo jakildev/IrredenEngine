@@ -271,6 +271,20 @@ Each iteration:
       For `fleet:needs-fix` / `fleet:has-nits` paths, skip both —
       reviewer-flagged feedback doesn't trigger the human-amending
       state.)
+
+      **Reserve this worktree for the in-flight amendment.** Extract
+      the task ID from the PR's branch (`claude/T-NNN-…`) and write
+      the reservation file so the amendment becomes a durable fleet
+      artifact — not just a PR label. If `fleet-down` or a mid-flight
+      crash interrupts this iteration before `commit-and-push` lands,
+      the reservation keeps the worktree pinned to this branch and
+      the next iteration's step 0.5 resumes the amendment instead of
+      starting a fresh task and clobbering the in-progress work:
+      `fleet-claim reserve <task-id> <your-worktree-basename> <branch>`
+      (Example: `fleet-claim reserve T-163 sonnet-fleet-2 claude/T-163-stateless-particles`.)
+      Skip for `fleet:needs-fix` / `fleet:has-nits` paths — those
+      don't enter the human-amending state and complete quickly,
+      so the reservation cost isn't worth the bookkeeping.
    c. Address every piece of feedback. Make the edits, build with
       `fleet-build --target <name>`.
    d. Push fixes using `commit-and-push`.
@@ -312,7 +326,15 @@ Each iteration:
       remaining downstreams stay on the prior base, and the
       subcommand exits non-zero — surface the failure to the human
       and move on.
-   h. Move to the next loop iteration.
+   h. **Release the amendment reservation and move to the next loop
+      iteration.** Only release if the AMEND path reserved one in
+      step b (i.e. only for `human:needs-fix` / `human:blocker`
+      paths). The call is idempotent so it's safe to run
+      unconditionally:
+      `fleet-claim release-worktree <your-worktree-basename>`
+      Then exit. Do NOT call `start-next-task` — the next dispatcher
+      iteration will pick a fresh task and reset the branch itself
+      if no new feedback PR is waiting.
 
    **Human feedback label cycle:** human adds `human:needs-fix` (+
    comments) → agent picks up, decides AMEND vs ESCALATE per a2.

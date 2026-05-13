@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""fleet-reconcile-amendments — boot-time amendment artifact reconciler.
+
+When a fleet author iteration enters AMEND mode it (a) swaps the
+`human:needs-fix` label for `fleet:human-amending` on the PR, and
+(b) writes a reservation file pinning its worktree to the in-flight
+task. The reservation is the durable artifact: it preserves the
+worktree across `fleet-down` / crash cycles and triggers role-doc
+step 0.5 resumption on the next iteration.
+
+Before AMEND-creates-reservation landed, the only signal that a PR
+was being amended was the label itself. If a `fleet-down` happened
+mid-AMEND, the worktree got reset by `fleet-up` Step 2, the label
+sat on the PR forever, no role projection saw it (the feedback
+filter only matches human:needs-fix / fleet:needs-fix / fleet:has-nits),
+and the PR was effectively orphaned until a human noticed.
+
+This script reconciles each open `fleet:human-amending` PR against
+worktree state at `fleet-up` boot. It is idempotent and safe to
+re-run.
+
+Per PR:
+
+  worktree owns the branch, reservation exists
+    → leave alone; normal in-flight state, step 0.5 will resume
+
+  worktree owns the branch, NO reservation
+    → reconstruct the reservation via `fleet-claim reserve` so the
+      worktree's checked-out-branch artifact is mirrored into the
+      explicit reservation artifact (Step 2 `reset_worktree` checks
+      reservations, not branches; without this both signals must
+      stay in sync)
+
+  no worktree owns the branch
+    → orphan; revert the label (fleet:human-amending → human:needs-fix)
+      and leave a recovery comment so the standard feedback-pickup
+      path picks the PR back up on the next sonnet-author / opus-worker
+      iteration
+
+Env overrides (used by tests):
+  FLEET_AMEND_RECONCILE_ENGINE_REPO   repo slug for the engine repo
+  FLEET_AMEND_RECONCILE_GAME_REPO     repo slug for the game repo
+                                       (skipped if empty or missing on disk)
+  FLEET_AMEND_RECONCILE_ENGINE_WT     engine worktrees root
+  FLEET_AMEND_RECONCILE_GAME_WT       game worktrees root
+  FLEET_RESERVATIONS_DIR              reservations root (defaults to
+                                       ~/.fleet/reservations)
+  FLEET_AMEND_RECONCILE_GH_BIN        path to gh (default: search PATH)
+  FLEET_AMEND_RECONCILE_FLEETCLAIM_BIN path to fleet-claim
+  FLEET_AMEND_RECONCILE_DRY_RUN       if set to "1", log decisions
+                                       but don't mutate anything
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+
+TASK_ID_RE = re.compile(r"^claude/(T-\d+)-")
+
+# Resolve home-relative paths consistently with the fleet-up shell parent.
+HOME = pathlib.Path.home()
+DEFAULT_RES_DIR = HOME / ".fleet" / "reservations"
+RES_DIR = pathlib.Path(os.environ.get("FLEET_RESERVATIONS_DIR", str(DEFAULT_RES_DIR)))
+
+GH = os.environ.get("FLEET_AMEND_RECONCILE_GH_BIN") or shutil.which("gh") or "gh"
+FLEET_CLAIM = (
+    os.environ.get("FLEET_AMEND_RECONCILE_FLEETCLAIM_BIN")
+    or shutil.which("fleet-claim")
+    or "fleet-claim"
+)
+DRY_RUN = os.environ.get("FLEET_AMEND_RECONCILE_DRY_RUN", "") == "1"
+
+
+def log(msg: str) -> None:
+    print(f"fleet-up: amendment reconciler: {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"fleet-up: amendment reconciler: WARNING: {msg}", file=sys.stderr)
+
+
+def list_amending_prs(repo: str) -> list[dict]:
+    """Returns [{'number': int, 'headRefName': str, 'title': str}, ...]."""
+    try:
+        out = subprocess.run(
+            [GH, "pr", "list", "--repo", repo, "--state", "open",
+             "--label", "fleet:human-amending",
+             "--json", "number,headRefName,title",
+             "--limit", "50"],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+    except FileNotFoundError:
+        warn(f"`{GH}` not on PATH; skipping {repo}")
+        return []
+    except subprocess.CalledProcessError as e:
+        warn(f"`gh pr list` failed for {repo}: {e.stderr.strip() or e}")
+        return []
+    except subprocess.TimeoutExpired:
+        warn(f"`gh pr list` timed out for {repo}")
+        return []
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError as e:
+        warn(f"`gh pr list` returned non-JSON for {repo}: {e}")
+        return []
+
+
+def worktree_basename_on_branch(wt_root: pathlib.Path, branch: str) -> str | None:
+    """Returns the worktree basename whose HEAD is on `branch`, or None."""
+    if not wt_root.is_dir():
+        return None
+    for wt in sorted(wt_root.iterdir()):
+        if not wt.is_dir():
+            continue
+        # Only inspect .git-managed worktrees — skip stray dirs.
+        if not (wt / ".git").exists():
+            continue
+        try:
+            head = subprocess.run(
+                ["git", "-C", str(wt), "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=10, check=True,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        if head == branch:
+            return wt.name
+    return None
+
+
+def reservation_exists(basename: str) -> bool:
+    return (RES_DIR / f"{basename}.json").is_file()
+
+
+def reconstruct_reservation(basename: str, task_id: str, branch: str) -> bool:
+    """Calls `fleet-claim reserve` to recreate the reservation."""
+    if DRY_RUN:
+        log(f"[dry-run] would reserve {basename} → {task_id} ({branch})")
+        return True
+    try:
+        subprocess.run(
+            [FLEET_CLAIM, "reserve", task_id, basename, branch],
+            capture_output=True, text=True, timeout=15, check=True,
+        )
+        return True
+    except FileNotFoundError:
+        warn(f"`{FLEET_CLAIM}` not on PATH; cannot reconstruct reservation for {basename}")
+        return False
+    except subprocess.CalledProcessError as e:
+        warn(f"`fleet-claim reserve` failed for {basename} ({task_id}): {e.stderr.strip() or e}")
+        return False
+    except subprocess.TimeoutExpired:
+        warn(f"`fleet-claim reserve` timed out for {basename}")
+        return False
+
+
+def revert_orphan_label(repo: str, number: int) -> bool:
+    """Swap fleet:human-amending for human:needs-fix and leave a comment."""
+    if DRY_RUN:
+        log(f"[dry-run] would revert {repo}#{number} fleet:human-amending → human:needs-fix")
+        return True
+    try:
+        subprocess.run(
+            [GH, "pr", "edit", str(number), "--repo", repo,
+             "--remove-label", "fleet:human-amending",
+             "--add-label", "human:needs-fix"],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        warn(f"`gh pr edit` failed for {repo}#{number}: {e.stderr.strip() or e}")
+        return False
+    except subprocess.TimeoutExpired:
+        warn(f"`gh pr edit` timed out for {repo}#{number}")
+        return False
+    # Comment is best-effort — the label revert is the load-bearing action.
+    try:
+        subprocess.run(
+            [GH, "pr", "comment", str(number), "--repo", repo,
+             "--body",
+             "Amendment reconciler at fleet-up boot: no worktree owns this "
+             "PR's branch, so the prior agent's iteration was interrupted "
+             "before reaching `fleet:changes-made`. Reverting "
+             "`fleet:human-amending` → `human:needs-fix` so the standard "
+             "feedback-pickup path resumes on the next dispatcher tick. "
+             "— fleet-up reconciler"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        warn(f"label revert succeeded but recovery comment failed on {repo}#{number}")
+    return True
+
+
+def reconcile_repo(repo: str, wt_root: pathlib.Path) -> None:
+    log(f"scanning {repo} (worktrees: {wt_root})")
+    prs = list_amending_prs(repo)
+    if not prs:
+        log(f"{repo}: no PRs with fleet:human-amending")
+        return
+    for pr in prs:
+        try:
+            number = int(pr["number"])
+            branch = pr["headRefName"]
+        except (KeyError, ValueError, TypeError) as e:
+            warn(f"{repo}: malformed PR record {pr!r}: {e}")
+            continue
+        basename = worktree_basename_on_branch(wt_root, branch)
+        if basename is None:
+            log(f"{repo}#{number} ({branch}): no worktree on branch → orphan; reverting label")
+            revert_orphan_label(repo, number)
+            continue
+        if reservation_exists(basename):
+            log(f"{repo}#{number} ({branch}): worktree {basename} has reservation → leave alone")
+            continue
+        match = TASK_ID_RE.match(branch)
+        if not match:
+            warn(
+                f"{repo}#{number} ({branch}): worktree {basename} has no reservation "
+                f"but branch isn't claude/T-NNN-* — can't reconstruct, leaving alone"
+            )
+            continue
+        task_id = match.group(1)
+        if reconstruct_reservation(basename, task_id, branch):
+            log(
+                f"{repo}#{number} ({branch}): reconstructed reservation for {basename} "
+                f"({task_id}) so step 0.5 resumes on next iteration"
+            )
+
+
+def _env_or_cache(env_var: str, cache_key: str, cache: dict | None) -> str:
+    """Honors env-set values (even empty) over the repos.json cache."""
+    if env_var in os.environ:
+        return os.environ[env_var]
+    if cache is not None:
+        return cache.get(cache_key, "") or ""
+    return ""
+
+
+def main() -> int:
+    # Try the repos.json cache for default repo slugs when env vars
+    # aren't set. Empty-string env vars are treated as explicit
+    # "disable" — they win over the cache.
+    repos_cache: dict | None = None
+    repos_cache_file = HOME / ".fleet" / "state" / "repos.json"
+    if repos_cache_file.is_file():
+        try:
+            repos_cache = json.loads(repos_cache_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            repos_cache = None
+
+    engine_repo = _env_or_cache(
+        "FLEET_AMEND_RECONCILE_ENGINE_REPO", "engine", repos_cache,
+    ) or "jakildev/IrredenEngine"
+    game_repo = _env_or_cache(
+        "FLEET_AMEND_RECONCILE_GAME_REPO", "game", repos_cache,
+    )
+
+    engine_wt = os.environ.get("FLEET_AMEND_RECONCILE_ENGINE_WT") or str(
+        HOME / "src" / "IrredenEngine" / ".claude" / "worktrees"
+    )
+    game_wt = os.environ.get("FLEET_AMEND_RECONCILE_GAME_WT") or str(
+        HOME / "src" / "IrredenEngine" / "creations" / "game" / ".claude" / "worktrees"
+    )
+
+    reconcile_repo(engine_repo, pathlib.Path(engine_wt))
+
+    if game_repo and pathlib.Path(game_wt).is_dir():
+        reconcile_repo(game_repo, pathlib.Path(game_wt))
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
