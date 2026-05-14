@@ -231,11 +231,11 @@ Avoid:
   - **Notes:** Engine/asset audit found JsonSidecarWriter and NameTable exercised only indirectly via voxel_set_hybrid_test.cpp. Use MemoryBinaryWriter/Reader for name-table tests and writer's internal str() for sidecar tests — do not depend on .vxs in these tests. Lock NaN/Inf behavior as-is (whatever writer currently does). If any existing test asserts a hard-coded test count, update it.
   - **Links:**
 
-- [ ] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
+- [~] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
   - **ID:** T-187
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) lod_utils.hpp exits stub status; computeLodLevel/shouldSkipAtLod/lodVoxelScale called by live systems with thresholds matching real zoom range (1.0–64.0); (2) LOD_UPDATE system added to SystemName enum and UPDATE pipeline; writes C_ActiveLodLevel singleton each frame from C_ZoomLevel; (3) C_ShapeDescriptor::lodLevel_ renamed to lodMin_ or semantics documented in header; (4) SHAPES_TO_TRIXEL reads C_ActiveLodLevel once at beginTick and skips shapes with lodMin_ < activeLod; (5) render-verify shot confirms progressive shape-count change across zoom 1.0/2.0/4.0/8.0; (6) no DENSE-mode, no .rig, no shader changes; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #708
