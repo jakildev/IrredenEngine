@@ -220,6 +220,29 @@ TEST_F(IREntityTest, SingletonLazyRecreateAfterExternalDestroy) {
     EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 0);
 }
 
+// destroyAllEntities() resets the singleton cache in one bulk clear, distinct
+// from the per-entry eviction path covered by
+// SingletonLazyRecreateAfterExternalDestroy above. Direct regression guard for
+// the cache-clear invariant documented in EntityManager::destroyAllEntities().
+TEST_F(IREntityTest, SingletonCacheResetAfterDestroyAllEntities) {
+    auto firstEntity = IREntity::singletonEntity<TestSingleton>();
+    IREntity::singleton<TestSingleton>().counter_ = 5;
+    ASSERT_NE(firstEntity, IREntity::kNullEntity);
+    ASSERT_EQ(IREntity::singletonEntityOrNull<TestSingleton>(), firstEntity);
+
+    m_entity_manager.destroyAllEntities();
+
+    EXPECT_EQ(IREntity::singletonEntityOrNull<TestSingleton>(), IREntity::kNullEntity);
+    EXPECT_EQ(IREntity::singletonOrNull<TestSingleton>(), nullptr);
+
+    // Lazy-recreate post-bulk-reset mints a fresh entity id with a
+    // default-constructed component.
+    auto secondEntity = IREntity::singletonEntity<TestSingleton>();
+    EXPECT_NE(secondEntity, IREntity::kNullEntity);
+    EXPECT_NE(secondEntity, firstEntity);
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 0);
+}
+
 // setComponent must construct the new archetype slot directly from the
 // caller's value rather than default-construct + assign — components like
 // C_CanvasAOTexture rely on this so they can `= delete` their default ctor.
