@@ -5,17 +5,21 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_render.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
 #include <sol/sol.hpp>
 
 #include <exception>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace IRPrefab::Prefab {
 
@@ -116,14 +120,18 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         );
     }
 
-    // Optional voxel_ref — load + verify but defer attachment to a
-    // follow-up task (C_VoxelSetNew requires an active canvas pool).
+    // Optional voxel_ref — SHAPES records attach as child entities (one
+    // per record) below; DENSE data is loaded but not attached in v1
+    // (C_VoxelSetNew requires an active render-canvas pool — the
+    // headless attach path is deferred; see CLAUDE.md "Prefab format").
     sol::optional<std::string> voxelRef = prefab["voxel_ref"];
+    std::optional<IRAsset::VoxelSetAllFile> loadedVoxels;
     if (voxelRef) {
         auto loadResult = IRAsset::loadVoxelSet(*voxelRef);
         if (!loadResult.ok()) {
             return makeError(idStr, path, std::string{"voxel_ref load failed: "} + *voxelRef);
         }
+        loadedVoxels = std::move(loadResult.value_);
     }
 
     // Optional rig_ref — load and translate to C_JointHierarchy via the
@@ -162,14 +170,49 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
     }
 
+    // SHAPES voxel_ref attachment — one child entity per ShapeRecord,
+    // CHILD_OF the spawned root so per-record `offset_` composes
+    // through the standard C_PositionGlobal3D + C_PositionOffset3D
+    // pipeline. Per-record `rotation_`, `csgOp_`, and `boneId_` are
+    // persisted but not consumed by the current renderer; loading them
+    // is a no-op until a runtime system reads them (T-181 will wire
+    // bone bindings; CSG composition is a render-side decision). v1
+    // intentionally drops these to avoid stamping unused state.
+    //
+    // DENSE / HYBRID dense data is left unattached — `C_VoxelSetNew`
+    // allocates against the active render-canvas pool, and the
+    // headless attach path needs its own design pass. The shape half
+    // of HYBRID still attaches here so SHAPES + HYBRID prefabs render
+    // their SDF primitives even when no canvas is active.
+    std::vector<IREntity::EntityId> spawnedChildren;
+    if (loadedVoxels && (loadedVoxels->mode_ == IRAsset::VoxelSetMode::SHAPES ||
+                         loadedVoxels->mode_ == IRAsset::VoxelSetMode::HYBRID)) {
+        spawnedChildren.reserve(loadedVoxels->shapeRecords_.size());
+        for (const auto &record : loadedVoxels->shapeRecords_) {
+            IRComponents::C_ShapeDescriptor descriptor{
+                static_cast<IRRender::ShapeType>(record.shapeTypeId_),
+                record.params_,
+                record.color_
+            };
+            descriptor.flags_ = record.flags_;
+            const IREntity::EntityId child =
+                IREntity::createEntity(IRComponents::C_Position3D{record.offset_}, descriptor);
+            IREntity::setParent(child, entity);
+            spawnedChildren.push_back(child);
+        }
+    }
+
     // Optional setup function — last so the user sees a fully-formed
-    // entity (position + rig already attached). Distinguish "absent"
-    // (sol::type::lua_nil) from "present but not a function" so a
-    // schema typo like `setup = 42` surfaces a diagnostic instead of
-    // silently no-op'ing.
+    // entity (position + rig + shape children already attached).
+    // Distinguish "absent" (sol::type::lua_nil) from "present but not
+    // a function" so a schema typo like `setup = 42` surfaces a
+    // diagnostic instead of silently no-op'ing.
     sol::object setupObj = prefab["setup"];
     if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
         if (setupObj.get_type() != sol::type::function) {
+            for (auto child : spawnedChildren) {
+                IREntity::destroyEntity(child);
+            }
             IREntity::destroyEntity(entity);
             return makeError(idStr, path, "setup must be a function");
         }
@@ -177,6 +220,9 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         sol::protected_function_result setupResult = setupFn(IRScript::LuaEntity{entity});
         if (!setupResult.valid()) {
             sol::error err = setupResult;
+            for (auto child : spawnedChildren) {
+                IREntity::destroyEntity(child);
+            }
             IREntity::destroyEntity(entity);
             return makeError(idStr, path, std::string{"setup callback failed: "} + err.what());
         }

@@ -716,11 +716,38 @@ land:
   `.rig`, but the runtime ECS component + the `entity:bindPoint(name)`
   Lua accessor are deferred. spawn() loads bind points but does not
   attach them yet.
-- **`C_VoxelSetNew` attachment from voxel_ref** — voxel data is
-  loaded and validated but not attached as an ECS component. The
-  current `C_VoxelSetNew` constructor allocates against the active
-  render-canvas pool; a headless prefab path needs a different entry
-  shape.
+- **DENSE / HYBRID dense voxel_ref attachment** — DENSE per-voxel
+  records are loaded and validated but not attached as an ECS
+  component. The current `C_VoxelSetNew` constructor allocates
+  against the active render-canvas pool; a headless prefab path
+  needs a different entry shape. SHAPES records — and the SHAPES
+  half of HYBRID files — do attach (see "SHAPES voxel_ref
+  attachment" below).
+
+**SHAPES voxel_ref attachment.** When `voxel_ref` points at a
+SHAPES or HYBRID `.vxs`, `Prefab.spawn` attaches one child entity
+per `ShapeRecord` under the spawned root via `IREntity::setParent`.
+Each child carries:
+
+- `C_Position3D{record.offset_}` — record-local position; the
+  CHILD_OF relation + `system_update_positions_global` compose it
+  with the parent's position so the rendered position is
+  `parent.global + record.offset`.
+- `C_ShapeDescriptor{shapeType, params, color}` with `flags_`
+  copied from the record. The SDF primitive renders through the
+  normal `SHAPES_TO_TRIXEL` pass once a canvas is active.
+
+`ShapeRecord::rotation_`, `csgOp_`, and `boneId_` are loaded from
+disk but not stamped onto runtime components in v1 — the current
+renderer doesn't consume them. T-181 wires bone bindings; CSG
+composition is a render-pipeline design call.
+
+`C_ShapeDescriptor`'s default + 3-arg constructors snapshot the
+active canvas via `IRRender::getActiveCanvasEntityOrNull()` so
+headless contexts (tests, asset-only tooling) construct descriptors
+with `canvasEntity_ = kNullEntity` instead of asserting on the
+absent `RenderManager`. Iterating render systems already gate work
+on a non-null canvas binding.
 
 ## Script resolution
 

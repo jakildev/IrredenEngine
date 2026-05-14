@@ -30,6 +30,34 @@ for single voxels and particles.
   re-enable without a design pass.**
 - A WIP scene/skeleton hierarchy traversal system is present but incomplete.
 
+## Prefab.spawn voxel_ref → ECS components
+
+`Prefab.spawn` (in `engine/script/`) routes a prefab's `voxel_ref`
+through to runtime components when the loaded `.vxs` carries shape
+records:
+
+- **SHAPES / HYBRID shape half** — one child entity per
+  `IRAsset::ShapeRecord`, parented via `IREntity::setParent`. Each
+  child gets `C_Position3D{record.offset_}` plus
+  `C_ShapeDescriptor` populated from `record.shapeTypeId_` /
+  `params_` / `color_` / `flags_`. CHILD_OF composition keeps the
+  rendered position equal to `parent.global + record.offset`. Per-
+  record `rotation_`, `csgOp_`, and `boneId_` are loaded but not
+  attached in v1 (no renderer consumes them; T-181 wires bone
+  binding).
+- **DENSE / HYBRID dense half** — per-voxel records are loaded and
+  validated but not attached. `C_VoxelSetNew` constructs against
+  the active render-canvas pool; a headless attach path needs its
+  own design. Track follow-up at the issue queue (deferred from
+  T-182).
+
+`C_ShapeDescriptor`'s constructors snapshot the active canvas via
+`IRRender::getActiveCanvasEntityOrNull()` rather than the
+asserting `getActiveCanvasEntity()`. Headless construction
+(prefab spawn in a test, asset tooling) gets
+`canvasEntity_ = kNullEntity` instead of an `IR_ASSERT` failure;
+iterating systems gate work on the field already.
+
 ## Gotchas
 
 - **Never add `C_VoxelPool` to a non-canvas entity.** Pools are
