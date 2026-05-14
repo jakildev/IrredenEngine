@@ -1,5 +1,7 @@
 add_library(IrredenEngineScripting STATIC
     src/lua_script.cpp
+    src/prefab_api.cpp
+    src/lua_bindings_prefab.cpp
 )
 
 add_subdirectory(third_party/luajit)
@@ -25,6 +27,8 @@ target_link_libraries(
     sol2
     IrredenEngineEntity
     IrredenEngineSystem
+    IrredenEngineAsset
+    IrredenEngineRendering
 )
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's

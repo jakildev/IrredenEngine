@@ -37,6 +37,7 @@ add_executable(IrredenEngineTest
   script/lua_component_register_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_system_codegen_test.cpp
+  script/prefab_api_test.cpp
   script/lua_system_coexistence_test.cpp
   script/lua_system_register_test.cpp
   script/modifier_lua_test.cpp
