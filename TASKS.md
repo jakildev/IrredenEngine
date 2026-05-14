@@ -212,17 +212,6 @@ Avoid:
   - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
   - **Links:**
 
-- [~] **engine/entity: singleton reentrancy guard doc + destroyAllEntities cache-reset test** — add CLAUDE.md pre-destroy hook warning for singleton lazy-create reentrancy; add SingletonCacheResetAfterDestroyAllEntities test
-  - **ID:** T-178
-  - **Area:** engine/entity
-  - **Model:** opus
-  - **Owner:** claude/T-178-singleton-reentrancy-doc
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) engine/entity/CLAUDE.md § "Pre-destroy hooks" documents that singletonEntity<T> (lazy-create) is forbidden inside pre-destroy hooks during destroyAllEntities; singletonEntityOrNull<T> noted as safe alternative; (2) SingletonCacheResetAfterDestroyAllEntities test in test/ecs/entity_manager_test.cpp: populate cache, destroyAllEntities, assert singletonEntityOrNull<C> returns kNullEntity, re-call singletonEntity<C> and confirm fresh entity id is minted; (3) fleet-build --target IrredenEngineTest green
-  - **Issue:** #655
-  - **Notes:** Post-merge follow-up from T-162 / PR #650. Opus reviewer flagged the reentrancy shape (ghost singleton survives destroyAllEntities if a pre-destroy hook calls lazy-create mid-loop); Sonnet reviewer flagged the missing bulk-clear test. Option (a) chosen (doc-only) per Opus recommendation — no defensive flag needed. No public API change, no shader code.
-  - **Links:**
-
 - [~] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
   - **ID:** T-181
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -260,7 +249,7 @@ Avoid:
   - **ID:** T-184
   - **Area:** engine/asset, engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-184-delete-txl-family
   - **Blocked by:** (none)
   - **Acceptance:** (1) engine/asset/ and engine/prefabs/irreden/ contain no reference to .txl, TxlSidecar, saveTxlSidecar, loadTxlSidecar, saveTrixelTextureData, loadTrixelTextureData, kTrixelExtension, kTxlSidecarExtension, or kTrixelImage; (2) C_TriangleCanvasTextures has no saveToFile/loadFromFile methods; (3) command_save_main_canvas_trixels.hpp and test/asset/txl_sidecar_test.cpp deleted; (4) nlohmann/json no longer fetched by the engine build; (5) engine/asset/CLAUDE.md no longer documents .txl or .txl.json; (6) IRShapeDebug and IrredenEngineTest build clean
   - **Issue:** #705
@@ -282,6 +271,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
@@ -301,4 +291,3 @@ Avoid:
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
 - [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
-- [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
