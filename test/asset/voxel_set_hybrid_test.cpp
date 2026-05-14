@@ -106,12 +106,14 @@ DenseVoxelSet make50VoxelFixture() {
 
 std::vector<std::uint8_t> readFileBytes(const std::string &path) {
     std::FILE *fp = std::fopen(path.c_str(), "rb");
-    if (!fp) return {};
+    if (!fp)
+        return {};
     std::fseek(fp, 0, SEEK_END);
     const long size = std::ftell(fp);
     std::fseek(fp, 0, SEEK_SET);
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size < 0 ? 0 : size));
-    if (!bytes.empty()) std::fread(bytes.data(), 1, bytes.size(), fp);
+    if (!bytes.empty())
+        std::fread(bytes.data(), 1, bytes.size(), fp);
     std::fclose(fp);
     return bytes;
 }
@@ -130,6 +132,7 @@ TEST(VoxelSetHybrid, LoadShapesOnlyFileSanity) {
     EXPECT_EQ(loaded.value_.unknownShapesSkipped_, 0u);
     EXPECT_TRUE(loaded.value_.dense_.voxels_.empty());
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 TEST(VoxelSetHybrid, LoadDenseOnlyFileSanity) {
@@ -148,6 +151,7 @@ TEST(VoxelSetHybrid, LoadDenseOnlyFileSanity) {
     EXPECT_EQ(loaded.value_.dense_.voxels_.size(), 8000u);
     EXPECT_EQ(loaded.value_.dense_.voxels_[0].color_.red_, 100);
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 // ---- Hybrid round-trip --------------------------------------------------
@@ -208,8 +212,10 @@ TEST(VoxelSetHybrid, ReserializingHybridMatchesOriginalBytes) {
     EXPECT_EQ(b1, b2);
     EXPECT_FALSE(b1.empty());
 
-    std::remove(p1.c_str()); std::remove((p1 + ".json").c_str());
-    std::remove(p2.c_str()); std::remove((p2 + ".json").c_str());
+    std::remove(p1.c_str());
+    std::remove((p1 + ".json").c_str());
+    std::remove(p2.c_str());
+    std::remove((p2 + ".json").c_str());
 }
 
 // ---- JSON sidecar -------------------------------------------------------
@@ -266,7 +272,10 @@ TEST(VoxelSetHybrid, VersionTooNewReturnsVersionTooNew) {
         std::FILE *fp = std::fopen(path.c_str(), "wb");
         ASSERT_NE(fp, nullptr);
         char header[12] = {};
-        header[0] = 'V'; header[1] = 'X'; header[2] = 'S'; header[3] = '1';
+        header[0] = 'V';
+        header[1] = 'X';
+        header[2] = 'S';
+        header[3] = '1';
         header[4] = static_cast<char>(kVoxelSetVersion + 1u);
         std::fwrite(header, 1, sizeof(header), fp);
         std::fclose(fp);
@@ -303,7 +312,8 @@ TEST(VoxelSetHybrid, TruncatedMidVoxrReturnsTruncatedOrChunkOOB) {
         loaded.status_.code_ == BinaryIOError::ChunkOutOfBounds
     );
 
-    std::remove(p1.c_str()); std::remove((p1 + ".json").c_str());
+    std::remove(p1.c_str());
+    std::remove((p1 + ".json").c_str());
     std::remove(p2.c_str());
 }
 
