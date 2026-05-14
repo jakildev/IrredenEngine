@@ -6,7 +6,10 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/texture.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
+
+#include <vector>
 
 using namespace IRMath;
 using IRRender::ImageData;
@@ -47,6 +50,22 @@ struct C_VoxelSetNew {
     std::span<C_PositionGlobal3D> globalPositions_;
 
     std::span<C_Voxel> voxels_;
+
+    // Headless / pre-canvas staging. Populated by the dense-data ctor
+    // when no render canvas is active at construction time (tests,
+    // asset-only tooling, prefab spawn before a canvas exists). When
+    // present, `numVoxels_` is 0 and the pool spans above are empty —
+    // the canonical data lives here and `recordCount()` reflects it.
+    // A future canvas-attach pass moves these into the pool span,
+    // then clears the staging vector.
+    std::vector<C_Voxel> pendingVoxels_;
+
+    // Origin of `pendingVoxels_` data in voxel-grid space, i.e. the
+    // value of `IRAsset::DenseVoxelSet::boundsMin_`. The staged
+    // entry at flat index i corresponds to grid position
+    // `pendingBoundsMin_ + index1DtoIndex3D(i, size_)`. Only
+    // meaningful when `pendingVoxels_` is non-empty.
+    ivec3 pendingBoundsMin_ = ivec3(0);
 
     C_VoxelSetNew(
         ivec3 size, Color color = IRColors::kGreen, bool centerAroundOrigin = false
@@ -107,6 +126,86 @@ struct C_VoxelSetNew {
     C_VoxelSetNew()
         : C_VoxelSetNew(ivec3(0, 0, 0)) {}
 
+    // Dense-data ctor: build from a bounded voxel grid carrying per-voxel
+    // records, used by `Prefab.spawn` to attach a `.vxs` DENSE / HYBRID
+    // dense half. Snapshots the active canvas via
+    // `getActiveCanvasEntityOrNull` so it works headless (no canvas →
+    // stages data in `pendingVoxels_`; canvas present → allocates from
+    // the pool, copies records into the span, and seeds positions).
+    //
+    // Mirrors the asset-side `IRAsset::DenseVoxelSet` semantics: bounds
+    // are inclusive-min / exclusive-max, voxels are row-major in
+    // (x, y, z) order. `voxels.size()` must equal the bounds-derived
+    // voxel volume — the bridge in `voxel/dense_bridge.hpp` validates
+    // this and falls back to an empty staging vector otherwise.
+    C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
+        : numVoxels_{0}
+        , size_{boundsMax - boundsMin} {
+        canvasEntity_ = IRRender::getActiveCanvasEntityOrNull();
+        const ivec3 extent = size_;
+        const int requestedVoxels =
+            (extent.x > 0 && extent.y > 0 && extent.z > 0) ? extent.x * extent.y * extent.z : 0;
+        if (requestedVoxels == 0 || voxels.size() != static_cast<std::size_t>(requestedVoxels)) {
+            // Empty or mismatched payload — leave the set empty and let
+            // the caller diagnose via `recordCount()`. Avoids allocating
+            // pool slots we can't faithfully populate.
+            size_ = ivec3(0);
+            return;
+        }
+
+        if (canvasEntity_ == IREntity::kNullEntity) {
+            // Headless / pre-canvas staging path.
+            pendingVoxels_.assign(voxels.begin(), voxels.end());
+            pendingBoundsMin_ = boundsMin;
+            return;
+        }
+
+        auto allocation = IRRender::allocateVoxels(requestedVoxels);
+        voxelStartIdx_ = allocation.startIndex_;
+        positions_ = allocation.positions_;
+        positionOffsets_ = allocation.positionOffsets_;
+        globalPositions_ = allocation.positionGlobals_;
+        voxels_ = allocation.voxels_;
+
+        numVoxels_ = static_cast<int>(IRMath::min(
+            IRMath::min(positions_.size(), positionOffsets_.size()),
+            IRMath::min(globalPositions_.size(), voxels_.size())
+        ));
+        if (numVoxels_ != requestedVoxels) {
+            IRE_LOG_ERROR(
+                "VoxelSet dense allocation mismatch: requested={}, positions={}, voxels={}",
+                requestedVoxels,
+                positions_.size(),
+                voxels_.size()
+            );
+            size_ = ivec3(0);
+            numVoxels_ = 0;
+            return;
+        }
+
+        const vec3 originOffset{boundsMin};
+        for (int x = 0; x < extent.x; ++x) {
+            for (int y = 0; y < extent.y; ++y) {
+                for (int z = 0; z < extent.z; ++z) {
+                    const int idx = index3DtoIndex1D(ivec3(x, y, z), extent);
+                    positions_[idx] = C_Position3D{vec3(x, y, z) + originOffset};
+                    voxels_[idx] = voxels[idx];
+                }
+            }
+        }
+        IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
+    }
+
+    // Number of voxel records the set carries, regardless of pool /
+    // staging mode. Pool-backed sets return `numVoxels_`; headless
+    // staged sets return `pendingVoxels_.size()`. Use this to assert
+    // record count without caring which side of the pool fence the
+    // set lives on.
+    std::size_t recordCount() const {
+        return pendingVoxels_.empty() ? static_cast<std::size_t>(numVoxels_)
+                                      : pendingVoxels_.size();
+    }
+
     // TODO: should a similar onCreate method be used for allocating
     // voxels, just in case the constructor might be called in more than
     // one place?
@@ -114,9 +213,13 @@ struct C_VoxelSetNew {
         // numVoxels_ equals requestedVoxels on all non-error paths (the
         // constructor min-span guard fires IR_ASSERT before returning a
         // mismatched allocation), so deallocateVoxels releases exactly
-        // what allocateVoxels reserved.
-        IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
-        IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+        // what allocateVoxels reserved. Headless / pending sets never
+        // hit the pool (numVoxels_ == 0); the staging vector frees with
+        // the component.
+        if (numVoxels_ > 0) {
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+        }
     }
 
     void changeVoxelColor(ivec3 index, Color color) {

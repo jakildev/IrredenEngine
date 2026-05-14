@@ -10,6 +10,8 @@
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <fstream>
 #include <string>
@@ -573,6 +575,119 @@ TEST_F(PrefabApi, BindPointMissingReturnsNil) {
     auto &lua = m_lua.lua();
     EXPECT_TRUE(lua["g_off_is_nil"].get<bool>());
     EXPECT_TRUE(lua["g_rot_is_nil"].get<bool>());
+}
+
+// ---- voxel_ref DENSE / HYBRID attachment ----------------------------------
+
+// Build a small DENSE `.vxs` (2×2×2 = 8 voxels) at a non-zero origin so
+// the round-trip exercises both bounds and per-voxel record carry-over.
+// Returns the fixture set so individual tests can address subsets.
+PrefabFiles writeDenseFixture(const std::string &tag, const std::string &prefabBody) {
+    PrefabFiles f;
+    f.voxel_path_ = std::string{kTmpDir} + "/prefab_test_dense_" + tag + ".vxs";
+    f.rig_dir_ = kTmpDir;
+    f.rig_name_ = "prefab_test_dense_" + tag;
+    f.prefab_path_ = std::string{kTmpDir} + "/prefab_test_dense_" + tag + ".prefab.lua";
+
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = IRMath::ivec3(1, 2, 3);
+    dense.boundsMax_ = IRMath::ivec3(3, 4, 5); // 2x2x2 = 8 voxels
+    dense.voxels_.resize(8);
+    for (std::size_t i = 0; i < dense.voxels_.size(); ++i) {
+        // Per-voxel signature so a round-trip mismatch surfaces in a test
+        // assertion rather than a silent value drift.
+        dense.voxels_[i].color_ = IRMath::Color{static_cast<std::uint8_t>(10 + i), 0, 0, 255};
+        dense.voxels_[i].material_id_ = static_cast<std::uint8_t>(i);
+        dense.voxels_[i].bone_id_ = static_cast<std::uint8_t>(i * 2);
+    }
+    IRAsset::saveDenseVoxelSet(f.voxel_path_, dense);
+
+    std::ofstream out(f.prefab_path_);
+    out << prefabBody;
+    return f;
+}
+
+// Same shape as `writeDenseFixture` but emits a HYBRID `.vxs` — a small
+// SHAPES half (one BOX) plus the DENSE half — to confirm both attach
+// on the same root entity from a single voxel_ref.
+PrefabFiles writeHybridFixture(const std::string &tag, const std::string &prefabBody) {
+    PrefabFiles f;
+    f.voxel_path_ = std::string{kTmpDir} + "/prefab_test_hybrid_" + tag + ".vxs";
+    f.rig_dir_ = kTmpDir;
+    f.rig_name_ = "prefab_test_hybrid_" + tag;
+    f.prefab_path_ = std::string{kTmpDir} + "/prefab_test_hybrid_" + tag + ".prefab.lua";
+
+    std::vector<IRAsset::ShapeRecord> shapes(1);
+    shapes[0].shapeTypeId_ = static_cast<std::uint32_t>(IRRender::ShapeType::BOX);
+    shapes[0].params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    shapes[0].color_ = IRMath::Color{200, 100, 50, 255};
+    shapes[0].offset_ = IRMath::vec3(5.0f, 0.0f, 0.0f);
+
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = IRMath::ivec3(0);
+    dense.boundsMax_ = IRMath::ivec3(2, 2, 1); // 2x2x1 = 4 voxels
+    dense.voxels_.resize(4);
+    for (std::size_t i = 0; i < dense.voxels_.size(); ++i) {
+        dense.voxels_[i].color_ = IRMath::Color{0, static_cast<std::uint8_t>(30 + i), 0, 255};
+    }
+    IRAsset::saveVoxelSet(f.voxel_path_, shapes, dense);
+
+    std::ofstream out(f.prefab_path_);
+    out << prefabBody;
+    return f;
+}
+
+TEST_F(PrefabApi, SpawnAttachesDenseVoxelSetHeadless) {
+    PrefabFiles f = writeDenseFixture(
+        "attach",
+        std::string{"return { prefab_version = 1, voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_dense_attach.vxs' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    // Record count matches `dense.voxelCount()` per the T-189 acceptance
+    // criterion. The test runs headless (no canvas), so the data lives in
+    // `pendingVoxels_` and `numVoxels_` is 0 — `recordCount()` unifies
+    // the two paths.
+    const auto &voxelSet = IREntity::getComponent<IRComponents::C_VoxelSetNew>(r.entity_);
+    EXPECT_EQ(voxelSet.recordCount(), 8u);
+    EXPECT_EQ(voxelSet.numVoxels_, 0); // headless → staged, not pool-allocated
+    EXPECT_EQ(voxelSet.canvasEntity_, IREntity::kNullEntity);
+    EXPECT_EQ(voxelSet.pendingBoundsMin_.x, 1);
+    EXPECT_EQ(voxelSet.pendingBoundsMin_.y, 2);
+    EXPECT_EQ(voxelSet.pendingBoundsMin_.z, 3);
+
+    // The bounds → size derivation must agree with `voxelCount()`.
+    ASSERT_EQ(voxelSet.pendingVoxels_.size(), 8u);
+    // Spot-check a couple of records — the per-voxel signature emitted by
+    // the fixture carries through unmodified.
+    EXPECT_EQ(voxelSet.pendingVoxels_[0].color_.red_, 10);
+    EXPECT_EQ(voxelSet.pendingVoxels_[7].color_.red_, 17);
+    EXPECT_EQ(voxelSet.pendingVoxels_[3].material_id_, 3);
+    EXPECT_EQ(voxelSet.pendingVoxels_[3].bone_id_, 6);
+}
+
+TEST_F(PrefabApi, SpawnAttachesHybridShapesAndDenseOnSameEntity) {
+    PrefabFiles f = writeHybridFixture(
+        "attach",
+        std::string{"return { prefab_version = 1, voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_hybrid_attach.vxs' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    // SHAPES half — one BOX child entity attached under the root.
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 1);
+
+    // DENSE half — C_VoxelSetNew on the same root entity, record count
+    // equals the dense voxel volume.
+    const auto &voxelSet = IREntity::getComponent<IRComponents::C_VoxelSetNew>(r.entity_);
+    EXPECT_EQ(voxelSet.recordCount(), 4u);
+    EXPECT_EQ(voxelSet.pendingVoxels_.size(), 4u);
+    EXPECT_EQ(voxelSet.pendingVoxels_[1].color_.green_, 31);
 }
 
 // ---- additivity: unknown top-level keys do not break the load -------------
