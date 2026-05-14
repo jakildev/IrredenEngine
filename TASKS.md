@@ -213,7 +213,7 @@ Avoid:
   - **ID:** T-185
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-185-asset-cleanups
   - **Blocked by:** T-184
   - **Acceptance:** (1) ShapeRecord carries `// IRAsset: serialized` + `static constexpr uint16_t kSaveVersion = kShapeRecordVersion;`; (2) other directly-serialized structs in engine/asset/ (RigJoint, RigBindPoint, dense per-voxel record) audited and annotated; (3) ir_asset_types.hpp deleted with no orphaned includes; (4) makeTag asserts (or static_asserts) on s.length() != 4; (5) engine/asset/CLAUDE.md opener updated to reflect current scope (not "Tiny module"); .txl gotcha bullet removed; .rig entry points listed; (6) fleet-build clean; T-172 serialized-struct linter passes
   - **Issue:** #706
@@ -224,7 +224,7 @@ Avoid:
   - **ID:** T-186
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-186-asset-test-round-trips
   - **Blocked by:** (none)
   - **Acceptance:** (1) test/asset/json_sidecar_test.cpp added and registered — covers empty object/array, scope nesting, all value* overloads, string escaping, numeric edge cases, NaN/Inf contract, key ordering, and file-open failure; (2) test/asset/name_table_test.cpp added and registered — covers write/read round-trip (0/1/many entries), non-ASCII names, idByName/nameById hits/misses, duplicate-insert behavior, empty-name edge case; (3) all new tests pass; no production-code changes; fleet-build clean on linux-debug
   - **Issue:** #707
@@ -235,7 +235,7 @@ Avoid:
   - **ID:** T-187
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-187-lod-phase-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) lod_utils.hpp exits stub status; computeLodLevel/shouldSkipAtLod/lodVoxelScale called by live systems with thresholds matching real zoom range (1.0–64.0); (2) LOD_UPDATE system added to SystemName enum and UPDATE pipeline; writes C_ActiveLodLevel singleton each frame from C_ZoomLevel; (3) C_ShapeDescriptor::lodLevel_ renamed to lodMin_ or semantics documented in header; (4) SHAPES_TO_TRIXEL reads C_ActiveLodLevel once at beginTick and skips shapes with lodMin_ < activeLod; (5) render-verify shot confirms progressive shape-count change across zoom 1.0/2.0/4.0/8.0; (6) no DENSE-mode, no .rig, no shader changes; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #708
@@ -246,7 +246,7 @@ Avoid:
   - **ID:** T-188
   - **Area:** engine/script, engine/prefabs/irreden/render, engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-188-decouple-scripting-rendering
   - **Blocked by:** (none)
   - **Acceptance:** (1) IrredenEngineScripting target no longer links against IrredenEngineRendering (verify via CMake dependency graph or linker map); (2) fleet-build clean on linux-debug; (3) IrredenEngineTest passes; no functional regressions
   - **Issue:** #709
@@ -257,7 +257,7 @@ Avoid:
   - **ID:** T-189
   - **Area:** engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-189-prefab-dense-attach
   - **Blocked by:** T-182
   - **Acceptance:** (1) DENSE .vxs voxel_ref attaches per-voxel data as C_VoxelSetNew on spawned entity, headless-safe; (2) HYBRID .vxs attaches both SHAPES (T-182) and DENSE halves on same entity; (3) round-trip tests: DENSE and HYBRID verified through Prefab.spawn; entity C_VoxelSetNew record count matches dense_.voxelCount(); (4) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document chosen attachment contract
   - **Issue:** #721
@@ -268,7 +268,7 @@ Avoid:
   - **ID:** T-190
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-190-sdf-trixel-discrepancy
   - **Blocked by:** (none)
   - **Acceptance:** (1) diff report comparing voxel-pool vs SDF output at zoom 4/8/16 for box, sphere, cone, and torus shapes using tools/img_diff; (2) either a fix PR that eliminates the trixel discrepancy, or a CLAUDE.md note in engine/render/ documenting the intentional delta and its source (which threshold, which solver path); (3) fleet-build clean on linux-debug
   - **Issue:** #690
