@@ -81,6 +81,57 @@ void saveSpriteSheetMeta(
 /// Returns a default-constructed SpriteSheetMeta if the file cannot be opened.
 SpriteSheetMeta loadSpriteSheetMeta(const std::string &name, const std::string &path);
 
+// ---- Trixel sidecar (.txl.json) ----
+
+/// A named attachment point on the voxel model.
+/// `rotation_` stores `{qw, qx, qy, qz}` in `.x .y .z .w` order.
+struct BindPoint {
+    std::string name_;
+    int boneId_ = 0;
+    vec3 offset_ = vec3{0.0f, 0.0f, 0.0f};
+    vec4 rotation_ = vec4{1.0f, 0.0f, 0.0f, 0.0f}; // {qw, qx, qy, qz} in .x .y .z .w
+};
+
+/// Maps a human-readable material name to the `material_id` byte from the
+/// per-voxel metadata field (added in .txl v2 by T-146 / F-0.6).
+struct MaterialRef {
+    std::string name_;
+    uint8_t materialId_ = 0;
+};
+
+/// JSON sidecar metadata stored alongside a `.txl` binary file.
+///
+/// Persisted as `<name>.txl.json` next to `<name>.txl`.  Saving an empty
+/// sidecar removes any pre-existing file; callers should treat a missing
+/// sidecar as all-defaults (empty bind-point list, empty component-pack,
+/// identity material map).
+///
+/// `componentPackJson_` is an opaque JSON object string that the engine
+/// stores verbatim; the game-side component registry interprets the per-
+/// component key→value entries at entity spawn time. Round-trip through
+/// `saveTxlSidecar`/`loadTxlSidecar` preserves structure but not byte
+/// order — do not hash the string for change detection.
+struct TxlSidecar {
+    std::vector<BindPoint> bindPoints_;
+    std::string componentPackJson_;
+    std::vector<MaterialRef> materialRefs_;
+
+    bool empty() const {
+        return bindPoints_.empty() && componentPackJson_.empty() && materialRefs_.empty();
+    }
+};
+
+/// Writes a `.txl.json` sidecar to `path`/`name`.txl.json.
+/// If `sidecar.empty()`, removes any pre-existing sidecar file and returns
+/// without creating a new one.
+void saveTxlSidecar(const std::string &name, const std::string &path, const TxlSidecar &sidecar);
+
+/// Reads a `.txl.json` sidecar from `path`/`name`.txl.json.
+/// Returns a default-constructed TxlSidecar (all empty) if the file is absent
+/// or cannot be opened — caller treats missing sidecar as all-defaults, no
+/// log message emitted for the missing-file case.
+TxlSidecar loadTxlSidecar(const std::string &name, const std::string &path);
+
 }; // namespace IRAsset
 
 #endif /* IR_ASSET_H */

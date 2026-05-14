@@ -2,13 +2,17 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <cstdio>
+#include <fstream>
 #include <string>
 
 namespace IRAsset {
 
 namespace {
 constexpr const char *kTrixelExtension = ".txl";
+constexpr const char *kTxlSidecarExtension = ".txl.json";
 constexpr const char *kIRSpriteExtension = ".irsprite";
 } // namespace
 
@@ -123,6 +127,122 @@ SpriteSheetMeta loadSpriteSheetMeta(const std::string &name, const std::string &
     fclose(f);
     IRE_LOG_INFO("Loaded sprite sheet meta from {}", filename);
     return meta;
+}
+
+void saveTxlSidecar(const std::string &name, const std::string &path, const TxlSidecar &sidecar) {
+    const std::string filename = IRUtility::joinPath(path, name, kTxlSidecarExtension);
+    if (sidecar.empty()) {
+        std::remove(filename.c_str());
+        return;
+    }
+
+    nlohmann::json j;
+
+    nlohmann::json bpArray = nlohmann::json::array();
+    for (const auto &bp : sidecar.bindPoints_) {
+        bpArray.push_back(
+            {{"name", bp.name_},
+             {"bone_id", bp.boneId_},
+             {"offset", {bp.offset_.x, bp.offset_.y, bp.offset_.z}},
+             {"rotation", {bp.rotation_.x, bp.rotation_.y, bp.rotation_.z, bp.rotation_.w}}}
+        );
+    }
+    j["bind_points"] = std::move(bpArray);
+
+    if (!sidecar.componentPackJson_.empty()) {
+        try {
+            j["component_pack"] = nlohmann::json::parse(sidecar.componentPackJson_);
+        } catch (const nlohmann::json::parse_error &e) {
+            IRE_LOG_ERROR("saveTxlSidecar: invalid componentPackJson for '{}': {}", name, e.what());
+            j["component_pack"] = nlohmann::json::object();
+        }
+    }
+
+    nlohmann::json refArray = nlohmann::json::array();
+    for (const auto &ref : sidecar.materialRefs_) {
+        refArray.push_back(
+            {{"name", ref.name_}, {"material_id", static_cast<int>(ref.materialId_)}}
+        );
+    }
+    j["material_refs"] = std::move(refArray);
+
+    std::ofstream f(filename);
+    if (!f) {
+        IRE_LOG_ERROR("Failed to open file for writing: {}", filename);
+        return;
+    }
+    f << j.dump(2);
+    IRE_LOG_INFO("Saved trixel sidecar to {}", filename);
+}
+
+TxlSidecar loadTxlSidecar(const std::string &name, const std::string &path) {
+    const std::string filename = IRUtility::joinPath(path, name, kTxlSidecarExtension);
+    std::ifstream f(filename);
+    if (!f)
+        return {};
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(f);
+    } catch (const nlohmann::json::parse_error &e) {
+        IRE_LOG_ERROR("loadTxlSidecar: JSON parse error for '{}': {}", filename, e.what());
+        return {};
+    }
+
+    TxlSidecar sidecar;
+
+    try {
+        if (j.contains("bind_points") && j["bind_points"].is_array()) {
+            for (const auto &bp : j["bind_points"]) {
+                BindPoint entry;
+                entry.name_ = bp.value("name", "");
+                entry.boneId_ = bp.value("bone_id", 0);
+                if (bp.contains("offset") && bp["offset"].is_array() && bp["offset"].size() == 3) {
+                    entry.offset_ = vec3{
+                        bp["offset"][0].get<float>(),
+                        bp["offset"][1].get<float>(),
+                        bp["offset"][2].get<float>()
+                    };
+                }
+                if (bp.contains("rotation") && bp["rotation"].is_array() &&
+                    bp["rotation"].size() == 4) {
+                    entry.rotation_ = vec4{
+                        bp["rotation"][0].get<float>(),
+                        bp["rotation"][1].get<float>(),
+                        bp["rotation"][2].get<float>(),
+                        bp["rotation"][3].get<float>()
+                    };
+                }
+                sidecar.bindPoints_.push_back(std::move(entry));
+            }
+        }
+
+        if (j.contains("component_pack") && j["component_pack"].is_object()) {
+            sidecar.componentPackJson_ = j["component_pack"].dump();
+        }
+
+        if (j.contains("material_refs") && j["material_refs"].is_array()) {
+            for (const auto &ref : j["material_refs"]) {
+                MaterialRef entry;
+                entry.name_ = ref.value("name", "");
+                const int id = ref.value("material_id", 0);
+                IR_ASSERT(
+                    id >= 0 && id <= 255,
+                    "material_id {} out of uint8_t range in '{}'",
+                    id,
+                    filename
+                );
+                entry.materialId_ = static_cast<uint8_t>(id);
+                sidecar.materialRefs_.push_back(std::move(entry));
+            }
+        }
+    } catch (const nlohmann::json::exception &e) {
+        IRE_LOG_ERROR("loadTxlSidecar: type error in '{}': {}", filename, e.what());
+        return {};
+    }
+
+    IRE_LOG_INFO("Loaded trixel sidecar from {}", filename);
+    return sidecar;
 }
 
 } // namespace IRAsset

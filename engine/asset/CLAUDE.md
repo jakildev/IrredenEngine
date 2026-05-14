@@ -1,12 +1,15 @@
-# engine/asset/ — trixel texture + sprite-sheet I/O
+# engine/asset/ — trixel texture, sprite-sheet, and txl-sidecar I/O
 
-Tiny module. Today it covers two file formats:
+Tiny module. Today it covers three file formats:
 
 - **Trixel textures** — raw binary `(size, colors[], distances[])` blobs
   with extension `.txl`.
 - **Sprite-sheet sidecars** — plain-text metadata for PNG atlases with
   extension `.irsprite`. The PNG itself is loaded by `engine/render/`'s
   `ImageData`; this module owns only the sidecar.
+- **Trixel JSON sidecars** — JSON metadata stored alongside a `.txl` as
+  `<name>.txl.json`; holds bind-points, component-pack blobs, and
+  material-registry references.
 
 ## What this module is and isn't
 
@@ -47,6 +50,8 @@ snapshot (issue #199). It walks the archetype graph, so it lives in
   `loadTrixelTextureData(...)` — trixel binary round-trip.
 - `saveSpriteSheetMeta(name, path, meta)` /
   `loadSpriteSheetMeta(name, path)` — sidecar text round-trip.
+- `saveTxlSidecar(name, path, sidecar)` /
+  `loadTxlSidecar(name, path)` — `.txl.json` sidecar JSON round-trip.
 - `saveShapeGroup(path, span<ShapeRecord>)` / `loadShapeGroup(path)` —
   `.vxs` SHAPES-mode SDF primitive composition round-trip. See
   `voxel_set_format.hpp` for record layout and the
@@ -67,6 +72,42 @@ ivec2 size
 ```
 
 No checksum, no magic bytes, no compression. Treat the file as volatile.
+
+## Trixel JSON sidecar format (`.txl.json`)
+
+Written/read by `saveTxlSidecar` / `loadTxlSidecar`. Stored as
+`<name>.txl.json` next to the binary `<name>.txl`. Saving an empty sidecar
+removes any pre-existing file; a missing file loads as all-defaults with no log.
+
+```json
+{
+  "bind_points": [
+    {
+      "name": "root",
+      "bone_id": 0,
+      "offset": [0.0, 0.0, 0.0],
+      "rotation": [1.0, 0.0, 0.0, 0.0]
+    }
+  ],
+  "component_pack": {},
+  "material_refs": [
+    { "name": "wood", "material_id": 1 }
+  ]
+}
+```
+
+Field notes:
+
+- **`bind_points`** — named attachment points used by the game's animation /
+  IK system. `rotation` is `[qw, qx, qy, qz]` stored in `vec4.x .y .z .w`.
+- **`component_pack`** — opaque JSON object; the engine stores it verbatim as
+  a `std::string`. The game-side component registry interprets the
+  per-component key → value entries at entity spawn time.
+- **`material_refs`** — maps human-readable names to `material_id` bytes from
+  the per-voxel metadata field added in `.txl` v2 (T-146 / F-0.6). The
+  identity map (empty array) is the default when no material info was authored.
+
+The `.txl.json` sidecar complements the binary `.txl` v2 spec from F-0.6.
 
 ## Sprite-sheet sidecar format
 
