@@ -226,18 +226,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy** — on-disk format for joint hierarchies; rigs are a separate asset so the same skeleton can be shared across voxel variants
-  - **ID:** T-169
-  - **Area:** engine/asset, engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-169-rig-v1
-  - **Blocked by:** T-166
-  - **Acceptance:** (1) IRAsset::saveRig/loadRig ship; (2) .rig v1 format: IRRG magic + uint32 version + chunk-count; JNTS chunk: array of {uint16 version, vec4 rotation, vec4 translation, uint32 parentIndex, string name}; (3) loader produces C_JointHierarchy ready for toGPUFormat(); (4) round-trip 30-bone snake rig: toGPUFormat() produces identical GPU matrices pre/post round-trip; (5) JSON sidecar emits per-joint name + parent index; (6) unknown chunks handled forward-compat (Extensibility Rule #1); (7) unit tests: round-trip, unknown-chunk forward compat; (8) fleet-build clean on linux-debug
-  - **Issue:** #666
-  - **Notes:** Joints-only first slice; bind-points (#669) adds BIND chunk; Phase 3 animation tracks (#606) adds ANIM chunk — both without bumping .rig v1. Referenced by .prefab.lua files (#671) for rig sharing. Parent epic: #605 (Phase 2 — Hierarchies & skeletal voxels).
-  - **Links:**
-
-
 - [~] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
   - **ID:** T-170
   - **Area:** engine/asset
@@ -255,7 +243,7 @@ Avoid:
   - **Area:** engine/asset, engine/prefabs/irreden/voxel
   - **Model:** sonnet
   - **Owner:** claude/T-171-rig-v2-bind-chunk
-  - **Blocked by:** T-169
+  - **Blocked by:** (none)
   - **Acceptance:** (1) BIND chunk: array of {string name, uint32 bone_id, vec3 offset, vec4 rotation}; O(string-hash) lookup at load time; (2) IRAsset::saveRig/loadRig round-trip bind points alongside joints; (3) JSON sidecar lists bind-point names + bone ids; (4) round-trip test: 5 bind points on 30-bone snake rig, entity:bindPoint() returns identical world-space transforms pre/post; (5) forward compat: .rig without BIND loads with empty bind-point map; (6) forward compat: old build skips unknown BIND chunk (Extensibility Rule #1); (7) fleet-build clean on linux-debug
   - **Issue:** #669
   - **Notes:** Phase 5 of editor epic (#608). Purely additive to .rig v1 — no version bump. component_bind_points.hpp may be defined here or in #608 depending on phase order. Blocks T-173 (prefab Lua format).
@@ -277,6 +265,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
 - [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
 - [x] **T-163** — Stateless procedural particle system — UBO-driven emitters · Owner: claude/T-163-stateless-particles · PR: https://github.com/jakildev/IrredenEngine/pull/659
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
@@ -296,4 +285,3 @@ Avoid:
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
-- [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
