@@ -194,7 +194,7 @@ Avoid:
   - **ID:** T-173
   - **Area:** engine/script, engine/prefabs/irreden
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-173-prefab-lua-format
   - **Blocked by:** (none)
   - **Acceptance:** (1) Lua prefab schema: prefab_version=1, voxel_ref, rig_ref (optional), components pack, bind_point_overrides; (2) Prefab.spawn(id, position) C++ API + Lua binding; (3) Prefab.register(id, path) registry; (4) asset path resolution for voxel_ref/rig_ref via existing resolver; (5) round-trip test: register prefab, spawn, verify components attached with correct values, verify entity:bindPoint() returns expected world-space transform; (6) prefab_version enforced on load with clear diagnostic on unknown version; (7) additive component packs load without version bump
   - **Issue:** #671
@@ -205,7 +205,7 @@ Avoid:
   - **ID:** T-176
   - **Area:** shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-176-gpu-particles-voxel-diamond
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRGpuParticles (or any creation using C_GPUParticlePool with a lighting pipeline) renders particles as 3-face voxel diamonds with correct 3-tone shading; (2) fleet-build clean on linux-debug and macos-debug; (3) shaders pass render-debug-loop; (4) GLSL and Metal emit the same trixel set per particle (no backend-parity drift)
   - **Issue:** #689
@@ -216,7 +216,7 @@ Avoid:
   - **ID:** T-177
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-177-widget-followup
   - **Blocked by:** (none)
   - **Acceptance:** (1) all five new widgets render on the trixel canvas with hover/pressed/focused/disabled states (where applicable); (2) theme integration matches the existing five widgets from T-145; (3) each widget has builder + reader functions in IRPrefab::Widget; (4) IRUIWidgetsDemo extended (or split into multiple demos) to show all 10 primitives; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #633
