@@ -5,15 +5,7 @@
 
 namespace IRScript {
 
-/// Extract an IRMath::vec3 from a Lua value. Accepts an IRMath::vec3 userdata
-/// or a {x,y,z} / {1,2,3} table. Returns {0,0,0} for nil/none/absent.
-/// Validate the type at the callsite before calling this helper — it
-/// zero-defaults on unrecognized types so bad-type errors need a caller-side
-/// check to surface a descriptive message.
-///
-/// Named-or-indexed field lookup uses sol::optional<float> per key because
-/// sol2's get_or<T> overload resolution is ambiguous with mixed string/integer
-/// key types.
+// sol::optional<float> per key — get_or<T> overload resolution is ambiguous with mixed string/integer key types.
 inline IRMath::vec3 vec3FromLua(sol::object obj) {
     if (obj.is<IRMath::vec3>())
         return obj.as<IRMath::vec3>();
