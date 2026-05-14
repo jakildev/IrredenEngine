@@ -377,6 +377,22 @@ Do the work, then exit cleanly:
       For `fleet:needs-fix` / `fleet:has-nits` / `fleet:design-unblocked`
       only (no human label): skip both — reviewer-flagged feedback
       and architect direction don't trigger the human-amending state.
+
+      **Reserve this worktree for the in-flight amendment** (only
+      for `human:needs-fix` / `human:blocker` paths). Extract the
+      task ID from the PR's branch (`claude/T-NNN-…`) and write the
+      reservation file so the amendment becomes a durable fleet
+      artifact rather than relying on the `fleet:human-amending`
+      label alone. If `fleet-down` or a mid-flight crash interrupts
+      before `commit-and-push` lands, the reservation pins the
+      worktree to this branch across the boot, and the next
+      iteration's step 0.5 resumes the amendment instead of starting
+      a fresh task and clobbering the in-progress work:
+      `fleet-claim reserve <task-id> <your-worktree-basename> <branch>`
+      (Example: `fleet-claim reserve T-163 opus-worker-2 claude/T-163-stateless-particles`.)
+      Skip for the non-human paths — those don't enter the
+      human-amending state and complete quickly, so the reservation
+      bookkeeping isn't worth the cost.
    c. Address every piece of feedback. Build with `fleet-build`.
    d. Push fixes using `commit-and-push`.
    e. Swap the in-progress label for the done label:
@@ -411,6 +427,11 @@ Do the work, then exit cleanly:
       remaining downstreams stay on the prior base, and the
       subcommand exits non-zero — surface the failure to the human
       and move on.
+   h. **Release the amendment reservation.** Only the AMEND path's
+      `human:needs-fix` / `human:blocker` branch reserved one in
+      step b; `release-worktree` is idempotent so it's safe to run
+      unconditionally:
+      `fleet-claim release-worktree <your-worktree-basename>`
 
    Address all flagged PRs before doing any other work.
 

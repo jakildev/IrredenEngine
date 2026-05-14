@@ -332,6 +332,43 @@ if [[ -d "$HOME/.fleet/reservations" ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# Step 1.7: reconcile amendment artifacts against world state
+# ----------------------------------------------------------------------
+#
+# An AMEND iteration writes both (a) a reservation pinning its worktree
+# to the in-flight task and (b) the `fleet:human-amending` label on the
+# PR. The reservation is the load-bearing artifact (Step 2's
+# reset_worktree consults it; the role-doc step 0.5 resumes from it);
+# the label is the human-facing signal. They should stay in sync.
+#
+# Pre-fix iterations (and any worker that died between label-swap and
+# reservation-write) leave the label on without a reservation. Scan
+# every open `fleet:human-amending` PR and reconcile:
+#   - worktree on branch + reservation present → leave alone
+#   - worktree on branch + no reservation      → reconstruct reservation
+#   - no worktree on branch                    → revert label so the
+#                                                 standard feedback
+#                                                 pickup path resumes
+#
+# Reconciler script does the actual work — see
+# scripts/fleet/fleet-reconcile-amendments for the per-PR decision
+# logic, env overrides, and dry-run mode.
+
+if command -v fleet-reconcile-amendments >/dev/null 2>&1; then
+    fleet-reconcile-amendments || \
+        echo "fleet-up: amendment reconciler exited non-zero; continuing boot"
+elif [[ -x "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/fleet-reconcile-amendments" ]]; then
+    # Fallback for the in-repo dev workflow where the symlink hasn't
+    # been refreshed by install.sh — invoke the source-tree copy
+    # directly so a freshly-pulled fleet-up can still reconcile.
+    "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/fleet-reconcile-amendments" || \
+        echo "fleet-up: amendment reconciler (source-tree) exited non-zero; continuing boot"
+else
+    echo "fleet-up: fleet-reconcile-amendments not found; skipping amendment reconcile"
+    echo "          (re-run scripts/fleet/install.sh to symlink it into ~/bin/)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 2: reset each worktree to a fresh branch off origin/master
 # ----------------------------------------------------------------------
 
