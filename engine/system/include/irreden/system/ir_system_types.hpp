@@ -72,6 +72,7 @@ enum SystemName {
     SPRING_COLOR,
     SPRITE_ANIMATION_ADVANCE,
     GIZMO_SCREEN_SPACE_SIZE,
+    LOD_UPDATE,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
     // C_ResolvedFields. Order: decay all three vectors (per-entity,

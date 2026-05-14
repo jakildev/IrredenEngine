@@ -25,6 +25,7 @@
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
@@ -81,6 +82,13 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    // LOD Phase 1 (T-187) progressive-reveal capture. The three LOD test
+    // spheres sit on the dedicated row at y = -16 (see initEntities). At
+    // zoom 16 the active tier is LOD_0, so all three are drawn — the
+    // tightest LOD_0 sphere should be visible here and absent from every
+    // other shot. zoom 1, 4, 8 already cover the other reveal steps; the
+    // progression is documented in the LOD strategy design doc.
+    {16.0f, vec2(0, 0), "zoom16_lod_all_visible"},
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
@@ -178,7 +186,8 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(
@@ -452,6 +461,35 @@ void initEntities() {
         );
 
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
+    }
+
+    // LOD Phase 1 (T-187) fixture: three spheres at lodMin_ = LOD_0 /
+    // LOD_2 / LOD_4 sitting on a dedicated row above the main grid. The
+    // LOD_UPDATE → SHAPES_TO_TRIXEL filter culls them progressively as
+    // the active tier coarsens: zoom < 4 only renders LOD_4; zoom >= 4
+    // adds LOD_2; zoom >= 16 adds LOD_0. The render-verify zoom-shot
+    // table captures all five tier transitions for visual regression.
+    constexpr float kLodFixtureY = -16.0f;
+    constexpr float kLodFixtureSpacingX = 12.0f;
+    constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
+    struct LodFixture {
+        IRRender::LodLevel lodMin_;
+        Color color_;
+        const char *label_;
+    };
+    const LodFixture lodFixtures[] = {
+        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
+        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
+        {IRRender::LodLevel::LOD_4, Color{80, 130, 240, 255}, "LOD_4 (always visible)"},
+    };
+    constexpr int kNumLodFixtures = sizeof(lodFixtures) / sizeof(lodFixtures[0]);
+    for (int i = 0; i < kNumLodFixtures; ++i) {
+        const auto &lf = lodFixtures[i];
+        const float xPos = (i - (kNumLodFixtures - 1) * 0.5f) * kLodFixtureSpacingX;
+        IR_LOG_INFO("--- {} ---", lf.label_);
+        C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
+        desc.lodMin_ = lf.lodMin_;
+        IREntity::createEntity(C_Position3D{vec3(xPos, kLodFixtureY, 0.0f)}, desc);
     }
 
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is

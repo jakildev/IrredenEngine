@@ -8,9 +8,11 @@
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 
@@ -60,10 +62,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     float yawCos_ = 1.0f;
     float yawSin_ = 0.0f;
     bool yawZero_ = true;
+    // LOD tier snapshotted at beginTick from the C_ActiveLodLevel singleton
+    // (written by LOD_UPDATE in UPDATE phase). Per-entity tick skips shapes
+    // whose lodMin_ < activeLod_ — those are too-fine-grained for this
+    // frame's zoom. Defaults to LOD_4 (no culling) so creations that don't
+    // register LOD_UPDATE keep their pre-LOD behavior.
+    IRRender::LodLevel activeLod_ = IRRender::LodLevel::LOD_4;
 
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_PositionGlobal3D &pos
     ) {
+        if (IRRender::shouldSkipAtLod(shape.lodMin_, activeLod_)) {
+            return;
+        }
         if (cullBounds_.has_value()) {
             vec3 viewPos = pos.pos_;
             vec3 sizeForExtent = vec3(shape.params_);
@@ -108,12 +119,22 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         desc.entityId = entityId;
         desc.jointIndex = 0;
         desc.flags = shape.flags_;
-        desc.lodLevel = shape.lodLevel_;
+        desc.lodLevel = IRRender::toUnderlying(shape.lodMin_);
         bucket.push_back(desc);
     }
 
     void beginTick() {
         gpuShapesByCanvas_.clear();
+
+        // Snapshot the active LOD tier from the singleton written by
+        // LOD_UPDATE in the UPDATE phase. singletonOrNull returns nullptr
+        // when no creation has registered LOD_UPDATE — in that case the
+        // default LOD_4 leaves every shape visible.
+        if (auto *lod = IREntity::singletonOrNull<C_ActiveLodLevel>()) {
+            activeLod_ = lod->current_;
+        } else {
+            activeLod_ = IRRender::LodLevel::LOD_4;
+        }
 
         // Snapshot camera yaw once for the whole tick so the cull
         // pass and the per-tile dispatch share the same value, even

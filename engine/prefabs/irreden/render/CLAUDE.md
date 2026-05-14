@@ -60,6 +60,12 @@ the ECS surface.
   carries `C_Position3D + C_ShapeDescriptor` so the picked-voxel marker
   renders through the normal SDF path. Created hidden by the editor;
   toggled via `SHAPE_FLAG_VISIBLE` when a hit/miss happens.
+- `C_ActiveLodLevel` — singleton row written by `LOD_UPDATE` each frame
+  with the camera-zoom-derived `IRRender::LodLevel`. Read by
+  `SHAPES_TO_TRIXEL` at `beginTick` to filter `C_ShapeDescriptor`
+  entities whose `lodMin_` is below the active tier (i.e. requested
+  more detail than the camera is providing). Phase 1 of the LOD story;
+  see `docs/design/lod-strategy.md`.
 
 ## Key systems (all RENDER pipeline)
 
@@ -88,6 +94,24 @@ the ECS surface.
   `C_ShapeDescriptor::flags_` visibility. Register after the camera
   systems and before `VOXEL_TO_TRIXEL_STAGE_1` so the highlight
   rasterizes at the new voxel the same frame.
+
+## Level-of-detail (UPDATE pipeline; Phase 1)
+
+`LOD_UPDATE` is the UPDATE-pipeline driver for the artist-driven LOD
+story (`docs/design/lod-strategy.md`). Each frame it snapshots
+`IRRender::getCameraZoom()`, maps it through
+`lod_utils.hpp::computeLodLevel()`, and writes the result into the
+`C_ActiveLodLevel` singleton. `SHAPES_TO_TRIXEL` reads the singleton
+at `beginTick` and skips `C_ShapeDescriptor` rows whose `lodMin_` is
+below the active tier — purely a CPU-side filter ahead of the yaw /
+cull-bounds math, no GPU staging cost for culled shapes, no shader
+change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0` =
+highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always
+drawn), and a shape's default `lodMin_ = LOD_4` means an unmarked
+shape renders at every zoom. Register before `GLOBAL_POSITION_3D` in
+the UPDATE pipeline so the singleton is current by the time RENDER
+ticks. Phase 1 only filters `SHAPES_TO_TRIXEL`; DENSE-mode voxel
+LOD, rig LOD, and multi-tier `.vxs` composition are out of scope.
 
 ## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
 
