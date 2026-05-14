@@ -453,6 +453,52 @@ of the lighting pass. Invoke from a creation via the engine API
 (`IRRender::setDebugOverlay`) or in `shape_debug` via
 `--debug-overlay <none|ao|light_level|shadow>`.
 
+## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
+
+A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved
+from the same SDF (CPU-quantized at construction) are intentionally NOT
+trixel-for-trixel identical at every render configuration. The
+relationship varies by `SubdivisionMode`:
+
+- **`NONE` / `POSITION_ONLY` and `SMOOTH` at effective `sub == 1`** —
+  bit-identical at the silhouette. The SDF shader skips the analytical
+  surface solver entirely and routes through `snapLatticeWalk`
+  (`c_shapes_to_trixel.glsl` `smoothMode = (renderMode != 0) &&
+  (subdivisions > 1)` — the `subdivisions > 1` half of that gate
+  was added in commit 87d2b681 so `sub == 1` falls back to the
+  parity-gated lattice walk instead of the analytical 2x3 emit
+  that aliased against the voxel-pool tiling). The walk only
+  evaluates iso pixels with `(isoRel.x + isoRel.y) & 1 == 0` — the same
+  even-parity set integer voxels project to — and rounds each candidate
+  via `roundHalfUp` to the same integer voxel the CPU carve evaluates.
+  The SDF surface check uses `<= 0.5` with no bias, matching CPU's
+  `> kSurfaceThreshold` exclusion exactly.
+- **`SMOOTH` at `sub > 1`** — silhouette differs by design. The SDF
+  shader runs `findSurfaceDepth` analytically: each iso sub-pixel solves
+  for the smooth surface depth, producing a continuous (sub-pixel)
+  silhouette. The voxel pool runs `faceMicroPositionFixed` over `sub²`
+  micro-positions per active voxel, producing a stair-stepped silhouette
+  that snaps to the discrete carved voxel set scaled up by `sub`. At any
+  given silhouette iso pixel one path may emit where the other doesn't
+  — that's the "lone trixel" / "half-extent voxel" effect on a
+  side-by-side comparison. It is NOT a bug; it is the entire reason
+  smooth mode has two implementations.
+
+The `kSdfBiasEpsilon` (1e-3) used in the analytical surface check
+(`sdf <= 0.5 + kSdfBiasEpsilon`) is for FMA-noise stability across
+frames at integer-edge depths, not a deliberate widening of the surface
+shell. It can keep one extra sub-pixel column at borderline analytical
+hits where the CPU carve drops; the visual effect is bounded by the
+epsilon and only visible at static analysis with a per-pixel diff.
+
+If you need bit-identical voxel-pool output from a `C_ShapeDescriptor`,
+the only correct configuration is `SubdivisionMode::NONE` (or any
+`sub == 1` configuration) where both paths route through the same
+parity-gated lattice walk. At higher subdivisions, choose the path
+based on intent: voxel pool for "cubes-of-cubes" stylization, SDF for
+smooth analytical silhouettes. The lighting demo's `kShots[]`
+zoom8/zoom16 captures showcase the difference for visual reference.
+
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like
