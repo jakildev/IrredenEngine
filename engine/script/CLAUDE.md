@@ -652,6 +652,76 @@ IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
   evaluator with the resolver pipeline, so the two paths agree on the
   same input regardless of whether the resolver tick has run yet.
 
+## Prefab format (`Prefab.register`, `Prefab.spawn`)
+
+`bindLuaDrivenEcs()` also exposes the `Prefab` Lua table — the runtime
+half of Phase 5 of the editor epic (#608). A prefab is a Lua file that
+returns a table describing an entity template; `Prefab.spawn(id, pos)`
+loads the file and reconstitutes the entity. The schema is versioned
+from day one so the editor's component-palette emissions stay
+forward-compatible.
+
+v1 schema:
+
+```lua
+return {
+    prefab_version = 1,                  -- REQUIRED, must equal 1
+    voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
+    rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
+    setup          = function(entity)    -- OPTIONAL, user-provided
+        IREntity.setComponent(entity, ...)
+    end,
+}
+```
+
+C++ surface lives at `engine/script/include/irreden/script/prefab_api.hpp`
+in `namespace IRPrefab::Prefab`:
+
+- `registerPrefab(id, path)` / `prefabPath(id)` / `clearPrefabs()` — the
+  in-process registry. Process-singleton lifetime; `clearPrefabs()` is
+  test-only.
+- `spawnPrefab(LuaScript&, id, position) → SpawnResult` — load + execute.
+
+Lua side:
+
+- `Prefab.register("ant", "creations/foo/ant.prefab.lua")` — register.
+- `Prefab.spawn("ant", {x=0, y=0, z=0})` — spawn. Returns a `LuaEntity`
+  on success and `(nil, errorMessage)` on failure.
+
+**Schema-validation behaviors:**
+
+- Missing `prefab_version` → error (`prefab_version field missing or
+  not an integer`).
+- `prefab_version != 1` → error with the unsupported version surfaced.
+- Non-table return from the prefab file → error.
+- `voxel_ref` that fails to load (bad magic, truncated, missing file)
+  → error; no entity created.
+- `rig_ref` that fails to load → error.
+- `setup` present but not a function (e.g. `setup = 42`) → error;
+  catches the typo class instead of silently no-op'ing.
+- Unknown top-level keys are silently ignored — adding a future field
+  doesn't break older loaders (Rule #1 mirror).
+
+**v1 scope notes** — three follow-up areas the editor will eventually
+land:
+
+- **Declarative `components = { C_Name = { ... } }` table** — needs a
+  reflection layer so an arbitrary C++ component type can be
+  constructed from a Lua table of named fields. The editor-epic doc
+  (Phase 5 risks) flags this as a design call. Use the `setup`
+  callback in the meantime — it lets the prefab call any Lua-bound
+  `IREntity.setComponent(entity, C_Foo.new(...))` directly.
+- **`bind_point_overrides = { ... }`** — requires a runtime
+  `C_BindPoints` component. T-171 added the asset-side BIND chunk to
+  `.rig`, but the runtime ECS component + the `entity:bindPoint(name)`
+  Lua accessor are deferred. spawn() loads bind points but does not
+  attach them yet.
+- **`C_VoxelSetNew` attachment from voxel_ref** — voxel data is
+  loaded and validated but not attached as an ECS component. The
+  current `C_VoxelSetNew` constructor allocates against the active
+  render-canvas pool; a headless prefab path needs a different entry
+  shape.
+
 ## Script resolution
 
 `scriptFile(path)` passes the path straight to sol2 / `dofile`. Behavior:
@@ -664,6 +734,25 @@ IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
 There is no sandbox, no path-traversal check, and no archive support.
 Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 `main.lua`.
+
+## C++ ↔ Lua math type helpers
+
+When a binding accepts a math type that Lua callers may pass as either a
+registered userdata or a table literal, use the canonical helpers in
+`engine/script/include/irreden/script/ir_script_utils.hpp` rather than writing
+ad-hoc extraction lambdas per binding:
+
+| Task | Helper |
+|------|--------|
+| `sol::object` → `IRMath::vec3` | `IRScript::vec3FromLua(obj)` |
+
+`vec3FromLua` accepts an `IRMath::vec3` userdata **or** a `{x,y,z}` / `{1,2,3}`
+table. Returns `{0,0,0}` for nil/none. Validate the type at the callsite and
+return an error string *before* calling the helper — it zero-defaults on
+unrecognized types so bad-type errors need a caller-side check.
+
+To add a helper for a new math type, add an `inline` free function to
+`ir_script_utils.hpp` and extend the table above.
 
 ## Gotchas
 
@@ -691,3 +780,9 @@ Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
   header does *not* expose the component — every creation that wants it
   still has to include the header and add the type to its component
   pack.
+- **Prefab registry is process-global.** `IRPrefab::Prefab` keeps a
+  static `std::unordered_map<std::string, std::string>` of id→path. It
+  survives `World` shutdown. Tests must call
+  `IRPrefab::Prefab::clearPrefabs()` between fixtures to avoid id
+  bleed. Production creations register prefabs once at init and don't
+  need to clear.

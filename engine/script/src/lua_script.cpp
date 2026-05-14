@@ -7,6 +7,7 @@
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
+#include <irreden/script/prefab_api.hpp>
 
 #include <deque>
 #include <string>
@@ -536,6 +537,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindSystemNameEnum(*this);
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
+    detail::bindPrefabApi(*this);
 }
 
 namespace {
