@@ -20,10 +20,11 @@
 //      apply parent-chain rotation/translation to voxel positions.
 //   4. Create a demo entity with joints (e.g. a 3-joint articulated arm
 //      oscillating sinusoidally) to test the full pipeline.
-// DEPENDENCIES: IRRender (GPUJointTransform), IRMath (vec4).
+// DEPENDENCIES: IRMath (vec4).
+// GPU conversion (GPUJointTransform) lives in joint_hierarchy_gpu.hpp — include
+// that header only in files that explicitly depend on IRRender.
 
 #include <irreden/ir_math.hpp>
-#include <irreden/render/ir_render_types.hpp>
 
 #include <vector>
 
@@ -62,18 +63,6 @@ struct C_JointHierarchy {
         }
     }
 
-    std::vector<IRRender::GPUJointTransform> toGPUFormat() const {
-        std::vector<IRRender::GPUJointTransform> gpu;
-        gpu.reserve(joints_.size());
-        for (const auto &j : joints_) {
-            IRRender::GPUJointTransform t{};
-            t.rotation = j.rotation_;
-            t.translation = j.translation_;
-            t.parentJointIndex = j.parentIndex_;
-            gpu.push_back(t);
-        }
-        return gpu;
-    }
 };
 
 } // namespace IRComponents

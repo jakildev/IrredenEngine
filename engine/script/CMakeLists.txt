@@ -28,7 +28,6 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
-    IrredenEngineRendering
 )
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
