@@ -45,6 +45,18 @@ Always call the named helpers — never inline these equations in system code:
 
 One place to fix a coordinate-system bug.
 
+## Binary I/O of math types
+
+Serialization helpers for `IRMath::vec*`, `IRMath::Color`, `IRMath::quat`, and other math types belong in `engine/math/` (or alongside `BinaryWriter` / `BinaryReader` in `engine/asset/`) — never inline in a format-specific `.cpp`. Each binary asset format (`.vxs`, `.rig`, future `.prefab.lua`) is a consumer; the helpers are shared infrastructure.
+
+The "every format author writes their own" failure mode produces near-duplicate helpers under different names — historically `writeVec3` / `encodeVec3` defined twice across `voxel_set_format.cpp` and `rig_format.cpp`, with different signatures and byte layouts. Centralizing the helpers keeps the byte layout consistent across formats and concentrates the round-trip tests in one place.
+
+If the helper you need doesn't exist yet:
+
+1. Add it to `engine/math/include/irreden/math/binary_io.hpp` as a free function (`writeVec3(BinaryWriter &, IRMath::vec3)` / `readVec3(BinaryReader &)`). Forward-declare `BinaryWriter` / `BinaryReader` to keep the math module from physically depending on `engine/asset/`.
+2. Or, if the type owns its own representation (`Color` knows how to pack-RGBA), put the serializer on the type as a static method (`Color::toPackedRGBA()` / `Color::fromPackedRGBA(uint32_t)`).
+3. Then call it from the format code. Standardize naming on `read` / `write` to match `BinaryReader::readU32` / `BinaryWriter::writeU32`; do not introduce `encode` / `decode` / `pack` / `unpack` aliases.
+
 ## When the wrapper doesn't exist yet
 
 If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the 164 violations this rule exists to clean up.
