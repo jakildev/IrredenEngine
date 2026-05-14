@@ -138,6 +138,45 @@ doesn't belong.
 
 ---
 
+## Citing source in filed artifacts
+
+When an artifact you're filing or writing references the codebase —
+GitHub issue bodies, PR descriptions, design docs, TASKS.md entries,
+review comments — **prefer symbol citations over line-number
+citations** for anything that will be read after the next refactor.
+
+| Prefer | Avoid |
+|--------|-------|
+| `voxel_set_format.cpp::makeModeChunk` | `voxel_set_format.cpp:91` |
+| `system_shapes_to_trixel.hpp::beginTick` | `system_shapes_to_trixel.hpp:111` |
+| `C_ShapeDescriptor::lodMin_` | `component_shape_descriptor.hpp:26` |
+
+Symbols don't drift; line numbers do. An issue filed today against
+"see `<file>:<line>`" routinely points at the wrong code by the time
+a worker picks it up — somebody added an import block or a helper
+function above the cited line. A symbol citation survives every
+refactor short of the rename itself, and a rename leaves a loud
+`grep` failure rather than a silent wrong-line read.
+
+**When line numbers are still appropriate:**
+
+- Citations inside a PR body referencing the PR's own diff. The diff
+  is frozen; the line number doesn't drift.
+- Pointing at a specific unnamed line (e.g. a magic number, an
+  inline comment, a hunk of inline shader code). Use symbol-plus-
+  offset where possible: ``inside `makeModeChunk`, the second case``.
+- Citing a stack trace or compiler diagnostic verbatim.
+
+**Mixed form is fine:** `chunk_header.hpp::makeTag (~line 72)` gives
+the symbol for stability plus a hint for the reader's first scroll.
+The line is decorative; the symbol is the contract.
+
+This rule applies to any artifact that gets filed against the repo
+or shipped to a reviewer. It does not apply to ephemeral logs,
+debug output, or scratch notes the human will read immediately.
+
+---
+
 ## Bash tool rules
 
 **Every Bash invocation must be a single, simple command.** Never use
