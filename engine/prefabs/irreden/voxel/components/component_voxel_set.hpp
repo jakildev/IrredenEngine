@@ -97,6 +97,12 @@ struct C_VoxelSetNew {
                 globalPositions_.size(),
                 voxels_.size()
             );
+            // Release the reserved span before bailing — the pool reserved
+            // `requestedVoxels` slots regardless of the short span return, and
+            // the zeroed `size_` makes the headless-guard in `onDestroy()`
+            // skip the pool touch.
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(requestedVoxels));
+            numVoxels_ = 0;
             size_ = ivec3(0);
             return;
         }
@@ -126,26 +132,21 @@ struct C_VoxelSetNew {
     C_VoxelSetNew()
         : C_VoxelSetNew(ivec3(0, 0, 0)) {}
 
-    // Dense-data ctor: build from a bounded voxel grid carrying per-voxel
-    // records, used by `Prefab.spawn` to attach a `.vxs` DENSE / HYBRID
-    // dense half. Snapshots the active canvas via
-    // `getActiveCanvasEntityOrNull` so it works headless (no canvas →
-    // stages data in `pendingVoxels_`; canvas present → allocates from
-    // the pool, copies records into the span, and seeds positions).
-    //
-    // Mirrors the asset-side `IRAsset::DenseVoxelSet` semantics: bounds
-    // are inclusive-min / exclusive-max, voxels are row-major in
-    // (x, y, z) order. `voxels.size()` must equal the bounds-derived
-    // voxel volume — the bridge in `voxel/dense_bridge.hpp` validates
-    // this and falls back to an empty staging vector otherwise.
+    // Dense-data ctor for Prefab.spawn — headless-safe: stages in
+    // `pendingVoxels_` without a canvas, allocates from the pool with one.
+    // Bounds + ordering semantics live in `voxel/CLAUDE.md` "C_VoxelSetNew
+    // headless / staged mode" and `voxel/dense_bridge.hpp`.
     C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
         : numVoxels_{0}
         , size_{boundsMax - boundsMin} {
         canvasEntity_ = IRRender::getActiveCanvasEntityOrNull();
         const ivec3 extent = size_;
-        const int requestedVoxels =
-            (extent.x > 0 && extent.y > 0 && extent.z > 0) ? extent.x * extent.y * extent.z : 0;
-        if (requestedVoxels == 0 || voxels.size() != static_cast<std::size_t>(requestedVoxels)) {
+        const std::size_t requestedVoxels = (extent.x > 0 && extent.y > 0 && extent.z > 0)
+                                                ? static_cast<std::size_t>(extent.x) *
+                                                      static_cast<std::size_t>(extent.y) *
+                                                      static_cast<std::size_t>(extent.z)
+                                                : 0u;
+        if (requestedVoxels == 0u || voxels.size() != requestedVoxels) {
             // Empty or mismatched payload — leave the set empty and let
             // the caller diagnose via `recordCount()`. Avoids allocating
             // pool slots we can't faithfully populate.
@@ -160,7 +161,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        auto allocation = IRRender::allocateVoxels(requestedVoxels);
+        auto allocation = IRRender::allocateVoxels(static_cast<unsigned int>(requestedVoxels));
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -171,13 +172,17 @@ struct C_VoxelSetNew {
             IRMath::min(positions_.size(), positionOffsets_.size()),
             IRMath::min(globalPositions_.size(), voxels_.size())
         ));
-        if (numVoxels_ != requestedVoxels) {
+        if (static_cast<std::size_t>(numVoxels_) != requestedVoxels) {
             IRE_LOG_ERROR(
                 "VoxelSet dense allocation mismatch: requested={}, positions={}, voxels={}",
                 requestedVoxels,
                 positions_.size(),
                 voxels_.size()
             );
+            // Release the reserved span before bailing — the pool reserved
+            // `requestedVoxels` slots regardless of the short span return, and
+            // zeroing `numVoxels_` makes `onDestroy()` skip the pool touch.
+            IRRender::deallocateVoxels(voxelStartIdx_, requestedVoxels);
             size_ = ivec3(0);
             numVoxels_ = 0;
             return;
@@ -196,11 +201,6 @@ struct C_VoxelSetNew {
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
-    // Number of voxel records the set carries, regardless of pool /
-    // staging mode. Pool-backed sets return `numVoxels_`; headless
-    // staged sets return `pendingVoxels_.size()`. Use this to assert
-    // record count without caring which side of the pool fence the
-    // set lives on.
     std::size_t recordCount() const {
         return pendingVoxels_.empty() ? static_cast<std::size_t>(numVoxels_)
                                       : pendingVoxels_.size();
@@ -210,12 +210,11 @@ struct C_VoxelSetNew {
     // voxels, just in case the constructor might be called in more than
     // one place?
     void onDestroy() {
-        // numVoxels_ equals requestedVoxels on all non-error paths (the
-        // constructor min-span guard fires IR_ASSERT before returning a
-        // mismatched allocation), so deallocateVoxels releases exactly
-        // what allocateVoxels reserved. Headless / pending sets never
-        // hit the pool (numVoxels_ == 0); the staging vector frees with
-        // the component.
+        // `numVoxels_ > 0` iff a pool allocation succeeded and was fully
+        // populated. Both ctors' mismatch paths deallocate the reservation
+        // inline and zero `numVoxels_`, and the headless staging path
+        // never touches the pool — so this guard skips exactly the cases
+        // that have nothing to release.
         if (numVoxels_ > 0) {
             IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
