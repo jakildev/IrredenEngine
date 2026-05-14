@@ -223,17 +223,6 @@ Avoid:
   - **Notes:** Post-merge follow-up from T-162 / PR #650. Opus reviewer flagged the reentrancy shape (ghost singleton survives destroyAllEntities if a pre-destroy hook calls lazy-create mid-loop); Sonnet reviewer flagged the missing bulk-clear test. Option (a) chosen (doc-only) per Opus recommendation — no defensive flag needed. No public API change, no shader code.
   - **Links:**
 
-- [~] **asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers)** — replace 4 bit-cast memcpy sites with std::bit_cast; add writeTagBytes/readTagBytes helpers in binary_io.hpp; adopt in voxel_set_format chunk sites
-  - **ID:** T-179
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-179-asset-bit-cast-tag-helpers
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 4 memcpy bit-cast sites in binary_io.cpp (writeF32/writeF64/readF32/readF64) replaced with std::bit_cast; (2) writeTagBytes/readTagBytes helpers (or BinaryWriter::writeTag/BinaryReader::readTag) added to binary_io.hpp; (3) 2 chunk-tag memcpy sites in voxel_set_format.cpp (makeModeChunk, readModeChunk) adopt new helpers; (4) 2 raw-copy primitives (writeBytes/readBytes) left with one-line clarifying comment; (5) one new round-trip unit test for chunk-tag helpers in binary_io_test.cpp; (6) all tests pass (533/533); (7) fleet-build clean on linux-debug
-  - **Issue:** #692
-  - **Notes:** Escalated from PR #679 human inline comment on voxel_set_format.cpp:111. Pattern B (raw buffer copy primitives) intentionally left as memcpy — they are the leaf primitives. #include <bit> required. #679 (T-168) already merged 2026-05-13, so voxel_set_format.cpp edits are unblocked.
-  - **Links:**
-
 - [~] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
   - **ID:** T-181
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -293,6 +282,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
@@ -312,4 +302,3 @@ Avoid:
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
 - [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
 - [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
-- [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
