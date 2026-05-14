@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
@@ -202,24 +202,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **asset: .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks)** — first end-to-end asset format: 3D bounded voxel volume with 12-byte per-voxel records, layers, and animation frame poses
-  - **ID:** T-167
-  - **Area:** engine/asset
-  - **Model:** opus
-  - **Owner:** claude/T-167-vxs-dense
-  - **Blocked by:** T-166
-  - **Acceptance:** (1) IRAsset::saveVoxelSet/loadVoxelSet ship; (2) .vxs v1 dense format: IRVS magic + uint32 version + chunk-count; MODE=DENSE; BNDS (ivec3 min/max); VOXR (12-byte records: Color + material_id + flags + bone_id + pad); LAYR (named layer bitmasks); FRAM (frame-index → per-voxel offset); META (free-form key/value); (3) unknown chunk tags silently skipped; (4) clear diagnostics on bad magic, version-too-new, truncated chunk, malformed BNDS; (5) round-trip unit test: 20³ fixture save → load → byte-compare VOXR + BNDS; (6) edge cases: empty set, full set, bad magic, truncated mid-VOXR; (7) chunk table documented in .hpp header block; (8) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #664
-  - **Notes:** First consumer of T-166 binary-I/O primitives. Dense-mode only; shape-group mode is T-168; hybrid + sidecar is #668. C_Voxel layout (12 B) must match T-146 per-voxel widening — coordinate landing order matters. Replacement for txl v2 intent in PR #635 / #621.
-  - **Links:**
-
-
 - [~] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
   - **ID:** T-170
   - **Area:** engine/asset
   - **Model:** sonnet
   - **Owner:** claude/T-170-vxs-hybrid-sidecar
-  - **Blocked by:** T-167
+  - **Blocked by:** (none)
   - **Acceptance:** (1) MODE chunk gains HYBRID tag; (2) IRAsset::saveVoxelSet accepts both dense records + shape descriptors in one call; (3) loader returns struct with both populated; (4) .vxs.json sidecar emitted via json_sidecar.hpp (version, mode, bounds, material_registry_refs, layer_names, frame_count, shape_primitives_summary); (5) test suite covers dense round-trip, shape-group round-trip, hybrid (5 shapes + 50 dense voxels) round-trip, corrupt-magic, truncated mid-VOXR, version-too-new, unknown chunk tag, unknown ShapeType id; (6) fleet-build clean on linux-debug
   - **Issue:** #668
   - **Notes:** Synthesis ticket combining T-167 (dense) + T-168 (shape-group) into hybrid mode. Extends voxel_set_format.cpp; test suite in test_voxel_set_format.cpp. Parent epic: #604. Blocks T-173 (prefab Lua format).
@@ -253,6 +241,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
 - [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
@@ -272,4 +261,3 @@ Avoid:
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
-- [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
