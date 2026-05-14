@@ -11,23 +11,8 @@
 
 namespace IRSystem {
 
-// UPDATE-pipeline driver for level-of-detail tier selection. Each frame
-// snapshots the camera zoom, maps it through computeLodLevel(), and
-// writes the result into the C_ActiveLodLevel singleton. SHAPES_TO_TRIXEL
-// reads the singleton at beginTick to filter shapes by lodMin_.
-//
-// Register before any RENDER-pipeline system that consumes the tier
-// (today: SHAPES_TO_TRIXEL). The work lives in beginTick so the
-// singleton row's value is correct on every frame regardless of
-// archetype-iteration order — IREntity::singleton<> lazy-creates the
-// row if it is absent and returns a live reference into it.
-//
-// `getCameraZoom()` returns a vec2 because the engine accepts non-uniform
-// zoom in principle; render_manager.cpp snaps incoming requests to a
-// uniform power-of-two so x and y match in practice. Taking the max
-// matches the convention used by the subdivision-count snap in
-// `render_manager.cpp` and degrades gracefully if a future creation
-// authors non-uniform zoom.
+// Register before GLOBAL_POSITION_3D in UPDATE so the singleton is current before RENDER ticks.
+// Takes max(zoom.x, zoom.y) — render_manager.cpp snaps to uniform power-of-two so x==y in practice.
 template <> struct System<LOD_UPDATE> {
     void beginTick() {
         const IRMath::vec2 zoom = IRRender::getCameraZoom();
