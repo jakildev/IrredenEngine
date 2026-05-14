@@ -116,13 +116,7 @@ inline IREntity::EntityId getActiveCanvasEntity() {
     return getRenderManager().getActiveCanvasEntity();
 }
 
-/// Same as `getActiveCanvasEntity()` but returns `IREntity::kNullEntity`
-/// when no `RenderManager` has been constructed yet (headless tests,
-/// asset-only tooling). Component constructors that snapshot the
-/// active canvas (`C_ShapeDescriptor`, `C_VoxelSetNew`) use this
-/// instead of the asserting variant so spawn-time helpers stay
-/// portable across runtime + test contexts; iterating systems already
-/// gate work on the field being non-null.
+// Returns kNullEntity instead of asserting when no RenderManager exists — safe for headless and test contexts.
 inline IREntity::EntityId getActiveCanvasEntityOrNull() {
     return g_renderManager != nullptr ? g_renderManager->getActiveCanvasEntity()
                                       : IREntity::kNullEntity;

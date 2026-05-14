@@ -303,6 +303,8 @@ TEST_F(PrefabApi, SpawnAttachesShapesAsChildren) {
         IRMath::Color color_;
     };
     std::vector<ChildSnapshot> children;
+    // forEachComponent only supports a single component type; getComponent<C_Position3D> per-entity
+    // is the cleanest option available until the API gains multi-component iteration.
     IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
         [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &desc) {
             const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(id);
