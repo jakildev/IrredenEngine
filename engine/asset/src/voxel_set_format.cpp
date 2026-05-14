@@ -64,6 +64,19 @@ Result<vec4> readVec4(BinaryReader &r) {
     return Result<vec4>::success(vec4(x.value_, y.value_, z.value_, w.value_));
 }
 
+// JSON key literals used by emitVoxelSetSidecar. Anchored here so
+// future sidecar emitters can grep for a single constant name and
+// find the canonical spelling across all asset formats.
+constexpr std::string_view kSidecarKeyVersion = "version";
+constexpr std::string_view kSidecarKeyMode = "mode";
+constexpr std::string_view kSidecarKeyBounds = "bounds";
+constexpr std::string_view kSidecarKeyBoundsMin = "min";
+constexpr std::string_view kSidecarKeyBoundsMax = "max";
+constexpr std::string_view kSidecarKeyMaterialRegistryRefs = "material_registry_refs";
+constexpr std::string_view kSidecarKeyLayerNames = "layer_names";
+constexpr std::string_view kSidecarKeyFrameCount = "frame_count";
+constexpr std::string_view kSidecarKeyShapePrimitivesSummary = "shape_primitives_summary";
+
 // Canonical (id, name) table for `IRMath::SDF::ShapeType`. Keep in
 // lockstep with the enum declaration. Adding a value here is the
 // "extends an enum across save format" step — older builds receiving
@@ -99,36 +112,22 @@ void emitVoxelSetSidecar(
     JsonSidecarWriter j;
     j.beginObject();
 
-    j.key("version");
+    j.key(kSidecarKeyVersion);
     j.valueUInt(kVoxelSetVersion);
 
-    const char *modeStr = "UNKNOWN";
-    switch (mode) {
-    case VoxelSetMode::DENSE:
-        modeStr = "DENSE";
-        break;
-    case VoxelSetMode::SHAPES:
-        modeStr = "SHAPES";
-        break;
-    case VoxelSetMode::HYBRID:
-        modeStr = "HYBRID";
-        break;
-    default:
-        break;
-    }
-    j.key("mode");
-    j.valueString(modeStr);
+    j.key(kSidecarKeyMode);
+    j.valueString(voxelSetModeToString(mode));
 
     if (dense != nullptr) {
-        j.key("bounds");
+        j.key(kSidecarKeyBounds);
         j.beginObject();
-        j.key("min");
+        j.key(kSidecarKeyBoundsMin);
         j.beginArray();
         j.valueInt(dense->boundsMin_.x);
         j.valueInt(dense->boundsMin_.y);
         j.valueInt(dense->boundsMin_.z);
         j.endArray();
-        j.key("max");
+        j.key(kSidecarKeyBoundsMax);
         j.beginArray();
         j.valueInt(dense->boundsMax_.x);
         j.valueInt(dense->boundsMax_.y);
@@ -136,15 +135,15 @@ void emitVoxelSetSidecar(
         j.endArray();
         j.endObject();
     } else {
-        j.key("bounds");
+        j.key(kSidecarKeyBounds);
         j.valueNull();
     }
 
-    j.key("material_registry_refs");
+    j.key(kSidecarKeyMaterialRegistryRefs);
     j.beginArray();
     j.endArray();
 
-    j.key("layer_names");
+    j.key(kSidecarKeyLayerNames);
     j.beginArray();
     if (dense != nullptr) {
         for (const auto &layer : dense->layers_) {
@@ -155,11 +154,11 @@ void emitVoxelSetSidecar(
 
     const std::uint64_t frameCount =
         (dense != nullptr) ? static_cast<std::uint64_t>(dense->frames_.size()) : 0u;
-    j.key("frame_count");
+    j.key(kSidecarKeyFrameCount);
     j.valueUInt(frameCount);
 
     // Count shapes per type using kShapeTypeTable for deterministic ordering.
-    j.key("shape_primitives_summary");
+    j.key(kSidecarKeyShapePrimitivesSummary);
     j.beginObject();
     for (const auto &entry : kShapeTypeTable) {
         std::size_t count = 0;

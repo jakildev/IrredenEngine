@@ -108,6 +108,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRAsset {
@@ -143,6 +144,23 @@ enum class VoxelSetMode : std::uint8_t {
     HYBRID = 2,
     UNKNOWN = 255, ///< Set when the on-disk mode tag isn't in the table.
 };
+
+/// Canonical textual form of a `VoxelSetMode` value for sidecar JSON and
+/// log messages. Returns "UNKNOWN" for `VoxelSetMode::UNKNOWN` and for any
+/// value not in the table.
+constexpr std::string_view voxelSetModeToString(VoxelSetMode mode) noexcept {
+    switch (mode) {
+    case VoxelSetMode::DENSE:
+        return "DENSE";
+    case VoxelSetMode::SHAPES:
+        return "SHAPES";
+    case VoxelSetMode::HYBRID:
+        return "HYBRID";
+    case VoxelSetMode::UNKNOWN:
+        return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
 
 /// Per-instance composition operator inside a shape group. NONE means
 /// "render this primitive standalone"; the others form a flat
