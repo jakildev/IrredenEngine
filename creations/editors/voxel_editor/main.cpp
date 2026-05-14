@@ -92,8 +92,16 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    // Scroll zoom iterates C_MouseScroll entities, which are ephemeral (C_Lifetime{1}).
-    // Register in INPUT so they are still alive; LIFETIME in UPDATE destroys them.
+    // Mouse scroll events arrive as ephemeral C_MouseScroll entities (C_Lifetime{1}),
+    // created by the GLFW scroll callback (one entity per event). This differs from
+    // key presses, which use persistent C_KeyMouseButton + C_KeyStatus state-machine
+    // entities queryable via IRInput::checkKeyMouseButton() at any time. Scroll is a
+    // continuous delta value, not a pressed/held/released state, so the ephemeral-event
+    // model fits the underlying GLFW push semantics naturally. Consume C_MouseScroll in
+    // the INPUT pipeline (same stage the entities are created, before LIFETIME destroys
+    // them in UPDATE). A unified IRInput::getScrollDelta() query API — analogous to
+    // checkKeyMouseButton() — does not yet exist; see engine/input/CLAUDE.md for the
+    // canonical input system surface.
     auto scrollParams = std::make_unique<ScrollZoomParams>();
     auto *sp = scrollParams.get();
     auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(

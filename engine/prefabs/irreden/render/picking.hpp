@@ -6,6 +6,22 @@
 // it intersects. The picking inverse is the same one used by
 // `IRRender::mouseWorldPos3DAtIsoDepth`, so the recovered world point
 // matches what the voxel rasterizer wrote at any visualYaw.
+//
+// Relationship to the GPU trixel/distance infrastructure:
+//   `castVoxelRay` reuses `IRRender::mouseWorldPos3DAtIsoDepth()` — the same
+//   screen→world inverse the GPU pipeline builds into `TRIXEL_TO_FRAMEBUFFER` —
+//   so the picking coordinate system is consistent with the rendered output at any
+//   visualYaw. It does NOT call `IRRender::getEntityIdAtMouseTrixel()`.
+//
+//   `IRRender::getEntityIdAtMouseTrixel()` is the O(1) GPU alternative: it reads
+//   the entity-id texture written by `VOXEL_TO_TRIXEL_STAGE_2` and
+//   `SHAPES_TO_TRIXEL` (via a persistent-mapped buffer) and returns the frontmost
+//   entity at the cursor pixel in O(1). Its trade-off is a one-frame lag (the
+//   buffer holds the previous frame's render) and it yields the entity only — not
+//   the sub-voxel surface hit position. `castVoxelRay` instead evaluates the SDF at
+//   each depth step to recover the exact surface intersection (needed for sub-voxel
+//   accurate voxel placement), and fires only on click frames so the per-click cost
+//   is proportional to visible shapes × depth range, not per-frame cost.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
