@@ -53,7 +53,7 @@ The "every format author writes their own" failure mode produces near-duplicate 
 
 If the helper you need doesn't exist yet:
 
-1. Add it to `engine/math/include/irreden/math/binary_io.hpp` as a free function (`writeVec3(BinaryWriter &, vec3)` / `readVec3(BinaryReader &)`). Forward-declare `BinaryWriter` / `BinaryReader` to keep the math module from physically depending on `engine/asset/`.
+1. Add it to `engine/math/include/irreden/math/binary_io.hpp` as a free function (`writeVec3(BinaryWriter &, IRMath::vec3)` / `readVec3(BinaryReader &)`). Forward-declare `BinaryWriter` / `BinaryReader` to keep the math module from physically depending on `engine/asset/`.
 2. Or, if the type owns its own representation (`Color` knows how to pack-RGBA), put the serializer on the type as a static method (`Color::toPackedRGBA()` / `Color::fromPackedRGBA(uint32_t)`).
 3. Then call it from the format code. Standardize naming on `read` / `write` to match `BinaryReader::readU32` / `BinaryWriter::writeU32`; do not introduce `encode` / `decode` / `pack` / `unpack` aliases.
 

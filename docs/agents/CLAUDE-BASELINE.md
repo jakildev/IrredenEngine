@@ -257,7 +257,7 @@ guidance.
 When a helper documents a precondition in its docstring — `// must be
 exactly 4 bytes`, `// caller guarantees non-null`, `// only call from
 the render thread` — enforce the precondition with `IR_ASSERT` /
-`static_assert` / `if constexpr`, not the comment alone. The docstring
+`static_assert` / `if consteval`, not the comment alone. The docstring
 explains *why* the constraint exists; the assert ensures that violating
 it is loud rather than silent.
 
