@@ -151,20 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
-  - **ID:** T-104
-  - **Area:** engine/script, creations/demos/lua_perf_grid
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
-  - **Issue:** #492
-  - **Notes:** PR 6 of 6 for parent epic #293 — formal acceptance gate for the entire Lua-driven ECS stack. Full architect plan in .fleet/plans/T-104.md. Blocked by T-103 (hot-reload). If parity gate fails, this PR does not merge; instead amend T-099's design doc with corrective decision (LuaJIT migration, codegen-bound bodies, etc.).
-  - **Links:**
-
-
-
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -232,6 +218,50 @@ Avoid:
   - **Acceptance:** (1) ShapeRecord carries `// IRAsset: serialized` + `static constexpr uint16_t kSaveVersion = kShapeRecordVersion;`; (2) other directly-serialized structs in engine/asset/ (RigJoint, RigBindPoint, dense per-voxel record) audited and annotated; (3) ir_asset_types.hpp deleted with no orphaned includes; (4) makeTag asserts (or static_asserts) on s.length() != 4; (5) engine/asset/CLAUDE.md opener updated to reflect current scope (not "Tiny module"); .txl gotcha bullet removed; .rig entry points listed; (6) fleet-build clean; T-172 serialized-struct linter passes
   - **Issue:** #706
   - **Notes:** Bundle of mechanical items from audit pass. makeTag is constexpr — prefer static_assert if all call sites use string-literal constexpr args, otherwise runtime assert. Sequence CLAUDE.md update after T-184 (.txl deletion) merges — rebase if T-184 lands first. ir_asset_types.hpp is an empty header (ifndef/define/endif only); grep for includes before removing.
+  - **Links:**
+
+- [ ] **test: JsonSidecarWriter + NameTable round-trips** — add dedicated unit tests for engine/asset json_sidecar and name_table, covering edge cases not exercised by existing .vxs integration tests
+  - **ID:** T-186
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) test/asset/json_sidecar_test.cpp added and registered — covers empty object/array, scope nesting, all value* overloads, string escaping, numeric edge cases, NaN/Inf contract, key ordering, and file-open failure; (2) test/asset/name_table_test.cpp added and registered — covers write/read round-trip (0/1/many entries), non-ASCII names, idByName/nameById hits/misses, duplicate-insert behavior, empty-name edge case; (3) all new tests pass; no production-code changes; fleet-build clean on linux-debug
+  - **Issue:** #707
+  - **Notes:** Engine/asset audit found JsonSidecarWriter and NameTable exercised only indirectly via voxel_set_hybrid_test.cpp. Use MemoryBinaryWriter/Reader for name-table tests and writer's internal str() for sidecar tests — do not depend on .vxs in these tests. Lock NaN/Inf behavior as-is (whatever writer currently does). If any existing test asserts a hard-coded test count, update it.
+  - **Links:**
+
+- [ ] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
+  - **ID:** T-187
+  - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) lod_utils.hpp exits stub status; computeLodLevel/shouldSkipAtLod/lodVoxelScale called by live systems with thresholds matching real zoom range (1.0–64.0); (2) LOD_UPDATE system added to SystemName enum and UPDATE pipeline; writes C_ActiveLodLevel singleton each frame from C_ZoomLevel; (3) C_ShapeDescriptor::lodLevel_ renamed to lodMin_ or semantics documented in header; (4) SHAPES_TO_TRIXEL reads C_ActiveLodLevel once at beginTick and skips shapes with lodMin_ < activeLod; (5) render-verify shot confirms progressive shape-count change across zoom 1.0/2.0/4.0/8.0; (6) no DENSE-mode, no .rig, no shader changes; fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #708
+  - **Notes:** lod_utils.hpp self-describes as "WIP stub — not yet included or referenced by any system". C_ShapeDescriptor::lodLevel_ already shipped to GPU as GPUShapeDescriptor.lodLevel but shader ignores it. Phase 1 filter is CPU-side only — GPU struct unchanged (Metal/GL parity hazard). Do NOT implement Phase 2 (per-tier .vxs refs from prefab manifest) or Phase 3 (cross-tier interpolation). Design rationale in docs/design/lod-strategy.md (PR #710).
+  - **Links:**
+
+- [ ] **script: decouple IrredenEngineScripting from IrredenEngineRendering** — fix layering violation where prefab_api.cpp rig loading pulls in C_JointHierarchy/GPUJointTransform header chain, causing scripting to link rendering
+  - **ID:** T-188
+  - **Area:** engine/script, engine/prefabs/irreden/render, engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IrredenEngineScripting target no longer links against IrredenEngineRendering (verify via CMake dependency graph or linker map); (2) fleet-build clean on linux-debug; (3) IrredenEngineTest passes; no functional regressions
+  - **Issue:** #709
+  - **Notes:** Layering violation surfaced in T-173 / PR #703. Two viable fixes: (A) hoist GPUJointTransform into a non-render header so script does not pull in the full render module; (B) move setComponent(entity, Rig::toComponent(...)) to a higher-level layer that can depend on both script and render. Author chooses approach; document rationale in commit message.
+  - **Links:**
+
+- [ ] **prefab: DENSE/HYBRID voxel_ref ECS attachment (headless C_VoxelSetNew)** — architect decision + implementation for attaching DENSE/HYBRID-mode .vxs data as C_VoxelSetNew in Prefab.spawn without requiring an active render canvas
+  - **ID:** T-189
+  - **Area:** engine/prefabs/irreden/voxel, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-182
+  - **Acceptance:** (1) DENSE .vxs voxel_ref attaches per-voxel data as C_VoxelSetNew on spawned entity, headless-safe; (2) HYBRID .vxs attaches both SHAPES (T-182) and DENSE halves on same entity; (3) round-trip tests: DENSE and HYBRID verified through Prefab.spawn; entity C_VoxelSetNew record count matches dense_.voxelCount(); (4) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document chosen attachment contract
+  - **Issue:** #721
+  - **Notes:** SHAPES half wired in T-182 / PR #718; DENSE/HYBRID deferred. Two design options: (A) pool-injectable ctor — C_VoxelSetNew takes DenseVoxelSet + explicit pool entity id (kNullEntity for headless), later step seeds pool when canvas activates; (B) lazy attach — component stores DenseVoxelSet payload, UPDATE-pipeline system seeds pool the frame after canvas activates. Architect chooses; document in CLAUDE.md. Parent epic: #608. Asset side: T-167/PR#691 (DENSE), T-170/PR#694 (HYBRID).
   - **Links:**
 
 ## Done — last 20
