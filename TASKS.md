@@ -264,11 +264,11 @@ Avoid:
   - **Notes:** SHAPES half wired in T-182 / PR #718; DENSE/HYBRID deferred. Two design options: (A) pool-injectable ctor — C_VoxelSetNew takes DenseVoxelSet + explicit pool entity id (kNullEntity for headless), later step seeds pool when canvas activates; (B) lazy attach — component stores DenseVoxelSet payload, UPDATE-pipeline system seeds pool the frame after canvas activates. Architect chooses; document in CLAUDE.md. Parent epic: #608. Asset side: T-167/PR#691 (DENSE), T-170/PR#694 (HYBRID).
   - **Links:**
 
-- [ ] **render: SDF→trixel half-voxel / lone-trixel discrepancy investigation** — reproduce, classify, and fix or document the artifact difference between C_VoxelSetNew voxel-pool output and direct-SDF SHAPES_TO_TRIXEL rasterization at silhouette boundaries
+- [~] **render: SDF→trixel half-voxel / lone-trixel discrepancy investigation** — reproduce, classify, and fix or document the artifact difference between C_VoxelSetNew voxel-pool output and direct-SDF SHAPES_TO_TRIXEL rasterization at silhouette boundaries
   - **ID:** T-190
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) diff report comparing voxel-pool vs SDF output at zoom 4/8/16 for box, sphere, cone, and torus shapes using tools/img_diff; (2) either a fix PR that eliminates the trixel discrepancy, or a CLAUDE.md note in engine/render/ documenting the intentional delta and its source (which threshold, which solver path); (3) fleet-build clean on linux-debug
   - **Issue:** #690
