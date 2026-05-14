@@ -64,9 +64,7 @@ struct LoadedChunk {
     std::vector<std::uint8_t> data_;
 };
 
-/// Build a 4-byte tag from a string literal. `"VOXR"` → `{'V', 'O', 'X',
-/// 'R'}`. Input must be exactly 4 characters — silent zero-pad or truncation
-/// would create tag collisions, so this asserts on wrong-length input.
+// Silent zero-pad or truncation creates tag collisions — asserts on wrong-length input.
 inline std::array<char, 4> makeTag(std::string_view s) {
     assert(s.size() == 4 && "makeTag: input must be exactly 4 characters");
     std::array<char, 4> out{};
