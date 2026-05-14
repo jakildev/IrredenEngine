@@ -1,11 +1,9 @@
 #ifndef IR_SCRIPT_PREFAB_API_H
 #define IR_SCRIPT_PREFAB_API_H
 
-/// Lua prefab format — an entity template that references a `.vxs` voxel
-/// set, an optional `.rig` rig, and a setup callback. Phase 5 of the
-/// editor epic (#608); see `docs/design/entity-editor-epic.md` for the
-/// long-form design and `engine/script/CLAUDE.md` "Prefab format" for
-/// the runtime contract.
+/// Lua prefab format — entity template with voxel/rig refs and a setup
+/// callback. Runtime contract and v1 scope: engine/script/CLAUDE.md
+/// "Prefab format".
 ///
 /// Lua schema (v1):
 ///
@@ -17,20 +15,6 @@
 ///             -- IREntity.setComponent(entity, ...)
 ///         end,
 ///     }
-///
-/// Round-trip surface used by the editor (#608) is the same shape:
-/// the component palette emits a Lua file matching this schema and
-/// `Prefab.spawn(id, position)` reconstitutes the entity.
-///
-/// **v1 deferred** (filed as follow-ups):
-/// - declarative `components = { C_Name = { ... } }` table — needs the
-///   reflection layer the editor-epic doc flags as a Phase 5 risk
-///   ("Component-palette schema"). Use the `setup` callback in the
-///   meantime.
-/// - `bind_point_overrides = { name = { offset = {...} } }` — needs a
-///   runtime `C_BindPoints` component (only the `.rig` asset side ships
-///   so far; see T-171 and engine/asset/include/irreden/asset/rig_format.hpp).
-/// - `entity:bindPoint("name")` Lua API — same dependency as above.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -43,8 +27,7 @@ namespace IRScript {
 class LuaScript;
 namespace detail {
 /// Wire `Prefab.register` and `Prefab.spawn` into `script`'s Lua state.
-/// Idempotent: re-binding overwrites the previous closures and clears
-/// the in-process registry, so tests can call it once per fixture.
+/// Idempotent: re-binding overwrites the previous closures.
 /// Called from `LuaScript::bindLuaDrivenEcs()`.
 void bindPrefabApi(LuaScript &script);
 } // namespace detail

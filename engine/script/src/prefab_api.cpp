@@ -178,10 +178,7 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
         sol::protected_function_result setupResult = (*setupFn)(IRScript::LuaEntity{entity});
         if (!setupResult.valid()) {
             sol::error err = setupResult;
-            // The entity is already in the world; surface the error
-            // and leave it in place for the caller to inspect or
-            // destroy. Destroying here would mask the partial-mutation
-            // story of the failed setup body.
+            IREntity::destroyEntity(entity);
             return makeError(idStr, path, std::string{"setup callback failed: "} + err.what());
         }
     }
