@@ -2,6 +2,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/script/ir_script_types.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -33,34 +34,15 @@ void bindPrefabApi(LuaScript &script) {
                                  const std::string &id, sol::object positionObj
                              ) -> std::tuple<sol::object, sol::object> {
         sol::state_view sv{script.lua().lua_state()};
-        IRMath::vec3 position{0.0f, 0.0f, 0.0f};
-        if (positionObj.is<IRMath::vec3>()) {
-            position = positionObj.as<IRMath::vec3>();
-        } else if (positionObj.is<sol::table>()) {
-            sol::table t = positionObj.as<sol::table>();
-            // Accept either `{x=…, y=…, z=…}` or `{1, 2, 3}`. Use a
-            // helper to keep sol2's overload set unambiguous —
-            // `get_or<T>` with mixed key types confuses overload
-            // resolution.
-            auto pickFloat = [&t](const char *key, int idx) -> float {
-                sol::optional<float> byName = t[key];
-                if (byName)
-                    return *byName;
-                sol::optional<float> byIndex = t[idx];
-                if (byIndex)
-                    return *byIndex;
-                return 0.0f;
-            };
-            position.x = pickFloat("x", 1);
-            position.y = pickFloat("y", 2);
-            position.z = pickFloat("z", 3);
-        } else if (positionObj.valid() && positionObj.get_type() != sol::type::lua_nil &&
-                   positionObj.get_type() != sol::type::none) {
+        if (positionObj.valid() && positionObj.get_type() != sol::type::lua_nil &&
+            positionObj.get_type() != sol::type::none && !positionObj.is<IRMath::vec3>() &&
+            !positionObj.is<sol::table>()) {
             return {sol::make_object(sv, sol::lua_nil),
                     sol::make_object(
                         sv, std::string{"Prefab.spawn: position must be a vec3 or {x,y,z} table"}
                     )};
         }
+        IRMath::vec3 position = IRScript::vec3FromLua(positionObj);
 
         IRPrefab::Prefab::SpawnResult result =
             IRPrefab::Prefab::spawnPrefab(script, id, position);

@@ -735,6 +735,25 @@ There is no sandbox, no path-traversal check, and no archive support.
 Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 `main.lua`.
 
+## C++ ↔ Lua math type helpers
+
+When a binding accepts a math type that Lua callers may pass as either a
+registered userdata or a table literal, use the canonical helpers in
+`engine/script/include/irreden/script/ir_script_utils.hpp` rather than writing
+ad-hoc extraction lambdas per binding:
+
+| Task | Helper |
+|------|--------|
+| `sol::object` → `IRMath::vec3` | `IRScript::vec3FromLua(obj)` |
+
+`vec3FromLua` accepts an `IRMath::vec3` userdata **or** a `{x,y,z}` / `{1,2,3}`
+table. Returns `{0,0,0}` for nil/none. Validate the type at the callsite and
+return an error string *before* calling the helper — it zero-defaults on
+unrecognized types so bad-type errors need a caller-side check.
+
+To add a helper for a new math type, add an `inline` free function to
+`ir_script_utils.hpp` and extend the table above.
+
 ## Gotchas
 
 - **Trait missing → link error.** `registerTypeFromTraits<T>()`
