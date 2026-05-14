@@ -234,11 +234,11 @@ Avoid:
   - **Notes:** Escalated from PR #679 human inline comment on voxel_set_format.cpp:111. Pattern B (raw buffer copy primitives) intentionally left as memcpy — they are the leaf primitives. #include <bit> required. #679 (T-168) already merged 2026-05-13, so voxel_set_format.cpp edits are unblocked.
   - **Links:**
 
-- [ ] **asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants** — add kSidecarKey* constexpr block and voxelSetModeToString helper; replace 9 string literals and inline switch in emitVoxelSetSidecar
+- [~] **asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants** — add kSidecarKey* constexpr block and voxelSetModeToString helper; replace 9 string literals and inline switch in emitVoxelSetSidecar
   - **ID:** T-180
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) 9 JSON key literals in emitVoxelSetSidecar replaced with kSidecarKey* constexpr string_view constants in anonymous namespace; (2) constexpr voxelSetModeToString(VoxelSetMode) helper added to voxel_set_format.hpp next to enum; (3) inline switch in emitVoxelSetSidecar replaced with voxelSetModeToString call; (4) 46/46 voxel-set tests pass; SidecarContentMatchesHybridSave verifies byte-identical JSON output; (5) fleet-build clean on linux-debug
   - **Issue:** #697
