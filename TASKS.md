@@ -190,24 +190,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **asset: .vxs hybrid mode + sidecar emitter + full test suite** — single .vxs carries both VOXR (dense) and SHPG (shape) chunks; .vxs.json sidecar on every save; comprehensive corrupt/truncated/version/unknown-tag test matrix
-  - **ID:** T-170
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-170-vxs-hybrid-sidecar
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) MODE chunk gains HYBRID tag; (2) IRAsset::saveVoxelSet accepts both dense records + shape descriptors in one call; (3) loader returns struct with both populated; (4) .vxs.json sidecar emitted via json_sidecar.hpp (version, mode, bounds, material_registry_refs, layer_names, frame_count, shape_primitives_summary); (5) test suite covers dense round-trip, shape-group round-trip, hybrid (5 shapes + 50 dense voxels) round-trip, corrupt-magic, truncated mid-VOXR, version-too-new, unknown chunk tag, unknown ShapeType id; (6) fleet-build clean on linux-debug
-  - **Issue:** #668
-  - **Notes:** Synthesis ticket combining T-167 (dense) + T-168 (shape-group) into hybrid mode. Extends voxel_set_format.cpp; test suite in test_voxel_set_format.cpp. Parent epic: #604. Blocks T-173 (prefab Lua format).
-  - **Links:**
-
-
 - [ ] **prefab: Lua prefab format — entity template referencing .vxs + .rig + component pack** — Prefab.spawn/register API; Lua schema with voxel_ref, rig_ref, components, bind_point_overrides
   - **ID:** T-173
   - **Area:** engine/script, engine/prefabs/irreden
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-170
+  - **Blocked by:** (none)
   - **Acceptance:** (1) Lua prefab schema: prefab_version=1, voxel_ref, rig_ref (optional), components pack, bind_point_overrides; (2) Prefab.spawn(id, position) C++ API + Lua binding; (3) Prefab.register(id, path) registry; (4) asset path resolution for voxel_ref/rig_ref via existing resolver; (5) round-trip test: register prefab, spawn, verify components attached with correct values, verify entity:bindPoint() returns expected world-space transform; (6) prefab_version enforced on load with clear diagnostic on unknown version; (7) additive component packs load without version bump
   - **Issue:** #671
   - **Notes:** Phase 5 of editor epic (#608). Lua-defined components are out of scope (separate epic). Component palette UI in #608 produces prefab Lua tables matching this schema. New files: prefab_api.hpp, prefab_api.cpp, lua_bindings_prefab.cpp.
@@ -217,6 +205,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
 - [x] **T-171** — asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints · Owner: claude/T-171-rig-v2-bind-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/686
 - [x] **T-153** — Editor F-0.9 — voxel mouse picking (cursor→ray, DDA, single selection) · Owner: claude/T-153-voxel-picking · PR: https://github.com/jakildev/IrredenEngine/pull/682
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
@@ -236,4 +225,3 @@ Avoid:
 - [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-148** — Editor F-0.2 — layout system (rows, columns, dock targets, splitters) · Owner: claude/T-148-layout-system · PR: https://github.com/jakildev/IrredenEngine/pull/641
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
-- [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
