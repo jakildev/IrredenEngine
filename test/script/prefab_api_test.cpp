@@ -462,6 +462,66 @@ TEST_F(PrefabApi, BindPointResolvesViaJointChain) {
     EXPECT_FLOAT_EQ(lua["g_rot_x"].get<float>(), 0.0f);
 }
 
+TEST_F(PrefabApi, BindPointResolvesWithNonIdentityParentRotation) {
+    // Joint 0 (root): translation (0,0,0), 90° rotation around Y axis.
+    // Joint 1 (child of 0): local translation (1,0,0), identity rotation.
+    // Under 90°Y, (1,0,0) → (0,0,-1), so chain translation = (0,0,-1).
+    // Bind point "end" on joint 1, offset (1,0,0) → (0,0,-1) under 90°Y.
+    // Expected world offset = (0,0,-1) + (0,0,-1) = (0,0,-2).
+    constexpr float kS = 0.70710678118f;  // sqrt(2)/2: sin/cos of 45°, the 90°Y quaternion components
+
+    const std::string rigName = "prefab_test_rot_parent";
+    const std::string prefabPath = std::string{kTmpDir} + "/prefab_test_rot_parent.prefab.lua";
+
+    IRAsset::Rig rig;
+    rig.joints_.resize(2);
+    rig.joints_[0].translation_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    rig.joints_[0].rotation_ = vec4(0.0f, kS, 0.0f, kS);  // 90° around Y: (qx=0, qy=kS, qz=0, qw=kS)
+    rig.joints_[0].parentIndex_ = 0;
+    rig.joints_[0].name_ = "root";
+    rig.joints_[1].translation_ = vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    rig.joints_[1].rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    rig.joints_[1].parentIndex_ = 0;
+    rig.joints_[1].name_ = "end_joint";
+
+    rig.bindPoints_.resize(1);
+    rig.bindPoints_[0].boneId_ = 1;
+    rig.bindPoints_[0].offset_ = vec3(1.0f, 0.0f, 0.0f);
+    rig.bindPoints_[0].name_ = "end";
+
+    IRAsset::saveRig(rigName, kTmpDir, rig);
+
+    {
+        std::ofstream out(prefabPath);
+        out << "return {\n"
+               "  prefab_version = 1,\n"
+               "  rig_ref = '"
+            << std::string{kTmpDir} << "/" << rigName
+            << ".rig',\n"
+               "  setup = function(entity)\n"
+               "    local off, rot = entity:bindPoint('end')\n"
+               "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
+               "    g_rot_x, g_rot_y, g_rot_z, g_rot_w = rot.x, rot.y, rot.z, rot.w\n"
+               "  end,\n"
+               "}\n";
+    }
+
+    IRPrefab::Prefab::registerPrefab("p", prefabPath);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    constexpr float kEps = 1e-5f;
+    EXPECT_NEAR(lua["g_off_x"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_off_y"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_off_z"].get<float>(), -2.0f, kEps);
+    // World rotation = 90°Y: (qx=0, qy=kS, qz=0, qw=kS).
+    EXPECT_NEAR(lua["g_rot_x"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_rot_y"].get<float>(), kS, kEps);
+    EXPECT_NEAR(lua["g_rot_z"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_rot_w"].get<float>(), kS, kEps);
+}
+
 TEST_F(PrefabApi, BindPointOverridesApplied) {
     PrefabFiles f = writeBindPointFixtureSet(
         "bind_override",

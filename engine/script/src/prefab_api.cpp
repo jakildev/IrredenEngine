@@ -172,12 +172,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
     }
 
-    // Attach C_BindPoints from the loaded rig's BIND chunk, then apply
-    // any `bind_point_overrides` from the prefab table. Overrides target
-    // by name and may rewrite `offset`, `rotation`, and `boneId` (any
-    // subset); unknown names are added as fresh bind points so a prefab
-    // can extend a rig's defaults without re-saving the asset. Overrides
-    // only take effect when the rig's BIND chunk is non-empty.
+    // Attach C_BindPoints from the loaded rig's BIND chunk; apply any bind_point_overrides on top.
+    // Overrides only take effect when the rig's BIND chunk is non-empty (the guard below).
     if (loadedRig && !loadedRig->bindPoints_.empty()) {
         IRComponents::C_BindPoints bindPoints = IRPrefab::Rig::toBindPoints(*loadedRig);
         sol::optional<sol::table> overridesOpt = prefab["bind_point_overrides"];

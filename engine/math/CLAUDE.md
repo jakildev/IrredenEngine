@@ -80,8 +80,8 @@ layout used by `IRComponents::Joint::rotation_` and
 `IRAsset::RigJoint::rotation_` (identity is `vec4(0, 0, 0, 1)`, i.e.
 `.w` is the scalar).
 
-- `IRMath::quatMul(a, b) → vec4` — compose two unit quaternions.
-  Rotating by `quatMul(a, b)` rotates by `a` first then by `b`.
+- `IRMath::quatMul(a, b) → vec4` — Hamilton product; in column-vector
+  convention, rotates by `b` first then `a` (bone usage: `quatMul(parent_world, local)`).
 - `IRMath::rotateVectorByQuat(v, q) → vec3` — rotate a vec3 by a
   unit quaternion. Same algebra as `glm::rotate(quat, vec3)`.
 

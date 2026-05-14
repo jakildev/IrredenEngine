@@ -11,10 +11,6 @@
 
 namespace IRScript::detail {
 
-/// Wires `Prefab.register(id, path)` and `Prefab.spawn(id, position)`
-/// into `script`'s Lua state. The bound closures forward into the
-/// `IRPrefab::Prefab` C++ API, so the Lua surface stays a thin shim
-/// over the typed entry points.
 void bindPrefabApi(LuaScript &script) {
     sol::state &lua = script.lua();
     if (!lua["Prefab"].valid()) {

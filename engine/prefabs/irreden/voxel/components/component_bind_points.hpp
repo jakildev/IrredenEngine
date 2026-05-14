@@ -1,19 +1,7 @@
 #ifndef COMPONENT_BIND_POINTS_H
 #define COMPONENT_BIND_POINTS_H
 
-/// Runtime mirror of the asset-side bind-point set
-/// (`IRAsset::Rig::bindPoints_`). Each entry records a named attachment
-/// point parented to a bone — local-space offset + rotation relative to
-/// that bone. The world transform for a named point is composed from the
-/// joint chain at query time; see `IRPrefab::Rig::worldTransformForBindPoint`
-/// in `rig_bridge.hpp` and the `entity:bindPoint(name)` Lua method.
-///
-/// Storage is `std::unordered_map<string, BindPointRuntime>` — name lookup
-/// is the only access pattern, and binding points per entity are small (a
-/// few to a few dozen). Per-frame lookups are documented as a no-go in
-/// `engine/prefabs/irreden/voxel/CLAUDE.md`; resolve once at spawn or on
-/// interaction, then cache the integer bone index in a hot-path component
-/// if a use case appears.
+// Per-entity bind-point map; treat entity:bindPoint(name) as a one-time query, not per-tick.
 
 #include <irreden/ir_math.hpp>
 

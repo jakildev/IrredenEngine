@@ -87,13 +87,14 @@ void clearPrefabs();
 ///   `flags_` are copied from the record. Per-record `rotation_` /
 ///   `csgOp_` / `boneId_` are loaded but not stamped onto runtime
 ///   components in v1 (no current renderer consumes them; T-181
-///   wires bone binding). DENSE / HYBRID dense voxel data is loaded
-///   but **not** attached — `C_VoxelSetNew` requires an active
-///   render-canvas pool; the headless attach path is deferred.
-/// - If `rig_ref` is present, loads the `.rig` via `IRAsset::loadRig`
-///   and attaches `C_JointHierarchy` via
-///   `IRPrefab::Rig::toComponent`. Bind-points are loaded but not
-///   attached pending the runtime `C_BindPoints` component.
+///   wires bone binding via `C_BindPoints` below; CSG composition is
+///   a render-pipeline decision). DENSE / HYBRID dense voxel data is
+///   loaded but **not** attached — `C_VoxelSetNew` requires an
+///   active render-canvas pool; the headless attach path is deferred.
+/// - If `rig_ref` is present, loads the `.rig` via `IRAsset::loadRig`,
+///   attaches `C_JointHierarchy` via `IRPrefab::Rig::toComponent`, and
+///   attaches `C_BindPoints` from the rig's BIND chunk (merged with any
+///   `bind_point_overrides` from the prefab table).
 /// - If `setup` is a Lua function, invokes it with the entity wrapped
 ///   as `LuaEntity{entity}`. Lua errors in `setup` propagate as a
 ///   failed `SpawnResult` with the error string forwarded.

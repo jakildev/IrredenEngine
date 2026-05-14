@@ -128,11 +128,7 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
-/// Multiplies two unit quaternions stored as `vec4(qx, qy, qz, qw)` — the
-/// same in-memory layout the engine uses for `IRComponents::Joint::rotation_`
-/// and `IRAsset::RigJoint::rotation_`. Result composes `a` then `b`
-/// (rotating by `quatMul(a, b)` is the same as rotating by `a` first then
-/// by `b`).
+// Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy: quatMul(parent_world, local)).
 inline vec4 quatMul(const vec4 &a, const vec4 &b) {
     return vec4(
         a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -142,9 +138,7 @@ inline vec4 quatMul(const vec4 &a, const vec4 &b) {
     );
 }
 
-/// Rotates a vec3 by a unit quaternion stored as `vec4(qx, qy, qz, qw)`.
-/// Uses the standard `v + 2 * cross(q.xyz, cross(q.xyz, v) + q.w * v)`
-/// identity — same algebra glm::rotate(quat, vec3) would compute.
+// Rodrigues' formula: v + q.w*t + cross(q.xyz, t), t = 2*cross(q.xyz, v).
 inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
     const vec3 u{q.x, q.y, q.z};
     const vec3 t = 2.0f * glm::cross(u, v);
