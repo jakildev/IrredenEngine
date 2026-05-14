@@ -264,6 +264,17 @@ Avoid:
   - **Notes:** SHAPES half wired in T-182 / PR #718; DENSE/HYBRID deferred. Two design options: (A) pool-injectable ctor — C_VoxelSetNew takes DenseVoxelSet + explicit pool entity id (kNullEntity for headless), later step seeds pool when canvas activates; (B) lazy attach — component stores DenseVoxelSet payload, UPDATE-pipeline system seeds pool the frame after canvas activates. Architect chooses; document in CLAUDE.md. Parent epic: #608. Asset side: T-167/PR#691 (DENSE), T-170/PR#694 (HYBRID).
   - **Links:**
 
+- [ ] **render: SDF→trixel half-voxel / lone-trixel discrepancy investigation** — reproduce, classify, and fix or document the artifact difference between C_VoxelSetNew voxel-pool output and direct-SDF SHAPES_TO_TRIXEL rasterization at silhouette boundaries
+  - **ID:** T-190
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) diff report comparing voxel-pool vs SDF output at zoom 4/8/16 for box, sphere, cone, and torus shapes using tools/img_diff; (2) either a fix PR that eliminates the trixel discrepancy, or a CLAUDE.md note in engine/render/ documenting the intentional delta and its source (which threshold, which solver path); (3) fleet-build clean on linux-debug
+  - **Issue:** #690
+  - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
