@@ -249,7 +249,7 @@ Avoid:
   - **ID:** T-182
   - **Area:** engine/script, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-182-prefab-voxel-attach
   - **Blocked by:** T-173
   - **Acceptance:** (1) SHAPES-mode .vxs files attach per-record C_ShapeDescriptor to spawned entity; (2) DENSE/HYBRID-mode .vxs files attach without requiring active canvas (or contract explicitly documented if deferred); (3) round-trip test: register prefab with known .vxs, spawn, verify expected C_ShapeDescriptor records / C_VoxelSetNew slot count on entity; (4) engine/script/CLAUDE.md and engine/prefabs/irreden/voxel/CLAUDE.md document attachment behavior
   - **Issue:** #701
