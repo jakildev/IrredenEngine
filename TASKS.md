@@ -201,6 +201,17 @@ Avoid:
   - **Notes:** Phase 5 of editor epic (#608). Lua-defined components are out of scope (separate epic). Component palette UI in #608 produces prefab Lua tables matching this schema. New files: prefab_api.hpp, prefab_api.cpp, lua_bindings_prefab.cpp.
   - **Links:**
 
+- [ ] **GPU particles: port stateless-particles 2×3 voxel-diamond render fix** — port the 6-trixel per-particle emit loop from stateless-particles shader to c_render_gpu_particles_to_trixel (GLSL + Metal) so GPU-pool particles render as lit voxel diamonds
+  - **ID:** T-176
+  - **Area:** shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRGpuParticles (or any creation using C_GPUParticlePool with a lighting pipeline) renders particles as 3-face voxel diamonds with correct 3-tone shading; (2) fleet-build clean on linux-debug and macos-debug; (3) shaders pass render-debug-loop; (4) GLSL and Metal emit the same trixel set per particle (no backend-parity drift)
+  - **Issue:** #689
+  - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
