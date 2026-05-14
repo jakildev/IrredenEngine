@@ -41,7 +41,6 @@ inline std::string commandNameToString(CommandNames name) {
     case GUI_ZOOM_IN:               return "GUI ZOOM IN";
     case GUI_ZOOM_OUT:              return "GUI ZOOM OUT";
     case TOGGLE_PERIODIC_IDLE_PAUSE:return "TOGGLE PAUSE";
-    case SAVE_MAIN_CANVAS_TRIXELS:  return "SAVE CANVAS";
     case SET_TRIXEL_COLOR:          return "SET TRIXEL";
     case RANDOMIZE_VOXELS:          return "RANDOMIZE VOXELS";
     case SPAWN_PARTICLE_MOUSE_POSITION: return "SPAWN PARTICLE";

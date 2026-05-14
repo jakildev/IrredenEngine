@@ -3,7 +3,6 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
-#include <irreden/ir_asset.hpp>
 
 #include <irreden/render/texture.hpp>
 
@@ -136,64 +135,6 @@ struct C_TriangleCanvasTextures {
                 PixelDataFormat::RED_INTEGER,
                 PixelDataType::INT32,
                 &distance
-            );
-    }
-
-    void saveToFile(std::string name) const {
-        std::vector<Color> colorData;
-        std::vector<Distance> distanceData;
-
-        colorData.resize(size_.x * size_.y);
-        distanceData.resize(size_.x * size_.y);
-
-        textureTriangleColors_.second
-            ->getSubImage2D(
-                0,
-                0,
-                size_.x,
-                size_.y,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                colorData.data()
-            );
-        textureTriangleDistances_.second
-            ->getSubImage2D(
-                0,
-                0,
-                size_.x,
-                size_.y,
-                PixelDataFormat::RED_INTEGER,
-                PixelDataType::INT32,
-                distanceData.data()
-            );
-        IRAsset::saveTrixelTextureData(name, "../save_files/", size_, colorData, distanceData);
-    }
-
-    void loadFromFile(const std::string &filename) {
-        std::vector<Color> colorData;
-        std::vector<Distance> distanceData;
-
-        IRAsset::loadTrixelTextureData(filename, "", size_, colorData, distanceData);
-
-        textureTriangleColors_.second
-            ->subImage2D(
-                0,
-                0,
-                size_.x,
-                size_.y,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                colorData.data()
-            );
-        textureTriangleDistances_.second
-            ->subImage2D(
-                0,
-                0,
-                size_.x,
-                size_.y,
-                PixelDataFormat::RED_INTEGER,
-                PixelDataType::INT32,
-                distanceData.data()
             );
     }
 
