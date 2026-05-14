@@ -134,9 +134,10 @@ this at write time.
 
 ## .rig format
 
-`.rig` v1 — joint hierarchy first slice. Bind points (#669) and
-animation keyframes (#606) land as additional chunks without bumping
-the file version (Save Format Extensibility Rule #1).
+`.rig` v1 — joint hierarchy + bind points. Chunks are added without
+bumping the file version; older readers silently skip unknown tags
+(Save Format Extensibility Rule #1). Animation keyframes (#606) will
+land the same way when that task ships.
 
 ```
 AssetHeader { magic = "IRRG", version = 1, chunkCount }
@@ -149,11 +150,20 @@ JNTS chunk body:
         float32  translation { x, y, z, w }
         uint32   parentIndex
         string   name             // varuint-prefixed UTF-8, may be empty
+BIND chunk body (optional — omitted when no bind points):
+    varuint  bindPointCount
+    repeat bindPointCount times:
+        uint16   recordVersion    (Rule #3 per-record additive-only)
+        uint32   boneId
+        float32  offset { x, y, z }
+        float32  rotation { x, y, z, w }
+        string   name             // varuint-prefixed UTF-8, may be empty
 ```
 
 The accompanying `<name>.rig.json` sidecar emits per-joint
-`{ index, name, parentIndex }` for designer diffing. Sidecars are
-write-only; the loader ignores them (Rule #6).
+`{ index, name, parentIndex }` and per-bind-point `{ index, name, boneId }`
+for designer diffing. Sidecars are write-only; the loader ignores them
+(Rule #6).
 
 The asset-side `IRAsset::Rig` is distinct from the runtime
 `IRComponents::C_JointHierarchy` (no names at draw time) — translate
