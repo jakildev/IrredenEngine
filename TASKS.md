@@ -256,11 +256,11 @@ Avoid:
   - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
   - **Links:**
 
-- [ ] **asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/** — centralize duplicated writeVec3/writeVec4/readVec3/readVec4 and color pack/unpack helpers into IRMath::BinaryIO; adopt in voxel_set_format.cpp and rig_format.cpp
+- [~] **asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/** — centralize duplicated writeVec3/writeVec4/readVec3/readVec4 and color pack/unpack helpers into IRMath::BinaryIO; adopt in voxel_set_format.cpp and rig_format.cpp
   - **ID:** T-183
   - **Area:** engine/math, engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) zero copies of vec3/vec4 / color pack helpers remain inside engine/asset/src/*.cpp; (2) IRMath::BinaryIO (or equivalent engine/asset/include location) exposes writeVec3/writeVec4/readVec3/readVec4 and Color::fromPackedRGBA; (3) engine/math/ does not physically depend on engine/asset/; (4) voxel_set_format.cpp and rig_format.cpp call through the shared helpers; (5) all existing tests pass; (6) fleet-build clean on linux-debug
   - **Issue:** #704
