@@ -11,7 +11,10 @@
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
 
+#include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace IRPrefab::Widget {
 
@@ -161,6 +164,167 @@ inline void setButtonLabel(IREntity::EntityId widget, std::string label) {
 
 inline void setLabelText(IREntity::EntityId widget, std::string text) {
     IREntity::getComponent<IRComponents::C_WidgetLabel>(widget).text_ = std::move(text);
+}
+
+// ---------------------------------------------------------------------------
+// T-177 follow-up widgets: list, dropdown, radio, text input, scroll.
+// ---------------------------------------------------------------------------
+
+inline IREntity::EntityId makeList(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::vector<std::string> items,
+    int initialSelected = -1,
+    int itemHeight = 18
+) {
+    IRComponents::C_WidgetList listData;
+    listData.items_ = std::move(items);
+    listData.selectedIndex_ = initialSelected;
+    listData.itemHeight_ = itemHeight;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::LIST, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(listData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+inline IREntity::EntityId makeDropdown(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::vector<std::string> items,
+    int initialSelected = 0,
+    int itemHeight = 18
+) {
+    IRComponents::C_WidgetDropdown ddData;
+    ddData.items_ = std::move(items);
+    ddData.selectedIndex_ = initialSelected;
+    ddData.itemHeight_ = itemHeight;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::DROPDOWN, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(ddData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+inline IREntity::EntityId makeRadio(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::string label,
+    std::uint32_t groupId,
+    int value,
+    bool initialSelected = false
+) {
+    IRComponents::C_WidgetRadio radioData;
+    radioData.label_ = std::move(label);
+    radioData.groupId_ = groupId;
+    radioData.value_ = value;
+    radioData.selected_ = initialSelected;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::RADIO, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(radioData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+inline IREntity::EntityId makeTextInput(
+    IRMath::ivec2 pos, IRMath::ivec2 size, std::string initialText = "", int maxLength = 0
+) {
+    IRComponents::C_WidgetTextInput tiData;
+    tiData.text_ = std::move(initialText);
+    tiData.cursorPos_ = static_cast<int>(tiData.text_.size());
+    tiData.maxLength_ = maxLength;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::TEXT_INPUT, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(tiData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+inline IREntity::EntityId makeScroll(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    int contentSize,
+    IRComponents::C_WidgetScroll::Axis axis = IRComponents::C_WidgetScroll::Axis::VERTICAL,
+    int initialScroll = 0
+) {
+    IRComponents::C_WidgetScroll scrollData;
+    scrollData.axis_ = axis;
+    scrollData.contentSize_ = contentSize;
+    scrollData.scrollPos_ = initialScroll;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::SCROLL, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(scrollData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+// Readers / mutators for the follow-up widgets. Same getComponent
+// allowance as the Phase 0 readers — called from a creation's
+// per-frame logic, not from a system tick.
+inline int listSelectedIndex(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetList>(widget).selectedIndex_;
+}
+
+inline void setListSelectedIndex(IREntity::EntityId widget, int index) {
+    auto &list = IREntity::getComponent<IRComponents::C_WidgetList>(widget);
+    const int n = static_cast<int>(list.items_.size());
+    list.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, -1, n - 1);
+}
+
+inline int dropdownSelectedIndex(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget).selectedIndex_;
+}
+
+inline bool isDropdownOpen(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget).isOpen_;
+}
+
+inline void setDropdownSelectedIndex(IREntity::EntityId widget, int index) {
+    auto &dd = IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget);
+    const int n = static_cast<int>(dd.items_.size());
+    dd.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, 0, n - 1);
+}
+
+inline bool radioSelected(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetRadio>(widget).selected_;
+}
+
+inline int radioValue(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetRadio>(widget).value_;
+}
+
+inline const std::string &textInputValue(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetTextInput>(widget).text_;
+}
+
+inline void setTextInputValue(IREntity::EntityId widget, std::string text) {
+    auto &ti = IREntity::getComponent<IRComponents::C_WidgetTextInput>(widget);
+    ti.text_ = std::move(text);
+    ti.cursorPos_ = static_cast<int>(ti.text_.size());
+}
+
+inline int scrollPosition(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetScroll>(widget).scrollPos_;
+}
+
+inline void setScrollPosition(IREntity::EntityId widget, int pos) {
+    auto &sc = IREntity::getComponent<IRComponents::C_WidgetScroll>(widget);
+    sc.scrollPos_ = IRMath::max(0, pos);
 }
 
 } // namespace IRPrefab::Widget

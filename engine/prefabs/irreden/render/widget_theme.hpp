@@ -39,6 +39,21 @@ struct WidgetTheme {
     // Checkbox fill (when checked)
     IRMath::Color checkboxFill_ = IRMath::Color{160, 200, 240, 255};
 
+    // List / dropdown row backgrounds (over the standard surface fill).
+    IRMath::Color listRowSelected_ = IRMath::Color{72, 96, 140, 255};
+    IRMath::Color listRowHover_ = IRMath::Color{52, 60, 80, 255};
+
+    // Radio button selected-fill (centre dot).
+    IRMath::Color radioFill_ = IRMath::Color{160, 200, 240, 255};
+
+    // Text input cursor color.
+    IRMath::Color textInputCursor_ = IRMath::Color{220, 224, 232, 255};
+
+    // Scroll bar visuals.
+    IRMath::Color scrollTrack_ = IRMath::Color{32, 36, 46, 255};
+    IRMath::Color scrollThumb_ = IRMath::Color{120, 132, 156, 255};
+    IRMath::Color scrollThumbHover_ = IRMath::Color{180, 200, 232, 255};
+
     // Layout
     int borderThickness_ = 2;
     int padding_ = 4;
@@ -46,6 +61,11 @@ struct WidgetTheme {
     int sliderTrackThickness_ = 6;
     int sliderThumbWidth_ = 8;
     int checkboxBoxSize_ = 16;
+    int radioBoxSize_ = 16;
+    int textInputCursorWidth_ = 2;
+    int scrollBarThickness_ = 10;
+    int scrollThumbMinExtent_ = 16;
+    int textCursorBlinkPeriodFrames_ = 30;
 };
 
 // Default theme. A creation that wants custom colors mutates this once
@@ -54,7 +74,9 @@ struct WidgetTheme {
 // not a function-local static, which is forbidden for mutable state by
 // the system-state rule).
 inline WidgetTheme g_defaultTheme;
-inline WidgetTheme &defaultTheme() { return g_defaultTheme; }
+inline WidgetTheme &defaultTheme() {
+    return g_defaultTheme;
+}
 
 } // namespace IRPrefab::Widget
 
