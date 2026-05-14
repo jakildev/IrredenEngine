@@ -190,17 +190,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **GPU particles: port stateless-particles 2×3 voxel-diamond render fix** — port the 6-trixel per-particle emit loop from stateless-particles shader to c_render_gpu_particles_to_trixel (GLSL + Metal) so GPU-pool particles render as lit voxel diamonds
-  - **ID:** T-176
-  - **Area:** shaders/glsl, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** claude/T-176-gpu-particles-voxel-diamond
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRGpuParticles (or any creation using C_GPUParticlePool with a lighting pipeline) renders particles as 3-face voxel diamonds with correct 3-tone shading; (2) fleet-build clean on linux-debug and macos-debug; (3) shaders pass render-debug-loop; (4) GLSL and Metal emit the same trixel set per particle (no backend-parity drift)
-  - **Issue:** #689
-  - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
-  - **Links:**
-
 - [~] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
   - **ID:** T-181
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -260,6 +249,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
@@ -279,4 +269,3 @@ Avoid:
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
-- [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
