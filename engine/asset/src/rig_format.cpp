@@ -1,6 +1,7 @@
 #include <irreden/asset/rig_format.hpp>
 
 #include <irreden/asset/chunk_header.hpp>
+#include <irreden/asset/math_binary_io.hpp>
 #include <irreden/asset/json_sidecar.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
@@ -17,54 +18,12 @@ constexpr const char *kRigSidecarExtension = ".rig.json";
 constexpr std::array<char, 4> kJntsTag{'J', 'N', 'T', 'S'};
 constexpr std::array<char, 4> kBindTag{'B', 'I', 'N', 'D'};
 
-void encodeVec3(BinaryWriter &w, const IRMath::vec3 &v) {
-    w.writeF32(v.x);
-    w.writeF32(v.y);
-    w.writeF32(v.z);
-}
-
-Result<IRMath::vec3> decodeVec3(BinaryReader &r) {
-    auto x = r.readF32();
-    if (!x.ok())
-        return Result<IRMath::vec3>::error(x.status_.code_, std::move(x.status_.message_));
-    auto y = r.readF32();
-    if (!y.ok())
-        return Result<IRMath::vec3>::error(y.status_.code_, std::move(y.status_.message_));
-    auto z = r.readF32();
-    if (!z.ok())
-        return Result<IRMath::vec3>::error(z.status_.code_, std::move(z.status_.message_));
-    return Result<IRMath::vec3>::success(IRMath::vec3(x.value_, y.value_, z.value_));
-}
-
-void encodeVec4(BinaryWriter &w, const IRMath::vec4 &v) {
-    w.writeF32(v.x);
-    w.writeF32(v.y);
-    w.writeF32(v.z);
-    w.writeF32(v.w);
-}
-
-Result<IRMath::vec4> decodeVec4(BinaryReader &r) {
-    auto x = r.readF32();
-    if (!x.ok())
-        return Result<IRMath::vec4>::error(x.status_.code_, std::move(x.status_.message_));
-    auto y = r.readF32();
-    if (!y.ok())
-        return Result<IRMath::vec4>::error(y.status_.code_, std::move(y.status_.message_));
-    auto z = r.readF32();
-    if (!z.ok())
-        return Result<IRMath::vec4>::error(z.status_.code_, std::move(z.status_.message_));
-    auto w = r.readF32();
-    if (!w.ok())
-        return Result<IRMath::vec4>::error(w.status_.code_, std::move(w.status_.message_));
-    return Result<IRMath::vec4>::success(IRMath::vec4(x.value_, y.value_, z.value_, w.value_));
-}
-
 BinaryStatus encodeJntsChunk(MemoryBinaryWriter &body, const Rig &rig) {
     body.writeVarUInt(rig.joints_.size());
     for (const auto &j : rig.joints_) {
         body.writeU16(kJointRecordVersion);
-        encodeVec4(body, j.rotation_);
-        encodeVec4(body, j.translation_);
+        IRMath::BinaryIO::writeVec4(body, j.rotation_);
+        IRMath::BinaryIO::writeVec4(body, j.translation_);
         body.writeU32(j.parentIndex_);
         body.writeString(j.name_);
     }
@@ -98,11 +57,11 @@ Result<Rig> decodeJntsChunk(const LoadedChunk &chunk, const std::string &sourceN
             );
         }
         RigJoint joint;
-        auto rot = decodeVec4(r);
+        auto rot = IRMath::BinaryIO::readVec4(r);
         if (!rot.ok())
             return Result<Rig>::error(rot.status_.code_, std::move(rot.status_.message_));
         joint.rotation_ = rot.value_;
-        auto tra = decodeVec4(r);
+        auto tra = IRMath::BinaryIO::readVec4(r);
         if (!tra.ok())
             return Result<Rig>::error(tra.status_.code_, std::move(tra.status_.message_));
         joint.translation_ = tra.value_;
@@ -125,8 +84,8 @@ BinaryStatus encodeBindChunk(MemoryBinaryWriter &body, const Rig &rig) {
     for (const auto &bp : rig.bindPoints_) {
         body.writeU16(RigBindPoint::kSaveVersion);
         body.writeU32(bp.boneId_);
-        encodeVec3(body, bp.offset_);
-        encodeVec4(body, bp.rotation_);
+        IRMath::BinaryIO::writeVec3(body, bp.offset_);
+        IRMath::BinaryIO::writeVec4(body, bp.rotation_);
         body.writeString(bp.name_);
     }
     if (body.failed()) {
@@ -161,11 +120,11 @@ BinaryStatus decodeBindChunk(const LoadedChunk &chunk, const std::string &source
             return BinaryStatus::error(boneR.status_.code_, std::move(boneR.status_.message_));
         }
         bp.boneId_ = boneR.value_;
-        auto off = decodeVec3(r);
+        auto off = IRMath::BinaryIO::readVec3(r);
         if (!off.ok())
             return BinaryStatus::error(off.status_.code_, std::move(off.status_.message_));
         bp.offset_ = off.value_;
-        auto rot = decodeVec4(r);
+        auto rot = IRMath::BinaryIO::readVec4(r);
         if (!rot.ok())
             return BinaryStatus::error(rot.status_.code_, std::move(rot.status_.message_));
         bp.rotation_ = rot.value_;

@@ -109,6 +109,17 @@ struct Color {
                (static_cast<std::uint32_t>(blue_) << 16) |
                (static_cast<std::uint32_t>(alpha_) << 24);
     }
+
+    /// Unpack a little-endian RGBA uint32 (as written by toPackedRGBA) into
+    /// a Color. Bit layout: [7:0]=R, [15:8]=G, [23:16]=B, [31:24]=A.
+    static constexpr Color fromPackedRGBA(std::uint32_t packed) {
+        return Color{
+            static_cast<std::uint8_t>(packed & 0xFFu),
+            static_cast<std::uint8_t>((packed >> 8) & 0xFFu),
+            static_cast<std::uint8_t>((packed >> 16) & 0xFFu),
+            static_cast<std::uint8_t>((packed >> 24) & 0xFFu),
+        };
+    }
 };
 
 /// Draw-order depth scalar: `x + y + z`. Higher values are further from the

@@ -1,5 +1,6 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/asset/json_sidecar.hpp>
+#include <irreden/asset/math_binary_io.hpp>
 
 #include <irreden/ir_profile.hpp>
 
@@ -8,61 +9,6 @@
 namespace IRAsset {
 
 namespace {
-
-void writeColorPacked(BinaryWriter &w, Color color) {
-    w.writeU32(color.toPackedRGBA());
-}
-
-Color unpackColor(std::uint32_t packed) {
-    return Color{
-        static_cast<std::uint8_t>(packed & 0xFFu),
-        static_cast<std::uint8_t>((packed >> 8) & 0xFFu),
-        static_cast<std::uint8_t>((packed >> 16) & 0xFFu),
-        static_cast<std::uint8_t>((packed >> 24) & 0xFFu),
-    };
-}
-
-void writeVec3(BinaryWriter &w, const vec3 &v) {
-    w.writeF32(v.x);
-    w.writeF32(v.y);
-    w.writeF32(v.z);
-}
-
-void writeVec4(BinaryWriter &w, const vec4 &v) {
-    w.writeF32(v.x);
-    w.writeF32(v.y);
-    w.writeF32(v.z);
-    w.writeF32(v.w);
-}
-
-Result<vec3> readVec3(BinaryReader &r) {
-    auto x = r.readF32();
-    if (!x.ok())
-        return Result<vec3>::error(x.status_.code_, std::move(x.status_.message_));
-    auto y = r.readF32();
-    if (!y.ok())
-        return Result<vec3>::error(y.status_.code_, std::move(y.status_.message_));
-    auto z = r.readF32();
-    if (!z.ok())
-        return Result<vec3>::error(z.status_.code_, std::move(z.status_.message_));
-    return Result<vec3>::success(vec3(x.value_, y.value_, z.value_));
-}
-
-Result<vec4> readVec4(BinaryReader &r) {
-    auto x = r.readF32();
-    if (!x.ok())
-        return Result<vec4>::error(x.status_.code_, std::move(x.status_.message_));
-    auto y = r.readF32();
-    if (!y.ok())
-        return Result<vec4>::error(y.status_.code_, std::move(y.status_.message_));
-    auto z = r.readF32();
-    if (!z.ok())
-        return Result<vec4>::error(z.status_.code_, std::move(z.status_.message_));
-    auto w = r.readF32();
-    if (!w.ok())
-        return Result<vec4>::error(w.status_.code_, std::move(w.status_.message_));
-    return Result<vec4>::success(vec4(x.value_, y.value_, z.value_, w.value_));
-}
 
 // JSON key literals used by emitVoxelSetSidecar. Anchored here so
 // future sidecar emitters can grep for a single constant name and
@@ -264,12 +210,12 @@ ChunkPayload makeShapeGroupChunk(std::span<const ShapeRecord> records) {
     for (const auto &r : records) {
         w.writeU32(r.shapeTypeId_);
         w.writeU16(r.recordVersion_);
-        writeVec4(w, r.params_);
-        writeColorPacked(w, r.color_);
+        IRMath::BinaryIO::writeVec4(w, r.params_);
+        IRMath::BinaryIO::writeColorPacked(w, r.color_);
         w.writeU32(r.flags_);
         w.writeU8(r.boneId_);
-        writeVec3(w, r.offset_);
-        writeVec4(w, r.rotation_);
+        IRMath::BinaryIO::writeVec3(w, r.offset_);
+        IRMath::BinaryIO::writeVec4(w, r.rotation_);
         w.writeU8(static_cast<std::uint8_t>(r.csgOp_));
     }
     ChunkPayload out;
@@ -315,7 +261,7 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
             );
         rec.recordVersion_ = verR.value_;
 
-        auto paramsR = readVec4(r);
+        auto paramsR = IRMath::BinaryIO::readVec4(r);
         if (!paramsR.ok())
             return Result<ShapeGroupLoadResult>::error(
                 paramsR.status_.code_,
@@ -329,7 +275,7 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
                 colorR.status_.code_,
                 std::move(colorR.status_.message_)
             );
-        rec.color_ = unpackColor(colorR.value_);
+        rec.color_ = Color::fromPackedRGBA(colorR.value_);
 
         auto flagsR = r.readU32();
         if (!flagsR.ok())
@@ -347,7 +293,7 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
             );
         rec.boneId_ = boneR.value_;
 
-        auto offsetR = readVec3(r);
+        auto offsetR = IRMath::BinaryIO::readVec3(r);
         if (!offsetR.ok())
             return Result<ShapeGroupLoadResult>::error(
                 offsetR.status_.code_,
@@ -355,7 +301,7 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
             );
         rec.offset_ = offsetR.value_;
 
-        auto rotR = readVec4(r);
+        auto rotR = IRMath::BinaryIO::readVec4(r);
         if (!rotR.ok())
             return Result<ShapeGroupLoadResult>::error(
                 rotR.status_.code_,
@@ -456,7 +402,7 @@ ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
     w.writeU16(VoxelRecord::kSaveVersion);
     w.writeVarUInt(static_cast<std::uint64_t>(voxels.size()));
     for (const auto &v : voxels) {
-        writeColorPacked(w, v.color_);
+        IRMath::BinaryIO::writeColorPacked(w, v.color_);
         w.writeU8(v.material_id_);
         w.writeU8(v.flags_);
         w.writeU8(v.bone_id_);
@@ -510,7 +456,7 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
                 colorR.status_.code_,
                 std::move(colorR.status_.message_)
             );
-        v.color_ = unpackColor(colorR.value_);
+        v.color_ = Color::fromPackedRGBA(colorR.value_);
         auto matR = r.readU8();
         if (!matR.ok())
             return Result<VoxelRecordsLoadResult>::error(
@@ -625,7 +571,7 @@ ChunkPayload makeFramesChunk(std::span<const FramePose> frames) {
         w.writeU32(frame.frameIndex_);
         w.writeVarUInt(static_cast<std::uint64_t>(frame.offsets_.size()));
         for (const auto &off : frame.offsets_) {
-            writeVec3(w, off);
+            IRMath::BinaryIO::writeVec3(w, off);
         }
     }
     ChunkPayload out;
@@ -671,7 +617,7 @@ readFramesChunk(std::span<const std::uint8_t> body, std::size_t voxelCount) {
             static_cast<std::size_t>(offCountR.value_ < maxOffsets ? offCountR.value_ : maxOffsets)
         );
         for (std::uint64_t off_i = 0; off_i < offCountR.value_; ++off_i) {
-            auto vR = readVec3(r);
+            auto vR = IRMath::BinaryIO::readVec3(r);
             if (!vR.ok())
                 return Result<FramesLoadResult>::error(
                     vR.status_.code_,
