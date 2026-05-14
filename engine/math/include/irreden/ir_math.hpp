@@ -128,6 +128,29 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
+/// Multiplies two unit quaternions stored as `vec4(qx, qy, qz, qw)` — the
+/// same in-memory layout the engine uses for `IRComponents::Joint::rotation_`
+/// and `IRAsset::RigJoint::rotation_`. Result composes `a` then `b`
+/// (rotating by `quatMul(a, b)` is the same as rotating by `a` first then
+/// by `b`).
+inline vec4 quatMul(const vec4 &a, const vec4 &b) {
+    return vec4(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+    );
+}
+
+/// Rotates a vec3 by a unit quaternion stored as `vec4(qx, qy, qz, qw)`.
+/// Uses the standard `v + 2 * cross(q.xyz, cross(q.xyz, v) + q.w * v)`
+/// identity — same algebra glm::rotate(quat, vec3) would compute.
+inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
+    const vec3 u{q.x, q.y, q.z};
+    const vec3 t = 2.0f * glm::cross(u, v);
+    return v + q.w * t + glm::cross(u, t);
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.

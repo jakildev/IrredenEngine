@@ -20,6 +20,15 @@ for single voxels and particles.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_JointHierarchy` — WIP; articulated voxel rigs.
+- `C_BindPoints` — runtime mirror of an asset rig's BIND chunk
+  (`IRAsset::Rig::bindPoints_`). Each entry stores
+  `{boneId, offset, rotation}` keyed by name. Populated by
+  `Prefab.spawn` from `rig_ref`; the per-name world transform is
+  composed lazily by `IRPrefab::Rig::worldTransformForBindPoint` and
+  surfaced to Lua as `entity:bindPoint("name")`. Per-name lookups use
+  `unordered_map` and are documented as one-time queries at spawn or
+  on interaction, not per-tick — see `engine/script/CLAUDE.md` for
+  the Lua surface.
 
 ## Key systems
 

@@ -8,11 +8,13 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
 #include <sol/sol.hpp>
 
+#include <cstdint>
 #include <exception>
 #include <optional>
 #include <string>
@@ -170,14 +172,56 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
     }
 
+    // Attach C_BindPoints from the loaded rig's BIND chunk, then apply
+    // any `bind_point_overrides` from the prefab table. Overrides target
+    // by name and may rewrite `offset`, `rotation`, and `boneId` (any
+    // subset); unknown names are added as fresh bind points so a prefab
+    // can extend a rig's defaults without re-saving the asset. Overrides
+    // only take effect when the rig's BIND chunk is non-empty.
+    if (loadedRig && !loadedRig->bindPoints_.empty()) {
+        IRComponents::C_BindPoints bindPoints = IRPrefab::Rig::toBindPoints(*loadedRig);
+        sol::optional<sol::table> overridesOpt = prefab["bind_point_overrides"];
+        if (overridesOpt) {
+            for (auto &kv : *overridesOpt) {
+                sol::optional<std::string> nameOpt = kv.first.as<sol::optional<std::string>>();
+                if (!nameOpt) {
+                    continue;
+                }
+                if (!kv.second.is<sol::table>()) {
+                    continue;
+                }
+                sol::table desc = kv.second.as<sol::table>();
+                auto existing = bindPoints.points_.find(*nameOpt);
+                IRComponents::BindPointRuntime point = (existing != bindPoints.points_.end())
+                                                           ? existing->second
+                                                           : IRComponents::BindPointRuntime{};
+                sol::optional<std::uint32_t> boneIdOpt = desc["boneId"];
+                if (boneIdOpt) {
+                    point.boneId_ = *boneIdOpt;
+                }
+                sol::optional<IRMath::vec3> offsetOpt = desc["offset"];
+                if (offsetOpt) {
+                    point.offset_ = *offsetOpt;
+                }
+                sol::optional<IRMath::vec4> rotationOpt = desc["rotation"];
+                if (rotationOpt) {
+                    point.rotation_ = *rotationOpt;
+                }
+                bindPoints.points_[*nameOpt] = point;
+            }
+        }
+        IREntity::setComponent(entity, std::move(bindPoints));
+    }
+
     // SHAPES voxel_ref attachment — one child entity per ShapeRecord,
     // CHILD_OF the spawned root so per-record `offset_` composes
     // through the standard C_PositionGlobal3D + C_PositionOffset3D
     // pipeline. Per-record `rotation_`, `csgOp_`, and `boneId_` are
     // persisted but not consumed by the current renderer; loading them
-    // is a no-op until a runtime system reads them (T-181 will wire
-    // bone bindings; CSG composition is a render-side decision). v1
-    // intentionally drops these to avoid stamping unused state.
+    // is a no-op until a runtime system reads them (T-181 wires bone
+    // bindings via C_BindPoints above; CSG composition is a render-side
+    // decision). v1 intentionally drops these to avoid stamping unused
+    // state.
     //
     // DENSE / HYBRID dense data is left unattached — `C_VoxelSetNew`
     // allocates against the active render-canvas pool, and the
@@ -203,10 +247,10 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     }
 
     // Optional setup function — last so the user sees a fully-formed
-    // entity (position + rig + shape children already attached).
-    // Distinguish "absent" (sol::type::lua_nil) from "present but not
-    // a function" so a schema typo like `setup = 42` surfaces a
-    // diagnostic instead of silently no-op'ing.
+    // entity (position + rig + bind points + shape children already
+    // attached). Distinguish "absent" (sol::type::lua_nil) from
+    // "present but not a function" so a schema typo like `setup = 42`
+    // surfaces a diagnostic instead of silently no-op'ing.
     sol::object setupObj = prefab["setup"];
     if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
         if (setupObj.get_type() != sol::type::function) {

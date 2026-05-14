@@ -711,11 +711,42 @@ land:
   (Phase 5 risks) flags this as a design call. Use the `setup`
   callback in the meantime — it lets the prefab call any Lua-bound
   `IREntity.setComponent(entity, C_Foo.new(...))` directly.
-- **`bind_point_overrides = { ... }`** — requires a runtime
-  `C_BindPoints` component. T-171 added the asset-side BIND chunk to
-  `.rig`, but the runtime ECS component + the `entity:bindPoint(name)`
-  Lua accessor are deferred. spawn() loads bind points but does not
-  attach them yet.
+- **`bind_point_overrides = { ... }`** — landed via T-181. The
+  optional `bind_point_overrides` table on a prefab maps names to
+  `{ offset = vec3, rotation = vec4, boneId = uint }` (any subset);
+  spawn() merges the override into the rig's BIND-chunk entry,
+  overwriting only the fields the override specifies. Unknown names
+  are inserted as fresh bind points so a prefab can extend a rig's
+  defaults without re-saving the asset.
+
+  At spawn time, `Prefab.spawn` translates the rig's BIND chunk into
+  a runtime `IRComponents::C_BindPoints` via
+  `IRPrefab::Rig::toBindPoints` and attaches it alongside the
+  `C_JointHierarchy`. Bind-point world transforms are queried via
+  `IREntity.bindPoint(entity, name)` on the `IREntity` table:
+
+  ```lua
+  -- Returns (offset, rotation) as vec3 + vec4 in entity-local
+  -- world space (composed from the joint chain). Returns nil, nil
+  -- if the entity has no C_BindPoints or the named point is absent.
+  local offset, rotation = IREntity.bindPoint(entity, "right_hand")
+  ```
+
+  The composition algorithm walks the bone chain root-first via the
+  `C_JointHierarchy.joints_[].parentIndex_` field, accumulating
+  per-joint local rotations (quaternion multiply, see
+  `IRMath::quatMul`) and translations (rotated by the chain
+  rotation, see `IRMath::rotateVectorByQuat`), then applies the
+  bind point's local offset/rotation on top. If the entity has no
+  `C_JointHierarchy` component, the bind point's local transform
+  is returned as-is.
+
+  Cost contract: `IREntity.bindPoint` performs an
+  `unordered_map<string, ...>` lookup plus an O(chainDepth) walk.
+  Treat as a **one-time query at spawn or on interaction**, not per
+  tick. If a hot use case appears (e.g. attaching a per-tick light
+  to a bind point), pre-resolve the integer bone index at spawn
+  time and cache the offset/rotation in a flat component instead.
 - **DENSE / HYBRID dense voxel_ref attachment** — DENSE per-voxel
   records are loaded and validated but not attached as an ECS
   component. The current `C_VoxelSetNew` constructor allocates
