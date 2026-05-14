@@ -245,11 +245,11 @@ Avoid:
   - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
   - **Links:**
 
-- [ ] **prefab: attach voxel_ref data as ECS components on Prefab.spawn** — route loaded .vxs records to runtime C_ShapeDescriptor / C_VoxelSetNew on the spawned entity; SHAPES and DENSE/HYBRID modes
+- [~] **prefab: attach voxel_ref data as ECS components on Prefab.spawn** — route loaded .vxs records to runtime C_ShapeDescriptor / C_VoxelSetNew on the spawned entity; SHAPES and DENSE/HYBRID modes
   - **ID:** T-182
   - **Area:** engine/script, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-173
   - **Acceptance:** (1) SHAPES-mode .vxs files attach per-record C_ShapeDescriptor to spawned entity; (2) DENSE/HYBRID-mode .vxs files attach without requiring active canvas (or contract explicitly documented if deferred); (3) round-trip test: register prefab with known .vxs, spawn, verify expected C_ShapeDescriptor records / C_VoxelSetNew slot count on entity; (4) engine/script/CLAUDE.md and engine/prefabs/irreden/voxel/CLAUDE.md document attachment behavior
   - **Issue:** #701
