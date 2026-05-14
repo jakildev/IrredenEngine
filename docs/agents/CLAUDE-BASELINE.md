@@ -249,3 +249,83 @@ a demo creation for it, not to remove it. Removal requires an explicit
 human decision. See the "Engine API removal rule" section of
 `role-opus-architect.md` and `role-opus-worker.md` for the full
 guidance.
+
+---
+
+## Encode contracts in code, not in comments
+
+When a helper documents a precondition in its docstring — `// must be
+exactly 4 bytes`, `// caller guarantees non-null`, `// only call from
+the render thread` — enforce the precondition with `IR_ASSERT` /
+`static_assert` / `if constexpr`, not the comment alone. The docstring
+explains *why* the constraint exists; the assert ensures that violating
+it is loud rather than silent.
+
+This does **not** conflict with "don't add error handling for scenarios
+that can't happen." That rule is about not threading defensive checks
+through internal code that already has framework guarantees. This rule
+is the narrower point: **if you wrote a comment saying "must be X," the
+next line should make "not X" a crash, not a silent wrong answer.**
+
+Canonical failure mode this catches: `makeTag(std::string_view s)`
+documented as "must be exactly 4 chars," silently zero-pads when
+`s.length() < 4`. Two different callers passing `"VOX"` and `"VOXR"`
+(or worse, `"VOX"` and `"VOX\0"` via different conversion paths)
+produce identical tag bytes with no warning. The bug surfaces only when
+the format loader returns the wrong chunk type at runtime.
+
+Concrete forms:
+
+- **Compile-time constraint on a string-literal or template arg →
+  `static_assert`.** Cheapest. Use whenever the caller side is
+  consteval-reachable.
+- **Runtime constraint on a function parameter → `IR_ASSERT(predicate,
+  "diagnostic")` at function entry.** Use when the value is
+  user-supplied at runtime.
+- **Hybrid → `if consteval` branch that `static_assert`s, falling
+  through to a runtime `IR_ASSERT` at the non-consteval branch.** Use
+  for helpers that are sometimes called from `constexpr` contexts and
+  sometimes from runtime.
+
+The assertion message should restate the constraint in the same words
+the docstring uses, so a hit reads as one consistent contract violation
+rather than two separate signals.
+
+---
+
+## Deprecation markers
+
+When an API, file format, helper function, or module surface is being
+replaced — and the replacement has shipped or has a concrete landing
+plan — mark the deprecation explicitly in three places, no exceptions:
+
+1. **At the declaration site.** Add `// DEPRECATED — use <X> instead.`
+   directly above the function / struct / enum-value declaration in
+   the header. New consumers reading the header see the marker before
+   the docstring.
+2. **In the module's `CLAUDE.md`.** Add or extend a `## Deprecated`
+   section listing the surface, the replacement, and the date / PR /
+   issue that marked it.
+3. **In any new design doc** that proposes to extend the affected
+   surface: explicitly flag that the surface is on its way out.
+
+**Why this matters.** Concurrent fleet work routinely touches the same
+module from different angles. A task filed against the wrong format —
+because nothing in the code or docs said "this format is being
+replaced" — burns a full PR cycle on scaffolding the replacement
+supersedes. The canonical failure mode: F-0.7 (#626) filed a
+`.txl.json` sidecar against a format that was being migrated to
+`.vxs`; the sidecar shipped, was never adopted by the editor, and got
+deleted in the cleanup pass that followed (#705). Both the original
+filing and the cleanup PR were avoidable with a deprecation marker on
+`.txl`.
+
+**Tasks that propose to *extend* a deprecated surface must escalate to
+the human** rather than proceeding. The right move is almost always
+to redirect work to the replacement.
+
+This rule complements — does not replace — the **Engine API removal
+rule** above. Removal of engine ECS surface (systems, components,
+entities) is forbidden without explicit human sign-off; deprecation
+markers are the slower-moving "this surface is going away eventually"
+signal that applies to any API the human has decided to phase out.
