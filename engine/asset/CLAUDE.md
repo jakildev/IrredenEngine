@@ -56,10 +56,14 @@ snapshot (issue #199). It walks the archetype graph, so it lives in
   `.vxs` SHAPES-mode SDF primitive composition round-trip. See
   `voxel_set_format.hpp` for record layout and the
   "How to add a new SDF primitive" walkthrough below.
+- `saveRig(name, path, rig)` / `loadRig(name, path)` — joints-first
+  rig asset round-trip (see `.rig format` below). Buffer-mode
+  `writeRig` / `readRig` are exposed for in-memory consumers.
 
 The `name` is embedded in the trixel file header; the `path` is the
 output directory. For sprite sheets, `name` is the basename shared
-by the `.png` atlas and its `.irsprite` sidecar.
+by the `.png` atlas and its `.irsprite` sidecar. For rigs, `name` is
+the basename shared by the `.rig` binary and its `.rig.json` sidecar.
 
 ## Trixel format
 
@@ -127,6 +131,35 @@ anim <name> <firstFrame> <frameCount> <fps>
 Animation names must not contain whitespace (the loader scans with
 `%127s` and would silently truncate); `saveSpriteSheetMeta` asserts on
 this at write time.
+
+## .rig format
+
+`.rig` v1 — joint hierarchy first slice. Bind points (#669) and
+animation keyframes (#606) land as additional chunks without bumping
+the file version (Save Format Extensibility Rule #1).
+
+```
+AssetHeader { magic = "IRRG", version = 1, chunkCount }
+ChunkTableEntry[chunkCount]
+JNTS chunk body:
+    varuint  jointCount
+    repeat jointCount times:
+        uint16   recordVersion    (Rule #3 per-record additive-only)
+        float32  rotation { x, y, z, w }    // quaternion as { qw, qx, qy, qz }
+        float32  translation { x, y, z, w }
+        uint32   parentIndex
+        string   name             // varuint-prefixed UTF-8, may be empty
+```
+
+The accompanying `<name>.rig.json` sidecar emits per-joint
+`{ index, name, parentIndex }` for designer diffing. Sidecars are
+write-only; the loader ignores them (Rule #6).
+
+The asset-side `IRAsset::Rig` is distinct from the runtime
+`IRComponents::C_JointHierarchy` (no names at draw time) — translate
+via `engine/prefabs/irreden/voxel/rig_bridge.hpp`
+(`IRPrefab::Rig::toComponent` / `fromComponent`). Splitting the two
+keeps `engine/asset/` independent of the prefab voxel component.
 
 ## Typical usage
 
