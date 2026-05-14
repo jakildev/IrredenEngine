@@ -209,11 +209,11 @@ Avoid:
   - **Notes:** .txl superseded by .vxs (T-167/168/170) — saveTrixelTextureData still v1 raw-binary with no header, saveTxlSidecar/loadTxlSidecar have zero non-test callers, nlohmann/json is exclusively used by txl. Removal steps: (a) delete IRAsset entry points (header + impl); (b) delete C_TriangleCanvasTextures::saveToFile/loadFromFile; (c) delete command_save_main_canvas_trixels.hpp; (d) delete test/asset/txl_sidecar_test.cpp; (e) drop nlohmann/json FetchContent + linkage from CMakeLists.txt; (f) update CLAUDE.md. FileTypes enum shift (kVoxelImage 2→1) is safe — enum unused at runtime. .irsprite stays untouched.
   - **Links:**
 
-- [ ] **asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh** — add // IRAsset: serialized to ShapeRecord, delete ir_asset_types.hpp stub, assert on makeTag input length, refresh CLAUDE.md
+- [~] **asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh** — add // IRAsset: serialized to ShapeRecord, delete ir_asset_types.hpp stub, assert on makeTag input length, refresh CLAUDE.md
   - **ID:** T-185
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** T-184
   - **Acceptance:** (1) ShapeRecord carries `// IRAsset: serialized` + `static constexpr uint16_t kSaveVersion = kShapeRecordVersion;`; (2) other directly-serialized structs in engine/asset/ (RigJoint, RigBindPoint, dense per-voxel record) audited and annotated; (3) ir_asset_types.hpp deleted with no orphaned includes; (4) makeTag asserts (or static_asserts) on s.length() != 4; (5) engine/asset/CLAUDE.md opener updated to reflect current scope (not "Tiny module"); .txl gotcha bullet removed; .rig entry points listed; (6) fleet-build clean; T-172 serialized-struct linter passes
   - **Issue:** #706
