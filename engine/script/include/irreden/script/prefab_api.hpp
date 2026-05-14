@@ -1,20 +1,7 @@
 #ifndef IR_SCRIPT_PREFAB_API_H
 #define IR_SCRIPT_PREFAB_API_H
 
-/// Lua prefab format — entity template with voxel/rig refs and a setup
-/// callback. Runtime contract and v1 scope: engine/script/CLAUDE.md
-/// "Prefab format".
-///
-/// Lua schema (v1):
-///
-///     return {
-///         prefab_version = 1,                  -- REQUIRED, must be 1
-///         voxel_ref      = "foo.vxs",          -- OPTIONAL, loaded via loadVoxelSet
-///         rig_ref        = "foo.rig",          -- OPTIONAL, loaded via loadRig
-///         setup          = function(entity)    -- OPTIONAL, user-provided
-///             -- IREntity.setComponent(entity, ...)
-///         end,
-///     }
+// Lua prefab API: Prefab.register/spawn — v1 schema and behavioral contract in engine/script/CLAUDE.md "Prefab format".
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -26,82 +13,35 @@
 namespace IRScript {
 class LuaScript;
 namespace detail {
-/// Wire `Prefab.register` and `Prefab.spawn` into `script`'s Lua state.
-/// Idempotent: re-binding overwrites the previous closures.
-/// Called from `LuaScript::bindLuaDrivenEcs()`.
+// Wire Prefab.register and Prefab.spawn into the Lua state; called from bindLuaDrivenEcs().
 void bindPrefabApi(LuaScript &script);
 } // namespace detail
 } // namespace IRScript
 
 namespace IRPrefab::Prefab {
 
-/// v1 of the prefab Lua schema. Older builds reading a v1 prefab load
-/// fine; newer builds reading a future v2 surface a clear diagnostic
-/// rather than misinterpreting the fields.
+// v1 schema version; unknown versions surface a diagnostic rather than silently misinterpreting fields.
 constexpr int kPrefabSchemaVersion = 1;
 
-/// Outcome of `spawnPrefab`. `entity_ == IREntity::kNullEntity` means
-/// the spawn failed for one of the reasons listed in `error_` —
-/// callers should check `entity_` before using it. The id and resolved
-/// path are surfaced for diagnostics regardless of success.
+// Outcome of spawnPrefab; check entity_ != kNullEntity before use.
 struct SpawnResult {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
     std::string id_;
     std::string path_;
-    /// One-line diagnostic when `entity_ == IREntity::kNullEntity`.
-    /// Empty on success. Same string is logged at error level by
-    /// `spawnPrefab` itself; the field exists so call sites (Lua
-    /// bindings, tests) can surface it without re-running the logger.
+    // Non-empty iff entity_ == kNullEntity; same string spawnPrefab logs at error level.
     std::string error_;
 };
 
-/// Add @p id → @p path to the in-process prefab registry. Re-registering
-/// an existing id overwrites the prior path with a log; clearing happens
-/// at process shutdown (no explicit lifetime owner today). Use
-/// `clearPrefabs()` to reset between tests.
+// Re-registering an id overwrites the prior path; clearPrefabs() resets between tests.
 void registerPrefab(std::string id, std::string path);
 
-/// Look up the registered path for @p id. Returns `std::nullopt` if
-/// the id was never registered.
+// Returns nullopt if the id was never registered.
 std::optional<std::string> prefabPath(std::string_view id);
 
-/// Erase every entry from the in-process registry. Test helper; not
-/// exposed to Lua.
+// Test helper; not exposed to Lua.
 void clearPrefabs();
 
-/// Load the prefab Lua file registered under @p id and instantiate it
-/// at @p position. The Lua file is executed via @p script (whose
-/// `sol::state` provides the eval environment); the file must return a
-/// table matching the v1 schema documented at the top of this header.
-///
-/// Behavior:
-/// - Validates `prefab_version == kPrefabSchemaVersion`. Missing or
-///   mismatched versions return `SpawnResult{entity_ = kNullEntity}`
-///   with a `VersionMismatch`-style error string.
-/// - Creates an entity with `C_Position3D(position)`.
-/// - If `voxel_ref` is present, loads the `.vxs` via
-///   `IRAsset::loadVoxelSet`. SHAPES records (and the SHAPES half of
-///   HYBRID files) attach as child entities — one per `ShapeRecord`,
-///   each carrying `C_Position3D(record.offset_)` plus a
-///   `C_ShapeDescriptor` whose `shapeType_` / `params_` / `color_` /
-///   `flags_` are copied from the record. Per-record `rotation_` /
-///   `csgOp_` / `boneId_` are loaded but not stamped onto runtime
-///   components in v1 (no current renderer consumes them; T-181
-///   wires bone binding via `C_BindPoints` below; CSG composition is
-///   a render-pipeline decision). DENSE / HYBRID dense voxel data is
-///   loaded but **not** attached — `C_VoxelSetNew` requires an
-///   active render-canvas pool; the headless attach path is deferred.
-/// - If `rig_ref` is present, loads the `.rig` via `IRAsset::loadRig`,
-///   attaches `C_JointHierarchy` via `IRPrefab::Rig::toComponent`, and
-///   attaches `C_BindPoints` from the rig's BIND chunk (merged with any
-///   `bind_point_overrides` from the prefab table).
-/// - If `setup` is a Lua function, invokes it with the entity wrapped
-///   as `LuaEntity{entity}`. Lua errors in `setup` propagate as a
-///   failed `SpawnResult` with the error string forwarded.
-///
-/// Additive component packs: unknown top-level keys in the prefab
-/// table are silently ignored, so a future schema field doesn't break
-/// older loaders. New required fields bump `kPrefabSchemaVersion`.
+// Load the prefab file registered under id, validate v1 schema, and instantiate at position.
 SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 position);
 
 } // namespace IRPrefab::Prefab

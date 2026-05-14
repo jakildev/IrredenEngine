@@ -21,11 +21,7 @@ void bindPrefabApi(LuaScript &script) {
         IRPrefab::Prefab::registerPrefab(id, path);
     };
 
-    // `Prefab.spawn(id, position)` — accepts the position as either an
-    // `IRMath::vec3` userdata or a `{x, y, z}` table for ergonomics
-    // mirroring `IREntity.create*` patterns. Returns a `LuaEntity`
-    // table on success and `nil` on failure (the error is logged at
-    // C++-side ERROR level and surfaced via the second return value).
+    // Accepts vec3 or {x,y,z}/{1,2,3} table; returns LuaEntity+nil on success, nil+error on failure.
     lua["Prefab"]["spawn"] = [&script](
                                  const std::string &id, sol::object positionObj
                              ) -> std::tuple<sol::object, sol::object> {
