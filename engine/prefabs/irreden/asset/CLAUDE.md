@@ -8,7 +8,7 @@ below the component layer.
 
 ## Adapters
 
-- `voxel_set_io.hpp` — `IRAsset::saveVoxelSet(span<const
+- `voxel_set_io.hpp` — `IRAsset::saveVoxelSet(path, span<const
   C_ShapeDescriptor>, ...)` writes a SHAPES-mode `.vxs` shape-group
   asset (plus a `.vxs.json` sidecar; Rule #6). Parallel optional
   spans (`offsets`, `rotations`, `csgOps`, `boneIds`) carry the
@@ -24,5 +24,5 @@ shape group:
 
 ```cpp
 #include <irreden/asset/voxel_set_io.hpp>
-IRAsset::saveVoxelSet(shapes, path);
+IRAsset::saveVoxelSet(path, shapes);
 ```

@@ -251,7 +251,7 @@ High-level entry points:
 For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
 `engine/prefabs/irreden/asset/voxel_set_io.hpp` (`#include
 <irreden/asset/voxel_set_io.hpp>`) exposes
-`IRAsset::saveVoxelSet(span<const C_ShapeDescriptor>, ...)` with parallel
+`IRAsset::saveVoxelSet(path, span<const C_ShapeDescriptor>, ...)` with parallel
 offset / rotation / csgOp / boneId arrays — the per-entity composition
 metadata `C_ShapeDescriptor` does not itself carry. The adapter lives in
 prefabs to keep `engine/asset/` from depending on the component layer.
