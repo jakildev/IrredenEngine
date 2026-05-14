@@ -46,9 +46,9 @@ not a hard pop). That's a Phase 3 concern.
 │  Layer 3 — Prefab manifest (.prefab.lua, future T-173)           │
 │  Composes multiple .vxs files into one entity, keyed by LOD tier │
 │    lod = {                                                       │
-│      [LOD_0] = "flower_silhouette.vxs",                          │
-│      [LOD_2] = "flower_petals.vxs",                              │
-│      [LOD_4] = "flower_stamen.vxs",                              │
+│      [LOD_0] = "flower_stamen.vxs",     -- only at highest zoom  │
+│      [LOD_2] = "flower_petals.vxs",     -- medium+ zoom          │
+│      [LOD_4] = "flower_silhouette.vxs", -- always visible        │
 │    }                                                             │
 └──────────────────────────────────────────────────────────────────┘
                               ▲
@@ -152,14 +152,18 @@ camera zoom and writes a singleton plus the filter in
 ## Phase 1 — runtime selector (in-flight, #708)
 
 Scope: turn the existing scaffolding into a working pipeline where a
-single entity can carry shapes with different LOD-min thresholds, and
-the renderer skips ones whose threshold is above the current zoom-derived
-LOD tier.
+single entity can carry shapes with different `lodMin_` thresholds,
+and the renderer skips ones whose threshold tier is **finer than**
+(smaller index than) the current zoom-derived LOD tier — i.e. shapes
+that wanted more detail than the camera is providing.
 
 Concrete pieces:
 
 - **`LodLevel` enum.** Already in `lod_utils.hpp`. Five tiers
   (LOD_0 = highest detail at high zoom, LOD_4 = lowest at low zoom).
+  The index goes **lower as detail goes up**, so `activeLod` decreases
+  as the camera zooms in. The runtime filter below reads in this
+  direction.
 - **`computeLodLevel(float zoom) -> LodLevel`.** Already stubbed.
   Threshold values may need adjustment — the stub uses
   `< 0.5 / < 1.0 / < 2.0 / < 4.0 / >= 4.0` but actual camera zoom is
@@ -174,15 +178,25 @@ Concrete pieces:
 - **`LOD_UPDATE` system in UPDATE pipeline.** Reads `C_ZoomLevel` from
   the active camera entity, computes the tier, writes the singleton.
   Runs once per frame, before RENDER.
-- **Per-shape `lodMin_` field.** Reinterpret the existing
-  `C_ShapeDescriptor::lodLevel_` as "minimum LOD tier at which this
-  shape is drawn." A shape with `lodMin_ = LOD_2` is drawn when
-  `activeLod >= LOD_2` (zoom is high enough). A shape with
-  `lodMin_ = LOD_0` (the default) is always drawn.
+- **Per-shape `lodMin_` field.** Rename
+  `C_ShapeDescriptor::lodLevel_` from `std::uint32_t` to `LodLevel` and
+  treat it as `lodMin_` — "the minimum-detail LOD tier at which this
+  shape is still rendered." Because `LodLevel` indexes go down as
+  detail goes up, `lodMin_` is the **smallest index** the shape is
+  visible at. A shape with `lodMin_ = LOD_0` renders only when
+  `activeLod == LOD_0` (highest zoom). A shape with `lodMin_ = LOD_4`
+  (the default — coarsest tier) is always visible because every
+  `activeLod` satisfies `activeLod <= LOD_4`.
 - **CPU-side filter in `SHAPES_TO_TRIXEL`.** At `beginTick`, read the
-  singleton. In the per-entity tick, skip shapes whose `lodMin_` exceeds
-  the active level. Don't push them into the GPU bucket. No shader
-  change.
+  singleton. In the per-entity tick, skip shapes whose `lodMin_` is
+  **strictly below** the active level (i.e. render only when
+  `activeLod <= lodMin_`). Don't push the culled shapes into the GPU
+  bucket. No shader change. The existing
+  `lod_utils.hpp::shouldSkipAtLod(entityLodMin, currentLod)` stub
+  (with its `+2` grace window) is from a different filter shape and
+  gets **replaced** by this strict comparison — Phase 1 either updates
+  the helper in place or deletes it; the doc's intent is the strict
+  form, not the `+2` window.
 
 Verified by a render-verify shot list at zoom 1× / 2× / 4× / 8× of a
 test entity with shapes at multiple `lodMin_` thresholds.
@@ -206,14 +220,21 @@ per-`.vxs` LOD table:
 -- flower.prefab.lua
 return {
     vxs = {
-        [LOD_0] = "flower_silhouette.vxs",   -- always loaded
-        [LOD_2] = "flower_petals.vxs",       -- loaded when activeLod >= LOD_2
-        [LOD_4] = "flower_stamen.vxs",       -- loaded when activeLod >= LOD_4
+        [LOD_0] = "flower_stamen.vxs",       -- loaded only at activeLod == LOD_0
+        [LOD_2] = "flower_petals.vxs",       -- loaded when activeLod <= LOD_2
+        [LOD_4] = "flower_silhouette.vxs",   -- always loaded (activeLod <= LOD_4)
     },
     rig = "flower.rig",                       -- one rig, all tiers share it
     components = { ... },
 }
 ```
+
+The manifest key reads the same way as Phase 1's per-shape `lodMin_`:
+the key is the **minimum-detail tier (largest index)** at which the
+entry is still loaded. `[LOD_0]` is "high-zoom-only," `[LOD_4]` is
+"always loaded." The selector tests `activeLod <= key` per entry —
+the silhouette stays loaded as the camera zooms in and the stamen
+fades in on top.
 
 Open design questions for Phase 2:
 
@@ -249,9 +270,13 @@ Two strategies are worth considering when the time comes:
   alpha ramps). Requires the trixel pipeline to support partial alpha
   on shape rasterization. The existing `SHAPE_FLAG_XRAY_OCCLUDED` path
   (gizmos) proves the renderer can already do alpha blending per shape.
-- **Per-shape ramp.** Each `ShapeRecord` carries `lodMin` and `lodMax`
-  fields; the shape's alpha ramps from 0 at `lodMin - 0.5` to 1 at
-  `lodMin` (and similarly fades out at `lodMax`). Continuous detail
+- **Per-shape ramp.** Each `ShapeRecord` carries a `lodMin`
+  (coarsest-tier appearance bound, largest index) and a `lodMax`
+  (finest-tier disappearance bound, smallest index). With `activeLod`
+  as a continuous float where smaller = higher detail, the shape's
+  alpha ramps from 0 at `lodMin + 0.5` (below detail floor) up to 1
+  at `lodMin`, holds across the visible interval, and ramps back
+  toward 0 as `activeLod` falls past `lodMax`. Continuous detail
   appearance instead of cross-fade. Requires `activeLod` to be a
   continuous float rather than a discrete enum.
 
@@ -297,7 +322,8 @@ without a format break. Same escape hatch as `.vxs`.
 - **Gizmo screen-space sizing** (T-164). Already scales gizmo
   `C_ShapeDescriptor::params_` inversely with zoom to keep gizmos at
   constant pixel size. Gizmos opt out of LOD by setting
-  `lodMin_ = LOD_0` (always visible) — they're UI affordances, not
+  `lodMin_ = LOD_4` (always visible — every `activeLod` value
+  satisfies `activeLod <= LOD_4`) — they're UI affordances, not
   artistic content.
 - **Hover / picking** (T-153, T-165). The entity-id texture readback
   used for picking sees whatever shapes the renderer drew. If a shape
