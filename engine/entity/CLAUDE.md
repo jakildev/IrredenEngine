@@ -110,6 +110,18 @@ Constraints:
   entities (other ids) is fine.
 - A hook MAY call `markEntityForDeletion` on peer entities, but SHOULD
   NOT call `destroyEntity` reentrantly during the hook.
+- A hook MUST NOT call the lazy-create singleton accessor
+  (`IREntity::singletonEntity<T>` / `IREntity::singleton<T>`) during
+  `destroyAllEntities`. The bulk teardown iterates a snapshot of
+  `m_entityIndex` and clears `m_singletonEntityByComponent` only at
+  the end; a mid-loop lazy-create would mint a fresh singleton entity
+  that the snapshot can't see, leaving an unreachable "ghost" entity
+  in the index after the cache is cleared (cache empty, but
+  `forEachComponent<T>` still iterates the row — no way back to it
+  via `singletonEntity<T>`). Use the no-create variants
+  `singletonEntityOrNull<T>` / `singletonOrNull<T>` instead, or check
+  `entityExists` before reading; the same applies in any pre-destroy
+  hook that might run during a bulk reset.
 - The cost is O(hooks × destructions); each hook should be O(world)
   at worst. Don't register hooks that run an expensive search per
   destroy.
