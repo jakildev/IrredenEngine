@@ -212,11 +212,11 @@ Avoid:
   - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
   - **Links:**
 
-- [ ] **engine/entity: singleton reentrancy guard doc + destroyAllEntities cache-reset test** — add CLAUDE.md pre-destroy hook warning for singleton lazy-create reentrancy; add SingletonCacheResetAfterDestroyAllEntities test
+- [~] **engine/entity: singleton reentrancy guard doc + destroyAllEntities cache-reset test** — add CLAUDE.md pre-destroy hook warning for singleton lazy-create reentrancy; add SingletonCacheResetAfterDestroyAllEntities test
   - **ID:** T-178
   - **Area:** engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) engine/entity/CLAUDE.md § "Pre-destroy hooks" documents that singletonEntity<T> (lazy-create) is forbidden inside pre-destroy hooks during destroyAllEntities; singletonEntityOrNull<T> noted as safe alternative; (2) SingletonCacheResetAfterDestroyAllEntities test in test/ecs/entity_manager_test.cpp: populate cache, destroyAllEntities, assert singletonEntityOrNull<C> returns kNullEntity, re-call singletonEntity<C> and confirm fresh entity id is minted; (3) fleet-build --target IrredenEngineTest green
   - **Issue:** #655
