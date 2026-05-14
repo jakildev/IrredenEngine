@@ -212,11 +212,11 @@ Avoid:
   - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
   - **Links:**
 
-- [ ] **editor: F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll)** — implement the five trixel-rendered UI primitives deferred from T-145: list, dropdown, radio, text input, scroll
+- [~] **editor: F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll)** — implement the five trixel-rendered UI primitives deferred from T-145: list, dropdown, radio, text input, scroll
   - **ID:** T-177
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) all five new widgets render on the trixel canvas with hover/pressed/focused/disabled states (where applicable); (2) theme integration matches the existing five widgets from T-145; (3) each widget has builder + reader functions in IRPrefab::Widget; (4) IRUIWidgetsDemo extended (or split into multiple demos) to show all 10 primitives; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #633
