@@ -256,6 +256,39 @@ Avoid:
   - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
   - **Links:**
 
+- [ ] **asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/** — centralize duplicated writeVec3/writeVec4/readVec3/readVec4 and color pack/unpack helpers into IRMath::BinaryIO; adopt in voxel_set_format.cpp and rig_format.cpp
+  - **ID:** T-183
+  - **Area:** engine/math, engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) zero copies of vec3/vec4 / color pack helpers remain inside engine/asset/src/*.cpp; (2) IRMath::BinaryIO (or equivalent engine/asset/include location) exposes writeVec3/writeVec4/readVec3/readVec4 and Color::fromPackedRGBA; (3) engine/math/ does not physically depend on engine/asset/; (4) voxel_set_format.cpp and rig_format.cpp call through the shared helpers; (5) all existing tests pass; (6) fleet-build clean on linux-debug
+  - **Issue:** #704
+  - **Notes:** Two duplicated families: (1) writeVec3/writeVec4/readVec3/readVec4 defined in voxel_set_format.cpp anonymous namespace and reimplemented as encode/decode* in rig_format.cpp — standardize on read/write naming; (2) writeColorPacked/unpackColor in voxel_set_format.cpp — Color::fromPackedRGBA alongside existing toPackedRGBA. If dependency direction is awkward, put helpers in engine/asset/include/irreden/asset/math_binary_io.hpp rather than engine/math/ — point is one canonical location. No glm:: in helper signatures (IRMath::vec* only).
+  - **Links:**
+
+- [ ] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
+  - **ID:** T-184
+  - **Area:** engine/asset, engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) engine/asset/ and engine/prefabs/irreden/ contain no reference to .txl, TxlSidecar, saveTxlSidecar, loadTxlSidecar, saveTrixelTextureData, loadTrixelTextureData, kTrixelExtension, kTxlSidecarExtension, or kTrixelImage; (2) C_TriangleCanvasTextures has no saveToFile/loadFromFile methods; (3) command_save_main_canvas_trixels.hpp and test/asset/txl_sidecar_test.cpp deleted; (4) nlohmann/json no longer fetched by the engine build; (5) engine/asset/CLAUDE.md no longer documents .txl or .txl.json; (6) IRShapeDebug and IrredenEngineTest build clean
+  - **Issue:** #705
+  - **Notes:** .txl superseded by .vxs (T-167/168/170) — saveTrixelTextureData still v1 raw-binary with no header, saveTxlSidecar/loadTxlSidecar have zero non-test callers, nlohmann/json is exclusively used by txl. Removal steps: (a) delete IRAsset entry points (header + impl); (b) delete C_TriangleCanvasTextures::saveToFile/loadFromFile; (c) delete command_save_main_canvas_trixels.hpp; (d) delete test/asset/txl_sidecar_test.cpp; (e) drop nlohmann/json FetchContent + linkage from CMakeLists.txt; (f) update CLAUDE.md. FileTypes enum shift (kVoxelImage 2→1) is safe — enum unused at runtime. .irsprite stays untouched.
+  - **Links:**
+
+- [ ] **asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh** — add // IRAsset: serialized to ShapeRecord, delete ir_asset_types.hpp stub, assert on makeTag input length, refresh CLAUDE.md
+  - **ID:** T-185
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-184
+  - **Acceptance:** (1) ShapeRecord carries `// IRAsset: serialized` + `static constexpr uint16_t kSaveVersion = kShapeRecordVersion;`; (2) other directly-serialized structs in engine/asset/ (RigJoint, RigBindPoint, dense per-voxel record) audited and annotated; (3) ir_asset_types.hpp deleted with no orphaned includes; (4) makeTag asserts (or static_asserts) on s.length() != 4; (5) engine/asset/CLAUDE.md opener updated to reflect current scope (not "Tiny module"); .txl gotcha bullet removed; .rig entry points listed; (6) fleet-build clean; T-172 serialized-struct linter passes
+  - **Issue:** #706
+  - **Notes:** Bundle of mechanical items from audit pass. makeTag is constexpr — prefer static_assert if all call sites use string-literal constexpr args, otherwise runtime assert. Sequence CLAUDE.md update after T-184 (.txl deletion) merges — rebase if T-184 lands first. ir_asset_types.hpp is an empty header (ifndef/define/endif only); grep for includes before removing.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
