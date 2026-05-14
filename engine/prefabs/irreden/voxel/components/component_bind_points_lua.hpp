@@ -1,7 +1,7 @@
 #ifndef COMPONENT_BIND_POINTS_LUA_H
 #define COMPONENT_BIND_POINTS_LUA_H
 
-// Exposes hasPoint/pointCount; entity:bindPoint(name) lives on LuaEntity in lua_script.cpp.
+// Exposes hasPoint/pointCount; IREntity.bindPoint(entity, name) lives in the IREntity table in lua_script.cpp.
 
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/script/lua_script.hpp>

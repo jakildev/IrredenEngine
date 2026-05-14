@@ -25,7 +25,7 @@ for single voxels and particles.
   `{boneId, offset, rotation}` keyed by name. Populated by
   `Prefab.spawn` from `rig_ref`; the per-name world transform is
   composed lazily by `IRPrefab::Rig::worldTransformForBindPoint` and
-  surfaced to Lua as `entity:bindPoint("name")`. Per-name lookups use
+  surfaced to Lua as `IREntity.bindPoint(entity, "name")`. Per-name lookups use
   `unordered_map` and are documented as one-time queries at spawn or
   on interaction, not per-tick — see `engine/script/CLAUDE.md` for
   the Lua surface.

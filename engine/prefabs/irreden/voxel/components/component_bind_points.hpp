@@ -1,7 +1,7 @@
 #ifndef COMPONENT_BIND_POINTS_H
 #define COMPONENT_BIND_POINTS_H
 
-// Per-entity bind-point map; treat entity:bindPoint(name) as a one-time query, not per-tick.
+// Per-entity bind-point map; treat IREntity.bindPoint(entity, name) as a one-time query, not per-tick.
 
 #include <irreden/ir_math.hpp>
 

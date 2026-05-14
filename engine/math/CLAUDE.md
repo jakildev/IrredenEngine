@@ -86,7 +86,7 @@ layout used by `IRComponents::Joint::rotation_` and
   unit quaternion. Same algebra as `glm::rotate(quat, vec3)`.
 
 These are the helpers `IRPrefab::Rig::worldTransformForBindPoint`
-uses to walk a joint chain when resolving `entity:bindPoint(name)`.
+uses to walk a joint chain when resolving `IREntity.bindPoint(entity, name)`.
 
 ## Random
 
