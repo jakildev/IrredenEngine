@@ -196,7 +196,10 @@ constexpr std::uint16_t kVoxelRecordVersion = 1;
 /// the runtime can copy disk → memory without per-field translation.
 /// `engine/asset/` lives below the prefab layer, so the format owns
 /// its own struct rather than including the component header.
+// IRAsset: serialized
 struct VoxelRecord {
+    static constexpr std::uint16_t kSaveVersion = kVoxelRecordVersion;
+
     Color color_ = Color{0, 0, 0, 0};
     std::uint8_t material_id_ = 0;
     std::uint8_t flags_ = 0;

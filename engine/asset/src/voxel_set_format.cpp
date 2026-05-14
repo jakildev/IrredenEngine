@@ -360,7 +360,7 @@ Result<BoundsPair> readBoundsChunk(std::span<const std::uint8_t> body) {
 
 ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
     MemoryBinaryWriter w;
-    w.writeU16(kVoxelRecordVersion);
+    w.writeU16(VoxelRecord::kSaveVersion);
     w.writeVarUInt(static_cast<std::uint64_t>(voxels.size()));
     for (const auto &v : voxels) {
         writeColorPacked(w, v.color_);
