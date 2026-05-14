@@ -36,16 +36,24 @@ the ECS surface.
 - `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
   (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
   bind-point / IK marker) + axis. Carries the Phase 2 (T-164) baseline
-  fields: `referenceParams_` (the unscaled shape descriptor params written
-  at construction), `referenceLocalPos_` (the unscaled local position),
-  and `isAnchor_` (true for single-entity markers whose own
+  fields — `referenceParams_` (the unscaled shape descriptor params
+  written at construction), `referenceLocalPos_` (the unscaled local
+  position), and `isAnchor_` (true for single-entity markers whose own
   `C_Position3D` is the world-space anchor — false for child handles
-  parented under a group root). The `hover_` flag is reserved for the
-  F-0.9 picking pass. Visible geometry comes from a sibling
+  parented under a group root). Also carries the Phase 3 (T-165)
+  interaction fields — `hover_` (stamped each frame by `GIZMO_HOVER`
+  from the GPU entity-id readback), `baseColor_` (the unmodulated
+  color captured at spawn — the hover system writes a brightened tint
+  onto the sibling `C_ShapeDescriptor` while hovered and restores the
+  base on the same frame the hover bit clears), and `anchorEntity_`
+  (the entity whose `C_Position3D` `GIZMO_DRAG` mutates — by
+  convention the gizmo group parent, so all axes of a multi-handle
+  gizmo share one anchor; `kNullEntity` keeps the handle hoverable
+  but disables drag). Visible geometry comes from a sibling
   `C_ShapeDescriptor` on the same entity (SDF primitive rendered by
   `SHAPES_TO_TRIXEL`); the marker carries no rendering state itself.
-  Builders live in `IRPrefab::Gizmo::` (see "Exposing system public API"
-  below).
+  Builders live in `IRPrefab::Gizmo::` (see "Exposing system public
+  API" below).
 
 ## Key systems (all RENDER pipeline)
 
@@ -66,6 +74,46 @@ the ECS surface.
   Bypasses the trixel pipeline; runs after the main canvas's
   `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a creation
   can register the system unconditionally — zero sprites = zero draws.
+
+## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
+
+Two co-pipelined systems drive the gizmo state machine. Both iterate
+`C_GizmoHandle` entities; the editor wires them in the **INPUT**
+pipeline immediately after `INPUT_KEY_MOUSE`, before any UPDATE work,
+so a click in the same frame can already see hover state and apply
+drag math.
+
+- `GIZMO_HOVER` — reads `IRRender::getEntityIdAtMouseTrixel()` once
+  per frame (one-frame-lag GPU readback of the persistent-mapped
+  `HoveredEntityIdBuffer` populated by `f_trixel_to_framebuffer`).
+  Stamps `C_GizmoHandle::hover_` on the handle whose entity id matches,
+  clears all others, and writes a brightened tint onto the sibling
+  `C_ShapeDescriptor` for visual highlight (restored from
+  `C_GizmoHandle::baseColor_` on the same frame the hover bit clears).
+- `GIZMO_DRAG` — left-mouse state machine. On press over a hovered
+  handle, captures the anchor's local position, the cursor's world
+  point projected onto a fixed iso-depth plane through the anchor,
+  and the cursor's canvas-iso angle around the anchor. Each frame the
+  mouse is down, applies kind-specific math to the anchor's
+  `C_Position3D` (translate) or to per-anchor accumulators on the
+  system (rotate / scale): TRANSLATE_ARROW projects cursor world
+  delta onto the handle's unit axis; ROTATE_RING tracks the canvas-
+  iso angle change with Shift snapping to 15° (π/12); SCALE_STICK
+  projects onto the axis with reference distance `kScaleStickRefWorld`
+  voxels; SCALE_CENTER reads diagonal cursor screen displacement with
+  reference `kScaleCenterRefPixels` pixels. Drag releases when the
+  mouse goes up. The "fixed iso-depth plane" anchored at press time
+  is what keeps the gizmo from running away from the cursor as its
+  iso depth changes mid-drag.
+
+Anchor convention: `IRPrefab::Gizmo::spawnHandle` records the
+*parent* passed into the builder as the handle's `anchorEntity_`.
+For `createTranslateGizmo` / `createRotateGizmo` / `createScaleGizmo`
+that's the group entity returned by the builder, so drag moves the
+gizmo as a unit. For `createJointMarker` / `createIKMarker` called
+with a real anchor parent, drag would move that parent — passing
+`kNullEntity` (Phase 1's default in `voxel_editor/main.cpp`) makes
+those handles still hoverable but no-op on drag.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 
@@ -137,8 +185,11 @@ contest. The gizmo builders opt every spawned handle into the flag so
 occluded handles still read as a faint silhouette. Any other prefab
 that needs a "see through walls" overlay (selection highlight, debug
 marker) can opt in the same way without touching engine/render/.
-Hover + drag interaction lands once T-153 mouse picking is in place
-(Phase 3, blocked by T-153).
+Phase 3 (T-165) wires hover detection + drag interaction via the
+`GIZMO_HOVER` / `GIZMO_DRAG` INPUT-pipeline systems — see "Editor
+gizmo interaction" above for the state machine, the press-locked
+iso-depth plane convention, and the anchor-routing rules used by the
+builders.
 
 ## Trixel UI widget framework
 

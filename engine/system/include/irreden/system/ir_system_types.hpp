@@ -134,6 +134,13 @@ enum SystemName {
     WIDGET_INPUT_PANEL_DRAG,
     WIDGET_RENDER_DOCK_PREVIEW,
 
+    // Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3).
+    // GIZMO_HOVER reads the entity-id GPU readback and toggles
+    // C_GizmoHandle::hover_; GIZMO_DRAG drives the drag state machine
+    // (press → axis-projected translate / shift-snap rotate / scale).
+    GIZMO_HOVER,
+    GIZMO_DRAG,
+
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.
     TEST_REGISTER_SYSTEM_A,

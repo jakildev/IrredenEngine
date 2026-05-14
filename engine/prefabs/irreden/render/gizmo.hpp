@@ -1,18 +1,23 @@
 #ifndef IR_PREFAB_GIZMO_H
 #define IR_PREFAB_GIZMO_H
 
-// Editor gizmo primitives — Phase 1 (geometry only).
+// Editor gizmo primitives — geometry + interaction wiring.
 //
 // Each builder spawns a small group of ECS entities, each carrying a
 // `C_ShapeDescriptor` (rendered by SHAPES_TO_TRIXEL) and a
-// `C_GizmoHandle` marker for the upcoming interaction work. Returns the
-// root entity of the group so callers can re-parent or destroy as a unit.
+// `C_GizmoHandle` marker for the interaction systems. Returns the root
+// entity of the group so callers can re-parent or destroy as a unit.
 //
-// Phase 1 renders handles at fixed world-space size. Phase 2 (T-164) adds
-// the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`) and
-// opts each handle into the generic `SHAPE_FLAG_XRAY_OCCLUDED` shader path
-// so occluded handles still read as a faint silhouette. Phase 3 will wire
-// hover detection + drag interaction once T-153 (mouse picking) lands.
+// Phase 1 renders handles at fixed world-space size. Phase 2 (T-164)
+// adds the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`)
+// and opts each handle into the generic `SHAPE_FLAG_XRAY_OCCLUDED`
+// shader path so occluded handles still read as a faint silhouette.
+// Phase 3 (T-165) wires hover detection + drag interaction via the
+// `GIZMO_HOVER` / `GIZMO_DRAG` INPUT-pipeline systems; each spawned
+// handle carries `baseColor_` (for the hover tint round-trip) and
+// `anchorEntity_` (the entity whose `C_Position3D` drag mutates — the
+// gizmo group parent for multi-handle gizmos, `kNullEntity` for
+// single-marker handles that should be hoverable but not draggable).
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -101,25 +106,30 @@ inline IREntity::EntityId spawnHandle(
     Color color,
     const char *name
 ) {
-    // Opt the handle's shape into the generic xray-occlusion shader path so
-    // SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where the
-    // handle sits behind closer geometry (T-164 Phase 2).
+    // Opt the handle's shape into the generic xray-occlusion shader path
+    // so SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where
+    // the handle sits behind closer geometry (T-164 Phase 2).
     C_ShapeDescriptor shapeDesc{shapeType, shapeParams, color};
     shapeDesc.flags_ = IRRender::SHAPE_FLAG_VISIBLE | IRRender::SHAPE_FLAG_XRAY_OCCLUDED;
 
-    // Capture the construction-time reference values on the handle. The
-    // Phase 2 screen-space sizing system reads `referenceParams_` /
-    // `referenceLocalPos_` as the unscaled baseline and writes
-    // (baseline × pixelSize / zoom) back to the sibling components each
-    // UPDATE tick. `isAnchor_` is true for single-entity markers whose
-    // own `C_Position3D` is the world-space anchor (the editor writes it
-    // post-construction) — Phase 2 then scales params but leaves pos
-    // alone so the editor placement isn't clobbered.
+    // Capture construction-time reference values on the handle for
+    // downstream systems. Phase 2 screen-space sizing reads
+    // `referenceParams_` / `referenceLocalPos_` as the unscaled baseline
+    // and writes scaled copies back each UPDATE tick. `isAnchor_` is
+    // true for single-entity markers whose own `C_Position3D` is the
+    // world-space anchor (the editor writes it post-construction) —
+    // Phase 2 then scales params but leaves pos alone. Phase 3 records
+    // `baseColor_` for the hover-tint round-trip and `anchorEntity_` =
+    // `parent` so drag mutations land on the gizmo group entity (so
+    // every axis of a multi-handle gizmo shares one anchor). For
+    // single-marker handles called with `parent == kNullEntity`, the
+    // anchor is null — the handle is still hoverable but drag is a
+    // no-op.
     const bool isAnchor = (parent == IREntity::kNullEntity);
     IREntity::EntityId handle = IREntity::createEntity(
         C_Position3D{localPos},
         shapeDesc,
-        C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor},
+        C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent},
         C_Name{name}
     );
     if (!isAnchor) {
