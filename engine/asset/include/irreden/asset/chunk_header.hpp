@@ -19,6 +19,7 @@
 #include <irreden/asset/binary_io.hpp>
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -63,13 +64,13 @@ struct LoadedChunk {
     std::vector<std::uint8_t> data_;
 };
 
-/// Build a 4-byte tag from a string literal at compile time. `"VOXR"` →
-/// `{'V', 'O', 'X', 'R'}`. The input must be exactly 4 characters
-/// (asserted at runtime via the `length() != 4` branch — caller passes a
-/// fixed literal).
+/// Build a 4-byte tag from a string literal. `"VOXR"` → `{'V', 'O', 'X',
+/// 'R'}`. Input must be exactly 4 characters — silent zero-pad or truncation
+/// would create tag collisions, so this asserts on wrong-length input.
 inline std::array<char, 4> makeTag(std::string_view s) {
+    assert(s.size() == 4 && "makeTag: input must be exactly 4 characters");
     std::array<char, 4> out{};
-    for (std::size_t i = 0; i < 4 && i < s.size(); ++i) {
+    for (std::size_t i = 0; i < 4; ++i) {
         out[i] = s[i];
     }
     return out;
