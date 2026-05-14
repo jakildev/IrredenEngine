@@ -267,21 +267,11 @@ Avoid:
   - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
   - **Links:**
 
-- [~] **editor: F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll)** — implement the five trixel-rendered UI primitives deferred from T-145: list, dropdown, radio, text input, scroll
-  - **ID:** T-177
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-177-widget-followup
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all five new widgets render on the trixel canvas with hover/pressed/focused/disabled states (where applicable); (2) theme integration matches the existing five widgets from T-145; (3) each widget has builder + reader functions in IRPrefab::Widget; (4) IRUIWidgetsDemo extended (or split into multiple demos) to show all 10 primitives; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #633
-  - **Notes:** Follow-up to T-145 / PR #631 (foundation + first five widgets). Each new widget follows the recipe in engine/prefabs/irreden/render/CLAUDE.md § "Trixel UI widget framework": C_Widget<Kind> data component + WIDGET_RENDER_<KIND> system. text input is the heaviest (character-input plumbing, cursor, selection state) — author may split it into its own phase under F-0.3. Implement scroll first as a container primitive that list and dropdown compose. Parent epic: #603.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
 - [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
@@ -301,4 +291,3 @@ Avoid:
 - [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
 - [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
-- [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
