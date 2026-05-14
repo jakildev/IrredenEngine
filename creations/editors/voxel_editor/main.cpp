@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 
@@ -42,6 +43,7 @@
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
+#include <irreden/render/systems/system_voxel_picking.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -57,10 +59,15 @@ namespace {
 // Radians per screen-pixel of horizontal mouse movement during right-drag.
 constexpr float kRotationSensitivity = 0.004f;
 
-bool g_firstRotFrame = true;
-float g_prevMouseX = 0.0f;
-EntityId g_cameraEntity = kNullEntity;
-int g_scrollDelta = 0;
+struct ScrollZoomParams {
+    EntityId cameraEntity_ = kNullEntity;
+    int scrollDelta_ = 0;
+};
+
+struct RotateParams {
+    bool firstRotFrame_ = true;
+    float prevMouseX_ = 0.0f;
+};
 
 } // namespace
 
@@ -75,6 +82,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space: re-center + reset yaw");
+    IR_LOG_INFO("  Left-click: pick voxel (click empty to clear)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -84,28 +92,39 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    // Scroll zoom iterates C_MouseScroll entities, which are ephemeral (C_Lifetime{1}).
-    // Register in INPUT so they are still alive; LIFETIME in UPDATE destroys them.
+    // Mouse scroll events arrive as ephemeral C_MouseScroll entities (C_Lifetime{1}),
+    // created by the GLFW scroll callback (one entity per event). This differs from
+    // key presses, which use persistent C_KeyMouseButton + C_KeyStatus state-machine
+    // entities queryable via IRInput::checkKeyMouseButton() at any time. Scroll is a
+    // continuous delta value, not a pressed/held/released state, so the ephemeral-event
+    // model fits the underlying GLFW push semantics naturally. Consume C_MouseScroll in
+    // the INPUT pipeline (same stage the entities are created, before LIFETIME destroys
+    // them in UPDATE). A unified IRInput::getScrollDelta() query API — analogous to
+    // checkKeyMouseButton() — does not yet exist; see engine/input/CLAUDE.md for the
+    // canonical input system surface.
+    auto scrollParams = std::make_unique<ScrollZoomParams>();
+    auto *sp = scrollParams.get();
     auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
         "EditorScrollZoom",
-        [](C_MouseScroll &scroll) {
+        [sp](C_MouseScroll &scroll) {
             if (scroll.yoffset_ > 0.0)
-                ++g_scrollDelta;
+                ++sp->scrollDelta_;
             else if (scroll.yoffset_ < 0.0)
-                --g_scrollDelta;
+                --sp->scrollDelta_;
         },
-        []() { g_cameraEntity = IREntity::getEntity("camera"); },
-        []() {
-            if (g_scrollDelta != 0) {
-                auto &zoom = IREntity::getComponent<C_ZoomLevel>(g_cameraEntity);
-                for (int i = 0; i < g_scrollDelta; ++i)
+        [sp]() { sp->cameraEntity_ = IREntity::getEntity("camera"); },
+        [sp]() {
+            if (sp->scrollDelta_ != 0) {
+                auto &zoom = IREntity::getComponent<C_ZoomLevel>(sp->cameraEntity_);
+                for (int i = 0; i < sp->scrollDelta_; ++i)
                     zoom.zoomIn();
-                for (int i = 0; i > g_scrollDelta; --i)
+                for (int i = 0; i > sp->scrollDelta_; --i)
                     zoom.zoomOut();
-                g_scrollDelta = 0;
+                sp->scrollDelta_ = 0;
             }
         }
     );
+    IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
 
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
@@ -132,36 +151,40 @@ void initSystems() {
 
     // Right-click drag rotates the camera Z-yaw (turntable), which in the
     // isometric engine is equivalent to rotating the entity being edited.
+    auto rotParams = std::make_unique<RotateParams>();
+    auto *rp = rotParams.get();
     auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
         "EditorViewportRotate",
         [](C_CameraYaw &) {},
-        []() {
+        [rp]() {
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
 
             if (rightPressed) {
-                g_firstRotFrame = true;
+                rp->firstRotFrame_ = true;
             }
 
             if (rightHeld) {
                 vec2 mouse = IRInput::getMousePositionScreen();
-                if (!g_firstRotFrame) {
-                    float deltaX = mouse.x - g_prevMouseX;
+                if (!rp->firstRotFrame_) {
+                    float deltaX = mouse.x - rp->prevMouseX_;
                     IRPrefab::Camera::rotateYaw(deltaX * kRotationSensitivity);
                 }
-                g_prevMouseX = mouse.x;
-                g_firstRotFrame = false;
+                rp->prevMouseX_ = mouse.x;
+                rp->firstRotFrame_ = false;
             }
         }
     );
+    IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
     IRSystem::registerPipeline(
         IRTime::Events::RENDER,
         {
             rotateSystem,
             IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+            IRSystem::createSystem<IRSystem::VOXEL_PICKING>(),
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
@@ -287,6 +310,24 @@ void initEntities() {
         EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
         IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
     }
+
+    // Selection-highlight entity: a slightly oversized box marker
+    // positioned at the picked voxel. Created hidden — system_voxel_picking
+    // toggles SHAPE_FLAG_VISIBLE on/off and rewrites position on each click.
+    // The 1.4× sizing reads as a halo around the underlying voxel rather
+    // than z-fighting with it.
+    EntityId highlight = IREntity::createEntity(
+        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_ShapeDescriptor{
+            IRRender::ShapeType::BOX,
+            vec4(1.4f, 1.4f, 1.4f, 0.0f),
+            Color{255, 220, 80, 255}
+        },
+        C_VoxelSelection{},
+        C_VoxelSelectionHighlight{}
+    );
+    auto &highlightShape = IREntity::getComponent<C_ShapeDescriptor>(highlight);
+    highlightShape.flags_ &= ~IRRender::SHAPE_FLAG_VISIBLE;
 
     // Canvas setup
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();

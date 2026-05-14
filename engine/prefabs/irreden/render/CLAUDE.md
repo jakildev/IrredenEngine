@@ -54,6 +54,12 @@ the ECS surface.
   `SHAPES_TO_TRIXEL`); the marker carries no rendering state itself.
   Builders live in `IRPrefab::Gizmo::` (see "Exposing system public
   API" below).
+- `C_VoxelSelection` / `C_VoxelSelectionHighlight` — editor selection
+  state and the tag that marks the highlight entity. The picking system
+  (`VOXEL_PICKING`) mutates the selection on left-click; the highlight
+  carries `C_Position3D + C_ShapeDescriptor` so the picked-voxel marker
+  renders through the normal SDF path. Created hidden by the editor;
+  toggled via `SHAPE_FLAG_VISIBLE` when a hit/miss happens.
 
 ## Key systems (all RENDER pipeline)
 
@@ -74,6 +80,14 @@ the ECS surface.
   Bypasses the trixel pipeline; runs after the main canvas's
   `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a creation
   can register the system unconditionally — zero sprites = zero draws.
+- `VOXEL_PICKING` — editor input driver. On left-click PRESSED, casts a
+  ray through the cursor (via `IRPrefab::Picking::castVoxelRay` —
+  composes the same screen→world inverse `IRRender::mouseWorldPos3DAtIsoDepth`
+  uses) and walks SDF shapes to find the first hit. Writes
+  `C_VoxelSelection` on the highlight entity and toggles its
+  `C_ShapeDescriptor::flags_` visibility. Register after the camera
+  systems and before `VOXEL_TO_TRIXEL_STAGE_1` so the highlight
+  rasterizes at the new voxel the same frame.
 
 ## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
 
