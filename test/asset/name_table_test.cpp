@@ -42,18 +42,21 @@ TEST(NameTable, ManyEntriesRoundTrip) {
 
 TEST(NameTable, NonAsciiNamesUtf8) {
     // Non-ASCII UTF-8 bytes pass through the string/varuint layer unchanged.
+    // Covers 2-byte (Ä), 3-byte (日本語), and 4-byte (🦀) codepoints.
     std::vector<NameTableEntry> entries = {
-        {1, "\xc3\x84rger"},                               // Ärger (German)
-        {2, "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"},      // 日本語 (Japanese)
+        {1, "\xc3\x84rger"},                               // Ärger (German, 2-byte)
+        {2, "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"},      // 日本語 (Japanese, 3-byte)
+        {3, "\xf0\x9f\xa6\x80"},                           // 🦀 (crab, 4-byte)
     };
     MemoryBinaryWriter w;
     ASSERT_TRUE(writeNameTable(w, entries).ok());
     MemoryBinaryReader r(w.buffer().data(), w.buffer().size());
     auto loaded = readNameTable(r);
     ASSERT_TRUE(loaded.ok());
-    ASSERT_EQ(loaded.value_.size(), 2u);
+    ASSERT_EQ(loaded.value_.size(), 3u);
     EXPECT_EQ(loaded.value_[0].name_, entries[0].name_);
     EXPECT_EQ(loaded.value_[1].name_, entries[1].name_);
+    EXPECT_EQ(loaded.value_[2].name_, entries[2].name_);
 }
 
 TEST(NameTable, EmptyNameEntryRoundTrip) {
