@@ -1,16 +1,7 @@
 #ifndef IR_ASSET_MATH_BINARY_IO_H
 #define IR_ASSET_MATH_BINARY_IO_H
 
-/// Shared binary I/O helpers for `IRMath` types (`vec3`, `vec4`, `Color`).
-/// Centralizes the read/write primitives so every asset format (`.vxs`,
-/// `.rig`, future formats) calls through one definition rather than
-/// maintaining local copies under divergent names.
-///
-/// Lives in `engine/asset/` alongside `BinaryWriter`/`BinaryReader` to
-/// avoid a physical dependency from `engine/math/` on `engine/asset/`
-/// (asset already depends on math, not the reverse). Exposed under the
-/// `IRMath::BinaryIO` namespace to match the naming convention in
-/// `.claude/rules/cpp-math.md`.
+// Centralizes vec3/vec4/Color binary I/O — lives in engine/asset/ (not engine/math/) to avoid the reverse dep.
 
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/math/ir_math_types.hpp>

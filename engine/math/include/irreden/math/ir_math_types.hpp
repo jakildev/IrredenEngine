@@ -110,8 +110,7 @@ struct Color {
                (static_cast<std::uint32_t>(alpha_) << 24);
     }
 
-    /// Unpack a little-endian RGBA uint32 (as written by toPackedRGBA) into
-    /// a Color. Bit layout: [7:0]=R, [15:8]=G, [23:16]=B, [31:24]=A.
+    /// Symmetric inverse of toPackedRGBA. Bit layout: [7:0]=R, [15:8]=G, [23:16]=B, [31:24]=A.
     static constexpr Color fromPackedRGBA(std::uint32_t packed) {
         return Color{
             static_cast<std::uint8_t>(packed & 0xFFu),
