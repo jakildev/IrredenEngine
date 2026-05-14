@@ -208,26 +208,37 @@ builders.
 ## Trixel UI widget framework
 
 `widgets.hpp` exposes `IRPrefab::Widget::make<kind>(...)` builders and
-`wasClicked` / `sliderValue` / `checkboxState` readers for the five Phase 0
-F-0.1 primitives: **panel, label, button, slider, checkbox**. Each builder
+`wasClicked` / `sliderValue` / `checkboxState` (plus the T-177 follow-up
+readers) for the ten F-0.1 primitives: **panel, label, button, slider,
+checkbox, list, dropdown, radio, text input, scroll**. Each builder
 produces a single ECS entity that carries `C_Widget` (kind + size +
 disabled flag), `C_GuiPosition`, optionally `C_WidgetState` +
 `C_HitBox2DGui` (interactive kinds only), and a kind-specific data
 component (`C_WidgetPanel` / `C_WidgetLabel` / `C_WidgetButton` /
-`C_WidgetSlider` / `C_WidgetCheckbox`). Theme lives in
-`widget_theme.hpp::defaultTheme()` — a single inline header-level
-instance a creation mutates once at init.
+`C_WidgetSlider` / `C_WidgetCheckbox` / `C_WidgetList` /
+`C_WidgetDropdown` / `C_WidgetRadio` / `C_WidgetTextInput` /
+`C_WidgetScroll`). Theme lives in `widget_theme.hpp::defaultTheme()` —
+a single inline header-level instance a creation mutates once at init.
 
 **Pipeline wiring (required order):**
 
 ```
 INPUT:  HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT
         → WIDGET_APPLY_SLIDER → WIDGET_APPLY_CHECKBOX
+        → WIDGET_APPLY_LIST → WIDGET_APPLY_DROPDOWN
+        → WIDGET_APPLY_RADIO → WIDGET_APPLY_TEXT_INPUT
+        → WIDGET_APPLY_SCROLL
 RENDER: ... → TEXT_TO_TRIXEL → WIDGET_RENDER_PANEL
         → WIDGET_RENDER_LABEL → WIDGET_RENDER_BUTTON
         → WIDGET_RENDER_SLIDER → WIDGET_RENDER_CHECKBOX
+        → WIDGET_RENDER_LIST → WIDGET_RENDER_RADIO
+        → WIDGET_RENDER_TEXT_INPUT → WIDGET_RENDER_SCROLL
+        → WIDGET_RENDER_DROPDOWN
         → TRIXEL_TO_FRAMEBUFFER → ...
 ```
+
+Register `WIDGET_RENDER_DROPDOWN` **last** among the per-kind renderers
+so its expanded item panel paints over any neighbor it overlaps.
 
 `WIDGET_INPUT` reads `C_HitBox2DGui::hovered_` populated by
 `HITBOX_MOUSE_TEST_GUI` and writes the generic state machine into
@@ -258,11 +269,35 @@ Distances govern only the framebuffer composite, not the per-canvas
 write order — within a single widget tick the system draws bg → border
 → label in painter order to overwrite consistently.
 
-**Adding the sixth + widgets** (LIST, DROPDOWN, RADIO, TEXT_INPUT,
-SCROLL) follows the same recipe: a `C_Widget<Kind>` data component, a
-`WIDGET_RENDER_<KIND>` system iterating `C_Widget + C_Widget<Kind> +
-C_WidgetState + C_GuiPosition`, optionally a `WIDGET_APPLY_<KIND>`
-follower if the kind needs to mutate its own state on interaction.
+**T-177 follow-up widgets** (LIST, DROPDOWN, RADIO, TEXT_INPUT, SCROLL)
+mirror the same recipe as the Phase 0 five: a `C_Widget<Kind>` data
+component, a `WIDGET_RENDER_<KIND>` system iterating `C_Widget +
+C_Widget<Kind> + C_WidgetState + C_GuiPosition`, and a
+`WIDGET_APPLY_<KIND>` follower. Two kind-specific notes worth knowing
+when extending or composing widgets:
+
+- **List + dropdown hover-row routing.** `WIDGET_APPLY_LIST` and
+  `WIDGET_APPLY_DROPDOWN` reuse `state.dragValue_` (otherwise only the
+  slider writes it) to convey the cursor's row index to the render
+  system. -1 means "cursor outside any row." `WIDGET_RENDER_LIST` /
+  `WIDGET_RENDER_DROPDOWN` paint a hover band on the matching row.
+- **Dropdown hitbox grows when open.** `WIDGET_APPLY_DROPDOWN`
+  mutates the dropdown's `C_HitBox2DGui::size_` to cover the expanded
+  panel so subsequent frames' `WIDGET_INPUT` hover routing keeps
+  reaching it. The hitbox shrinks back when the dropdown closes.
+- **Radio group exclusion runs in endTick.** `WIDGET_APPLY_RADIO` sets
+  the fired radio in its per-entity tick, then walks every
+  `C_WidgetRadio` in `endTick` to clear siblings with the same
+  `groupId_`. Use `IRPrefab::Widget::makeRadio(..., groupId, value)`
+  to assign a creation-scoped group id.
+- **Text input ↔ keyboard focus.** `WIDGET_APPLY_TEXT_INPUT` only
+  edits the buffer when `state.focused_` is set. Focus is owned by
+  the shared `WIDGET_INPUT` Tab cycle / click-to-focus logic — the
+  apply system inherits it, no kind-specific focus plumbing.
+- **Scroll widgets are visual primitives.** `C_WidgetScroll` carries
+  the track + thumb, not children. The owning creation positions its
+  scrollable content by reading `scrollPos_` itself; it does not
+  reparent into the scroll widget.
 
 ## Gotchas
 

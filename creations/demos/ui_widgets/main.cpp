@@ -1,9 +1,9 @@
-// Trixel-rendered UI widget primitives demo (T-145, F-0.1).
+// Trixel-rendered UI widget primitives demo (T-145 + T-177, F-0.1).
 //
-// Shows the five Phase 0 minimum widgets: panel, label, button, slider,
-// checkbox. The render harness fires `--auto-screenshot` if requested so
-// the demo doubles as a visual-regression canary for the widget
-// framework.
+// Shows the ten Phase 0 / Phase 0 follow-up widgets: panel, label, button,
+// slider, checkbox, list, dropdown, radio, text input, scroll. The render
+// harness fires `--auto-screenshot` if requested so the demo doubles as a
+// visual-regression canary for the widget framework.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -26,11 +26,21 @@
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
+#include <irreden/render/systems/system_widget_apply_list.hpp>
+#include <irreden/render/systems/system_widget_apply_dropdown.hpp>
+#include <irreden/render/systems/system_widget_apply_radio.hpp>
+#include <irreden/render/systems/system_widget_apply_text_input.hpp>
+#include <irreden/render/systems/system_widget_apply_scroll.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_checkbox.hpp>
+#include <irreden/render/systems/system_widget_render_list.hpp>
+#include <irreden/render/systems/system_widget_render_dropdown.hpp>
+#include <irreden/render/systems/system_widget_render_radio.hpp>
+#include <irreden/render/systems/system_widget_render_text_input.hpp>
+#include <irreden/render/systems/system_widget_render_scroll.hpp>
 
 #include <irreden/render/widgets.hpp>
 #include <irreden/render/widget_theme.hpp>
@@ -58,17 +68,27 @@ IREntity::EntityId g_sliderBrightness = IREntity::kNullEntity;
 IREntity::EntityId g_checkboxMusic = IREntity::kNullEntity;
 IREntity::EntityId g_checkboxWireframe = IREntity::kNullEntity;
 
+// T-177 follow-up widgets.
+IREntity::EntityId g_list = IREntity::kNullEntity;
+IREntity::EntityId g_dropdown = IREntity::kNullEntity;
+IREntity::EntityId g_radioLow = IREntity::kNullEntity;
+IREntity::EntityId g_radioMed = IREntity::kNullEntity;
+IREntity::EntityId g_radioHigh = IREntity::kNullEntity;
+IREntity::EntityId g_textInput = IREntity::kNullEntity;
+IREntity::EntityId g_scroll = IREntity::kNullEntity;
+
 int g_clickCount = 0;
 int g_resetCount = 0;
 bool g_panelEnabled = true;
 
 namespace {
-// Two simple shots — wide and a slight pan so the screenshot harness
-// records the widget set in two camera framings. Camera position is
-// irrelevant for the GUI canvas but the harness still varies it.
+// Three shots — wide framings so the screenshot harness records the
+// full widget set. Camera position is irrelevant for the GUI canvas but
+// the harness still varies it.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_idle"},
     {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_after_settle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_followup"},
 };
 
 int g_autoWarmupFrames = 0;
@@ -103,6 +123,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_SCROLL>(),
         }
     );
 
@@ -118,17 +143,24 @@ void initSystems() {
                 IRPrefab::Widget::setSliderValue(IRWidgetsDemo::g_sliderBrightness, 0.75f);
                 IRPrefab::Widget::setCheckboxState(IRWidgetsDemo::g_checkboxMusic, true);
                 IRPrefab::Widget::setCheckboxState(IRWidgetsDemo::g_checkboxWireframe, false);
+                IRPrefab::Widget::setListSelectedIndex(IRWidgetsDemo::g_list, 0);
+                IRPrefab::Widget::setDropdownSelectedIndex(IRWidgetsDemo::g_dropdown, 0);
+                IRPrefab::Widget::setTextInputValue(IRWidgetsDemo::g_textInput, "HELLO");
+                IRPrefab::Widget::setScrollPosition(IRWidgetsDemo::g_scroll, 0);
             }
             if (IRPrefab::Widget::wasClicked(IRWidgetsDemo::g_buttonEnable)) {
                 IRWidgetsDemo::g_panelEnabled = !IRWidgetsDemo::g_panelEnabled;
                 IRPrefab::Widget::setDisabled(
-                    IRWidgetsDemo::g_buttonReset, !IRWidgetsDemo::g_panelEnabled
+                    IRWidgetsDemo::g_buttonReset,
+                    !IRWidgetsDemo::g_panelEnabled
                 );
                 IRPrefab::Widget::setDisabled(
-                    IRWidgetsDemo::g_sliderVolume, !IRWidgetsDemo::g_panelEnabled
+                    IRWidgetsDemo::g_sliderVolume,
+                    !IRWidgetsDemo::g_panelEnabled
                 );
                 IRPrefab::Widget::setDisabled(
-                    IRWidgetsDemo::g_checkboxMusic, !IRWidgetsDemo::g_panelEnabled
+                    IRWidgetsDemo::g_checkboxMusic,
+                    !IRWidgetsDemo::g_panelEnabled
                 );
                 IRPrefab::Widget::setButtonLabel(
                     IRWidgetsDemo::g_buttonEnable,
@@ -139,14 +171,19 @@ void initSystems() {
                 ++IRWidgetsDemo::g_clickCount; // never fires; button stays disabled
             }
 
-            char buf[128];
+            char buf[160];
+            const int quality = IRPrefab::Widget::radioSelected(IRWidgetsDemo::g_radioHigh)  ? 2
+                                : IRPrefab::Widget::radioSelected(IRWidgetsDemo::g_radioMed) ? 1
+                                                                                             : 0;
             std::snprintf(
                 buf,
                 sizeof(buf),
-                "RESETS %d  MUSIC %s  WIRE %s",
+                "RESETS %d  LIST %d  DD %d  Q %d  TXT %s",
                 IRWidgetsDemo::g_resetCount,
-                IRPrefab::Widget::checkboxState(IRWidgetsDemo::g_checkboxMusic) ? "ON" : "OFF",
-                IRPrefab::Widget::checkboxState(IRWidgetsDemo::g_checkboxWireframe) ? "ON" : "OFF"
+                IRPrefab::Widget::listSelectedIndex(IRWidgetsDemo::g_list),
+                IRPrefab::Widget::dropdownSelectedIndex(IRWidgetsDemo::g_dropdown),
+                quality,
+                IRPrefab::Widget::textInputValue(IRWidgetsDemo::g_textInput).c_str()
             );
             IRPrefab::Widget::setLabelText(IRWidgetsDemo::g_statusLabel, buf);
         }
@@ -164,6 +201,13 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SCROLL>(),
+        // Dropdown renders LAST among widgets so its open panel paints
+        // over any neighbor it overlaps.
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
@@ -173,8 +217,7 @@ void initSystems() {
         cfg.warmupFrames_ = IRWidgetsDemo::g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
         cfg.shots_ = IRWidgetsDemo::kShots;
-        cfg.numShots_ =
-            sizeof(IRWidgetsDemo::kShots) / sizeof(IRWidgetsDemo::kShots[0]);
+        cfg.numShots_ = sizeof(IRWidgetsDemo::kShots) / sizeof(IRWidgetsDemo::kShots[0]);
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
@@ -189,58 +232,142 @@ void initCommands() {
 void initEntities() {
     using IRMath::ivec2;
 
-    // Panel framing the widget grid. Position is rough trixel coords on
-    // the GUI canvas (top-left origin); fits inside the default GUI
-    // canvas at standard guiScale.
-    const ivec2 panelPos(60, 60);
-    const ivec2 panelSize(520, 380);
+    // The GUI canvas with the default game resolution (1280x720) at
+    // gui_scale=1 measures 640x720 trixels — the panel must fit inside
+    // that. Two-column layout: Phase 0 widgets on the left, T-177
+    // follow-ups on the right.
+    const ivec2 panelPos(20, 30);
+    const ivec2 panelSize(600, 660);
     IRWidgetsDemo::g_panel = IRPrefab::Widget::makePanel(panelPos, panelSize, "TRIXEL UI WIDGETS");
 
-    // Static intro label inside the panel.
     IRWidgetsDemo::g_titleLabel = IRPrefab::Widget::makeLabel(
-        ivec2(panelPos.x + 16, panelPos.y + 56), "PHASE 0 PRIMITIVE SET"
+        ivec2(panelPos.x + 12, panelPos.y + 36),
+        "PHASE 0 + T-177 PRIMITIVE SET"
     );
-
-    // Dynamic status label, written by the poll system each frame.
     IRWidgetsDemo::g_statusLabel = IRPrefab::Widget::makeLabel(
-        ivec2(panelPos.x + 16, panelPos.y + 80), "RESETS 0  MUSIC ON  WIRE OFF"
+        ivec2(panelPos.x + 12, panelPos.y + 56),
+        "RESETS 0  LIST -1  DD 0  Q 0  TXT HELLO"
     );
 
-    // Three buttons in a row.
-    const int btnRowY = panelPos.y + 116;
-    const int btnW = 140;
-    const int btnH = 36;
-    const int btnGap = 16;
-    IRWidgetsDemo::g_buttonEnable = IRPrefab::Widget::makeButton(
-        ivec2(panelPos.x + 16, btnRowY), ivec2(btnW, btnH), "DISABLE"
-    );
+    // ---- Left column (Phase 0 widgets) -----------------------------------
+    const int leftX = panelPos.x + 12;
+
+    const int btnRowY = panelPos.y + 88;
+    const int btnW = 86;
+    const int btnH = 26;
+    const int btnGap = 6;
+    IRWidgetsDemo::g_buttonEnable =
+        IRPrefab::Widget::makeButton(ivec2(leftX, btnRowY), ivec2(btnW, btnH), "DISABLE");
     IRWidgetsDemo::g_buttonReset = IRPrefab::Widget::makeButton(
-        ivec2(panelPos.x + 16 + btnW + btnGap, btnRowY), ivec2(btnW, btnH), "RESET"
+        ivec2(leftX + btnW + btnGap, btnRowY),
+        ivec2(btnW, btnH),
+        "RESET"
     );
     IRWidgetsDemo::g_buttonDisabled = IRPrefab::Widget::makeButton(
-        ivec2(panelPos.x + 16 + 2 * (btnW + btnGap), btnRowY), ivec2(btnW, btnH), "DISABLED"
+        ivec2(leftX + 2 * (btnW + btnGap), btnRowY),
+        ivec2(btnW, btnH),
+        "DISABLED"
     );
     IRPrefab::Widget::setDisabled(IRWidgetsDemo::g_buttonDisabled, true);
 
-    // Two sliders.
-    const int slW = 460;
-    const int slH = 40;
+    const int slW = 268;
+    const int slH = 30;
     IRWidgetsDemo::g_sliderVolume = IRPrefab::Widget::makeSlider(
-        ivec2(panelPos.x + 16, panelPos.y + 180), ivec2(slW, slH), "VOLUME", 0.0f, 1.0f, 0.5f
+        ivec2(leftX, panelPos.y + 130),
+        ivec2(slW, slH),
+        "VOLUME",
+        0.0f,
+        1.0f,
+        0.5f
     );
     IRWidgetsDemo::g_sliderBrightness = IRPrefab::Widget::makeSlider(
-        ivec2(panelPos.x + 16, panelPos.y + 232), ivec2(slW, slH), "BRIGHTNESS",
-        0.0f, 1.0f, 0.75f
+        ivec2(leftX, panelPos.y + 170),
+        ivec2(slW, slH),
+        "BRIGHTNESS",
+        0.0f,
+        1.0f,
+        0.75f
     );
 
-    // Two checkboxes.
-    const int cbW = 200;
-    const int cbH = 24;
+    const int cbW = 128;
+    const int cbH = 22;
     IRWidgetsDemo::g_checkboxMusic = IRPrefab::Widget::makeCheckbox(
-        ivec2(panelPos.x + 16, panelPos.y + 292), ivec2(cbW, cbH), "MUSIC", true
+        ivec2(leftX, panelPos.y + 216),
+        ivec2(cbW, cbH),
+        "MUSIC",
+        true
     );
     IRWidgetsDemo::g_checkboxWireframe = IRPrefab::Widget::makeCheckbox(
-        ivec2(panelPos.x + 16 + cbW + btnGap, panelPos.y + 292),
-        ivec2(cbW, cbH), "WIREFRAME", false
+        ivec2(leftX + cbW + btnGap, panelPos.y + 216),
+        ivec2(cbW, cbH),
+        "WIREFRAME",
+        false
+    );
+
+    // ---- Right column (T-177 follow-up widgets) --------------------------
+    const int rightX = panelPos.x + 296;
+    const int rightW = 290;
+
+    // List of selectable items.
+    IRWidgetsDemo::g_list = IRPrefab::Widget::makeList(
+        ivec2(rightX, panelPos.y + 88),
+        ivec2(140, 110),
+        std::vector<std::string>{"RED", "GREEN", "BLUE", "CYAN", "MAGENTA", "YELLOW"},
+        0,
+        18
+    );
+
+    // Dropdown — sits to the right of the list.
+    IRWidgetsDemo::g_dropdown = IRPrefab::Widget::makeDropdown(
+        ivec2(rightX + 148, panelPos.y + 88),
+        ivec2(140, 26),
+        std::vector<std::string>{"EASY", "NORMAL", "HARD", "EXTREME"},
+        1,
+        18
+    );
+
+    // Radio group (quality: low / med / high), stacked below the dropdown.
+    const std::uint32_t qualityGroup = 0x71u;
+    IRWidgetsDemo::g_radioLow = IRPrefab::Widget::makeRadio(
+        ivec2(rightX + 148, panelPos.y + 124),
+        ivec2(140, 22),
+        "LOW",
+        qualityGroup,
+        0,
+        /*initialSelected*/ false
+    );
+    IRWidgetsDemo::g_radioMed = IRPrefab::Widget::makeRadio(
+        ivec2(rightX + 148, panelPos.y + 150),
+        ivec2(140, 22),
+        "MED",
+        qualityGroup,
+        1,
+        /*initialSelected*/ true
+    );
+    IRWidgetsDemo::g_radioHigh = IRPrefab::Widget::makeRadio(
+        ivec2(rightX + 148, panelPos.y + 176),
+        ivec2(140, 22),
+        "HIGH",
+        qualityGroup,
+        2,
+        /*initialSelected*/ false
+    );
+
+    // Text input — spans the right column.
+    IRWidgetsDemo::g_textInput = IRPrefab::Widget::makeTextInput(
+        ivec2(rightX, panelPos.y + 216),
+        ivec2(rightW - 4, 28),
+        "HELLO",
+        24
+    );
+
+    // Horizontal scroll bar — visual + draggable thumb. Demonstrates the
+    // axis switch and a non-zero initial scroll position.
+    IRWidgetsDemo::g_scroll = IRPrefab::Widget::makeScroll(
+        ivec2(rightX, panelPos.y + 256),
+        ivec2(rightW - 4, 24),
+        /*contentSize*/ 800,
+        IRComponents::C_WidgetScroll::Axis::HORIZONTAL,
+        /*initialScroll*/ 200
     );
 }
