@@ -199,7 +199,7 @@ ChunkPayload makeModeChunk(VoxelSetMode mode) {
         return ChunkPayload{kChunkTagMode, {}};
     }
     MemoryBinaryWriter w;
-    w.writeBytes(tag.data(), tag.size());
+    w.writeTag(tag);
     ChunkPayload out;
     out.tag_ = kChunkTagMode;
     out.data_ = w.takeBuffer();
@@ -215,9 +215,13 @@ VoxelSetMode readModeChunk(std::span<const LoadedChunk> chunks) {
         IRE_LOG_ERROR("readModeChunk: MODE body is {} bytes, expected 4", mode->data_.size());
         return VoxelSetMode::UNKNOWN;
     }
-    std::array<char, 4> tag{};
     MemoryBinaryReader r(mode->data_.data(), 4, "<MODE chunk>");
-    r.readBytes(tag.data(), 4);
+    auto tagResult = r.readTag();
+    if (!tagResult.ok()) {
+        IRE_LOG_ERROR("readModeChunk: failed to read tag: {}", tagResult.status_.message_);
+        return VoxelSetMode::UNKNOWN;
+    }
+    const auto &tag = tagResult.value_;
     if (tagsEqual(tag, kModeTagDense))
         return VoxelSetMode::DENSE;
     if (tagsEqual(tag, kModeTagShapes))

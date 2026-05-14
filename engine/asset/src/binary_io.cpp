@@ -1,6 +1,7 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <bit>
 #include <cstring>
 #include <utility>
 
@@ -68,14 +69,14 @@ void BinaryWriter::writeI64(std::int64_t v) {
     detail::writeLE<std::uint64_t>(*this, static_cast<std::uint64_t>(v));
 }
 void BinaryWriter::writeF32(float v) {
-    std::uint32_t bits;
-    std::memcpy(&bits, &v, sizeof(bits));
-    detail::writeLE<std::uint32_t>(*this, bits);
+    detail::writeLE<std::uint32_t>(*this, std::bit_cast<std::uint32_t>(v));
 }
 void BinaryWriter::writeF64(double v) {
-    std::uint64_t bits;
-    std::memcpy(&bits, &v, sizeof(bits));
-    detail::writeLE<std::uint64_t>(*this, bits);
+    detail::writeLE<std::uint64_t>(*this, std::bit_cast<std::uint64_t>(v));
+}
+
+void BinaryWriter::writeTag(const std::array<char, 4> &tag) {
+    writeBytes(tag.data(), tag.size());
 }
 
 void BinaryWriter::writeVarUInt(std::uint64_t v) {
@@ -155,7 +156,7 @@ void MemoryBinaryWriter::writeBytes(const void *data, std::size_t size) {
     if (end > m_buffer.size()) {
         m_buffer.resize(static_cast<std::size_t>(end));
     }
-    std::memcpy(m_buffer.data() + m_pos, data, size);
+    std::memcpy(m_buffer.data() + m_pos, data, size); // raw buffer copy — the primitive all higher-level writes go through
     m_pos = end;
 }
 
@@ -217,18 +218,22 @@ Result<float> BinaryReader::readF32() {
     if (!r.ok()) {
         return Result<float>::error(r.status_.code_, std::move(r.status_.message_));
     }
-    float v;
-    std::memcpy(&v, &r.value_, sizeof(v));
-    return Result<float>::success(v);
+    return Result<float>::success(std::bit_cast<float>(r.value_));
 }
 Result<double> BinaryReader::readF64() {
     auto r = readU64();
     if (!r.ok()) {
         return Result<double>::error(r.status_.code_, std::move(r.status_.message_));
     }
-    double v;
-    std::memcpy(&v, &r.value_, sizeof(v));
-    return Result<double>::success(v);
+    return Result<double>::success(std::bit_cast<double>(r.value_));
+}
+
+Result<std::array<char, 4>> BinaryReader::readTag() {
+    std::array<char, 4> tag{};
+    if (auto st = readBytes(tag.data(), 4); !st.ok()) {
+        return Result<std::array<char, 4>>::error(st.code_, std::move(st.message_));
+    }
+    return Result<std::array<char, 4>>::success(tag);
 }
 
 Result<std::uint64_t> BinaryReader::readVarUInt() {
@@ -370,7 +375,7 @@ BinaryStatus MemoryBinaryReader::readBytes(void *dest, std::size_t size) {
                 " of " + std::to_string(size) + " bytes) in " + m_sourceName
         );
     }
-    std::memcpy(dest, m_data + m_pos, size);
+    std::memcpy(dest, m_data + m_pos, size); // raw buffer copy — the primitive all higher-level reads go through
     m_pos += size;
     return BinaryStatus::success();
 }
