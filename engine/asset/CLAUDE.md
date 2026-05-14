@@ -184,6 +184,21 @@ read/write building blocks every new asset format uses. Existing
 formats (`.txl`, `.irsprite`) predate the contract; new formats must
 use these.
 
+**Hard rule — no raw `fopen` + `fwrite` / `fread` for new format I/O.**
+All new binary format save/load paths route through
+`FileBinaryWriter` / `FileBinaryReader` (or `MemoryBinaryWriter` /
+`MemoryBinaryReader` for in-memory round-trips); all reads return
+`Result<T>` and surface errors with file path + byte offset. Raw
+`fwrite` / `fread` is forbidden outside the two legacy formats listed
+above — those will be migrated or deleted, not extended.
+
+The historical liability is concrete: `.txl`'s raw-binary save and
+load paths in `engine/asset/src/ir_asset.cpp` left every `fwrite` and
+`fread` return value unchecked. A truncated file loaded as garbage
+with no error; a corrupted save succeeded silently. The
+`BinaryWriter` / `BinaryReader` abstraction exists exactly to make
+that class of bug unrepresentable for new code.
+
 ### `binary_io.hpp` — `BinaryWriter` / `BinaryReader`
 
 Abstract sinks/sources with two backends each:

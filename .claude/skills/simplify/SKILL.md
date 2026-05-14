@@ -252,6 +252,59 @@ Run this check whenever any `.hpp` or `.cpp` file under `engine/asset/`,
 - Changes to the `kSaveVersion` line itself.
 - Changes that only touch comments or whitespace inside the struct.
 
+**Detection extension — unannotated serialized structs:**
+
+The version-bump check above protects structs that are *already* annotated.
+A second class of bug is structs whose fields are individually serialized
+but which lack the `// IRAsset: serialized` annotation entirely — the
+version-bump check then never fires, even on layout changes that need a
+migration. `ShapeRecord` (`engine/asset/include/irreden/asset/voxel_set_format.hpp`)
+shipped in T-168 / T-170 without the annotation despite each of its
+fields being individually written and read by the format's chunk
+handlers; the gap stayed invisible until an audit pass surfaced it.
+
+Run this additional check in the same scope as the version-bump check
+(diff in `engine/asset/`, `engine/prefabs/irreden/voxel/`, or
+`engine/world/`):
+
+1. Scan the diff's `+` lines for any sequence of two or more
+   `<writer>.write*(<expr>.<field>_)` calls where `<expr>` is a
+   reference to a struct instance and `<field>_` is a public member.
+   Likewise for `<reader>.read*` paired with assignment back to
+   `<expr>.<field>_`. Two-or-more is the heuristic for "this struct
+   is being serialized field-by-field" rather than "one field of a
+   struct happens to be written."
+
+2. For each struct type touched this way, resolve its declaration
+   (same file or sibling header) and check whether the declaration
+   is preceded by `// IRAsset: serialized` on the immediately prior
+   line per the annotation rule.
+
+3. If the struct is serialized field-by-field and lacks the
+   annotation, emit a finding — **do not auto-fix**, the annotation
+   carries a `kSaveVersion` constant whose initial value is a human
+   call:
+
+   ```
+   reported 1 finding for review:
+     - <header-path>:<line> — <StructName> is serialized field-by-field
+       by <function-path>:<line> but lacks the `// IRAsset: serialized`
+       annotation. Add the comment line directly above the struct
+       declaration plus a `static constexpr uint16_t kSaveVersion = 1;`
+       member so the version-bump check (Rule #3) covers future changes.
+   ```
+
+**False-positive guard for the extension — do NOT flag:**
+- Structs that only carry transient binary I/O state (`BinaryStatus`,
+  `LoadedChunk`, `ChunkPayload`, `Result<T>`). These pass through
+  format code without being the format's persisted record.
+- Structs declared in `engine/asset/include/irreden/asset/binary_io.hpp`
+  or `chunk_header.hpp` — framework types, not format records.
+- Cases where the writer/reader calls operate on a temporary or a
+  function-local variable that doesn't correspond to a named struct
+  type. The "this is the format's record" heuristic requires a
+  resolvable struct type.
+
 ### 3. Naming convention slips
 
 These are the rules from [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md):
