@@ -242,11 +242,11 @@ Avoid:
   - **Notes:** lod_utils.hpp self-describes as "WIP stub — not yet included or referenced by any system". C_ShapeDescriptor::lodLevel_ already shipped to GPU as GPUShapeDescriptor.lodLevel but shader ignores it. Phase 1 filter is CPU-side only — GPU struct unchanged (Metal/GL parity hazard). Do NOT implement Phase 2 (per-tier .vxs refs from prefab manifest) or Phase 3 (cross-tier interpolation). Design rationale in docs/design/lod-strategy.md (PR #710).
   - **Links:**
 
-- [ ] **script: decouple IrredenEngineScripting from IrredenEngineRendering** — fix layering violation where prefab_api.cpp rig loading pulls in C_JointHierarchy/GPUJointTransform header chain, causing scripting to link rendering
+- [~] **script: decouple IrredenEngineScripting from IrredenEngineRendering** — fix layering violation where prefab_api.cpp rig loading pulls in C_JointHierarchy/GPUJointTransform header chain, causing scripting to link rendering
   - **ID:** T-188
   - **Area:** engine/script, engine/prefabs/irreden/render, engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) IrredenEngineScripting target no longer links against IrredenEngineRendering (verify via CMake dependency graph or linker map); (2) fleet-build clean on linux-debug; (3) IrredenEngineTest passes; no functional regressions
   - **Issue:** #709
