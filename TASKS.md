@@ -245,6 +245,28 @@ Avoid:
   - **Notes:** Follow-up from PR #694 (T-170) inline review comment. Pure cleanup — no behavior change, no JSON schema change, no version bump. JsonSidecarWriter::key() may need widening to std::string_view. Do not rename keys or merge bounds min/max — byte-identical output required. kShapeTypeTable is out of scope. Precedent for .rig and world-snapshot sidecar emitters.
   - **Links:**
 
+- [ ] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
+  - **ID:** T-181
+  - **Area:** engine/prefabs/irreden/voxel, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-173
+  - **Acceptance:** (1) C_BindPoints runtime component declared and registered; (2) IRPrefab::Rig::toBindPoints(asset::Rig) bridge function; (3) C_BindPoints Lua binding via standard *_lua.hpp pattern; (4) LuaEntity::bindPoint(name) returns world-space transform (offset + rotation); (5) Prefab.spawn attaches C_BindPoints from rig_ref automatically, applies bind_point_overrides from prefab table; (6) round-trip test: entity:bindPoint("named_anchor") matches expected joint chain result; override changes result; (7) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document new surface + per-frame-cost contract
+  - **Issue:** #700
+  - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
+  - **Links:**
+
+- [ ] **prefab: attach voxel_ref data as ECS components on Prefab.spawn** — route loaded .vxs records to runtime C_ShapeDescriptor / C_VoxelSetNew on the spawned entity; SHAPES and DENSE/HYBRID modes
+  - **ID:** T-182
+  - **Area:** engine/script, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-173
+  - **Acceptance:** (1) SHAPES-mode .vxs files attach per-record C_ShapeDescriptor to spawned entity; (2) DENSE/HYBRID-mode .vxs files attach without requiring active canvas (or contract explicitly documented if deferred); (3) round-trip test: register prefab with known .vxs, spawn, verify expected C_ShapeDescriptor records / C_VoxelSetNew slot count on entity; (4) engine/script/CLAUDE.md and engine/prefabs/irreden/voxel/CLAUDE.md document attachment behavior
+  - **Issue:** #701
+  - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
+  - **Links:**
+
 - [~] **editor: F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll)** — implement the five trixel-rendered UI primitives deferred from T-145: list, dropdown, radio, text input, scroll
   - **ID:** T-177
   - **Area:** engine/prefabs/irreden/render
