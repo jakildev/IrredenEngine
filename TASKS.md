@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** Escalated from PR #679 human inline comment on voxel_set_format.cpp:111. Pattern B (raw buffer copy primitives) intentionally left as memcpy — they are the leaf primitives. #include <bit> required. #679 (T-168) already merged 2026-05-13, so voxel_set_format.cpp edits are unblocked.
   - **Links:**
 
-- [~] **asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants** — add kSidecarKey* constexpr block and voxelSetModeToString helper; replace 9 string literals and inline switch in emitVoxelSetSidecar
-  - **ID:** T-180
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-180-sidecar-key-constants
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) 9 JSON key literals in emitVoxelSetSidecar replaced with kSidecarKey* constexpr string_view constants in anonymous namespace; (2) constexpr voxelSetModeToString(VoxelSetMode) helper added to voxel_set_format.hpp next to enum; (3) inline switch in emitVoxelSetSidecar replaced with voxelSetModeToString call; (4) 46/46 voxel-set tests pass; SidecarContentMatchesHybridSave verifies byte-identical JSON output; (5) fleet-build clean on linux-debug
-  - **Issue:** #697
-  - **Notes:** Follow-up from PR #694 (T-170) inline review comment. Pure cleanup — no behavior change, no JSON schema change, no version bump. JsonSidecarWriter::key() may need widening to std::string_view. Do not rename keys or merge bounds min/max — byte-identical output required. kShapeTypeTable is out of scope. Precedent for .rig and world-snapshot sidecar emitters.
-  - **Links:**
-
 - [ ] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
   - **ID:** T-181
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -271,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
@@ -289,5 +279,4 @@ Avoid:
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
 - [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
 - [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
-- [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
