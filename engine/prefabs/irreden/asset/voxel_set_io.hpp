@@ -24,7 +24,9 @@ namespace IRAsset {
 
 /// Persist a shape-group `.vxs` from a span of `C_ShapeDescriptor` plus
 /// parallel arrays for the runtime-only metadata the descriptor does
-/// not carry (offset / rotation / CSG op / bone-id binding).
+/// not carry (offset / rotation / CSG op / bone-id binding). The
+/// underlying `saveShapeGroup` also emits a `.vxs.json` sidecar
+/// (Rule #6) on a successful binary write.
 ///
 /// Empty parallel spans take the per-record default (identity
 /// transform, `CsgOp::NONE`, `boneId = 0`). Non-empty spans should

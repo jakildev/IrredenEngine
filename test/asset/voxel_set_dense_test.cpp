@@ -256,6 +256,7 @@ TEST(VoxelSetDense, TwentyCubeFixtureRoundTrip) {
     EXPECT_TRUE(loaded.value_.dense_.frames_.empty());
     EXPECT_TRUE(loaded.value_.dense_.meta_.empty());
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 TEST(VoxelSetDense, AllSectionsPopulatedRoundTrip) {
@@ -295,6 +296,7 @@ TEST(VoxelSetDense, AllSectionsPopulatedRoundTrip) {
     EXPECT_EQ(loaded.value_.dense_.meta_[0].key_, "author");
     EXPECT_EQ(loaded.value_.dense_.meta_[0].value_, "bob");
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 TEST(VoxelSetDense, EmptyVoxelSetRoundTrip) {
@@ -310,6 +312,7 @@ TEST(VoxelSetDense, EmptyVoxelSetRoundTrip) {
     EXPECT_EQ(loaded.value_.dense_.voxelCount(), 0u);
     EXPECT_TRUE(loaded.value_.dense_.voxels_.empty());
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 TEST(VoxelSetDense, FullVoxelSetEveryCellActive) {
@@ -332,6 +335,7 @@ TEST(VoxelSetDense, FullVoxelSetEveryCellActive) {
         EXPECT_EQ(v.flags_, 0x07);
     }
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 // ---- Byte-stability ----------------------------------------------------
@@ -357,6 +361,8 @@ TEST(VoxelSetDense, ReSerializingLoadedFileMatchesOriginalBytes) {
 
     std::remove(p1.c_str());
     std::remove(p2.c_str());
+    std::remove((p1 + ".json").c_str());
+    std::remove((p2 + ".json").c_str());
 }
 
 // ---- Container errors --------------------------------------------------
@@ -433,6 +439,7 @@ TEST(VoxelSetDense, TruncatedVoxRChunkSurfacesAsTruncated) {
     );
     std::remove(p1.c_str());
     std::remove(p2.c_str());
+    std::remove((p1 + ".json").c_str());
 }
 
 // ---- Unknown chunk silently skipped (Rule #1) --------------------------
@@ -504,6 +511,46 @@ TEST(VoxelSetDense, BoundsPresentVoxRMissingLoadsWithEmptyVoxels) {
     EXPECT_EQ(loaded.value_.dense_.voxelCount(), 8u);
     EXPECT_TRUE(loaded.value_.dense_.voxels_.empty());
     std::remove(path.c_str());
+}
+
+TEST(VoxelSetDense, SidecarEmittedAlongsideBinary) {
+    DenseVoxelSet dense;
+    dense.boundsMin_ = ivec3(-2, 0, 1);
+    dense.boundsMax_ = ivec3(3, 4, 4);
+    dense.voxels_.assign(dense.voxelCount(), VoxelRecord{});
+    LayerInfo layer;
+    layer.name_ = "active";
+    layer.bitmask_.assign((dense.voxelCount() + 63) / 64, 0);
+    dense.layers_.push_back(layer);
+    FramePose frame;
+    frame.frameIndex_ = 0;
+    frame.offsets_.assign(dense.voxelCount(), vec3(0.0f));
+    dense.frames_.push_back(frame);
+
+    const std::string path = kTmpDir + "/vxs_dense_sidecar.vxs";
+    const std::string sidecarPath = path + ".json";
+    std::remove(sidecarPath.c_str());
+
+    ASSERT_TRUE(saveDenseVoxelSet(path, dense).ok());
+
+    const auto sidecarBytes = readFileBytes(sidecarPath);
+    EXPECT_FALSE(sidecarBytes.empty());
+
+    const std::string json(sidecarBytes.begin(), sidecarBytes.end());
+    EXPECT_NE(json.find("\"mode\""), std::string::npos);
+    EXPECT_NE(json.find("DENSE"), std::string::npos);
+    EXPECT_NE(json.find("\"bounds\""), std::string::npos);
+    EXPECT_NE(json.find("\"layer_names\""), std::string::npos);
+    EXPECT_NE(json.find("active"), std::string::npos);
+    EXPECT_NE(json.find("\"frame_count\""), std::string::npos);
+    // DENSE save passes an empty shape span — the summary object exists but
+    // contains no per-type counts.
+    EXPECT_NE(json.find("\"shape_primitives_summary\""), std::string::npos);
+    EXPECT_EQ(json.find("SPHERE"), std::string::npos);
+    EXPECT_EQ(json.find("BOX"), std::string::npos);
+
+    std::remove(path.c_str());
+    std::remove(sidecarPath.c_str());
 }
 
 } // namespace

@@ -381,7 +381,10 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
 // ---- High-level save/load ----------------------------------------------
 
 /// Save a shape-group `.vxs` asset to @p path. Writes MODE=SHAPES,
-/// SREF, and SHPG chunks. Returns the writer's failure state.
+/// SREF, and SHPG chunks. Also emits a `.vxs.json` sidecar at
+/// `path + ".json"` (Rule #6) when the binary write succeeds; a failed
+/// binary write skips the sidecar so a stale sidecar never outlives a
+/// missing binary.
 BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord> records);
 
 /// Loader-side view of a shape-group `.vxs` file.
@@ -406,7 +409,10 @@ Result<VoxelSetFile> loadShapeGroup(const std::string &path);
 /// Save a DENSE-mode `.vxs` asset to @p path. Writes MODE=DENSE plus
 /// BNDS / VOXR / LAYR / FRAM / META chunks. Empty optional sections
 /// (no layers / no frames / no meta) omit the corresponding chunk so
-/// older loaders need no special-casing.
+/// older loaders need no special-casing. Also emits a `.vxs.json`
+/// sidecar at `path + ".json"` (Rule #6) when the binary write
+/// succeeds; the sidecar's `shape_primitives_summary` is empty for
+/// DENSE saves.
 BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &dense);
 
 /// Loader-side view of a DENSE-mode `.vxs` file. `mode_` is read from
@@ -432,10 +438,44 @@ struct DenseVoxelSetFile {
 /// - `DenseVoxelSetFile` with the resolved dense data otherwise.
 ///
 /// SHAPES-only files (no BNDS / VOXR chunks present) load as `mode_ =
-/// VoxelSetMode::SHAPES` with an empty `dense_`. A loader that needs
-/// both shapes and dense data uses `loadShapeGroup` and
-/// `loadDenseVoxelSet` against the same path.
+/// VoxelSetMode::SHAPES` with an empty `dense_`. Callers that need both
+/// halves should use `loadVoxelSet` instead.
 Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path);
+
+// ---- Unified HYBRID save/load -------------------------------------------
+
+/// Combined loader result covering all three `.vxs` modes (SHAPES, DENSE,
+/// HYBRID). For SHAPES-only saves `dense_` is default-constructed (empty
+/// bounds and voxels). For DENSE-only saves `shapeRecords_` is empty. For
+/// HYBRID both halves are populated. Callers inspect `mode_` to decide
+/// which entities to spawn.
+struct VoxelSetAllFile {
+    VoxelSetMode mode_ = VoxelSetMode::UNKNOWN;
+    std::vector<ShapeRecord> shapeRecords_;
+    std::size_t unknownShapesSkipped_ = 0;
+    DenseVoxelSet dense_;
+    std::size_t skippedFrames_ = 0;
+};
+
+/// Save a HYBRID-mode `.vxs` asset to @p path. Writes MODE=HYBRID, SREF,
+/// SHPG, BNDS, VOXR, and (if non-empty) LAYR/FRAM/META chunks. Also emits
+/// a `.vxs.json` sidecar at `path + ".json"` (Save Format Extensibility
+/// Rule #6 — sidecar regenerated from the binary on every save, never the
+/// source of truth). The sidecar is not emitted when the binary write fails.
+BinaryStatus saveVoxelSet(
+    const std::string &path, std::span<const ShapeRecord> shapes, const DenseVoxelSet &dense
+);
+
+/// Load any `.vxs` asset and populate both the shape-group and dense
+/// halves. Returns:
+/// - `BadMagic` if magic isn't `VXS1`
+/// - `VersionTooNew` if file version > `kVoxelSetVersion`
+/// - `Truncated` / `ChunkOutOfBounds` for malformed chunk tables
+/// - `VoxelSetAllFile` with all available halves populated on success.
+///
+/// SHAPES-only files leave `dense_` empty; DENSE-only files leave
+/// `shapeRecords_` empty; HYBRID files populate both.
+Result<VoxelSetAllFile> loadVoxelSet(const std::string &path);
 
 } // namespace IRAsset
 

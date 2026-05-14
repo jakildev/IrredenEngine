@@ -175,6 +175,7 @@ TEST(VoxelSetFormat, FivePrimitiveGroupRoundTrip) {
         expectRecordEq(records[i], loaded.value_.shapeRecords_[i]);
     }
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
 }
 
 TEST(VoxelSetFormat, ReSerializingLoadedFileMatchesOriginalBytes) {
@@ -197,6 +198,8 @@ TEST(VoxelSetFormat, ReSerializingLoadedFileMatchesOriginalBytes) {
 
     std::remove(p1.c_str());
     std::remove(p2.c_str());
+    std::remove((p1 + ".json").c_str());
+    std::remove((p2 + ".json").c_str());
 }
 
 TEST(VoxelSetFormat, EmptyShapeGroupRoundTrip) {
@@ -209,6 +212,34 @@ TEST(VoxelSetFormat, EmptyShapeGroupRoundTrip) {
     EXPECT_TRUE(loaded.value_.shapeRecords_.empty());
     EXPECT_EQ(loaded.value_.unknownShapesSkipped_, 0u);
     std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
+}
+
+TEST(VoxelSetFormat, SidecarEmittedAlongsideShapeGroupBinary) {
+    const auto records = makeFivePrimitiveGroup();
+    const std::string path = kTmpDir + "/vxs_shape_group_sidecar.vxs";
+    const std::string sidecarPath = path + ".json";
+    std::remove(sidecarPath.c_str());
+
+    ASSERT_TRUE(saveShapeGroup(path, records).ok());
+
+    const auto sidecarBytes = readFileBytes(sidecarPath);
+    EXPECT_FALSE(sidecarBytes.empty());
+
+    const std::string json(sidecarBytes.begin(), sidecarBytes.end());
+    EXPECT_NE(json.find("\"mode\""), std::string::npos);
+    EXPECT_NE(json.find("SHAPES"), std::string::npos);
+    // SHAPES save passes dense=nullptr — bounds collapses to null and the
+    // frame_count + layer_names sections degrade to defaults.
+    EXPECT_NE(json.find("\"bounds\""), std::string::npos);
+    EXPECT_NE(json.find("null"), std::string::npos);
+    EXPECT_NE(json.find("\"frame_count\""), std::string::npos);
+    EXPECT_NE(json.find("\"shape_primitives_summary\""), std::string::npos);
+    EXPECT_NE(json.find("SPHERE"), std::string::npos);
+    EXPECT_NE(json.find("BOX"), std::string::npos);
+
+    std::remove(path.c_str());
+    std::remove(sidecarPath.c_str());
 }
 
 // ---- SHPG chunk: forward-compat ----------------------------------------
@@ -306,10 +337,8 @@ TEST(VoxelSetFormat, FutureBuildRenamedSphereResolvesByName) {
     ASSERT_TRUE(diskRefs.ok());
     NameTable diskShapeTypes(diskRefs.value_);
 
-    auto loadedR = readShapeGroupChunk(
-        findChunk(chunksR.value_, kChunkTagShapeGroup)->data_,
-        diskShapeTypes
-    );
+    auto loadedR =
+        readShapeGroupChunk(findChunk(chunksR.value_, kChunkTagShapeGroup)->data_, diskShapeTypes);
     ASSERT_TRUE(loadedR.ok());
     EXPECT_EQ(loadedR.value_.unknownShapesSkipped_, 0u);
     ASSERT_EQ(loadedR.value_.records_.size(), 1u);
@@ -343,10 +372,8 @@ TEST(VoxelSetFormat, LegacySaveWithoutSrefPassesIdsVerbatim) {
     ASSERT_TRUE(chunksR.ok());
 
     NameTable empty;
-    auto loadedR = readShapeGroupChunk(
-        findChunk(chunksR.value_, kChunkTagShapeGroup)->data_,
-        empty
-    );
+    auto loadedR =
+        readShapeGroupChunk(findChunk(chunksR.value_, kChunkTagShapeGroup)->data_, empty);
     ASSERT_TRUE(loadedR.ok());
     EXPECT_EQ(loadedR.value_.unknownShapesSkipped_, 0u);
     ASSERT_EQ(loadedR.value_.records_.size(), 1u);

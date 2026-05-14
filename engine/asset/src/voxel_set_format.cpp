@@ -1,4 +1,5 @@
 #include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/asset/json_sidecar.hpp>
 
 #include <irreden/ir_profile.hpp>
 
@@ -83,6 +84,99 @@ constexpr ShapeTypeNameEntry kShapeTypeTable[] = {
     {static_cast<std::uint32_t>(IRMath::SDF::ShapeType::CONE), "CONE"},
     {static_cast<std::uint32_t>(IRMath::SDF::ShapeType::TORUS), "TORUS"},
 };
+
+// Emit a .vxs.json sidecar alongside the binary. Three call paths:
+//   - SHAPES save:  dense=nullptr, shapes=records (bounds emit as null).
+//   - DENSE save:   dense=&dense,  shapes={}      (shape_primitives_summary empty).
+//   - HYBRID save:  dense=&dense,  shapes=records (both halves populated).
+void emitVoxelSetSidecar(
+    const std::string &path,
+    VoxelSetMode mode,
+    const DenseVoxelSet *dense,
+    std::span<const ShapeRecord> shapes
+) {
+    const std::string sidecarPath = path + ".json";
+    JsonSidecarWriter j;
+    j.beginObject();
+
+    j.key("version");
+    j.valueUInt(kVoxelSetVersion);
+
+    const char *modeStr = "UNKNOWN";
+    switch (mode) {
+    case VoxelSetMode::DENSE:
+        modeStr = "DENSE";
+        break;
+    case VoxelSetMode::SHAPES:
+        modeStr = "SHAPES";
+        break;
+    case VoxelSetMode::HYBRID:
+        modeStr = "HYBRID";
+        break;
+    default:
+        break;
+    }
+    j.key("mode");
+    j.valueString(modeStr);
+
+    if (dense != nullptr) {
+        j.key("bounds");
+        j.beginObject();
+        j.key("min");
+        j.beginArray();
+        j.valueInt(dense->boundsMin_.x);
+        j.valueInt(dense->boundsMin_.y);
+        j.valueInt(dense->boundsMin_.z);
+        j.endArray();
+        j.key("max");
+        j.beginArray();
+        j.valueInt(dense->boundsMax_.x);
+        j.valueInt(dense->boundsMax_.y);
+        j.valueInt(dense->boundsMax_.z);
+        j.endArray();
+        j.endObject();
+    } else {
+        j.key("bounds");
+        j.valueNull();
+    }
+
+    j.key("material_registry_refs");
+    j.beginArray();
+    j.endArray();
+
+    j.key("layer_names");
+    j.beginArray();
+    if (dense != nullptr) {
+        for (const auto &layer : dense->layers_) {
+            j.valueString(layer.name_);
+        }
+    }
+    j.endArray();
+
+    const std::uint64_t frameCount =
+        (dense != nullptr) ? static_cast<std::uint64_t>(dense->frames_.size()) : 0u;
+    j.key("frame_count");
+    j.valueUInt(frameCount);
+
+    // Count shapes per type using kShapeTypeTable for deterministic ordering.
+    j.key("shape_primitives_summary");
+    j.beginObject();
+    for (const auto &entry : kShapeTypeTable) {
+        std::size_t count = 0;
+        for (const auto &rec : shapes) {
+            if (rec.shapeTypeId_ == entry.id_)
+                ++count;
+        }
+        if (count > 0) {
+            j.key(entry.name_);
+            j.valueUInt(static_cast<std::uint64_t>(count));
+        }
+    }
+    j.endObject();
+
+    j.endObject();
+    writeJsonSidecarToFile(sidecarPath, j.str());
+}
 
 } // namespace
 
@@ -665,7 +759,11 @@ BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord
         makeShapeRefsChunk(shapeTypeEntries),
         makeShapeGroupChunk(records),
     };
-    return writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    if (status.ok()) {
+        emitVoxelSetSidecar(path, VoxelSetMode::SHAPES, nullptr, records);
+    }
+    return status;
 }
 
 Result<VoxelSetFile> loadShapeGroup(const std::string &path) {
@@ -737,7 +835,11 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
     if (!dense.meta_.empty()) {
         chunks.push_back(makeMetaChunk(dense.meta_));
     }
-    return writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    if (status.ok()) {
+        emitVoxelSetSidecar(path, VoxelSetMode::DENSE, &dense, {});
+    }
+    return status;
 }
 
 Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
@@ -833,6 +935,142 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         out.dense_.meta_ = std::move(mR.value_);
     }
     return Result<DenseVoxelSetFile>::success(std::move(out));
+}
+
+BinaryStatus saveVoxelSet(
+    const std::string &path, std::span<const ShapeRecord> shapes, const DenseVoxelSet &dense
+) {
+    FileBinaryWriter fw(path);
+    if (!fw.ok()) {
+        return BinaryStatus::error(
+            BinaryIOError::OpenFailed,
+            "saveVoxelSet: could not open '" + path + "' for write"
+        );
+    }
+    const auto shapeTypeEntries = buildCurrentShapeTypeNameTable();
+    std::vector<ChunkPayload> chunks;
+    chunks.reserve(8);
+    chunks.push_back(makeModeChunk(VoxelSetMode::HYBRID));
+    chunks.push_back(makeShapeRefsChunk(shapeTypeEntries));
+    chunks.push_back(makeShapeGroupChunk(shapes));
+    chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
+    chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
+    if (!dense.layers_.empty()) {
+        chunks.push_back(makeLayersChunk(dense.layers_));
+    }
+    if (!dense.frames_.empty()) {
+        chunks.push_back(makeFramesChunk(dense.frames_));
+    }
+    if (!dense.meta_.empty()) {
+        chunks.push_back(makeMetaChunk(dense.meta_));
+    }
+    const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    if (status.ok()) {
+        emitVoxelSetSidecar(path, VoxelSetMode::HYBRID, &dense, shapes);
+    }
+    return status;
+}
+
+Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
+    FileBinaryReader fr(path);
+    if (!fr.ok()) {
+        return Result<VoxelSetAllFile>::error(
+            BinaryIOError::OpenFailed,
+            "loadVoxelSet: could not open '" + path + "' for read"
+        );
+    }
+    auto chunksR = readChunks(fr, kVoxelSetMagic, kVoxelSetVersion);
+    if (!chunksR.ok()) {
+        return Result<VoxelSetAllFile>::error(
+            chunksR.status_.code_,
+            std::move(chunksR.status_.message_)
+        );
+    }
+    VoxelSetAllFile out;
+    out.mode_ = readModeChunk(chunksR.value_);
+
+    // Shape half
+    NameTable diskShapeTypes;
+    if (const LoadedChunk *sref = findChunk(chunksR.value_, kChunkTagShapeRefs)) {
+        auto entriesR = readShapeRefsChunk(sref->data_);
+        if (!entriesR.ok()) {
+            return Result<VoxelSetAllFile>::error(
+                entriesR.status_.code_,
+                std::move(entriesR.status_.message_)
+            );
+        }
+        diskShapeTypes = NameTable(std::move(entriesR.value_));
+    }
+    if (const LoadedChunk *shpg = findChunk(chunksR.value_, kChunkTagShapeGroup)) {
+        auto recR = readShapeGroupChunk(shpg->data_, diskShapeTypes);
+        if (!recR.ok()) {
+            return Result<VoxelSetAllFile>::error(
+                recR.status_.code_,
+                std::move(recR.status_.message_)
+            );
+        }
+        out.shapeRecords_ = std::move(recR.value_.records_);
+        out.unknownShapesSkipped_ = recR.value_.unknownShapesSkipped_;
+    }
+
+    // Dense half — absent BNDS means no dense data.
+    const LoadedChunk *bndsChunk = findChunk(chunksR.value_, kChunkTagBounds);
+    if (bndsChunk == nullptr) {
+        return Result<VoxelSetAllFile>::success(std::move(out));
+    }
+    auto boundsR = readBoundsChunk(bndsChunk->data_);
+    if (!boundsR.ok()) {
+        return Result<VoxelSetAllFile>::error(
+            boundsR.status_.code_,
+            std::move(boundsR.status_.message_)
+        );
+    }
+    out.dense_.boundsMin_ = boundsR.value_.boundsMin_;
+    out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
+    const std::size_t expectedCount = out.dense_.voxelCount();
+
+    if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
+        auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
+        if (!vR.ok()) {
+            return Result<VoxelSetAllFile>::error(vR.status_.code_, std::move(vR.status_.message_));
+        }
+        out.dense_.recordVersion_ = vR.value_.recordVersion_;
+        out.dense_.voxels_ = std::move(vR.value_.voxels_);
+    } else if (expectedCount > 0) {
+        IRE_LOG_WARN(
+            "loadVoxelSet: BNDS present (voxelCount={}) but VOXR "
+            "chunk missing in '{}'; voxels_ left empty",
+            expectedCount,
+            path
+        );
+    }
+
+    if (const LoadedChunk *layr = findChunk(chunksR.value_, kChunkTagLayers)) {
+        auto lR = readLayersChunk(layr->data_);
+        if (!lR.ok()) {
+            return Result<VoxelSetAllFile>::error(lR.status_.code_, std::move(lR.status_.message_));
+        }
+        out.dense_.layers_ = std::move(lR.value_);
+    }
+
+    if (const LoadedChunk *fram = findChunk(chunksR.value_, kChunkTagFrames)) {
+        auto fR = readFramesChunk(fram->data_, expectedCount);
+        if (!fR.ok()) {
+            return Result<VoxelSetAllFile>::error(fR.status_.code_, std::move(fR.status_.message_));
+        }
+        out.dense_.frames_ = std::move(fR.value_.frames_);
+        out.skippedFrames_ = fR.value_.skippedFrames_;
+    }
+
+    if (const LoadedChunk *meta = findChunk(chunksR.value_, kChunkTagMeta)) {
+        auto mR = readMetaChunk(meta->data_);
+        if (!mR.ok()) {
+            return Result<VoxelSetAllFile>::error(mR.status_.code_, std::move(mR.status_.message_));
+        }
+        out.dense_.meta_ = std::move(mR.value_);
+    }
+
+    return Result<VoxelSetAllFile>::success(std::move(out));
 }
 
 } // namespace IRAsset
