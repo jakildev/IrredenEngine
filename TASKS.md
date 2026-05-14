@@ -227,7 +227,7 @@ Avoid:
   - **ID:** T-179
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-179-asset-bit-cast-tag-helpers
   - **Blocked by:** (none)
   - **Acceptance:** (1) 4 memcpy bit-cast sites in binary_io.cpp (writeF32/writeF64/readF32/readF64) replaced with std::bit_cast; (2) writeTagBytes/readTagBytes helpers (or BinaryWriter::writeTag/BinaryReader::readTag) added to binary_io.hpp; (3) 2 chunk-tag memcpy sites in voxel_set_format.cpp (makeModeChunk, readModeChunk) adopt new helpers; (4) 2 raw-copy primitives (writeBytes/readBytes) left with one-line clarifying comment; (5) one new round-trip unit test for chunk-tag helpers in binary_io_test.cpp; (6) all tests pass (533/533); (7) fleet-build clean on linux-debug
   - **Issue:** #692
@@ -238,7 +238,7 @@ Avoid:
   - **ID:** T-180
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-180-sidecar-key-constants
   - **Blocked by:** (none)
   - **Acceptance:** (1) 9 JSON key literals in emitVoxelSetSidecar replaced with kSidecarKey* constexpr string_view constants in anonymous namespace; (2) constexpr voxelSetModeToString(VoxelSetMode) helper added to voxel_set_format.hpp next to enum; (3) inline switch in emitVoxelSetSidecar replaced with voxelSetModeToString call; (4) 46/46 voxel-set tests pass; SidecarContentMatchesHybridSave verifies byte-identical JSON output; (5) fleet-build clean on linux-debug
   - **Issue:** #697
