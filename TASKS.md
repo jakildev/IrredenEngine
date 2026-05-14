@@ -212,6 +212,39 @@ Avoid:
   - **Notes:** Mechanical port — replace single-pixel imageAtomicMin/imageStore block in c_render_gpu_particles_to_trixel.glsl/.metal with the same `for face / for subPixel` loop from c_render_stateless_particles_to_trixel (T-163 PR #659). Keep local_size_x=64 dispatch shape; dead-slot early-out (lifetime <= 0) stays before the emit loop. Metal: atomic_int distanceScratch path unchanged. Filed as follow-up to human review on PR #659.
   - **Links:**
 
+- [ ] **engine/entity: singleton reentrancy guard doc + destroyAllEntities cache-reset test** — add CLAUDE.md pre-destroy hook warning for singleton lazy-create reentrancy; add SingletonCacheResetAfterDestroyAllEntities test
+  - **ID:** T-178
+  - **Area:** engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) engine/entity/CLAUDE.md § "Pre-destroy hooks" documents that singletonEntity<T> (lazy-create) is forbidden inside pre-destroy hooks during destroyAllEntities; singletonEntityOrNull<T> noted as safe alternative; (2) SingletonCacheResetAfterDestroyAllEntities test in test/ecs/entity_manager_test.cpp: populate cache, destroyAllEntities, assert singletonEntityOrNull<C> returns kNullEntity, re-call singletonEntity<C> and confirm fresh entity id is minted; (3) fleet-build --target IrredenEngineTest green
+  - **Issue:** #655
+  - **Notes:** Post-merge follow-up from T-162 / PR #650. Opus reviewer flagged the reentrancy shape (ghost singleton survives destroyAllEntities if a pre-destroy hook calls lazy-create mid-loop); Sonnet reviewer flagged the missing bulk-clear test. Option (a) chosen (doc-only) per Opus recommendation — no defensive flag needed. No public API change, no shader code.
+  - **Links:**
+
+- [ ] **asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers)** — replace 4 bit-cast memcpy sites with std::bit_cast; add writeTagBytes/readTagBytes helpers in binary_io.hpp; adopt in voxel_set_format chunk sites
+  - **ID:** T-179
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 4 memcpy bit-cast sites in binary_io.cpp (writeF32/writeF64/readF32/readF64) replaced with std::bit_cast; (2) writeTagBytes/readTagBytes helpers (or BinaryWriter::writeTag/BinaryReader::readTag) added to binary_io.hpp; (3) 2 chunk-tag memcpy sites in voxel_set_format.cpp (makeModeChunk, readModeChunk) adopt new helpers; (4) 2 raw-copy primitives (writeBytes/readBytes) left with one-line clarifying comment; (5) one new round-trip unit test for chunk-tag helpers in binary_io_test.cpp; (6) all tests pass (533/533); (7) fleet-build clean on linux-debug
+  - **Issue:** #692
+  - **Notes:** Escalated from PR #679 human inline comment on voxel_set_format.cpp:111. Pattern B (raw buffer copy primitives) intentionally left as memcpy — they are the leaf primitives. #include <bit> required. #679 (T-168) already merged 2026-05-13, so voxel_set_format.cpp edits are unblocked.
+  - **Links:**
+
+- [ ] **asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants** — add kSidecarKey* constexpr block and voxelSetModeToString helper; replace 9 string literals and inline switch in emitVoxelSetSidecar
+  - **ID:** T-180
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) 9 JSON key literals in emitVoxelSetSidecar replaced with kSidecarKey* constexpr string_view constants in anonymous namespace; (2) constexpr voxelSetModeToString(VoxelSetMode) helper added to voxel_set_format.hpp next to enum; (3) inline switch in emitVoxelSetSidecar replaced with voxelSetModeToString call; (4) 46/46 voxel-set tests pass; SidecarContentMatchesHybridSave verifies byte-identical JSON output; (5) fleet-build clean on linux-debug
+  - **Issue:** #697
+  - **Notes:** Follow-up from PR #694 (T-170) inline review comment. Pure cleanup — no behavior change, no JSON schema change, no version bump. JsonSidecarWriter::key() may need widening to std::string_view. Do not rename keys or merge bounds min/max — byte-identical output required. kShapeTypeTable is out of scope. Precedent for .rig and world-snapshot sidecar emitters.
+  - **Links:**
+
 - [~] **editor: F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll)** — implement the five trixel-rendered UI primitives deferred from T-145: list, dropdown, radio, text input, scroll
   - **ID:** T-177
   - **Area:** engine/prefabs/irreden/render
