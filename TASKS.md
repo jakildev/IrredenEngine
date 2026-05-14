@@ -212,17 +212,6 @@ Avoid:
   - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
   - **Links:**
 
-- [~] **asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/** — centralize duplicated writeVec3/writeVec4/readVec3/readVec4 and color pack/unpack helpers into IRMath::BinaryIO; adopt in voxel_set_format.cpp and rig_format.cpp
-  - **ID:** T-183
-  - **Area:** engine/math, engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-183-math-binary-io-helpers
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) zero copies of vec3/vec4 / color pack helpers remain inside engine/asset/src/*.cpp; (2) IRMath::BinaryIO (or equivalent engine/asset/include location) exposes writeVec3/writeVec4/readVec3/readVec4 and Color::fromPackedRGBA; (3) engine/math/ does not physically depend on engine/asset/; (4) voxel_set_format.cpp and rig_format.cpp call through the shared helpers; (5) all existing tests pass; (6) fleet-build clean on linux-debug
-  - **Issue:** #704
-  - **Notes:** Two duplicated families: (1) writeVec3/writeVec4/readVec3/readVec4 defined in voxel_set_format.cpp anonymous namespace and reimplemented as encode/decode* in rig_format.cpp — standardize on read/write naming; (2) writeColorPacked/unpackColor in voxel_set_format.cpp — Color::fromPackedRGBA alongside existing toPackedRGBA. If dependency direction is awkward, put helpers in engine/asset/include/irreden/asset/math_binary_io.hpp rather than engine/math/ — point is one canonical location. No glm:: in helper signatures (IRMath::vec* only).
-  - **Links:**
-
 - [~] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
   - **ID:** T-184
   - **Area:** engine/asset, engine/prefabs/irreden/render
@@ -249,6 +238,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
 - [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
@@ -264,7 +254,6 @@ Avoid:
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
 - [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
-- [x] **T-163** — Stateless procedural particle system — UBO-driven emitters · Owner: claude/T-163-stateless-particles · PR: https://github.com/jakildev/IrredenEngine/pull/659
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
