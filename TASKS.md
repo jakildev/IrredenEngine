@@ -253,11 +253,11 @@ Avoid:
   - **Notes:** Layering violation surfaced in T-173 / PR #703. Two viable fixes: (A) hoist GPUJointTransform into a non-render header so script does not pull in the full render module; (B) move setComponent(entity, Rig::toComponent(...)) to a higher-level layer that can depend on both script and render. Author chooses approach; document rationale in commit message.
   - **Links:**
 
-- [ ] **prefab: DENSE/HYBRID voxel_ref ECS attachment (headless C_VoxelSetNew)** — architect decision + implementation for attaching DENSE/HYBRID-mode .vxs data as C_VoxelSetNew in Prefab.spawn without requiring an active render canvas
+- [~] **prefab: DENSE/HYBRID voxel_ref ECS attachment (headless C_VoxelSetNew)** — architect decision + implementation for attaching DENSE/HYBRID-mode .vxs data as C_VoxelSetNew in Prefab.spawn without requiring an active render canvas
   - **ID:** T-189
   - **Area:** engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-182
   - **Acceptance:** (1) DENSE .vxs voxel_ref attaches per-voxel data as C_VoxelSetNew on spawned entity, headless-safe; (2) HYBRID .vxs attaches both SHAPES (T-182) and DENSE halves on same entity; (3) round-trip tests: DENSE and HYBRID verified through Prefab.spawn; entity C_VoxelSetNew record count matches dense_.voxelCount(); (4) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document chosen attachment contract
   - **Issue:** #721
