@@ -113,9 +113,8 @@ TEST_F(PrefabApi, SpawnRejectsUnregisteredId) {
 }
 
 TEST_F(PrefabApi, SpawnRejectsMissingPrefabVersion) {
-    PrefabFiles f = writeFixtureSet(
-        "missing_version", "return { voxel_ref = '/tmp/whatever.vxs' }\n"
-    );
+    PrefabFiles f =
+        writeFixtureSet("missing_version", "return { voxel_ref = '/tmp/whatever.vxs' }\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     EXPECT_EQ(r.entity_, IREntity::kNullEntity);
@@ -123,8 +122,7 @@ TEST_F(PrefabApi, SpawnRejectsMissingPrefabVersion) {
 }
 
 TEST_F(PrefabApi, SpawnRejectsFutureSchemaVersion) {
-    PrefabFiles f =
-        writeFixtureSet("future_version", "return { prefab_version = 99 }\n");
+    PrefabFiles f = writeFixtureSet("future_version", "return { prefab_version = 99 }\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     EXPECT_EQ(r.entity_, IREntity::kNullEntity);
@@ -147,8 +145,7 @@ TEST_F(PrefabApi, SpawnAttachesPosition) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(7.0f, 8.0f, 9.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    const auto &pos =
-        IREntity::getComponent<IRComponents::C_Position3D>(r.entity_);
+    const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(r.entity_);
     EXPECT_FLOAT_EQ(pos.pos_.x, 7.0f);
     EXPECT_FLOAT_EQ(pos.pos_.y, 8.0f);
     EXPECT_FLOAT_EQ(pos.pos_.z, 9.0f);
@@ -190,8 +187,7 @@ TEST_F(PrefabApi, SpawnLoadsRigRefAndAttachesJointHierarchy) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    const auto &hierarchy =
-        IREntity::getComponent<IRComponents::C_JointHierarchy>(r.entity_);
+    const auto &hierarchy = IREntity::getComponent<IRComponents::C_JointHierarchy>(r.entity_);
     ASSERT_EQ(hierarchy.joints_.size(), 2u);
     EXPECT_FLOAT_EQ(hierarchy.joints_[0].translation_.x, 1.0f);
     EXPECT_FLOAT_EQ(hierarchy.joints_[1].translation_.x, 4.0f);
@@ -218,9 +214,22 @@ TEST_F(PrefabApi, SetupCallbackReceivesEntity) {
 
     auto &lua = m_lua.lua();
     sol::object stored = lua["g_setup_entity"];
-    ASSERT_TRUE(stored.is<IRScript::LuaEntity>())
-        << "setup did not receive a LuaEntity userdata";
+    ASSERT_TRUE(stored.is<IRScript::LuaEntity>()) << "setup did not receive a LuaEntity userdata";
     EXPECT_EQ(stored.as<IRScript::LuaEntity>().entity, r.entity_);
+}
+
+TEST_F(PrefabApi, SetupNonFunctionRejected) {
+    PrefabFiles f = writeFixtureSet(
+        "setup_not_function",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  setup = 42,\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("setup must be a function"), std::string::npos) << r.error_;
 }
 
 TEST_F(PrefabApi, SetupCallbackErrorSurfaced) {

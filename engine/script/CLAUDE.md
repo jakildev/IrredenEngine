@@ -697,6 +697,8 @@ Lua side:
 - `voxel_ref` that fails to load (bad magic, truncated, missing file)
   → error; no entity created.
 - `rig_ref` that fails to load → error.
+- `setup` present but not a function (e.g. `setup = 42`) → error;
+  catches the typo class instead of silently no-op'ing.
 - Unknown top-level keys are silently ignored — adding a future field
   doesn't break older loaders (Rule #1 mirror).
 

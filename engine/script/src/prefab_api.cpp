@@ -33,9 +33,7 @@ std::unordered_map<std::string, std::string> &registry() {
 /// Build an error-state result. Logs at error level so failures are
 /// visible even when the caller discards the returned struct.
 SpawnResult makeError(std::string id, std::string path, std::string message) {
-    IRE_LOG_ERROR(
-        "Prefab.spawn('{}'): {} (path='{}')", id.c_str(), message.c_str(), path.c_str()
-    );
+    IRE_LOG_ERROR("Prefab.spawn('{}'): {} (path='{}')", id.c_str(), message.c_str(), path.c_str());
     SpawnResult r;
     r.id_ = std::move(id);
     r.path_ = std::move(path);
@@ -74,8 +72,7 @@ void clearPrefabs() {
     registry().clear();
 }
 
-SpawnResult
-spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 position) {
+SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 position) {
     std::string idStr{id};
     auto pathOpt = prefabPath(id);
     if (!pathOpt) {
@@ -92,9 +89,7 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
         sol::protected_function_result eval = script.lua().script_file(path);
         if (!eval.valid()) {
             sol::error err = eval;
-            return makeError(
-                idStr, path, std::string{"file evaluation failed: "} + err.what()
-            );
+            return makeError(idStr, path, std::string{"file evaluation failed: "} + err.what());
         }
         root = eval;
     } catch (const std::exception &e) {
@@ -116,8 +111,8 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
         return makeError(
             idStr,
             path,
-            "prefab_version=" + std::to_string(*versionOpt) +
-                " not supported (expected " + std::to_string(kPrefabSchemaVersion) + ")"
+            "prefab_version=" + std::to_string(*versionOpt) + " not supported (expected " +
+                std::to_string(kPrefabSchemaVersion) + ")"
         );
     }
 
@@ -127,11 +122,7 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
     if (voxelRef) {
         auto loadResult = IRAsset::loadVoxelSet(*voxelRef);
         if (!loadResult.ok()) {
-            return makeError(
-                idStr,
-                path,
-                std::string{"voxel_ref load failed: "} + *voxelRef
-            );
+            return makeError(idStr, path, std::string{"voxel_ref load failed: "} + *voxelRef);
         }
     }
 
@@ -146,7 +137,8 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
         // `.rig` from the basename since `loadRig` appends it.
         std::string rigPath = *rigRef;
         std::string::size_type slash = rigPath.find_last_of("/\\");
-        std::string dir = (slash == std::string::npos) ? std::string{"."} : rigPath.substr(0, slash);
+        std::string dir =
+            (slash == std::string::npos) ? std::string{"."} : rigPath.substr(0, slash);
         std::string base = (slash == std::string::npos) ? rigPath : rigPath.substr(slash + 1);
         constexpr std::string_view kExt{".rig"};
         if (base.size() >= kExt.size() &&
@@ -164,18 +156,25 @@ spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 posit
     // components arrive in one createEntity call; the joint hierarchy
     // is set on the resulting entity (setComponent migrates the
     // archetype once, which is fine for spawn — it isn't in a tick).
-    const IREntity::EntityId entity =
-        IREntity::createEntity(IRComponents::C_Position3D{position});
+    const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_Position3D{position});
 
     if (loadedRig) {
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
     }
 
     // Optional setup function — last so the user sees a fully-formed
-    // entity (position + rig already attached).
-    sol::optional<sol::protected_function> setupFn = prefab["setup"];
-    if (setupFn) {
-        sol::protected_function_result setupResult = (*setupFn)(IRScript::LuaEntity{entity});
+    // entity (position + rig already attached). Distinguish "absent"
+    // (sol::type::lua_nil) from "present but not a function" so a
+    // schema typo like `setup = 42` surfaces a diagnostic instead of
+    // silently no-op'ing.
+    sol::object setupObj = prefab["setup"];
+    if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
+        if (setupObj.get_type() != sol::type::function) {
+            IREntity::destroyEntity(entity);
+            return makeError(idStr, path, "setup must be a function");
+        }
+        sol::protected_function setupFn = setupObj.as<sol::protected_function>();
+        sol::protected_function_result setupResult = setupFn(IRScript::LuaEntity{entity});
         if (!setupResult.valid()) {
             sol::error err = setupResult;
             IREntity::destroyEntity(entity);
