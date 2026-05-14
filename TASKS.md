@@ -178,18 +178,6 @@ Avoid:
 
 
 
-- [~] **Editor F-0.9: voxel mouse picking (ray cast → world-space voxel selection)** — cursor-to-ray, DDA voxel grid intersection, single-voxel selection state with visual highlight
-  - **ID:** T-153
-  - **Area:** engine/render, creations/editors
-  - **Model:** opus
-  - **Owner:** claude/T-153-voxel-picking
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) left-click on voxel in 3D viewport → selected and visually highlighted; (2) left-click on empty space → selection clears; (3) selection survives camera orbit/pan/zoom (only highlight redraws); (4) picking respects camera projection (orthographic + perspective); (5) selected voxel world-space position queryable via editor selection state for Phase 1+ tools
-  - **Issue:** #628
-  - **Notes:** Phase 0 (F-0.9) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc), T-147 (F-0.8 editor scaffold), T-150 (F-0.4 camera). Selection-state design must anticipate Phase 1+ multi-selection. Phase 0 acceptance criterion in #603 explicitly requires mouse picking.
-  - **Links:**
-
-
 - [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
@@ -241,6 +229,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-153** — Editor F-0.9 — voxel mouse picking (cursor→ray, DDA, single selection) · Owner: claude/T-153-voxel-picking · PR: https://github.com/jakildev/IrredenEngine/pull/682
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
@@ -260,4 +249,3 @@ Avoid:
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
-- [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
