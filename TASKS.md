@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
+- [ ] **Lua-driven ECS: Lua port of perf_grid + perf parity gate** — new demo creations/demos/lua_perf_grid/ mirroring perf_grid (262k entities, wave animation, same render pipeline) entirely in Lua; parity gate: Lua wave-animation per-tick cost <= 1.5x C++ equivalent
   - **ID:** T-104
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) fleet-build --target IRLuaPerfGrid clean on linux-debug; (2) fleet-run IRLuaPerfGrid runs without crash (64x64x64 voxel grid, wave animation, same render pipeline as perf_grid); (3) parity gate: Lua wave-animation system per-tick cost <= 1.5x C++ SystemPeriodicIdlePositionOffset per-tick cost measured via IRProfile with profiling_enabled=true; (4) measured ratio documented in docs/design/lua-driven-ecs.md retrospective; (5) if gate fails: design doc PR amended with corrective decision before further work
   - **Issue:** #492
@@ -216,7 +216,7 @@ Avoid:
   - **ID:** T-178
   - **Area:** engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-178-singleton-reentrancy-doc
   - **Blocked by:** (none)
   - **Acceptance:** (1) engine/entity/CLAUDE.md § "Pre-destroy hooks" documents that singletonEntity<T> (lazy-create) is forbidden inside pre-destroy hooks during destroyAllEntities; singletonEntityOrNull<T> noted as safe alternative; (2) SingletonCacheResetAfterDestroyAllEntities test in test/ecs/entity_manager_test.cpp: populate cache, destroyAllEntities, assert singletonEntityOrNull<C> returns kNullEntity, re-call singletonEntity<C> and confirm fresh entity id is minted; (3) fleet-build --target IrredenEngineTest green
   - **Issue:** #655
