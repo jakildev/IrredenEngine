@@ -267,11 +267,11 @@ Avoid:
   - **Notes:** Two duplicated families: (1) writeVec3/writeVec4/readVec3/readVec4 defined in voxel_set_format.cpp anonymous namespace and reimplemented as encode/decode* in rig_format.cpp — standardize on read/write naming; (2) writeColorPacked/unpackColor in voxel_set_format.cpp — Color::fromPackedRGBA alongside existing toPackedRGBA. If dependency direction is awkward, put helpers in engine/asset/include/irreden/asset/math_binary_io.hpp rather than engine/math/ — point is one canonical location. No glm:: in helper signatures (IRMath::vec* only).
   - **Links:**
 
-- [ ] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
+- [~] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
   - **ID:** T-184
   - **Area:** engine/asset, engine/prefabs/irreden/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) engine/asset/ and engine/prefabs/irreden/ contain no reference to .txl, TxlSidecar, saveTxlSidecar, loadTxlSidecar, saveTrixelTextureData, loadTrixelTextureData, kTrixelExtension, kTxlSidecarExtension, or kTrixelImage; (2) C_TriangleCanvasTextures has no saveToFile/loadFromFile methods; (3) command_save_main_canvas_trixels.hpp and test/asset/txl_sidecar_test.cpp deleted; (4) nlohmann/json no longer fetched by the engine build; (5) engine/asset/CLAUDE.md no longer documents .txl or .txl.json; (6) IRShapeDebug and IrredenEngineTest build clean
   - **Issue:** #705
