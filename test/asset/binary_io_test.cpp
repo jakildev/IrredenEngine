@@ -166,6 +166,27 @@ TEST(BinaryIO, FileBackendRoundTrip) {
     std::remove(path.c_str());
 }
 
+TEST(BinaryIO, ChunkTagRoundTrip) {
+    const std::array<char, 4> tag = {'V', 'O', 'X', 'R'};
+    MemoryBinaryWriter w;
+    w.writeTag(tag);
+    ASSERT_EQ(w.buffer().size(), 4u);
+
+    MemoryBinaryReader r(w.buffer().data(), w.buffer().size());
+    auto result = r.readTag();
+    ASSERT_TRUE(result.ok()) << result.status_.message_;
+    EXPECT_EQ(result.value_, tag);
+    EXPECT_EQ(r.remaining(), 0u);
+}
+
+TEST(BinaryIO, ChunkTagReadTruncated) {
+    std::vector<std::uint8_t> buf = {'V', 'O'}; // only 2 bytes
+    MemoryBinaryReader r(buf.data(), buf.size());
+    auto result = r.readTag();
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(result.status_.code_, BinaryIOError::Truncated);
+}
+
 // ---- Chunk header tests -------------------------------------------------
 
 TEST(ChunkHeader, RoundTripWithMultipleChunks) {

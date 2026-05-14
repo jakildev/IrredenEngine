@@ -16,6 +16,7 @@
 /// varint is recoverable — never a crash. The 7 Save Format Extensibility
 /// Rules in `docs/design/entity-editor-epic.md` mandate this contract.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -134,6 +135,9 @@ class BinaryWriter {
     /// Length-prefixed UTF-8 string. Prefix is a varint byte-count.
     void writeString(std::string_view s);
 
+    /// Write a 4-byte chunk tag (e.g. `{'V','O','X','R'}`).
+    void writeTag(const std::array<char, 4> &tag);
+
   protected:
     void setFailed(std::string msg) {
         if (!m_failed) {
@@ -240,6 +244,9 @@ class BinaryReader {
     Result<double> readF64();
     Result<std::uint64_t> readVarUInt();
     Result<std::string> readString();
+
+    /// Read a 4-byte chunk tag.
+    Result<std::array<char, 4>> readTag();
 };
 
 /// File-backed reader. Wraps a `FILE*` opened in binary read mode.
