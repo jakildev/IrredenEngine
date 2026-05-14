@@ -20,8 +20,8 @@ namespace IRSystem {
 // highlight. Runs in the RENDER pipeline just before
 // TRIXEL_TO_FRAMEBUFFER so overlays appear on top of all widget content.
 //
-// Per-entity tick (C_Widget) is a no-op; all work happens in endTick so
-// we iterate the layout tree directly instead of querying per-entity.
+// Per-entity tick (C_LayoutState) is a no-op; all work happens in endTick
+// so we iterate the layout tree directly instead of querying per-entity.
 //
 // Pipeline order requirement (RENDER pipeline):
 //   WIDGET_RENDER_SPLITTER → WIDGET_RENDER_DOCK_PREVIEW
