@@ -223,11 +223,11 @@ Avoid:
   - **Notes:** Post-merge follow-up from T-162 / PR #650. Opus reviewer flagged the reentrancy shape (ghost singleton survives destroyAllEntities if a pre-destroy hook calls lazy-create mid-loop); Sonnet reviewer flagged the missing bulk-clear test. Option (a) chosen (doc-only) per Opus recommendation — no defensive flag needed. No public API change, no shader code.
   - **Links:**
 
-- [ ] **asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers)** — replace 4 bit-cast memcpy sites with std::bit_cast; add writeTagBytes/readTagBytes helpers in binary_io.hpp; adopt in voxel_set_format chunk sites
+- [~] **asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers)** — replace 4 bit-cast memcpy sites with std::bit_cast; add writeTagBytes/readTagBytes helpers in binary_io.hpp; adopt in voxel_set_format chunk sites
   - **ID:** T-179
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) 4 memcpy bit-cast sites in binary_io.cpp (writeF32/writeF64/readF32/readF64) replaced with std::bit_cast; (2) writeTagBytes/readTagBytes helpers (or BinaryWriter::writeTag/BinaryReader::readTag) added to binary_io.hpp; (3) 2 chunk-tag memcpy sites in voxel_set_format.cpp (makeModeChunk, readModeChunk) adopt new helpers; (4) 2 raw-copy primitives (writeBytes/readBytes) left with one-line clarifying comment; (5) one new round-trip unit test for chunk-tag helpers in binary_io_test.cpp; (6) all tests pass (533/533); (7) fleet-build clean on linux-debug
   - **Issue:** #692
