@@ -190,18 +190,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Editor F-0.5 Phase 3: gizmo hover + drag interaction** — hover highlight via entity-id texture readback; drag-axis-constrained translate/scale; Shift-snap rotate
-  - **ID:** T-165
-  - **Area:** engine/prefabs/irreden/render, creations/editors
-  - **Model:** opus
-  - **Owner:** claude/T-165-gizmo-hover-drag
-  - **Blocked by:** T-153
-  - **Acceptance:** (1) hovering any handle highlights it visibly; leaving clears; (2) click-drag X arrow translates anchor entity only in X (similarly Y/Z); (3) drag rotate ring rotates anchor around that axis; Shift held snaps to 15° increments; (4) drag scale center uniformly scales; drag scale stick scales single axis only
-  - **Issue:** #676
-  - **Notes:** Phase 3 follow-up to T-152 (Phase 1 shipped via PR #672). Hover reuses entity-id texture readback built by T-153. New systems: system_gizmo_hover.hpp (reads canvas entity-id texture for cursor pixel, sets C_GizmoHandle::hover_), system_gizmo_drag.hpp (drag state per handle kind). Touch points: component_gizmo_handle.hpp, editor main.cpp, ir_system_types.hpp.
-  - **Links:**
-
-
 - [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
@@ -265,6 +253,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
 - [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
 - [x] **T-163** — Stateless procedural particle system — UBO-driven emitters · Owner: claude/T-163-stateless-particles · PR: https://github.com/jakildev/IrredenEngine/pull/659
@@ -279,7 +268,6 @@ Avoid:
 - [x] **T-161** — defer C_CanvasFogOfWar dirty-flag → per-region subImage2D migration · Owner: claude/T-161-fog-upload-eval · PR: https://github.com/jakildev/IrredenEngine/pull/652
 - [x] **T-149** — Editor F-0.3 — input routing (mouse hover/click/drag, keyboard focus, hotkey table) · Owner: claude/T-149-input-routing · PR: https://github.com/jakildev/IrredenEngine/pull/649
 - [x] **T-146** — Editor F-0.6 — per-voxel metadata extension (.txl v2) · Owner: claude/T-146-txl-v2-metadata · PR: https://github.com/jakildev/IrredenEngine/pull/635
-- [x] **T-147** — Editor F-0.8 -- editor exe scaffold at creations/editors/voxel_editor/ · Owner: claude/T-147-voxel-editor-scaffold · PR: https://github.com/jakildev/IrredenEngine/pull/634
 - [x] **T-148** — Editor F-0.2 — layout system (rows, columns, dock targets, splitters) · Owner: claude/T-148-layout-system · PR: https://github.com/jakildev/IrredenEngine/pull/641
 - [x] **T-159** — GPU particles Phase 2 — batch CPU-side spawns into one subData/frame · Owner: claude/T-159-gpu-particle-spawn-batching · PR: https://github.com/jakildev/IrredenEngine/pull/651
 - [x] **T-162** — engine/entity: ECS singleton-component infrastructure · Owner: claude/T-162-ecs-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/650
