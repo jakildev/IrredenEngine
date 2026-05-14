@@ -6,16 +6,20 @@ layout(local_size_x = 64) in;
 
 // T-139 Phase 1 — GPU particle → trixel canvas render pass.
 // One thread per particle slot; dead slots early-out. Each live particle
-// projects its world position into iso 2D, computes a depth scalar, and
-// writes a single trixel (color + distance) into the canvas textures using
-// the same atomicMin pattern as the voxel-to-trixel stages.
+// projects its world position into iso 2D and emits a 6-trixel voxel-diamond
+// (3 faces × 2 sub-pixels) using faceOffset_2x3 + face-priority depth
+// encoding, so LIGHTING_TO_TRIXEL can shade each face with its own outward
+// normal. Mirrors the loop shape in c_render_stateless_particles_to_trixel.
+//
+// Phase 1 uses NONE subdivision mode (subdivisions = 1): each particle maps
+// to exactly one 2×3 trixel diamond. Sub-voxel positional precision and
+// full FULL-mode expansion to match voxels land in a follow-up.
 //
 // Single-pass write (no two-stage compaction): particles are sparse and the
-// expected per-pixel collision rate is low (a 4096-particle pool over a
-// ~256k-pixel canvas is ~1.6% pixel density). The strict-comparison
-// `voxelDistance <= prevDistance` write decision keeps the depth-test
-// correct under rare collisions; on a same-pixel race the worst case is a
-// one-frame color smear, which is invisible for ambient particle fields.
+// expected per-pixel collision rate is low. The strict-comparison
+// `faceDepth <= prevDistance` write decision keeps the depth test correct
+// under rare same-pixel collisions; a one-frame color smear on a tie is
+// invisible for ambient particle fields.
 
 layout(std140, binding = 23) uniform FrameDataGpuParticles {
     float _updateDeltaTime;
@@ -50,19 +54,22 @@ void main() {
     Particle p = particles[idx];
     if (p.lifetime <= 0.0) return;
 
-    ivec3 posI = ivec3(round(p.position));
-    int particleDistance = encodeDepthWithFace(pos3DtoDistance(posI), kZFace);
+    const ivec3 posI = ivec3(round(p.position));
+    const ivec2 frameOffset = trixelCanvasOffsetZ1 + ivec2(floor(cameraTrixelOffset));
+    const vec4 baseColor = unpackColor(p.color);
+    const ivec2 canvasSize = imageSize(triangleCanvasDistances);
 
-    // Use NONE subdivision mode (voxelRenderOptions.x == 0) — Phase 1 keeps
-    // particles snapped to the integer trixel lattice. Subdivision support
-    // matches voxels and lands in a follow-up.
-    ivec2 frameOffset = trixelCanvasOffsetZ1 + ivec2(floor(cameraTrixelOffset));
-    ivec2 canvasPixel = frameOffset + pos3DtoPos2DIso(posI);
-
-    if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) return;
-
-    int prevDistance = imageAtomicMin(triangleCanvasDistances, canvasPixel, particleDistance);
-    if (particleDistance <= prevDistance) {
-        imageStore(triangleCanvasColors, canvasPixel, unpackColor(p.color));
+    for (int face = 0; face < 3; face++) {
+        ivec3 microPos = faceMicroPositionFixed(face, posI, 0, 0, 1);
+        int faceDepth = encodeDepthWithFace(pos3DtoDistance(microPos), face);
+        ivec2 microIsoBase = frameOffset + pos3DtoPos2DIso(microPos);
+        for (int subPixel = 0; subPixel < 2; subPixel++) {
+            ivec2 canvasPixel = microIsoBase + faceOffset_2x3(face, subPixel);
+            if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
+            int prevDistance = imageAtomicMin(triangleCanvasDistances, canvasPixel, faceDepth);
+            if (faceDepth <= prevDistance) {
+                imageStore(triangleCanvasColors, canvasPixel, baseColor);
+            }
+        }
     }
 }
