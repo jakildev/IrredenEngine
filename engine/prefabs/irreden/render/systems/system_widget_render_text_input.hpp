@@ -60,15 +60,12 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             scratch_
         );
 
-        const IRMath::ivec2 textPos(
-            guiPos.pos_.x + theme.padding_ * 2,
-            guiPos.pos_.y + (widget.size_.y - IRRender::kGlyphHeight) / 2
-        );
+        const int textX = guiPos.pos_.x + theme.padding_ * 2;
         if (!textInput.text_.empty()) {
             IRPrefab::Widget::detail::drawLeftText(
                 *canvas_,
                 textInput.text_,
-                IRMath::ivec2(textPos.x, guiPos.pos_.y),
+                IRMath::ivec2(textX, guiPos.pos_.y),
                 widget.size_.y,
                 IRPrefab::Widget::detail::stateText(theme, widget)
             );
@@ -86,7 +83,10 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         const int cursorChars = IRMath::clamp(
             textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size())
         );
-        const int cursorX = textPos.x + cursorChars * IRRender::kGlyphStepX;
+        const int cursorX = IRMath::min(
+            textX + cursorChars * IRRender::kGlyphStepX,
+            guiPos.pos_.x + widget.size_.x - theme.textInputCursorWidth_
+        );
         const int cursorH = IRRender::kGlyphHeight;
         const int cursorY = guiPos.pos_.y + (widget.size_.y - cursorH) / 2;
         IRRender::fillRect(
