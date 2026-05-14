@@ -381,7 +381,10 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
 // ---- High-level save/load ----------------------------------------------
 
 /// Save a shape-group `.vxs` asset to @p path. Writes MODE=SHAPES,
-/// SREF, and SHPG chunks. Returns the writer's failure state.
+/// SREF, and SHPG chunks. Also emits a `.vxs.json` sidecar at
+/// `path + ".json"` (Rule #6) when the binary write succeeds; a failed
+/// binary write skips the sidecar so a stale sidecar never outlives a
+/// missing binary.
 BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord> records);
 
 /// Loader-side view of a shape-group `.vxs` file.
@@ -406,7 +409,10 @@ Result<VoxelSetFile> loadShapeGroup(const std::string &path);
 /// Save a DENSE-mode `.vxs` asset to @p path. Writes MODE=DENSE plus
 /// BNDS / VOXR / LAYR / FRAM / META chunks. Empty optional sections
 /// (no layers / no frames / no meta) omit the corresponding chunk so
-/// older loaders need no special-casing.
+/// older loaders need no special-casing. Also emits a `.vxs.json`
+/// sidecar at `path + ".json"` (Rule #6) when the binary write
+/// succeeds; the sidecar's `shape_primitives_summary` is empty for
+/// DENSE saves.
 BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &dense);
 
 /// Loader-side view of a DENSE-mode `.vxs` file. `mode_` is read from

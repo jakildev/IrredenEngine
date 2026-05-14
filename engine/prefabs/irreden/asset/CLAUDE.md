@@ -10,11 +10,12 @@ below the component layer.
 
 - `voxel_set_io.hpp` — `IRAsset::saveVoxelSet(span<const
   C_ShapeDescriptor>, ...)` writes a SHAPES-mode `.vxs` shape-group
-  asset. Parallel optional spans (`offsets`, `rotations`, `csgOps`,
-  `boneIds`) carry the per-instance composition metadata that
-  `C_ShapeDescriptor` itself doesn't store. Loader path: callers use
-  `IRAsset::loadShapeGroup` (in `<irreden/asset/voxel_set_format.hpp>`)
-  and reconstruct entities from the returned `ShapeRecord`s.
+  asset (plus a `.vxs.json` sidecar; Rule #6). Parallel optional
+  spans (`offsets`, `rotations`, `csgOps`, `boneIds`) carry the
+  per-instance composition metadata that `C_ShapeDescriptor` itself
+  doesn't store. Loader path: callers use `IRAsset::loadShapeGroup`
+  (in `<irreden/asset/voxel_set_format.hpp>`) and reconstruct
+  entities from the returned `ShapeRecord`s.
 
 ## Commands
 

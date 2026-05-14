@@ -85,8 +85,10 @@ constexpr ShapeTypeNameEntry kShapeTypeTable[] = {
     {static_cast<std::uint32_t>(IRMath::SDF::ShapeType::TORUS), "TORUS"},
 };
 
-// Emit a .vxs.json sidecar alongside the binary. `dense` is null for
-// SHAPES-only saves; `shapes` is empty for DENSE-only saves.
+// Emit a .vxs.json sidecar alongside the binary. Three call paths:
+//   - SHAPES save:  dense=nullptr, shapes=records (bounds emit as null).
+//   - DENSE save:   dense=&dense,  shapes={}      (shape_primitives_summary empty).
+//   - HYBRID save:  dense=&dense,  shapes=records (both halves populated).
 void emitVoxelSetSidecar(
     const std::string &path,
     VoxelSetMode mode,
@@ -757,7 +759,11 @@ BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord
         makeShapeRefsChunk(shapeTypeEntries),
         makeShapeGroupChunk(records),
     };
-    return writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    if (status.ok()) {
+        emitVoxelSetSidecar(path, VoxelSetMode::SHAPES, nullptr, records);
+    }
+    return status;
 }
 
 Result<VoxelSetFile> loadShapeGroup(const std::string &path) {
@@ -829,7 +835,11 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
     if (!dense.meta_.empty()) {
         chunks.push_back(makeMetaChunk(dense.meta_));
     }
-    return writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
+    if (status.ok()) {
+        emitVoxelSetSidecar(path, VoxelSetMode::DENSE, &dense, {});
+    }
+    return status;
 }
 
 Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {

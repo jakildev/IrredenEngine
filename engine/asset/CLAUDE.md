@@ -287,19 +287,23 @@ uint8   csgOp            // CsgOp: NONE | UNION | SMOOTH_UNION | SUBTRACT | INTE
 High-level entry points:
 
 - `saveShapeGroup(path, span<ShapeRecord>)` — writes MODE=SHAPES, SREF,
-  SHPG chunks under the `VXS1` header.
+  SHPG chunks under the `VXS1` header. Emits a `.vxs.json` sidecar at
+  `path + ".json"` (Rule #6) on successful binary write.
 - `loadShapeGroup(path)` — returns `VoxelSetFile { mode_, shapeRecords_,
   unknownShapesSkipped_ }` after resolving SREF and SHPG. Container
   errors (`BadMagic`, `VersionTooNew`, truncation, chunk-out-of-bounds)
   surface as `BinaryIOError` results.
 - `saveDenseVoxelSet(path, DenseVoxelSet)` — writes MODE=DENSE plus
-  BNDS, VOXR, and (if non-empty) LAYR / FRAM / META chunks.
+  BNDS, VOXR, and (if non-empty) LAYR / FRAM / META chunks. Emits a
+  `.vxs.json` sidecar at `path + ".json"` (Rule #6) on successful
+  binary write.
 - `loadDenseVoxelSet(path)` — returns `DenseVoxelSetFile { mode_,
   dense_, skippedFrames_ }`. Loading a SHAPES-only file through this
   path is a no-op: `mode_ = SHAPES` and `dense_` stays empty.
 - `saveVoxelSet(path, span<ShapeRecord>, DenseVoxelSet)` — writes
-  MODE=HYBRID with SREF + SHPG (shapes) and BNDS + VOXR (dense). Also
-  emits a `.vxs.json` sidecar at `path + ".json"` (Rule #6).
+  MODE=HYBRID with SREF + SHPG (shapes) and BNDS + VOXR (dense). Emits
+  a `.vxs.json` sidecar at `path + ".json"` (Rule #6) on successful
+  binary write.
 - `loadVoxelSet(path)` — unified loader; returns `VoxelSetAllFile {
   mode_, shapeRecords_, dense_, ... }`. Works for all three modes —
   SHAPES-only leaves `dense_` empty; DENSE-only leaves `shapeRecords_`
