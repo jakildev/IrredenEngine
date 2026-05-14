@@ -3,7 +3,6 @@
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_input.hpp>
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/components/component_widget.hpp>
@@ -25,14 +24,9 @@ namespace IRSystem {
 //      check on the global mouse-button state).
 template <> struct System<WIDGET_APPLY_DROPDOWN> {
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
-    bool mouseLeftReleasedThisFrame_ = false;
 
     void beginTick() {
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
-        mouseLeftReleasedThisFrame_ = IRInput::checkKeyMouseButton(
-            IRInput::KeyMouseButtons::kMouseButtonLeft,
-            IRInput::ButtonStatuses::RELEASED
-        );
     }
 
     void tick(
@@ -86,10 +80,9 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         }
         dd.isOpen_ = false;
         hitbox.size_ = widget.size_;
-        (void)mouseLeftReleasedThisFrame_; // currently unused; kept for future
-                                           // outside-click-to-close logic that
-                                           // doesn't rely on the captured widget
-                                           // firing its own action.
+        // TODO: outside-click-to-close — close if mouse released outside the
+        // expanded hitbox; needs a direct mouse-released check rather than
+        // state.fireAction_ (which requires the click to land inside the widget).
     }
 
     static SystemId create() {
