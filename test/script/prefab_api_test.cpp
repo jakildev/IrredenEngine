@@ -409,7 +409,7 @@ TEST_F(PrefabApi, SpawnSkipsShapesAttachmentWhenAbsent) {
     EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
 }
 
-// ---- bind points: attach + entity:bindPoint() Lua API ---------------------
+// ---- bind points: attach + IREntity.bindPoint() Lua API ---------------------
 
 TEST_F(PrefabApi, SpawnAttachesBindPointsFromRig) {
     PrefabFiles f = writeBindPointFixtureSet(
@@ -440,7 +440,7 @@ TEST_F(PrefabApi, BindPointResolvesViaJointChain) {
             std::string{kTmpDir} +
             "/prefab_test_bind_resolve.rig',\n"
             "  setup = function(entity)\n"
-            "    local off, rot = entity:bindPoint('tip')\n"
+            "    local off, rot = IREntity.bindPoint(entity, 'tip')\n"
             "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
             "    g_rot_x, g_rot_y, g_rot_z, g_rot_w = rot.x, rot.y, rot.z, rot.w\n"
             "  end,\n"
@@ -499,7 +499,7 @@ TEST_F(PrefabApi, BindPointResolvesWithNonIdentityParentRotation) {
             << std::string{kTmpDir} << "/" << rigName
             << ".rig',\n"
                "  setup = function(entity)\n"
-               "    local off, rot = entity:bindPoint('end')\n"
+               "    local off, rot = IREntity.bindPoint(entity, 'end')\n"
                "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
                "    g_rot_x, g_rot_y, g_rot_z, g_rot_w = rot.x, rot.y, rot.z, rot.w\n"
                "  end,\n"
@@ -534,7 +534,7 @@ TEST_F(PrefabApi, BindPointOverridesApplied) {
             "    tip = { offset = vec3.new(2, 2, 2) },\n"
             "  },\n"
             "  setup = function(entity)\n"
-            "    local off, _ = entity:bindPoint('tip')\n"
+            "    local off, _ = IREntity.bindPoint(entity, 'tip')\n"
             "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
             "  end,\n"
             "}\n"
@@ -560,7 +560,7 @@ TEST_F(PrefabApi, BindPointMissingReturnsNil) {
             std::string{kTmpDir} +
             "/prefab_test_bind_missing.rig',\n"
             "  setup = function(entity)\n"
-            "    local off, rot = entity:bindPoint('nope')\n"
+            "    local off, rot = IREntity.bindPoint(entity, 'nope')\n"
             "    g_off_is_nil = (off == nil)\n"
             "    g_rot_is_nil = (rot == nil)\n"
             "  end,\n"
