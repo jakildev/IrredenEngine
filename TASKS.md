@@ -220,11 +220,11 @@ Avoid:
   - **Notes:** Bundle of mechanical items from audit pass. makeTag is constexpr — prefer static_assert if all call sites use string-literal constexpr args, otherwise runtime assert. Sequence CLAUDE.md update after T-184 (.txl deletion) merges — rebase if T-184 lands first. ir_asset_types.hpp is an empty header (ifndef/define/endif only); grep for includes before removing.
   - **Links:**
 
-- [ ] **test: JsonSidecarWriter + NameTable round-trips** — add dedicated unit tests for engine/asset json_sidecar and name_table, covering edge cases not exercised by existing .vxs integration tests
+- [~] **test: JsonSidecarWriter + NameTable round-trips** — add dedicated unit tests for engine/asset json_sidecar and name_table, covering edge cases not exercised by existing .vxs integration tests
   - **ID:** T-186
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) test/asset/json_sidecar_test.cpp added and registered — covers empty object/array, scope nesting, all value* overloads, string escaping, numeric edge cases, NaN/Inf contract, key ordering, and file-open failure; (2) test/asset/name_table_test.cpp added and registered — covers write/read round-trip (0/1/many entries), non-ASCII names, idByName/nameById hits/misses, duplicate-insert behavior, empty-name edge case; (3) all new tests pass; no production-code changes; fleet-build clean on linux-debug
   - **Issue:** #707
