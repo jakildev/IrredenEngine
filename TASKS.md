@@ -190,17 +190,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **prefab: Lua prefab format — entity template referencing .vxs + .rig + component pack** — Prefab.spawn/register API; Lua schema with voxel_ref, rig_ref, components, bind_point_overrides
-  - **ID:** T-173
-  - **Area:** engine/script, engine/prefabs/irreden
-  - **Model:** opus
-  - **Owner:** claude/T-173-prefab-lua-format
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Lua prefab schema: prefab_version=1, voxel_ref, rig_ref (optional), components pack, bind_point_overrides; (2) Prefab.spawn(id, position) C++ API + Lua binding; (3) Prefab.register(id, path) registry; (4) asset path resolution for voxel_ref/rig_ref via existing resolver; (5) round-trip test: register prefab, spawn, verify components attached with correct values, verify entity:bindPoint() returns expected world-space transform; (6) prefab_version enforced on load with clear diagnostic on unknown version; (7) additive component packs load without version bump
-  - **Issue:** #671
-  - **Notes:** Phase 5 of editor epic (#608). Lua-defined components are out of scope (separate epic). Component palette UI in #608 produces prefab Lua tables matching this schema. New files: prefab_api.hpp, prefab_api.cpp, lua_bindings_prefab.cpp.
-  - **Links:**
-
 - [~] **GPU particles: port stateless-particles 2×3 voxel-diamond render fix** — port the 6-trixel per-particle emit loop from stateless-particles shader to c_render_gpu_particles_to_trixel (GLSL + Metal) so GPU-pool particles render as lit voxel diamonds
   - **ID:** T-176
   - **Area:** shaders/glsl, shaders/metal
@@ -217,7 +206,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
   - **Owner:** claude/T-181-bind-points-runtime
-  - **Blocked by:** T-173
+  - **Blocked by:** (none)
   - **Acceptance:** (1) C_BindPoints runtime component declared and registered; (2) IRPrefab::Rig::toBindPoints(asset::Rig) bridge function; (3) C_BindPoints Lua binding via standard *_lua.hpp pattern; (4) LuaEntity::bindPoint(name) returns world-space transform (offset + rotation); (5) Prefab.spawn attaches C_BindPoints from rig_ref automatically, applies bind_point_overrides from prefab table; (6) round-trip test: entity:bindPoint("named_anchor") matches expected joint chain result; override changes result; (7) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document new surface + per-frame-cost contract
   - **Issue:** #700
   - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
@@ -228,7 +217,7 @@ Avoid:
   - **Area:** engine/script, engine/prefabs/irreden/voxel
   - **Model:** opus
   - **Owner:** claude/T-182-prefab-voxel-attach
-  - **Blocked by:** T-173
+  - **Blocked by:** (none)
   - **Acceptance:** (1) SHAPES-mode .vxs files attach per-record C_ShapeDescriptor to spawned entity; (2) DENSE/HYBRID-mode .vxs files attach without requiring active canvas (or contract explicitly documented if deferred); (3) round-trip test: register prefab with known .vxs, spawn, verify expected C_ShapeDescriptor records / C_VoxelSetNew slot count on entity; (4) engine/script/CLAUDE.md and engine/prefabs/irreden/voxel/CLAUDE.md document attachment behavior
   - **Issue:** #701
   - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
@@ -271,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
@@ -290,4 +280,3 @@ Avoid:
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
 - [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
 - [x] **T-150** — Editor F-0.4 — 3D editor camera (entity rotation + pan + zoom) · Owner: claude/T-150-editor-camera · PR: https://github.com/jakildev/IrredenEngine/pull/660
-- [x] **T-160** — TEXT_TO_TRIXEL — hoist gui canvas lookup out of per-entity tick · Owner: claude/T-160-text-trixel-canvas-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/657
