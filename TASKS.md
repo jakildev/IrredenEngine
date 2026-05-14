@@ -178,18 +178,6 @@ Avoid:
 
 
 
-- [~] **Editor F-0.7: JSON sidecar format for .txl** — .txl.json alongside every .txl save; stores bind-points, component-pack fields, material-registry references; silent when absent
-  - **ID:** T-151
-  - **Area:** engine/prefabs/irreden/voxel, creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-151-txl-json-sidecar
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) editor writes .txl.json next to .txl save (omit file if content empty); (2) loader reads sidecar if present; missing sidecar = empty bind-point list, empty component-pack, identity material map, no log; (3) round-trip test: write voxel grid + bind-points → reload → bind-points match exactly; (4) schema documented in same doc as .txl v2 spec from F-0.6
-  - **Issue:** #626
-  - **Notes:** Phase 0 (F-0.7) of entity-editor epic. Parent epic: #603. Umbrella: #213. Blocked by T-144 (epic doc) and T-146 (F-0.6 per-voxel metadata). Bind-point name vocabulary in game-side editor-needs.md (irreden#60). Engine stores component-pack values as untyped JSON; game side reads via its own registry.
-  - **Links:**
-
-
 - [~] **Editor F-0.9: voxel mouse picking (ray cast → world-space voxel selection)** — cursor-to-ray, DDA voxel grid intersection, single-voxel selection state with visual highlight
   - **ID:** T-153
   - **Area:** engine/render, creations/editors
@@ -289,6 +277,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
 - [x] **T-163** — Stateless procedural particle system — UBO-driven emitters · Owner: claude/T-163-stateless-particles · PR: https://github.com/jakildev/IrredenEngine/pull/659
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/684
@@ -308,4 +297,3 @@ Avoid:
 - [x] **T-157** — Migrate lighting + debug cluster to member-on-System<N> · Owner: claude/T-157-lighting-debug-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/640
 - [x] **T-158** — Migrate final composite + sprites cluster to member-on-System<N> · Owner: claude/T-158-final-composite-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/639
 - [x] **T-156** — Migrate trixel-canvas content systems to member-on-System<N> · Owner: claude/T-156-trixel-canvas-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/638
-- [x] **T-155** — Migrate GPU-compute cluster to member-on-System<N> · Owner: claude/T-155-gpu-compute-register-system · PR: https://github.com/jakildev/IrredenEngine/pull/637
