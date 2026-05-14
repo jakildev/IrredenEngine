@@ -97,11 +97,14 @@ struct C_VoxelSetNew {
                 globalPositions_.size(),
                 voxels_.size()
             );
-            // Release the reserved span before bailing — the pool reserved
-            // `requestedVoxels` slots regardless of the short span return, and
-            // the zeroed `size_` makes the headless-guard in `onDestroy()`
-            // skip the pool touch.
-            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(requestedVoxels));
+            // Release whatever the allocator handed back — `numVoxels_` is
+            // the min-span count, which on today's allocator either equals
+            // `requestedVoxels` (no mismatch, branch not taken) or is 0
+            // (out-of-voxels assert fall-through, no slots were reserved
+            // and this is a no-op). The dealloc is kept for symmetry with
+            // a hypothetical future allocator that returns partial spans.
+            // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             numVoxels_ = 0;
             size_ = ivec3(0);
             return;
@@ -179,10 +182,14 @@ struct C_VoxelSetNew {
                 positions_.size(),
                 voxels_.size()
             );
-            // Release the reserved span before bailing — the pool reserved
-            // `requestedVoxels` slots regardless of the short span return, and
-            // zeroing `numVoxels_` makes `onDestroy()` skip the pool touch.
-            IRRender::deallocateVoxels(voxelStartIdx_, requestedVoxels);
+            // Release whatever the allocator handed back — `numVoxels_` is
+            // the min-span count, which on today's allocator either equals
+            // `requestedVoxels` (no mismatch, branch not taken) or is 0
+            // (out-of-voxels assert fall-through, no slots were reserved
+            // and this is a no-op). The dealloc is kept for symmetry with
+            // a hypothetical future allocator that returns partial spans.
+            // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             size_ = ivec3(0);
             numVoxels_ = 0;
             return;
