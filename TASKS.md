@@ -238,7 +238,7 @@ Avoid:
   - **ID:** T-181
   - **Area:** engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-181-bind-points-runtime
   - **Blocked by:** T-173
   - **Acceptance:** (1) C_BindPoints runtime component declared and registered; (2) IRPrefab::Rig::toBindPoints(asset::Rig) bridge function; (3) C_BindPoints Lua binding via standard *_lua.hpp pattern; (4) LuaEntity::bindPoint(name) returns world-space transform (offset + rotation); (5) Prefab.spawn attaches C_BindPoints from rig_ref automatically, applies bind_point_overrides from prefab table; (6) round-trip test: entity:bindPoint("named_anchor") matches expected joint chain result; override changes result; (7) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document new surface + per-frame-cost contract
   - **Issue:** #700
@@ -260,7 +260,7 @@ Avoid:
   - **ID:** T-183
   - **Area:** engine/math, engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-183-math-binary-io-helpers
   - **Blocked by:** (none)
   - **Acceptance:** (1) zero copies of vec3/vec4 / color pack helpers remain inside engine/asset/src/*.cpp; (2) IRMath::BinaryIO (or equivalent engine/asset/include location) exposes writeVec3/writeVec4/readVec3/readVec4 and Color::fromPackedRGBA; (3) engine/math/ does not physically depend on engine/asset/; (4) voxel_set_format.cpp and rig_format.cpp call through the shared helpers; (5) all existing tests pass; (6) fleet-build clean on linux-debug
   - **Issue:** #704
