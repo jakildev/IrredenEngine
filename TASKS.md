@@ -187,23 +187,12 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **prefabs: vec3 modifier kind — extend modifier compose for vector fields** — add vec3-typed parameter support to the modifier system so position perturbations can be expressed as one logical modifier instead of three per-axis scalar ones
-  - **ID:** T-191
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-191-vec3-modifier-kind
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `IRPrefab::Modifier::push<vec3>()` or equivalent accepted by modifier system; (2) `C_ResolvedFields` or a vec3-typed companion yields a composed vec3 value for a given field; (3) compose order matches scalar semantics: OVERRIDE clears prior ops, ADD/MULTIPLY stack, CLAMP applied last, component-wise throughout; (4) existing scalar modifier tests (`test/ecs/modifier_runtime_test.cpp`, `modifier_lua_test.cpp`) still pass; (5) new tests cover vec3 ADD stacking, OVERRIDE-clears-prior, MULTIPLY scaling, per-axis clamp; (6) `engine/prefabs/irreden/common/CLAUDE.md` documents the typed-field model; (7) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #732
-  - **Notes:** Scalar-only modifier system forces vec3 perturbations (idle bob, knockback, screen shake) to fan out to three per-axis modifiers or use a dedicated hand-rolled component (the C_PositionOffset3D pattern deleted in T-192). Architect picks between (A) tagged-union param — `std::variant<float, vec3, quat>` in Modifier::param_ (preferred long-term; check trivial-copyability invariant) or (B) parallel ModifierVec3/C_ModifiersVec3 types (cheaper, less invasive). quat modifier kind is out of scope (Phase 2, sibling under #731). Lua API extension deferred unless straightforward. LambdaModifier::fn_ signature must also be extended if option A is chosen. Parent epic: #731.
-  - **Links:**
-
 - [ ] **prefabs: delete C_PositionOffset3D — migrate idle bob + gizmo offset to vec3 modifiers** — remove the hand-rolled per-frame additive offset component; rewrite its two writers as vec3 modifier pushes and update the four reader systems to drop the manual globalPos+offset sum
   - **ID:** T-192
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render, engine/prefabs/irreden/input, engine/entity
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-191
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -r "C_PositionOffset3D"` returns nothing in the codebase; (2) idle-bob entity in any demo visually identical pre/post-migration; (3) gizmo drag in editor still functions; (4) hitbox mouse-test resolves to the correct entity at the correct world position; (5) sprites render at correct screen position including any active idle offset; (6) `createEntity` no longer auto-attaches the offset component; (7) no system reads `globalPos + offset` — manual-sum pattern is gone; (8) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #733
   - **Notes:** C_PositionOffset3D predates the modifier system and is a hand-rolled position modifier channel. Two writers: system_periodic_idle_position_offset (overwrites each tick) and system_gizmo_drag (reads at drag begin). Four readers: system_sprites_to_screen, system_apply_position_offset, system_hitbox_mouse_test, system_entity_canvas_to_framebuffer. Key ordering gotcha: modifier resolver must run before any reader of C_PositionGlobal3D — audit pipeline order. Idle bob must re-push its vec3 modifier each tick (ticksRemaining_ decay); gizmo drag is one-shot per drag-step (fits modifier model naturally). Blocked by T-191 (vec3 modifier kind). Parent epic: #731.
@@ -249,7 +238,7 @@ Avoid:
   - **ID:** T-196
   - **Area:** engine/script, cmake/lua_codegen
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-196-lua-binding-codegen-research
   - **Blocked by:** (none)
   - **Stack:** T-193..T-196 lua-game-foundation
   - **Acceptance:** (1) `docs/design/lua-binding-automation.md` lands answering: (a) Should we extend the existing codegen tool to emit `bindLuaType<>` specializations for *existing C++ components* (the 40+ `*_lua.hpp` files in `engine/prefabs/`)? (b) Should math types and enums move to a shared `engine/script/lua_bindings_default.hpp` that creations include via one `registerStandardBindings(luaScript)` call instead of being re-listed per demo? (c) For (a), recommend an approach: regex-based header parsing, sidecar `.lua_bind` schema files per component, libclang, or stay with hand-written specializations; (2) note must include a "do nothing" option with a real argument for it (sometimes 40 trivial files is fine); (3) recommendation is concrete enough that 2-3 follow-up implementation tasks can be filed against it
@@ -261,6 +250,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-191** — vec3 modifier kind — extend modifier compose for vector fields · Owner: claude/T-191-vec3-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/740
 - [x] **T-189** — prefab attach DENSE/HYBRID voxel_ref as C_VoxelSetNew on spawn · Owner: claude/T-189-prefab-dense-attach · PR: https://github.com/jakildev/IrredenEngine/pull/729
 - [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
 - [x] **T-181** — prefab/runtime: C_BindPoints + entity:bindPoint Lua API · Owner: claude/T-181-bind-points-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/720
@@ -280,4 +270,3 @@ Avoid:
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
 - [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
 - [x] **T-171** — asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints · Owner: claude/T-171-rig-v2-bind-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/686
-- [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
