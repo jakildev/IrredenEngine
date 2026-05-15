@@ -187,23 +187,12 @@ Avoid:
   - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
   - **Links:**
 
-- [~] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
-  - **ID:** T-184
-  - **Area:** engine/asset, engine/prefabs/irreden/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-184-delete-txl-family
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) engine/asset/ and engine/prefabs/irreden/ contain no reference to .txl, TxlSidecar, saveTxlSidecar, loadTxlSidecar, saveTrixelTextureData, loadTrixelTextureData, kTrixelExtension, kTxlSidecarExtension, or kTrixelImage; (2) C_TriangleCanvasTextures has no saveToFile/loadFromFile methods; (3) command_save_main_canvas_trixels.hpp and test/asset/txl_sidecar_test.cpp deleted; (4) nlohmann/json no longer fetched by the engine build; (5) engine/asset/CLAUDE.md no longer documents .txl or .txl.json; (6) IRShapeDebug and IrredenEngineTest build clean
-  - **Issue:** #705
-  - **Notes:** .txl superseded by .vxs (T-167/168/170) — saveTrixelTextureData still v1 raw-binary with no header, saveTxlSidecar/loadTxlSidecar have zero non-test callers, nlohmann/json is exclusively used by txl. Removal steps: (a) delete IRAsset entry points (header + impl); (b) delete C_TriangleCanvasTextures::saveToFile/loadFromFile; (c) delete command_save_main_canvas_trixels.hpp; (d) delete test/asset/txl_sidecar_test.cpp; (e) drop nlohmann/json FetchContent + linkage from CMakeLists.txt; (f) update CLAUDE.md. FileTypes enum shift (kVoxelImage 2→1) is safe — enum unused at runtime. .irsprite stays untouched.
-  - **Links:**
-
 - [~] **asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh** — add // IRAsset: serialized to ShapeRecord, delete ir_asset_types.hpp stub, assert on makeTag input length, refresh CLAUDE.md
   - **ID:** T-185
   - **Area:** engine/asset
   - **Model:** sonnet
   - **Owner:** claude/T-185-asset-cleanups
-  - **Blocked by:** T-184
+  - **Blocked by:** (none)
   - **Acceptance:** (1) ShapeRecord carries `// IRAsset: serialized` + `static constexpr uint16_t kSaveVersion = kShapeRecordVersion;`; (2) other directly-serialized structs in engine/asset/ (RigJoint, RigBindPoint, dense per-voxel record) audited and annotated; (3) ir_asset_types.hpp deleted with no orphaned includes; (4) makeTag asserts (or static_asserts) on s.length() != 4; (5) engine/asset/CLAUDE.md opener updated to reflect current scope (not "Tiny module"); .txl gotcha bullet removed; .rig entry points listed; (6) fleet-build clean; T-172 serialized-struct linter passes
   - **Issue:** #706
   - **Notes:** Bundle of mechanical items from audit pass. makeTag is constexpr — prefer static_assert if all call sites use string-literal constexpr args, otherwise runtime assert. Sequence CLAUDE.md update after T-184 (.txl deletion) merges — rebase if T-184 lands first. ir_asset_types.hpp is an empty header (ifndef/define/endif only); grep for includes before removing.
@@ -268,6 +257,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
 - [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
@@ -284,7 +274,6 @@ Avoid:
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
-- [x] **T-151** — Editor F-0.7 — JSON sidecar format for .txl · Owner: claude/T-151-txl-json-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/661
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
