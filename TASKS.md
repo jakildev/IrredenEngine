@@ -220,17 +220,6 @@ Avoid:
   - **Notes:** lod_utils.hpp self-describes as "WIP stub — not yet included or referenced by any system". C_ShapeDescriptor::lodLevel_ already shipped to GPU as GPUShapeDescriptor.lodLevel but shader ignores it. Phase 1 filter is CPU-side only — GPU struct unchanged (Metal/GL parity hazard). Do NOT implement Phase 2 (per-tier .vxs refs from prefab manifest) or Phase 3 (cross-tier interpolation). Design rationale in docs/design/lod-strategy.md (PR #710).
   - **Links:**
 
-- [~] **script: decouple IrredenEngineScripting from IrredenEngineRendering** — fix layering violation where prefab_api.cpp rig loading pulls in C_JointHierarchy/GPUJointTransform header chain, causing scripting to link rendering
-  - **ID:** T-188
-  - **Area:** engine/script, engine/prefabs/irreden/render, engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-188-decouple-scripting-rendering
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IrredenEngineScripting target no longer links against IrredenEngineRendering (verify via CMake dependency graph or linker map); (2) fleet-build clean on linux-debug; (3) IrredenEngineTest passes; no functional regressions
-  - **Issue:** #709
-  - **Notes:** Layering violation surfaced in T-173 / PR #703. Two viable fixes: (A) hoist GPUJointTransform into a non-render header so script does not pull in the full render module; (B) move setComponent(entity, Rig::toComponent(...)) to a higher-level layer that can depend on both script and render. Author chooses approach; document rationale in commit message.
-  - **Links:**
-
 - [~] **prefab: DENSE/HYBRID voxel_ref ECS attachment (headless C_VoxelSetNew)** — architect decision + implementation for attaching DENSE/HYBRID-mode .vxs data as C_VoxelSetNew in Prefab.spawn without requiring an active render canvas
   - **ID:** T-189
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -257,6 +246,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
@@ -276,4 +266,3 @@ Avoid:
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
-- [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
