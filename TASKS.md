@@ -244,11 +244,11 @@ Avoid:
   - **Notes:** Today there are no Lua bindings for physics. Confirm what physics surface even exists in the engine (it may be limited — voxel collision, basic raycasting). Likely smaller scope than T-193. If the engine has minimal physics, this collapses to "bind raycast + voxel intersection from Lua." Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [ ] **docs: update lua-creation-setup skill for codegen + Lua-defined components/systems** — refresh `.claude/skills/lua-creation-setup/SKILL.md` to cover the codegen path and the IRComponent.register / IRSystem.registerSystem APIs that the existing skill predates
+- [~] **docs: update lua-creation-setup skill for codegen + Lua-defined components/systems** — refresh `.claude/skills/lua-creation-setup/SKILL.md` to cover the codegen path and the IRComponent.register / IRSystem.registerSystem APIs that the existing skill predates
   - **ID:** T-195
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Stack:** T-193..T-196 lua-game-foundation
   - **Acceptance:** (1) `.claude/skills/lua-creation-setup/SKILL.md` includes a section on the `irreden_lua_codegen()` CMake helper with a worked example; (2) section on defining components and systems entirely in Lua via `IRComponent.register()` / `IRSystem.registerSystem()`; (3) guidance on when to choose codegen vs runtime EVAL mode; (4) updated worked example based on `creations/demos/lua_pipeline_demo` and `creations/demos/lua_perf_grid`; (5) existing manual binding sections stay (still needed for math types and helper namespaces) but are flagged as optional once you're using codegen-defined components
