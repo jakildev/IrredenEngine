@@ -5,7 +5,6 @@ add_executable(IrredenEngineTest
   asset/binary_io_test.cpp
   asset/rig_format_test.cpp
   asset/sprite_sheet_test.cpp
-  asset/txl_sidecar_test.cpp
   asset/voxel_set_dense_test.cpp
   asset/voxel_set_hybrid_test.cpp
   asset/voxel_set_shapes_test.cpp

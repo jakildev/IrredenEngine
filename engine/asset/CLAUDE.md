@@ -1,34 +1,15 @@
-# engine/asset/ — trixel texture, sprite-sheet, and txl-sidecar I/O
+# engine/asset/ — Binary + text asset formats: `.vxs`, `.rig`, `.irsprite`
 
-Tiny module. Today it covers three file formats:
+This module is the engine's general asset-format home — binary and text
+asset formats land here. Current formats:
 
-- **Trixel textures** — raw binary `(size, colors[], distances[])` blobs
-  with extension `.txl`.
 - **Sprite-sheet sidecars** — plain-text metadata for PNG atlases with
   extension `.irsprite`. The PNG itself is loaded by `engine/render/`'s
   `ImageData`; this module owns only the sidecar.
-- **Trixel JSON sidecars** — JSON metadata stored alongside a `.txl` as
-  `<name>.txl.json`; holds bind-points, component-pack blobs, and
-  material-registry references.
-
-## What this module is and isn't
-
-`.txl` is the **trixel-texture** format and stays that way. Do not
-extend `.txl` to carry voxel data; the two existing trixel-texture
-call sites (`engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp`)
-would have to thread a multi-format reader through unrelated
-trixel-canvas code. If you find yourself reaching for that, file an
-issue instead.
-
-This module is the engine's general asset-format home — meaning the
-new voxel-set, rig, and prefab formats land here alongside the
-existing trixel-texture and sprite-sheet I/O:
-
-- `.vxs` — voxel-set asset (dense per-voxel records and/or SDF
-  shape-group composition; see editor-epic design doc).
-- `.rig` — joint hierarchy + bind points + skeletal animation tracks.
-- `.prefab.lua` — Lua prefab template referencing `.vxs` + `.rig` +
-  component pack.
+- **Voxel sets** — `.vxs` binary + `.vxs.json` sidecar (dense per-voxel
+  records and/or SDF shape-group composition; see editor-epic design doc).
+- **Rigs** — `.rig` binary + `.rig.json` sidecar (joint hierarchy + bind
+  points + skeletal animation tracks).
 
 The binary-I/O primitives (`BinaryWriter`/`Reader`, chunk-table header
 helpers, name-table encoding, JSON sidecar emitter) used by every new
@@ -46,12 +27,8 @@ snapshot (issue #199). It walks the archetype graph, so it lives in
 
 `IRAsset::` exposes:
 
-- `saveTrixelTextureData(name, path, size, colors, distances)` /
-  `loadTrixelTextureData(...)` — trixel binary round-trip.
 - `saveSpriteSheetMeta(name, path, meta)` /
   `loadSpriteSheetMeta(name, path)` — sidecar text round-trip.
-- `saveTxlSidecar(name, path, sidecar)` /
-  `loadTxlSidecar(name, path)` — `.txl.json` sidecar JSON round-trip.
 - `saveShapeGroup(path, span<ShapeRecord>)` / `loadShapeGroup(path)` —
   `.vxs` SHAPES-mode SDF primitive composition round-trip. See
   `voxel_set_format.hpp` for record layout and the
@@ -64,54 +41,6 @@ The `name` is embedded in the trixel file header; the `path` is the
 output directory. For sprite sheets, `name` is the basename shared
 by the `.png` atlas and its `.irsprite` sidecar. For rigs, `name` is
 the basename shared by the `.rig` binary and its `.rig.json` sidecar.
-
-## Trixel format
-
-Raw binary, no versioning:
-
-```
-ivec2 size
-<size.x * size.y> Color        entries
-<size.x * size.y> Distance     entries
-```
-
-No checksum, no magic bytes, no compression. Treat the file as volatile.
-
-## Trixel JSON sidecar format (`.txl.json`)
-
-Written/read by `saveTxlSidecar` / `loadTxlSidecar`. Stored as
-`<name>.txl.json` next to the binary `<name>.txl`. Saving an empty sidecar
-removes any pre-existing file; a missing file loads as all-defaults with no log.
-
-```json
-{
-  "bind_points": [
-    {
-      "name": "root",
-      "bone_id": 0,
-      "offset": [0.0, 0.0, 0.0],
-      "rotation": [1.0, 0.0, 0.0, 0.0]
-    }
-  ],
-  "component_pack": {},
-  "material_refs": [
-    { "name": "wood", "material_id": 1 }
-  ]
-}
-```
-
-Field notes:
-
-- **`bind_points`** — named attachment points used by the game's animation /
-  IK system. `rotation` is `[qw, qx, qy, qz]` stored in `vec4.x .y .z .w`.
-- **`component_pack`** — opaque JSON object; the engine stores it verbatim as
-  a `std::string`. The game-side component registry interprets the
-  per-component key → value entries at entity spawn time.
-- **`material_refs`** — maps human-readable names to `material_id` bytes from
-  the per-voxel metadata field added in `.txl` v2 (T-146 / F-0.6). The
-  identity map (empty array) is the default when no material info was authored.
-
-The `.txl.json` sidecar complements the binary `.txl` v2 spec from F-0.6.
 
 ## Sprite-sheet sidecar format
 
@@ -181,7 +110,7 @@ import/export. Runtime gameplay code generally does not touch this module.
 
 The headers under `engine/asset/include/irreden/asset/` provide the
 read/write building blocks every new asset format uses. Existing
-formats (`.txl`, `.irsprite`) predate the contract; new formats must
+formats (`.irsprite`) predate the contract; new formats must
 use these.
 
 **Hard rule — no raw `fopen` + `fwrite` / `fread` for new format I/O.**
@@ -337,7 +266,7 @@ High-level entry points:
 For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
 `engine/prefabs/irreden/asset/voxel_set_io.hpp` (`#include
 <irreden/asset/voxel_set_io.hpp>`) exposes
-`IRAsset::saveVoxelSet(span<const C_ShapeDescriptor>, ...)` with parallel
+`IRAsset::saveVoxelSet(path, span<const C_ShapeDescriptor>, ...)` with parallel
 offset / rotation / csgOp / boneId arrays — the per-entity composition
 metadata `C_ShapeDescriptor` does not itself carry. The adapter lives in
 prefabs to keep `engine/asset/` from depending on the component layer.
@@ -466,10 +395,6 @@ version in `AssetHeader.version_`, not per-struct versioning.
 
 ## Gotchas
 
-- **`fwrite`/`fread` return values unchecked.** A truncated file loads as
-  garbage with no error. Check return values against the expected element
-  count if correctness matters. `fopen` failures are caught (returns early
-  with `IRE_LOG_ERROR`).
 - **Path joining.** Paths are composed with `IRUtility::joinPath`.
   Windows vs POSIX separators are handled there, but double-check when
   you're debugging a missing-file bug.
@@ -478,5 +403,5 @@ version in `AssetHeader.version_`, not per-struct versioning.
   suggests an abstraction that doesn't exist yet.
 - **Voxel image stub.** The `FileTypes` enum in `ir_asset.hpp` has a
   `kVoxelImage` value with no corresponding load/save routine — still an
-  aspirational stub. (`kSpriteImage` is paired with the `.irsprite`
-  sidecar routines above.)
+  aspirational stub. `kSpriteImage` is paired with the `.irsprite` sidecar
+  routines above.

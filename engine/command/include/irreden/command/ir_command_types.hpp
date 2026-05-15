@@ -41,7 +41,6 @@ enum CommandNames {
     // and not change the on the canvas to framebuffer...
     UNLOCK_VOXEL_SCALE, // TODO: see above
     SPAWN_PARTICLE_MOUSE_POSITION,
-    SAVE_MAIN_CANVAS_TRIXELS,
     SET_TRIXEL_COLOR,
     TOGGLE_PERIODIC_IDLE_PAUSE,
     TOGGLE_GUI,
