@@ -222,18 +222,6 @@ Avoid:
   - **Notes:** Today there are no Lua bindings for physics. Confirm what physics surface even exists in the engine (it may be limited — voxel collision, basic raycasting). Likely smaller scope than T-193. If the engine has minimal physics, this collapses to "bind raycast + voxel intersection from Lua." Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [~] **docs: update lua-creation-setup skill for codegen + Lua-defined components/systems** — refresh `.claude/skills/lua-creation-setup/SKILL.md` to cover the codegen path and the IRComponent.register / IRSystem.registerSystem APIs that the existing skill predates
-  - **ID:** T-195
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-195-lua-creation-setup-docs
-  - **Blocked by:** (none)
-  - **Stack:** T-193..T-196 lua-game-foundation
-  - **Acceptance:** (1) `.claude/skills/lua-creation-setup/SKILL.md` includes a section on the `irreden_lua_codegen()` CMake helper with a worked example; (2) section on defining components and systems entirely in Lua via `IRComponent.register()` / `IRSystem.registerSystem()`; (3) guidance on when to choose codegen vs runtime EVAL mode; (4) updated worked example based on `creations/demos/lua_pipeline_demo` and `creations/demos/lua_perf_grid`; (5) existing manual binding sections stay (still needed for math types and helper namespaces) but are flagged as optional once you're using codegen-defined components
-  - **Issue:** (none)
-  - **Notes:** Skill is currently out of date — it documents the old pattern (manual `lua_bindings.cpp` per creation) and never mentions codegen. Reference docs: `engine/script/CLAUDE.md` lines 116-488 cover the Lua-driven ECS surface and codegen tool. Parent epic: lua-game-foundation (T-193..T-196).
-  - **Links:**
-
 - [~] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
   - **ID:** T-196
   - **Area:** engine/script, cmake/lua_codegen
@@ -250,6 +238,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-195** — docs: update lua-creation-setup skill for codegen + Lua-defined components/systems · Owner: claude/T-195-lua-creation-setup-docs · PR: https://github.com/jakildev/IrredenEngine/pull/742
 - [x] **T-191** — vec3 modifier kind — extend modifier compose for vector fields · Owner: claude/T-191-vec3-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/740
 - [x] **T-189** — prefab attach DENSE/HYBRID voxel_ref as C_VoxelSetNew on spawn · Owner: claude/T-189-prefab-dense-attach · PR: https://github.com/jakildev/IrredenEngine/pull/729
 - [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
@@ -269,4 +258,3 @@ Avoid:
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
 - [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
-- [x] **T-171** — asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints · Owner: claude/T-171-rig-v2-bind-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/686
