@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [ ] **prefabs: delete C_PositionOffset3D — migrate idle bob + gizmo offset to vec3 modifiers** — remove the hand-rolled per-frame additive offset component; rewrite its two writers as vec3 modifier pushes and update the four reader systems to drop the manual globalPos+offset sum
+- [~] **prefabs: delete C_PositionOffset3D — migrate idle bob + gizmo offset to vec3 modifiers** — remove the hand-rolled per-frame additive offset component; rewrite its two writers as vec3 modifier pushes and update the four reader systems to drop the manual globalPos+offset sum
   - **ID:** T-192
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render, engine/prefabs/irreden/input, engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -r "C_PositionOffset3D"` returns nothing in the codebase; (2) idle-bob entity in any demo visually identical pre/post-migration; (3) gizmo drag in editor still functions; (4) hitbox mouse-test resolves to the correct entity at the correct world position; (5) sprites render at correct screen position including any active idle offset; (6) `createEntity` no longer auto-attaches the offset component; (7) no system reads `globalPos + offset` — manual-sum pattern is gone; (8) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #733
