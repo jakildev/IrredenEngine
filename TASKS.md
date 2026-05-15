@@ -198,11 +198,11 @@ Avoid:
   - **Notes:** Architectural foundation only — no GPU upload system, no animation, no severance API yet. Those live in #605 Phase 2 (after SQT propagation from T-197 and editor Phase 1 from #604 land). Key design point: `C_Skeleton.joints_` is a flat ordered list (canonical bone-index space); indices are stable across saves, severance leaves a hole rather than shifting. This ticket should NOT bake assumptions about which transform component joints carry (SQT not landed yet); leave joint-entity transform type unspecified in the header with a comment. Coordinates with #731 (joint propagation reuses `SYSTEM_PROPAGATE_TRANSFORM`).
   - **Links:**
 
-- [ ] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
+- [~] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
   - **ID:** T-201
   - **Area:** engine/script, engine/render, engine/prefabs/irreden/voxel, engine/math, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) fresh `cmake --preset linux-debug` (or `macos-debug`) configure + `fleet-build --target IrredenEngineScripting` builds without `IrredenEngineRendering` in the script link list; (2) `IrredenEngineTest` builds and all `PrefabApi.*` tests pass; (3) `IRShapeDebug` and standard demos build and run; (4) `engine/script/src/prefab_api.cpp` no longer includes `<irreden/ir_render.hpp>`; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #739
