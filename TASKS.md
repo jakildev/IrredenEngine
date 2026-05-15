@@ -210,18 +210,6 @@ Avoid:
   - **Notes:** Highest-leverage gap blocking pure-Lua interactive games. Today the command system is C++-templated — see `creations/demos/default/main_lua.cpp:107-200` for how commands are currently registered. No `IRInput::createCommand` or input-handler binding is exposed to Lua. Phase as design-then-implement: design PR first, implementation PR second. Codegen support is optional — runtime registration is sufficient for v1. Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [~] **Research: Lua physics bindings — enumerate physics surface area and propose Lua API** — research-then-design; survey existing collision / raycasting / voxel-intersection surface, propose which APIs become Lua-callable, and identify which prefab systems need Lua hooks
-  - **ID:** T-194
-  - **Area:** engine/script, engine/physics
-  - **Model:** opus
-  - **Owner:** claude/T-194-lua-physics-research
-  - **Blocked by:** (none)
-  - **Stack:** T-193..T-196 lua-game-foundation
-  - **Acceptance:** (1) design note `docs/design/lua-physics-bindings.md` lands enumerating current physics surface area (collision, raycasting, voxel intersection, anything else actually present in the engine); (2) note proposes which APIs should be Lua-callable with concrete signatures; (3) note identifies which prefab systems need Lua hooks; (4) deliverable is framed around what's actually in the engine, not a generic physics-engine wishlist; (5) implementation deferred to a follow-up task filed once the design lands
-  - **Issue:** (none)
-  - **Notes:** Today there are no Lua bindings for physics. Confirm what physics surface even exists in the engine (it may be limited — voxel collision, basic raycasting). Likely smaller scope than T-193. If the engine has minimal physics, this collapses to "bind raycast + voxel intersection from Lua." Parent epic: lua-game-foundation (T-193..T-196).
-  - **Links:**
-
 - [~] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
   - **ID:** T-196
   - **Area:** engine/script, cmake/lua_codegen
@@ -238,6 +226,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-194** — Research: Lua physics bindings — enumerate physics surface and propose Lua API · Owner: claude/T-194-lua-physics-research · PR: https://github.com/jakildev/IrredenEngine/pull/744
 - [x] **T-195** — docs: update lua-creation-setup skill for codegen + Lua-defined components/systems · Owner: claude/T-195-lua-creation-setup-docs · PR: https://github.com/jakildev/IrredenEngine/pull/742
 - [x] **T-191** — vec3 modifier kind — extend modifier compose for vector fields · Owner: claude/T-191-vec3-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/740
 - [x] **T-189** — prefab attach DENSE/HYBRID voxel_ref as C_VoxelSetNew on spawn · Owner: claude/T-189-prefab-dense-attach · PR: https://github.com/jakildev/IrredenEngine/pull/729
@@ -257,4 +246,3 @@ Avoid:
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
-- [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
