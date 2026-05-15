@@ -186,30 +186,21 @@ struct GPUUpdateParams {
 /// stay in lockstep without two parallel enums to keep synchronized.
 using ShapeType = IRMath::SDF::ShapeType;
 
-/// Bit-combinable rendering flags stored in @c GPUShapeDescriptor::flags.
-/// Combine with @c |.
-enum ShapeFlags : std::uint32_t {
-    SHAPE_FLAG_NONE = 0,
-    SHAPE_FLAG_HOLLOW = 1u << 0, ///< Render only the shell; skip interior voxels.
-    SHAPE_FLAG_MIRROR_X = 1u << 1,
-    SHAPE_FLAG_MIRROR_Y = 1u << 2,
-    SHAPE_FLAG_VISIBLE = 1u << 3,
-    /// Forward-looking: snap joint rotation to nearest 90° in iso-adjusted space.
-    /// Not yet implemented.
-    SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
-    SHAPE_FLAG_CHECKERBOARD = 1u << 5,
-    /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
-    /// normalized to [0, 1] over the shape's own depth extent. Useful for
-    /// visually distinguishing individual shapes regardless of world position.
-    SHAPE_FLAG_DEPTH_COLOR = 1u << 6,
-    /// X-ray silhouette on occlusion. The shape writes its color normally
-    /// where it wins the depth contest; where it loses (something closer
-    /// already owns the pixel) `c_shapes_to_trixel` blends the shape color
-    /// at reduced alpha over the existing canvas color, so the shape still
-    /// reads as a faint silhouette through the occluder. Generic per-shape
-    /// opt-in (T-164).
-    SHAPE_FLAG_XRAY_OCCLUDED = 1u << 7,
-};
+/// Bit-combinable shape flags stored in @c GPUShapeDescriptor::flags. The
+/// canonical definition lives in @ref IRMath::SDF::ShapeFlags so the math
+/// side and the renderer share one source of truth; the using-declarations
+/// below re-export the @c SHAPE_FLAG_* enumerators into @c IRRender so the
+/// existing @c IRRender::SHAPE_FLAG_VISIBLE spelling keeps working.
+using ShapeFlags = IRMath::SDF::ShapeFlags;
+using IRMath::SDF::SHAPE_FLAG_CHECKERBOARD;
+using IRMath::SDF::SHAPE_FLAG_DEPTH_COLOR;
+using IRMath::SDF::SHAPE_FLAG_DISCRETE_ROTATION;
+using IRMath::SDF::SHAPE_FLAG_HOLLOW;
+using IRMath::SDF::SHAPE_FLAG_MIRROR_X;
+using IRMath::SDF::SHAPE_FLAG_MIRROR_Y;
+using IRMath::SDF::SHAPE_FLAG_NONE;
+using IRMath::SDF::SHAPE_FLAG_VISIBLE;
+using IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 
 struct GPUShapeDescriptor {
     vec4 worldPosition;
