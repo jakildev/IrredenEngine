@@ -7,16 +7,27 @@
 //
 //   IRModifier.Transform.{ADD, MULTIPLY, SET, CLAMP_MIN, CLAMP_MAX, OVERRIDE}
 //   IRModifier.registerField(name)                          → FieldBindingId
+//   IRModifier.registerFieldVec3(name)                      → FieldBindingId
 //   IRModifier.fieldId(name)                                → FieldBindingId
 //                                                            (kInvalidFieldId
 //                                                            when not registered)
 //   IRModifier.fieldName(id)                                → string | nil
 //   IRModifier.add(target, fieldNameOrId, opts)
+//   IRModifier.addVec3(target, fieldNameOrId, opts)
 //   IRModifier.addGlobal(fieldNameOrId, opts)
+//   IRModifier.addGlobalVec3(fieldNameOrId, opts)
 //   IRModifier.addLambda(target, fieldNameOrId, fn, opts)
 //   IRModifier.removeBySource(source)
 //   IRModifier.applyToField(target, fieldNameOrId, base)    → float
+//   IRModifier.applyToFieldVec3(target, fieldNameOrId, base) → vec3
 //   IRModifier.resolved(target, fieldNameOrId, fallback?)   → float
+//   IRModifier.resolvedVec3(target, fieldNameOrId, fallback?) → vec3
+//
+// The vec3 variants route to fields declared via `registerFieldVec3`;
+// scalar/vec3 fields are typed at registration time, so pushing the
+// wrong-typed payload silently no-ops (caller bug). `value` in
+// `addVec3` / `addGlobalVec3` opts is parsed via `vec3FromLua` — accept
+// either a registered `IRMath::vec3` userdata or a `{x,y,z}` table.
 //
 // `target` / `source` are entity ids (Lua integers — the same shape as
 // `arch.entityAt(i)` returns from a Lua-defined system, and the same
@@ -54,6 +65,7 @@
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/modifier.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <cstdint>
@@ -132,6 +144,15 @@ inline void bindModifierFramework(LuaScript &script) {
         return static_cast<lua_Integer>(IRPrefab::Modifier::registerField(names.back().c_str()));
     };
 
+    api["registerFieldVec3"] = [](const std::string &name) {
+        // Shares the same lifetime contract as registerField above.
+        static std::deque<std::string> names;
+        names.emplace_back(name);
+        return static_cast<lua_Integer>(
+            IRPrefab::Modifier::registerFieldVec3(names.back().c_str())
+        );
+    };
+
     api["fieldId"] = [](const std::string &name) {
         return static_cast<lua_Integer>(
             IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(name.c_str())
@@ -169,6 +190,39 @@ inline void bindModifierFramework(LuaScript &script) {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.addGlobal");
         const auto kind = resolveTransform(opts, "IRModifier.addGlobal");
         const float value = opts.get_or("value", 0.0f);
+        const lua_Integer source =
+            opts.get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
+        const std::int32_t ticks = opts.get_or("ticks", static_cast<std::int32_t>(-1));
+        IRPrefab::Modifier::pushGlobal(
+            field,
+            kind,
+            value,
+            static_cast<IREntity::EntityId>(source),
+            ticks
+        );
+    };
+
+    api["addVec3"] = [](lua_Integer target, sol::object fieldArg, sol::table opts) {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.addVec3");
+        const auto kind = resolveTransform(opts, "IRModifier.addVec3");
+        const IRMath::vec3 value = IRScript::vec3FromLua(opts.get<sol::object>("value"));
+        const lua_Integer source =
+            opts.get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
+        const std::int32_t ticks = opts.get_or("ticks", static_cast<std::int32_t>(-1));
+        IRPrefab::Modifier::push(
+            static_cast<IREntity::EntityId>(target),
+            field,
+            kind,
+            value,
+            static_cast<IREntity::EntityId>(source),
+            ticks
+        );
+    };
+
+    api["addGlobalVec3"] = [](sol::object fieldArg, sol::table opts) {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.addGlobalVec3");
+        const auto kind = resolveTransform(opts, "IRModifier.addGlobalVec3");
+        const IRMath::vec3 value = IRScript::vec3FromLua(opts.get<sol::object>("value"));
         const lua_Integer source =
             opts.get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
         const std::int32_t ticks = opts.get_or("ticks", static_cast<std::int32_t>(-1));
@@ -229,6 +283,17 @@ inline void bindModifierFramework(LuaScript &script) {
         );
     };
 
+    api["applyToFieldVec3"] =
+        [](lua_Integer target, sol::object fieldArg, sol::object baseObj) -> IRMath::vec3 {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.applyToFieldVec3");
+        const IRMath::vec3 base = IRScript::vec3FromLua(baseObj);
+        return IRPrefab::Modifier::applyToFieldVec3(
+            static_cast<IREntity::EntityId>(target),
+            field,
+            base
+        );
+    };
+
     api["resolved"] =
         [](lua_Integer target, sol::object fieldArg, sol::optional<float> fallbackOpt) -> float {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.resolved");
@@ -240,6 +305,21 @@ inline void bindModifierFramework(LuaScript &script) {
         if (resolved == nullptr)
             return fallback;
         return resolved->get(field, fallback);
+    };
+
+    api["resolvedVec3"] = [](lua_Integer target,
+                             sol::object fieldArg,
+                             sol::optional<sol::object> fallbackOpt) -> IRMath::vec3 {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.resolvedVec3");
+        const IRMath::vec3 fallback =
+            fallbackOpt ? IRScript::vec3FromLua(*fallbackOpt) : IRMath::vec3(0.0f);
+        auto *resolved = IREntity::getComponentOptional<IRComponents::C_ResolvedFields>(
+                             static_cast<IREntity::EntityId>(target)
+        )
+                             .value_or(nullptr);
+        if (resolved == nullptr)
+            return fallback;
+        return resolved->getVec3(field, fallback);
     };
 
     lua["IRModifier"] = api;

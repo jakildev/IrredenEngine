@@ -92,11 +92,43 @@ capability (Haste, Stun, Slow, Stack, GlobalSlow, LambdaSine,
 SourceKill, Clamp) live. The HUD shows per-cube resolved speed
 each tick.
 
+### Typed fields: scalar vs vec3
+
+Fields are typed at registration time. `IRPrefab::Modifier::registerField`
+declares a scalar field; `registerFieldVec3` declares a vec3 field.
+`fieldType(id)` returns `FieldValueType::{SCALAR,VEC3}`. The `push`
+overload set is type-driven: `push(target, field, kind, float, ...)`
+routes into `C_Modifiers::modifiers_` (scalar) and `push(target, field,
+kind, IRMath::vec3, ...)` routes into `C_Modifiers::modifiersVec3_`.
+Pushing the wrong scalar/vec3 against a typed field silently no-ops
+(caller bug — wrong-type push doesn't corrupt the resolved-field
+storage). The same applies to `pushGlobal`.
+
+Compose semantics for vec3 mirror the scalar path component-wise:
+`ADD`/`MULTIPLY`/`SET` apply per-axis in push-order; `OVERRIDE`
+replaces the entire vec3 and short-circuits prior ops; `CLAMP_MIN`/
+`CLAMP_MAX` bound each axis independently, always last. The compose
+helper is `composeForFieldVec3`; the per-frame resolver systems
+(`MODIFIER_RESOLVE_GLOBAL`, `MODIFIER_RESOLVE_EXEMPT`) iterate both
+scalar and vec3 vectors on the same `C_Modifiers` /
+`C_GlobalModifiers` archetype and write to the matching scalar /
+vec3 vector on `C_ResolvedFields`.
+
+`C_ResolvedFields` carries two parallel vectors: `fields_` (scalar)
+and `fieldsVec3_` (vec3). Read with `get(field)` / `getVec3(field)`;
+seed with `reset(field, base)` / `resetVec3(field, base)`. A scalar
+field id and a vec3 field id may share the same name but are distinct
+`FieldBindingId`s, so their resolved values live in separate slots.
+
+`LambdaModifier` stays scalar-only in v1 — `C_LambdaModifiers` does
+not have a vec3 counterpart. A vec3 lambda channel is a Phase 2
+follow-up alongside the quat modifier kind.
+
 Key invariants the design rests on:
 
-- `Modifier` stays **trivially-copyable**. Anything needing inline
-  `std::function` or `std::string` belongs in `C_LambdaModifiers`,
-  not `C_Modifiers`.
+- `Modifier` and `ModifierVec3` both stay **trivially-copyable**.
+  Anything needing inline `std::function` or `std::string` belongs
+  in `C_LambdaModifiers`, not `C_Modifiers`.
 - Public API lives in the `IRPrefab::Modifier::` namespace per the
   prefab-layer principle in `engine/prefabs/irreden/render/CLAUDE.md`,
   NOT in `IRRender::` or any engine-library-level namespace.

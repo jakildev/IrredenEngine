@@ -15,8 +15,8 @@
 // See docs/design/modifiers.md §Resolver evaluation order.
 
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/ir_math.hpp>
 
-#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -56,12 +56,20 @@ inline float composeForField(
 
     auto applyAlgebra = [&](const std::vector<IRComponents::Modifier> &v, std::size_t from) {
         for (std::size_t i = from; i < v.size(); ++i) {
-            if (v[i].field_ != field) continue;
+            if (v[i].field_ != field)
+                continue;
             switch (v[i].kind_) {
-                case TransformKind::ADD:      value += v[i].param_; break;
-                case TransformKind::MULTIPLY: value *= v[i].param_; break;
-                case TransformKind::SET:      value  = v[i].param_; break;
-                default: break;
+            case TransformKind::ADD:
+                value += v[i].param_;
+                break;
+            case TransformKind::MULTIPLY:
+                value *= v[i].param_;
+                break;
+            case TransformKind::SET:
+                value = v[i].param_;
+                break;
+            default:
+                break;
             }
         }
     };
@@ -70,11 +78,17 @@ inline float composeForField(
 
     auto applyClamp = [&](const std::vector<IRComponents::Modifier> &v, std::size_t from) {
         for (std::size_t i = from; i < v.size(); ++i) {
-            if (v[i].field_ != field) continue;
+            if (v[i].field_ != field)
+                continue;
             switch (v[i].kind_) {
-                case TransformKind::CLAMP_MIN: value = std::max(value, v[i].param_); break;
-                case TransformKind::CLAMP_MAX: value = std::min(value, v[i].param_); break;
-                default: break;
+            case TransformKind::CLAMP_MIN:
+                value = IRMath::max(value, v[i].param_);
+                break;
+            case TransformKind::CLAMP_MAX:
+                value = IRMath::min(value, v[i].param_);
+                break;
+            default:
+                break;
             }
         }
     };
@@ -90,11 +104,103 @@ inline const std::vector<IRComponents::Modifier> &emptyModifiers() {
 }
 
 inline float composeForField(
-    float base,
-    IRComponents::FieldBindingId field,
-    const std::vector<IRComponents::Modifier> &mods
+    float base, IRComponents::FieldBindingId field, const std::vector<IRComponents::Modifier> &mods
 ) {
     return composeForField(base, field, emptyModifiers(), mods);
+}
+
+// vec3 counterpart. Same OVERRIDE-wins / push-order-algebra /
+// clamp-last evaluation rule; ops are component-wise via IRMath
+// (ADD/MULTIPLY/SET use vec3 operators, CLAMP_MIN/MAX use IRMath::max
+// and IRMath::min, which template-dispatch to glm component-wise on
+// vec3).
+inline IRMath::vec3 composeForFieldVec3(
+    IRMath::vec3 base,
+    IRComponents::FieldBindingId field,
+    const std::vector<IRComponents::ModifierVec3> &modsA,
+    const std::vector<IRComponents::ModifierVec3> &modsB
+) {
+    using IRComponents::TransformKind;
+
+    int overrideA = -1;
+    for (std::size_t i = 0; i < modsA.size(); ++i) {
+        if (modsA[i].field_ == field && modsA[i].kind_ == TransformKind::OVERRIDE) {
+            overrideA = static_cast<int>(i);
+        }
+    }
+    int overrideB = -1;
+    for (std::size_t i = 0; i < modsB.size(); ++i) {
+        if (modsB[i].field_ == field && modsB[i].kind_ == TransformKind::OVERRIDE) {
+            overrideB = static_cast<int>(i);
+        }
+    }
+
+    IRMath::vec3 value = base;
+    std::size_t startA = 0, startB = 0;
+    if (overrideB >= 0) {
+        value = modsB[overrideB].param_;
+        startA = modsA.size();
+        startB = static_cast<std::size_t>(overrideB) + 1;
+    } else if (overrideA >= 0) {
+        value = modsA[overrideA].param_;
+        startA = static_cast<std::size_t>(overrideA) + 1;
+    }
+
+    auto applyAlgebra = [&](const std::vector<IRComponents::ModifierVec3> &v, std::size_t from) {
+        for (std::size_t i = from; i < v.size(); ++i) {
+            if (v[i].field_ != field)
+                continue;
+            switch (v[i].kind_) {
+            case TransformKind::ADD:
+                value += v[i].param_;
+                break;
+            case TransformKind::MULTIPLY:
+                value *= v[i].param_;
+                break;
+            case TransformKind::SET:
+                value = v[i].param_;
+                break;
+            default:
+                break;
+            }
+        }
+    };
+    applyAlgebra(modsA, startA);
+    applyAlgebra(modsB, startB);
+
+    auto applyClamp = [&](const std::vector<IRComponents::ModifierVec3> &v, std::size_t from) {
+        for (std::size_t i = from; i < v.size(); ++i) {
+            if (v[i].field_ != field)
+                continue;
+            switch (v[i].kind_) {
+            case TransformKind::CLAMP_MIN:
+                value = IRMath::max(value, v[i].param_);
+                break;
+            case TransformKind::CLAMP_MAX:
+                value = IRMath::min(value, v[i].param_);
+                break;
+            default:
+                break;
+            }
+        }
+    };
+    applyClamp(modsA, startA);
+    applyClamp(modsB, startB);
+
+    return value;
+}
+
+inline const std::vector<IRComponents::ModifierVec3> &emptyModifiersVec3() {
+    static const std::vector<IRComponents::ModifierVec3> kEmpty;
+    return kEmpty;
+}
+
+inline IRMath::vec3 composeForFieldVec3(
+    IRMath::vec3 base,
+    IRComponents::FieldBindingId field,
+    const std::vector<IRComponents::ModifierVec3> &mods
+) {
+    return composeForFieldVec3(base, field, emptyModifiersVec3(), mods);
 }
 
 } // namespace IRPrefab::Modifier::detail

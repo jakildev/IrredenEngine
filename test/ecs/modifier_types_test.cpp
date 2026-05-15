@@ -7,17 +7,20 @@
 
 namespace {
 
-using IRComponents::FieldBindingId;
-using IRComponents::kInvalidFieldId;
-using IRComponents::TransformKind;
-using IRComponents::Modifier;
-using IRComponents::LambdaModifier;
-using IRComponents::ResolvedField;
-using IRComponents::C_Modifiers;
 using IRComponents::C_GlobalModifiers;
-using IRComponents::C_NoGlobalModifiers;
 using IRComponents::C_LambdaModifiers;
+using IRComponents::C_Modifiers;
+using IRComponents::C_NoGlobalModifiers;
 using IRComponents::C_ResolvedFields;
+using IRComponents::FieldBindingId;
+using IRComponents::FieldValueType;
+using IRComponents::kInvalidFieldId;
+using IRComponents::LambdaModifier;
+using IRComponents::Modifier;
+using IRComponents::ModifierVec3;
+using IRComponents::ResolvedField;
+using IRComponents::ResolvedFieldVec3;
+using IRComponents::TransformKind;
 
 TEST(ModifierTypes, ModifierIsTriviallyCopyable) {
     static_assert(std::is_trivially_copyable_v<Modifier>);
@@ -56,13 +59,15 @@ TEST(ModifierTypes, ComponentsDefaultConstructEmpty) {
 
 TEST(ModifierTypes, ModifierPushAndRead) {
     C_Modifiers c{};
-    c.modifiers_.push_back(Modifier{
-        FieldBindingId{1},
-        TransformKind::ADD,
-        0.5f,
-        IREntity::EntityId{42},
-        std::int32_t{-1},
-    });
+    c.modifiers_.push_back(
+        Modifier{
+            FieldBindingId{1},
+            TransformKind::ADD,
+            0.5f,
+            IREntity::EntityId{42},
+            std::int32_t{-1},
+        }
+    );
 
     ASSERT_EQ(c.modifiers_.size(), std::size_t{1});
     EXPECT_EQ(c.modifiers_[0].field_, FieldBindingId{1});
@@ -74,12 +79,14 @@ TEST(ModifierTypes, ModifierPushAndRead) {
 
 TEST(ModifierTypes, LambdaModifierStoresFunction) {
     C_LambdaModifiers c{};
-    c.modifiers_.push_back(LambdaModifier{
-        FieldBindingId{2},
-        [](float base) { return base * 2.0f; },
-        IREntity::EntityId{7},
-        std::int32_t{60},
-    });
+    c.modifiers_.push_back(
+        LambdaModifier{
+            FieldBindingId{2},
+            [](float base) { return base * 2.0f; },
+            IREntity::EntityId{7},
+            std::int32_t{60},
+        }
+    );
 
     ASSERT_EQ(c.modifiers_.size(), std::size_t{1});
     EXPECT_FLOAT_EQ(c.modifiers_[0].fn_(3.0f), 6.0f);
@@ -94,6 +101,33 @@ TEST(ModifierTypes, ResolvedFieldsLookup) {
 
     EXPECT_EQ(c.fields_.size(), std::size_t{2});
     EXPECT_FLOAT_EQ(c.fields_[1].value_, 2.5f);
+}
+
+TEST(ModifierTypes, ModifierVec3IsTriviallyCopyable) {
+    static_assert(std::is_trivially_copyable_v<ModifierVec3>);
+    SUCCEED();
+}
+
+TEST(ModifierTypes, ModifierVec3LayoutLocked) {
+    static_assert(sizeof(ModifierVec3) == 32);
+    static_assert(alignof(ModifierVec3) == 8);
+    SUCCEED();
+}
+
+TEST(ModifierTypes, FieldValueTypeSize) {
+    static_assert(sizeof(FieldValueType) == 1);
+    SUCCEED();
+}
+
+TEST(ModifierTypes, CResolvedFieldsHoldsBothVectorsIndependently) {
+    C_ResolvedFields c{};
+    c.fields_.push_back(ResolvedField{FieldBindingId{1}, 1.5f});
+    c.fieldsVec3_.push_back(ResolvedFieldVec3{FieldBindingId{2}, IRMath::vec3(1.0f, 2.0f, 3.0f)});
+
+    EXPECT_EQ(c.fields_.size(), std::size_t{1});
+    EXPECT_EQ(c.fieldsVec3_.size(), std::size_t{1});
+    EXPECT_FLOAT_EQ(c.fields_[0].value_, 1.5f);
+    EXPECT_FLOAT_EQ(c.fieldsVec3_[0].value_.y, 2.0f);
 }
 
 } // namespace

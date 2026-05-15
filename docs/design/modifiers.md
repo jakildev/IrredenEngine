@@ -433,3 +433,42 @@ needs all four predecessors.
   kInvalidFieldId` — a default-constructed `Modifier{}` produces this
   state (`kind_ == ADD`, `field_ == 0`). Fail fast rather than silently
   adding an invalid modifier to the vector.
+
+## vec3 extension (T-191)
+
+The framework was extended in T-191 to carry vec3-typed fields
+alongside the scalar path. The shape stays parallel rather than
+variant-based:
+
+- `ModifierVec3` mirrors `Modifier` with `IRMath::vec3 param_` in
+  place of `float param_`. Stays trivially-copyable; `sizeof == 32`,
+  `alignof == 8`.
+- `ResolvedFieldVec3` mirrors `ResolvedField`. `C_Modifiers`,
+  `C_GlobalModifiers`, and `C_ResolvedFields` each carry both a
+  scalar vector (unchanged from v1) and a sibling vec3 vector —
+  one component, two internal columns.
+- The field registry tracks `FieldValueType::{SCALAR, VEC3}` per
+  binding id. `registerField` defaults to SCALAR; `registerFieldVec3`
+  declares a vec3 field. `push`/`pushGlobal` are overloaded on
+  scalar vs `vec3` param; pushing the wrong type silently no-ops
+  (caller bug, not data error).
+- Compose semantics are component-wise: ADD/MULTIPLY/SET apply
+  per-axis in push-order; CLAMP_MIN/CLAMP_MAX bound each axis
+  independently via `IRMath::max`/`IRMath::min`; OVERRIDE replaces
+  the entire vec3 and short-circuits prior ops. Resolver evaluation
+  order matches the scalar path — `composeForFieldVec3` is the vec3
+  twin of `composeForField`.
+- Resolver systems iterate both vectors on the same archetype each
+  tick (`MODIFIER_RESOLVE_GLOBAL`, `MODIFIER_RESOLVE_EXEMPT`).
+  Decay systems sweep both vectors. `removeBySource` sweeps both.
+- `LambdaModifier` stays scalar-only in v1. A `std::function<vec3
+  (vec3)>` channel and a quat modifier kind are Phase 2 follow-ups.
+- Lua surface: `IRModifier.registerFieldVec3`, `addVec3`,
+  `addGlobalVec3`, `applyToFieldVec3`, `resolvedVec3` mirror the
+  scalar Lua API. Param tables accept either an `IRMath::vec3`
+  userdata or a `{x, y, z}` keyed table via the `vec3FromLua`
+  helper.
+
+T-192 (delete `C_PositionOffset3D`) is the first consumer — it
+migrates idle-bob and gizmo-drag writers off the hand-rolled offset
+component onto a `POSITION` vec3 modifier field.

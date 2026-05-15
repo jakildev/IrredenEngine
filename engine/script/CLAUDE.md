@@ -615,7 +615,8 @@ The canonical example is `creations/demos/lua_pipeline_demo/`: zero C++
 ```lua
 IRModifier.Transform.{ADD, MULTIPLY, SET, CLAMP_MIN, CLAMP_MAX, OVERRIDE}
 
-IRModifier.registerField("Movement.speed")           -- → FieldBindingId
+IRModifier.registerField("Movement.speed")           -- → FieldBindingId (scalar)
+IRModifier.registerFieldVec3("Idle.bobOffset")       -- → FieldBindingId (vec3)
 IRModifier.fieldId("Movement.speed")                 -- → FieldBindingId
 IRModifier.fieldName(id)                             -- → string | nil
 
@@ -625,12 +626,21 @@ IRModifier.add(entity, fieldNameOrId, {
     source = sourceEntity,           -- optional
     ticks = 60,                      -- optional, -1 = no decay
 })
+IRModifier.addVec3(entity, fieldNameOrId, {
+    transform = IRModifier.Transform.ADD,
+    value = { x = 0, y = 0.25, z = 0 },  -- {x,y,z} table or IRMath::vec3 userdata
+    source = sourceEntity,
+    ticks = -1,
+})
 IRModifier.addGlobal(fieldNameOrId, opts)
+IRModifier.addGlobalVec3(fieldNameOrId, opts)
 IRModifier.addLambda(entity, fieldNameOrId, fn, opts)
 IRModifier.removeBySource(sourceEntity)
 
 IRModifier.applyToField(entity, fieldNameOrId, base) -- → resolved float
+IRModifier.applyToFieldVec3(entity, fieldNameOrId, base) -- → resolved vec3
 IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
+IRModifier.resolvedVec3(entity, fieldNameOrId, fallback) -- read vec3 slot
 ```
 
 - **`fieldNameOrId`** — accepts a string (resolved against the registry
@@ -651,6 +661,14 @@ IRModifier.resolved(entity, fieldNameOrId, fallback) -- read C_ResolvedFields
 - **`IRModifier.applyToField`** is a direct query; it shares one
   evaluator with the resolver pipeline, so the two paths agree on the
   same input regardless of whether the resolver tick has run yet.
+- **Typed fields: scalar vs vec3.** `registerField` declares a scalar
+  field; `registerFieldVec3` declares a vec3 field. Pushing the wrong
+  scalar/vec3 payload against a typed field silently no-ops — caller
+  bug, not a data error. Resolved values live in parallel slots on
+  `C_ResolvedFields` (`fields_` and `fieldsVec3_`), so a scalar field
+  and a vec3 field cannot accidentally cross-stream. `addLambda` is
+  scalar-only in v1; vec3 lambda channels (and quat fields) are a
+  Phase 2 follow-up.
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
