@@ -22,6 +22,7 @@
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
@@ -85,6 +86,7 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(
@@ -202,6 +204,7 @@ void initEntities() {
     // Point light between the shapes so lighting shows depth on all four.
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, -4.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, -4.0f)},
         C_LightSource{
             LightType::EMISSIVE,
             Color{200, 220, 255, 255},

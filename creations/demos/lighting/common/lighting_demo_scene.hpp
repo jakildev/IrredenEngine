@@ -40,6 +40,7 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -264,6 +265,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addDirectional_) {
         IREntity::createEntity(
             C_Position3D{vec3(0.0f)},
+            C_LocalTransform{vec3(0.0f)},
             C_LightSource{
                 LightType::DIRECTIONAL,
                 IRColors::kWhite,
@@ -279,6 +281,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addEmissive_) {
         IREntity::createEntity(
             C_Position3D{vec3(24.0f, 6.0f, -2.0f)},
+            C_LocalTransform{vec3(24.0f, 6.0f, -2.0f)},
             C_LightSource{
                 LightType::EMISSIVE,
                 Color{80, 210, 255, 255},
@@ -291,6 +294,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addPoint_) {
         IREntity::createEntity(
             C_Position3D{vec3(34.0f, -7.0f, -1.0f)},
+            C_LocalTransform{vec3(34.0f, -7.0f, -1.0f)},
             C_LightSource{
                 LightType::POINT,
                 Color{255, 150, 80, 255},
@@ -303,6 +307,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addSpot_) {
         IREntity::createEntity(
             C_Position3D{vec3(10.0f, -10.0f, -2.0f)},
+            C_LocalTransform{vec3(10.0f, -10.0f, -2.0f)},
             C_LightSource{
                 LightType::SPOT,
                 Color{170, 120, 255, 255},
@@ -342,6 +347,7 @@ inline void initSystems(const DemoConfig &config) {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
 

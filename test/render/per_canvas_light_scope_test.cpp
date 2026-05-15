@@ -41,8 +41,11 @@ IREntity::EntityId makeCanvasSentinel() {
 }
 
 IREntity::EntityId makeLight(IRMath::vec3 position, IRMath::Color color) {
+    // Seed C_WorldTransform directly because this test exercises the
+    // gather in isolation — no PROPAGATE_TRANSFORM system is running to
+    // resolve a local transform into the world slot.
     return IREntity::createEntity(
-        IRComponents::C_PositionGlobal3D{position},
+        IRComponents::C_WorldTransform{position, vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
         C_LightSource{LightType::EMISSIVE, color, 1.0f, static_cast<std::uint8_t>(8)}
     );
 }
@@ -125,7 +128,7 @@ TEST_F(PerCanvasLightScopeTest, DirectionalLightStillSkippedRegardlessOfParent) 
     // Directional lights drive sun shading via FrameDataSun, never the
     // light volume. Their parent should not change that.
     const IREntity::EntityId sun = IREntity::createEntity(
-        IRComponents::C_PositionGlobal3D{vec3(0.0f)},
+        IRComponents::C_WorldTransform{vec3(0.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
         C_LightSource{
             LightType::DIRECTIONAL,
             IRColors::kWhite,

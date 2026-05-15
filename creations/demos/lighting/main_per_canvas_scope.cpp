@@ -46,18 +46,21 @@ void perCanvasScopeScene() {
 
     EntityId lightA = createEntity(
         C_Position3D{lightOriginA},
+        C_LocalTransform{lightOriginA},
         C_LightSource{LightType::EMISSIVE, Color{220, 60, 30, 255}, kIntensity, kRadius}
     );
     setParent(lightA, mainCanvas);
 
     EntityId lightB = createEntity(
         C_Position3D{lightOriginB},
+        C_LocalTransform{lightOriginB},
         C_LightSource{LightType::EMISSIVE, Color{30, 60, 220, 255}, kIntensity, kRadius}
     );
     setParent(lightB, canvasB);
 
     createEntity(
         C_Position3D{lightOriginC},
+        C_LocalTransform{lightOriginC},
         C_LightSource{LightType::EMISSIVE, Color{40, 200, 80, 255}, kIntensity, kRadius}
     );
 }
