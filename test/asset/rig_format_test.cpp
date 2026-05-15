@@ -4,6 +4,7 @@
 #include <irreden/asset/chunk_header.hpp>
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
+#include <irreden/voxel/joint_hierarchy_gpu.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
 #include <cstdint>
@@ -257,8 +258,8 @@ TEST(RigFormat, GPUMatrixParityAfterRoundTrip) {
     const IRComponents::C_JointHierarchy roundTripped =
         IRPrefab::Rig::toComponent(loadedRig.value_);
 
-    const auto gpuBefore = original.toGPUFormat();
-    const auto gpuAfter = roundTripped.toGPUFormat();
+    const auto gpuBefore = IRPrefab::Rig::toGPUFormat(original);
+    const auto gpuAfter = IRPrefab::Rig::toGPUFormat(roundTripped);
     ASSERT_EQ(gpuBefore.size(), gpuAfter.size());
     EXPECT_EQ(
         0,

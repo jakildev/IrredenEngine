@@ -2,10 +2,8 @@
 #define COMPONENT_JOINT_HIERARCHY_H
 
 // PURPOSE: Per-entity joint tree for skeletal-style procedural animation.
-//   Each joint has a rotation quaternion (vec4), translation, and parent
-//   index. Converts to GPUJointTransform for upload to the JointBuffer
-//   SSBO (binding 21) consumed by the shapes compute shader.
-// STATUS: WIP stub -- component defined with toGPUFormat() but:
+//   Each joint has a rotation quaternion (vec4), translation, and parent index.
+// STATUS: WIP stub -- system integration pending:
 //   - No system reads or writes joint data.
 //   - system_shapes_to_trixel.hpp creates the JointTransformBuffer SSBO
 //     but never uploads data; c_shapes_to_trixel.glsl declares JointBuffer
@@ -20,10 +18,9 @@
 //      apply parent-chain rotation/translation to voxel positions.
 //   4. Create a demo entity with joints (e.g. a 3-joint articulated arm
 //      oscillating sinusoidally) to test the full pipeline.
-// DEPENDENCIES: IRRender (GPUJointTransform), IRMath (vec4).
+// DEPENDENCIES: IRMath (vec4). GPU conversion lives in joint_hierarchy_gpu.hpp.
 
 #include <irreden/ir_math.hpp>
-#include <irreden/render/ir_render_types.hpp>
 
 #include <vector>
 
@@ -62,18 +59,6 @@ struct C_JointHierarchy {
         }
     }
 
-    std::vector<IRRender::GPUJointTransform> toGPUFormat() const {
-        std::vector<IRRender::GPUJointTransform> gpu;
-        gpu.reserve(joints_.size());
-        for (const auto &j : joints_) {
-            IRRender::GPUJointTransform t{};
-            t.rotation = j.rotation_;
-            t.translation = j.translation_;
-            t.parentJointIndex = j.parentIndex_;
-            gpu.push_back(t);
-        }
-        return gpu;
-    }
 };
 
 } // namespace IRComponents
