@@ -184,7 +184,9 @@ constexpr std::uint16_t kShapeRecordVersion = 1;
 /// on-screen fields plus the composition metadata (`offset_`,
 /// `rotation_`, `boneId_`, `csgOp_`) the runtime caller decides whether
 /// to map onto separate components or fold into the descriptor itself.
+// IRAsset: serialized
 struct ShapeRecord {
+    static constexpr std::uint16_t kSaveVersion = kShapeRecordVersion;
     /// Numeric id read from the SHPG chunk. After `readShapeGroupChunk`
     /// resolves the SREF name table, this holds the **current build's**
     /// `IRMath::SDF::ShapeType` value; the on-disk id is dropped once

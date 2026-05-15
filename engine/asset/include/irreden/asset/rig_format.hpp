@@ -68,7 +68,9 @@ constexpr std::uint16_t kJointRecordVersion = 1;
 /// with the addition of an optional designer-facing name. The rotation
 /// `vec4` carries a quaternion in `{ qw, qx, qy, qz }` order — same
 /// convention as the runtime component and the GPU upload struct.
+// IRAsset: serialized
 struct RigJoint {
+    static constexpr std::uint16_t kSaveVersion = kJointRecordVersion;
     IRMath::vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
     IRMath::vec4 translation_{0.0f, 0.0f, 0.0f, 0.0f};
     std::uint32_t parentIndex_ = 0;
