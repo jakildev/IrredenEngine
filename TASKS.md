@@ -290,5 +290,5 @@ Avoid:
 - [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
 - [x] **T-170** — asset: .vxs hybrid mode + sidecar emitter + full test suite · Owner: claude/T-170-vxs-hybrid-sidecar · PR: https://github.com/jakildev/IrredenEngine/pull/694
 - [x] **T-171** — asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints · Owner: claude/T-171-rig-v2-bind-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/686
-- [x] **T-153** — Editor F-0.9 — voxel mouse picking (cursor→ray, DDA, single selection) · Owner: claude/T-153-voxel-picking · PR: https://github.com/jakildev/IrredenEngine/pull/682
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
+- [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
