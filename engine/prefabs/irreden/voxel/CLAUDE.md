@@ -19,7 +19,16 @@ for single voxels and particles.
   position updates; supports reshape (box/sphere SDF).
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
-- `C_JointHierarchy` — WIP; articulated voxel rigs.
+- `C_Skeleton` — rig-root component holding an ordered vector of joint
+  EntityIds. The position in the vector IS the bone_id used by
+  `C_Voxel.bone_id_` and indexed by the per-frame GPU joint-matrix SSBO.
+  See "Entity-based joints" below.
+- `C_Joint` — tag marking an entity as a skeletal joint. Paired with the
+  engine's canonical local-transform component and a `CHILD_OF` relation
+  to the rig root (or to a parent joint).
+- `C_JointHierarchy` — DEPRECATED; superseded by `C_Skeleton` + `C_Joint`.
+  Remains for one release as a compile shim. See `component_joint_hierarchy.hpp`
+  for the migration note.
 - `C_BindPoints` — runtime mirror of an asset rig's BIND chunk
   (`IRAsset::Rig::bindPoints_`). Each entry stores
   `{boneId, offset, rotation}` keyed by name. Populated by
@@ -97,6 +106,71 @@ nothing to the pool's per-frame writes — no risk of clobbering
 adjacent voxel-set ranges. `onDestroy()` skips the pool
 deallocation when `numVoxels_ == 0`, so the staging vector frees
 with the component.
+
+## Entity-based joints
+
+Joint hierarchies are first-class entities, not vector entries inside a
+single component on the rig root. Three pieces:
+
+- **`C_Skeleton`** on the rig root. Holds `std::vector<EntityId> joints_`
+  — the canonical, ordered list of joint entities. The index of an entry
+  in `joints_` IS the `bone_id` used by `C_Voxel.bone_id_` and indexed by
+  the per-frame GPU joint-matrix SSBO at binding 21.
+- **`C_Joint`** tag on each joint entity. Drives joint-only archetype
+  queries like `<C_Joint, C_LocalTransform>` so IK solvers and the GPU
+  joint-matrix uploader iterate joints without seeing rig roots or
+  skinned voxel sets.
+- **`CHILD_OF`** relations between joint entities form the bone tree. The
+  same `SYSTEM_PROPAGATE_TRANSFORM` (from `#731` Phase 2) that walks
+  every other CHILD_OF hierarchy composes the parent chain — no
+  joint-specific traversal code.
+
+Each joint entity carries the engine's canonical local-transform component
+(`C_Position3D` + `C_Rotation` today; `C_LocalTransform` once `#731` Phase 1
+lands). Joints can also carry arbitrary gameplay components — IK targets,
+constraints, hit-boxes, sound emitters, particle attachments — because the
+joint is just an ECS entity. That is the whole point of the entity-based
+model.
+
+### Bone-index stability and severance
+
+`C_Skeleton.joints_` is a flat ordered list — its indices are the bone-id
+space. **Indices are stable across saves and severance.** Severing a joint
+leaves a hole at the slot rather than splicing it out:
+
+```
+IRPrefab::Skeleton::severJoint(rigRoot, joint);
+// 1. removeRelation(joint, rigRoot, CHILD_OF) — joint becomes orphan.
+// 2. Walk descendants (still C_Joint, also orphaned).
+// 3. For each voxel whose bone_id matches joint or its descendants,
+//    bake the current world position into a new free-flying
+//    C_VoxelSetNew on a new entity.
+// 4. Mark the severed slot in C_Skeleton.joints_ as kNullEntity.
+//    The matching GPU SSBO slot uploads as identity.
+```
+
+The severance API is **declared in this design, not yet implemented**.
+It lives outside the current scaffolding ticket; the entity-based shape
+exists in code first so consumer migration in `#605` Phase 2 has a stable
+target. File a follow-up ticket when `#605` Phase 2 unblocks.
+
+### Bind pose
+
+Skinning math needs the bind-pose inverse to recover skinning matrices.
+`C_Skeleton` does **not** carry a `bindPose_` field yet — the canonical
+`IRMath::SQT` struct lands with `#731` Phase 1 (`C_LocalTransform`). Once
+SQT is available, a follow-up adds `std::vector<IRMath::SQT> bindPose_;`
+to `C_Skeleton` parallel to `joints_`. Until then, callers that need a
+bind pose load it from the `.rig` asset's BIND chunk via
+`IRPrefab::Rig::bindPose(rigRoot)`.
+
+### Optional follow-up: C_JointName
+
+The design also calls for an optional `C_JointName` tag carrying the
+bone name string for editor / animation reference. Filed as a separate
+follow-up rather than baked in here — `C_Skeleton.joints_[i]` is the
+authoritative reference; bone names are a UX convenience for editors and
+animation clips that want to address joints by string.
 
 ## Gotchas
 
