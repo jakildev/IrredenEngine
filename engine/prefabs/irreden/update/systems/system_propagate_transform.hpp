@@ -54,10 +54,12 @@
 namespace IRSystem {
 
 template <> struct System<PROPAGATE_TRANSFORM> {
-    // Scratch vectors live as members so the per-frame work allocates
+    // Scratch containers live as members so the per-frame work allocates
     // once at create time and reuses capacity each tick.
     std::vector<IREntity::ArchetypeNode *> ordered_;
     std::vector<IREntity::ArchetypeNode *> pending_;
+    std::unordered_set<IREntity::NodeId> candidateSet_;
+    std::unordered_set<IREntity::NodeId> doneSet_;
 
     void beginTick() {
         const auto translationField = IRPrefab::TransformModifier::translationField();
@@ -80,14 +82,14 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         // whether a parent archetype is "our problem" or a root from our
         // POV (i.e., parent lacks C_LocalTransform and we treat its
         // world as identity).
-        std::unordered_set<IREntity::NodeId> candidateSet;
-        candidateSet.reserve(nodes.size());
+        candidateSet_.clear();
+        candidateSet_.reserve(nodes.size());
         for (auto *node : nodes) {
-            candidateSet.insert(node->id_);
+            candidateSet_.insert(node->id_);
         }
 
-        std::unordered_set<IREntity::NodeId> doneSet;
-        doneSet.reserve(nodes.size());
+        doneSet_.clear();
+        doneSet_.reserve(nodes.size());
 
         // Topological sweep — each pass admits any node whose parent's
         // archetype is either outside our candidate set (treated as root)
@@ -107,15 +109,15 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                         ready = true;
                     } else {
                         const auto parentNodeId = parentRecord.archetypeNode->id_;
-                        if (!candidateSet.contains(parentNodeId) ||
-                            doneSet.contains(parentNodeId)) {
+                        if (!candidateSet_.contains(parentNodeId) ||
+                            doneSet_.contains(parentNodeId)) {
                             ready = true;
                         }
                     }
                 }
                 if (ready) {
                     ordered_.push_back(node);
-                    doneSet.insert(node->id_);
+                    doneSet_.insert(node->id_);
                     it = pending_.erase(it);
                 } else {
                     ++it;
