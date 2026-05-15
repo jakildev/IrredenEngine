@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Likely too large for one PR — consider splitting by subsystem: render-side → input-side → voxel-side → final retirement. Key gotcha: `C_VoxelPool`'s SoA layout currently carries `{C_Position3D, C_PositionOffset3D, C_PositionGlobal3D}` arrays — decide during impl whether to use one `C_WorldTransform` array or keep position-only views as cached projections. Lua bindings (sol2 + `*_lua.hpp` files) may need updating. GPU-side shape descriptor stays position-only; convert SQT→position on CPU before staging. Animation systems (sprite UV) not affected but audit `C_AnimationClip` / `C_ActionAnimation`.
   - **Links:**
 
-- [ ] **editor 2.1: joints as entities with CHILD_OF relations (replace SoA C_JointHierarchy)** — declare `C_Skeleton` + `C_Joint` components; deprecate `C_JointHierarchy`; document entity-based joint model in CLAUDE.md and design docs
+- [~] **editor 2.1: joints as entities with CHILD_OF relations (replace SoA C_JointHierarchy)** — declare `C_Skeleton` + `C_Joint` components; deprecate `C_JointHierarchy`; document entity-based joint model in CLAUDE.md and design docs
   - **ID:** T-200
   - **Area:** engine/prefabs/irreden/voxel, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `C_Skeleton` and `C_Joint` components compile and register; (2) `C_JointHierarchy` header has a deprecation comment pointing at `C_Skeleton` with a brief migration note for #605 implementers; (3) `engine/prefabs/irreden/voxel/CLAUDE.md` describes the entity-based joint model and severance design; (4) `#605`'s body or the linked design doc (`docs/design/entity-editor-epic.md`) reflects the refined 2.1 approach; (5) fleet-build clean on linux-debug
   - **Issue:** #737
