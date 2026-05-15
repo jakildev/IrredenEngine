@@ -245,11 +245,11 @@ Avoid:
   - **Notes:** Skill is currently out of date — it documents the old pattern (manual `lua_bindings.cpp` per creation) and never mentions codegen. Reference docs: `engine/script/CLAUDE.md` lines 116-488 cover the Lua-driven ECS surface and codegen tool. Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [ ] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
+- [~] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
   - **ID:** T-196
   - **Area:** engine/script, cmake/lua_codegen
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-193..T-196 lua-game-foundation
   - **Acceptance:** (1) `docs/design/lua-binding-automation.md` lands answering: (a) Should we extend the existing codegen tool to emit `bindLuaType<>` specializations for *existing C++ components* (the 40+ `*_lua.hpp` files in `engine/prefabs/`)? (b) Should math types and enums move to a shared `engine/script/lua_bindings_default.hpp` that creations include via one `registerStandardBindings(luaScript)` call instead of being re-listed per demo? (c) For (a), recommend an approach: regex-based header parsing, sidecar `.lua_bind` schema files per component, libclang, or stay with hand-written specializations; (2) note must include a "do nothing" option with a real argument for it (sometimes 40 trivial files is fine); (3) recommendation is concrete enough that 2-3 follow-up implementation tasks can be filed against it
