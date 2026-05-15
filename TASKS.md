@@ -176,17 +176,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
-  - **ID:** T-187
-  - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-187-lod-phase-1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) lod_utils.hpp exits stub status; computeLodLevel/shouldSkipAtLod/lodVoxelScale called by live systems with thresholds matching real zoom range (1.0–64.0); (2) LOD_UPDATE system added to SystemName enum and UPDATE pipeline; writes C_ActiveLodLevel singleton each frame from C_ZoomLevel; (3) C_ShapeDescriptor::lodLevel_ renamed to lodMin_ or semantics documented in header; (4) SHAPES_TO_TRIXEL reads C_ActiveLodLevel once at beginTick and skips shapes with lodMin_ < activeLod; (5) render-verify shot confirms progressive shape-count change across zoom 1.0/2.0/4.0/8.0; (6) no DENSE-mode, no .rig, no shader changes; fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #708
-  - **Notes:** lod_utils.hpp self-describes as "WIP stub — not yet included or referenced by any system". C_ShapeDescriptor::lodLevel_ already shipped to GPU as GPUShapeDescriptor.lodLevel but shader ignores it. Phase 1 filter is CPU-side only — GPU struct unchanged (Metal/GL parity hazard). Do NOT implement Phase 2 (per-tier .vxs refs from prefab manifest) or Phase 3 (cross-tier interpolation). Design rationale in docs/design/lod-strategy.md (PR #710).
-  - **Links:**
-
 - [~] **prefab: DENSE/HYBRID voxel_ref ECS attachment (headless C_VoxelSetNew)** — architect decision + implementation for attaching DENSE/HYBRID-mode .vxs data as C_VoxelSetNew in Prefab.spawn without requiring an active render canvas
   - **ID:** T-189
   - **Area:** engine/prefabs/irreden/voxel, engine/script
@@ -235,6 +224,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
 - [x] **T-181** — prefab/runtime: C_BindPoints + entity:bindPoint Lua API · Owner: claude/T-181-bind-points-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/720
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
@@ -254,4 +244,3 @@ Avoid:
 - [x] **T-171** — asset: .rig v2 — bind-points (BIND) chunk; persist C_BindPoints · Owner: claude/T-171-rig-v2-bind-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/686
 - [x] **T-153** — Editor F-0.9 — voxel mouse picking (cursor→ray, DDA, single selection) · Owner: claude/T-153-voxel-picking · PR: https://github.com/jakildev/IrredenEngine/pull/682
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
-- [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
