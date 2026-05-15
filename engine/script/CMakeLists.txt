@@ -28,6 +28,9 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
+    # Required: prefab_api.cpp uses IRRender::ShapeType + getActiveCanvasEntityOrNull
+    # via component_{shape_descriptor,voxel_set}.hpp. See #739 for the layering fix.
+    IrredenEngineRendering
 )
 # PRIVATE so render headers don't leak through script's PUBLIC interface
 # (T-188 layering rule). prefab_api.cpp uses IRRender::ShapeType via
