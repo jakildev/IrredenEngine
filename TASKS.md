@@ -191,7 +191,7 @@ Avoid:
   - **ID:** T-192
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render, engine/prefabs/irreden/input, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-192-delete-position-offset
   - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -r "C_PositionOffset3D"` returns nothing in the codebase; (2) idle-bob entity in any demo visually identical pre/post-migration; (3) gizmo drag in editor still functions; (4) hitbox mouse-test resolves to the correct entity at the correct world position; (5) sprites render at correct screen position including any active idle offset; (6) `createEntity` no longer auto-attaches the offset component; (7) no system reads `globalPos + offset` — manual-sum pattern is gone; (8) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #733
@@ -202,7 +202,7 @@ Avoid:
   - **ID:** T-193
   - **Area:** engine/script, engine/input, engine/command
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-193-lua-input-commands-impl
   - **Blocked by:** (none)
   - **Stack:** T-193..T-196 lua-game-foundation
   - **Acceptance:** (1) design note `docs/design/lua-input-commands.md` lands in PR 1 covering: how Lua-defined commands plug into the existing command dispatch loop, lifetime of Lua callables relative to the command registry, archetype-batched vs per-event dispatch, and how a Lua-defined command can be referenced by C++ pipeline composition; (2) PR 2 implements: a Lua API that (a) declares a new command with a tick body, (b) binds a key/mouse/gamepad input to that command and to a status (held/pressed/released); (3) the 12-command `initCommands()` block in `creations/demos/default/main_lua.cpp:107-200` can be replaced with a Lua equivalent and the demo behaves identically; (4) existing C++ command path (`template <> struct IRCommand::COMMAND_NAME`) keeps working with no behavior change; (5) fleet-build clean on linux-debug and macos-debug
