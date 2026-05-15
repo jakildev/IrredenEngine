@@ -10,6 +10,7 @@
 #include <irreden/audio/components/component_midi_note.hpp>
 
 // SYSTEMS
+#include <irreden/common/systems/system_modifier_decay.hpp>
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -71,6 +72,7 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
+         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_MIDI_TRIGGER>(),
          IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),

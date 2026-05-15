@@ -9,6 +9,7 @@
 #include <irreden/render/camera.hpp>
 
 // Components
+#include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -38,6 +39,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/common/systems/system_modifier_decay.hpp>
 #include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
@@ -288,7 +290,8 @@ void createGridEntities() {
                     IREntity::createEntity(
                         C_Position3D{pos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color, false},
-                        idle
+                        idle,
+                        C_Modifiers{}
                     );
                 } else {
                     IREntity::createEntity(
@@ -298,7 +301,8 @@ void createGridEntities() {
                             vec4(1.0f, 1.0f, 1.0f, 0.0f),
                             color
                         },
-                        idle
+                        idle,
+                        C_Modifiers{}
                     );
                 }
             }
@@ -368,6 +372,7 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
+         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),

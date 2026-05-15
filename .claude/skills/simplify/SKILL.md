@@ -87,9 +87,9 @@ Also flag (don't auto-fix):
   `engine/system/include/irreden/ir_system_types.hpp` (the system
   name enum is the registration mechanism).
 - `C_Position3D` read in a render-related system for visual placement
-  instead of `C_PositionGlobal3D + C_PositionOffset3D` — rendered
-  position is always Global + Offset. Flag; confirm the component is
-  intentional.
+  instead of `C_PositionGlobal3D` — `APPLY_POSITION_OFFSET` folds any
+  modifier-driven offset into globalPos each UPDATE tick. Flag;
+  confirm the component is intentional.
 - A component method that calls `IREntity::getComponent` /
   `setComponent` / `createEntity` / `setParent` on a *different*
   entity (tier-c violation per `engine/prefabs/CLAUDE.md`). Flag

@@ -43,8 +43,11 @@ struct C_VoxelSetNew {
     // local voxel position
     std::span<C_Position3D> positions_;
 
-    // offset to local voxel position
-    std::span<C_PositionOffset3D> positionOffsets_;
+    // Per-voxel deformation offset authored by VOXEL_SQUASH_STRETCH.
+    // Internal pool scratch state — not the engine-level entity offset
+    // channel (which travels through the modifier framework's
+    // POSITION_OFFSET_3D vec3 field and lands on C_PositionGlobal3D).
+    std::span<vec3> positionOffsets_;
 
     // global voxel position recalculated each update
     std::span<C_PositionGlobal3D> globalPositions_;
@@ -305,7 +308,7 @@ struct C_VoxelSetNew {
         C_Position3D parentPosition,
         std::vector<C_PositionGlobal3D> &poolGlobalsOut,
         const std::vector<C_Position3D> &poolPositions,
-        const std::vector<C_PositionOffset3D> &poolOffsets
+        const std::vector<vec3> &poolOffsets
     ) {
         if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
             return false;
@@ -324,7 +327,7 @@ struct C_VoxelSetNew {
         );
         for (int i = 0; i < safeCount; i++) {
             poolGlobalsOut[voxelStartIdx_ + i].pos_ = poolPositions[voxelStartIdx_ + i].pos_ +
-                                                      poolOffsets[voxelStartIdx_ + i].pos_ +
+                                                      poolOffsets[voxelStartIdx_ + i] +
                                                       parentPosition.pos_;
         }
         return safeCount > 0;

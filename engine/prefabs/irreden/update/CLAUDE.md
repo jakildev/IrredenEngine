@@ -25,8 +25,14 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PARTICLE_SPAWNER` — spawns particles at configured rate via the voxel
   particle entity builder.
 - `LIFETIME` — decrements `C_Lifetime`; destroys entities at zero.
-- `PERIODIC_IDLE` — drives `C_PositionOffset3D` via sine / easing for
-  drift/hover.
+- `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
+- `PERIODIC_IDLE_POSITION_OFFSET` — pushes the resolved bob value as a
+  vec3 ADD modifier on the entity's `C_Modifiers` each tick (under
+  the `POSITION_OFFSET_3D` field). `APPLY_POSITION_OFFSET` later
+  folds the composed value into `C_PositionGlobal3D`. Requires
+  `C_Modifiers` on bob-eligible entities and `MODIFIER_DECAY` running
+  earlier in the UPDATE pipeline so the per-frame push doesn't
+  accumulate.
 
 ## Commands
 

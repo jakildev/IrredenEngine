@@ -79,13 +79,15 @@ the ECS surface.
   framebuffer.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
 - `SPRITE_TO_SCREEN` — optional screen-composite pass that draws every
-  entity holding `C_Sprite + C_PositionGlobal3D + C_PositionOffset3D`
-  as a textured alpha-blended quad, sorted back-to-front and grouped
-  by atlas (one `drawArraysInstanced` per atlas). World position is
-  `global + offset` per the engine-wide rendered-position convention.
-  Bypasses the trixel pipeline; runs after the main canvas's
-  `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a creation
-  can register the system unconditionally — zero sprites = zero draws.
+  entity holding `C_Sprite + C_PositionGlobal3D` as a textured alpha-
+  blended quad, sorted back-to-front and grouped by atlas (one
+  `drawArraysInstanced` per atlas). World position is read directly
+  from `C_PositionGlobal3D` (modifier-driven offsets have already been
+  folded in by `APPLY_POSITION_OFFSET` earlier in the UPDATE
+  pipeline). Bypasses the trixel pipeline; runs after the main
+  canvas's `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a
+  creation can register the system unconditionally — zero sprites =
+  zero draws.
 - `VOXEL_PICKING` — editor input driver. On left-click PRESSED, casts a
   ray through the cursor (via `IRPrefab::Picking::castVoxelRay` —
   composes the same screen→world inverse `IRRender::mouseWorldPos3DAtIsoDepth`
@@ -198,8 +200,8 @@ cleaned up.
 transform handles (translate / rotate / scale) and marker primitives
 (joint / bind-point / IK) as small groups of child entities under a
 returned group root. Each emitted handle carries `C_PositionGlobal3D +
-C_PositionOffset3D + C_Position3D + C_ShapeDescriptor + C_GizmoHandle +
-C_Name`; geometry comes from the SDF primitives in `IRMath::SDF::ShapeType`
+C_Position3D + C_ShapeDescriptor + C_GizmoHandle + C_Name`; geometry
+comes from the SDF primitives in `IRMath::SDF::ShapeType`
 (`CYLINDER`, `CONE`, `TORUS`, `SPHERE`, `BOX`) rendered by the existing
 `SHAPES_TO_TRIXEL` pass — no new render stage is introduced.
 

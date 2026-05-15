@@ -76,13 +76,18 @@ per-row work runs at native speed. EVAL (LuaJIT-backed sol2 dispatch via
 coexistence" for the DSL subset, the per-system override, the
 CMake flag, and the hot-reload-only-in-EVAL contract.
 
-## `createEntity` always adds position components
+## `createEntity` always adds `C_PositionGlobal3D`
 
-`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` and
-`C_PositionOffset3D` to every entity, whether you asked for them or not. The
-rendered position is `global + offset`. You cannot opt out. Systems that
-want an entity's actual draw position should read `C_PositionGlobal3D +
-C_PositionOffset3D`, not `C_Position3D`.
+`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` to every
+entity, whether you asked for it or not. Systems that want an entity's
+actual draw position should read `C_PositionGlobal3D`, not `C_Position3D`.
+
+Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
+perturbations) travel through the modifier framework's
+`POSITION_OFFSET_3D` vec3 field: writers push a vec3 modifier on
+`C_Modifiers`, and `APPLY_POSITION_OFFSET` composes the entity's vec3
+modifiers and folds the resolved value into `C_PositionGlobal3D` once
+per UPDATE tick. Entities that don't bob don't need `C_Modifiers`.
 
 ## Manager globals
 

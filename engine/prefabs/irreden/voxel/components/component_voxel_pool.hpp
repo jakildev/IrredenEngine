@@ -6,7 +6,6 @@
 #include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
@@ -50,11 +49,7 @@ struct C_VoxelPool {
         std::fill(m_voxelPositions.begin(), m_voxelPositions.end(), C_Position3D{vec3(0, 0, 0)});
 
         m_voxelPositionsOffset.resize(m_voxelPoolSize);
-        std::fill(
-            m_voxelPositionsOffset.begin(),
-            m_voxelPositionsOffset.end(),
-            C_PositionOffset3D{vec3(0, 0, 0)}
-        );
+        std::fill(m_voxelPositionsOffset.begin(), m_voxelPositionsOffset.end(), vec3(0, 0, 0));
 
         m_voxelPositionsGlobal.resize(m_voxelPoolSize);
         std::fill(
@@ -87,7 +82,7 @@ struct C_VoxelPool {
             return IRRender::VoxelPoolAllocation{
                 startIndex,
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
-                std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
+                std::span<vec3>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
@@ -101,7 +96,7 @@ struct C_VoxelPool {
             return IRRender::VoxelPoolAllocation{
                 startIndex,
                 std::span<C_Position3D>{m_voxelPositions.data() + startIndex, size},
-                std::span<C_PositionOffset3D>{m_voxelPositionsOffset.data() + startIndex, size},
+                std::span<vec3>{m_voxelPositionsOffset.data() + startIndex, size},
                 std::span<C_PositionGlobal3D>{m_voxelPositionsGlobal.data() + startIndex, size},
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
@@ -112,7 +107,7 @@ struct C_VoxelPool {
         return IRRender::VoxelPoolAllocation{
             0,
             std::span<C_Position3D>{},
-            std::span<C_PositionOffset3D>{},
+            std::span<vec3>{},
             std::span<C_PositionGlobal3D>{},
             std::span<C_Voxel>{}
         };
@@ -145,7 +140,7 @@ struct C_VoxelPool {
     std::vector<C_Position3D> &getPositions() {
         return m_voxelPositions;
     }
-    std::vector<C_PositionOffset3D> &getPositionOffsets() {
+    std::vector<vec3> &getPositionOffsets() {
         return m_voxelPositionsOffset;
     }
     std::vector<C_PositionGlobal3D> &getPositionGlobals() {
@@ -159,7 +154,7 @@ struct C_VoxelPool {
         return m_voxelPositions;
     }
 
-    const std::vector<C_PositionOffset3D> &getPositionOffsets() const {
+    const std::vector<vec3> &getPositionOffsets() const {
         return m_voxelPositionsOffset;
     }
 
@@ -209,7 +204,10 @@ struct C_VoxelPool {
         m_entityIdsDirty = false;
     }
 
-    [[deprecated("Capture VoxelPoolAllocation::startIndex_ at allocateVoxels call time instead — see engine/render/CLAUDE.md")]]
+    [[deprecated(
+        "Capture VoxelPoolAllocation::startIndex_ at allocateVoxels call time instead — see "
+        "engine/render/CLAUDE.md"
+    )]]
     const C_PositionGlobal3D *getPositionGlobalsBasePtr() const {
         return m_voxelPositionsGlobal.data();
     }
@@ -253,7 +251,7 @@ struct C_VoxelPool {
 
     std::vector<EntityId> m_voxelEntities;
     std::vector<C_Position3D> m_voxelPositions;
-    std::vector<C_PositionOffset3D> m_voxelPositionsOffset;
+    std::vector<vec3> m_voxelPositionsOffset;
     std::vector<C_PositionGlobal3D> m_voxelPositionsGlobal;
     std::vector<C_Voxel> m_voxelColors;
     std::vector<std::pair<size_t, size_t>> m_freeVoxelSpans;

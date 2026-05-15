@@ -6,6 +6,7 @@
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/audio/components/component_midi_channel.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
@@ -139,14 +140,20 @@ void registerLuaBindings() {
         );
 
         luaScript.lua()["TextAlignH"] = luaScript.lua().create_table_with(
-            "LEFT",   static_cast<int>(TextAlignH::LEFT),
-            "CENTER", static_cast<int>(TextAlignH::CENTER),
-            "RIGHT",  static_cast<int>(TextAlignH::RIGHT)
+            "LEFT",
+            static_cast<int>(TextAlignH::LEFT),
+            "CENTER",
+            static_cast<int>(TextAlignH::CENTER),
+            "RIGHT",
+            static_cast<int>(TextAlignH::RIGHT)
         );
         luaScript.lua()["TextAlignV"] = luaScript.lua().create_table_with(
-            "TOP",    static_cast<int>(TextAlignV::TOP),
-            "CENTER", static_cast<int>(TextAlignV::CENTER),
-            "BOTTOM", static_cast<int>(TextAlignV::BOTTOM)
+            "TOP",
+            static_cast<int>(TextAlignV::TOP),
+            "CENTER",
+            static_cast<int>(TextAlignV::CENTER),
+            "BOTTOM",
+            static_cast<int>(TextAlignV::BOTTOM)
         );
         luaScript.lua()["IRText"] = luaScript.lua().create_table();
         luaScript.lua()["IRText"]["create"] =
@@ -164,8 +171,11 @@ void registerLuaBindings() {
                     if (colorOpt) {
                         sol::table ct = *colorOpt;
                         color = Color(
-                            ct.get_or(1, 255), ct.get_or(2, 255),
-                            ct.get_or(3, 255), ct.get_or(4, 255));
+                            ct.get_or(1, 255),
+                            ct.get_or(2, 255),
+                            ct.get_or(3, 255),
+                            ct.get_or(4, 255)
+                        );
                     }
                     wrapWidth = opts.get_or("wrapWidth", 0);
                     lifetime = opts.get_or("lifetime", 0);
@@ -179,19 +189,26 @@ void registerLuaBindings() {
                 IREntity::EntityId entity;
                 if (lifetime > 0) {
                     entity = IREntity::createEntity(
-                        C_TextSegment{text}, C_GuiPosition{x, y},
-                        C_GuiElement{}, style, C_Lifetime{lifetime});
+                        C_TextSegment{text},
+                        C_GuiPosition{x, y},
+                        C_GuiElement{},
+                        style,
+                        C_Lifetime{lifetime}
+                    );
                 } else {
                     entity = IREntity::createEntity(
-                        C_TextSegment{text}, C_GuiPosition{x, y},
-                        C_GuiElement{}, style);
+                        C_TextSegment{text},
+                        C_GuiPosition{x, y},
+                        C_GuiElement{},
+                        style
+                    );
                 }
                 return IRScript::LuaEntity{entity};
             };
-        luaScript.lua()["IRText"]["setText"] =
-            [](IRScript::LuaEntity handle, const std::string &text) {
-                IREntity::getComponent<C_TextSegment>(handle.entity).text_ = text;
-            };
+        luaScript.lua()["IRText"]["setText"] = [](IRScript::LuaEntity handle,
+                                                  const std::string &text) {
+            IREntity::getComponent<C_TextSegment>(handle.entity).text_ = text;
+        };
         luaScript.lua()["IRText"]["remove"] = [](IRScript::LuaEntity handle) {
             IREntity::destroyEntity(handle.entity);
         };
@@ -210,15 +227,21 @@ void registerLuaBindings() {
             &IREntity::CreateEntityCallbackParams::index
         );
 
-        // Batch creation functions
-        luaScript.registerCreateEntityBatchFunction<C_Position3D, C_VoxelSetNew, C_PeriodicIdle>(
-            "createEntityBatchVoxelPeriodicIdle"
-        );
+        // Batch creation functions — every bob-eligible entity also
+        // carries C_Modifiers so PERIODIC_IDLE_POSITION_OFFSET can push
+        // a per-frame vec3 modifier and APPLY_POSITION_OFFSET can
+        // compose it into C_PositionGlobal3D.
         luaScript.registerCreateEntityBatchFunction<
             C_Position3D,
             C_VoxelSetNew,
             C_PeriodicIdle,
-            C_MidiNote>("createEntityBatchPolyrhythm");
+            C_Modifiers>("createEntityBatchVoxelPeriodicIdle");
+        luaScript.registerCreateEntityBatchFunction<
+            C_Position3D,
+            C_VoxelSetNew,
+            C_PeriodicIdle,
+            C_MidiNote,
+            C_Modifiers>("createEntityBatchPolyrhythm");
 
         // Direct entity creation for MIDI sequences
         luaScript.registerCreateEntityFunction<C_MidiSequence>("createMidiSequence");
@@ -228,9 +251,7 @@ void registerLuaBindings() {
         luaScript.lua()["IRRender"]["setGuiScale"] = [](int scale) {
             IRRender::setGuiScale(scale);
         };
-        luaScript.lua()["IRRender"]["getGuiScale"] = []() {
-            return IRRender::getGuiScale();
-        };
+        luaScript.lua()["IRRender"]["getGuiScale"] = []() { return IRRender::getGuiScale(); };
         luaScript.lua()["IRRender"]["getMainCanvasSize"] = [](sol::this_state L) {
             vec2 size = IRRender::getMainCanvasSizeTrixels();
             sol::table t = sol::state_view(L).create_table();

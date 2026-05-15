@@ -35,7 +35,7 @@ For changed files under `engine/render/`, `engine/prefabs/irreden/render/`, or a
 
 7. **3D world coords vs iso 2D coords.** Mixing `vec3` world-space with `vec2` iso-space without going through `IRMath::pos3DtoPos2DIso` (or a named helper). The two spaces are not interchangeable.
 
-8. **Position-component selection.** A render system reading `C_Position3D` for visual placement instead of `C_PositionGlobal3D + C_PositionOffset3D`.
+8. **Position-component selection.** A render system reading `C_Position3D` for visual placement instead of `C_PositionGlobal3D` (`APPLY_POSITION_OFFSET` has already folded any modifier-driven offset into globalPos).
 
 ## Lighting stage (additional checks)
 

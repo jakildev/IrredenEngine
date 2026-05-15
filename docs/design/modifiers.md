@@ -2,11 +2,12 @@
 
 Engine-level mechanism that lets any component field be modulated by a
 vector of structured `(transform, parameter)` pairs. The pattern
-generalizes the existing `C_Position3D` + `C_PositionOffset3D` →
-`C_PositionGlobal3D` pipeline so other features (velocity drag,
-buff/debuff stacks, color modulation, etc.) can hand off the
-"compose base + N modifications → effective value" math to a shared
-resolver.
+generalizes the original `local + offset → global` position pipeline
+so other features (velocity drag, buff/debuff stacks, color
+modulation, etc.) can hand off the "compose base + N modifications →
+effective value" math to a shared resolver. T-192 migrated the
+per-entity offset channel itself onto the framework — see
+`POSITION_OFFSET_3D` at the bottom of this doc.
 
 This document specifies the framework's public contract and the
 locked design choices behind it. The runtime that backs these
@@ -469,6 +470,14 @@ variant-based:
   userdata or a `{x, y, z}` keyed table via the `vec3FromLua`
   helper.
 
-T-192 (delete `C_PositionOffset3D`) is the first consumer — it
-migrates idle-bob and gizmo-drag writers off the hand-rolled offset
-component onto a `POSITION` vec3 modifier field.
+T-192 (the first consumer) deleted `C_PositionOffset3D` and migrated
+the idle-bob writer onto the `POSITION_OFFSET_3D` vec3 field
+(`engine/prefabs/irreden/common/position_modifier_fields.hpp`).
+`APPLY_POSITION_OFFSET` composes each bob-eligible entity's vec3
+modifiers locally against a vec3(0) base and adds the result to
+`C_PositionGlobal3D` — no resolver-pipeline registration is required
+just for the offset channel, only `MODIFIER_DECAY` running before the
+bob writer in the UPDATE pipeline. The reader-side sprite, hitbox,
+canvas-to-framebuffer, gizmo-drag, and picking systems read
+`C_PositionGlobal3D` directly; the `global + offset` manual sum is
+gone.
