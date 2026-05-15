@@ -215,8 +215,8 @@ events.
 - `CONTACT_NOTE_BURST`, `CONTACT_TRIGGER_GLOW`,
   `CONTACT_MIDI_TRIGGER` — fire one-shot side effects on contact.
 
-**Lua reachability today:** these systems are all bound (line 119,
-122, 124, 102, 103, 101 in `lua_pipeline_bindings.hpp`); the
+**Lua reachability today:** these systems are all bound in
+`lua_pipeline_bindings.hpp`; the
 underlying `C_SpringPlatform` component has a `_lua.hpp` binding
 (`component_spring_platform_lua.hpp`). They are a useful set to
 keep working but they don't define new Lua surface area — they're
