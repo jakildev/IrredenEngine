@@ -29,6 +29,13 @@ target_link_libraries(
     IrredenEngineSystem
     IrredenEngineAsset
 )
+# PRIVATE so render headers don't leak through script's PUBLIC interface
+# (T-188 layering rule). prefab_api.cpp uses IRRender::ShapeType via
+# C_ShapeDescriptor when attaching SHAPES voxel_ref records.
+target_link_libraries(
+    IrredenEngineScripting PRIVATE
+    IrredenEngineRendering
+)
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
 # default is exception propagation; in practice the exception message
