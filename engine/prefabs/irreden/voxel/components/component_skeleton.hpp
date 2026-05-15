@@ -7,7 +7,8 @@
 // component) related to the rig root via CHILD_OF.
 //
 // The position of a joint in `joints_` IS the bone_id used by C_Voxel.bone_id_
-// and indexed by the per-frame GPU joint-matrix SSBO (binding 21). The index
+// and indexed by the per-frame GPU joint-matrix SSBO (binding
+// `kBufferIndex_JointTransforms` in `ir_render_types.hpp`). The index
 // space is stable across saves and severance — see "Severance leaves holes"
 // below — so re-baking voxel bone_ids is not required when a joint detaches.
 //

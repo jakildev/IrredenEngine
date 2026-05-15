@@ -115,7 +115,8 @@ single component on the rig root. Three pieces:
 - **`C_Skeleton`** on the rig root. Holds `std::vector<EntityId> joints_`
   — the canonical, ordered list of joint entities. The index of an entry
   in `joints_` IS the `bone_id` used by `C_Voxel.bone_id_` and indexed by
-  the per-frame GPU joint-matrix SSBO at binding 21.
+  the per-frame GPU joint-matrix SSBO at `kBufferIndex_JointTransforms`
+  (defined in `engine/render/include/irreden/render/ir_render_types.hpp`).
 - **`C_Joint`** tag on each joint entity. Drives joint-only archetype
   queries like `<C_Joint, C_LocalTransform>` so IK solvers and the GPU
   joint-matrix uploader iterate joints without seeing rig roots or
