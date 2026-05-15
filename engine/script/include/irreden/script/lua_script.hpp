@@ -46,6 +46,15 @@ class LuaScript {
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
 
+    // Bind the input + command surface — IRCommand.{bindPrefab,
+    // createCommand, fire, fireByName, CommandName} and IRInput.{InputType,
+    // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}. Idempotent
+    // (each detail bind helper guards on its own bound-table key). Required
+    // for any creation that wants to declare commands or bind input from
+    // Lua. See docs/design/lua-input-commands.md and engine/script/CLAUDE.md
+    // for the surface contract.
+    void bindLuaCommands();
+
     // Set the creation-default mode used by
     // `IRSystem.registerSystem({...})` when the call has no explicit
     // `mode = "..."` field. Mirrors the build-time

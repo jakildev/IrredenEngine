@@ -35,6 +35,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  script/lua_command_test.cpp
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_pipeline_register_test.cpp

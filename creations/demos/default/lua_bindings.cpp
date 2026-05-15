@@ -139,14 +139,20 @@ void registerLuaBindings() {
         );
 
         luaScript.lua()["TextAlignH"] = luaScript.lua().create_table_with(
-            "LEFT",   static_cast<int>(TextAlignH::LEFT),
-            "CENTER", static_cast<int>(TextAlignH::CENTER),
-            "RIGHT",  static_cast<int>(TextAlignH::RIGHT)
+            "LEFT",
+            static_cast<int>(TextAlignH::LEFT),
+            "CENTER",
+            static_cast<int>(TextAlignH::CENTER),
+            "RIGHT",
+            static_cast<int>(TextAlignH::RIGHT)
         );
         luaScript.lua()["TextAlignV"] = luaScript.lua().create_table_with(
-            "TOP",    static_cast<int>(TextAlignV::TOP),
-            "CENTER", static_cast<int>(TextAlignV::CENTER),
-            "BOTTOM", static_cast<int>(TextAlignV::BOTTOM)
+            "TOP",
+            static_cast<int>(TextAlignV::TOP),
+            "CENTER",
+            static_cast<int>(TextAlignV::CENTER),
+            "BOTTOM",
+            static_cast<int>(TextAlignV::BOTTOM)
         );
         luaScript.lua()["IRText"] = luaScript.lua().create_table();
         luaScript.lua()["IRText"]["create"] =
@@ -164,8 +170,11 @@ void registerLuaBindings() {
                     if (colorOpt) {
                         sol::table ct = *colorOpt;
                         color = Color(
-                            ct.get_or(1, 255), ct.get_or(2, 255),
-                            ct.get_or(3, 255), ct.get_or(4, 255));
+                            ct.get_or(1, 255),
+                            ct.get_or(2, 255),
+                            ct.get_or(3, 255),
+                            ct.get_or(4, 255)
+                        );
                     }
                     wrapWidth = opts.get_or("wrapWidth", 0);
                     lifetime = opts.get_or("lifetime", 0);
@@ -179,19 +188,26 @@ void registerLuaBindings() {
                 IREntity::EntityId entity;
                 if (lifetime > 0) {
                     entity = IREntity::createEntity(
-                        C_TextSegment{text}, C_GuiPosition{x, y},
-                        C_GuiElement{}, style, C_Lifetime{lifetime});
+                        C_TextSegment{text},
+                        C_GuiPosition{x, y},
+                        C_GuiElement{},
+                        style,
+                        C_Lifetime{lifetime}
+                    );
                 } else {
                     entity = IREntity::createEntity(
-                        C_TextSegment{text}, C_GuiPosition{x, y},
-                        C_GuiElement{}, style);
+                        C_TextSegment{text},
+                        C_GuiPosition{x, y},
+                        C_GuiElement{},
+                        style
+                    );
                 }
                 return IRScript::LuaEntity{entity};
             };
-        luaScript.lua()["IRText"]["setText"] =
-            [](IRScript::LuaEntity handle, const std::string &text) {
-                IREntity::getComponent<C_TextSegment>(handle.entity).text_ = text;
-            };
+        luaScript.lua()["IRText"]["setText"] = [](IRScript::LuaEntity handle,
+                                                  const std::string &text) {
+            IREntity::getComponent<C_TextSegment>(handle.entity).text_ = text;
+        };
         luaScript.lua()["IRText"]["remove"] = [](IRScript::LuaEntity handle) {
             IREntity::destroyEntity(handle.entity);
         };
@@ -228,9 +244,7 @@ void registerLuaBindings() {
         luaScript.lua()["IRRender"]["setGuiScale"] = [](int scale) {
             IRRender::setGuiScale(scale);
         };
-        luaScript.lua()["IRRender"]["getGuiScale"] = []() {
-            return IRRender::getGuiScale();
-        };
+        luaScript.lua()["IRRender"]["getGuiScale"] = []() { return IRRender::getGuiScale(); };
         luaScript.lua()["IRRender"]["getMainCanvasSize"] = [](sol::this_state L) {
             vec2 size = IRRender::getMainCanvasSizeTrixels();
             sol::table t = sol::state_view(L).create_table();
@@ -267,6 +281,11 @@ void registerLuaBindings() {
         luaScript.lua()["IRAudio"]["openMidiIn"] = [](const std::string &name) {
             return IRAudio::openPortMidiIn(name);
         };
+
+        // Expose IRCommand.{bindPrefab, createCommand, fire, fireByName}
+        // + the IRInput enum tables so scripts/commands.lua can declare
+        // the demo's input bindings.
+        luaScript.bindLuaCommands();
     });
 
     isRegistered = true;

@@ -31,6 +31,10 @@ target_link_libraries(
     # Required: prefab_api.cpp uses IRRender::ShapeType + getActiveCanvasEntityOrNull
     # via component_{shape_descriptor,voxel_set}.hpp. See #739 for the layering fix.
     IrredenEngineRendering
+    # T-193 PR 2: lua_command_bindings.hpp exposes IRCommand on the Lua
+    # surface, so the public scripting interface needs the IRCommand
+    # umbrella in scope wherever LuaScript is included.
+    IrredenEngineCommand
 )
 # PRIVATE so render headers don't leak through script's PUBLIC interface
 # (T-188 layering rule). prefab_api.cpp uses IRRender::ShapeType via
