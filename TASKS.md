@@ -151,6 +151,64 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **engine: C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM** — canonical SQT transform pair and a propagation system that walks the parent chain in topological order, supporting rotation and scale throughout multi-level hierarchies
+  - **ID:** T-197
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/entity, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-197..T-199 transform-consolidation
+  - **Acceptance:** (1) `C_LocalTransform` + `C_WorldTransform` exist and are auto-attached by `createEntity`; (2) `SYSTEM_PROPAGATE_TRANSFORM` registered and runs in UPDATE pipeline after modifier resolution; (3) root entities: `world == local` (post-modifier); (4) 3-level chain: grandchild world transform correctly reflects parent+grandparent rotation+scale+translation; (5) modifier-resolved vec3/quat fields (POSITION, ROTATION, SCALE) applied inside propagation step; (6) test fixture: 10-level deep chain with non-trivial rotation/scale, assertions on grandchild world transform; (7) `engine/prefabs/irreden/common/CLAUDE.md` documents the propagation contract and ordering; (8) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #734
+  - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Blocks T-199 (consumer migration). Topological ordering is non-negotiable — the system must guarantee parents-before-children. `setParent` mid-frame means new child won't see parent transform until next frame; document this. All quat/vec ops through `engine/math/` — no raw glm:: calls. Sibling: T-198 (quat modifier kind, parallel — needed for rotation perturbations to flow through this system).
+  - **Links:**
+
+- [ ] **engine: quat modifier kind — extend modifier compose for rotation perturbations** — add a `ROTATION` quat field to the modifier system so rotation perturbations (wobble, shake, recoil, animation-blend overlays) flow through the same modifier channel as positions
+  - **ID:** T-198
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-197..T-199 transform-consolidation
+  - **Acceptance:** (1) `IRPrefab::Modifier::push<quat>(target, field, quat{...}, TransformKind::MULTIPLY)` (or equivalent) accepted; (2) resolved rotation reads back as `mod_k * mod_{k-1} * … * mod_0 * base` for stacked MULTIPLY modifiers; (3) OVERRIDE clears prior MULTIPLYs; (4) ADD/CLAMP push on a quat field raises a clear error (assert in debug or static_assert); (5) `SYSTEM_PROPAGATE_TRANSFORM` reads the resolved quat as `modifier_rotation` per the SQT formula in T-197; (6) test coverage: MULTIPLY stacking, OVERRIDE clears, ADD-on-quat assertion fires; (7) compose order convention (`mod * base`) documented in `engine/prefabs/irreden/common/CLAUDE.md`; (8) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #735
+  - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Parallel to T-197; implementation approach depends on whether vec3 ticket (T-191, done) used `std::variant<float, vec3, quat>` in `Modifier::param_` or a parallel `C_ModifiersVec3` component. Per-axis-of-rotation (Euler-style pitch wobble) modifiers are out of scope — convert to quat at caller. Normalize the final resolved quat once at the end (not on every multiply) to avoid float drift. Quat identity is `{1,0,0,0}`.
+  - **Links:**
+
+- [ ] **engine: migrate position/rotation consumers to C_WorldTransform — retire C_Position3D/C_PositionGlobal3D/C_Rotation** — swap every consuming system from legacy position/rotation components to the new SQT transform pair and delete the retired components
+  - **ID:** T-199
+  - **Area:** engine/prefabs/irreden/render, engine/prefabs/irreden/update, engine/prefabs/irreden/input, engine/prefabs/irreden/voxel, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-197
+  - **Stack:** T-197..T-199 transform-consolidation
+  - **Acceptance:** (1) `grep -r "C_PositionGlobal3D"` and `grep -r "C_Position3D"` return only references in this ticket's deletion commits; (2) `grep -r "C_Rotation"` cleaned up; (3) every consumer reads `C_WorldTransform` (or `C_LocalTransform` for write paths); (4) `IRShapeDebug` render-debug-loop shot list passes pre/post-migration; (5) IRVoxelEditor/current editor demo functions: gizmos move, voxels position correctly, hitboxes resolve; (6) no regressions in tests: `test/ecs/*`, `test/asset/*`; (7) `engine/prefabs/irreden/common/CLAUDE.md` and `engine/prefabs/irreden/voxel/CLAUDE.md` updated to describe post-migration model; (8) verified on linux-debug (OpenGL) and macos-debug (Metal)
+  - **Issue:** #736
+  - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Likely too large for one PR — consider splitting by subsystem: render-side → input-side → voxel-side → final retirement. Key gotcha: `C_VoxelPool`'s SoA layout currently carries `{C_Position3D, C_PositionOffset3D, C_PositionGlobal3D}` arrays — decide during impl whether to use one `C_WorldTransform` array or keep position-only views as cached projections. Lua bindings (sol2 + `*_lua.hpp` files) may need updating. GPU-side shape descriptor stays position-only; convert SQT→position on CPU before staging. Animation systems (sprite UV) not affected but audit `C_AnimationClip` / `C_ActionAnimation`.
+  - **Links:**
+
+- [ ] **editor 2.1: joints as entities with CHILD_OF relations (replace SoA C_JointHierarchy)** — declare `C_Skeleton` + `C_Joint` components; deprecate `C_JointHierarchy`; document entity-based joint model in CLAUDE.md and design docs
+  - **ID:** T-200
+  - **Area:** engine/prefabs/irreden/voxel, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `C_Skeleton` and `C_Joint` components compile and register; (2) `C_JointHierarchy` header has a deprecation comment pointing at `C_Skeleton` with a brief migration note for #605 implementers; (3) `engine/prefabs/irreden/voxel/CLAUDE.md` describes the entity-based joint model and severance design; (4) `#605`'s body or the linked design doc (`docs/design/entity-editor-epic.md`) reflects the refined 2.1 approach; (5) fleet-build clean on linux-debug
+  - **Issue:** #737
+  - **Notes:** Architectural foundation only — no GPU upload system, no animation, no severance API yet. Those live in #605 Phase 2 (after SQT propagation from T-197 and editor Phase 1 from #604 land). Key design point: `C_Skeleton.joints_` is a flat ordered list (canonical bone-index space); indices are stable across saves, severance leaves a hole rather than shifting. This ticket should NOT bake assumptions about which transform component joints carry (SQT not landed yet); leave joint-entity transform type unspecified in the header with a comment. Coordinates with #731 (joint propagation reuses `SYSTEM_PROPAGATE_TRANSFORM`).
+  - **Links:**
+
+- [ ] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
+  - **ID:** T-201
+  - **Area:** engine/script, engine/render, engine/prefabs/irreden/voxel, engine/math, engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) fresh `cmake --preset linux-debug` (or `macos-debug`) configure + `fleet-build --target IrredenEngineScripting` builds without `IrredenEngineRendering` in the script link list; (2) `IrredenEngineTest` builds and all `PrefabApi.*` tests pass; (3) `IRShapeDebug` and standard demos build and run; (4) `engine/script/src/prefab_api.cpp` no longer includes `<irreden/ir_render.hpp>`; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #739
+  - **Notes:** T-188 (#723) partially decoupled scripting from rendering; T-189 (#729) re-added `IrredenEngineRendering` to `engine/script/CMakeLists.txt` as a temporary workaround after a fresh-rebase build break. Three-step architect refactor: (a) move `IRRender::ShapeType` + `SHAPE_FLAG_*` to a render-neutral header in `engine/math/` or `engine/common/`; (b) decide where `getActiveCanvasEntityOrNull()` lives (move to `engine/world/` or thread canvas ID through callers); (c) refactor `C_VoxelSetNew` so it doesn't directly call `IRRender::allocateVoxels`/`deallocateVoxels`. Likely 2–3 stacked PRs. Pool allocation must stay lean — no virtual indirection in the hot path. `getActiveCanvasEntityOrNull` is on the documented cpp-ecs exceptions list; replacement must keep prefab spawn ergonomic.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
