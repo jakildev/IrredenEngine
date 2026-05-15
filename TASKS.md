@@ -164,11 +164,11 @@ Avoid:
 
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -185,17 +185,6 @@ Avoid:
   - **Acceptance:** (1) C_BindPoints runtime component declared and registered; (2) IRPrefab::Rig::toBindPoints(asset::Rig) bridge function; (3) C_BindPoints Lua binding via standard *_lua.hpp pattern; (4) LuaEntity::bindPoint(name) returns world-space transform (offset + rotation); (5) Prefab.spawn attaches C_BindPoints from rig_ref automatically, applies bind_point_overrides from prefab table; (6) round-trip test: entity:bindPoint("named_anchor") matches expected joint chain result; override changes result; (7) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document new surface + per-frame-cost contract
   - **Issue:** #700
   - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
-  - **Links:**
-
-- [~] **prefab: attach voxel_ref data as ECS components on Prefab.spawn** — route loaded .vxs records to runtime C_ShapeDescriptor / C_VoxelSetNew on the spawned entity; SHAPES and DENSE/HYBRID modes
-  - **ID:** T-182
-  - **Area:** engine/script, engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-182-prefab-voxel-attach
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) SHAPES-mode .vxs files attach per-record C_ShapeDescriptor to spawned entity; (2) DENSE/HYBRID-mode .vxs files attach without requiring active canvas (or contract explicitly documented if deferred); (3) round-trip test: register prefab with known .vxs, spawn, verify expected C_ShapeDescriptor records / C_VoxelSetNew slot count on entity; (4) engine/script/CLAUDE.md and engine/prefabs/irreden/voxel/CLAUDE.md document attachment behavior
-  - **Issue:** #701
-  - **Notes:** Phase 5 of editor epic #608. Deferred from T-173 / PR #671. Two phases: (1) SHAPES: C_ShapeDescriptor per shapeRecords_ entry (offset/rotation/csgOp/boneId); architect decides entity shape (child vs list on parent). (2) DENSE/HYBRID: headless-friendly C_VoxelSetNew constructor — either passed-in pool or lazy-attach deferred until canvas active. Asset side: T-170 / PR #694 (hybrid .vxs loader).
   - **Links:**
 
 - [~] **asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep)** — remove all .txl I/O code, C_TriangleCanvasTextures file methods, debug command, txl_sidecar test, and nlohmann/json fetch
@@ -224,7 +213,7 @@ Avoid:
   - **ID:** T-186
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** claude/T-186-asset-test-round-trips
+  - **Owner:** claude/T-186-json-sidecar-name-table-tests
   - **Blocked by:** (none)
   - **Acceptance:** (1) test/asset/json_sidecar_test.cpp added and registered — covers empty object/array, scope nesting, all value* overloads, string escaping, numeric edge cases, NaN/Inf contract, key ordering, and file-open failure; (2) test/asset/name_table_test.cpp added and registered — covers write/read round-trip (0/1/many entries), non-ASCII names, idByName/nameById hits/misses, duplicate-insert behavior, empty-name edge case; (3) all new tests pass; no production-code changes; fleet-build clean on linux-debug
   - **Issue:** #707
@@ -258,7 +247,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
   - **Owner:** claude/T-189-prefab-dense-attach
-  - **Blocked by:** T-182
+  - **Blocked by:** (none)
   - **Acceptance:** (1) DENSE .vxs voxel_ref attaches per-voxel data as C_VoxelSetNew on spawned entity, headless-safe; (2) HYBRID .vxs attaches both SHAPES (T-182) and DENSE halves on same entity; (3) round-trip tests: DENSE and HYBRID verified through Prefab.spawn; entity C_VoxelSetNew record count matches dense_.voxelCount(); (4) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document chosen attachment contract
   - **Issue:** #721
   - **Notes:** SHAPES half wired in T-182 / PR #718; DENSE/HYBRID deferred. Two design options: (A) pool-injectable ctor — C_VoxelSetNew takes DenseVoxelSet + explicit pool entity id (kNullEntity for headless), later step seeds pool when canvas activates; (B) lazy attach — component stores DenseVoxelSet payload, UPDATE-pipeline system seeds pool the frame after canvas activates. Architect chooses; document in CLAUDE.md. Parent epic: #608. Asset side: T-167/PR#691 (DENSE), T-170/PR#694 (HYBRID).
@@ -279,6 +268,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
 - [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
@@ -298,4 +288,3 @@ Avoid:
 - [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
 - [x] **T-164** — F-0.5 Phase 2 — screen-space gizmo sizing + depth-aware dimming · Owner: claude/T-164-gizmo-screen-space · PR: https://github.com/jakildev/IrredenEngine/pull/677
 - [x] **T-168** — asset: .vxs v1 shape-group save format (SHPG, SREF, MODE chunks) · Owner: claude/T-168-vxs-shape-group · PR: https://github.com/jakildev/IrredenEngine/pull/679
-- [x] **T-152** — F-0.5 Phase 1 — gizmo primitive geometry · Owner: claude/T-152-gizmo-primitives · PR: https://github.com/jakildev/IrredenEngine/pull/672
