@@ -48,6 +48,13 @@ inline IRComponents::FieldBindingId registerFieldVec3(const char *name) {
     return detail::globalFieldRegistry().registerFieldVec3(name);
 }
 
+// Quat-typed field. Pushes must use the vec4 push() overloads and the
+// quaternion compose semantics (MULTIPLY = left-multiply, OVERRIDE/SET
+// replace; ADD/CLAMP_MIN/CLAMP_MAX assert).
+inline IRComponents::FieldBindingId registerFieldQuat(const char *name) {
+    return detail::globalFieldRegistry().registerFieldQuat(name);
+}
+
 inline const char *fieldName(IRComponents::FieldBindingId id) {
     return detail::globalFieldRegistry().fieldName(id);
 }
@@ -103,6 +110,41 @@ inline void push(
     );
 }
 
+// Quat push. `param` is the engine's canonical quaternion layout
+// (`vec4(qx, qy, qz, qw)`, identity `vec4(0, 0, 0, 1)`). ADD / CLAMP_MIN /
+// CLAMP_MAX fire `IR_ASSERT` in debug and skip in release — they are
+// not meaningful operations on a unit quaternion. MULTIPLY composes
+// left-multiply (post-rotate); OVERRIDE/SET replace.
+inline void push(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec4 param,
+    IREntity::EntityId source,
+    std::int32_t ticksRemaining = -1
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::QUAT)
+        return;
+    const bool unitQuatIncompatible = kind == IRComponents::TransformKind::ADD ||
+                                      kind == IRComponents::TransformKind::CLAMP_MIN ||
+                                      kind == IRComponents::TransformKind::CLAMP_MAX;
+    IR_ASSERT(
+        !unitQuatIncompatible,
+        "Quat modifier kind: ADD/CLAMP_MIN/CLAMP_MAX are not meaningful on unit "
+        "quaternions; use MULTIPLY for compose, OVERRIDE/SET for replacement."
+    );
+    if (unitQuatIncompatible)
+        return;
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiersQuat_.push_back(
+        IRComponents::ModifierQuat{field, kind, param, source, ticksRemaining}
+    );
+}
+
 inline void pushGlobal(
     IRComponents::FieldBindingId field,
     IRComponents::TransformKind kind,
@@ -144,6 +186,39 @@ inline void pushGlobal(
         return;
     c->modifiersVec3_.push_back(
         IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
+    );
+}
+
+inline void pushGlobal(
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec4 param,
+    IREntity::EntityId source,
+    std::int32_t ticksRemaining = -1
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::QUAT)
+        return;
+    const bool unitQuatIncompatible = kind == IRComponents::TransformKind::ADD ||
+                                      kind == IRComponents::TransformKind::CLAMP_MIN ||
+                                      kind == IRComponents::TransformKind::CLAMP_MAX;
+    IR_ASSERT(
+        !unitQuatIncompatible,
+        "Quat global modifier kind: ADD/CLAMP_MIN/CLAMP_MAX are not meaningful on unit "
+        "quaternions; use MULTIPLY for compose, OVERRIDE/SET for replacement."
+    );
+    if (unitQuatIncompatible)
+        return;
+    auto entity = detail::globalsEntityId();
+    if (entity == IREntity::kNullEntity)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiersQuat_.push_back(
+        IRComponents::ModifierQuat{field, kind, param, source, ticksRemaining}
     );
 }
 
@@ -194,11 +269,13 @@ inline void removeBySource(IREntity::EntityId source) {
     IREntity::forEachComponent<IRComponents::C_Modifiers>([&](IRComponents::C_Modifiers &c) {
         stripVec(c.modifiers_);
         stripVec(c.modifiersVec3_);
+        stripVec(c.modifiersQuat_);
     });
     IREntity::forEachComponent<IRComponents::C_GlobalModifiers>(
         [&](IRComponents::C_GlobalModifiers &c) {
             stripVec(c.modifiers_);
             stripVec(c.modifiersVec3_);
+            stripVec(c.modifiersQuat_);
         }
     );
     IREntity::forEachComponent<IRComponents::C_LambdaModifiers>(
@@ -250,6 +327,31 @@ inline IRMath::vec3 applyToFieldVec3(
     const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiersVec3();
 
     return detail::composeForFieldVec3(baseValue, field, globals, entityMods);
+}
+
+// Quat counterpart of `applyToField`. Reads from `modifiersQuat_` on
+// `C_Modifiers` and the singleton's `C_GlobalModifiers`; returns the
+// composed (and normalized, when any modifier touched the value)
+// rotation. `baseValue` defaults to identity at the caller site — pass
+// `vec4(0, 0, 0, 1)` if you have no other base rotation in mind.
+inline IRMath::vec4 applyToFieldQuat(
+    IREntity::EntityId target, IRComponents::FieldBindingId field, IRMath::vec4 baseValue
+) {
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    const auto &entityMods = c ? c->modifiersQuat_ : detail::emptyModifiersQuat();
+
+    const std::vector<IRComponents::ModifierQuat> *globalsPtr = nullptr;
+    auto entity = detail::globalsEntityId();
+    if (entity != IREntity::kNullEntity) {
+        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(
+            nullptr
+        );
+        if (g)
+            globalsPtr = &g->modifiersQuat_;
+    }
+    const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiersQuat();
+
+    return detail::composeForFieldQuat(baseValue, field, globals, entityMods);
 }
 
 // Wires up the singleton globals entity and registers the six resolver

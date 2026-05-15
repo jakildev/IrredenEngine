@@ -38,6 +38,10 @@ class FieldRegistry {
         return registerField(name, IRComponents::FieldValueType::VEC3);
     }
 
+    IRComponents::FieldBindingId registerFieldQuat(const char *name) {
+        return registerField(name, IRComponents::FieldValueType::QUAT);
+    }
+
     const char *fieldName(IRComponents::FieldBindingId id) const {
         if (id == IRComponents::kInvalidFieldId || id >= m_names.size())
             return nullptr;

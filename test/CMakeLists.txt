@@ -14,6 +14,7 @@ add_executable(IrredenEngineTest
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp
   ecs/hitbox_2d_gui_test.cpp
+  ecs/modifier_quat_runtime_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
   ecs/modifier_vec3_runtime_test.cpp

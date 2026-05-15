@@ -8,26 +8,40 @@
 //   IRModifier.Transform.{ADD, MULTIPLY, SET, CLAMP_MIN, CLAMP_MAX, OVERRIDE}
 //   IRModifier.registerField(name)                          → FieldBindingId
 //   IRModifier.registerFieldVec3(name)                      → FieldBindingId
+//   IRModifier.registerFieldQuat(name)                      → FieldBindingId
 //   IRModifier.fieldId(name)                                → FieldBindingId
 //                                                            (kInvalidFieldId
 //                                                            when not registered)
 //   IRModifier.fieldName(id)                                → string | nil
 //   IRModifier.add(target, fieldNameOrId, opts)
 //   IRModifier.addVec3(target, fieldNameOrId, opts)
+//   IRModifier.addQuat(target, fieldNameOrId, opts)
 //   IRModifier.addGlobal(fieldNameOrId, opts)
 //   IRModifier.addGlobalVec3(fieldNameOrId, opts)
+//   IRModifier.addGlobalQuat(fieldNameOrId, opts)
 //   IRModifier.addLambda(target, fieldNameOrId, fn, opts)
 //   IRModifier.removeBySource(source)
 //   IRModifier.applyToField(target, fieldNameOrId, base)    → float
 //   IRModifier.applyToFieldVec3(target, fieldNameOrId, base) → vec3
+//   IRModifier.applyToFieldQuat(target, fieldNameOrId, base) → vec4 (quat)
 //   IRModifier.resolved(target, fieldNameOrId, fallback?)   → float
 //   IRModifier.resolvedVec3(target, fieldNameOrId, fallback?) → vec3
+//   IRModifier.resolvedQuat(target, fieldNameOrId, fallback?) → vec4 (quat)
 //
 // The vec3 variants route to fields declared via `registerFieldVec3`;
 // scalar/vec3 fields are typed at registration time, so pushing the
 // wrong-typed payload silently no-ops (caller bug). `value` in
 // `addVec3` / `addGlobalVec3` opts is parsed via `vec3FromLua` — accept
 // either a registered `IRMath::vec3` userdata or a `{x,y,z}` table.
+//
+// Quat variants route to fields declared via `registerFieldQuat`. The
+// `value` field accepts either an `IRMath::vec4` userdata or a
+// `{x,y,z,w}` table representing the quaternion `(qx, qy, qz, qw)`
+// (identity `vec4(0, 0, 0, 1)`). `transform` must be `MULTIPLY`,
+// `OVERRIDE`, or `SET` — `ADD` / `CLAMP_MIN` / `CLAMP_MAX` raise an
+// engine debug assertion and silently skip in release, since they have
+// no meaningful definition on unit quaternions. MULTIPLY composes in
+// the post-rotate convention (`resolved = mod * base`).
 //
 // `target` / `source` are entity ids (Lua integers — the same shape as
 // `arch.entityAt(i)` returns from a Lua-defined system, and the same
@@ -153,6 +167,15 @@ inline void bindModifierFramework(LuaScript &script) {
         );
     };
 
+    api["registerFieldQuat"] = [](const std::string &name) {
+        // Shares the same lifetime contract as registerField above.
+        static std::deque<std::string> names;
+        names.emplace_back(name);
+        return static_cast<lua_Integer>(
+            IRPrefab::Modifier::registerFieldQuat(names.back().c_str())
+        );
+    };
+
     api["fieldId"] = [](const std::string &name) {
         return static_cast<lua_Integer>(
             IRPrefab::Modifier::detail::globalFieldRegistry().findFieldId(name.c_str())
@@ -235,6 +258,39 @@ inline void bindModifierFramework(LuaScript &script) {
         );
     };
 
+    api["addQuat"] = [](lua_Integer target, sol::object fieldArg, sol::table opts) {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.addQuat");
+        const auto kind = resolveTransform(opts, "IRModifier.addQuat");
+        const IRMath::vec4 value = IRScript::quatFromLua(opts.get<sol::object>("value"));
+        const lua_Integer source =
+            opts.get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
+        const std::int32_t ticks = opts.get_or("ticks", static_cast<std::int32_t>(-1));
+        IRPrefab::Modifier::push(
+            static_cast<IREntity::EntityId>(target),
+            field,
+            kind,
+            value,
+            static_cast<IREntity::EntityId>(source),
+            ticks
+        );
+    };
+
+    api["addGlobalQuat"] = [](sol::object fieldArg, sol::table opts) {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.addGlobalQuat");
+        const auto kind = resolveTransform(opts, "IRModifier.addGlobalQuat");
+        const IRMath::vec4 value = IRScript::quatFromLua(opts.get<sol::object>("value"));
+        const lua_Integer source =
+            opts.get_or("source", static_cast<lua_Integer>(IREntity::kNullEntity));
+        const std::int32_t ticks = opts.get_or("ticks", static_cast<std::int32_t>(-1));
+        IRPrefab::Modifier::pushGlobal(
+            field,
+            kind,
+            value,
+            static_cast<IREntity::EntityId>(source),
+            ticks
+        );
+    };
+
     api["addLambda"] = [](lua_Integer target,
                           sol::object fieldArg,
                           sol::protected_function fn,
@@ -294,6 +350,17 @@ inline void bindModifierFramework(LuaScript &script) {
         );
     };
 
+    api["applyToFieldQuat"] =
+        [](lua_Integer target, sol::object fieldArg, sol::object baseObj) -> IRMath::vec4 {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.applyToFieldQuat");
+        const IRMath::vec4 base = IRScript::quatFromLua(baseObj);
+        return IRPrefab::Modifier::applyToFieldQuat(
+            static_cast<IREntity::EntityId>(target),
+            field,
+            base
+        );
+    };
+
     api["resolved"] =
         [](lua_Integer target, sol::object fieldArg, sol::optional<float> fallbackOpt) -> float {
         const auto field = resolveFieldArg(fieldArg, "IRModifier.resolved");
@@ -320,6 +387,21 @@ inline void bindModifierFramework(LuaScript &script) {
         if (resolved == nullptr)
             return fallback;
         return resolved->getVec3(field, fallback);
+    };
+
+    api["resolvedQuat"] = [](lua_Integer target,
+                             sol::object fieldArg,
+                             sol::optional<sol::object> fallbackOpt) -> IRMath::vec4 {
+        const auto field = resolveFieldArg(fieldArg, "IRModifier.resolvedQuat");
+        const IRMath::vec4 fallback = fallbackOpt ? IRScript::quatFromLua(*fallbackOpt)
+                                                  : IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        auto *resolved = IREntity::getComponentOptional<IRComponents::C_ResolvedFields>(
+                             static_cast<IREntity::EntityId>(target)
+        )
+                             .value_or(nullptr);
+        if (resolved == nullptr)
+            return fallback;
+        return resolved->getQuat(field, fallback);
     };
 
     lua["IRModifier"] = api;

@@ -19,13 +19,15 @@ using FieldBindingId = std::uint16_t;
 inline constexpr FieldBindingId kInvalidFieldId = 0;
 
 /// Typed dispatch for a field-binding id. Set at registration time
-/// (`registerField` for scalars, `registerFieldVec3` for vector fields).
-/// Push/read paths consult this on the registry to route to the
-/// correct internal vector. Pushing a typed param against a field of
-/// the wrong type is a no-op (defensive — caller bug, not data error).
+/// (`registerField` for scalars, `registerFieldVec3` for vector fields,
+/// `registerFieldQuat` for quaternion fields). Push/read paths consult
+/// this on the registry to route to the correct internal vector.
+/// Pushing a typed param against a field of the wrong type is a no-op
+/// (defensive — caller bug, not data error).
 enum class FieldValueType : std::uint8_t {
     SCALAR,
     VEC3,
+    QUAT,
 };
 
 enum class TransformKind : std::uint8_t {
@@ -74,6 +76,33 @@ static_assert(
     "ModifierVec3 must remain trivially-copyable; the param_ field stays vec3."
 );
 
+/// Quaternion counterpart to `Modifier`. `param_` is stored as the engine's
+/// canonical quaternion layout (`IRMath::vec4(qx, qy, qz, qw)`, identity =
+/// `vec4(0, 0, 0, 1)`).
+///
+/// Compose rules differ from the scalar / vec3 path because quaternion
+/// multiplication is non-commutative:
+///   MULTIPLY → post-rotate: `value = quatMul(mod, value)` (mod * base)
+///   OVERRIDE → replace value; latest OVERRIDE wins; short-circuits prior ops
+///   SET      → replace value in push-order (no short-circuit)
+///   ADD / CLAMP_MIN / CLAMP_MAX → not meaningful for unit quaternions;
+///                                  the push API asserts and the compose path
+///                                  silently skips them as a defensive no-op
+///                                  (debug `IR_ASSERT` fires on direct vector
+///                                  construction).
+struct ModifierQuat {
+    FieldBindingId field_;
+    TransformKind kind_;
+    IRMath::vec4 param_;
+    IREntity::EntityId source_;
+    std::int32_t ticksRemaining_;
+};
+
+static_assert(
+    std::is_trivially_copyable_v<ModifierQuat>,
+    "ModifierQuat must remain trivially-copyable; param_ stays vec4."
+);
+
 struct LambdaModifier {
     FieldBindingId field_;
     std::function<float(float)> fn_;
@@ -89,6 +118,11 @@ struct ResolvedField {
 struct ResolvedFieldVec3 {
     FieldBindingId field_;
     IRMath::vec3 value_;
+};
+
+struct ResolvedFieldQuat {
+    FieldBindingId field_;
+    IRMath::vec4 value_;
 };
 
 namespace detail {
@@ -114,6 +148,15 @@ findResolvedFieldVec3(std::vector<ResolvedFieldVec3> &fields, FieldBindingId fie
     return nullptr;
 }
 
+inline ResolvedFieldQuat *
+findResolvedFieldQuat(std::vector<ResolvedFieldQuat> &fields, FieldBindingId field) {
+    for (auto &rf : fields) {
+        if (rf.field_ == field)
+            return &rf;
+    }
+    return nullptr;
+}
+
 // Shared decay predicate for the three modifier-decay systems
 // (`MODIFIER_DECAY`, `GLOBAL_MODIFIER_DECAY`, `LAMBDA_MODIFIER_DECAY`).
 // `T` is `Modifier`, `ModifierVec3`, or `LambdaModifier` — all three
@@ -131,11 +174,13 @@ template <typename T> inline bool tickAndExpired(T &mod) {
 struct C_Modifiers {
     std::vector<Modifier> modifiers_;
     std::vector<ModifierVec3> modifiersVec3_;
+    std::vector<ModifierQuat> modifiersQuat_;
 };
 
 struct C_GlobalModifiers {
     std::vector<Modifier> modifiers_;
     std::vector<ModifierVec3> modifiersVec3_;
+    std::vector<ModifierQuat> modifiersQuat_;
 };
 
 /// Empty tag opting an entity out of `C_GlobalModifiers`. The
@@ -151,6 +196,7 @@ struct C_LambdaModifiers {
 struct C_ResolvedFields {
     std::vector<ResolvedField> fields_;
     std::vector<ResolvedFieldVec3> fieldsVec3_;
+    std::vector<ResolvedFieldQuat> fieldsQuat_;
 
     // Insert or update (field, base) so the resolver's compose pass
     // starts from `base`. Consumer systems call this in a pre-resolver
@@ -169,6 +215,14 @@ struct C_ResolvedFields {
             return;
         }
         fieldsVec3_.push_back(ResolvedFieldVec3{field, base});
+    }
+
+    void resetQuat(FieldBindingId field, IRMath::vec4 base) {
+        if (auto *rf = detail::findResolvedFieldQuat(fieldsQuat_, field)) {
+            rf->value_ = base;
+            return;
+        }
+        fieldsQuat_.push_back(ResolvedFieldQuat{field, base});
     }
 
     // Convenience — apply one structured modifier in place. The
@@ -233,6 +287,34 @@ struct C_ResolvedFields {
         }
     }
 
+    // Quat counterpart of `apply`. MULTIPLY is left-multiply (post-rotate:
+    // `value = mod * value`); OVERRIDE/SET replace; ADD/CLAMP_* are
+    // not meaningful on unit quaternions and are silently dropped (the
+    // push API asserts on debug). The compose path is responsible for
+    // normalizing the stacked result once at the end; this single-step
+    // helper does not normalize on the assumption callers chain via the
+    // pure-function compose in modifier_compose.hpp instead.
+    void apply(const ModifierQuat &mod) {
+        auto *rf = detail::findResolvedFieldQuat(fieldsQuat_, mod.field_);
+        if (!rf)
+            return;
+        switch (mod.kind_) {
+        case TransformKind::MULTIPLY:
+            rf->value_ = IRMath::quatMul(mod.param_, rf->value_);
+            break;
+        case TransformKind::SET:
+            rf->value_ = mod.param_;
+            break;
+        case TransformKind::OVERRIDE:
+            rf->value_ = mod.param_;
+            break;
+        case TransformKind::ADD:
+        case TransformKind::CLAMP_MIN:
+        case TransformKind::CLAMP_MAX:
+            break;
+        }
+    }
+
     void applyLambda(const LambdaModifier &lambda) {
         if (!lambda.fn_)
             return;
@@ -253,6 +335,19 @@ struct C_ResolvedFields {
 
     IRMath::vec3 getVec3(FieldBindingId field, IRMath::vec3 fallback = IRMath::vec3(0.0f)) const {
         for (const auto &rf : fieldsVec3_) {
+            if (rf.field_ == field)
+                return rf.value_;
+        }
+        return fallback;
+    }
+
+    // Identity (`vec4(0, 0, 0, 1)`) is the canonical fallback for a missing
+    // quat field; callers that want a different "neutral" rotation should
+    // pass it explicitly.
+    IRMath::vec4 getQuat(
+        FieldBindingId field, IRMath::vec4 fallback = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+    ) const {
+        for (const auto &rf : fieldsQuat_) {
             if (rf.field_ == field)
                 return rf.value_;
         }

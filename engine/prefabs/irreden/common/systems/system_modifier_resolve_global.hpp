@@ -41,6 +41,11 @@ inline const std::vector<IRComponents::ModifierVec3> *&currentGlobalModifiersVec
     return p;
 }
 
+inline const std::vector<IRComponents::ModifierQuat> *&currentGlobalModifiersQuatPtr() {
+    static const std::vector<IRComponents::ModifierQuat> *p = nullptr;
+    return p;
+}
+
 // No-create accessor for the singleton globals entity. Returns
 // `kNullEntity` if `registerResolverPipeline` has not yet wired up
 // the singleton, so `beginTick` below can no-op cleanly when the
@@ -88,22 +93,38 @@ template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
                         m.modifiersVec3_
                     );
                 }
+                const auto *globalsQuatPtr =
+                    IRPrefab::Modifier::detail::currentGlobalModifiersQuatPtr();
+                const auto &globalsQuat = globalsQuatPtr
+                                              ? *globalsQuatPtr
+                                              : IRPrefab::Modifier::detail::emptyModifiersQuat();
+                for (auto &rf : resolved.fieldsQuat_) {
+                    rf.value_ = IRPrefab::Modifier::detail::composeForFieldQuat(
+                        rf.value_,
+                        rf.field_,
+                        globalsQuat,
+                        m.modifiersQuat_
+                    );
+                }
             },
             // beginTick: cache the singleton's modifier vector pointers.
             []() {
                 using IRComponents::C_GlobalModifiers;
                 auto &cachedPtr = IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
                 auto &cachedVec3Ptr = IRPrefab::Modifier::detail::currentGlobalModifiersVec3Ptr();
+                auto &cachedQuatPtr = IRPrefab::Modifier::detail::currentGlobalModifiersQuatPtr();
                 auto entity = IRPrefab::Modifier::detail::globalsEntityId();
                 if (entity == IREntity::kNullEntity) {
                     cachedPtr = nullptr;
                     cachedVec3Ptr = nullptr;
+                    cachedQuatPtr = nullptr;
                     return;
                 }
                 auto *gm =
                     IREntity::getComponentOptional<C_GlobalModifiers>(entity).value_or(nullptr);
                 cachedPtr = gm ? &gm->modifiers_ : nullptr;
                 cachedVec3Ptr = gm ? &gm->modifiersVec3_ : nullptr;
+                cachedQuatPtr = gm ? &gm->modifiersQuat_ : nullptr;
             }
         );
     }

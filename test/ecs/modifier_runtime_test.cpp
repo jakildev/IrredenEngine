@@ -261,12 +261,8 @@ TEST(CResolvedFields, ApplyMutatesValue) {
 TEST(CResolvedFields, ApplyLambdaUsesCurrentValue) {
     C_ResolvedFields rf;
     rf.reset(kFieldA, 4.0f);
-    IRComponents::LambdaModifier lambda{
-        kFieldA,
-        [](float v) { return v * v; },
-        IREntity::EntityId{0},
-        -1
-    };
+    IRComponents::LambdaModifier
+        lambda{kFieldA, [](float v) { return v * v; }, IREntity::EntityId{0}, -1};
     rf.applyLambda(lambda);
     EXPECT_FLOAT_EQ(rf.get(kFieldA), 16.0f);
 }
@@ -283,18 +279,18 @@ namespace {
 
 // Mirror the per-system tick: drop entries where `tickAndExpired` reports true.
 // Templated so the same harness covers both Modifier and LambdaModifier.
-template <typename T>
-void decayOnce(std::vector<T> &v) {
-    auto end = std::remove_if(v.begin(), v.end(),
-                              IRComponents::detail::tickAndExpired<T>);
+template <typename T> void decayOnce(std::vector<T> &v) {
+    auto end = std::remove_if(v.begin(), v.end(), IRComponents::detail::tickAndExpired<T>);
     v.erase(end, v.end());
 }
 
-IRComponents::LambdaModifier mkLambda(FieldBindingId field,
-                                      std::function<float(float)> fn,
-                                      std::int32_t ticksRemaining) {
+IRComponents::LambdaModifier
+mkLambda(FieldBindingId field, std::function<float(float)> fn, std::int32_t ticksRemaining) {
     return IRComponents::LambdaModifier{
-        field, std::move(fn), IREntity::EntityId{0}, ticksRemaining
+        field,
+        std::move(fn),
+        IREntity::EntityId{0},
+        ticksRemaining
     };
 }
 
@@ -337,9 +333,11 @@ TEST(ModifierDecay, SourceRemovalKeepsOnlyMatchingSourceOut) {
     };
     auto target = IREntity::EntityId{1};
     mods.erase(
-        std::remove_if(mods.begin(), mods.end(), [&](const Modifier &m) {
-            return m.source_ == target;
-        }),
+        std::remove_if(
+            mods.begin(),
+            mods.end(),
+            [&](const Modifier &m) { return m.source_ == target; }
+        ),
         mods.end()
     );
     ASSERT_EQ(mods.size(), 1u);
@@ -358,11 +356,18 @@ class IRModifierAutoSweepTest : public testing::Test {
         // only exercises the pre-destroy hook + sweep, not the resolver
         // pipeline). Stash the hook id so the destructor can unregister
         // it before the next test instance reinstalls one.
-        m_hook_id = IREntity::getEntityManager().registerPreDestroyHook(
-            [](IREntity::EntityId destroyed) {
+        m_hook_id =
+            IREntity::getEntityManager().registerPreDestroyHook([](IREntity::EntityId destroyed) {
                 IRPrefab::Modifier::removeBySource(destroyed);
-            }
-        );
+            });
+        // Register a scalar field explicitly so push() routes into the
+        // scalar vector regardless of what other tests have populated
+        // the global registry with first. Bare `FieldBindingId{1}`
+        // relies on id 1 being scalar-typed, but the global registry
+        // is shared across all tests — a vec3 / quat registration that
+        // lands first in the suite's execution order would otherwise
+        // make this push silently no-op.
+        m_scalar_field = IRPrefab::Modifier::registerField("test.modifier_autosweep_scalar");
     }
 
     ~IRModifierAutoSweepTest() override {
@@ -371,13 +376,14 @@ class IRModifierAutoSweepTest : public testing::Test {
 
     IREntity::EntityManager m_entity_manager;
     IREntity::PreDestroyHookId m_hook_id{IREntity::kInvalidPreDestroyHookId};
+    IRComponents::FieldBindingId m_scalar_field{IRComponents::kInvalidFieldId};
 };
 
 TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsModifiersFromTarget) {
     auto source = IREntity::createEntity();
     auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
 
-    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 5.0f, source);
+    IRPrefab::Modifier::push(target, m_scalar_field, TransformKind::ADD, 5.0f, source);
     auto &modsBefore = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
     ASSERT_EQ(modsBefore.size(), 1u);
     EXPECT_EQ(modsBefore[0].source_, source);
@@ -391,10 +397,10 @@ TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsModifiersFromTarget) {
 TEST_F(IRModifierAutoSweepTest, DestroyingSourceLeavesUnrelatedModifiersAlone) {
     auto sourceA = IREntity::createEntity();
     auto sourceB = IREntity::createEntity();
-    auto target  = IREntity::createEntity(IRComponents::C_Modifiers{});
+    auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
 
-    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 5.0f, sourceA);
-    IRPrefab::Modifier::push(target, kFieldA, TransformKind::ADD, 7.0f, sourceB);
+    IRPrefab::Modifier::push(target, m_scalar_field, TransformKind::ADD, 5.0f, sourceA);
+    IRPrefab::Modifier::push(target, m_scalar_field, TransformKind::ADD, 7.0f, sourceB);
 
     m_entity_manager.destroyEntity(sourceA);
 
@@ -409,9 +415,13 @@ TEST_F(IRModifierAutoSweepTest, DestroyingSourceStripsLambdaModifiers) {
     auto target = IREntity::createEntity(IRComponents::C_LambdaModifiers{});
 
     IRPrefab::Modifier::pushLambda(
-        target, kFieldA, [](float v) { return v * 2.0f; }, source
+        target,
+        m_scalar_field,
+        [](float v) { return v * 2.0f; },
+        source
     );
-    auto &lambdasBefore = IREntity::getComponent<IRComponents::C_LambdaModifiers>(target).modifiers_;
+    auto &lambdasBefore =
+        IREntity::getComponent<IRComponents::C_LambdaModifiers>(target).modifiers_;
     ASSERT_EQ(lambdasBefore.size(), 1u);
 
     m_entity_manager.destroyEntity(source);
@@ -474,11 +484,9 @@ TEST(LambdaModifierDecay, DropRunsCapturedDestructor) {
     // can hold heap state. Captured shared_ptr witnesses use_count drop.
     auto witness = std::make_shared<int>(7);
     std::vector<IRComponents::LambdaModifier> lambdas;
-    lambdas.push_back(mkLambda(
-        kFieldA,
-        [witness](float v) { return v + static_cast<float>(*witness); },
-        1
-    ));
+    lambdas.push_back(
+        mkLambda(kFieldA, [witness](float v) { return v + static_cast<float>(*witness); }, 1)
+    );
     EXPECT_EQ(witness.use_count(), 2L); // one capture + outer
 
     decayOnce(lambdas);

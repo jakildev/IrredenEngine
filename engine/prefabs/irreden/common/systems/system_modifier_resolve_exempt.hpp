@@ -42,6 +42,13 @@ template <> struct System<MODIFIER_RESOLVE_EXEMPT> {
                         m.modifiersVec3_
                     );
                 }
+                for (auto &rf : resolved.fieldsQuat_) {
+                    rf.value_ = IRPrefab::Modifier::detail::composeForFieldQuat(
+                        rf.value_,
+                        rf.field_,
+                        m.modifiersQuat_
+                    );
+                }
             }
         );
     }
