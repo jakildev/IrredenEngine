@@ -68,8 +68,7 @@ Helpers that take `PlaneIso` (most of them): double-check the plane axis —
 - `impulseForHeight(targetHeight, gravity)` → initial v0.
 - `flightTimeForHeight(...)`.
 - `heightForImpulse(...)`.
-- `isTunnelingSafe(posA, posB, radius)` — checks whether a discrete-step
-  motion segment would pass through a solid cell.
+- `isTunnelingSafe(maxVelocity, dt, colliderThicknessA, colliderThicknessB)` — returns true when both colliders are thick enough that a body moving at `maxVelocity` cannot pass through in a single timestep `dt`.
 
 Use these; don't re-derive the kinematics inline.
 
