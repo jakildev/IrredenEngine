@@ -175,11 +175,11 @@ Avoid:
   - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Parallel to T-197; implementation approach depends on whether vec3 ticket (T-191, done) used `std::variant<float, vec3, quat>` in `Modifier::param_` or a parallel `C_ModifiersVec3` component. Per-axis-of-rotation (Euler-style pitch wobble) modifiers are out of scope — convert to quat at caller. Normalize the final resolved quat once at the end (not on every multiply) to avoid float drift. Quat identity is `{1,0,0,0}`.
   - **Links:**
 
-- [ ] **engine: migrate position/rotation consumers to C_WorldTransform — retire C_Position3D/C_PositionGlobal3D/C_Rotation** — swap every consuming system from legacy position/rotation components to the new SQT transform pair and delete the retired components
+- [~] **engine: migrate position/rotation consumers to C_WorldTransform — retire C_Position3D/C_PositionGlobal3D/C_Rotation** — swap every consuming system from legacy position/rotation components to the new SQT transform pair and delete the retired components
   - **ID:** T-199
   - **Area:** engine/prefabs/irreden/render, engine/prefabs/irreden/update, engine/prefabs/irreden/input, engine/prefabs/irreden/voxel, engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-197
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `grep -r "C_PositionGlobal3D"` and `grep -r "C_Position3D"` return only references in this ticket's deletion commits; (2) `grep -r "C_Rotation"` cleaned up; (3) every consumer reads `C_WorldTransform` (or `C_LocalTransform` for write paths); (4) `IRShapeDebug` render-debug-loop shot list passes pre/post-migration; (5) IRVoxelEditor/current editor demo functions: gizmos move, voxels position correctly, hitboxes resolve; (6) no regressions in tests: `test/ecs/*`, `test/asset/*`; (7) `engine/prefabs/irreden/common/CLAUDE.md` and `engine/prefabs/irreden/voxel/CLAUDE.md` updated to describe post-migration model; (8) verified on linux-debug (OpenGL) and macos-debug (Metal)
