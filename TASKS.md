@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **engine: C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM** — canonical SQT transform pair and a propagation system that walks the parent chain in topological order, supporting rotation and scale throughout multi-level hierarchies
+- [~] **engine: C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM** — canonical SQT transform pair and a propagation system that walks the parent chain in topological order, supporting rotation and scale throughout multi-level hierarchies
   - **ID:** T-197
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/entity, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `C_LocalTransform` + `C_WorldTransform` exist and are auto-attached by `createEntity`; (2) `SYSTEM_PROPAGATE_TRANSFORM` registered and runs in UPDATE pipeline after modifier resolution; (3) root entities: `world == local` (post-modifier); (4) 3-level chain: grandchild world transform correctly reflects parent+grandparent rotation+scale+translation; (5) modifier-resolved vec3/quat fields (POSITION, ROTATION, SCALE) applied inside propagation step; (6) test fixture: 10-level deep chain with non-trivial rotation/scale, assertions on grandchild world transform; (7) `engine/prefabs/irreden/common/CLAUDE.md` documents the propagation contract and ordering; (8) fleet-build clean on linux-debug and macos-debug
