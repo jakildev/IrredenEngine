@@ -164,11 +164,11 @@ Avoid:
 
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -187,17 +187,6 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **prefabs: delete C_PositionOffset3D — migrate idle bob + gizmo offset to vec3 modifiers** — remove the hand-rolled per-frame additive offset component; rewrite its two writers as vec3 modifier pushes and update the four reader systems to drop the manual globalPos+offset sum
-  - **ID:** T-192
-  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render, engine/prefabs/irreden/input, engine/entity
-  - **Model:** opus
-  - **Owner:** claude/T-192-delete-position-offset
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `grep -r "C_PositionOffset3D"` returns nothing in the codebase; (2) idle-bob entity in any demo visually identical pre/post-migration; (3) gizmo drag in editor still functions; (4) hitbox mouse-test resolves to the correct entity at the correct world position; (5) sprites render at correct screen position including any active idle offset; (6) `createEntity` no longer auto-attaches the offset component; (7) no system reads `globalPos + offset` — manual-sum pattern is gone; (8) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #733
-  - **Notes:** C_PositionOffset3D predates the modifier system and is a hand-rolled position modifier channel. Two writers: system_periodic_idle_position_offset (overwrites each tick) and system_gizmo_drag (reads at drag begin). Four readers: system_sprites_to_screen, system_apply_position_offset, system_hitbox_mouse_test, system_entity_canvas_to_framebuffer. Key ordering gotcha: modifier resolver must run before any reader of C_PositionGlobal3D — audit pipeline order. Idle bob must re-push its vec3 modifier each tick (ticksRemaining_ decay); gizmo drag is one-shot per drag-step (fits modifier model naturally). Blocked by T-191 (vec3 modifier kind). Parent epic: #731.
-  - **Links:**
-
 - [~] **script: Lua input & command bindings — declare commands and bind inputs from Lua** — design-then-implement; expose IRInput command registration + key/mouse/gamepad input-to-command/status binding to Lua so creations no longer need a C++ initCommands() block
   - **ID:** T-193
   - **Area:** engine/script, engine/input, engine/command
@@ -214,6 +203,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-192** — delete C_PositionOffset3D — migrate idle bob + gizmo to vec3 modifiers · Owner: claude/T-192-delete-position-offset · PR: https://github.com/jakildev/IrredenEngine/pull/746
 - [x] **T-196** — Research — Lua binding automation (codegen extension + shared default bindings header) · Owner: claude/T-196-lua-binding-codegen-research · PR: https://github.com/jakildev/IrredenEngine/pull/745
 - [x] **T-194** — Research: Lua physics bindings — enumerate physics surface and propose Lua API · Owner: claude/T-194-lua-physics-research · PR: https://github.com/jakildev/IrredenEngine/pull/744
 - [x] **T-195** — docs: update lua-creation-setup skill for codegen + Lua-defined components/systems · Owner: claude/T-195-lua-creation-setup-docs · PR: https://github.com/jakildev/IrredenEngine/pull/742
@@ -233,4 +223,3 @@ Avoid:
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
-- [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
