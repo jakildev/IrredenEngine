@@ -220,6 +220,54 @@ Avoid:
   - **Notes:** C_PositionOffset3D predates the modifier system and is a hand-rolled position modifier channel. Two writers: system_periodic_idle_position_offset (overwrites each tick) and system_gizmo_drag (reads at drag begin). Four readers: system_sprites_to_screen, system_apply_position_offset, system_hitbox_mouse_test, system_entity_canvas_to_framebuffer. Key ordering gotcha: modifier resolver must run before any reader of C_PositionGlobal3D — audit pipeline order. Idle bob must re-push its vec3 modifier each tick (ticksRemaining_ decay); gizmo drag is one-shot per drag-step (fits modifier model naturally). Blocked by T-191 (vec3 modifier kind). Parent epic: #731.
   - **Links:**
 
+- [ ] **script: Lua input & command bindings — declare commands and bind inputs from Lua** — design-then-implement; expose IRInput command registration + key/mouse/gamepad input-to-command/status binding to Lua so creations no longer need a C++ initCommands() block
+  - **ID:** T-193
+  - **Area:** engine/script, engine/input, engine/command
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-193..T-196 lua-game-foundation
+  - **Acceptance:** (1) design note `docs/design/lua-input-commands.md` lands in PR 1 covering: how Lua-defined commands plug into the existing command dispatch loop, lifetime of Lua callables relative to the command registry, archetype-batched vs per-event dispatch, and how a Lua-defined command can be referenced by C++ pipeline composition; (2) PR 2 implements: a Lua API that (a) declares a new command with a tick body, (b) binds a key/mouse/gamepad input to that command and to a status (held/pressed/released); (3) the 12-command `initCommands()` block in `creations/demos/default/main_lua.cpp:107-200` can be replaced with a Lua equivalent and the demo behaves identically; (4) existing C++ command path (`template <> struct IRCommand::COMMAND_NAME`) keeps working with no behavior change; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** (none)
+  - **Notes:** Highest-leverage gap blocking pure-Lua interactive games. Today the command system is C++-templated — see `creations/demos/default/main_lua.cpp:107-200` for how commands are currently registered. No `IRInput::createCommand` or input-handler binding is exposed to Lua. Phase as design-then-implement: design PR first, implementation PR second. Codegen support is optional — runtime registration is sufficient for v1. Parent epic: lua-game-foundation (T-193..T-196).
+  - **Links:**
+
+- [ ] **Research: Lua physics bindings — enumerate physics surface area and propose Lua API** — research-then-design; survey existing collision / raycasting / voxel-intersection surface, propose which APIs become Lua-callable, and identify which prefab systems need Lua hooks
+  - **ID:** T-194
+  - **Area:** engine/script, engine/physics
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-193..T-196 lua-game-foundation
+  - **Acceptance:** (1) design note `docs/design/lua-physics-bindings.md` lands enumerating current physics surface area (collision, raycasting, voxel intersection, anything else actually present in the engine); (2) note proposes which APIs should be Lua-callable with concrete signatures; (3) note identifies which prefab systems need Lua hooks; (4) deliverable is framed around what's actually in the engine, not a generic physics-engine wishlist; (5) implementation deferred to a follow-up task filed once the design lands
+  - **Issue:** (none)
+  - **Notes:** Today there are no Lua bindings for physics. Confirm what physics surface even exists in the engine (it may be limited — voxel collision, basic raycasting). Likely smaller scope than T-193. If the engine has minimal physics, this collapses to "bind raycast + voxel intersection from Lua." Parent epic: lua-game-foundation (T-193..T-196).
+  - **Links:**
+
+- [ ] **docs: update lua-creation-setup skill for codegen + Lua-defined components/systems** — refresh `.claude/skills/lua-creation-setup/SKILL.md` to cover the codegen path and the IRComponent.register / IRSystem.registerSystem APIs that the existing skill predates
+  - **ID:** T-195
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-193..T-196 lua-game-foundation
+  - **Acceptance:** (1) `.claude/skills/lua-creation-setup/SKILL.md` includes a section on the `irreden_lua_codegen()` CMake helper with a worked example; (2) section on defining components and systems entirely in Lua via `IRComponent.register()` / `IRSystem.registerSystem()`; (3) guidance on when to choose codegen vs runtime EVAL mode; (4) updated worked example based on `creations/demos/lua_pipeline_demo` and `creations/demos/lua_perf_grid`; (5) existing manual binding sections stay (still needed for math types and helper namespaces) but are flagged as optional once you're using codegen-defined components
+  - **Issue:** (none)
+  - **Notes:** Skill is currently out of date — it documents the old pattern (manual `lua_bindings.cpp` per creation) and never mentions codegen. Reference docs: `engine/script/CLAUDE.md` lines 116-488 cover the Lua-driven ECS surface and codegen tool. Parent epic: lua-game-foundation (T-193..T-196).
+  - **Links:**
+
+- [ ] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
+  - **ID:** T-196
+  - **Area:** engine/script, cmake/lua_codegen
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-193..T-196 lua-game-foundation
+  - **Acceptance:** (1) `docs/design/lua-binding-automation.md` lands answering: (a) Should we extend the existing codegen tool to emit `bindLuaType<>` specializations for *existing C++ components* (the 40+ `*_lua.hpp` files in `engine/prefabs/`)? (b) Should math types and enums move to a shared `engine/script/lua_bindings_default.hpp` that creations include via one `registerStandardBindings(luaScript)` call instead of being re-listed per demo? (c) For (a), recommend an approach: regex-based header parsing, sidecar `.lua_bind` schema files per component, libclang, or stay with hand-written specializations; (2) note must include a "do nothing" option with a real argument for it (sometimes 40 trivial files is fine); (3) recommendation is concrete enough that 2-3 follow-up implementation tasks can be filed against it
+  - **Issue:** (none)
+  - **Notes:** The engine has 40+ `*_lua.hpp` files in `engine/prefabs/irreden/*/components/` that all follow the same shape (list constructors, list each field name + member pointer twice). Math types (`Color`, `vec3`, `ivec3`, etc.) and enums (`IREasingFunction`, `MidiNote`) are hand-listed in *every* demo's `lua_bindings.cpp` — `creations/demos/default/lua_bindings.cpp:31-132` shows the shape. Moving these to a shared default-bindings header is the easiest win and probably the first sub-task to do regardless of how (a) lands. The existing codegen tool lives at `cmake/lua_codegen/main.cpp`; lines 615-646 show what it emits for Lua-defined components. Extending it to handle C++-side components is plausible but requires a way to enumerate fields. The C++26 `std::reflect` proposal is too far out; libclang at codegen time is heavy but reliable; regex is brittle but cheap. Deliverable is the research note + a concrete recommendation. Implementation tasks (which would likely fan into 2-3 follow-ups: shared default bindings, codegen extension prototype, migration of existing _lua.hpp files) get filed once the research lands. Parent epic: lua-game-foundation (T-193..T-196).
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
