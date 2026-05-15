@@ -187,17 +187,6 @@ Avoid:
   - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
   - **Links:**
 
-- [~] **test: JsonSidecarWriter + NameTable round-trips** — add dedicated unit tests for engine/asset json_sidecar and name_table, covering edge cases not exercised by existing .vxs integration tests
-  - **ID:** T-186
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-186-json-sidecar-name-table-tests
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) test/asset/json_sidecar_test.cpp added and registered — covers empty object/array, scope nesting, all value* overloads, string escaping, numeric edge cases, NaN/Inf contract, key ordering, and file-open failure; (2) test/asset/name_table_test.cpp added and registered — covers write/read round-trip (0/1/many entries), non-ASCII names, idByName/nameById hits/misses, duplicate-insert behavior, empty-name edge case; (3) all new tests pass; no production-code changes; fleet-build clean on linux-debug
-  - **Issue:** #707
-  - **Notes:** Engine/asset audit found JsonSidecarWriter and NameTable exercised only indirectly via voxel_set_hybrid_test.cpp. Use MemoryBinaryWriter/Reader for name-table tests and writer's internal str() for sidecar tests — do not depend on .vxs in these tests. Lock NaN/Inf behavior as-is (whatever writer currently does). If any existing test asserts a hard-coded test count, update it.
-  - **Links:**
-
 - [~] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
   - **ID:** T-187
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
@@ -235,6 +224,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
@@ -254,4 +244,3 @@ Avoid:
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
 - [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
-- [x] **T-172** — tooling: simplify + review-pr serialized-struct version-bump check · Owner: claude/T-172-serialized-struct-version-check · PR: https://github.com/jakildev/IrredenEngine/pull/688
