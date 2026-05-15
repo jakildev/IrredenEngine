@@ -220,6 +220,28 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
+- [ ] **prefabs: vec3 modifier kind — extend modifier compose for vector fields** — add vec3-typed parameter support to the modifier system so position perturbations can be expressed as one logical modifier instead of three per-axis scalar ones
+  - **ID:** T-191
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `IRPrefab::Modifier::push<vec3>()` or equivalent accepted by modifier system; (2) `C_ResolvedFields` or a vec3-typed companion yields a composed vec3 value for a given field; (3) compose order matches scalar semantics: OVERRIDE clears prior ops, ADD/MULTIPLY stack, CLAMP applied last, component-wise throughout; (4) existing scalar modifier tests (`test/ecs/modifier_runtime_test.cpp`, `modifier_lua_test.cpp`) still pass; (5) new tests cover vec3 ADD stacking, OVERRIDE-clears-prior, MULTIPLY scaling, per-axis clamp; (6) `engine/prefabs/irreden/common/CLAUDE.md` documents the typed-field model; (7) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #732
+  - **Notes:** Scalar-only modifier system forces vec3 perturbations (idle bob, knockback, screen shake) to fan out to three per-axis modifiers or use a dedicated hand-rolled component (the C_PositionOffset3D pattern deleted in T-192). Architect picks between (A) tagged-union param — `std::variant<float, vec3, quat>` in Modifier::param_ (preferred long-term; check trivial-copyability invariant) or (B) parallel ModifierVec3/C_ModifiersVec3 types (cheaper, less invasive). quat modifier kind is out of scope (Phase 2, sibling under #731). Lua API extension deferred unless straightforward. LambdaModifier::fn_ signature must also be extended if option A is chosen. Parent epic: #731.
+  - **Links:**
+
+- [ ] **prefabs: delete C_PositionOffset3D — migrate idle bob + gizmo offset to vec3 modifiers** — remove the hand-rolled per-frame additive offset component; rewrite its two writers as vec3 modifier pushes and update the four reader systems to drop the manual globalPos+offset sum
+  - **ID:** T-192
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render, engine/prefabs/irreden/input, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-191
+  - **Acceptance:** (1) `grep -r "C_PositionOffset3D"` returns nothing in the codebase; (2) idle-bob entity in any demo visually identical pre/post-migration; (3) gizmo drag in editor still functions; (4) hitbox mouse-test resolves to the correct entity at the correct world position; (5) sprites render at correct screen position including any active idle offset; (6) `createEntity` no longer auto-attaches the offset component; (7) no system reads `globalPos + offset` — manual-sum pattern is gone; (8) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #733
+  - **Notes:** C_PositionOffset3D predates the modifier system and is a hand-rolled position modifier channel. Two writers: system_periodic_idle_position_offset (overwrites each tick) and system_gizmo_drag (reads at drag begin). Four readers: system_sprites_to_screen, system_apply_position_offset, system_hitbox_mouse_test, system_entity_canvas_to_framebuffer. Key ordering gotcha: modifier resolver must run before any reader of C_PositionGlobal3D — audit pipeline order. Idle bob must re-push its vec3 modifier each tick (ticksRemaining_ decay); gizmo drag is one-shot per drag-step (fits modifier model naturally). Blocked by T-191 (vec3 modifier kind). Parent epic: #731.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
