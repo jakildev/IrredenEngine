@@ -176,17 +176,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **prefab/runtime: C_BindPoints runtime component + entity:bindPoint() Lua API** — wire .rig BIND chunk to runtime ECS component; expose entity:bindPoint("name") world-space transform via Lua
-  - **ID:** T-181
-  - **Area:** engine/prefabs/irreden/voxel, engine/script
-  - **Model:** opus
-  - **Owner:** claude/T-181-bind-points-runtime
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) C_BindPoints runtime component declared and registered; (2) IRPrefab::Rig::toBindPoints(asset::Rig) bridge function; (3) C_BindPoints Lua binding via standard *_lua.hpp pattern; (4) LuaEntity::bindPoint(name) returns world-space transform (offset + rotation); (5) Prefab.spawn attaches C_BindPoints from rig_ref automatically, applies bind_point_overrides from prefab table; (6) round-trip test: entity:bindPoint("named_anchor") matches expected joint chain result; override changes result; (7) engine/prefabs/irreden/voxel/CLAUDE.md and engine/script/CLAUDE.md document new surface + per-frame-cost contract
-  - **Issue:** #700
-  - **Notes:** Phase 5.1 + 5.3 of editor epic #608. Deferred from T-173 / PR #671 (no runtime C_BindPoints component existed). Asset side: T-171 / PR #686 (BIND chunk). Per-frame cost: document unordered_map<string,...> lookup as one-time query at spawn/interaction, not per-tick; integer-handle escape hatch for hot use cases deferred.
-  - **Links:**
-
 - [~] **render: LOD Phase 1 — wire computeLodLevel + per-shape lodMin filter** — promote lod_utils.hpp stub to live; add LOD_UPDATE system + C_ActiveLodLevel singleton; CPU-side per-shape filter in SHAPES_TO_TRIXEL staging
   - **ID:** T-187
   - **Area:** engine/render, engine/prefabs/irreden/render, engine/system
@@ -224,7 +213,7 @@ Avoid:
   - **ID:** T-191
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-191-vec3-modifier-kind
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRPrefab::Modifier::push<vec3>()` or equivalent accepted by modifier system; (2) `C_ResolvedFields` or a vec3-typed companion yields a composed vec3 value for a given field; (3) compose order matches scalar semantics: OVERRIDE clears prior ops, ADD/MULTIPLY stack, CLAMP applied last, component-wise throughout; (4) existing scalar modifier tests (`test/ecs/modifier_runtime_test.cpp`, `modifier_lua_test.cpp`) still pass; (5) new tests cover vec3 ADD stacking, OVERRIDE-clears-prior, MULTIPLY scaling, per-axis clamp; (6) `engine/prefabs/irreden/common/CLAUDE.md` documents the typed-field model; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #732
@@ -246,6 +235,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-181** — prefab/runtime: C_BindPoints + entity:bindPoint Lua API · Owner: claude/T-181-bind-points-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/720
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
@@ -265,4 +255,3 @@ Avoid:
 - [x] **T-153** — Editor F-0.9 — voxel mouse picking (cursor→ray, DDA, single selection) · Owner: claude/T-153-voxel-picking · PR: https://github.com/jakildev/IrredenEngine/pull/682
 - [x] **T-167** — .vxs v1 dense-mode reader/writer (BNDS, VOXR, LAYR, FRAM, META chunks) · Owner: claude/T-167-vxs-dense · PR: https://github.com/jakildev/IrredenEngine/pull/691
 - [x] **T-165** — Editor F-0.5 Phase 3 — gizmo hover + drag interaction · Owner: claude/T-165-gizmo-hover-drag · PR: https://github.com/jakildev/IrredenEngine/pull/685
-- [x] **T-169** — asset: .rig v1 — joints (JNTS) chunk; persist C_JointHierarchy · Owner: claude/T-169-rig-v1 · PR: https://github.com/jakildev/IrredenEngine/pull/681
