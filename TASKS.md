@@ -220,11 +220,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [ ] **prefabs: vec3 modifier kind — extend modifier compose for vector fields** — add vec3-typed parameter support to the modifier system so position perturbations can be expressed as one logical modifier instead of three per-axis scalar ones
+- [~] **prefabs: vec3 modifier kind — extend modifier compose for vector fields** — add vec3-typed parameter support to the modifier system so position perturbations can be expressed as one logical modifier instead of three per-axis scalar ones
   - **ID:** T-191
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRPrefab::Modifier::push<vec3>()` or equivalent accepted by modifier system; (2) `C_ResolvedFields` or a vec3-typed companion yields a composed vec3 value for a given field; (3) compose order matches scalar semantics: OVERRIDE clears prior ops, ADD/MULTIPLY stack, CLAMP applied last, component-wise throughout; (4) existing scalar modifier tests (`test/ecs/modifier_runtime_test.cpp`, `modifier_lua_test.cpp`) still pass; (5) new tests cover vec3 ADD stacking, OVERRIDE-clears-prior, MULTIPLY scaling, per-axis clamp; (6) `engine/prefabs/irreden/common/CLAUDE.md` documents the typed-field model; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #732
