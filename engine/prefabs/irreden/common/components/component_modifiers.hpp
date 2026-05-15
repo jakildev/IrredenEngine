@@ -225,14 +225,10 @@ struct C_ResolvedFields {
             rf->value_ = mod.param_;
             break;
         case TransformKind::CLAMP_MIN:
-            rf->value_.x = (rf->value_.x < mod.param_.x) ? mod.param_.x : rf->value_.x;
-            rf->value_.y = (rf->value_.y < mod.param_.y) ? mod.param_.y : rf->value_.y;
-            rf->value_.z = (rf->value_.z < mod.param_.z) ? mod.param_.z : rf->value_.z;
+            rf->value_ = IRMath::max(rf->value_, mod.param_);
             break;
         case TransformKind::CLAMP_MAX:
-            rf->value_.x = (rf->value_.x > mod.param_.x) ? mod.param_.x : rf->value_.x;
-            rf->value_.y = (rf->value_.y > mod.param_.y) ? mod.param_.y : rf->value_.y;
-            rf->value_.z = (rf->value_.z > mod.param_.z) ? mod.param_.z : rf->value_.z;
+            rf->value_ = IRMath::min(rf->value_, mod.param_);
             break;
         }
     }

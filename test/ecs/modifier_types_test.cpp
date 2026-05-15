@@ -108,6 +108,12 @@ TEST(ModifierTypes, ModifierVec3IsTriviallyCopyable) {
     SUCCEED();
 }
 
+TEST(ModifierTypes, ModifierVec3LayoutLocked) {
+    static_assert(sizeof(ModifierVec3) == 32);
+    static_assert(alignof(ModifierVec3) == 8);
+    SUCCEED();
+}
+
 TEST(ModifierTypes, FieldValueTypeSize) {
     static_assert(sizeof(FieldValueType) == 1);
     SUCCEED();

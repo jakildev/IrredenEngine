@@ -13,6 +13,7 @@
 // should pass the .entity field: ir.modifier.push(entity.entity, { ... }).
 
 #include <irreden/common/modifier.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <string>
@@ -76,8 +77,7 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
         IRPrefab::Modifier::pushGlobal(o.field_, o.kind_, o.param_, o.source_, o.ticks_);
     };
 
-    // vec3 push paths. `param` is expected as a keyed sub-table with
-    // `x`, `y`, `z` fields. Missing components default to 0.
+    // vec3 push paths. `param` accepts an IRMath::vec3 userdata or a {x,y,z} table.
     struct PushOptsVec3 {
         IRComponents::FieldBindingId field_;
         IRComponents::TransformKind kind_;
@@ -86,20 +86,12 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
         std::int32_t ticks_;
     };
     auto parseOptsVec3 = [](sol::table t) -> PushOptsVec3 {
-        IRMath::vec3 param{0.0f, 0.0f, 0.0f};
-        sol::object paramObj = t["param"];
-        if (paramObj.is<sol::table>()) {
-            sol::table pt = paramObj.as<sol::table>();
-            param.x = pt.get_or("x", 0.0f);
-            param.y = pt.get_or("y", 0.0f);
-            param.z = pt.get_or("z", 0.0f);
-        }
         return PushOptsVec3{
             static_cast<IRComponents::FieldBindingId>(t.get<int>("field")),
             static_cast<IRComponents::TransformKind>(
                 t.get_or("kind", static_cast<int>(IRComponents::TransformKind::ADD))
             ),
-            param,
+            vec3FromLua(t.get<sol::object>("param")),
             t.get_or<IREntity::EntityId>("source", IREntity::kNullEntity),
             t.get_or("ticks", -1)
         };
