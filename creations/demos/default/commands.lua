@@ -1,5 +1,5 @@
 -- T-193 PR 2: Lua equivalent of the pre-T-193 C++ initCommands() block.
--- Same 17 bindings the C++ version had, in the same order. Documents the
+-- Same 18 bindings the C++ version had, in the same order. Documents the
 -- canonical IRCommand / IRInput surface for any creation porting off the
 -- C++ initCommands() pattern.
 
