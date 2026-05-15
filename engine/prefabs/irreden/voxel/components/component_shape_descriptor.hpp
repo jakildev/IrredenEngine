@@ -18,12 +18,22 @@ namespace IRComponents {
 //   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
 //   SHAPE_FLAG_DISCRETE_ROTATION - (future) snap joint rotation to 90-deg
 //                                  increments in iso-adjusted coordinates
+//
+// lodMin_ is the coarsest LOD tier at which this shape still renders —
+// equivalently, the smallest LodLevel index it's visible at, since the
+// tier index goes down as detail goes up. A shape with lodMin_ = LOD_0
+// renders only when the camera is zoomed all the way in (activeLod ==
+// LOD_0); a shape with lodMin_ = LOD_4 (the default) is always visible
+// because every activeLod satisfies activeLod <= LOD_4. SHAPES_TO_TRIXEL
+// reads the C_ActiveLodLevel singleton at beginTick and skips shapes
+// where lodMin_ < activeLod (CPU-side, pre-GPU staging). See
+// docs/design/lod-strategy.md and engine/prefabs/irreden/render/lod_utils.hpp.
 struct C_ShapeDescriptor {
     IRRender::ShapeType shapeType_ = IRRender::ShapeType::BOX;
     vec4 params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
     Color color_ = Color{255, 255, 255, 255};
     std::uint32_t flags_ = IRRender::SHAPE_FLAG_VISIBLE;
-    std::uint32_t lodLevel_ = 0;
+    IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
 
     C_ShapeDescriptor()
