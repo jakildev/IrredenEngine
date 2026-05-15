@@ -71,11 +71,22 @@ printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"%s","observe
 out=$("$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open" "stale observation ignored"
 
-echo "T5: resetsAt in the past => open"
+echo "T5: resetsAt in the past (well past grace) => open"
 printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"2020-01-01T00:00:00Z","observed_at":%s}\n' "$NOW" \
     > "$FLEET_STATE_DIR/usage/five_hour.json"
 out=$("$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open" "expired window ignored"
+
+echo "T5b: resetsAt 60s in the past, default 600s grace => still closed"
+RECENT_RESET=$(python3 -c "import datetime,time; print(datetime.datetime.fromtimestamp(time.time()-60,tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RECENT_RESET" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:five_hour util=85%" "grace window keeps gate closed past resetsAt"
+
+echo "T5c: same fixture, grace=0 => open immediately"
+out=$(FLEET_DISPATCHER_RESET_GRACE_SECONDS=0 "$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open" "grace=0 reverts to instant open at resetsAt"
 
 echo "T6: utilization 0.50 => open with util reported"
 printf '{"rateLimitType":"five_hour","utilization":0.50,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \

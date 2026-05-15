@@ -58,6 +58,14 @@
 # so the gate doesn't latch closed forever based on a single high
 # watermark. Default 1h.
 #
+# Reset grace: pad the resetsAt boundary so the gate doesn't flip open
+# on the exact second the latched window expires. Anthropic's rolling
+# window means util at resetsAt isn't zero — it's whatever the rest of
+# the window weighs, plus any side-channel consumption (e.g. interactive
+# architect chats) the fleet didn't observe. Without padding, the first
+# tick past resetsAt dispatches every queued trigger and they all walk
+# straight into the wall. Default 10 min.
+#
 # Sibling to FLEET_DISPATCHER_LIMIT_DELAY (per-pane post-mortem cooldown
 # after a usage_limit exit). Use --gate-status on fleet-dispatcher to
 # inspect the live state.
@@ -71,3 +79,4 @@
 # FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.95
 
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
+# FLEET_DISPATCHER_RESET_GRACE_SECONDS=600

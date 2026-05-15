@@ -139,14 +139,24 @@ LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 #   4. Final fallback 0.80
 #
 # Conservative against staleness: an observation older than
-# USAGE_STALE_SECONDS (default 1h) or whose resetsAt is in the past
-# is ignored, so the gate doesn't latch closed forever after a single
-# high-watermark reading.
+# USAGE_STALE_SECONDS (default 1h) or whose resetsAt + RESET_GRACE_SECONDS
+# is in the past is ignored, so the gate doesn't latch closed forever
+# after a single high-watermark reading.
+#
+# RESET_GRACE_SECONDS pads the resetsAt boundary so the gate doesn't flip
+# open on the exact second the latched window expires. Anthropic's rolling
+# window means util at resetsAt isn't zero — it's whatever the rest of the
+# window weighs, plus any side-channel consumption (e.g. interactive
+# architect chats) the fleet didn't observe. Without padding, the first
+# tick past resetsAt dispatches every queued trigger and they all walk
+# straight into the wall. Default 10 min — enough to absorb the rolloff
+# but not enough to feel like a real wait.
 #
 # Sibling to LIMIT_DELAY's per-pane post-mortem cooldown: that fires
 # AFTER a pane hits the wall and exits with code 2; this fires BEFORE
 # the wall to spread the remaining budget across in-flight work.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
 
 # Export the gate env vars so the inline-Python in usage_gate_status
 # sees them. Sourcing fleet-up.conf doesn't auto-export, so without
@@ -493,6 +503,7 @@ pane_in_rate_limit_cooldown() {
 usage_gate_status() {
     USAGE_DIR="$USAGE_DIR" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
+    RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
     python3 - <<'PY'
 import json
 import os
@@ -503,6 +514,7 @@ from datetime import datetime
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
 
 # Built-in per-type defaults. Used only when neither the per-type env
 # override nor the global env override is set. This lets a fresh
@@ -573,12 +585,12 @@ for path in sorted(usage_dir.glob("*.json")):
         try:
             # datetime.fromisoformat accepts +00:00 but not Z until 3.11.
             dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
-            if dt.timestamp() <= now:
+            if dt.timestamp() + reset_grace_s <= now:
                 continue
         except ValueError:
             pass
     elif isinstance(resets_at, (int, float)):
-        if resets_at <= now:
+        if resets_at + reset_grace_s <= now:
             continue
     util_f = float(util)
     # Utilization comes back in [0,1]. Be defensive against a future

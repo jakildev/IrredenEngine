@@ -398,9 +398,12 @@ e.g. `five_hour`, `seven_day`). On every 10-second tick `fleet-dispatcher`
 evaluates each observation: if `utilization` is at or above the per-type
 threshold, the gate closes and **all** new dispatches defer (in-flight
 iterations finish normally; their next trigger waits). The gate
-auto-reopens on the first tick after the observation's `resetsAt`
-passes — at most ~10 s after the actual reset — or sooner if a fresh
-observation reports utilisation below threshold.
+auto-reopens on the first tick after the observation's `resetsAt` plus
+`FLEET_DISPATCHER_RESET_GRACE_SECONDS` passes — by default ~10 min after
+the actual reset — or sooner if a fresh observation reports utilisation
+below threshold. The grace pad exists because Anthropic's rolling window
+isn't zero at `resetsAt`; without it the first tick past the reset fires
+every queued trigger and they walk straight into the wall.
 
 Defaults and tuning:
 
@@ -412,6 +415,9 @@ Defaults and tuning:
 - Stale observations (older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS`,
   default `3600`) are dropped from evaluation, so a single high-watermark
   reading can't latch the gate closed forever.
+- Reset grace (`FLEET_DISPATCHER_RESET_GRACE_SECONDS`, default `600`) —
+  observations stay in evaluation until `resetsAt + grace` is in the past.
+  Set to `0` to revert to the old "open instantly at resetsAt" behavior.
 
 **Per-pane cooldown** — post-mortem, applied after a single pane exits
 with code 2 (suspected wall-hit). `fleet-dispatch-wrap` writes

@@ -29,6 +29,7 @@ RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 # Same env vars and defaults as fleet-dispatcher, so output cannot
 # disagree with what the dispatcher actually evaluates.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
@@ -46,9 +47,10 @@ Reports both:
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
   • per-pane cooldowns (15-min default after a pane exits with code 2)
 
-Auto-resume is automatic: when a rate-limit window's resetsAt timestamp
-passes, the dispatcher re-opens the gate on its next poll (~10s). This
-command only visualises state — it does NOT trigger resume.
+Auto-resume is automatic: the dispatcher re-opens the gate on its next
+poll (~10s) once `resetsAt + FLEET_DISPATCHER_RESET_GRACE_SECONDS` has
+passed (default grace is 600s, so by default ~10 min after the actual
+reset). This command only visualises state — it does NOT trigger resume.
 
 State sources (read-only):
   ~/.fleet/state/usage/*.json         (written by fleet-claude-stream)
@@ -58,6 +60,7 @@ Tunables (env, shared with fleet-dispatcher):
   FLEET_DISPATCHER_USAGE_GATE_<TYPE>  per-type threshold (e.g. _FIVE_HOUR=0.7)
   FLEET_DISPATCHER_USAGE_GATE         global threshold override
   FLEET_DISPATCHER_USAGE_STALE_SECONDS  default 3600
+  FLEET_DISPATCHER_RESET_GRACE_SECONDS  default 600
   FLEET_DISPATCHER_LIMIT_DELAY        default 900
   FLEET_DISPATCHER_INTERVAL           default 10
 EOF
@@ -74,8 +77,8 @@ EOF
         ;;
 esac
 
-export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS LIMIT_DELAY \
-       POLL_INTERVAL_SECONDS JSON
+export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS \
+       LIMIT_DELAY POLL_INTERVAL_SECONDS JSON
 
 # Pass through any per-type / global override env vars that fleet-dispatcher
 # reads, so threshold lookup matches the dispatcher's view.
@@ -97,6 +100,7 @@ from datetime import datetime, timezone
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
 limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
 poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
 emit_json = os.environ.get("JSON") == "1"
@@ -190,7 +194,7 @@ if usage_dir.is_dir():
             if resets_dt is not None
             else (resets_raw if isinstance(resets_raw, str) else None)
         )
-        is_past = resets_dt is not None and resets_dt.timestamp() <= now
+        is_past = resets_dt is not None and resets_dt.timestamp() + reset_grace_s <= now
         eta_s = (
             int(resets_dt.timestamp() - now) if resets_dt is not None else None
         )
@@ -256,6 +260,7 @@ if emit_json:
         },
         "limit_delay_seconds": limit_delay,
         "usage_stale_seconds": stale_s,
+        "reset_grace_seconds": reset_grace_s,
         "poll_interval_seconds": poll_s,
         "now": now,
     }
@@ -315,5 +320,11 @@ else:
     print("Per-pane cooldowns: none active")
 
 print()
-print(f"Note: dispatcher polls every {poll_s}s; resume happens within ~{poll_s}s of reset.")
+if reset_grace_s > 0:
+    print(
+        f"Note: dispatcher polls every {poll_s}s; resume happens within "
+        f"~{poll_s}s of (reset + {reset_grace_s}s grace)."
+    )
+else:
+    print(f"Note: dispatcher polls every {poll_s}s; resume happens within ~{poll_s}s of reset.")
 PY
