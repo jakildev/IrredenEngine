@@ -210,22 +210,11 @@ Avoid:
   - **Notes:** Highest-leverage gap blocking pure-Lua interactive games. Today the command system is C++-templated — see `creations/demos/default/main_lua.cpp:107-200` for how commands are currently registered. No `IRInput::createCommand` or input-handler binding is exposed to Lua. Phase as design-then-implement: design PR first, implementation PR second. Codegen support is optional — runtime registration is sufficient for v1. Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [~] **Research: Lua binding automation — codegen extension + shared default bindings header** — short research note recommending an approach for auto-emitting `bindLuaType<>` specializations for the 40+ existing C++ `*_lua.hpp` components, plus a shared `registerStandardBindings(luaScript)` for math types and enums
-  - **ID:** T-196
-  - **Area:** engine/script, cmake/lua_codegen
-  - **Model:** opus
-  - **Owner:** claude/T-196-lua-binding-codegen-research
-  - **Blocked by:** (none)
-  - **Stack:** T-193..T-196 lua-game-foundation
-  - **Acceptance:** (1) `docs/design/lua-binding-automation.md` lands answering: (a) Should we extend the existing codegen tool to emit `bindLuaType<>` specializations for *existing C++ components* (the 40+ `*_lua.hpp` files in `engine/prefabs/`)? (b) Should math types and enums move to a shared `engine/script/lua_bindings_default.hpp` that creations include via one `registerStandardBindings(luaScript)` call instead of being re-listed per demo? (c) For (a), recommend an approach: regex-based header parsing, sidecar `.lua_bind` schema files per component, libclang, or stay with hand-written specializations; (2) note must include a "do nothing" option with a real argument for it (sometimes 40 trivial files is fine); (3) recommendation is concrete enough that 2-3 follow-up implementation tasks can be filed against it
-  - **Issue:** (none)
-  - **Notes:** The engine has 40+ `*_lua.hpp` files in `engine/prefabs/irreden/*/components/` that all follow the same shape (list constructors, list each field name + member pointer twice). Math types (`Color`, `vec3`, `ivec3`, etc.) and enums (`IREasingFunction`, `MidiNote`) are hand-listed in *every* demo's `lua_bindings.cpp` — `creations/demos/default/lua_bindings.cpp:31-132` shows the shape. Moving these to a shared default-bindings header is the easiest win and probably the first sub-task to do regardless of how (a) lands. The existing codegen tool lives at `cmake/lua_codegen/main.cpp`; lines 615-646 show what it emits for Lua-defined components. Extending it to handle C++-side components is plausible but requires a way to enumerate fields. The C++26 `std::reflect` proposal is too far out; libclang at codegen time is heavy but reliable; regex is brittle but cheap. Deliverable is the research note + a concrete recommendation. Implementation tasks (which would likely fan into 2-3 follow-ups: shared default bindings, codegen extension prototype, migration of existing _lua.hpp files) get filed once the research lands. Parent epic: lua-game-foundation (T-193..T-196).
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-196** — Research — Lua binding automation (codegen extension + shared default bindings header) · Owner: claude/T-196-lua-binding-codegen-research · PR: https://github.com/jakildev/IrredenEngine/pull/745
 - [x] **T-194** — Research: Lua physics bindings — enumerate physics surface and propose Lua API · Owner: claude/T-194-lua-physics-research · PR: https://github.com/jakildev/IrredenEngine/pull/744
 - [x] **T-195** — docs: update lua-creation-setup skill for codegen + Lua-defined components/systems · Owner: claude/T-195-lua-creation-setup-docs · PR: https://github.com/jakildev/IrredenEngine/pull/742
 - [x] **T-191** — vec3 modifier kind — extend modifier compose for vector fields · Owner: claude/T-191-vec3-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/740
@@ -245,4 +234,3 @@ Avoid:
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
 - [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
 - [x] **T-175** — Move C_Voxel into namespace IRComponents · Owner: claude/T-175-cvoxel-ircomponents · PR: https://github.com/jakildev/IrredenEngine/pull/696
-- [x] **T-174** — Editor: migrate LayoutState to C_LayoutState singleton component · Owner: claude/T-174-layout-state-singleton · PR: https://github.com/jakildev/IrredenEngine/pull/695
