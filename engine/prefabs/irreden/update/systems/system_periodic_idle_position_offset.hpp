@@ -5,10 +5,13 @@
 // UPDATE tick. APPLY_POSITION_OFFSET later composes the entity's
 // vec3 modifiers and adds the resolved offset to C_PositionGlobal3D.
 //
-// `ticksRemaining_ = 2` is the smallest value that fires for exactly
-// one frame (decay decrements at the start of the next frame, removing
-// the entry before the next compose). The bob writer re-pushes every
-// tick, so steady-state holds at most two modifiers per entity.
+// `ticksRemaining_ = 1` because this writer pushes AFTER MODIFIER_DECAY
+// has already run in the same UPDATE pipeline: the entry survives this
+// frame's compose, then next frame's DECAY decrements it (1 → 0) and
+// removes it before the next compose. The "use 2 to fire for one frame"
+// rule in MODIFIER_DECAY's header applies to entries pushed OUTSIDE the
+// pipeline (Lua, input handlers) — those see DECAY before their first
+// compose, so they need one extra tick of headroom.
 //
 // Pipeline ordering required by callers:
 //   PERIODIC_IDLE → MODIFIER_DECAY → PERIODIC_IDLE_POSITION_OFFSET
@@ -20,7 +23,6 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/components/component_modifiers.hpp>
-#include <irreden/common/modifier.hpp>
 #include <irreden/common/position_modifier_fields.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
 
@@ -32,14 +34,17 @@ template <> struct System<PERIODIC_IDLE_POSITION_OFFSET> {
             "PeriodicIdlePositionOffset",
             [](IREntity::EntityId entity,
                IRComponents::C_PeriodicIdle &idle,
-               [[maybe_unused]] IRComponents::C_Modifiers &) {
-                IRPrefab::Modifier::push(
-                    entity,
-                    IRPrefab::PositionModifier::positionOffsetField(),
-                    IRComponents::TransformKind::ADD,
-                    idle.getValue(),
-                    entity,
-                    2
+               IRComponents::C_Modifiers &mods) {
+                // Push directly to the archetype-iterated mods to avoid
+                // a per-entity getComponent inside IRPrefab::Modifier::push.
+                mods.modifiersVec3_.push_back(
+                    IRComponents::ModifierVec3{
+                        IRPrefab::PositionModifier::positionOffsetField(),
+                        IRComponents::TransformKind::ADD,
+                        idle.getValue(),
+                        entity,
+                        1
+                    }
                 );
             }
         );
