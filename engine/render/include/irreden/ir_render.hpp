@@ -115,6 +115,12 @@ inline void setActiveCanvas(const std::string &name) {
 inline IREntity::EntityId getActiveCanvasEntity() {
     return getRenderManager().getActiveCanvasEntity();
 }
+
+// Returns kNullEntity instead of asserting when no RenderManager exists — safe for headless and test contexts.
+inline IREntity::EntityId getActiveCanvasEntityOrNull() {
+    return g_renderManager != nullptr ? g_renderManager->getActiveCanvasEntity()
+                                      : IREntity::kNullEntity;
+}
 /// @}
 
 /// @{

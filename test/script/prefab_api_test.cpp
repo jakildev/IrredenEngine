@@ -4,9 +4,11 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_render.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 
 #include <fstream>
 #include <string>
@@ -244,6 +246,99 @@ TEST_F(PrefabApi, SetupCallbackErrorSurfaced) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     EXPECT_EQ(r.entity_, IREntity::kNullEntity);
     EXPECT_NE(r.error_.find("setup callback failed"), std::string::npos) << r.error_;
+}
+
+// ---- voxel_ref SHAPES attachment ------------------------------------------
+
+// Build a 3-record SHAPES `.vxs` with distinct offsets, shape types, and
+// colors so the round-trip test can verify per-record attachment by
+// inspecting each child entity.
+PrefabFiles writeShapesFixture(const std::string &tag, const std::string &prefabBody) {
+    PrefabFiles f;
+    f.voxel_path_ = std::string{kTmpDir} + "/prefab_test_shapes_" + tag + ".vxs";
+    f.rig_dir_ = kTmpDir;
+    f.rig_name_ = "prefab_test_shapes_" + tag;
+    f.prefab_path_ = std::string{kTmpDir} + "/prefab_test_shapes_" + tag + ".prefab.lua";
+
+    std::vector<IRAsset::ShapeRecord> shapes(3);
+    // BOX at (1, 0, 0), red
+    shapes[0].shapeTypeId_ = static_cast<std::uint32_t>(IRRender::ShapeType::BOX);
+    shapes[0].params_ = vec4(2.0f, 2.0f, 2.0f, 0.0f);
+    shapes[0].color_ = IRMath::Color{255, 0, 0, 255};
+    shapes[0].offset_ = IRMath::vec3(1.0f, 0.0f, 0.0f);
+    // SPHERE at (0, 2, 0), green
+    shapes[1].shapeTypeId_ = static_cast<std::uint32_t>(IRRender::ShapeType::SPHERE);
+    shapes[1].params_ = vec4(1.5f, 0.0f, 0.0f, 0.0f);
+    shapes[1].color_ = IRMath::Color{0, 255, 0, 255};
+    shapes[1].offset_ = IRMath::vec3(0.0f, 2.0f, 0.0f);
+    // CYLINDER at (0, 0, 3), blue
+    shapes[2].shapeTypeId_ = static_cast<std::uint32_t>(IRRender::ShapeType::CYLINDER);
+    shapes[2].params_ = vec4(0.5f, 4.0f, 0.0f, 0.0f);
+    shapes[2].color_ = IRMath::Color{0, 0, 255, 255};
+    shapes[2].offset_ = IRMath::vec3(0.0f, 0.0f, 3.0f);
+    IRAsset::saveShapeGroup(f.voxel_path_, shapes);
+
+    std::ofstream out(f.prefab_path_);
+    out << prefabBody;
+    return f;
+}
+
+TEST_F(PrefabApi, SpawnAttachesShapesAsChildren) {
+    PrefabFiles f = writeShapesFixture(
+        "attach",
+        std::string{"return { prefab_version = 1, voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_shapes_attach.vxs' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(10.0f, 20.0f, 30.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    // Collect every C_ShapeDescriptor + C_Position3D entity in the world.
+    // The fixture starts with an empty manager, so these are exactly the
+    // SHAPES children attached by spawn (the root entity owns
+    // C_Position3D but no C_ShapeDescriptor).
+    struct ChildSnapshot {
+        IRMath::vec3 offset_;
+        IRRender::ShapeType shapeType_;
+        IRMath::Color color_;
+    };
+    std::vector<ChildSnapshot> children;
+    // forEachComponent only supports a single component type; getComponent<C_Position3D> per-entity
+    // is the cleanest option available until the API gains multi-component iteration.
+    IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
+        [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &desc) {
+            const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(id);
+            children.push_back({pos.pos_, desc.shapeType_, desc.color_});
+        }
+    );
+
+    ASSERT_EQ(children.size(), 3u);
+
+    // The asset module's iteration order is insertion order; spawn preserves it.
+    EXPECT_EQ(children[0].shapeType_, IRRender::ShapeType::BOX);
+    EXPECT_FLOAT_EQ(children[0].offset_.x, 1.0f);
+    EXPECT_EQ(children[0].color_.red_, 255);
+    EXPECT_EQ(children[0].color_.green_, 0);
+
+    EXPECT_EQ(children[1].shapeType_, IRRender::ShapeType::SPHERE);
+    EXPECT_FLOAT_EQ(children[1].offset_.y, 2.0f);
+    EXPECT_EQ(children[1].color_.green_, 255);
+
+    EXPECT_EQ(children[2].shapeType_, IRRender::ShapeType::CYLINDER);
+    EXPECT_FLOAT_EQ(children[2].offset_.z, 3.0f);
+    EXPECT_EQ(children[2].color_.blue_, 255);
+}
+
+TEST_F(PrefabApi, SpawnSkipsShapesAttachmentWhenAbsent) {
+    // A prefab without voxel_ref must still spawn cleanly with zero
+    // shape children. Sanity check that the SHAPES path doesn't leak
+    // into prefabs that opted out.
+    PrefabFiles f = writeFixtureSet("no_voxel", "return { prefab_version = 1 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
 }
 
 // ---- additivity: unknown top-level keys do not break the load -------------

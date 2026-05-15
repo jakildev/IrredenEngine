@@ -80,10 +80,16 @@ void clearPrefabs();
 ///   with a `VersionMismatch`-style error string.
 /// - Creates an entity with `C_Position3D(position)`.
 /// - If `voxel_ref` is present, loads the `.vxs` via
-///   `IRAsset::loadVoxelSet`. The loaded shape records / dense voxel
-///   data are validated to load cleanly but **not** attached as
-///   runtime components in v1 (`C_VoxelSetNew` requires an active
-///   render canvas pool). A follow-up task wires the attachment.
+///   `IRAsset::loadVoxelSet`. SHAPES records (and the SHAPES half of
+///   HYBRID files) attach as child entities — one per `ShapeRecord`,
+///   each carrying `C_Position3D(record.offset_)` plus a
+///   `C_ShapeDescriptor` whose `shapeType_` / `params_` / `color_` /
+///   `flags_` are copied from the record. Per-record `rotation_` /
+///   `csgOp_` / `boneId_` are loaded but not stamped onto runtime
+///   components in v1 (no current renderer consumes them; T-181
+///   wires bone binding). DENSE / HYBRID dense voxel data is loaded
+///   but **not** attached — `C_VoxelSetNew` requires an active
+///   render-canvas pool; the headless attach path is deferred.
 /// - If `rig_ref` is present, loads the `.rig` via `IRAsset::loadRig`
 ///   and attaches `C_JointHierarchy` via
 ///   `IRPrefab::Rig::toComponent`. Bind-points are loaded but not

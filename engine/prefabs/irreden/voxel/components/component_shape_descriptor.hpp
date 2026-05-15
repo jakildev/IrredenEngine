@@ -27,13 +27,13 @@ struct C_ShapeDescriptor {
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
 
     C_ShapeDescriptor()
-        : canvasEntity_{IRRender::getActiveCanvasEntity()} {}
+        : canvasEntity_{IRRender::getActiveCanvasEntityOrNull()} {}
 
     C_ShapeDescriptor(IRRender::ShapeType type, vec4 params, Color color)
         : shapeType_{type}
         , params_{params}
         , color_{color}
-        , canvasEntity_{IRRender::getActiveCanvasEntity()} {}
+        , canvasEntity_{IRRender::getActiveCanvasEntityOrNull()} {}
 };
 
 } // namespace IRComponents
