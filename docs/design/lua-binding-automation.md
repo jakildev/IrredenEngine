@@ -131,10 +131,9 @@ IRScript::registerStandardBindings(luaScript);
 - It's not a binding-shape question. These types are already in
   `engine/math/` and `engine/audio/` — the only thing missing is one
   shared header that registers them.
-- Idempotency is a non-problem: `sol::state::new_usertype` overwrites,
-  and the helper is gated on a per-creation registration flag the
-  binding callback already maintains
-  (`creations/demos/default/lua_bindings.cpp:20`).
+- Idempotency is a non-problem: the helper is gated on a `static bool
+  isRegistered` guard (`creations/demos/default/lua_bindings.cpp:20`);
+  double-registration never occurs in practice.
 - Net deletion. Roughly **−100 to −150 lines** across the two
   demos that currently ship their own `lua_bindings.cpp`
   (`default` deletes ~110 lines of math/enum/text-align registration;
@@ -396,9 +395,9 @@ This means a CODEGEN-generated component's Lua-visible name is the
 **unprefixed** name (`Hp`), not `C_Hp`. Lua-defined components are
 spelled `Hp.new(...)` in Lua, but C++ components are spelled
 `C_Foo.new(...)` — a small but real inconsistency
-(`engine/script/CLAUDE.md` "## Lua-defined components" documents this
-deliberately, but it's worth a second pass once both surfaces have
-production users).
+this is not yet documented as a deliberate decision — task 2 in the
+implementation plan below captures exactly that; but it's worth a
+second pass once both surfaces have production users).
 
 Not a blocker for any of the work above; flagging for completeness.
 
