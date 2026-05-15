@@ -163,11 +163,11 @@ Avoid:
   - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Blocks T-199 (consumer migration). Topological ordering is non-negotiable — the system must guarantee parents-before-children. `setParent` mid-frame means new child won't see parent transform until next frame; document this. All quat/vec ops through `engine/math/` — no raw glm:: calls. Sibling: T-198 (quat modifier kind, parallel — needed for rotation perturbations to flow through this system).
   - **Links:**
 
-- [ ] **engine: quat modifier kind — extend modifier compose for rotation perturbations** — add a `ROTATION` quat field to the modifier system so rotation perturbations (wobble, shake, recoil, animation-blend overlays) flow through the same modifier channel as positions
+- [~] **engine: quat modifier kind — extend modifier compose for rotation perturbations** — add a `ROTATION` quat field to the modifier system so rotation perturbations (wobble, shake, recoil, animation-blend overlays) flow through the same modifier channel as positions
   - **ID:** T-198
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `IRPrefab::Modifier::push<quat>(target, field, quat{...}, TransformKind::MULTIPLY)` (or equivalent) accepted; (2) resolved rotation reads back as `mod_k * mod_{k-1} * … * mod_0 * base` for stacked MULTIPLY modifiers; (3) OVERRIDE clears prior MULTIPLYs; (4) ADD/CLAMP push on a quat field raises a clear error (assert in debug or static_assert); (5) `SYSTEM_PROPAGATE_TRANSFORM` reads the resolved quat as `modifier_rotation` per the SQT formula in T-197; (6) test coverage: MULTIPLY stacking, OVERRIDE clears, ADD-on-quat assertion fires; (7) compose order convention (`mod * base`) documented in `engine/prefabs/irreden/common/CLAUDE.md`; (8) fleet-build clean on linux-debug and macos-debug
