@@ -10,6 +10,8 @@
 #include <irreden/script/lua_script.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/dense_bridge.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
 #include <sol/sol.hpp>
@@ -219,11 +221,12 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // decision). v1 intentionally drops these to avoid stamping unused
     // state.
     //
-    // DENSE / HYBRID dense data is left unattached — `C_VoxelSetNew`
-    // allocates against the active render-canvas pool, and the
-    // headless attach path needs its own design pass. The shape half
-    // of HYBRID still attaches here so SHAPES + HYBRID prefabs render
-    // their SDF primitives even when no canvas is active.
+    // DENSE / HYBRID dense data attaches as `C_VoxelSetNew` on the
+    // root entity via `IRPrefab::DenseVoxel::toComponent` — the
+    // adapter routes through the dense-data ctor, which is
+    // headless-safe: with an active canvas it allocates from the
+    // pool and seeds positions; without one it stages records in
+    // `pendingVoxels_` for a later canvas-attach pass.
     std::vector<IREntity::EntityId> spawnedChildren;
     if (loadedVoxels && (loadedVoxels->mode_ == IRAsset::VoxelSetMode::SHAPES ||
                          loadedVoxels->mode_ == IRAsset::VoxelSetMode::HYBRID)) {
@@ -239,6 +242,15 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 IREntity::createEntity(IRComponents::C_Position3D{record.offset_}, descriptor);
             IREntity::setParent(child, entity);
             spawnedChildren.push_back(child);
+        }
+    }
+
+    if (loadedVoxels && (loadedVoxels->mode_ == IRAsset::VoxelSetMode::DENSE ||
+                         loadedVoxels->mode_ == IRAsset::VoxelSetMode::HYBRID)) {
+        IRComponents::C_VoxelSetNew voxelSet =
+            IRPrefab::DenseVoxel::toComponent(loadedVoxels->dense_);
+        if (voxelSet.recordCount() > 0) {
+            IREntity::setComponent(entity, std::move(voxelSet));
         }
     }
 

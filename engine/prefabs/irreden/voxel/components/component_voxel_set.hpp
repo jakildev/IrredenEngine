@@ -6,7 +6,10 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/texture.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
+
+#include <vector>
 
 using namespace IRMath;
 using IRRender::ImageData;
@@ -48,6 +51,22 @@ struct C_VoxelSetNew {
 
     std::span<C_Voxel> voxels_;
 
+    // Headless / pre-canvas staging. Populated by the dense-data ctor
+    // when no render canvas is active at construction time (tests,
+    // asset-only tooling, prefab spawn before a canvas exists). When
+    // present, `numVoxels_` is 0 and the pool spans above are empty —
+    // the canonical data lives here and `recordCount()` reflects it.
+    // A future canvas-attach pass moves these into the pool span,
+    // then clears the staging vector.
+    std::vector<C_Voxel> pendingVoxels_;
+
+    // Origin of `pendingVoxels_` data in voxel-grid space, i.e. the
+    // value of `IRAsset::DenseVoxelSet::boundsMin_`. The staged
+    // entry at flat index i corresponds to grid position
+    // `pendingBoundsMin_ + index1DtoIndex3D(i, size_)`. Only
+    // meaningful when `pendingVoxels_` is non-empty.
+    ivec3 pendingBoundsMin_ = ivec3(0);
+
     C_VoxelSetNew(
         ivec3 size, Color color = IRColors::kGreen, bool centerAroundOrigin = false
         // int voxelPoolId = 0
@@ -78,6 +97,15 @@ struct C_VoxelSetNew {
                 globalPositions_.size(),
                 voxels_.size()
             );
+            // Release whatever the allocator handed back — `numVoxels_` is
+            // the min-span count, which on today's allocator either equals
+            // `requestedVoxels` (no mismatch, branch not taken) or is 0
+            // (out-of-voxels assert fall-through, no slots were reserved
+            // and this is a no-op). The dealloc is kept for symmetry with
+            // a hypothetical future allocator that returns partial spans.
+            // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            numVoxels_ = 0;
             size_ = ivec3(0);
             return;
         }
@@ -107,16 +135,97 @@ struct C_VoxelSetNew {
     C_VoxelSetNew()
         : C_VoxelSetNew(ivec3(0, 0, 0)) {}
 
+    // Dense-data ctor for Prefab.spawn — headless-safe: stages in
+    // `pendingVoxels_` without a canvas, allocates from the pool with one.
+    // Bounds + ordering semantics live in `voxel/CLAUDE.md` "C_VoxelSetNew
+    // headless / staged mode" and `voxel/dense_bridge.hpp`.
+    C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
+        : numVoxels_{0}
+        , size_{boundsMax - boundsMin} {
+        canvasEntity_ = IRRender::getActiveCanvasEntityOrNull();
+        const ivec3 extent = size_;
+        const std::size_t requestedVoxels = (extent.x > 0 && extent.y > 0 && extent.z > 0)
+                                                ? static_cast<std::size_t>(extent.x) *
+                                                      static_cast<std::size_t>(extent.y) *
+                                                      static_cast<std::size_t>(extent.z)
+                                                : 0u;
+        if (requestedVoxels == 0u || voxels.size() != requestedVoxels) {
+            // Empty or mismatched payload — leave the set empty and let
+            // the caller diagnose via `recordCount()`. Avoids allocating
+            // pool slots we can't faithfully populate.
+            size_ = ivec3(0);
+            return;
+        }
+
+        if (canvasEntity_ == IREntity::kNullEntity) {
+            // Headless / pre-canvas staging path.
+            pendingVoxels_.assign(voxels.begin(), voxels.end());
+            pendingBoundsMin_ = boundsMin;
+            return;
+        }
+
+        auto allocation = IRRender::allocateVoxels(static_cast<unsigned int>(requestedVoxels));
+        voxelStartIdx_ = allocation.startIndex_;
+        positions_ = allocation.positions_;
+        positionOffsets_ = allocation.positionOffsets_;
+        globalPositions_ = allocation.positionGlobals_;
+        voxels_ = allocation.voxels_;
+
+        numVoxels_ = static_cast<int>(IRMath::min(
+            IRMath::min(positions_.size(), positionOffsets_.size()),
+            IRMath::min(globalPositions_.size(), voxels_.size())
+        ));
+        if (static_cast<std::size_t>(numVoxels_) != requestedVoxels) {
+            IRE_LOG_ERROR(
+                "VoxelSet dense allocation mismatch: requested={}, positions={}, voxels={}",
+                requestedVoxels,
+                positions_.size(),
+                voxels_.size()
+            );
+            // Release whatever the allocator handed back — `numVoxels_` is
+            // the min-span count, which on today's allocator either equals
+            // `requestedVoxels` (no mismatch, branch not taken) or is 0
+            // (out-of-voxels assert fall-through, no slots were reserved
+            // and this is a no-op). The dealloc is kept for symmetry with
+            // a hypothetical future allocator that returns partial spans.
+            // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            size_ = ivec3(0);
+            numVoxels_ = 0;
+            return;
+        }
+
+        const vec3 originOffset{boundsMin};
+        for (int x = 0; x < extent.x; ++x) {
+            for (int y = 0; y < extent.y; ++y) {
+                for (int z = 0; z < extent.z; ++z) {
+                    const int idx = index3DtoIndex1D(ivec3(x, y, z), extent);
+                    positions_[idx] = C_Position3D{vec3(x, y, z) + originOffset};
+                    voxels_[idx] = voxels[idx];
+                }
+            }
+        }
+        IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
+    }
+
+    std::size_t recordCount() const {
+        return pendingVoxels_.empty() ? static_cast<std::size_t>(numVoxels_)
+                                      : pendingVoxels_.size();
+    }
+
     // TODO: should a similar onCreate method be used for allocating
     // voxels, just in case the constructor might be called in more than
     // one place?
     void onDestroy() {
-        // numVoxels_ equals requestedVoxels on all non-error paths (the
-        // constructor min-span guard fires IR_ASSERT before returning a
-        // mismatched allocation), so deallocateVoxels releases exactly
-        // what allocateVoxels reserved.
-        IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
-        IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+        // `numVoxels_ > 0` iff a pool allocation succeeded and was fully
+        // populated. Both ctors' mismatch paths deallocate the reservation
+        // inline and zero `numVoxels_`, and the headless staging path
+        // never touches the pool — so this guard skips exactly the cases
+        // that have nothing to release.
+        if (numVoxels_ > 0) {
+            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+        }
     }
 
     void changeVoxelColor(ivec3 index, Color color) {

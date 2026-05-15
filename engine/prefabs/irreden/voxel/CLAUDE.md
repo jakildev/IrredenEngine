@@ -54,11 +54,15 @@ records:
   record `rotation_`, `csgOp_`, and `boneId_` are loaded but not
   attached in v1 (no renderer consumes them; T-181 wires bone
   binding).
-- **DENSE / HYBRID dense half** — per-voxel records are loaded and
-  validated but not attached. `C_VoxelSetNew` constructs against
-  the active render-canvas pool; a headless attach path needs its
-  own design. Track follow-up at the issue queue (deferred from
-  T-182).
+- **DENSE / HYBRID dense half** — `C_VoxelSetNew` attached to the
+  spawned root entity via `IRPrefab::DenseVoxel::toComponent`
+  (`voxel/dense_bridge.hpp`). The bridge translates
+  `IRAsset::DenseVoxelSet` → `C_VoxelSetNew` via a per-record copy
+  (`VoxelRecord` and `C_Voxel` share the 12 B std430 layout but
+  remain distinct types so layout drift surfaces as a compile
+  error). For HYBRID, the SHAPES children and the DENSE
+  `C_VoxelSetNew` land on the same root entity in a single
+  `Prefab.spawn` call.
 
 `C_ShapeDescriptor`'s constructors snapshot the active canvas via
 `IRRender::getActiveCanvasEntityOrNull()` rather than the
@@ -66,6 +70,33 @@ asserting `getActiveCanvasEntity()`. Headless construction
 (prefab spawn in a test, asset tooling) gets
 `canvasEntity_ = kNullEntity` instead of an `IR_ASSERT` failure;
 iterating systems gate work on the field already.
+
+## C_VoxelSetNew headless / staged mode
+
+The dense-data ctor `C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax,
+span<const C_Voxel>)` is headless-safe: it snapshots the active
+canvas via `getActiveCanvasEntityOrNull()` and branches:
+
+- **Canvas active** — allocates from the pool, copies records into
+  the span, seeds per-voxel positions at `boundsMin + indexToIvec3`.
+  `numVoxels_` reflects the allocation; `pendingVoxels_` is empty.
+- **Canvas absent (headless / pre-canvas)** — leaves `numVoxels_ = 0`
+  and the pool spans empty, stages records in `pendingVoxels_`, and
+  records the origin in `pendingBoundsMin_`. `canvasEntity_ ==
+  kNullEntity` is the sentinel.
+
+`recordCount()` returns the data count in either mode (test-friendly
+and order-independent of pool availability). A future task will add
+the canvas-attach pass that moves `pendingVoxels_` into a pool
+allocation once a canvas activates; until then the staged data
+participates in serialization round-trips but does not render.
+
+`system_update_voxel_set_children` gates on `numVoxels_ > 0`, so a
+staged headless set sitting in a canvas-active world contributes
+nothing to the pool's per-frame writes — no risk of clobbering
+adjacent voxel-set ranges. `onDestroy()` skips the pool
+deallocation when `numVoxels_ == 0`, so the staging vector frees
+with the component.
 
 ## Gotchas
 

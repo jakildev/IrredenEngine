@@ -747,13 +747,14 @@ land:
   tick. If a hot use case appears (e.g. attaching a per-tick light
   to a bind point), pre-resolve the integer bone index at spawn
   time and cache the offset/rotation in a flat component instead.
-- **DENSE / HYBRID dense voxel_ref attachment** — DENSE per-voxel
-  records are loaded and validated but not attached as an ECS
-  component. The current `C_VoxelSetNew` constructor allocates
-  against the active render-canvas pool; a headless prefab path
-  needs a different entry shape. SHAPES records — and the SHAPES
-  half of HYBRID files — do attach (see "SHAPES voxel_ref
-  attachment" below).
+- **`C_VoxelSetNew` canvas-attach pass for staged dense data** —
+  DENSE / HYBRID records do attach as `C_VoxelSetNew` on the
+  spawned entity (see "DENSE / HYBRID voxel_ref attachment"
+  below), but when the prefab spawns before a render canvas
+  exists the per-voxel records live in `pendingVoxels_` and no
+  pool allocation happens. A follow-up pass needs to seed the
+  pool the frame after a canvas activates and promote the staged
+  records into the pool span — track in the issue queue.
 
 **SHAPES voxel_ref attachment.** When `voxel_ref` points at a
 SHAPES or HYBRID `.vxs`, `Prefab.spawn` attaches one child entity
@@ -779,6 +780,34 @@ headless contexts (tests, asset-only tooling) construct descriptors
 with `canvasEntity_ = kNullEntity` instead of asserting on the
 absent `RenderManager`. Iterating render systems already gate work
 on a non-null canvas binding.
+
+**DENSE / HYBRID voxel_ref attachment.** When `voxel_ref` points
+at a DENSE or HYBRID `.vxs`, `Prefab.spawn` attaches a
+`C_VoxelSetNew` on the spawned root entity via the bridge
+`IRPrefab::DenseVoxel::toComponent` in
+`engine/prefabs/irreden/voxel/dense_bridge.hpp`. The bridge calls
+the dense-data ctor `C_VoxelSetNew(boundsMin, boundsMax,
+span<const C_Voxel>)`, which is headless-safe:
+
+- **Active canvas** → allocates from the pool, copies records
+  into the pool span, seeds per-voxel positions at
+  `boundsMin + index3D`. `numVoxels_` reflects the allocation.
+- **Headless** (test / pre-canvas) → stages records in
+  `pendingVoxels_`, records `pendingBoundsMin_`, leaves
+  `numVoxels_ = 0` and `canvasEntity_ = kNullEntity`. The pool
+  is not touched.
+
+`C_VoxelSetNew::recordCount()` returns the data count regardless
+of mode, so the round-trip test asserts
+`recordCount() == dense.voxelCount()` without caring whether the
+pool was reachable. For HYBRID prefabs the SHAPES half attaches
+as child entities (per "SHAPES voxel_ref attachment") and the
+DENSE half attaches to the root in the same spawn call.
+
+If the loaded `.vxs` is malformed (e.g. BNDS present but VOXR
+truncated, so `dense.voxels_.size() != dense.voxelCount()`), the
+bridge returns an empty component and `setComponent` is skipped
+— Save Format Extensibility Rule #5: unknown is recoverable.
 
 ## Script resolution
 
