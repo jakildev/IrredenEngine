@@ -220,7 +220,11 @@ commands are not systems, they don't slot into `IRSystem.registerPipeline`.
 `switch` on `CommandNames` that dispatches to the matching
 `Command<NAME>::create()()`. Same hand-listed pattern as
 `commandNameToString` ([`ir_command.hpp:21-49`](../../engine/command/include/irreden/ir_command.hpp))
-— one line per prefab command, same drift cost.
+— one line per prefab command, same drift cost. Unlike
+`commandNameToString` (which uses `default: return "UNKNOWN"` and
+intentionally omits several entries), the `fireByName` switch must
+cover every `CommandNames` value; the `default:` case should log an
+error and return rather than silently no-op.
 
 This is useful for game-side Lua that wants to trigger an engine
 command without an input event (e.g. "screenshot every 5 seconds for
@@ -382,6 +386,14 @@ Implementation in `command_manager.cpp`: bounds-check id against
 `m_userCommands.size()`, log + return if out of range, otherwise call
 `m_userCommands[id].execute()`.
 
+**Type alignment note (PR 2):** `ir_command_types.hpp:9` declares
+`using CommandId = std::uint32_t`, but the existing `createCommand`
+overloads return `int`. PR 2 must pick one and be consistent: either
+update the existing `createCommand` returns to `CommandId` (`uint32_t`),
+or keep `fireUserCommand` taking `int` to match the current callers.
+A sign-conversion at realistic vector sizes is not a runtime bug, but
+a uniform type across the whole surface is cleaner.
+
 ### `engine/command/include/irreden/ir_command.hpp`
 
 Add two free functions:
@@ -391,10 +403,13 @@ void fire(CommandId id);                  // forwards to getCommandManager().fir
 void fireByName(CommandNames name);       // switch on name → Command<NAME>::create()()
 ```
 
-The `fireByName` switch table is the same shape as
-`commandNameToString` (lines 21-49) and lives next to it. Adding a new
-prefab command requires adding cases to **both** switches, same as
-today.
+The `fireByName` switch table follows the same hand-listed shape as
+`commandNameToString` (lines 21-49) and lives next to it. Unlike
+`commandNameToString` (which has a `default: return "UNKNOWN"` catchall
+and intentionally omits some entries), `fireByName` must cover every
+`CommandNames` value; the `default:` case should log an error and
+return rather than silently no-op. Adding a new prefab command requires
+adding cases to **both** switches, same as today.
 
 ### `engine/script/include/irreden/script/lua_command_bindings.hpp` (new)
 
@@ -407,7 +422,7 @@ pattern. Three `inline void bind*(LuaScript&)` functions:
    Modifier, GamepadButton, GamepadAxis}` tables via `IR_BIND_*` macros
    against `InputTypes`/`ButtonStatuses`/`KeyMouseButtons`/etc.
 3. `bindCommandFunctions` — exposes
-   `IRCommand.{bindPrefab, createCommand, fire}` as `sol::function`s.
+   `IRCommand.{bindPrefab, createCommand, fire, fireByName}` as `sol::function`s.
 
 A new `LuaScript` member `bindLuaCommands()` calls all three. Creations
 opt in by calling it after `bindLuaDrivenEcs()`:
