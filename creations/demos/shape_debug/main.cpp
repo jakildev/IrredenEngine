@@ -82,7 +82,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
-    // zoom16_lod_all_visible: active tier LOD_0, all three LOD fixtures visible.
+    // zoom16_lod_all_visible: active tier LOD_0, LOD_0 (red) tops the co-located stack.
     {16.0f, vec2(0, 0), "zoom16_lod_all_visible"},
 };
 
@@ -458,9 +458,8 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
-    // Three spheres at lodMin_ = LOD_4/LOD_2/LOD_0 on a dedicated row; each reveals at its threshold zoom.
+    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops, zoom16=red(LOD_0) tops.
     constexpr float kLodFixtureY = -16.0f;
-    constexpr float kLodFixtureSpacingX = 12.0f;
     constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
     struct LodFixture {
         IRRender::LodLevel lodMin_;
@@ -468,18 +467,17 @@ void initEntities() {
         const char *label_;
     };
     const LodFixture lodFixtures[] = {
-        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
-        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
         {IRRender::LodLevel::LOD_4, Color{80, 130, 240, 255}, "LOD_4 (always visible)"},
+        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
+        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
     };
     constexpr int kNumLodFixtures = sizeof(lodFixtures) / sizeof(lodFixtures[0]);
     for (int i = 0; i < kNumLodFixtures; ++i) {
         const auto &lf = lodFixtures[i];
-        const float xPos = (i - (kNumLodFixtures - 1) * 0.5f) * kLodFixtureSpacingX;
         IR_LOG_INFO("--- {} ---", lf.label_);
         C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
         desc.lodMin_ = lf.lodMin_;
-        IREntity::createEntity(C_Position3D{vec3(xPos, kLodFixtureY, 0.0f)}, desc);
+        IREntity::createEntity(C_Position3D{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
     }
 
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
