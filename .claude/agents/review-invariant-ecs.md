@@ -34,7 +34,7 @@ For every changed `.hpp`/`.cpp` file in the diff:
 
 7. **`endTick` body indexes `ids[]` without size guard.** Both fire even when the archetype is empty.
 
-8. **Position-component selection.** A render-related system reading `C_Position3D` for visual placement instead of `C_PositionGlobal3D + C_PositionOffset3D` — rendered position is always Global + Offset.
+8. **Position-component selection.** A render-related system reading `C_Position3D` for visual placement instead of `C_PositionGlobal3D` — rendered position is `C_PositionGlobal3D` after `APPLY_POSITION_OFFSET` has folded any modifier-driven offset into it.
 
 9. **Deferred-variant correctness across ticks.** A system that calls `addComponent`/`removeComponent`/`removeEntity` mid-iteration must use the deferred variant. If it touches the live archetype while a parallel system is iterating, component addresses are invalidated silently.
 

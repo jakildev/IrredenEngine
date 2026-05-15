@@ -40,21 +40,6 @@ class System<VOXEL_SCENE>
         }
     }
 
-    // void tickWithArchetypeAlt(
-    //     Archetype archetype,
-    //     std::vector<EntityId>& entities,
-    //     std::vector<C_Position3D>& positions,
-    //     std::vector<C_PositionOffset3D>& positionOffsets,
-    //     std::vector<C_VoxelSetNew>& voxelSets
-    // )
-    // {
-    //     IR_PROFILE_FUNCTION("System<VOXEL_SCENE>::tickWithArchetype");
-    //     for(int i=0; i < entities.size(); i++) {
-    //         voxelSets[i].updateChildren(
-    //             positions[i].pos_ + positionOffsets[i].pos_
-    //         );
-    //     }
-    // }
   private:
     virtual void beginExecute() override {}
     virtual void endExecute() override {}

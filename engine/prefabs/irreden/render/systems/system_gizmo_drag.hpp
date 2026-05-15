@@ -184,8 +184,10 @@ template <> struct System<GIZMO_DRAG> {
 
         auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
         auto &anchorGlobal = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(dragAnchor_);
-        auto &anchorOffset = IREntity::getComponent<IRComponents::C_PositionOffset3D>(dragAnchor_);
-        const IRMath::vec3 anchorWorld = anchorGlobal.pos_ + anchorOffset.pos_;
+        // APPLY_POSITION_OFFSET folds the modifier-driven offset channel
+        // into globalPos earlier in the frame, so the world-space anchor
+        // read here matches the rendered position.
+        const IRMath::vec3 anchorWorld = anchorGlobal.pos_;
 
         dragStartAnchorPos_ = anchorLocal.pos_;
         dragPlaneIsoDepth_ = canvasIsoDepthOfAnchor(anchorWorld);

@@ -5,7 +5,6 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
@@ -19,7 +18,6 @@ template <> struct Prefab<PrefabTypes::kSingleVoxel> {
         return IRECS::createEntity(
             C_Position3D{position},
             C_PositionGlobal3D{position},
-            C_PositionOffset3D{vec3(0, 0, 0)},
             C_Voxel{color}
         );
     }

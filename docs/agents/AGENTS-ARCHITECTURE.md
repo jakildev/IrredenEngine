@@ -80,7 +80,7 @@ Game logic belongs in the ECS, not scattered in scripts or one-off code.
 
 1. **Components** — Plain data structs (`C_` prefix). No logic.
 2. **Systems** — Lambda-based logic operating on entities with a matching component set.
-3. **Entities** — Created with component bundles; `createEntity` implicitly adds `C_PositionGlobal3D` and `C_PositionOffset3D`.
+3. **Entities** — Created with component bundles; `createEntity` implicitly adds `C_PositionGlobal3D`. Per-frame offsets (idle bob, gizmo nudges) travel through the modifier framework's `POSITION_OFFSET_3D` vec3 field and are folded into `C_PositionGlobal3D` by `APPLY_POSITION_OFFSET`.
 
 `SystemId` is an alias for `EntityId` — systems are themselves entities stored in the ECS.
 
@@ -268,13 +268,17 @@ Face assignment and per-face trixel placement are handled in the voxel-to-trixel
 | Component             | Type    | Purpose                                            |
 |-----------------------|---------|----------------------------------------------------|
 | `C_PositionGlobal3D`  | `vec3`  | World-space 3D position (auto-added to entities)   |
-| `C_PositionOffset3D`  | `vec3`  | Temporary additive offset (auto-added to entities) |
 | `C_Position3D`        | `vec3`  | General-purpose 3D position                        |
 | `C_PositionInt3D`     | `ivec3` | Integer 3D position (cell/grid coordinates)        |
 | `C_Position2DIso`     | `vec2`  | 2D isometric grid position                         |
 | `C_Position2D`        | `vec2`  | 2D screen / game-resolution position               |
 
-`C_PositionGlobal3D` and `C_PositionOffset3D` are implicitly added by `createEntity`. The rendered position is `global + offset`.
+`C_PositionGlobal3D` is implicitly added by `createEntity`. Per-frame
+additive offsets (idle bob, gizmo nudges, future perturbations) travel
+through the modifier framework's `POSITION_OFFSET_3D` vec3 field and
+are folded into `C_PositionGlobal3D` by `APPLY_POSITION_OFFSET` once
+per UPDATE tick. The rendered position is whatever lives in
+`C_PositionGlobal3D` after that pass.
 
 ### Isometric Planes and Axes
 
@@ -393,7 +397,7 @@ creations/demos/your_demo/
 - **Header-only prefabs** – No separate compilation; prefabs compile when included by a creation.
 - **Creation-specific systems** – Creations choose which systems to include and register. There is no global system list.
 - **Systems are ECS entities** – `SystemId` is an `EntityId`. Systems have components like `C_SystemEvent` and live in the ECS.
-- **Implicit position** – `createEntity` always adds `C_PositionGlobal3D` and `C_PositionOffset3D`.
+- **Implicit position** – `createEntity` always adds `C_PositionGlobal3D`. Per-frame offsets travel through the modifier framework's `POSITION_OFFSET_3D` vec3 field; `APPLY_POSITION_OFFSET` folds the resolved value into `C_PositionGlobal3D` each UPDATE tick.
 - **Event-driven loop** – Fixed-step update, variable render; pipelines run in input → update → render order.
 - **Relations** – ECS supports `CHILD_OF`, `PARENT_TO`, `SIBLING_OF` for hierarchy.
 - **Voxel pipeline** – Voxels → Trixel stage 1/2 → Framebuffer; orthographic isometric view.

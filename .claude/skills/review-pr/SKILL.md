@@ -213,8 +213,9 @@ compliance or raise an issue.
 - ❌ `endTick` reads `ids[0]` or indexes `ids` without a `ids.size() == 0`
   guard — `begin`/`endTick` fire even when the archetype is empty.
 - ❌ system reads `C_Position3D` for visual placement instead of
-  `C_PositionGlobal3D + C_PositionOffset3D` — rendered position is always
-  Global + Offset (see `engine/CLAUDE.md`).
+  `C_PositionGlobal3D` — rendered position is `C_PositionGlobal3D`
+  after `APPLY_POSITION_OFFSET` has folded any modifier-driven offset
+  into it (see `engine/CLAUDE.md`).
 - ❌ component method calls `IREntity::getComponent` / `setComponent` /
   `createEntity` / `setParent` on a *different* entity (tier-c violation per
   `engine/prefabs/CLAUDE.md`). Confirm the method appears on the documented

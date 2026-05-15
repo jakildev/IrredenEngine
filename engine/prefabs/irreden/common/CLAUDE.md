@@ -8,8 +8,10 @@ in `update/`.
 
 - `C_Position3D` — local vec3.
 - `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**.
-- `C_PositionOffset3D` — ephemeral delta added on top of global.
-  **Auto-added by `createEntity(...)`**.
+  Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
+  the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
+  than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
+  and the `APPLY_POSITION_OFFSET` system.
 - `C_Rotation` — Euler vec3.
 - `C_Name` — debug/display string.
 - `C_Player` — tag for player-controlled entities.
@@ -154,9 +156,12 @@ runtime work and architect-gated decisions.
 
 ## Gotchas
 
-- **`createEntity` always adds `C_PositionGlobal3D` + `C_PositionOffset3D`.**
-  Rendered position is `global + offset`. Never infer a draw position
-  from `C_Position3D` alone — it is the *local* position and only the
+- **`createEntity` always adds `C_PositionGlobal3D`.** Rendered
+  position is whatever lives in `C_PositionGlobal3D` after the UPDATE
+  pipeline completes — `GLOBAL_POSITION_3D` writes `local + parent`
+  and `APPLY_POSITION_OFFSET` folds in the modifier-resolved
+  `POSITION_OFFSET_3D` vec3 field. Never infer a draw position from
+  `C_Position3D` alone — it is the *local* position and only the
   `common/` hierarchy resolves it.
 - **Don't duplicate position components.** Adding your own
   `C_PositionGlobal3D` second on top of the auto-added one leaves one

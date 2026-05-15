@@ -30,7 +30,7 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 
 7. **`endTick` indexing `ids[0]` or similar without `ids.size() == 0` guard.** Both fire even when the archetype is empty.
 
-8. **Render system reading `C_Position3D` for visual placement** instead of `C_PositionGlobal3D + C_PositionOffset3D`. Flag and confirm intent.
+8. **Render system reading `C_Position3D` for visual placement** instead of `C_PositionGlobal3D` (`APPLY_POSITION_OFFSET` has already folded modifier-driven offsets into globalPos). Flag and confirm intent.
 
 ## Output format
 

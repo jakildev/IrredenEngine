@@ -213,9 +213,12 @@ precedes the load, which already clears the cache).
 
 ## Position components are automatic
 
-`createEntity(...)` always adds `C_PositionGlobal3D` and
-`C_PositionOffset3D`. You cannot opt out. If you want an entity at the
-origin, you still pay for the two vec3s.
+`createEntity(...)` always adds `C_PositionGlobal3D`. You cannot opt
+out. Per-frame additive offsets (idle bob, gizmo nudges) travel
+through the modifier framework's `POSITION_OFFSET_3D` vec3 field —
+see `engine/prefabs/irreden/common/position_modifier_fields.hpp` and
+`APPLY_POSITION_OFFSET`. Entities that don't push such offsets don't
+need `C_Modifiers`.
 
 ## Relations
 

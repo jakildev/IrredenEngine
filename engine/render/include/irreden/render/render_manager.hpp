@@ -10,7 +10,6 @@
 #include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 

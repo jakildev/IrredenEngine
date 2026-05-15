@@ -128,7 +128,8 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
-// Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy: quatMul(parent_world, local)).
+// Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy:
+// quatMul(parent_world, local)).
 inline vec4 quatMul(const vec4 &a, const vec4 &b) {
     return vec4(
         a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -260,9 +261,9 @@ constexpr ivec3 rotateCardinalZ(const ivec3 v, CardinalIndex cardinalIndex) {
 }
 
 /// @overload Float variant for forward-projecting non-integer world
-/// positions (e.g. `C_PositionGlobal3D + C_PositionOffset3D`) into the
-/// rasterYaw-rotated canvas frame. Same R_z(-rasterYaw) sign convention
-/// as the integer overload.
+/// positions (`C_PositionGlobal3D` with the modifier-driven offset
+/// already folded in) into the rasterYaw-rotated canvas frame. Same
+/// R_z(-rasterYaw) sign convention as the integer overload.
 constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     if (cardinalIndex == CardinalIndex::k90)
         return vec3(v.y, -v.x, v.z);
