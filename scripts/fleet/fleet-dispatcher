@@ -157,6 +157,16 @@ LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 # the wall to spread the remaining budget across in-flight work.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
 RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
+# Validate-and-clamp: a non-numeric override (operator typo, trailing
+# unit suffix like "600s") would crash the inline-Python `int()` cast,
+# emit nothing on stdout, and silently flip the gate to OPEN — the same
+# silent-fail pattern this gate exists to prevent. Same shape as the
+# BOOT_FANOUT_WINDOW_SECONDS guard below.
+if ! [[ "$RESET_GRACE_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] RESET_GRACE_SECONDS=%q is not a non-negative integer; falling back to 600\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RESET_GRACE_SECONDS" >&2
+    RESET_GRACE_SECONDS=600
+fi
 
 # Export the gate env vars so the inline-Python in usage_gate_status
 # sees them. Sourcing fleet-up.conf doesn't auto-export, so without
@@ -491,11 +501,11 @@ pane_in_rate_limit_cooldown() {
 # Print the gate state on stdout: "open" / "open:<info>" / "closed:<reason>".
 #
 # Reads ~/.fleet/state/usage/*.json files (latched by fleet-claude-stream
-# on every rate_limit_event). For each fresh, not-yet-reset observation,
-# compares utilization against the per-type threshold (see threshold_for
-# below). Reports closed when at least one observation breaches its own
-# threshold; the highest-utilization breach wins the report when several
-# are over.
+# on every rate_limit_event). For each fresh observation still within
+# its window — or its post-reset grace pad — compares utilization
+# against the per-type threshold (see threshold_for below). Reports
+# closed when at least one observation breaches its own threshold; the
+# highest-utilization breach wins the report when several are over.
 #
 # Inlined python3 so we get JSON parsing + ISO-8601 timestamp math
 # without adding a shell dep. Same pattern rearm_periodic_meta_triggers

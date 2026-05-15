@@ -7,9 +7,10 @@
 #   1. Fleet-wide usage gate — based on rate_limit_event observations
 #      latched by fleet-claude-stream into ~/.fleet/state/usage/*.json.
 #      Mirrors fleet-dispatcher's usage_gate_status(): same threshold
-#      lookup, same staleness check, same past-resetsAt prune. If those
-#      rules change there, mirror the change here. (`fleet-dispatcher
-#      --gate-status` exposes a one-line variant of the same evaluation.)
+#      lookup, same staleness check, same past-(resetsAt+grace) prune.
+#      If those rules change there, mirror the change here.
+#      (`fleet-dispatcher --gate-status` exposes a one-line variant of
+#      the same evaluation.)
 #
 #   2. Per-pane cooldowns — fleet-dispatch-wrap writes a Unix epoch to
 #      ~/.fleet/state/rate-limit/<pane_key>.ts when claude exits with
@@ -17,8 +18,10 @@
 #      LIMIT_DELAY seconds (default 900).
 #
 # Pure read-only: no mutations, no daemon contact. The dispatcher itself
-# auto-resumes when each rate-limit window's resetsAt passes — this
-# command does NOT trigger resume; it just shows the current state.
+# auto-resumes when each rate-limit window's `resetsAt + grace` passes
+# (grace = FLEET_DISPATCHER_RESET_GRACE_SECONDS, default 600s; see
+# --help) — this command does NOT trigger resume; it just shows the
+# current state.
 
 set -euo pipefail
 
@@ -105,7 +108,8 @@ limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
 poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
 emit_json = os.environ.get("JSON") == "1"
 
-# Mirrors fleet-dispatcher:482-518. Keep in sync.
+# Mirrors fleet-dispatcher's threshold_for() / BUILTIN_PER_TYPE_DEFAULTS.
+# Keep in sync — same semantics, same defaults.
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,
     "five_hour": 0.80,
@@ -217,6 +221,9 @@ if usage_dir.is_dir():
             "etaSeconds": eta_s,
             "observed_at": observed_at,
             "stale": is_stale,
+            # past_reset = past `resetsAt + reset_grace_s`. Field name kept
+            # for back-compat with `--json` consumers; the meaning shifted
+            # when the grace pad was introduced.
             "past_reset": is_past,
             "breaching": breaching,
         }
@@ -301,8 +308,9 @@ else:
     for o in observations:
         if not (o["stale"] or o["past_reset"]):
             continue
+        past_label = "past-reset" if reset_grace_s == 0 else "past-reset+grace"
         reasons = "/".join(
-            r for r, on in (("stale", o["stale"]), ("past-reset", o["past_reset"])) if on
+            r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
         )
         print(fmt_obs(o, "pruned:", f"[{reasons}]"))
 

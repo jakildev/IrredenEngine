@@ -6,7 +6,11 @@
 #   - utilization >= threshold + fresh + future reset => gate closed
 #   - threshold override via env var (FLEET_DISPATCHER_USAGE_GATE)
 #   - stale observation (older than USAGE_STALE_SECONDS) => ignored
-#   - resetsAt in the past => observation ignored
+#   - resetsAt well in the past (past grace) => observation ignored
+#   - resetsAt recently in the past, within RESET_GRACE_SECONDS => still active
+#   - RESET_GRACE_SECONDS=0 reverts to instant open at resetsAt
+#   - epoch-int resetsAt within grace => still active (parity with ISO branch)
+#   - non-numeric RESET_GRACE_SECONDS override falls back to default
 #   - utilization < threshold => gate open with util reported
 #   - worst-of across multiple types when only one is over threshold
 #   - defensive percent path (utilization > 1.5 treated as percent)
@@ -87,6 +91,24 @@ assert_starts_with "$out" "closed:five_hour util=85%" "grace window keeps gate c
 echo "T5c: same fixture, grace=0 => open immediately"
 out=$(FLEET_DISPATCHER_RESET_GRACE_SECONDS=0 "$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open" "grace=0 reverts to instant open at resetsAt"
+
+echo "T5d: epoch-int resetsAt 60s in the past, default grace => still closed"
+RECENT_RESET_EPOCH=$((NOW - 60))
+printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":%s,"observed_at":%s}\n' "$RECENT_RESET_EPOCH" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:five_hour util=85%" "epoch-int resetsAt also honors grace"
+
+echo "T5e: non-numeric RESET_GRACE_SECONDS falls back to default (still closed)"
+# Re-use the T5b ISO fixture (60s past reset) so a working grace keeps the
+# gate closed. Pass a typo'd value; the dispatcher must clamp to 600 and
+# stay closed. Without the validate-and-clamp guard the inline-Python int()
+# raises, the heredoc dies, stdout is empty, and usage_gate_open treats
+# empty as "not closed:" — silent gate-open.
+printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RECENT_RESET" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$(FLEET_DISPATCHER_RESET_GRACE_SECONDS="600s" "$DISPATCHER" --gate-status 2>/dev/null)
+assert_starts_with "$out" "closed:five_hour util=85%" "non-numeric grace override falls back to default"
 
 echo "T6: utilization 0.50 => open with util reported"
 printf '{"rateLimitType":"five_hour","utilization":0.50,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
