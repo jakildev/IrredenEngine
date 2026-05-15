@@ -232,11 +232,11 @@ Avoid:
   - **Notes:** Highest-leverage gap blocking pure-Lua interactive games. Today the command system is C++-templated — see `creations/demos/default/main_lua.cpp:107-200` for how commands are currently registered. No `IRInput::createCommand` or input-handler binding is exposed to Lua. Phase as design-then-implement: design PR first, implementation PR second. Codegen support is optional — runtime registration is sufficient for v1. Parent epic: lua-game-foundation (T-193..T-196).
   - **Links:**
 
-- [ ] **Research: Lua physics bindings — enumerate physics surface area and propose Lua API** — research-then-design; survey existing collision / raycasting / voxel-intersection surface, propose which APIs become Lua-callable, and identify which prefab systems need Lua hooks
+- [~] **Research: Lua physics bindings — enumerate physics surface area and propose Lua API** — research-then-design; survey existing collision / raycasting / voxel-intersection surface, propose which APIs become Lua-callable, and identify which prefab systems need Lua hooks
   - **ID:** T-194
   - **Area:** engine/script, engine/physics
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-193..T-196 lua-game-foundation
   - **Acceptance:** (1) design note `docs/design/lua-physics-bindings.md` lands enumerating current physics surface area (collision, raycasting, voxel intersection, anything else actually present in the engine); (2) note proposes which APIs should be Lua-callable with concrete signatures; (3) note identifies which prefab systems need Lua hooks; (4) deliverable is framed around what's actually in the engine, not a generic physics-engine wishlist; (5) implementation deferred to a follow-up task filed once the design lands
