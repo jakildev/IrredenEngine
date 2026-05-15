@@ -130,7 +130,7 @@ void registerLuaBindings() {
 | Method | Purpose |
 |--------|---------|
 | `registerType<T, Constructors...>(name, key, &T::member, ...)` | Register a plain type with named fields |
-| `registerEnum<E>(name, {key, value}, ...)` | Register an enum as a Lua table |
+| `registerEnum<E>(name, {{key, value}, ...})` | Register an enum as a Lua table |
 | `registerTypesFromTraits<C_A, C_B, ...>()` | Bulk-register components that have `*_lua.hpp` traits |
 | `registerTypeFromTraits<C_A>()` | Register one component with `*_lua.hpp` traits |
 | `registerCreateEntityFunction<Components...>(name)` | Register an `IREntity.name(...)` Lua factory |
@@ -285,7 +285,7 @@ local sysId = IRSystem.registerSystem({
 | `arch.MyComp:getField(i, "fieldName")` | read one field by name |
 | `arch.MyComp:setField(i, "fieldName", value)` | write one field by name |
 
-`getField` / `setField` field name must be a **string literal** — a variable name is a codegen-time error.
+`getField` / `setField` field name: in CODEGEN mode, must be a **string literal** — the codegen tool requires a compile-time known field name. In EVAL mode, a string variable is accepted.
 
 **Mode field:**
 - Absent (or `mode = "codegen"`) — follows the creation's default mode (`CODEGEN` unless overridden).
@@ -467,4 +467,4 @@ Add custom commands to copy Lua files into the build directory. See the `create-
 | `IRAudio` | `openMidiOut`, `openMidiIn`, `rootNote`, scale helpers |
 | `IRRender` | `setGuiScale`, `getMainCanvasSize`, `measureText` |
 | `IRText` | `create`, `setText`, `remove` |
-| `IRModifier` | `add`, `Transform` enum (ADD / MULTIPLY / SET / CLAMP / OVERRIDE) |
+| `IRModifier` | `add`, `Transform` enum (ADD / MULTIPLY / SET / CLAMP_MIN / CLAMP_MAX / OVERRIDE) |
