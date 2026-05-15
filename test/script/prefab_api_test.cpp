@@ -7,6 +7,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
+#include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -65,6 +66,31 @@ class PrefabApi : public testing::Test {
   protected:
     PrefabApi() {
         m_lua.bindLuaDrivenEcs();
+        // vec3 / vec4 are bound per-creation (see creations/demos/default/
+        // lua_bindings.cpp); bind a minimal version here so tests can
+        // construct them in Lua bodies and read return-value fields.
+        m_lua.lua().new_usertype<IRMath::vec3>(
+            "vec3",
+            sol::constructors<IRMath::vec3(float, float, float)>(),
+            "x",
+            &IRMath::vec3::x,
+            "y",
+            &IRMath::vec3::y,
+            "z",
+            &IRMath::vec3::z
+        );
+        m_lua.lua().new_usertype<IRMath::vec4>(
+            "vec4",
+            sol::constructors<IRMath::vec4(float, float, float, float)>(),
+            "x",
+            &IRMath::vec4::x,
+            "y",
+            &IRMath::vec4::y,
+            "z",
+            &IRMath::vec4::z,
+            "w",
+            &IRMath::vec4::w
+        );
         IRPrefab::Prefab::clearPrefabs();
     }
 
@@ -75,6 +101,48 @@ class PrefabApi : public testing::Test {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
 };
+
+// Build a rig fixture extended with two named bind points: "root" on joint 0
+// with offset (10, 0, 0), and "tip" on joint 1 with offset (0, 0, 1). The
+// joint chain remains the same shape as `writeFixtureSet` (joint 0 at
+// translation (1,2,3); joint 1 child of 0 at translation (4,5,6); identity
+// rotations).
+PrefabFiles writeBindPointFixtureSet(const std::string &tag, const std::string &prefabBody) {
+    PrefabFiles f;
+    f.voxel_path_ = std::string{kTmpDir} + "/prefab_test_" + tag + ".vxs";
+    f.rig_dir_ = kTmpDir;
+    f.rig_name_ = "prefab_test_" + tag;
+    f.prefab_path_ = std::string{kTmpDir} + "/prefab_test_" + tag + ".prefab.lua";
+
+    std::vector<IRAsset::ShapeRecord> shapes(1);
+    shapes[0].shapeTypeId_ = 0;
+    shapes[0].params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    IRAsset::saveShapeGroup(f.voxel_path_, shapes);
+
+    IRAsset::Rig rig;
+    rig.joints_.resize(2);
+    rig.joints_[0].translation_ = vec4(1.0f, 2.0f, 3.0f, 0.0f);
+    rig.joints_[0].parentIndex_ = 0;
+    rig.joints_[0].name_ = "root";
+    rig.joints_[1].translation_ = vec4(4.0f, 5.0f, 6.0f, 0.0f);
+    rig.joints_[1].parentIndex_ = 0;
+    rig.joints_[1].name_ = "tip_joint";
+
+    rig.bindPoints_.resize(2);
+    rig.bindPoints_[0].boneId_ = 0;
+    rig.bindPoints_[0].offset_ = vec3(10.0f, 0.0f, 0.0f);
+    rig.bindPoints_[0].name_ = "root";
+    rig.bindPoints_[1].boneId_ = 1;
+    rig.bindPoints_[1].offset_ = vec3(0.0f, 0.0f, 1.0f);
+    rig.bindPoints_[1].name_ = "tip";
+
+    IRAsset::saveRig(f.rig_name_, f.rig_dir_, rig);
+
+    std::ofstream out(f.prefab_path_);
+    out << prefabBody;
+
+    return f;
+}
 
 // ---- registry round-trip --------------------------------------------------
 
@@ -339,6 +407,172 @@ TEST_F(PrefabApi, SpawnSkipsShapesAttachmentWhenAbsent) {
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
     EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+}
+
+// ---- bind points: attach + IREntity.bindPoint() Lua API ---------------------
+
+TEST_F(PrefabApi, SpawnAttachesBindPointsFromRig) {
+    PrefabFiles f = writeBindPointFixtureSet(
+        "bind_points",
+        std::string{"return { prefab_version = 1, rig_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_bind_points.rig' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto bpOpt = IREntity::getComponentOptional<IRComponents::C_BindPoints>(r.entity_);
+    ASSERT_TRUE(bpOpt.has_value());
+    const auto &bp = *bpOpt.value();
+    ASSERT_EQ(bp.points_.size(), 2u);
+    ASSERT_TRUE(bp.hasPoint("root"));
+    ASSERT_TRUE(bp.hasPoint("tip"));
+    EXPECT_EQ(bp.points_.at("tip").boneId_, 1u);
+    EXPECT_FLOAT_EQ(bp.points_.at("tip").offset_.z, 1.0f);
+}
+
+TEST_F(PrefabApi, BindPointResolvesViaJointChain) {
+    PrefabFiles f = writeBindPointFixtureSet(
+        "bind_resolve",
+        std::string{"return {\n"} +
+            "  prefab_version = 1,\n"
+            "  rig_ref = '" +
+            std::string{kTmpDir} +
+            "/prefab_test_bind_resolve.rig',\n"
+            "  setup = function(entity)\n"
+            "    local off, rot = IREntity.bindPoint(entity, 'tip')\n"
+            "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
+            "    g_rot_x, g_rot_y, g_rot_z, g_rot_w = rot.x, rot.y, rot.z, rot.w\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    // Joint 0 at (1,2,3) identity; joint 1 (child of 0) local (4,5,6)
+    // identity; bp "tip" on joint 1 with offset (0,0,1). World offset
+    // composes to (1+4+0, 2+5+0, 3+6+1) = (5, 7, 10).
+    EXPECT_FLOAT_EQ(lua["g_off_x"].get<float>(), 5.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_y"].get<float>(), 7.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 10.0f);
+    // Identity rotation propagates unchanged.
+    EXPECT_FLOAT_EQ(lua["g_rot_w"].get<float>(), 1.0f);
+    EXPECT_FLOAT_EQ(lua["g_rot_x"].get<float>(), 0.0f);
+}
+
+TEST_F(PrefabApi, BindPointResolvesWithNonIdentityParentRotation) {
+    // Joint 0 (root): translation (0,0,0), 90° rotation around Y axis.
+    // Joint 1 (child of 0): local translation (1,0,0), identity rotation.
+    // Under 90°Y, (1,0,0) → (0,0,-1), so chain translation = (0,0,-1).
+    // Bind point "end" on joint 1, offset (1,0,0) → (0,0,-1) under 90°Y.
+    // Expected world offset = (0,0,-1) + (0,0,-1) = (0,0,-2).
+    constexpr float kS = 0.70710678118f;  // sqrt(2)/2: sin/cos of 45°, the 90°Y quaternion components
+
+    const std::string rigName = "prefab_test_rot_parent";
+    const std::string prefabPath = std::string{kTmpDir} + "/prefab_test_rot_parent.prefab.lua";
+
+    IRAsset::Rig rig;
+    rig.joints_.resize(2);
+    rig.joints_[0].translation_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    rig.joints_[0].rotation_ = vec4(0.0f, kS, 0.0f, kS);  // 90° around Y: (qx=0, qy=kS, qz=0, qw=kS)
+    rig.joints_[0].parentIndex_ = 0;
+    rig.joints_[0].name_ = "root";
+    rig.joints_[1].translation_ = vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    rig.joints_[1].rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    rig.joints_[1].parentIndex_ = 0;
+    rig.joints_[1].name_ = "end_joint";
+
+    rig.bindPoints_.resize(1);
+    rig.bindPoints_[0].boneId_ = 1;
+    rig.bindPoints_[0].offset_ = vec3(1.0f, 0.0f, 0.0f);
+    rig.bindPoints_[0].name_ = "end";
+
+    IRAsset::saveRig(rigName, kTmpDir, rig);
+
+    {
+        std::ofstream out(prefabPath);
+        out << "return {\n"
+               "  prefab_version = 1,\n"
+               "  rig_ref = '"
+            << std::string{kTmpDir} << "/" << rigName
+            << ".rig',\n"
+               "  setup = function(entity)\n"
+               "    local off, rot = IREntity.bindPoint(entity, 'end')\n"
+               "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
+               "    g_rot_x, g_rot_y, g_rot_z, g_rot_w = rot.x, rot.y, rot.z, rot.w\n"
+               "  end,\n"
+               "}\n";
+    }
+
+    IRPrefab::Prefab::registerPrefab("p", prefabPath);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    constexpr float kEps = 1e-5f;
+    EXPECT_NEAR(lua["g_off_x"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_off_y"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_off_z"].get<float>(), -2.0f, kEps);
+    // World rotation = 90°Y: (qx=0, qy=kS, qz=0, qw=kS).
+    EXPECT_NEAR(lua["g_rot_x"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_rot_y"].get<float>(), kS, kEps);
+    EXPECT_NEAR(lua["g_rot_z"].get<float>(), 0.0f, kEps);
+    EXPECT_NEAR(lua["g_rot_w"].get<float>(), kS, kEps);
+}
+
+TEST_F(PrefabApi, BindPointOverridesApplied) {
+    PrefabFiles f = writeBindPointFixtureSet(
+        "bind_override",
+        std::string{"return {\n"} +
+            "  prefab_version = 1,\n"
+            "  rig_ref = '" +
+            std::string{kTmpDir} +
+            "/prefab_test_bind_override.rig',\n"
+            "  bind_point_overrides = {\n"
+            "    tip = { offset = vec3.new(2, 2, 2) },\n"
+            "  },\n"
+            "  setup = function(entity)\n"
+            "    local off, _ = IREntity.bindPoint(entity, 'tip')\n"
+            "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    // Override changes bp.offset from (0,0,1) to (2,2,2). World offset
+    // = chain world (5,7,9) + override (2,2,2) = (7,9,11).
+    EXPECT_FLOAT_EQ(lua["g_off_x"].get<float>(), 7.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_y"].get<float>(), 9.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 11.0f);
+}
+
+TEST_F(PrefabApi, BindPointMissingReturnsNil) {
+    PrefabFiles f = writeBindPointFixtureSet(
+        "bind_missing",
+        std::string{"return {\n"} +
+            "  prefab_version = 1,\n"
+            "  rig_ref = '" +
+            std::string{kTmpDir} +
+            "/prefab_test_bind_missing.rig',\n"
+            "  setup = function(entity)\n"
+            "    local off, rot = IREntity.bindPoint(entity, 'nope')\n"
+            "    g_off_is_nil = (off == nil)\n"
+            "    g_rot_is_nil = (rot == nil)\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    EXPECT_TRUE(lua["g_off_is_nil"].get<bool>());
+    EXPECT_TRUE(lua["g_rot_is_nil"].get<bool>());
 }
 
 // ---- additivity: unknown top-level keys do not break the load -------------

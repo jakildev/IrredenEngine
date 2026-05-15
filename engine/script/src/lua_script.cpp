@@ -8,6 +8,9 @@
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
+#include <irreden/voxel/components/component_bind_points.hpp>
+#include <irreden/voxel/components/component_joint_hierarchy.hpp>
+#include <irreden/voxel/rig_bridge.hpp>
 
 #include <deque>
 #include <string>
@@ -432,6 +435,13 @@ void LuaScript::bindLuaDrivenEcs() {
 
     m_lua["IRComponent"]["register"] = registerComponent;
 
+    m_lua.new_usertype<IRScript::LuaEntity>(
+        "LuaEntity",
+        sol::constructors<IRScript::LuaEntity(IREntity::EntityId)>(),
+        "entity",
+        &IRScript::LuaEntity::entity
+    );
+
     if (!m_lua["IREntity"].valid()) {
         m_lua["IREntity"] = m_lua.create_table();
     }
@@ -472,6 +482,43 @@ void LuaScript::bindLuaDrivenEcs() {
     m_lua["IREntity"]["hasLuaComponent"] = [](IRScript::LuaEntity entity, sol::table componentDef) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
+    };
+
+    m_lua["IREntity"]["bindPoint"] =
+        [](IRScript::LuaEntity self,
+           const std::string &name,
+           sol::this_state L) -> std::tuple<sol::object, sol::object> {
+        sol::state_view sv{L};
+        auto returnNil = [&]() {
+            return std::make_tuple(
+                sol::make_object(sv, sol::lua_nil),
+                sol::make_object(sv, sol::lua_nil)
+            );
+        };
+        auto bindPointsOpt =
+            IREntity::getComponentOptional<IRComponents::C_BindPoints>(self.entity);
+        if (!bindPointsOpt.has_value()) {
+            return returnNil();
+        }
+        const auto *bindPoints = bindPointsOpt.value();
+        auto it = bindPoints->points_.find(name);
+        if (it == bindPoints->points_.end()) {
+            return returnNil();
+        }
+        auto hierarchyOpt =
+            IREntity::getComponentOptional<IRComponents::C_JointHierarchy>(self.entity);
+        IRPrefab::Rig::BindPointWorldTransform world;
+        if (hierarchyOpt.has_value()) {
+            world =
+                IRPrefab::Rig::worldTransformForBindPoint(it->second, *hierarchyOpt.value());
+        } else {
+            world.offset_ = it->second.offset_;
+            world.rotation_ = it->second.rotation_;
+        }
+        return std::make_tuple(
+            sol::make_object(sv, world.offset_),
+            sol::make_object(sv, world.rotation_)
+        );
     };
 
     // ECS singleton-component lookup. One entity per component type,

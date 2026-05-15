@@ -73,6 +73,21 @@ Helpers that take `PlaneIso` (most of them): double-check the plane axis —
 
 Use these; don't re-derive the kinematics inline.
 
+## Quaternions
+
+Quaternions are stored as `IRMath::vec4(qx, qy, qz, qw)` — the same
+layout used by `IRComponents::Joint::rotation_` and
+`IRAsset::RigJoint::rotation_` (identity is `vec4(0, 0, 0, 1)`, i.e.
+`.w` is the scalar).
+
+- `IRMath::quatMul(a, b) → vec4` — Hamilton product; in column-vector
+  convention, rotates by `b` first then `a` (bone usage: `quatMul(parent_world, local)`).
+- `IRMath::rotateVectorByQuat(v, q) → vec3` — rotate a vec3 by a
+  unit quaternion. Same algebra as `glm::rotate(quat, vec3)`.
+
+These are the helpers `IRPrefab::Rig::worldTransformForBindPoint`
+uses to walk a joint chain when resolving `IREntity.bindPoint(entity, name)`.
+
 ## Random
 
 - `randomBool()`, `randomInt(min, max)`, `randomFloat(min, max)`.
