@@ -51,7 +51,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
@@ -108,11 +108,11 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
     return gpu;
 }
 
-inline ivec3 roundedLightOrigin(const C_PositionGlobal3D &position) {
+inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     // Round-half-up so light origins line up with the light-occlusion
     // grid cells populated by `system_build_light_occlusion_grid` (also
     // round-half-up).
-    return IRMath::roundVec3HalfUp(position.pos_);
+    return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
 inline bool isOriginInLightVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin) {
@@ -163,7 +163,7 @@ inline std::uint32_t gatherLightSources(
     std::unordered_set<std::uint64_t> &warnedOOBOrigins
 ) {
     out.clear();
-    const auto include = IREntity::getArchetype<C_LightSource, C_PositionGlobal3D>();
+    const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     auto &entityManager = IREntity::getEntityManager();
     for (auto *node : nodes) {
@@ -178,7 +178,7 @@ inline std::uint32_t gatherLightSources(
             continue;
         }
         auto &lights = IREntity::getComponentData<C_LightSource>(node);
-        auto &positions = IREntity::getComponentData<C_PositionGlobal3D>(node);
+        auto &transforms = IREntity::getComponentData<C_WorldTransform>(node);
         for (int i = 0; i < node->length_; ++i) {
             // Directional lights drive sun shading via the FrameDataSun
             // path; they do not seed the world-space light volume.
@@ -188,7 +188,7 @@ inline std::uint32_t gatherLightSources(
             if (out.size() >= kLightVolumeMaxSources) {
                 return static_cast<std::uint32_t>(out.size());
             }
-            const ivec3 origin = roundedLightOrigin(positions[i]);
+            const ivec3 origin = roundedLightOrigin(transforms[i]);
             if (!isOriginInLightVolume(origin, volumeOriginVoxel)) {
                 if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
                     IR_LOG_WARN(
