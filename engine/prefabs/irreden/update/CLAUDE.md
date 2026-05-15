@@ -33,6 +33,16 @@ in the `UPDATE` pipeline unless explicitly noted.
   `C_Modifiers` on bob-eligible entities and `MODIFIER_DECAY` running
   earlier in the UPDATE pipeline so the per-frame push doesn't
   accumulate.
+- `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
+  topological order and writes `C_WorldTransform` from each entity's
+  `C_LocalTransform` composed with the parent chain. Modifier-resolved
+  `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` (vec3) fold into the
+  world transform per the SQT formula in
+  `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
+  propagation". Place after the modifier resolver pipeline and before
+  any consumer (render, gizmo, physics) that reads
+  `C_WorldTransform`. Cost is O(N + passes × archetypes) where passes
+  is bounded by the deepest parent chain.
 
 ## Commands
 

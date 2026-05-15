@@ -76,18 +76,27 @@ per-row work runs at native speed. EVAL (LuaJIT-backed sol2 dispatch via
 coexistence" for the DSL subset, the per-system override, the
 CMake flag, and the hot-reload-only-in-EVAL contract.
 
-## `createEntity` always adds `C_PositionGlobal3D`
+## `createEntity` auto-attaches transform components
 
-`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` to every
-entity, whether you asked for it or not. Systems that want an entity's
-actual draw position should read `C_PositionGlobal3D`, not `C_Position3D`.
+`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D`,
+`C_LocalTransform`, and `C_WorldTransform` to every entity, whether
+you asked for them or not. The free function detects when the caller
+supplies one of these types explicitly and skips the matching default
+so the caller-provided value lands cleanly. Legacy systems read
+`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` +
+`APPLY_POSITION_OFFSET`); the canonical SQT path reads
+`C_WorldTransform` (updated by `PROPAGATE_TRANSFORM` from
+`C_LocalTransform` composed with the parent chain — see
+`engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
+propagation").
 
 Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
-perturbations) travel through the modifier framework's
-`POSITION_OFFSET_3D` vec3 field: writers push a vec3 modifier on
-`C_Modifiers`, and `APPLY_POSITION_OFFSET` composes the entity's vec3
-modifiers and folds the resolved value into `C_PositionGlobal3D` once
-per UPDATE tick. Entities that don't bob don't need `C_Modifiers`.
+perturbations) travel through the modifier framework's vec3 fields:
+`POSITION_OFFSET_3D` (folded into `C_PositionGlobal3D` by
+`APPLY_POSITION_OFFSET`) and the SQT-side `TRANSFORM_TRANSLATION` /
+`TRANSFORM_SCALE` (folded into `C_WorldTransform` by
+`PROPAGATE_TRANSFORM`). Entities that don't push such offsets don't
+need `C_Modifiers`.
 
 ## Manager globals
 
