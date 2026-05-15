@@ -266,6 +266,57 @@ TEST_F(LuaPipelineRegisterTest, AddMultiplyHalvesResolvedFieldFromLua) {
     EXPECT_FLOAT_EQ(fromLua, 50.0f);
 }
 
+// ---- IRModifier vec3 surface ----------------------------------------------
+
+TEST_F(LuaPipelineRegisterTest, AddVec3ComposesPerAxisFromLua) {
+    auto &lua = m_lua.lua();
+    const EntityId entity = IREntity::createEntity(C_Modifiers{});
+    lua["g_entity"] = static_cast<lua_Integer>(entity);
+
+    auto setup = lua.safe_script(
+        R"(
+        local field = IRModifier.registerFieldVec3("lua.test.bob_offset")
+        IRModifier.addVec3(g_entity, field, {
+            transform = IRModifier.Transform.ADD,
+            value = { x = 1.0, y = 2.0, z = 3.0 },
+        })
+        return field
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(setup.valid()) << "addVec3 setup failed";
+    const auto fieldId = static_cast<FieldBindingId>(setup.get<lua_Integer>());
+
+    const IRMath::vec3 base{10.0f, 10.0f, 10.0f};
+    const IRMath::vec3 resolved = IRPrefab::Modifier::applyToFieldVec3(entity, fieldId, base);
+    EXPECT_FLOAT_EQ(resolved.x, 11.0f);
+    EXPECT_FLOAT_EQ(resolved.y, 12.0f);
+    EXPECT_FLOAT_EQ(resolved.z, 13.0f);
+}
+
+TEST_F(LuaPipelineRegisterTest, AddVec3AgainstScalarFieldIsNoOp) {
+    auto &lua = m_lua.lua();
+    const EntityId entity = IREntity::createEntity(C_Modifiers{});
+    lua["g_entity"] = static_cast<lua_Integer>(entity);
+
+    auto result = lua.safe_script(
+        R"(
+        local scalarField = IRModifier.registerField("lua.test.cross_typed_scalar")
+        IRModifier.addVec3(g_entity, scalarField, {
+            transform = IRModifier.Transform.ADD,
+            value = { x = 1.0, y = 2.0, z = 3.0 },
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << "addVec3 raised on scalar-typed field";
+
+    // Neither vector should have an entry — the wrong-type push was a no-op.
+    const auto &c = IREntity::getComponent<C_Modifiers>(entity);
+    EXPECT_EQ(c.modifiers_.size(), 0u);
+    EXPECT_EQ(c.modifiersVec3_.size(), 0u);
+}
+
 TEST_F(LuaPipelineRegisterTest, AddRejectsUnknownFieldName) {
     auto &lua = m_lua.lua();
     const EntityId entity = IREntity::createEntity(C_Modifiers{});

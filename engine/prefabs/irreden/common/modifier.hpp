@@ -41,8 +41,19 @@ inline IRComponents::FieldBindingId registerField(const char *name) {
     return detail::globalFieldRegistry().registerField(name);
 }
 
+// vec3-typed field. Pushes against this id must use the vec3 push()
+// overloads; the scalar-typed overloads silently no-op for vec3 fields
+// (caller bug, not data error).
+inline IRComponents::FieldBindingId registerFieldVec3(const char *name) {
+    return detail::globalFieldRegistry().registerFieldVec3(name);
+}
+
 inline const char *fieldName(IRComponents::FieldBindingId id) {
     return detail::globalFieldRegistry().fieldName(id);
+}
+
+inline IRComponents::FieldValueType fieldType(IRComponents::FieldBindingId id) {
+    return detail::globalFieldRegistry().fieldType(id);
 }
 
 inline std::size_t fieldCount() {
@@ -51,7 +62,9 @@ inline std::size_t fieldCount() {
 
 // Push a structured modifier onto the target entity. Defensively rejects
 // kInvalidFieldId so a default-constructed Modifier{} can't slip into
-// the pipeline.
+// the pipeline. Also rejects mismatched typing (pushing a scalar against
+// a vec3-registered field, or vice versa) so the resolver sees one type
+// per field.
 inline void push(
     IREntity::EntityId target,
     IRComponents::FieldBindingId field,
@@ -62,10 +75,32 @@ inline void push(
 ) {
     if (field == IRComponents::kInvalidFieldId)
         return;
+    if (fieldType(field) != IRComponents::FieldValueType::SCALAR)
+        return;
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
     c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
+}
+
+inline void push(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source,
+    std::int32_t ticksRemaining = -1
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::VEC3)
+        return;
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiersVec3_.push_back(
+        IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
+    );
 }
 
 inline void pushGlobal(
@@ -77,6 +112,8 @@ inline void pushGlobal(
 ) {
     if (field == IRComponents::kInvalidFieldId)
         return;
+    if (fieldType(field) != IRComponents::FieldValueType::SCALAR)
+        return;
     auto entity = detail::globalsEntityId();
     if (entity == IREntity::kNullEntity)
         return;
@@ -85,6 +122,29 @@ inline void pushGlobal(
     if (!c)
         return;
     c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
+}
+
+inline void pushGlobal(
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source,
+    std::int32_t ticksRemaining = -1
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::VEC3)
+        return;
+    auto entity = detail::globalsEntityId();
+    if (entity == IREntity::kNullEntity)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
+    if (!c)
+        return;
+    c->modifiersVec3_.push_back(
+        IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
+    );
 }
 
 // `ticksRemaining` is honored by `LAMBDA_MODIFIER_DECAY`, registered alongside
@@ -111,7 +171,8 @@ inline void pushLambda(
 }
 
 // Sweep both per-entity and global modifier vectors, removing any whose
-// source_ matches `source`. Linear in the total number of (entity ×
+// source_ matches `source`. Sweeps scalar AND vec3 vectors on every
+// component touched. Linear in the total number of (entity ×
 // modifier) pairs in the world. Wired automatically into
 // `EntityManager::destroyEntity` by `registerResolverPipeline()` — a
 // pre-destroy hook fires `removeBySource(destroyedEntity)` before the
@@ -132,9 +193,13 @@ inline void removeBySource(IREntity::EntityId source) {
 
     IREntity::forEachComponent<IRComponents::C_Modifiers>([&](IRComponents::C_Modifiers &c) {
         stripVec(c.modifiers_);
+        stripVec(c.modifiersVec3_);
     });
     IREntity::forEachComponent<IRComponents::C_GlobalModifiers>(
-        [&](IRComponents::C_GlobalModifiers &c) { stripVec(c.modifiers_); }
+        [&](IRComponents::C_GlobalModifiers &c) {
+            stripVec(c.modifiers_);
+            stripVec(c.modifiersVec3_);
+        }
     );
     IREntity::forEachComponent<IRComponents::C_LambdaModifiers>(
         [&](IRComponents::C_LambdaModifiers &c) { stripVec(c.modifiers_); }
@@ -163,6 +228,28 @@ applyToField(IREntity::EntityId target, IRComponents::FieldBindingId field, floa
     const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiers();
 
     return detail::composeForField(baseValue, field, globals, entityMods);
+}
+
+// vec3 counterpart of `applyToField`. Same direct-query semantics; reads
+// from the vec3 modifier vectors on C_Modifiers and C_GlobalModifiers.
+inline IRMath::vec3 applyToFieldVec3(
+    IREntity::EntityId target, IRComponents::FieldBindingId field, IRMath::vec3 baseValue
+) {
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    const auto &entityMods = c ? c->modifiersVec3_ : detail::emptyModifiersVec3();
+
+    const std::vector<IRComponents::ModifierVec3> *globalsPtr = nullptr;
+    auto entity = detail::globalsEntityId();
+    if (entity != IREntity::kNullEntity) {
+        auto *g = IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(
+            nullptr
+        );
+        if (g)
+            globalsPtr = &g->modifiersVec3_;
+    }
+    const auto &globals = globalsPtr ? *globalsPtr : detail::emptyModifiersVec3();
+
+    return detail::composeForFieldVec3(baseValue, field, globals, entityMods);
 }
 
 // Wires up the singleton globals entity and registers the six resolver
