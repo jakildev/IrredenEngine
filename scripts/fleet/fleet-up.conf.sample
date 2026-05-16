@@ -80,3 +80,20 @@
 
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
+
+# --- fleet-run default watchdog -------------------------------------------
+#
+# When fleet-run is invoked without an explicit --timeout, apply this
+# many seconds as a default watchdog. Catches the failure mode where a
+# fleet agent forgets to pass --timeout for a GUI/demo executable and
+# leaves a stuck process behind after the iteration ends.
+#
+# Unset (or 0) preserves the historic exec-the-binary behavior.
+# Per-call override: pass `--timeout N` for any N, or `--timeout 0` to
+# opt out for a specific run (e.g. interactive demo session).
+#
+# Recommended for fleet hosts: 300 (5 min) — long enough for legit
+# screenshot harnesses + integration tests, short enough to prevent
+# overnight pile-up of stuck windows.
+
+# FLEET_RUN_DEFAULT_TIMEOUT=300
