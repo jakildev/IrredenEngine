@@ -291,7 +291,7 @@ Avoid:
   - **ID:** T-208
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-208-modifier-upsert-by-source
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) six new inline overloads land in `modifier.hpp` — `upsertBySource` (scalar+vec3), `upsertBySourceGlobal` (scalar+vec3), `upsertBySourceInPlace` (scalar+vec3); (2) unit tests pass: `UpsertBySource_FirstCallAppends`, `SecondCallOverwrites`, `DifferentKindGetsItsOwnSlot`, `DifferentSourceGetsItsOwnSlot`, `OverridesPriorTickRemaining`, frame-level test ticks `PERIODIC_IDLE_POSITION_OFFSET` 100x and asserts `modifiersVec3_.size() == 1`; (3) `PERIODIC_IDLE_POSITION_OFFSET` uses `upsertBySourceInPlace`, no `ticksRemaining_=1` literal remains; (4) idle bob in default + perf_grid creations visually identical to master; (5) pipeline-ordering comment in `system_periodic_idle_position_offset.hpp` no longer cites `MODIFIER_DECAY` as prerequisite; (6) `docs/design/modifiers.md` documents slot contract and upsert as canonical steady-state-writer pattern; (7) `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug
