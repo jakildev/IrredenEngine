@@ -2,8 +2,9 @@
 #define COMPONENT_SHAPE_DESCRIPTOR_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/math/sdf.hpp>
 #include <irreden/render/active_canvas.hpp>
-#include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/lod_level.hpp>
 
 using namespace IRMath;
 
@@ -13,7 +14,7 @@ namespace IRComponents {
 // shape's SDF directly -- no per-voxel allocation, no dirty tracking.
 // Rendered by SHAPES_TO_TRIXEL (two-pass distance + color/entityID).
 //
-// flags_ values (see ShapeFlags in ir_render_types.hpp):
+// flags_ values (see ShapeFlags in IRMath::SDF):
 //   SHAPE_FLAG_VISIBLE           - shape is rendered (default on)
 //   SHAPE_FLAG_HOLLOW            - only render the shell of the SDF
 //   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
@@ -30,17 +31,17 @@ namespace IRComponents {
 // where lodMin_ < activeLod (CPU-side, pre-GPU staging). See
 // docs/design/lod-strategy.md and engine/prefabs/irreden/render/lod_utils.hpp.
 struct C_ShapeDescriptor {
-    IRRender::ShapeType shapeType_ = IRRender::ShapeType::BOX;
+    IRMath::SDF::ShapeType shapeType_ = IRMath::SDF::ShapeType::BOX;
     vec4 params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
     Color color_ = Color{255, 255, 255, 255};
-    std::uint32_t flags_ = IRRender::SHAPE_FLAG_VISIBLE;
+    std::uint32_t flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE;
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
 
     C_ShapeDescriptor()
         : canvasEntity_{IRRender::getActiveCanvasEntityOrNull()} {}
 
-    C_ShapeDescriptor(IRRender::ShapeType type, vec4 params, Color color)
+    C_ShapeDescriptor(IRMath::SDF::ShapeType type, vec4 params, Color color)
         : shapeType_{type}
         , params_{params}
         , color_{color}

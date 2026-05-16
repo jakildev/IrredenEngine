@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/math/sdf.hpp>
+#include <irreden/render/lod_level.hpp>
 
 #include <cstdint>
 
@@ -165,7 +166,11 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 ///   SMOOTH mode. Changing mode or subdivisions mid-frame stalls the pipeline.
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
-enum class LodLevel : std::uint32_t { LOD_0 = 0, LOD_1 = 1, LOD_2 = 2, LOD_3 = 3, LOD_4 = 4 };
+
+// LodLevel moved to its own header (irreden/render/lod_level.hpp) so
+// header-only ECS components can pick up the tier enum without pulling
+// the full ir_render_types.hpp surface. Still in namespace IRRender for
+// backward compat with existing IRRender::LodLevel call sites.
 
 struct GPUEntityTransform {
     vec4 worldPosition;
