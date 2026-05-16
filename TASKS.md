@@ -323,6 +323,54 @@ Avoid:
   - **Notes:** Two open design questions for architect: (a) template vs. runtime-parameterized `FieldBindingId` (registration is dynamic at init, not compile-time); (b) `ADD`-only vs. configurable compose semantics for inline-apply. Future consumers motivating this: gizmo nudge (already inline), hit-stagger, screen-space jitter. Today adding a new inline-compose vec3 channel is "copy-paste APPLY_POSITION_OFFSET." Predecessor: #746 (T-192). Siblings: T-208 (upsertBySource), T-209 (pushFrameLocal/pushOneFrame).
   - **Links:**
 
+- [ ] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
+  - **ID:** T-211
+  - **Area:** creations/editors, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** #603 (Phase 0 Foundation — requires #620 UI primitives, #621 per-voxel metadata, #628 voxel picking to be closed)
+  - **Stack:** T-211..T-214 editor-phase-1
+  - **Acceptance:** (1) left-click on voxel face places adjacent voxel in active layer with active palette color; right-click erases; (2) palette panel renders ≥16 swatches; clicking selects active color used for subsequent placements; (3) editing a swatch updates consistently (document chosen model: mutable vs. immutable-index); (4) Ctrl-Z reverses last stroke; Ctrl-Y re-applies; multi-step undo/redo works; (5) undo stack respects documented memory cap, oldest records evict; (6) no allocations inside per-voxel placement hot path (reserve at stroke begin); (7) fleet-build clean on linux-debug
+  - **Issue:** #761
+  - **Notes:** Undo data layout (delta vs. snapshot, eviction policy, palette-index vs. raw-RGBA storage) is the first undo system in the engine — choice constrains every later Phase 1/2/3 system. Part of entity-editor epic #604 / umbrella #213. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
+  - **ID:** T-212
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-214 editor-phase-1
+  - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
+  - **Issue:** #762
+  - **Notes:** Bounded math; mirrors off the place/erase stroke from F-1.1 (T-211). Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
+  - **ID:** T-213
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-214 editor-phase-1
+  - **Acceptance:** (1) default Layer 0 exists on empty scene; (2) create new layer → it becomes active → subsequent placements carry its layer id; (3) toggle layer visibility → its voxels hide in viewport AND don't pick; (4) renaming a layer doesn't break per-voxel layer-id references (id stable, name is display-only); (5) reordering layers in panel doesn't change which voxels belong where; (6) deleting a layer moves its voxels to default layer or prompts confirmation; (7) layer membership round-trips through F-1.5 save/load; (8) fleet-build clean on linux-debug
+  - **Issue:** #763
+  - **Notes:** Layer membership lives in the JSON sidecar (F-0.7) — .vxs v2 binary doesn't need a new field. Decide in implementation whether to store layer-id per voxel in sidecar or as voxel-index ranges per layer. Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.4 — frame-based animation (multiple poses, scrubber)** — pixel-art-style frame-by-frame animation; timeline panel with thumbnails, scrubber, play/pause/loop/ping-pong; each frame is an independent voxel-grid snapshot; undo scoped per frame
+  - **ID:** T-214
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-214 editor-phase-1
+  - **Acceptance:** (1) add frame → new editable snapshot in timeline; switching shows empty or duplicated grid; (2) edit voxels in frame N → frame N+1 unaffected; (3) scrubber drags through frames smoothly, viewport updates per drag tick; (4) play button cycles at configurable FPS (test 6 fps and 24 fps); (5) loop and ping-pong modes both work; (6) frames round-trip through F-1.5 save/load identically; (7) undo (Ctrl-Z) scoped to active frame, doesn't reach into another frame's history; (8) per-frame undo cap documented in impl PR; (9) fleet-build clean on linux-debug
+  - **Issue:** #764
+  - **Notes:** NOT skeletal animation (that's Phase 3, #606). Each frame is a separate dense .vxs block in v1. Sparse/delta encoding is a Phase 10 perf concern (#613). Risk: per-frame undo cap must be documented to bound memory with many frames. Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
