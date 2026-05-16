@@ -221,6 +221,28 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
+- [ ] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
+  - **ID:** T-202
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `fleet-build --target IRShapeDebug` succeeds on linux-debug (gcc-13, OpenGL); (2) all GLSL compute shaders in `engine/render/src/shaders/` load and dispatch without GL errors; (3) trixel pipeline (canvas → composite → framebuffer), lighting stage, and camera/coordinate transform produce output matching the Metal reference at `shape_debug` level; (4) `render-debug-loop` oracle passes on linux-debug; (5) Metal-only features documented (not ported) in engine/render/CLAUDE.md; (6) fleet-build clean on linux-debug
+  - **Issue:** #757
+  - **Notes:** Linux WSL2 host recently upgraded from Ubuntu 20.04 (gcc-9) to 24.04 (gcc-13). This is the engine-side prerequisite for demo validation (T-203). Focus on any `#ifdef`/platform divergence in the OpenGL path, GLSL version compatibility, compute shader dispatch grids. Backend-parity skill for Metal follow-ups. See `docs/agents/BUILD.md` for the linux-debug preset and `fleet-build` / `fleet-run` wrappers.
+  - **Links:**
+
+- [ ] **build/demos: Linux demo validation suite — build + run + screenshot all demos on linux-debug** — for each demo listed in #757, confirm it builds clean and renders a correct frame on linux-debug, commit reference screenshots, and open per-demo PRs
+  - **ID:** T-203
+  - **Area:** creations/demos, build
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-202
+  - **Acceptance:** (1) every demo in #757's in-scope list either (a) builds + runs + renders a correct frame on linux-debug, or (b) is explicitly documented as unsupported (metal_clear_test excluded on Linux, midi_keyboard WSLg-unsupported); (2) reference screenshots committed under docs/pr-screenshots/ref/linux/ or wherever `render-verify` expects them; (3) per-demo PRs include screenshots in the body; (4) shape_debug fixed first (it is the render-debug-loop oracle)
+  - **Issue:** #757
+  - **Notes:** One PR per demo is the right granularity. Use the `render-debug-loop` and `attach-screenshots` skills. After T-202 lands, Sonnet workers can pick demos in parallel. The `fleet:needs-linux-smoke` label triggers cross-host smoke validation automatically.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
@@ -242,6 +264,6 @@ Avoid:
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
-- [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
+- [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
