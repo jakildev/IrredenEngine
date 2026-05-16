@@ -858,28 +858,33 @@ dispatch_role() {
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key")
         log "dispatching $role -> $pane_id"
-        # C-c aborts any partial input the human may have typed into
-        # the idle pane (including multi-line continuations); C-u then
-        # clears the input line for good measure. Without this the
-        # typed-but-uncommitted prefix concatenates with our dispatch
-        # command — observed: stray "Ca" turned the next dispatch into
-        # "Caclaude --model …" / "zsh: command not found: Caclaude".
-        # Safe at a shell prompt — find_idle_panes_for_role only picks
-        # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
-        # acts on the input loop, not a running command.
-        # Split the burst: C-c interrupts whatever's at the prompt and
-        # triggers bash to redraw; without a gap, the first char of
-        # "$cmd" arrives while readline is mid-redraw and gets eaten
-        # ("fleet-dispatch-wrap" → "leet-dispatch-wrap: command not
-        # found"). 50ms is enough on tmux 3.4 / Ubuntu 24.04; cheap on
-        # every other host.
-        if ! dispatch_send_keys -t "$pane_id" C-c C-u; then
-            log "send-keys (reset) timeout/failed for $role -> $pane_id; trying next idle pane"
-            continue
-        fi
-        sleep 0.05
-        if ! dispatch_send_keys -t "$pane_id" "$cmd" C-m; then
-            log "send-keys (cmd) timeout/failed for $role -> $pane_id; trying next idle pane"
+        # Reset the input line with C-u (kill-line) before sending the
+        # dispatch command. Catches any partial input the human may have
+        # typed into the idle pane (stray "Ca" from an in-flight tmux
+        # prefix that didn't complete a binding, etc.) — without it the
+        # uncommitted prefix concatenates with our dispatch command,
+        # observed: "Caclaude --model …" / "command not found: Caclaude".
+        #
+        # The earlier implementation also sent C-c. Dropped because:
+        #   - SIGINT triggers a Windows alert sound under WSLg /
+        #     Windows Terminal every time a worker spins up — audibly
+        #     annoying with multiple panes restarting per minute.
+        #   - find_idle_panes_for_role only picks bash/zsh/sh/fish
+        #     panes — there is no foreground command to interrupt, so
+        #     SIGINT was a no-op aside from echoing "^C\n" and the
+        #     associated terminal bell.
+        #   - The "post-prompt-redraw eats first byte" race that C-c
+        #     induced (the "leet-dispatch-wrap: command not found"
+        #     loop on bash 5.2 / Ubuntu 24.04) is also gone.
+        # Multi-line bash continuations (the one remaining edge case
+        # C-c handled) are vanishingly rare in fleet panes — humans
+        # don't type there — and a single malformed dispatch self-heals
+        # on the next tick.
+        #
+        # The leading-space sacrificial char in build_dispatch_command
+        # remains as defense-in-depth.
+        if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
+            log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             continue
         fi
         write_dispatch_record "$role" "$pane_id"
