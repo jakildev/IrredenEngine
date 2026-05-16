@@ -311,11 +311,11 @@ Avoid:
   - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
   - **Links:**
 
-- [ ] **modifier: generalize APPLY_POSITION_OFFSET into reusable APPLY_VEC3_MODIFIER_TO<field, component> pattern** — architect picks template vs. runtime parameterization; port APPLY_POSITION_OFFSET to the generic shape; document inline-apply pattern
+- [~] **modifier: generalize APPLY_POSITION_OFFSET into reusable APPLY_VEC3_MODIFIER_TO<field, component> pattern** — architect picks template vs. runtime parameterization; port APPLY_POSITION_OFFSET to the generic shape; document inline-apply pattern
   - **ID:** T-210
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) `APPLY_POSITION_OFFSET` reimplemented as an instance of the generic inline-apply pattern (or thin caller of a generic helper if runtime-parameterized); (2) `docs/design/modifiers.md` documents the inline-apply pattern alongside the structured-resolver path with guidance on when to pick which; (3) idle bob in default + perf_grid creations visually identical to master; (4) no regression in `IRShapeDebug`, `voxel_editor`, or any demo using position offset; (5) fleet-build clean on linux-debug
