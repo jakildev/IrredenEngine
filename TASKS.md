@@ -163,18 +163,6 @@ Avoid:
   - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Blocks T-199 (consumer migration). Topological ordering is non-negotiable — the system must guarantee parents-before-children. `setParent` mid-frame means new child won't see parent transform until next frame; document this. All quat/vec ops through `engine/math/` — no raw glm:: calls. Sibling: T-198 (quat modifier kind, parallel — needed for rotation perturbations to flow through this system).
   - **Links:**
 
-- [~] **engine: quat modifier kind — extend modifier compose for rotation perturbations** — add a `ROTATION` quat field to the modifier system so rotation perturbations (wobble, shake, recoil, animation-blend overlays) flow through the same modifier channel as positions
-  - **ID:** T-198
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-198-quat-modifier-kind
-  - **Blocked by:** (none)
-  - **Stack:** T-197..T-199 transform-consolidation
-  - **Acceptance:** (1) `IRPrefab::Modifier::push<quat>(target, field, quat{...}, TransformKind::MULTIPLY)` (or equivalent) accepted; (2) resolved rotation reads back as `mod_k * mod_{k-1} * … * mod_0 * base` for stacked MULTIPLY modifiers; (3) OVERRIDE clears prior MULTIPLYs; (4) ADD/CLAMP push on a quat field raises a clear error (assert in debug or static_assert); (5) `SYSTEM_PROPAGATE_TRANSFORM` reads the resolved quat as `modifier_rotation` per the SQT formula in T-197; (6) test coverage: MULTIPLY stacking, OVERRIDE clears, ADD-on-quat assertion fires; (7) compose order convention (`mod * base`) documented in `engine/prefabs/irreden/common/CLAUDE.md`; (8) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #735
-  - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Parallel to T-197; implementation approach depends on whether vec3 ticket (T-191, done) used `std::variant<float, vec3, quat>` in `Modifier::param_` or a parallel `C_ModifiersVec3` component. Per-axis-of-rotation (Euler-style pitch wobble) modifiers are out of scope — convert to quat at caller. Normalize the final resolved quat once at the end (not on every multiply) to avoid float drift. Quat identity is `{1,0,0,0}`.
-  - **Links:**
-
 - [~] **engine: migrate position/rotation consumers to C_WorldTransform — retire C_Position3D/C_PositionGlobal3D/C_Rotation** — swap every consuming system from legacy position/rotation components to the new SQT transform pair and delete the retired components
   - **ID:** T-199
   - **Area:** engine/prefabs/irreden/render, engine/prefabs/irreden/update, engine/prefabs/irreden/input, engine/prefabs/irreden/voxel, engine/entity
@@ -249,6 +237,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-198** — quat modifier kind — extend modifier compose for rotation perturbations · Owner: claude/T-198-quat-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/748
 - [x] **T-193** — Lua input & command bindings (PR 2/2 implementation) · Owner: claude/T-193-lua-input-commands-impl · PR: https://github.com/jakildev/IrredenEngine/pull/747
 - [x] **T-192** — delete C_PositionOffset3D — migrate idle bob + gizmo to vec3 modifiers · Owner: claude/T-192-delete-position-offset · PR: https://github.com/jakildev/IrredenEngine/pull/746
 - [x] **T-196** — Research — Lua binding automation (codegen extension + shared default bindings header) · Owner: claude/T-196-lua-binding-codegen-research · PR: https://github.com/jakildev/IrredenEngine/pull/745
@@ -268,4 +257,3 @@ Avoid:
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
-- [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
