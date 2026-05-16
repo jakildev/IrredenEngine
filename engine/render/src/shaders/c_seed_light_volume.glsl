@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Seeds the 128³ light-volume image with one bright texel per active
 // light source. Invoked once per frame after the clear pass and before

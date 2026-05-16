@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
@@ -77,7 +77,7 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
-    int face = localIDToFace_2x3();
+    int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 

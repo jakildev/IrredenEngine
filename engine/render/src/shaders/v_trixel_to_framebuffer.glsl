@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#version 460 core
+#version 450 core
 layout (location = 0) in vec2 aPos;
 
 out vec2 TexCoords;

@@ -8,7 +8,7 @@
  * pipeline state by System<SPRITE_TO_SCREEN>; no per-sprite blend mode.
  */
 
-#version 460 core
+#version 450 core
 
 in vec2 vTexCoords;
 in vec4 vTint;

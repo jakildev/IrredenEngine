@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#version 460 core
+#version 450 core
 
 #include "ir_iso_common.glsl"
 

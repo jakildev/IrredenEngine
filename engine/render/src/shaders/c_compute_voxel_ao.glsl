@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Per-pixel ambient-occlusion compute. For each pixel on a rasterized
 // surface — voxel OR shape, since both write encoded face+depth via

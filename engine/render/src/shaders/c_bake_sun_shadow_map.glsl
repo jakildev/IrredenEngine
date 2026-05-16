@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Reconstructs pos3D for each rasterized iso pixel and atomicMin's its
 // packed sun-space depth into the sun shadow depth SSBO. Companion to
@@ -94,6 +94,6 @@ void main() {
         return;
     }
 
-    uint packed = packSunDepth(sunZ);
-    atomicMin(sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x], packed);
+    uint packedDepth = packSunDepth(sunZ);
+    atomicMin(sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x], packedDepth);
 }
