@@ -210,23 +210,12 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
-  - **ID:** T-202
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-202-linux-opengl-parity
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `fleet-build --target IRShapeDebug` succeeds on linux-debug (gcc-13, OpenGL); (2) all GLSL compute shaders in `engine/render/src/shaders/` load and dispatch without GL errors; (3) trixel pipeline (canvas → composite → framebuffer), lighting stage, and camera/coordinate transform produce output matching the Metal reference at `shape_debug` level; (4) `render-debug-loop` oracle passes on linux-debug; (5) Metal-only features documented (not ported) in engine/render/CLAUDE.md; (6) fleet-build clean on linux-debug
-  - **Issue:** #757
-  - **Notes:** Linux WSL2 host recently upgraded from Ubuntu 20.04 (gcc-9) to 24.04 (gcc-13). This is the engine-side prerequisite for demo validation (T-203). Focus on any `#ifdef`/platform divergence in the OpenGL path, GLSL version compatibility, compute shader dispatch grids. Backend-parity skill for Metal follow-ups. See `docs/agents/BUILD.md` for the linux-debug preset and `fleet-build` / `fleet-run` wrappers.
-  - **Links:**
-
 - [ ] **build/demos: Linux demo validation suite — build + run + screenshot all demos on linux-debug** — for each demo listed in #757, confirm it builds clean and renders a correct frame on linux-debug, commit reference screenshots, and open per-demo PRs
   - **ID:** T-203
   - **Area:** creations/demos, build
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-202
+  - **Blocked by:** (none)
   - **Acceptance:** (1) every demo in #757's in-scope list either (a) builds + runs + renders a correct frame on linux-debug, or (b) is explicitly documented as unsupported (metal_clear_test excluded on Linux, midi_keyboard WSLg-unsupported); (2) reference screenshots committed under docs/pr-screenshots/ref/linux/ or wherever `render-verify` expects them; (3) per-demo PRs include screenshots in the body; (4) shape_debug fixed first (it is the render-debug-loop oracle)
   - **Issue:** #757
   - **Notes:** One PR per demo is the right granularity. Use the `render-debug-loop` and `attach-screenshots` skills. After T-202 lands, Sonnet workers can pick demos in parallel. The `fleet:needs-linux-smoke` label triggers cross-host smoke validation automatically.
@@ -270,7 +259,7 @@ Avoid:
   - **ID:** T-209
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-209-pushFrameLocal-api
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) `pushFrameLocal` + `pushOneFrame` overloads (scalar + vec3) live in `engine/prefabs/irreden/common/modifier.hpp`; (2) Lua bindings in `modifier_lua.hpp` expose both names; (3) `PERIODIC_IDLE_POSITION_OFFSET` migrated to `pushFrameLocal` (or marked superseded if T-208 `upsertBySource` lands first); (4) `docs/design/modifiers.md` documents which to use when and demotes raw `push(..., ticksRemaining)` to "custom multi-frame decay only"; (5) fleet-build clean on linux-debug
@@ -354,7 +343,7 @@ Avoid:
   - **ID:** T-216
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-216-ubuntu-approved-label-fix
   - **Blocked by:** (none)
   - **Acceptance:** (1) root cause identified (permission gap, gh CLI config, or fleet script bug); (2) fix PR or workaround that makes label-adding work correctly on Ubuntu 24.04 WSL2 fleet; (3) PR approval flow on Ubuntu verified to add correct label after fix
   - **Issue:** #778
@@ -376,6 +365,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
 - [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
 - [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
 - [x] **T-200** — joints as entities — C_Skeleton + C_Joint scaffolding (replace SoA C_JointHierarchy) · Owner: claude/T-200-skeleton-joint-entities · PR: https://github.com/jakildev/IrredenEngine/pull/751
@@ -395,4 +385,3 @@ Avoid:
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
-- [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
