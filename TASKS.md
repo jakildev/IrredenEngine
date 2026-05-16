@@ -255,18 +255,6 @@ Avoid:
   - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
   - **Links:**
 
-- [~] **modifier: generalize APPLY_POSITION_OFFSET into reusable APPLY_VEC3_MODIFIER_TO<field, component> pattern** — architect picks template vs. runtime parameterization; port APPLY_POSITION_OFFSET to the generic shape; document inline-apply pattern
-  - **ID:** T-210
-  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-210-apply-vec3-modifier-to
-  - **Blocked by:** (none)
-  - **Stack:** T-208..T-210 modifier-ergonomics
-  - **Acceptance:** (1) `APPLY_POSITION_OFFSET` reimplemented as an instance of the generic inline-apply pattern (or thin caller of a generic helper if runtime-parameterized); (2) `docs/design/modifiers.md` documents the inline-apply pattern alongside the structured-resolver path with guidance on when to pick which; (3) idle bob in default + perf_grid creations visually identical to master; (4) no regression in `IRShapeDebug`, `voxel_editor`, or any demo using position offset; (5) fleet-build clean on linux-debug
-  - **Issue:** #760
-  - **Notes:** Two open design questions for architect: (a) template vs. runtime-parameterized `FieldBindingId` (registration is dynamic at init, not compile-time); (b) `ADD`-only vs. configurable compose semantics for inline-apply. Future consumers motivating this: gizmo nudge (already inline), hit-stagger, screen-space jitter. Today adding a new inline-compose vec3 channel is "copy-paste APPLY_POSITION_OFFSET." Predecessor: #746 (T-192). Siblings: T-208 (upsertBySource), T-209 (pushFrameLocal/pushOneFrame).
-  - **Links:**
-
 - [ ] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
   - **ID:** T-211
   - **Area:** creations/editors, engine/prefabs/irreden/voxel
@@ -353,6 +341,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
 - [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
@@ -372,4 +361,3 @@ Avoid:
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
-- [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
