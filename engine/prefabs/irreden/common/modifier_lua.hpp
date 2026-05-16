@@ -48,6 +48,12 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
         return static_cast<int>(IRPrefab::Modifier::registerFieldVec3(interned));
     };
 
+    modTbl["registerFieldQuat"] = [](const char *name) -> int {
+        static std::unordered_set<std::string> s_luaNames;
+        const char *interned = s_luaNames.emplace(name).first->c_str();
+        return static_cast<int>(IRPrefab::Modifier::registerFieldQuat(interned));
+    };
+
     struct PushOpts {
         IRComponents::FieldBindingId field_;
         IRComponents::TransformKind kind_;
@@ -104,6 +110,36 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
 
     modTbl["pushGlobalVec3"] = [parseOptsVec3](sol::table opts) {
         auto o = parseOptsVec3(opts);
+        IRPrefab::Modifier::pushGlobal(o.field_, o.kind_, o.param_, o.source_, o.ticks_);
+    };
+
+    // Quat push paths. `param` accepts an IRMath::vec4 userdata or a {x,y,z,w} table.
+    struct PushOptsQuat {
+        IRComponents::FieldBindingId field_;
+        IRComponents::TransformKind kind_;
+        IRMath::vec4 param_;
+        IREntity::EntityId source_;
+        std::int32_t ticks_;
+    };
+    auto parseOptsQuat = [](sol::table t) -> PushOptsQuat {
+        return PushOptsQuat{
+            static_cast<IRComponents::FieldBindingId>(t.get<int>("field")),
+            static_cast<IRComponents::TransformKind>(
+                t.get_or("kind", static_cast<int>(IRComponents::TransformKind::MULTIPLY))
+            ),
+            quatFromLua(t.get<sol::object>("param")),
+            t.get_or<IREntity::EntityId>("source", IREntity::kNullEntity),
+            t.get_or("ticks", -1)
+        };
+    };
+
+    modTbl["pushQuat"] = [parseOptsQuat](IREntity::EntityId target, sol::table opts) {
+        auto o = parseOptsQuat(opts);
+        IRPrefab::Modifier::push(target, o.field_, o.kind_, o.param_, o.source_, o.ticks_);
+    };
+
+    modTbl["pushGlobalQuat"] = [parseOptsQuat](sol::table opts) {
+        auto o = parseOptsQuat(opts);
         IRPrefab::Modifier::pushGlobal(o.field_, o.kind_, o.param_, o.source_, o.ticks_);
     };
 

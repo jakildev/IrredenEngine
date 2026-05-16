@@ -39,6 +39,14 @@ template <> struct System<MODIFIER_DECAY> {
                     IRComponents::detail::tickAndExpired<IRComponents::ModifierVec3>
                 );
                 v3.erase(newEnd3, v3.end());
+
+                auto &vq = m.modifiersQuat_;
+                auto newEndQ = std::remove_if(
+                    vq.begin(),
+                    vq.end(),
+                    IRComponents::detail::tickAndExpired<IRComponents::ModifierQuat>
+                );
+                vq.erase(newEndQ, vq.end());
             }
         );
     }
