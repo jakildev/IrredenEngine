@@ -29,9 +29,9 @@ template <> struct System<PERIODIC_IDLE_POSITION_OFFSET> {
             "PeriodicIdlePositionOffset",
             [](IREntity::EntityId entity,
                IRComponents::C_PeriodicIdle &idle,
-               IRComponents::C_Modifiers &) {
+               IRComponents::C_Modifiers &mods) {
                 IRPrefab::Modifier::pushFrameLocal(
-                    entity,
+                    mods,
                     IRPrefab::PositionModifier::positionOffsetField(),
                     IRComponents::TransformKind::ADD,
                     idle.getValue(),

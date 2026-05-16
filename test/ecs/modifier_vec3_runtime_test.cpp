@@ -326,6 +326,62 @@ TEST(ModifierVec3Decay, SixtyTickModifierExpiresAtSixty) {
     EXPECT_EQ(mods.size(), 0u);
 }
 
+// ---- Direct-reference overloads (C_Modifiers&) ----------------------------
+
+TEST(ModifierDirectRef, PushFrameLocalVec3DepositsInVec3VectorWithTicks1) {
+    IRComponents::C_Modifiers mods;
+    IRPrefab::Modifier::pushFrameLocal(
+        mods,
+        kFieldA,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiers_.size(), 0u);
+    ASSERT_EQ(mods.modifiersVec3_.size(), 1u);
+    EXPECT_EQ(mods.modifiersVec3_[0].field_, kFieldA);
+    EXPECT_EQ(mods.modifiersVec3_[0].kind_, TransformKind::ADD);
+    EXPECT_FLOAT_EQ(mods.modifiersVec3_[0].param_.x, 1.0f);
+    EXPECT_FLOAT_EQ(mods.modifiersVec3_[0].param_.y, 2.0f);
+    EXPECT_FLOAT_EQ(mods.modifiersVec3_[0].param_.z, 3.0f);
+    EXPECT_EQ(mods.modifiersVec3_[0].ticksRemaining_, 1);
+}
+
+TEST(ModifierDirectRef, PushFrameLocalScalarDepositsInScalarVectorWithTicks1) {
+    IRComponents::C_Modifiers mods;
+    IRPrefab::Modifier::pushFrameLocal(
+        mods, kFieldA, TransformKind::MULTIPLY, 2.5f, IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiersVec3_.size(), 0u);
+    ASSERT_EQ(mods.modifiers_.size(), 1u);
+    EXPECT_EQ(mods.modifiers_[0].field_, kFieldA);
+    EXPECT_FLOAT_EQ(mods.modifiers_[0].param_, 2.5f);
+    EXPECT_EQ(mods.modifiers_[0].ticksRemaining_, 1);
+}
+
+TEST(ModifierDirectRef, PushOneFrameVec3DepositsWithTicks2) {
+    IRComponents::C_Modifiers mods;
+    IRPrefab::Modifier::pushOneFrame(
+        mods, kFieldA, TransformKind::ADD, IRMath::vec3(4.0f), IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiersVec3_.size(), 1u);
+    EXPECT_EQ(mods.modifiersVec3_[0].ticksRemaining_, 2);
+}
+
+TEST(ModifierDirectRef, PushFrameLocalVec3DoesNotTriggerEntityLookup) {
+    // Verify the direct-reference overload compiles and runs without an entity
+    // or an entity manager in scope — confirming no getComponentOptional path
+    // is taken.
+    IRComponents::C_Modifiers mods;
+    IRPrefab::Modifier::pushFrameLocal(
+        mods, kFieldA, TransformKind::ADD, IRMath::vec3(0.0f), IREntity::kNullEntity
+    );
+    EXPECT_EQ(mods.modifiersVec3_.size(), 1u);
+}
+
 // ---- Push API: type-mismatch dispatch ------------------------------------
 
 class IRModifierVec3PushTest : public testing::Test {
