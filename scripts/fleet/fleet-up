@@ -1011,14 +1011,14 @@ set_fleet_role "$TOP_LEFT" "sonnet-author"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
-MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
+MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd "$OPUS_MODEL" opus-architect)")
 label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
 pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
-BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
@@ -1026,17 +1026,17 @@ set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
 # Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
-# sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
-# of the original TOP_LEFT region); the second split halves what's
-# left, giving three equal columns.
-TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
+# sonnet-reviewer. -l 67% gives the new pane 67% of the original
+# TOP_LEFT region (TOP_LEFT shrinks to 33%); the second split halves
+# what's left, giving three equal columns.
+TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
 set_fleet_role "$TOP_MID" "sonnet-author"
 pane_stagger
 
-TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
+TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
@@ -1047,7 +1047,7 @@ pane_stagger
 # the game worktree exists). 50/50 split since architects coexist as
 # equals (engine + game).
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$OPUS_MODEL" game-architect)")
     label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
@@ -1057,14 +1057,14 @@ fi
 # Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
 # opus-reviewer. Same 67/50 pattern as the top row to get three
 # equal columns.
-BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
+BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
 set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
-BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
+BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
@@ -1090,18 +1090,18 @@ OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
 label_pane_id "$OPS_TL" "queue-mgr/scratch [human]"
 pane_stagger
 
-OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
     "$TRANSIENT_PANE_CMD")
 label_pane_id "$OPS_TR" "merger [opus 4.7]"
 set_fleet_role "$OPS_TR" "merger"
 
-OPS_BL=$(tmux split-window -v -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$HOME/.fleet" \
     "witness; exec $SHELL")
 label_pane_id "$OPS_BL" "witness"
 
-OPS_BR=$(tmux split-window -v -t "$OPS_TR" -p 50 -P -F "#{pane_id}" \
+OPS_BR=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$HOME" \
     "exec $SHELL")
 label_pane_id "$OPS_BR" "terminal"
