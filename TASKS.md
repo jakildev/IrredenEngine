@@ -243,11 +243,11 @@ Avoid:
   - **Notes:** One PR per demo is the right granularity. Use the `render-debug-loop` and `attach-screenshots` skills. After T-202 lands, Sonnet workers can pick demos in parallel. The `fleet:needs-linux-smoke` label triggers cross-host smoke validation automatically.
   - **Links:**
 
-- [ ] **entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots, drops parent archetypes** — invert BFS to seed from true roots (no CHILD_OF) and walk outward so all archetypes including parents appear in sorted output
+- [~] **entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots, drops parent archetypes** — invert BFS to seed from true roots (no CHILD_OF) and walk outward so all archetypes including parents appear in sorted output
   - **ID:** T-204
   - **Area:** engine/entity
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) BFS seeded from archetypes with `getChildOfRelation() == kNullRelation` (true roots), walks outward via children; (2) `sortedNodes` contains all archetypes including multi-level parents, not just leaf archetypes; (3) existing `test/ecs/` suite passes; (4) new test in `test/ecs/` exercises a 3-level CHILD_OF chain through relational dispatch and verifies root entities are dispatched first; (5) fleet-build clean on linux-debug
   - **Issue:** #750
