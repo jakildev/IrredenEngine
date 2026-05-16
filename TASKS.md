@@ -326,7 +326,7 @@ Avoid:
   - **Notes:** Sparse issue. Manifests as PRs being approved without the expected fleet label added. Likely a permission or gh CLI config issue on Ubuntu 24.04 WSL2. Related to fleet bring-up fixes in PRs #768 (tmux/bash compat) and #769 (permission allowlist). Investigate fleet scripts that invoke `gh pr edit --add-label` in the approval flow.
   - **Links:**
 
-- [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
+- [~] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
   - **Model:** opus
@@ -341,7 +341,7 @@ Avoid:
   - **ID:** T-218
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `claude/*` branch force-with-lease pushes succeed without a human approval prompt in headless fleet mode; (2) `git push --force-with-lease origin master` and `origin main` remain blocked; (3) `git push --force` to any branch remains blocked; (4) a fleet agent can successfully rebase and force-push a `claude/*` branch end-to-end (verify with T-199 PR #787 or a fresh test branch)
   - **Issue:** #783
