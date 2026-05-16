@@ -265,11 +265,11 @@ Avoid:
   - **Notes:** Step 2 of the T-201 four-PR layering refactor. Step 1 (ShapeFlags → IRMath::SDF) landed as PR #752. Two options the architect must decide: (a) move function to `IRWorld::` — ambient-snapshot ergonomics preserved, sourced from world-level singleton instead of render; (b) push snapshot up to callers — `Prefab.spawn` threads active canvas into `C_ShapeDescriptor`/`C_VoxelSetNew` ctors. Call sites: `component_shape_descriptor.hpp:40,46` and `component_voxel_set.hpp:148`. Implementation is ~include shuffle + 3 call-site updates. T-201's final step (drop `IrredenEngineRendering` from script link) is blocked on this landing.
   - **Links:**
 
-- [ ] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
+- [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
   - **ID:** T-206
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-205
   - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #754
