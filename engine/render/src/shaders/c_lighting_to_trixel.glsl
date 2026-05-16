@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Screen-space lighting application pass. Runs after all geometry has been
 // rasterized to the trixel canvas (voxels, shapes, text) and before

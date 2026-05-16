@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Per-pixel directional sun shadow compute. For each rasterized surface
 // pixel reconstructs the voxel-space surface position from the encoded
@@ -63,8 +63,8 @@ const int kSunShadowMapDim = 1024;
 const float kSunDepthScale = 1024.0;
 const float kSunDepthOffset = 512.0;
 
-float unpackSunDepth(uint packed) {
-    return float(packed) / kSunDepthScale - kSunDepthOffset;
+float unpackSunDepth(uint packedDepth) {
+    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
 }
 
 // Normal-bias offset pushes the lookup point along the face's outward

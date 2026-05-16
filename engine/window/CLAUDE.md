@@ -20,8 +20,12 @@ Owns:
 - Event queues for keys, mouse buttons, and scroll that `InputManager` drains
   each frame.
 
-Construction sets GLFW hints: OpenGL 4.6 core profile when
+Construction sets GLFW hints: OpenGL 4.5 core profile when
 `IR_GRAPHICS_OPENGL`, no API (`GLFW_NO_API`) for Metal/Vulkan builds.
+4.5 is the floor — WSLg's Mesa-d3d12 driver caps there, while real
+Linux/Windows GPU drivers expose 4.6. The engine uses no 4.6-only
+features (no SPIR-V, no `gl_HelperInvocation`), so 4.5 lets a single
+binary boot on every host.
 
 `swapBuffers()` is called by `World::gameLoop()` at the end of each
 render frame.

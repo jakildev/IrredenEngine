@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // One iteration of the GPU light dilation. Reads the previous
 // frame's seed (or prior iteration's output) from `lightVolumeRead`
@@ -85,10 +85,10 @@ bool voxelOcclusionGetBit(int wx, int wy, int wz) {
     uint x = uint(lx + he);
     uint y = uint(ly + he);
     uint z = uint(lz + he);
-    uint flat =
+    uint flatIndex =
         (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
-    uint bits = occlusionBits[flat >> 5u];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
+    uint bits = occlusionBits[flatIndex >> 5u];
+    return ((bits >> (flatIndex & 31u)) & 1u) == 1u;
 }
 
 // SDF-shape light blockers. Same camera-anchored layout as the voxel
@@ -106,10 +106,10 @@ bool lightBlockerGetBit(int wx, int wy, int wz) {
     uint x = uint(lx + he);
     uint y = uint(ly + he);
     uint z = uint(lz + he);
-    uint flat =
+    uint flatIndex =
         (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
-    uint bits = occlusionBits[kLightOcclusionBitfieldUintCount + (flat >> 5u)];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
+    uint bits = occlusionBits[kLightOcclusionBitfieldUintCount + (flatIndex >> 5u)];
+    return ((bits >> (flatIndex & 31u)) & 1u) == 1u;
 }
 
 void main() {

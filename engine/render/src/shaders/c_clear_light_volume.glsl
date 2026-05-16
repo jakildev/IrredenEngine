@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Resets the 128³ light-volume read texture to (0,0,0,0) before the seed
 // pass writes per-light origin texels and the propagate pass dilates

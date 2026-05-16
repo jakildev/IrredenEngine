@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Iso-projected SDF surface finding: iterate 2D iso-space footprint, solve
 // for the front surface analytically along the (1,1,1) depth axis.

@@ -25,8 +25,8 @@ constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
-inline float unpackSunDepth(uint packed) {
-    return float(packed) / kSunDepthScale - kSunDepthOffset;
+inline float unpackSunDepth(uint packedDepth) {
+    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
 }
 
 struct FrameDataSun {

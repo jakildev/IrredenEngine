@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#version 460 core
+#version 450 core
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
@@ -78,7 +78,7 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
 
-    const int face = localIDToFace_2x3();
+    const int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a

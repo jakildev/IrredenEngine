@@ -73,9 +73,16 @@ vec3 randomUnitVec(uint seed) {
 
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 // (0,0),(1,0) -> Z_FACE; (1,1),(1,2) -> X_FACE; (0,1),(0,2) -> Y_FACE
-int localIDToFace_2x3() {
-    if (gl_LocalInvocationID.y == 0) return kZFace;
-    if (gl_LocalInvocationID.x == 1) return kXFace;
+//
+// Takes the .xy of `gl_LocalInvocationID` as a parameter rather than reading
+// the built-in directly so this helper compiles inside vertex/fragment
+// shaders that include this header (e.g. `f_trixel_to_framebuffer.glsl`).
+// Strict GLSL frontends (Mesa) error on `gl_LocalInvocationID` references
+// even from unused functions outside compute stages. Mirrors the Metal
+// counterpart in `ir_iso_common.metal`.
+int localIDToFace_2x3(uvec2 localId) {
+    if (localId.y == 0) return kZFace;
+    if (localId.x == 1) return kXFace;
     return kYFace;
 }
 

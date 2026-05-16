@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Resets the sun depth map to the lit-sentinel (0xFFFFFFFF) before the
 // BAKE pass writes via atomicMin; otherwise stale texels persist as false

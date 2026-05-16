@@ -61,10 +61,10 @@ inline bool voxelOcclusionGetBit(
     uint x = uint(lx + he);
     uint y = uint(ly + he);
     uint z = uint(lz + he);
-    uint flat =
+    uint flatIndex =
         (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
-    uint bits = occlusion->bits[flat >> 5u];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
+    uint bits = occlusion->bits[flatIndex >> 5u];
+    return ((bits >> (flatIndex & 31u)) & 1u) == 1u;
 }
 
 // SDF-shape light blockers. Same camera-anchored layout as the voxel
@@ -87,10 +87,10 @@ inline bool lightBlockerGetBit(
     uint x = uint(lx + he);
     uint y = uint(ly + he);
     uint z = uint(lz + he);
-    uint flat =
+    uint flatIndex =
         (z * uint(kLightOcclusionGridSize) + y) * uint(kLightOcclusionGridSize) + x;
-    uint bits = occlusion->bits[kLightOcclusionBitfieldUintCount + (flat >> 5u)];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
+    uint bits = occlusion->bits[kLightOcclusionBitfieldUintCount + (flatIndex >> 5u)];
+    return ((bits >> (flatIndex & 31u)) & 1u) == 1u;
 }
 
 kernel void c_propagate_light_volume(
