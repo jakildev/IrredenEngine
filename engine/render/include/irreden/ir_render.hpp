@@ -115,12 +115,10 @@ inline void setActiveCanvas(const std::string &name) {
 inline IREntity::EntityId getActiveCanvasEntity() {
     return getRenderManager().getActiveCanvasEntity();
 }
-
-// Returns kNullEntity instead of asserting when no RenderManager exists — safe for headless and test contexts.
-inline IREntity::EntityId getActiveCanvasEntityOrNull() {
-    return g_renderManager != nullptr ? g_renderManager->getActiveCanvasEntity()
-                                      : IREntity::kNullEntity;
-}
+// Null-safe variant `getActiveCanvasEntityOrNull()` lives in
+// `<irreden/render/active_canvas.hpp>` — included on demand by callers
+// (e.g. C_ShapeDescriptor, C_VoxelSetNew) that need the headless-safe
+// snapshot without pulling in the full render surface. See #753 (T-205).
 /// @}
 
 /// @{
