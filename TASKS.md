@@ -304,7 +304,7 @@ Avoid:
   - **ID:** T-210
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-210-apply-vec3-modifier-to
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) `APPLY_POSITION_OFFSET` reimplemented as an instance of the generic inline-apply pattern (or thin caller of a generic helper if runtime-parameterized); (2) `docs/design/modifiers.md` documents the inline-apply pattern alongside the structured-resolver path with guidance on when to pick which; (3) idle bob in default + perf_grid creations visually identical to master; (4) no regression in `IRShapeDebug`, `voxel_editor`, or any demo using position offset; (5) fleet-build clean on linux-debug
