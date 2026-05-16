@@ -118,9 +118,22 @@ Runtime entry points (all `inline`, header-only):
 - `registerField(name)` / `fieldName(id)` / `fieldCount()` — dense
   registry, init-time only.
 - `push(target, field, kind, param, source, ticks)` — push one
-  structured modifier onto an entity. `pushGlobal(...)` targets the
-  singleton; `pushLambda(...)` writes the escape-hatch component.
-  All three reject `kInvalidFieldId` defensively.
+  **transient** modifier onto an entity (use `ticksRemaining` for decay).
+  `pushGlobal(...)` targets the singleton; `pushLambda(...)` writes the
+  escape-hatch component. All three reject `kInvalidFieldId` defensively.
+  Use `push` for one-shot effects (screen-shake, triggered pulses). Use
+  `upsertBySource` / `upsertBySourceInPlace` for steady-state writers.
+- `upsertBySource(target, field, kind, param, source)` — **steady-state
+  writer-owned slot** API. Slot key is `(source, field, kind)`. On hit:
+  overwrites `param_` and resets `ticksRemaining_ = -1` (no decay). On
+  miss: appends with `ticksRemaining_ = -1`. No `MODIFIER_DECAY`
+  dependency; the slot persists until `removeBySource` or source
+  destruction. `upsertBySourceGlobal(...)` targets the singleton.
+- `upsertBySourceInPlace(mods, field, kind, param, source)` — same slot
+  semantics as `upsertBySource` but takes a `C_Modifiers&` directly
+  (caller is a system tick that already holds the archetype reference);
+  skips `getComponentOptional` and the field-type check. Canonical for
+  system ticks that push the same slot every frame.
 - `removeBySource(source)` — sweeps every `C_Modifiers`,
   `C_GlobalModifiers`, and `C_LambdaModifiers` in the world,
   dropping entries whose `source_` matches. Wired automatically

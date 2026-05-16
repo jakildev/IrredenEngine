@@ -435,6 +435,84 @@ needs all four predecessors.
   state (`kind_ == ADD`, `field_ == 0`). Fail fast rather than silently
   adding an invalid modifier to the vector.
 
+## Writer-owned slot API — `upsertBySource` (T-208)
+
+The `push()` family always appends a new entry to the modifier vector and
+relies on `ticksRemaining_` decay to remove stale copies. That model forces
+every steady-state writer (e.g. an idle-bob system that fires every tick) to:
+
+1. Run `MODIFIER_DECAY` before itself in the pipeline, and
+2. Set `ticksRemaining_ = 1` to survive the current frame's compose and be
+   removed by the next frame's decay.
+
+This is fragile: it ties the system's pipeline position to the decay system,
+and the per-frame `push_back` allocates on the first tick and reallocates
+whenever the vector outgrows its capacity.
+
+`upsertBySource` (T-208) replaces this with a **writer-owned slot** pattern:
+
+### Slot contract
+
+The triple `(source_, field_, kind_)` is the slot key. At most one entry with
+a given triple may exist in the modifier vector (per-entity or global).
+Callers that own a slot call `upsertBySource` instead of `push` — on the first
+call the slot is created; on subsequent calls only `param_` is overwritten and
+`ticksRemaining_` is reset to `-1`. The slot persists until the source entity
+is destroyed or `removeBySource` is called explicitly.
+
+`push` remains the correct choice for **transient effects** that should expire
+naturally (e.g. a one-shot screen-shake, a key-triggered pulse). Use `push`
+with a `ticksRemaining` countdown when the caller does NOT own the slot
+long-term. Use `upsertBySource` when the caller writes the same slot every
+tick forever (e.g. idle-bob, a continuous aura).
+
+### API additions
+
+```cpp
+namespace IRPrefab::Modifier {
+
+// External writers (Lua, input handlers, init code) — performs the same
+// getComponentOptional + field-type checks as push().
+void upsertBySource(EntityId target, FieldBindingId field,
+                    TransformKind kind, float param, EntityId source);
+void upsertBySource(EntityId target, FieldBindingId field,
+                    TransformKind kind, IRMath::vec3 param, EntityId source);
+
+// Targeting the singleton globals entity.
+void upsertBySourceGlobal(FieldBindingId field, TransformKind kind,
+                           float param, EntityId source);
+void upsertBySourceGlobal(FieldBindingId field, TransformKind kind,
+                           IRMath::vec3 param, EntityId source);
+
+// For system ticks — caller already holds C_Modifiers& from archetype
+// iteration; skips getComponentOptional and the field-type registry probe.
+void upsertBySourceInPlace(C_Modifiers &mods, FieldBindingId field,
+                            TransformKind kind, float param, EntityId source);
+void upsertBySourceInPlace(C_Modifiers &mods, FieldBindingId field,
+                            TransformKind kind, IRMath::vec3 param, EntityId source);
+}
+```
+
+`upsertBySourceInPlace` is the canonical form for tick functions: it bypasses
+the `getComponentOptional` lookup and the registry type-check because the
+system already has the component reference from the archetype iterator and
+already knows the field type from init-time registration.
+
+### Pipeline impact
+
+`PERIODIC_IDLE_POSITION_OFFSET` (the first consumer) no longer requires
+`MODIFIER_DECAY` to run before it. The pipeline ordering becomes:
+
+```
+PERIODIC_IDLE → PERIODIC_IDLE_POSITION_OFFSET
+→ ... → GLOBAL_POSITION_3D → APPLY_POSITION_OFFSET
+```
+
+Existing creations that still run `MODIFIER_DECAY` before
+`PERIODIC_IDLE_POSITION_OFFSET` are safe — `MODIFIER_DECAY` leaves entries
+with `ticksRemaining_ == -1` untouched, so the upsert slot is never dropped by
+decay.
+
 ## vec3 extension (T-191)
 
 The framework was extended in T-191 to carry vec3-typed fields

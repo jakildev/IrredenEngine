@@ -450,4 +450,175 @@ TEST_F(IRModifierVec3AutoSweepTest, DestroyingSourceLeavesOtherSourceVec3Modifie
     EXPECT_FLOAT_EQ(after[0].param_.x, 7.0f);
 }
 
+// ---- upsertBySource: vec3 ---------------------------------------------------
+
+class IRModifierVec3UpsertTest : public testing::Test {
+  protected:
+    IRModifierVec3UpsertTest()
+        : m_entity_manager{} {
+        m_field = IRPrefab::Modifier::registerFieldVec3("test.upsert_vec3");
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IRComponents::FieldBindingId m_field{IRComponents::kInvalidFieldId};
+};
+
+TEST_F(IRModifierVec3UpsertTest, FirstCallAppends) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f, 2.0f, 3.0f), source
+    );
+
+    auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_FLOAT_EQ(mods[0].param_.y, 2.0f);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+}
+
+TEST_F(IRModifierVec3UpsertTest, SecondCallOverwrites) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+    );
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(9.0f, 8.0f, 7.0f), source
+    );
+
+    auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_FLOAT_EQ(mods[0].param_.x, 9.0f);
+    EXPECT_FLOAT_EQ(mods[0].param_.y, 8.0f);
+    EXPECT_FLOAT_EQ(mods[0].param_.z, 7.0f);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+}
+
+TEST_F(IRModifierVec3UpsertTest, DifferentKindGetsItsOwnSlot) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+    );
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::MULTIPLY, IRMath::vec3(2.0f), source
+    );
+
+    auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
+    ASSERT_EQ(mods.size(), 2u);
+}
+
+TEST_F(IRModifierVec3UpsertTest, DifferentSourceGetsItsOwnSlot) {
+    auto sourceA = IREntity::createEntity();
+    auto sourceB = IREntity::createEntity();
+    auto target  = IREntity::createEntity(C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), sourceA
+    );
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(2.0f), sourceB
+    );
+
+    auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
+    ASSERT_EQ(mods.size(), 2u);
+}
+
+TEST_F(IRModifierVec3UpsertTest, OverridesPriorTickRemaining) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(C_Modifiers{});
+
+    // Simulate a prior push() with decay semantics.
+    IRPrefab::Modifier::push(
+        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source, 1
+    );
+    ASSERT_EQ(IREntity::getComponent<C_Modifiers>(target).modifiersVec3_.size(), 1u);
+
+    // Upsert from the same triple must reset ticksRemaining_ to -1.
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, IRMath::vec3(5.0f), source
+    );
+
+    auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+    EXPECT_FLOAT_EQ(mods[0].param_.x, 5.0f);
+}
+
+// ---- upsertBySourceGlobal: vec3 ---------------------------------------------
+
+class IRModifierGlobalVec3UpsertTest : public testing::Test {
+  protected:
+    IRModifierGlobalVec3UpsertTest()
+        : m_entity_manager{} {
+        IREntity::singletonEntity<IRComponents::C_GlobalModifiers>();
+        m_field = IRPrefab::Modifier::registerFieldVec3("test.upsert_global_vec3");
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IRComponents::FieldBindingId m_field{IRComponents::kInvalidFieldId};
+};
+
+TEST_F(IRModifierGlobalVec3UpsertTest, FirstCallAppends) {
+    auto source = IREntity::createEntity();
+
+    IRPrefab::Modifier::upsertBySourceGlobal(
+        m_field, TransformKind::ADD, IRMath::vec3(1.0f, 2.0f, 3.0f), source
+    );
+
+    auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(
+        IRPrefab::Modifier::globalsEntity()
+    );
+    ASSERT_EQ(c.modifiersVec3_.size(), 1u);
+    EXPECT_FLOAT_EQ(c.modifiersVec3_[0].param_.y, 2.0f);
+    EXPECT_EQ(c.modifiersVec3_[0].ticksRemaining_, -1);
+}
+
+TEST_F(IRModifierGlobalVec3UpsertTest, SecondCallOverwrites) {
+    auto source = IREntity::createEntity();
+
+    IRPrefab::Modifier::upsertBySourceGlobal(
+        m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+    );
+    IRPrefab::Modifier::upsertBySourceGlobal(
+        m_field, TransformKind::ADD, IRMath::vec3(9.0f, 8.0f, 7.0f), source
+    );
+
+    auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(
+        IRPrefab::Modifier::globalsEntity()
+    );
+    ASSERT_EQ(c.modifiersVec3_.size(), 1u);
+    EXPECT_FLOAT_EQ(c.modifiersVec3_[0].param_.x, 9.0f);
+    EXPECT_FLOAT_EQ(c.modifiersVec3_[0].param_.y, 8.0f);
+    EXPECT_FLOAT_EQ(c.modifiersVec3_[0].param_.z, 7.0f);
+    EXPECT_EQ(c.modifiersVec3_[0].ticksRemaining_, -1);
+}
+
+// ---- upsertBySourceInPlace: vec3 (simulates PERIODIC_IDLE_POSITION_OFFSET) --
+
+TEST(ModifierUpsertInPlaceVec3, RepeatedCallStaysSizeOne) {
+    // Simulates 100 ticks of PERIODIC_IDLE_POSITION_OFFSET without
+    // MODIFIER_DECAY in the pipeline: the slot count must stay at 1.
+    C_Modifiers mods;
+    constexpr FieldBindingId kField{3};
+    auto source = IREntity::EntityId{1};
+
+    for (int i = 0; i < 100; ++i) {
+        IRPrefab::Modifier::upsertBySourceInPlace(
+            mods,
+            kField,
+            TransformKind::ADD,
+            IRMath::vec3(static_cast<float>(i), 0.0f, 0.0f),
+            source
+        );
+    }
+
+    ASSERT_EQ(mods.modifiersVec3_.size(), 1u);
+    EXPECT_FLOAT_EQ(mods.modifiersVec3_[0].param_.x, 99.0f);
+    EXPECT_EQ(mods.modifiersVec3_[0].ticksRemaining_, -1);
+}
+
 } // namespace
