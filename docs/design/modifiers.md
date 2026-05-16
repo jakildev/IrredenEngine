@@ -481,3 +481,83 @@ bob writer in the UPDATE pipeline. The reader-side sprite, hitbox,
 canvas-to-framebuffer, gizmo-drag, and picking systems read
 `C_PositionGlobal3D` directly; the `global + offset` manual sum is
 gone.
+
+## Inline-apply pattern (T-210)
+
+The `APPLY_POSITION_OFFSET` shape — *iterate
+`<TargetComponent, C_Modifiers>`, compose one vec3 field against a
+`vec3(0)` base, add the result to a vec3 member of the target
+component* — generalizes to any per-frame additive vec3 channel with
+exactly one consumer. Capturing the shape as a function-template
+factory keeps a future "screen-shake offset", "hit-stagger nudge", or
+"recoil sway" channel to one line of code:
+
+```cpp
+namespace IRPrefab::Modifier {
+
+template <typename TargetComponent, IRMath::vec3 TargetComponent::*Member>
+inline IRSystem::SystemId applyVec3ModifierTo(
+    const char *name,
+    IRComponents::FieldBindingId field
+);
+
+} // engine/prefabs/irreden/common/modifier_apply.hpp
+```
+
+`Member` is a member-pointer (compile-time, so the per-tick body
+collapses to `target.*Member += compose(...)` with no field-name
+lookup). `field` is captured at `create()` time because
+`FieldBindingId`s register lazily — the compile-time-template form
+("`Field` as a non-type template parameter") is rejected here because
+the field id is only known after `registerFieldVec3(...)` runs at
+init.
+
+`APPLY_POSITION_OFFSET` then reduces to:
+
+```cpp
+template <> struct System<APPLY_POSITION_OFFSET> {
+    static SystemId create() {
+        return IRPrefab::Modifier::applyVec3ModifierTo<
+            IRComponents::C_PositionGlobal3D,
+            &IRComponents::C_PositionGlobal3D::pos_>(
+            "ApplyPositionOffset",
+            IRPrefab::PositionModifier::positionOffsetField()
+        );
+    }
+};
+```
+
+### Inline-apply vs. structured-resolver: when to pick which
+
+Two compose-and-apply paths now coexist; pick by these gates:
+
+- **Inline-apply (`applyVec3ModifierTo`).** Exactly one consumer of
+  the vec3 field, ADD-onto-target semantics, and the channel does NOT
+  need `C_GlobalModifiers` integration. The compose runs once per
+  entity per frame and writes the destination directly. No
+  `C_ResolvedFields` slot consumed; no resolver tick on this field.
+- **Structured-resolver path
+  (`MODIFIER_RESOLVE_GLOBAL`/`_EXEMPT` + read from
+  `C_ResolvedFields`).** Two or more consumers want the same resolved
+  value, the channel needs global modifiers (e.g. "world-wide slow"
+  in modifier_demo), or the apply step is multiplicative / set-style
+  (e.g. `TRANSFORM_SCALE` folded into world transform). The cache
+  amortizes the compose across readers, and the global-modifier
+  archetype routing falls out for free.
+
+Globals integration is the single sharpest discriminator: the
+inline-apply factory reads only `mods.modifiersVec3_` on the
+iterating entity. `C_GlobalModifiers` are NOT folded in. Channels
+that must respond to globals — common case for a "buff/debuff that
+also moves the camera" — belong on the structured-resolver path.
+
+### Apply combine mode is fixed at ADD
+
+The factory's combine step is `target.*Member += result`, hard-coded.
+`MULTIPLY` / `SET` / `OVERRIDE` semantics already exist *inside*
+`composeForFieldVec3` (in the modifier vector itself); the outer apply
+step is the one knob that's fixed because the inline path's job is
+specifically the "per-frame additive delta" pattern. Channels that
+need a multiplicative or replace-style outer combine belong on the
+structured-resolver path (consumers read the resolved value and apply
+whatever combine they want).
