@@ -243,18 +243,6 @@ Avoid:
   - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
   - **Links:**
 
-- [~] **modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn** — add upsertBySource / upsertBySourceInPlace overloads to Modifier:: so steady-state writers allocate once and update in place; migrate PERIODIC_IDLE_POSITION_OFFSET
-  - **ID:** T-208
-  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
-  - **Model:** sonnet
-  - **Owner:** claude/T-208-modifier-upsert-by-source
-  - **Blocked by:** (none)
-  - **Stack:** T-208..T-210 modifier-ergonomics
-  - **Acceptance:** (1) six new inline overloads land in `modifier.hpp` — `upsertBySource` (scalar+vec3), `upsertBySourceGlobal` (scalar+vec3), `upsertBySourceInPlace` (scalar+vec3); (2) unit tests pass: `UpsertBySource_FirstCallAppends`, `SecondCallOverwrites`, `DifferentKindGetsItsOwnSlot`, `DifferentSourceGetsItsOwnSlot`, `OverridesPriorTickRemaining`, frame-level test ticks `PERIODIC_IDLE_POSITION_OFFSET` 100x and asserts `modifiersVec3_.size() == 1`; (3) `PERIODIC_IDLE_POSITION_OFFSET` uses `upsertBySourceInPlace`, no `ticksRemaining_=1` literal remains; (4) idle bob in default + perf_grid creations visually identical to master; (5) pipeline-ordering comment in `system_periodic_idle_position_offset.hpp` no longer cites `MODIFIER_DECAY` as prerequisite; (6) `docs/design/modifiers.md` documents slot contract and upsert as canonical steady-state-writer pattern; (7) `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug
-  - **Issue:** #758
-  - **Notes:** Slot key is the triple `(source_, field_, kind_)` — ADD and MULTIPLY slots from same source coexist. Hit → overwrite `param_` AND reset `ticksRemaining_=-1` (prevents stale decay countdown). Miss → push_back with `ticksRemaining_=-1`. `upsertBySourceInPlace` skips defensive checks (caller is a system with init-time field id). `removeBySource` already handles slot teardown via existing pre-destroy hook. Lua bindings + lambda upsert out of scope for v1. Predecessor: #746 (T-192). Opus-worker plan filed in issue #758 comment — read it before implementing.
-  - **Links:**
-
 - [~] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
   - **ID:** T-209
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
@@ -365,6 +353,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
 - [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
 - [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
@@ -384,4 +373,3 @@ Avoid:
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
-- [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
