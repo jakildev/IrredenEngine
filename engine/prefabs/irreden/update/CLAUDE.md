@@ -26,13 +26,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   particle entity builder.
 - `LIFETIME` — decrements `C_Lifetime`; destroys entities at zero.
 - `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
-- `PERIODIC_IDLE_POSITION_OFFSET` — pushes the resolved bob value as a
-  vec3 ADD modifier on the entity's `C_Modifiers` each tick (under
-  the `POSITION_OFFSET_3D` field). `APPLY_POSITION_OFFSET` later
-  folds the composed value into `C_PositionGlobal3D`. Requires
-  `C_Modifiers` on bob-eligible entities and `MODIFIER_DECAY` running
-  earlier in the UPDATE pipeline so the per-frame push doesn't
-  accumulate.
+- `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
+  vec3 ADD modifier on the entity's `C_Modifiers` each tick via
+  `upsertBySourceInPlace` (under the `POSITION_OFFSET_3D` field).
+  Slot key is `(entity, POSITION_OFFSET_3D, ADD)` — one entry per
+  bob-eligible entity, updated in place. No `ticksRemaining_` countdown;
+  no `MODIFIER_DECAY` dependency. `APPLY_POSITION_OFFSET` later folds the
+  composed value into `C_PositionGlobal3D`.
 - `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
   topological order and writes `C_WorldTransform` from each entity's
   `C_LocalTransform` composed with the parent chain. Modifier-resolved

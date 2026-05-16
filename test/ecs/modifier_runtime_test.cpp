@@ -494,4 +494,66 @@ TEST(LambdaModifierDecay, DropRunsCapturedDestructor) {
     EXPECT_EQ(witness.use_count(), 1L); // capture released
 }
 
+// ---- upsertBySource: scalar -------------------------------------------------
+
+class IRModifierScalarUpsertTest : public testing::Test {
+  protected:
+    IRModifierScalarUpsertTest()
+        : m_entity_manager{} {
+        m_field = IRPrefab::Modifier::registerField("test.upsert_scalar");
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IRComponents::FieldBindingId m_field{IRComponents::kInvalidFieldId};
+};
+
+TEST_F(IRModifierScalarUpsertTest, FirstCallAppends) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, 1.0f, source
+    );
+
+    auto &mods = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_FLOAT_EQ(mods[0].param_, 1.0f);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+}
+
+TEST_F(IRModifierScalarUpsertTest, SecondCallOverwrites) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
+
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, 1.0f, source
+    );
+    IRPrefab::Modifier::upsertBySource(
+        target, m_field, TransformKind::ADD, 9.0f, source
+    );
+
+    auto &mods = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_FLOAT_EQ(mods[0].param_, 9.0f);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+}
+
+// ---- upsertBySourceInPlace: scalar ------------------------------------------
+
+TEST(ModifierUpsertInPlaceScalar, RepeatedCallStaysSizeOne) {
+    IRComponents::C_Modifiers mods;
+    constexpr IRComponents::FieldBindingId kField{7};
+    auto source = IREntity::EntityId{42};
+
+    for (int i = 0; i < 100; ++i) {
+        IRPrefab::Modifier::upsertBySourceInPlace(
+            mods, kField, IRComponents::TransformKind::ADD, static_cast<float>(i), source
+        );
+    }
+
+    ASSERT_EQ(mods.modifiers_.size(), 1u);
+    EXPECT_FLOAT_EQ(mods.modifiers_[0].param_, 99.0f);
+    EXPECT_EQ(mods.modifiers_[0].ticksRemaining_, -1);
+}
+
 } // namespace

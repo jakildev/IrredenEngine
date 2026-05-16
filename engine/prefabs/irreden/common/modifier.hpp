@@ -354,6 +354,157 @@ inline IRMath::vec4 applyToFieldQuat(
     return detail::composeForFieldQuat(baseValue, field, globals, entityMods);
 }
 
+// Upsert a steady-state scalar modifier keyed on the triple
+// (source, field, kind). On hit: overwrite param_ and reset ticksRemaining_
+// to -1 (no decay). On miss: push_back with ticksRemaining_ = -1.
+// Performs the same defensive field-type and kInvalidFieldId checks as push().
+// Use when one source writes the same slot every tick forever (e.g. an idle
+// bob driven by a tick), so the vector holds exactly one entry per slot
+// instead of growing without bound.
+inline void upsertBySource(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::SCALAR)
+        return;
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    if (!c)
+        return;
+    for (auto &m : c->modifiers_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, -1});
+}
+
+// vec3 counterpart of upsertBySource. Slot key is (source, field, kind).
+inline void upsertBySource(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::VEC3)
+        return;
+    auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
+    if (!c)
+        return;
+    for (auto &m : c->modifiersVec3_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    c->modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, -1});
+}
+
+// upsertBySource targeting the singleton globals entity (scalar).
+inline void upsertBySourceGlobal(
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::SCALAR)
+        return;
+    auto entity = detail::globalsEntityId();
+    if (entity == IREntity::kNullEntity)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
+    if (!c)
+        return;
+    for (auto &m : c->modifiers_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, -1});
+}
+
+// upsertBySource targeting the singleton globals entity (vec3).
+inline void upsertBySourceGlobal(
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    if (field == IRComponents::kInvalidFieldId)
+        return;
+    if (fieldType(field) != IRComponents::FieldValueType::VEC3)
+        return;
+    auto entity = detail::globalsEntityId();
+    if (entity == IREntity::kNullEntity)
+        return;
+    auto *c =
+        IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
+    if (!c)
+        return;
+    for (auto &m : c->modifiersVec3_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    c->modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, -1});
+}
+
+// In-place scalar upsert for system ticks that already hold C_Modifiers& from
+// archetype iteration. Skips the getComponentOptional probe and the field-type
+// check — caller (a system) already knows the field id from init-time
+// registration. Same slot key and overwrite semantics as upsertBySource.
+inline void upsertBySourceInPlace(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    for (auto &m : mods.modifiers_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    mods.modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, -1});
+}
+
+// In-place vec3 upsert for system ticks that already hold C_Modifiers&.
+inline void upsertBySourceInPlace(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    for (auto &m : mods.modifiersVec3_) {
+        if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
+            m.param_ = param;
+            m.ticksRemaining_ = -1;
+            return;
+        }
+    }
+    mods.modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, -1});
+}
+
 // Wires up the singleton globals entity and registers the six resolver
 // systems in the canonical order. Must be called once at creation init,
 // before any system that depends on resolved fields.
