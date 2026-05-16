@@ -232,23 +232,12 @@ Avoid:
   - **Notes:** One PR per demo is the right granularity. Use the `render-debug-loop` and `attach-screenshots` skills. After T-202 lands, Sonnet workers can pick demos in parallel. The `fleet:needs-linux-smoke` label triggers cross-host smoke validation automatically.
   - **Links:**
 
-- [~] **script: architect decision + port — move getActiveCanvasEntityOrNull out of ir_render.hpp (T-201 step 2)** — architect picks destination (IRWorld or caller-threading), implement include shuffle + update ~3 call sites so component ctors no longer include ir_render.hpp for canvas snapshot
-  - **ID:** T-205
-  - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
-  - **Model:** opus
-  - **Owner:** claude/T-205-active-canvas-decouple
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `ir_render.hpp` no longer exposes `getActiveCanvasEntityOrNull`; (2) `component_shape_descriptor.hpp` and `component_voxel_set.hpp` no longer include `<irreden/ir_render.hpp>` for the canvas snapshot; (3) `IrredenEngineTest` and `IRShapeDebug` build and run; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #753
-  - **Notes:** Step 2 of the T-201 four-PR layering refactor. Step 1 (ShapeFlags → IRMath::SDF) landed as PR #752. Two options the architect must decide: (a) move function to `IRWorld::` — ambient-snapshot ergonomics preserved, sourced from world-level singleton instead of render; (b) push snapshot up to callers — `Prefab.spawn` threads active canvas into `C_ShapeDescriptor`/`C_VoxelSetNew` ctors. Call sites: `component_shape_descriptor.hpp:40,46` and `component_voxel_set.hpp:148`. Implementation is ~include shuffle + 3 call-site updates. T-201's final step (drop `IrredenEngineRendering` from script link) is blocked on this landing.
-  - **Links:**
-
 - [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
   - **ID:** T-206
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
   - **Owner:** claude/T-206-voxel-pool-api-split
-  - **Blocked by:** T-205
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #754
   - **Notes:** Step 3 of T-201 four-PR layering refactor. Step 1 landed PR #752; step 2 tracked by T-205 (#753). Architect must choose: (a) move pool allocator to engine/world/ (ergonomics preserved, pool changes owning module); (b) push allocation up to callers — C_VoxelSetNew ctor becomes data-only, a separate system claims pool space at first tick (generalizes existing `pendingVoxels_` staging path). Performance contract: ctor is hot for moving shapes — no virtual indirection, no per-call hash lookup. Two ctor sites plus dtor in component_voxel_set.hpp:81,170,229. Step 4 (T-207) is blocked on this landing.
@@ -259,7 +248,7 @@ Avoid:
   - **Area:** engine/script
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-205, T-206
+  - **Blocked by:** T-206
   - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #755
   - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
@@ -387,6 +376,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
 - [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
 - [x] **T-200** — joints as entities — C_Skeleton + C_Joint scaffolding (replace SoA C_JointHierarchy) · Owner: claude/T-200-skeleton-joint-entities · PR: https://github.com/jakildev/IrredenEngine/pull/751
 - [x] **T-197** — C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
@@ -406,4 +396,3 @@ Avoid:
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
-- [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
