@@ -771,10 +771,17 @@ build_dispatch_command() {
     # exit code and record rate-limit exits — the pipe to fleet-claude-stream
     # would otherwise swallow claude's exit code (PIPESTATUS is only available
     # in the pane's shell, not in the dispatcher). See fleet-dispatch-wrap.
+    #
+    # Leading-space sacrificial character: bash 5.2 readline (Ubuntu 24.04)
+    # eats the first input byte that arrives during the post-prompt redraw
+    # window after C-c. Without the space, `tmux send-keys C-c C-u "fleet-…" C-m`
+    # delivers `leet-…` to readline and the pane loops on
+    # `leet-dispatch-wrap: command not found`. Bash ignores leading whitespace
+    # on command lines, so the eaten space is harmless.
     local role="$1" pane_key="$2"
     local model="${ROLE_MODEL[$role]:-sonnet}"
     local effort="${ROLE_EFFORT[$role]:-high}"
-    printf 'fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
+    printf ' fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
 }
 
 dispatch_role() {
@@ -860,11 +867,19 @@ dispatch_role() {
         # Safe at a shell prompt — find_idle_panes_for_role only picks
         # panes whose pane_current_command is bash/zsh/sh/fish, so C-c
         # acts on the input loop, not a running command.
-        if ! dispatch_send_keys -t "$pane_id" C-c C-u "$cmd" C-m; then
-            # send-keys timed out or failed for this pane (pane vanished,
-            # tmux server died, pty buffer wedged, etc.). Try the next
-            # pane; if none succeed, keep the trigger for next tick.
-            log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
+        # Split the burst: C-c interrupts whatever's at the prompt and
+        # triggers bash to redraw; without a gap, the first char of
+        # "$cmd" arrives while readline is mid-redraw and gets eaten
+        # ("fleet-dispatch-wrap" → "leet-dispatch-wrap: command not
+        # found"). 50ms is enough on tmux 3.4 / Ubuntu 24.04; cheap on
+        # every other host.
+        if ! dispatch_send_keys -t "$pane_id" C-c C-u; then
+            log "send-keys (reset) timeout/failed for $role -> $pane_id; trying next idle pane"
+            continue
+        fi
+        sleep 0.05
+        if ! dispatch_send_keys -t "$pane_id" "$cmd" C-m; then
+            log "send-keys (cmd) timeout/failed for $role -> $pane_id; trying next idle pane"
             continue
         fi
         write_dispatch_record "$role" "$pane_id"
