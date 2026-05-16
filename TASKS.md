@@ -337,6 +337,17 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
+- [ ] **tooling: allow fleet agents to force-push claude/* branches in settings.json** — replace the broad `git push --force-with-lease` deny with branch-scoped denies that protect master/main but allow fleet rebases on `claude/*` branches
+  - **ID:** T-218
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `claude/*` branch force-with-lease pushes succeed without a human approval prompt in headless fleet mode; (2) `git push --force-with-lease origin master` and `origin main` remain blocked; (3) `git push --force` to any branch remains blocked; (4) a fleet agent can successfully rebase and force-push a `claude/*` branch end-to-end (verify with T-199 PR #787 or a fresh test branch)
+  - **Issue:** #783
+  - **Notes:** Escalated from PR #756/PR #787 (T-199) — two opus-worker iterations independently completed the rebase correctly but both hit the same wall: `.claude/settings.json` line with `"Bash(git push --force-with-lease:*)"` in the deny list blocks all force-with-lease pushes. Option A (preferred): remove `Bash(git push --force-with-lease:*)`, add `Bash(git push --force-with-lease origin master:*)` and `Bash(git push --force-with-lease origin main:*)`. Option B: add targeted allow `Bash(git push --force-with-lease origin claude/*)` — only works if harness honors allow-before-deny specificity; verify before using. Keep `Bash(git push --force:*)` in deny list either way. This is a settings.json-only change.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
