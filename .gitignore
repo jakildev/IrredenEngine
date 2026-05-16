@@ -42,7 +42,7 @@ creations/editors/font_maker
 !creations/editors/voxel_editor/
 !creations/editors/voxel_editor/**
 
-# claude code: share skills + roles + path-scoped rules + worker subagents, ignore worktrees and local session state
+# claude code: share skills + roles + path-scoped rules + worker subagents + project-level settings, ignore worktrees and per-session local state
 .claude/*
 !.claude/skills/
 !.claude/skills/**
@@ -52,3 +52,4 @@ creations/editors/font_maker
 !.claude/rules/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/settings.json
