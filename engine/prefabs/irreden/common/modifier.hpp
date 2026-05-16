@@ -145,6 +145,52 @@ inline void push(
     );
 }
 
+// Caller runs INSIDE the resolver pipeline, after MODIFIER_DECAY in the same
+// UPDATE tick. Modifier survives this frame's compose; next frame's DECAY
+// removes it. Use for system ticks positioned inside the pipeline.
+inline void pushFrameLocal(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 1);
+}
+
+inline void pushFrameLocal(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 1);
+}
+
+// Caller runs OUTSIDE the resolver pipeline (Lua, input handler, command).
+// Modifier survives the next frame's DECAY + compose; the frame after removes
+// it. The extra tick accounts for DECAY running before the first compose.
+inline void pushOneFrame(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 2);
+}
+
+inline void pushOneFrame(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 2);
+}
+
 inline void pushGlobal(
     IRComponents::FieldBindingId field,
     IRComponents::TransformKind kind,

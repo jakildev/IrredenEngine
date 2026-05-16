@@ -83,6 +83,16 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
         IRPrefab::Modifier::pushGlobal(o.field_, o.kind_, o.param_, o.source_, o.ticks_);
     };
 
+    modTbl["pushFrameLocal"] = [parseOpts](IREntity::EntityId target, sol::table opts) {
+        auto o = parseOpts(opts);
+        IRPrefab::Modifier::pushFrameLocal(target, o.field_, o.kind_, o.param_, o.source_);
+    };
+
+    modTbl["pushOneFrame"] = [parseOpts](IREntity::EntityId target, sol::table opts) {
+        auto o = parseOpts(opts);
+        IRPrefab::Modifier::pushOneFrame(target, o.field_, o.kind_, o.param_, o.source_);
+    };
+
     // vec3 push paths. `param` accepts an IRMath::vec3 userdata or a {x,y,z} table.
     struct PushOptsVec3 {
         IRComponents::FieldBindingId field_;
@@ -111,6 +121,16 @@ inline void bindModifierNamespace(LuaScript &luaScript) {
     modTbl["pushGlobalVec3"] = [parseOptsVec3](sol::table opts) {
         auto o = parseOptsVec3(opts);
         IRPrefab::Modifier::pushGlobal(o.field_, o.kind_, o.param_, o.source_, o.ticks_);
+    };
+
+    modTbl["pushFrameLocalVec3"] = [parseOptsVec3](IREntity::EntityId target, sol::table opts) {
+        auto o = parseOptsVec3(opts);
+        IRPrefab::Modifier::pushFrameLocal(target, o.field_, o.kind_, o.param_, o.source_);
+    };
+
+    modTbl["pushOneFrameVec3"] = [parseOptsVec3](IREntity::EntityId target, sol::table opts) {
+        auto o = parseOptsVec3(opts);
+        IRPrefab::Modifier::pushOneFrame(target, o.field_, o.kind_, o.param_, o.source_);
     };
 
     // Quat push paths. `param` accepts an IRMath::vec4 userdata or a {x,y,z,w} table.
