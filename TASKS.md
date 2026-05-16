@@ -350,11 +350,11 @@ Avoid:
   - **Notes:** Sparse issue. Manifests as PRs being approved without the expected fleet label added. Likely a permission or gh CLI config issue on Ubuntu 24.04 WSL2. Related to fleet bring-up fixes in PRs #768 (tmux/bash compat) and #769 (permission allowlist). Investigate fleet scripts that invoke `gh pr edit --add-label` in the approval flow.
   - **Links:**
 
-- [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
+- [~] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) PR #767 (or replacement) rebased on master with no semantic conflicts; (2) design decisions implemented: defense-in-depth claim redundancy kept (T-138 rollback + gh_acquire both active), cleanup --gh moved to fleet-queue-tick, label defs (fleet:claim-host-agent, fleet:reviewing-host-agent, fleet:placeholder) moved to FLEET.md §"Issue/PR labeling discipline"; (3) multiple concurrent queue-manager agents running simultaneously is not a problem (race-safe); (4) scripts/fleet/fleet-claim conflicts from master-vs-767 resolved; (5) fleet scripts pass smoke check on linux-debug
   - **Issue:** #774
