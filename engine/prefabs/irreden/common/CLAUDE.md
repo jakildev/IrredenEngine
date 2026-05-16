@@ -6,13 +6,20 @@ in `update/`.
 
 ## Key components
 
-- `C_Position3D` — local vec3.
-- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**.
+- `C_Position3D` — local vec3 (legacy; superseded by `C_LocalTransform`,
+  retired in the T-199 migration).
+- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
+  (legacy parallel to `C_WorldTransform`; retired with `C_Position3D`).
   Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
   the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
   than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
   and the `APPLY_POSITION_OFFSET` system.
-- `C_Rotation` — Euler vec3.
+- `C_Rotation` — Euler vec3 (legacy; superseded by the quat field on
+  `C_LocalTransform`).
+- `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
+  pair. **Both auto-added by `createEntity(...)`**. See
+  [SQT transform pair + propagation](#sqt-transform-pair--propagation)
+  below.
 - `C_Name` — debug/display string.
 - `C_Player` — tag for player-controlled entities.
 - `C_Selected` — tag for UI selection.
@@ -23,7 +30,72 @@ in `update/`.
 ## Systems
 
 None. Position math is read-only in `common/` — write paths live in
-`update/systems/` (velocity, physics, animation).
+`update/systems/` (velocity, physics, animation, transform propagation).
+
+## SQT transform pair + propagation
+
+`C_LocalTransform` holds the entity's transform relative to its parent
+in the `CHILD_OF` graph. `C_WorldTransform` holds the resolved
+world-space transform after parent-chain composition. Both are SQT
+(scale, quat-rotation, translation) with the engine's canonical
+quaternion layout `IRMath::vec4(qx, qy, qz, qw)` — identity is
+`vec4(0, 0, 0, 1)`. See `engine/math/CLAUDE.md` "Quaternions" for the
+algebra contract (`IRMath::quatMul`, `IRMath::rotateVectorByQuat`).
+
+`SYSTEM_PROPAGATE_TRANSFORM` in
+[`update/systems/system_propagate_transform.hpp`](../update/systems/system_propagate_transform.hpp)
+walks the parent chain in topological order each tick and writes
+`C_WorldTransform`. The composition formula:
+
+```
+world.scale       = parent.world.scale * local.scale * modifier_scale
+world.rotation    = quatMul(parent.world.rotation, local.rotation)
+world.translation = parent.world.translation
+                  + rotateVectorByQuat(parent.world.scale * local.translation,
+                                       parent.world.rotation)
+                  + modifier_translation
+```
+
+Roots (no `CHILD_OF`, or parent's archetype lacks `C_WorldTransform`)
+use identity as the parent transform.
+
+**Modifier integration.** Per-frame perturbations (shake, recoil,
+wobble, animation-blend overlays) push vec3 modifiers under the
+`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` fields registered in
+[`transform_modifier_fields.hpp`](transform_modifier_fields.hpp). The
+propagation system reads the modifier-resolved values from
+`C_ResolvedFields` and folds them into the world transform per the
+formula above. Default fallbacks when no resolved field exists:
+translation `vec3(0)`, scale `vec3(1)` — i.e., no perturbation.
+Entities that don't push perturbations don't need `C_Modifiers`. The
+matching `ROTATION` quat field arrives with the quat modifier kind
+ticket (T-198); until then, `modifier_rotation` is identity.
+
+**Pipeline placement.** Register `SYSTEM_PROPAGATE_TRANSFORM`
+after the modifier resolver pipeline so the resolved fields are
+current, and before any consumer (render, gizmo, physics) that reads
+`C_WorldTransform`.
+
+**Topological order is non-negotiable.** Iterating an archetype in
+arbitrary order computes stale-parent results for any non-root entity.
+The propagation system topo-sorts candidate archetype nodes per tick
+(by parent-chain depth) and processes them parents-first. Cost is
+O(N + passes × archetypes); passes ≤ tree depth.
+
+**`setParent` during a tick.** If a system calls `setParent` after the
+propagation step has run, the new child won't see its parent's
+transform until the next frame. This matches the existing "structural
+changes during iteration" rule — defer the relation change to a frame
+boundary if the visual must update the same frame.
+
+**Auto-attach + caller-supplied conflict.** `createEntity(...)`
+auto-attaches default `C_LocalTransform` and `C_WorldTransform`
+alongside `C_PositionGlobal3D`. The free function detects when the
+caller passes one of these types explicitly and skips the default for
+that type, so `createEntity(C_LocalTransform{vec3(5,6,7)})` produces an
+entity whose local translation is `(5,6,7)`, not the default `(0,0,0)`.
+Without that guard the duplicate type would emplace a second column
+row, leaving the caller's value orphaned at `row + 1`.
 
 ## Modifier framework
 
@@ -199,7 +271,10 @@ runtime work and architect-gated decisions.
   `common/` hierarchy resolves it.
 - **Don't duplicate position components.** Adding your own
   `C_PositionGlobal3D` second on top of the auto-added one leaves one
-  column stale and causes jitter.
+  column stale and causes jitter. `createEntity(...)` detects
+  user-supplied `C_PositionGlobal3D` / `C_LocalTransform` /
+  `C_WorldTransform` and skips the matching default; passing any
+  other auto-attached component twice is still a footgun.
 - **No systems means no ownership.** Any code is free to write to any
   position component here — that's the coordination-by-convention part.
   The `update/` domain's systems are the ones that write velocity-driven

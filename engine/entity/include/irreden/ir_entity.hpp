@@ -7,8 +7,11 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/entity/prefabs.hpp>
 
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 
+#include <tuple>
 #include <type_traits>
 
 namespace IREntity {
@@ -140,8 +143,32 @@ bool isPureComponent(ComponentId component);
 bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 
+// Auto-attached components are added with default values only when the
+// caller hasn't supplied one. The duplicate-pack guard matters because
+// `insertEntityToNode` emplaces per pack element, not per archetype slot —
+// a duplicate type silently appends a second row into the same column
+// (entity record points at the first, the caller's value at row+1 is
+// orphaned).
 template <typename... Components> EntityId createEntity(const Components &...components) {
-    return getEntityManager().createEntity(IRComponents::C_PositionGlobal3D{}, components...);
+    using GP = IRComponents::C_PositionGlobal3D;
+    using LT = IRComponents::C_LocalTransform;
+    using WT = IRComponents::C_WorldTransform;
+    constexpr bool kHasGP = (std::is_same_v<GP, Components> || ...);
+    constexpr bool kHasLT = (std::is_same_v<LT, Components> || ...);
+    constexpr bool kHasWT = (std::is_same_v<WT, Components> || ...);
+
+    auto defaults = std::tuple_cat(
+        std::conditional_t<kHasGP, std::tuple<>, std::tuple<GP>>{},
+        std::conditional_t<kHasLT, std::tuple<>, std::tuple<LT>>{},
+        std::conditional_t<kHasWT, std::tuple<>, std::tuple<WT>>{}
+    );
+
+    return std::apply(
+        [&](auto &&...defaultComponents) {
+            return getEntityManager().createEntity(defaultComponents..., components...);
+        },
+        defaults
+    );
 }
 
 template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...args) {

@@ -211,14 +211,23 @@ the loaded entity. Workers retrofitting #199 into the singleton API should
 verify the cache invalidates on load (typically a `destroyAllEntities`
 precedes the load, which already clears the cache).
 
-## Position components are automatic
+## Position + transform components are automatic
 
-`createEntity(...)` always adds `C_PositionGlobal3D`. You cannot opt
-out. Per-frame additive offsets (idle bob, gizmo nudges) travel
-through the modifier framework's `POSITION_OFFSET_3D` vec3 field —
-see `engine/prefabs/irreden/common/position_modifier_fields.hpp` and
-`APPLY_POSITION_OFFSET`. Entities that don't push such offsets don't
-need `C_Modifiers`.
+`createEntity(...)` always adds `C_PositionGlobal3D`,
+`C_LocalTransform`, and `C_WorldTransform`. You cannot opt out, but
+the free-function wrapper detects when the caller passes one of these
+types explicitly and skips the matching default — so
+`createEntity(C_LocalTransform{...})` lands the caller's value rather
+than emplacing a duplicate column row.
+
+The legacy `C_PositionGlobal3D` channel and the canonical
+`C_WorldTransform` channel coexist during the T-199 migration; see
+`engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
+propagation" for the SQT formula and pipeline placement. Per-frame
+additive offsets travel through the modifier framework's vec3 fields
+(`POSITION_OFFSET_3D` for the legacy channel,
+`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` for the SQT channel).
+Entities that don't push offsets don't need `C_Modifiers`.
 
 ## Relations
 
