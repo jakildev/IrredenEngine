@@ -15,6 +15,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
 
+#include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/position_modifier_fields.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
 
