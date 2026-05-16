@@ -255,11 +255,11 @@ Avoid:
   - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
   - **Links:**
 
-- [ ] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
+- [~] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
   - **ID:** T-211
   - **Area:** creations/editors, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** #603 (Phase 0 Foundation — requires #620 UI primitives, #621 per-voxel metadata, #628 voxel picking to be closed)
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) left-click on voxel face places adjacent voxel in active layer with active palette color; right-click erases; (2) palette panel renders ≥16 swatches; clicking selects active color used for subsequent placements; (3) editing a swatch updates consistently (document chosen model: mutable vs. immutable-index); (4) Ctrl-Z reverses last stroke; Ctrl-Y re-applies; multi-step undo/redo works; (5) undo stack respects documented memory cap, oldest records evict; (6) no allocations inside per-voxel placement hot path (reserve at stroke begin); (7) fleet-build clean on linux-debug
