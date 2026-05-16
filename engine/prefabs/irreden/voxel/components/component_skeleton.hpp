@@ -19,12 +19,12 @@
 //
 // Each entity listed in `joints_` carries:
 //   - C_Joint (tag — drives archetype queries like `<C_Joint, C_LocalTransform>`).
-//   - The engine's canonical local-transform component (currently
-//     C_Position3D / C_Rotation; will become C_LocalTransform once #731 Phase 1
-//     lands). C_Skeleton intentionally does NOT name a transform component in
-//     its API — joints carry whatever the engine's canonical transform is at
-//     spawn time, and SYSTEM_PROPAGATE_TRANSFORM (once it exists) composes the
-//     parent chain uniformly with every other CHILD_OF hierarchy.
+//   - The engine's canonical local-transform component (C_LocalTransform,
+//     since #731 Phase 1 landed — PR #749). C_Skeleton intentionally does NOT
+//     name a transform component in its API — joints carry whatever the
+//     engine's canonical transform is at spawn time, and
+//     SYSTEM_PROPAGATE_TRANSFORM composes the parent chain uniformly with
+//     every other CHILD_OF hierarchy.
 //   - (Optional) C_JointName for editor / animation lookup by bone name.
 //   - (Optional) gameplay components — IK targets, constraints, hit-boxes,
 //     sound emitters, particle attachments. The whole point of the
@@ -46,12 +46,11 @@
 // ## Bind pose
 //
 // Skinning math needs the bind-pose inverse to recover skinning matrices.
-// `bindPose_` is intentionally NOT declared in this header yet — the
-// canonical IRMath::SQT struct lands with #731 Phase 1 (`C_LocalTransform`).
-// Once SQT is available, a follow-up task adds `std::vector<IRMath::SQT>
-// bindPose_;` here, parallel to `joints_`. Until then, callers that need a
-// bind pose load it from the `.rig` asset's BIND chunk via
-// `IRPrefab::Rig::bindPose(rigRoot)`.
+// `bindPose_` is intentionally NOT declared in this header yet — IRMath::SQT
+// is now available (since #731 Phase 1 landed — PR #749); a follow-up task
+// (#605 Phase 2) adds `std::vector<IRMath::SQT> bindPose_;` here, parallel
+// to `joints_`. Until then, callers that need a bind pose load it from the
+// `.rig` asset's BIND chunk via `IRPrefab::Rig::bindPose(rigRoot)`.
 
 #include <irreden/entity/ir_entity_types.hpp>
 

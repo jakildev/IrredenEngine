@@ -127,8 +127,8 @@ single component on the rig root. Three pieces:
   joint-specific traversal code.
 
 Each joint entity carries the engine's canonical local-transform component
-(`C_Position3D` + `C_Rotation` today; `C_LocalTransform` once `#731` Phase 1
-lands). Joints can also carry arbitrary gameplay components — IK targets,
+(`C_LocalTransform`, since `#731` Phase 1 landed — PR #749). Joints can also
+carry arbitrary gameplay components — IK targets,
 constraints, hit-boxes, sound emitters, particle attachments — because the
 joint is just an ECS entity. That is the whole point of the entity-based
 model.
@@ -158,12 +158,11 @@ target. File a follow-up ticket when `#605` Phase 2 unblocks.
 ### Bind pose
 
 Skinning math needs the bind-pose inverse to recover skinning matrices.
-`C_Skeleton` does **not** carry a `bindPose_` field yet — the canonical
-`IRMath::SQT` struct lands with `#731` Phase 1 (`C_LocalTransform`). Once
-SQT is available, a follow-up adds `std::vector<IRMath::SQT> bindPose_;`
-to `C_Skeleton` parallel to `joints_`. Until then, callers that need a
-bind pose load it from the `.rig` asset's BIND chunk via
-`IRPrefab::Rig::bindPose(rigRoot)`.
+`C_Skeleton` does **not** carry a `bindPose_` field yet — `IRMath::SQT` is
+available since `#731` Phase 1 landed (PR #749); a follow-up (#605 Phase 2)
+adds `std::vector<IRMath::SQT> bindPose_;` to `C_Skeleton` parallel to
+`joints_`. Until then, callers that need a bind pose load it from the `.rig`
+asset's BIND chunk via `IRPrefab::Rig::bindPose(rigRoot)`.
 
 ### Optional follow-up: C_JointName
 

@@ -8,8 +8,7 @@
 //     See `component_skeleton.hpp`.
 //   - `C_Joint` tag on each joint entity. See `component_joint.hpp`.
 //   - Per-joint local transform via the engine's canonical local-transform
-//     component (`C_Position3D` + `C_Rotation` today; `C_LocalTransform`
-//     once #731 Phase 1 lands).
+//     component (`C_LocalTransform`, since #731 Phase 1 landed — PR #749).
 //   - `CHILD_OF` relations for the parent chain.
 //
 // The original SoA `C_JointHierarchy` packed every joint into one vector on
