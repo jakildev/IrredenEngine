@@ -5,6 +5,7 @@
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/command/command.hpp>
+#include <irreden/command/ir_command_types.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
 #include <unordered_map>
@@ -32,7 +33,7 @@ class CommandManager {
     ~CommandManager();
 
     template <typename Function>
-    int createCommand(
+    CommandId createCommand(
         InputTypes inputType,
         ButtonStatuses triggerStatus,
         int button,
@@ -54,8 +55,16 @@ class CommandManager {
         if (!name.empty() && triggerStatus == PRESSED) {
             m_commandRegistrations.push_back({name, button, triggerStatus, requiredModifiers});
         }
-        return m_userCommands.size() - 1;
+        return static_cast<CommandId>(m_userCommands.size() - 1);
     }
+
+    /// Bounds-checked execute of the user command at @p id. Out-of-range
+    /// ids log an error and return without firing — there is no exception.
+    /// `id` is the value returned by `createCommand` (or `IRCommand.bindPrefab`
+    /// / `IRCommand.createCommand` on the Lua side). Used by
+    /// `IRCommand::fire` to invoke a registered command imperatively from
+    /// C++ or Lua, outside the regular input-driven dispatch loop.
+    void fireUserCommand(CommandId id);
 
     const std::vector<CommandRegistration> &getCommandRegistrations() const {
         return m_commandRegistrations;

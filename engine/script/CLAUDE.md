@@ -840,6 +840,111 @@ There is no sandbox, no path-traversal check, and no archive support.
 Creations ship `.lua` files in `creations/<name>/scripts/` and a top-level
 `main.lua`.
 
+## Commands and input (`IRCommand.*`, `IRInput.*`)
+
+`LuaScript::bindLuaCommands()` wires the engine's `IRCommand` /
+`IRInput` surface into Lua so a creation can declare commands and
+bind keyboard/mouse/gamepad inputs without a C++ `initCommands()`
+block. The locked design lives in
+[`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md);
+`creations/demos/default/commands.lua` is the canonical migration
+example.
+
+```lua
+local CN = IRCommand.CommandName
+local IT = IRInput.InputType
+local BS = IRInput.ButtonStatus
+local K  = IRInput.Key
+local CTRL = IRInput.Modifier.CONTROL
+
+-- Bind a prefab command (Command<NAME>::create() body) to an input
+-- trigger. Returns a CommandId.
+IRCommand.bindPrefab(CN.CLOSE_WINDOW, IT.KEY_MOUSE, BS.PRESSED, K.ESCAPE)
+
+-- Compose modifiers with LuaJIT's native bit.bor (no IRInput.modMask
+-- wrapper):
+IRCommand.bindPrefab(
+    CN.GUI_ZOOM_IN, IT.KEY_MOUSE, BS.PRESSED, K.EQUAL,
+    bit.bor(CTRL, IRInput.Modifier.SHIFT)
+)
+
+-- Lua-defined command body (returns a CommandId for IRCommand.fire):
+local pulseId = IRCommand.createCommand(
+    IT.KEY_MOUSE, BS.PRESSED, K.P,
+    function()
+        IRModifier.addGlobal("GameSpeed.scale", {
+            transform = IRModifier.Transform.MULTIPLY,
+            value = 0.5, ticks = 120,
+        })
+    end
+)
+
+-- Fire imperatively from any Lua context:
+IRCommand.fire(pulseId)
+IRCommand.fireByName(CN.SCREENSHOT)
+```
+
+**API**
+
+- `IRCommand.bindPrefab(commandName, inputType, status, button,
+  requiredMods?, blockedMods?) -> CommandId` — register a prefab
+  `Command<NAME>::create()` body against an input trigger. Returns
+  `CommandId` (`uint32_t`). For enum values without a `Command<NAME>`
+  specialization (`NULL_COMMAND`, `EXAMPLE`, `SET_TRIXEL_COLOR`,
+  ...), returns `kInvalidCommandId` and logs an error.
+- `IRCommand.createCommand(inputType, status, button, fn,
+  requiredMods?, blockedMods?) -> CommandId` — register a Lua closure
+  body. Body errors are caught in-VM via `sol::protected_function`
+  and logged; the dispatch loop continues.
+- `IRCommand.fire(commandId)` — invoke a registered command id
+  imperatively (bypasses input trigger). Bounds-checked; out-of-range
+  ids log + return.
+- `IRCommand.fireByName(commandName)` — invoke a prefab command's
+  body without registering it first.
+
+**Enum tables.** All integer tables; spell every value through them
+in Lua (never bare integer literals).
+
+- `IRCommand.CommandName.{CLOSE_WINDOW, ZOOM_IN, ...}` — hand-listed
+  against `IRCommand::CommandNames` in
+  `engine/command/include/irreden/command/ir_command_types.hpp`.
+  Adding a new prefab command requires appending an `IR_BIND_CMD`
+  line in `engine/script/include/irreden/script/lua_command_bindings.hpp`
+  AND a case in `fireByName` / `bindPrefabCommand` in
+  `engine/command/src/ir_command.cpp`.
+- `IRInput.InputType.{KEY_MOUSE, GAMEPAD, MIDI_NOTE, MIDI_CC}`
+- `IRInput.ButtonStatus.{NOT_HELD, PRESSED, HELD, RELEASED,
+  PRESSED_AND_RELEASED}`
+- `IRInput.Key.{A..Z, NUM_0..NUM_9, F1..F12, SPACE, ENTER, TAB,
+  BACKSPACE, ESCAPE, INSERT, DELETE, HOME, END, PAGE_UP, PAGE_DOWN,
+  UP, DOWN, LEFT, RIGHT, LEFT_SHIFT/CONTROL/ALT, RIGHT_SHIFT/CONTROL/
+  ALT, MINUS, EQUAL, COMMA, PERIOD, SLASH, SEMICOLON, APOSTROPHE,
+  LEFT_BRACKET, RIGHT_BRACKET, BACKSLASH, GRAVE, CAPS_LOCK,
+  MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE}`. Drops the engine-internal
+  `kKeyButton` / `kMouseButton` prefixes for readability.
+- `IRInput.Modifier.{NONE, SHIFT, CONTROL, ALT}` — bitmask bits.
+  Compose with LuaJIT `bit.bor(a, b, ...)`.
+- `IRInput.GamepadButton.{A, B, X, Y, LEFT_BUMPER, RIGHT_BUMPER,
+  BACK, START, GUIDE, LEFT_THUMB, RIGHT_THUMB, D_PAD_UP/RIGHT/DOWN/
+  LEFT}`
+- `IRInput.GamepadAxis.{LEFT_X, LEFT_Y, RIGHT_X, RIGHT_Y,
+  LEFT_TRIGGER, RIGHT_TRIGGER}`
+
+**Wiring.** Call `LuaScript::bindLuaCommands()` once during creation
+init, typically right after `bindLuaDrivenEcs()`. A creation that
+doesn't use Lua-driven ECS may call `bindLuaCommands()` standalone.
+The detail helpers (`bindCommandNameEnum`, `bindInputEnums`,
+`bindCommandFunctions`) are idempotent — second calls are no-ops
+that preserve the existing Lua handles.
+
+**Out of scope for the v1 surface** (see the design doc § "Out of
+scope" for the full list): hot-reload of Lua command bodies
+(`replaceCommandBody`), runtime unbind (`unbind` /
+`unbindAll`), `IRInput.modMask(...)` (use `bit.bor`), MIDI command
+bindings (`registerMidiNoteCommand` / `registerMidiCCCommand`),
+gamepad-axis-to-value bindings, IRInput query helpers
+(`checkKeyMouseButton` etc.).
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a

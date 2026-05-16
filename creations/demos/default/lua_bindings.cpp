@@ -288,6 +288,11 @@ void registerLuaBindings() {
         luaScript.lua()["IRAudio"]["openMidiIn"] = [](const std::string &name) {
             return IRAudio::openPortMidiIn(name);
         };
+
+        // Expose IRCommand.{bindPrefab, createCommand, fire, fireByName}
+        // + the IRInput enum tables so scripts/commands.lua can declare
+        // the demo's input bindings.
+        luaScript.bindLuaCommands();
     });
 
     isRegistered = true;

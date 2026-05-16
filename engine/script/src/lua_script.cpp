@@ -5,6 +5,7 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
@@ -149,8 +150,18 @@ LuaScript::LuaScript()
         sol::lib::package,
         sol::lib::string,
         sol::lib::table,
-        sol::lib::math
+        sol::lib::math,
+        // sol's `bit32` slot wires LuaJIT's `luaopen_bit` (the same C
+        // function backing LuaJIT's `bit` module) via
+        // `luaL_requiref(L, "bit32", luaopen_bit, 1)`. The global lands
+        // under `bit32`; alias it to `bit` below so creations can spell
+        // the canonical LuaJIT idiom `bit.bor(a, b, c)` per the
+        // docs/design/lua-input-commands.md Q6 modifier-mask contract
+        // and the engine/script/CLAUDE.md statement that `bit` is
+        // universally available.
+        sol::lib::bit32
     );
+    m_lua.safe_script("if bit == nil and bit32 ~= nil then bit = bit32 end");
 
     // Engine-provided utility functions that are available to all Lua creations.
     m_lua["IRMath"] = m_lua.create_table();
@@ -484,10 +495,9 @@ void LuaScript::bindLuaDrivenEcs() {
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
     };
 
-    m_lua["IREntity"]["bindPoint"] =
-        [](IRScript::LuaEntity self,
-           const std::string &name,
-           sol::this_state L) -> std::tuple<sol::object, sol::object> {
+    m_lua["IREntity"]["bindPoint"] = [](IRScript::LuaEntity self,
+                                        const std::string &name,
+                                        sol::this_state L) -> std::tuple<sol::object, sol::object> {
         sol::state_view sv{L};
         auto returnNil = [&]() {
             return std::make_tuple(
@@ -509,8 +519,7 @@ void LuaScript::bindLuaDrivenEcs() {
             IREntity::getComponentOptional<IRComponents::C_JointHierarchy>(self.entity);
         IRPrefab::Rig::BindPointWorldTransform world;
         if (hierarchyOpt.has_value()) {
-            world =
-                IRPrefab::Rig::worldTransformForBindPoint(it->second, *hierarchyOpt.value());
+            world = IRPrefab::Rig::worldTransformForBindPoint(it->second, *hierarchyOpt.value());
         } else {
             world.offset_ = it->second.offset_;
             world.rotation_ = it->second.rotation_;
@@ -585,6 +594,12 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
     detail::bindPrefabApi(*this);
+}
+
+void LuaScript::bindLuaCommands() {
+    detail::bindCommandNameEnum(*this);
+    detail::bindInputEnums(*this);
+    detail::bindCommandFunctions(*this);
 }
 
 namespace {

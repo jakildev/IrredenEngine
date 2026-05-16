@@ -38,21 +38,11 @@
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 
-// COMMANDS
-#include <irreden/input/commands/command_close_window.hpp>
-#include <irreden/render/commands/command_zoom_in.hpp>
-#include <irreden/render/commands/command_zoom_out.hpp>
-#include <irreden/render/commands/command_move_camera.hpp>
-#include <irreden/render/commands/command_toggle_gui.hpp>
-#include <irreden/render/commands/command_gui_zoom.hpp>
-#include <irreden/video/commands/command_take_screenshot.hpp>
-#include <irreden/video/commands/command_take_screenshot_canvas.hpp>
-#include <irreden/video/commands/command_toggle_recording.hpp>
-#include <irreden/render/commands/command_toggle_culling_freeze.hpp>
+// Input + prefab command bindings live in scripts/commands.lua via the
+// IRCommand / IRInput Lua surface; see docs/design/lua-input-commands.md.
 
 void initSystems();
 void initEntities();
-void initCommands();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
@@ -60,8 +50,7 @@ int main(int argc, char **argv) {
     IRDefaultCreation::registerLuaBindings();
     IREngine::init(argv[0]);
     initSystems();
-    initCommands();
-    // IREngine::runScript("main.lua");
+    IREngine::runScript("commands.lua");
     IREngine::gameLoop();
 
     return 0;
@@ -103,100 +92,5 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::DEBUG_CULLING_MINIMAP>(),
          IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
-    );
-}
-
-void initCommands() {
-    IRCommand::createCommand<IRCommand::CLOSE_WINDOW>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEscape
-    );
-    IRCommand::createCommand<IRCommand::ZOOM_IN>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEqual
-    );
-    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonMinus
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonS
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonW
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonD
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonA
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonS
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonW
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonD
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonA
-    );
-    IRCommand::createCommand<IRCommand::SCREENSHOT>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonF8
-    );
-    IRCommand::createCommand<IRCommand::SCREENSHOT_CANVAS>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonF7
-    );
-    IRCommand::createCommand<IRCommand::RECORD_TOGGLE>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonF9
-    );
-    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonGraveAccent
-    );
-    IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEqual,
-        IRInput::kModifierControl
-    );
-    IRCommand::createCommand<IRCommand::GUI_ZOOM_OUT>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonMinus,
-        IRInput::kModifierControl
-    );
-    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_FREEZE>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonF10
     );
 }

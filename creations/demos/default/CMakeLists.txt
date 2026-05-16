@@ -11,8 +11,10 @@ target_link_libraries(IRCreationDefault PUBLIC IrredenEngine)
 set(IR_DEFAULT_SCRIPTS_DIR ${IR_DEFAULT_RUNTIME_DIR}/scripts)
 set(IR_DEFAULT_MAIN_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)
 set(IR_DEFAULT_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
+set(IR_DEFAULT_COMMANDS_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/commands.lua)
 set(IR_DEFAULT_MAIN_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/main.lua)
 set(IR_DEFAULT_CONFIG_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/config.lua)
+set(IR_DEFAULT_COMMANDS_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/commands.lua)
 
 # Track script files as build dependencies so normal UI build/run workflows
 # refresh Lua assets without requiring a C++ recompile.
@@ -31,6 +33,14 @@ add_custom_command(
     COMMENT "Syncing default demo config.lua"
 )
 
+add_custom_command(
+    OUTPUT ${IR_DEFAULT_COMMANDS_LUA_DST}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_DEFAULT_SCRIPTS_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IR_DEFAULT_COMMANDS_LUA_SRC} ${IR_DEFAULT_COMMANDS_LUA_DST}
+    DEPENDS ${IR_DEFAULT_COMMANDS_LUA_SRC}
+    COMMENT "Syncing default demo commands.lua"
+)
+
 add_custom_target(IRCreationDefaultAssets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_DEFAULT_RUNTIME_DIR}/data
@@ -41,6 +51,7 @@ add_custom_target(IRCreationDefaultAssets
     DEPENDS
         ${IR_DEFAULT_MAIN_LUA_DST}
         ${IR_DEFAULT_CONFIG_LUA_DST}
+        ${IR_DEFAULT_COMMANDS_LUA_DST}
 )
 
 add_dependencies(IRCreationDefault IRCreationDefaultAssets)
@@ -60,6 +71,8 @@ add_custom_target(IRCreationDefaultRun
         ${CMAKE_CURRENT_SOURCE_DIR}/main.lua ${IR_DEFAULT_SCRIPTS_DIR}/main.lua
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_DEFAULT_SCRIPTS_DIR}/config.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/commands.lua ${IR_DEFAULT_SCRIPTS_DIR}/commands.lua
     COMMAND $<TARGET_FILE:IRCreationDefault>
     DEPENDS IRCreationDefault
     WORKING_DIRECTORY ${IR_DEFAULT_RUNTIME_DIR}
