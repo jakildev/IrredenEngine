@@ -314,6 +314,40 @@ Lua mirrors this (child 4): `ir.modifier.registerField`,
 `TransformKind` enum is exposed as
 `ir.modifier.ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE`.
 
+### Named one-frame wrappers: `pushFrameLocal` / `pushOneFrame`
+
+Raw `push(..., ticksRemaining)` carries a subtle pipeline-ordering
+invariant that new callers almost always get wrong. The `ticksRemaining`
+value must be chosen based on where the caller sits relative to
+`MODIFIER_DECAY` in the UPDATE pipeline:
+
+| Caller position | Correct `ticksRemaining` | Named wrapper |
+|---|---|---|
+| INSIDE the resolver pipeline, after `MODIFIER_DECAY` | `1` | `pushFrameLocal` |
+| OUTSIDE the pipeline (Lua, input handler, command) | `2` | `pushOneFrame` |
+
+**`pushFrameLocal`** — caller runs after `MODIFIER_DECAY` in the same
+UPDATE tick. The entry survives this frame's compose, then next frame's
+DECAY removes it. The "use 2 to fire for one frame" rule does NOT apply
+here.
+
+**`pushOneFrame`** — caller runs outside the resolver pipeline (Lua,
+input handler, command). The entry must survive the next frame's DECAY
+(which runs before compose on the next tick) and compose; the frame after
+removes it. The extra tick is headroom so `DECAY` doesn't sweep the entry
+before its first compose.
+
+Both expose scalar (float) and vec3 overloads; the Lua surface adds
+`ir.modifier.pushFrameLocal`, `ir.modifier.pushOneFrame`,
+`ir.modifier.pushFrameLocalVec3`, `ir.modifier.pushOneFrameVec3`.
+
+Reserve raw `push(..., ticksRemaining)` for callers that genuinely need
+custom multi-frame decay (buffs, timed debuffs, cooldowns). For
+anything that should survive exactly one compose cycle, prefer the named
+wrappers — they encode the pipeline position in the API name so future
+writers don't need to read the `MODIFIER_DECAY` header to pick the right
+integer.
+
 ## Existing-pattern audit
 
 The engine already hand-rolls the "base + modulation → effective"
