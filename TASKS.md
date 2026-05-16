@@ -254,11 +254,11 @@ Avoid:
   - **Notes:** Traced during T-197 (#749). The set `childNodes` is misnamed — it collects parent NodeIds (archetypes pointed at as CHILD_OF parents). Step 2 then queues nodes NOT in that set (i.e., leaves), causing parents to never enter `sortedNodes`. Fix: rename variable to `parentNodeIds`, seed queue with nodes where `getChildOfRelation() == kNullRelation`, walk from roots via `getParentNodeFromRelation`. Two known consumers — `GLOBAL_POSITION_3D` and `TRIXEL_TO_TRIXEL` — are unaffected today but any future relational system needing ALL matching entities will be silently wrong. `SYSTEM_PROPAGATE_TRANSFORM` (T-197) already works around this with its own topo-sort. Touch surface: `engine/entity/src/archetype_graph.cpp:55` and `test/ecs/`.
   - **Links:**
 
-- [ ] **script: architect decision + port — move getActiveCanvasEntityOrNull out of ir_render.hpp (T-201 step 2)** — architect picks destination (IRWorld or caller-threading), implement include shuffle + update ~3 call sites so component ctors no longer include ir_render.hpp for canvas snapshot
+- [~] **script: architect decision + port — move getActiveCanvasEntityOrNull out of ir_render.hpp (T-201 step 2)** — architect picks destination (IRWorld or caller-threading), implement include shuffle + update ~3 call sites so component ctors no longer include ir_render.hpp for canvas snapshot
   - **ID:** T-205
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `ir_render.hpp` no longer exposes `getActiveCanvasEntityOrNull`; (2) `component_shape_descriptor.hpp` and `component_voxel_set.hpp` no longer include `<irreden/ir_render.hpp>` for the canvas snapshot; (3) `IrredenEngineTest` and `IRShapeDebug` build and run; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #753
