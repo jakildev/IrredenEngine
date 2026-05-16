@@ -11,11 +11,20 @@
 #   fleet-run IrredenEngineTest --gtest_brief=1
 #   fleet-run IRShapeDebug
 #   fleet-run --timeout 5 IRShapeDebug       # auto-kill after 5 seconds
+#   fleet-run --timeout 0 IRShapeDebug       # explicit opt-out of any default
 #   fleet-run --build-dir /path/to/build IrredenEngineTest
 #   fleet-run --targets [--plain|--plan|--built] [--build-dir DIR]
 #
 # Fleet agents should always use --timeout for GUI executables to avoid
 # leaving windows open and stealing focus from the human.
+#
+# Default timeout (safety net): if --timeout is not passed, the env var
+# FLEET_RUN_DEFAULT_TIMEOUT (seconds) is honored. Unset or 0 means "no
+# watchdog" (exec the binary as before). Set in ~/.fleet/fleet-up.conf or
+# your shell init to catch agents that forgot to pass --timeout — observed
+# failure mode is stuck demo windows lingering on the WSL host after a
+# fleet iteration crashed. Per-invocation `--timeout 0` opts out for that
+# call when you want to run interactively under a set default.
 #
 # Source of truth: scripts/fleet/fleet-run in the engine repo.
 # Installed to ~/bin/fleet-run (as a symlink) by scripts/fleet/install.sh.
@@ -33,6 +42,7 @@ source "$_FLEET_COMMON_SH"
 
 BUILD_DIR=""
 TIMEOUT=""
+TIMEOUT_EXPLICIT=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --build-dir)
@@ -45,10 +55,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --timeout|-t)
             if [[ $# -lt 2 || "$2" == -* ]]; then
-                echo "fleet-run: --timeout|-t requires a positive integer (seconds)" >&2
+                echo "fleet-run: --timeout|-t requires a non-negative integer (seconds); 0 disables" >&2
                 exit 2
             fi
             TIMEOUT="$2"
+            TIMEOUT_EXPLICIT=1
             shift 2
             ;;
         --targets)
@@ -82,8 +93,15 @@ Run mode
     --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
                         Exit 0 if still running at timeout (treat as healthy
                         for smoke tests). Exit 1 if the process died early
-                        with non-zero status. Omit for normal interactive run
-                        (current shell is replaced by the program).
+                        with non-zero status. `--timeout 0` is the explicit
+                        opt-out (exec the binary, no watchdog). Omit for the
+                        FLEET_RUN_DEFAULT_TIMEOUT default if set, else exec.
+
+  Env vars:
+    FLEET_RUN_DEFAULT_TIMEOUT   Default for --timeout when not passed.
+                                Unset or 0 = no watchdog (historic behavior).
+                                Set in ~/.fleet/fleet-up.conf or shell init
+                                to catch fleet agents that forgot --timeout.
 
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
@@ -121,10 +139,23 @@ if [[ $# -eq 0 ]]; then
     exit 2
 fi
 
+# Apply FLEET_RUN_DEFAULT_TIMEOUT when --timeout was not passed.
+# 0 (or unset) means "no watchdog" — preserves the historic behavior of
+# `fleet-run <exe>` exec'ing the binary in the current shell. Any
+# positive integer in the env becomes the default.
+if (( ! TIMEOUT_EXPLICIT )) && [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then
+    TIMEOUT="$FLEET_RUN_DEFAULT_TIMEOUT"
+fi
+
 if [[ -n "$TIMEOUT" ]]; then
-    if ! [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-        echo "fleet-run: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    if ! [[ "$TIMEOUT" =~ ^(0|[1-9][0-9]*)$ ]]; then
+        echo "fleet-run: timeout must be a non-negative integer (seconds), got '$TIMEOUT'" >&2
         exit 2
+    fi
+    # 0 = explicit no-timeout. Clear so the rest of the script treats
+    # this the same as "--timeout not passed".
+    if [[ "$TIMEOUT" == "0" ]]; then
+        TIMEOUT=""
     fi
 fi
 
