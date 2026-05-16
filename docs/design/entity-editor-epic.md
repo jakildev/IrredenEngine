@@ -78,8 +78,9 @@ to scope/plan flow through normal review.
   [game-side editor-needs doc](https://github.com/jakildev/irreden/blob/master/irreden/docs/editor-needs.md).
 - **Trixel-rendered editor UI** — no dear-imgui, no third-party UI libs.
   Reuses the existing trixel font + SDF/voxel rendering stack.
-- **Skeletal animation + IK in-engine** — wire the existing
-  `C_JointHierarchy` stub through to the GPU. FABRIK + Two-Bone IK.
+- **Skeletal animation + IK in-engine** — wire joint entities
+  (`C_Skeleton` rig roots + `C_Joint`-tagged joint entities related by
+  `CHILD_OF`) through to the GPU joint-matrix SSBO. FABRIK + Two-Bone IK.
   Runtime foot-IK and interaction-IK.
 - **Modular interpolation** — registry of named C++ curves plus Lua-defined
   custom interpolators per keyframe.
@@ -160,7 +161,7 @@ revisited per-phase:
 | Decision | Rationale |
 |---|---|
 | **GUI rendered via trixel** | See above. No dear-imgui. No third-party UI lib. |
-| **Skeletal animation + IK in-engine** | Wires existing `C_JointHierarchy`. FABRIK + Two-Bone. Foot-IK + interaction-IK at runtime. |
+| **Skeletal animation + IK in-engine** | Joints are entities (`C_Skeleton` rig root + `C_Joint`-tagged joint entities, parent chain via `CHILD_OF`). FABRIK + Two-Bone. Foot-IK + interaction-IK at runtime. |
 | **Modular interpolation** | Registry of built-in C++ curves; Lua-defined custom interpolators per keyframe. Zero-overhead for built-ins. |
 | **Editor exe lives at `creations/editors/voxel_editor/`** | Tracked in the engine repo (gitignore exception added in F-0.8). Private editor tools such as `font_maker` remain gitignored. |
 | **Per-voxel record extends to 12 B** | `{material_id, flags, bone_id}` added. `bone_id = 0` is identity (zero-cost back-compat). |
@@ -414,15 +415,22 @@ mode. `.vxs.json` sidecar is human-diffable.
 
 ### Scope
 
-Activate the existing `C_JointHierarchy` stub and the declared-but-unfilled
-GPU joint-matrix buffer SSBO. Per-voxel `bone_id` is consumed by the
-compute shader; multi-volume entities have each volume bound to a bone;
-FK pose editing works in the editor.
+Activate the GPU joint-matrix buffer SSBO and per-voxel `bone_id`
+consumption in the compute shader; multi-volume entities have each volume
+bound to a bone; FK pose editing works in the editor.
+
+Joints are entities, not vector entries in one component on the rig root.
+The scaffolding for that model — `C_Skeleton` (rig root) + `C_Joint` (tag
+on each joint entity) + CHILD_OF — lands in `#737` ahead of this phase so
+the consumer-side migration here has a stable target. The legacy
+`C_JointHierarchy` is deprecated; sub-task 2.1 reads from the new
+components.
 
 ### Sub-tasks
 
-- **2.1** Drive `C_JointHierarchy` — fill GPU joint buffer SSBO each
-  frame from CPU joint state.
+- **2.1** Drive the joint-matrix SSBO — iterate each `C_Skeleton`,
+  fetch each joint entity's world transform, pack into the SSBO at the
+  slot matching the joint's index in `C_Skeleton.joints_`.
 - **2.2** Per-voxel `bone_id` consumed by compute shader stage 1
   (`c_voxel_to_trixel_stage_1.glsl` applies
   `bone_matrix[bone_id] * local_offset`).

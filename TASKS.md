@@ -163,17 +163,6 @@ Avoid:
   - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Likely too large for one PR — consider splitting by subsystem: render-side → input-side → voxel-side → final retirement. Key gotcha: `C_VoxelPool`'s SoA layout currently carries `{C_Position3D, C_PositionOffset3D, C_PositionGlobal3D}` arrays — decide during impl whether to use one `C_WorldTransform` array or keep position-only views as cached projections. Lua bindings (sol2 + `*_lua.hpp` files) may need updating. GPU-side shape descriptor stays position-only; convert SQT→position on CPU before staging. Animation systems (sprite UV) not affected but audit `C_AnimationClip` / `C_ActionAnimation`.
   - **Links:**
 
-- [~] **editor 2.1: joints as entities with CHILD_OF relations (replace SoA C_JointHierarchy)** — declare `C_Skeleton` + `C_Joint` components; deprecate `C_JointHierarchy`; document entity-based joint model in CLAUDE.md and design docs
-  - **ID:** T-200
-  - **Area:** engine/prefabs/irreden/voxel, docs
-  - **Model:** opus
-  - **Owner:** claude/T-200-skeleton-joint-entities
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `C_Skeleton` and `C_Joint` components compile and register; (2) `C_JointHierarchy` header has a deprecation comment pointing at `C_Skeleton` with a brief migration note for #605 implementers; (3) `engine/prefabs/irreden/voxel/CLAUDE.md` describes the entity-based joint model and severance design; (4) `#605`'s body or the linked design doc (`docs/design/entity-editor-epic.md`) reflects the refined 2.1 approach; (5) fleet-build clean on linux-debug
-  - **Issue:** #737
-  - **Notes:** Architectural foundation only — no GPU upload system, no animation, no severance API yet. Those live in #605 Phase 2 (after SQT propagation from T-197 and editor Phase 1 from #604 land). Key design point: `C_Skeleton.joints_` is a flat ordered list (canonical bone-index space); indices are stable across saves, severance leaves a hole rather than shifting. This ticket should NOT bake assumptions about which transform component joints carry (SQT not landed yet); leave joint-entity transform type unspecified in the header with a comment. Coordinates with #731 (joint propagation reuses `SYSTEM_PROPAGATE_TRANSFORM`).
-  - **Links:**
-
 - [ ] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
   - **ID:** T-201
   - **Area:** engine/script, engine/render, engine/prefabs/irreden/voxel, engine/math, engine/world
@@ -221,11 +210,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [ ] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
+- [~] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
   - **ID:** T-202
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-202-linux-opengl-parity
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-build --target IRShapeDebug` succeeds on linux-debug (gcc-13, OpenGL); (2) all GLSL compute shaders in `engine/render/src/shaders/` load and dispatch without GL errors; (3) trixel pipeline (canvas → composite → framebuffer), lighting stage, and camera/coordinate transform produce output matching the Metal reference at `shape_debug` level; (4) `render-debug-loop` oracle passes on linux-debug; (5) Metal-only features documented (not ported) in engine/render/CLAUDE.md; (6) fleet-build clean on linux-debug
   - **Issue:** #757
@@ -247,28 +236,169 @@ Avoid:
   - **ID:** T-204
   - **Area:** engine/entity
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-204-sort-archetype-bfs-fix
   - **Blocked by:** (none)
   - **Acceptance:** (1) BFS seeded from archetypes with `getChildOfRelation() == kNullRelation` (true roots), walks outward via children; (2) `sortedNodes` contains all archetypes including multi-level parents, not just leaf archetypes; (3) existing `test/ecs/` suite passes; (4) new test in `test/ecs/` exercises a 3-level CHILD_OF chain through relational dispatch and verifies root entities are dispatched first; (5) fleet-build clean on linux-debug
   - **Issue:** #750
   - **Notes:** Traced during T-197 (#749). The set `childNodes` is misnamed — it collects parent NodeIds (archetypes pointed at as CHILD_OF parents). Step 2 then queues nodes NOT in that set (i.e., leaves), causing parents to never enter `sortedNodes`. Fix: rename variable to `parentNodeIds`, seed queue with nodes where `getChildOfRelation() == kNullRelation`, walk from roots via `getParentNodeFromRelation`. Two known consumers — `GLOBAL_POSITION_3D` and `TRIXEL_TO_TRIXEL` — are unaffected today but any future relational system needing ALL matching entities will be silently wrong. `SYSTEM_PROPAGATE_TRANSFORM` (T-197) already works around this with its own topo-sort. Touch surface: `engine/entity/src/archetype_graph.cpp:55` and `test/ecs/`.
   - **Links:**
 
-- [ ] **script: architect decision + port — move getActiveCanvasEntityOrNull out of ir_render.hpp (T-201 step 2)** — architect picks destination (IRWorld or caller-threading), implement include shuffle + update ~3 call sites so component ctors no longer include ir_render.hpp for canvas snapshot
+- [~] **script: architect decision + port — move getActiveCanvasEntityOrNull out of ir_render.hpp (T-201 step 2)** — architect picks destination (IRWorld or caller-threading), implement include shuffle + update ~3 call sites so component ctors no longer include ir_render.hpp for canvas snapshot
   - **ID:** T-205
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-205-active-canvas-decouple
   - **Blocked by:** (none)
   - **Acceptance:** (1) `ir_render.hpp` no longer exposes `getActiveCanvasEntityOrNull`; (2) `component_shape_descriptor.hpp` and `component_voxel_set.hpp` no longer include `<irreden/ir_render.hpp>` for the canvas snapshot; (3) `IrredenEngineTest` and `IRShapeDebug` build and run; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #753
   - **Notes:** Step 2 of the T-201 four-PR layering refactor. Step 1 (ShapeFlags → IRMath::SDF) landed as PR #752. Two options the architect must decide: (a) move function to `IRWorld::` — ambient-snapshot ergonomics preserved, sourced from world-level singleton instead of render; (b) push snapshot up to callers — `Prefab.spawn` threads active canvas into `C_ShapeDescriptor`/`C_VoxelSetNew` ctors. Call sites: `component_shape_descriptor.hpp:40,46` and `component_voxel_set.hpp:148`. Implementation is ~include shuffle + 3 call-site updates. T-201's final step (drop `IrredenEngineRendering` from script link) is blocked on this landing.
   - **Links:**
 
+- [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
+  - **ID:** T-206
+  - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
+  - **Model:** opus
+  - **Owner:** claude/T-206-voxel-pool-api-split
+  - **Blocked by:** T-205
+  - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #754
+  - **Notes:** Step 3 of T-201 four-PR layering refactor. Step 1 landed PR #752; step 2 tracked by T-205 (#753). Architect must choose: (a) move pool allocator to engine/world/ (ergonomics preserved, pool changes owning module); (b) push allocation up to callers — C_VoxelSetNew ctor becomes data-only, a separate system claims pool space at first tick (generalizes existing `pendingVoxels_` staging path). Performance contract: ctor is hot for moving shapes — no virtual indirection, no per-call hash lookup. Two ctor sites plus dtor in component_voxel_set.hpp:81,170,229. Step 4 (T-207) is blocked on this landing.
+  - **Links:**
+
+- [ ] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
+  - **ID:** T-207
+  - **Area:** engine/script
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-205, T-206
+  - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #755
+  - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
+  - **Links:**
+
+- [~] **modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn** — add upsertBySource / upsertBySourceInPlace overloads to Modifier:: so steady-state writers allocate once and update in place; migrate PERIODIC_IDLE_POSITION_OFFSET
+  - **ID:** T-208
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
+  - **Model:** sonnet
+  - **Owner:** claude/T-208-modifier-upsert-by-source
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) six new inline overloads land in `modifier.hpp` — `upsertBySource` (scalar+vec3), `upsertBySourceGlobal` (scalar+vec3), `upsertBySourceInPlace` (scalar+vec3); (2) unit tests pass: `UpsertBySource_FirstCallAppends`, `SecondCallOverwrites`, `DifferentKindGetsItsOwnSlot`, `DifferentSourceGetsItsOwnSlot`, `OverridesPriorTickRemaining`, frame-level test ticks `PERIODIC_IDLE_POSITION_OFFSET` 100x and asserts `modifiersVec3_.size() == 1`; (3) `PERIODIC_IDLE_POSITION_OFFSET` uses `upsertBySourceInPlace`, no `ticksRemaining_=1` literal remains; (4) idle bob in default + perf_grid creations visually identical to master; (5) pipeline-ordering comment in `system_periodic_idle_position_offset.hpp` no longer cites `MODIFIER_DECAY` as prerequisite; (6) `docs/design/modifiers.md` documents slot contract and upsert as canonical steady-state-writer pattern; (7) `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug
+  - **Issue:** #758
+  - **Notes:** Slot key is the triple `(source_, field_, kind_)` — ADD and MULTIPLY slots from same source coexist. Hit → overwrite `param_` AND reset `ticksRemaining_=-1` (prevents stale decay countdown). Miss → push_back with `ticksRemaining_=-1`. `upsertBySourceInPlace` skips defensive checks (caller is a system with init-time field id). `removeBySource` already handles slot teardown via existing pre-destroy hook. Lua bindings + lambda upsert out of scope for v1. Predecessor: #746 (T-192). Opus-worker plan filed in issue #758 comment — read it before implementing.
+  - **Links:**
+
+- [~] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
+  - **ID:** T-209
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
+  - **Model:** sonnet
+  - **Owner:** sonnet-fleet-2
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) `pushFrameLocal` + `pushOneFrame` overloads (scalar + vec3) live in `engine/prefabs/irreden/common/modifier.hpp`; (2) Lua bindings in `modifier_lua.hpp` expose both names; (3) `PERIODIC_IDLE_POSITION_OFFSET` migrated to `pushFrameLocal` (or marked superseded if T-208 `upsertBySource` lands first); (4) `docs/design/modifiers.md` documents which to use when and demotes raw `push(..., ticksRemaining)` to "custom multi-frame decay only"; (5) fleet-build clean on linux-debug
+  - **Issue:** #759
+  - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
+  - **Links:**
+
+- [~] **modifier: generalize APPLY_POSITION_OFFSET into reusable APPLY_VEC3_MODIFIER_TO<field, component> pattern** — architect picks template vs. runtime parameterization; port APPLY_POSITION_OFFSET to the generic shape; document inline-apply pattern
+  - **ID:** T-210
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** claude/T-210-apply-vec3-modifier-to
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) `APPLY_POSITION_OFFSET` reimplemented as an instance of the generic inline-apply pattern (or thin caller of a generic helper if runtime-parameterized); (2) `docs/design/modifiers.md` documents the inline-apply pattern alongside the structured-resolver path with guidance on when to pick which; (3) idle bob in default + perf_grid creations visually identical to master; (4) no regression in `IRShapeDebug`, `voxel_editor`, or any demo using position offset; (5) fleet-build clean on linux-debug
+  - **Issue:** #760
+  - **Notes:** Two open design questions for architect: (a) template vs. runtime-parameterized `FieldBindingId` (registration is dynamic at init, not compile-time); (b) `ADD`-only vs. configurable compose semantics for inline-apply. Future consumers motivating this: gizmo nudge (already inline), hit-stagger, screen-space jitter. Today adding a new inline-compose vec3 channel is "copy-paste APPLY_POSITION_OFFSET." Predecessor: #746 (T-192). Siblings: T-208 (upsertBySource), T-209 (pushFrameLocal/pushOneFrame).
+  - **Links:**
+
+- [ ] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
+  - **ID:** T-211
+  - **Area:** creations/editors, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** #603 (Phase 0 Foundation — requires #620 UI primitives, #621 per-voxel metadata, #628 voxel picking to be closed)
+  - **Stack:** T-211..T-215 editor-phase-1
+  - **Acceptance:** (1) left-click on voxel face places adjacent voxel in active layer with active palette color; right-click erases; (2) palette panel renders ≥16 swatches; clicking selects active color used for subsequent placements; (3) editing a swatch updates consistently (document chosen model: mutable vs. immutable-index); (4) Ctrl-Z reverses last stroke; Ctrl-Y re-applies; multi-step undo/redo works; (5) undo stack respects documented memory cap, oldest records evict; (6) no allocations inside per-voxel placement hot path (reserve at stroke begin); (7) fleet-build clean on linux-debug
+  - **Issue:** #761
+  - **Notes:** Undo data layout (delta vs. snapshot, eviction policy, palette-index vs. raw-RGBA storage) is the first undo system in the engine — choice constrains every later Phase 1/2/3 system. Part of entity-editor epic #604 / umbrella #213. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
+  - **ID:** T-212
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-215 editor-phase-1
+  - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
+  - **Issue:** #762
+  - **Notes:** Bounded math; mirrors off the place/erase stroke from F-1.1 (T-211). Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
+  - **ID:** T-213
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-215 editor-phase-1
+  - **Acceptance:** (1) default Layer 0 exists on empty scene; (2) create new layer → it becomes active → subsequent placements carry its layer id; (3) toggle layer visibility → its voxels hide in viewport AND don't pick; (4) renaming a layer doesn't break per-voxel layer-id references (id stable, name is display-only); (5) reordering layers in panel doesn't change which voxels belong where; (6) deleting a layer moves its voxels to default layer or prompts confirmation; (7) layer membership round-trips through F-1.5 save/load; (8) fleet-build clean on linux-debug
+  - **Issue:** #763
+  - **Notes:** Layer membership lives in the JSON sidecar (F-0.7) — .vxs v2 binary doesn't need a new field. Decide in implementation whether to store layer-id per voxel in sidecar or as voxel-index ranges per layer. Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.4 — frame-based animation (multiple poses, scrubber)** — pixel-art-style frame-by-frame animation; timeline panel with thumbnails, scrubber, play/pause/loop/ping-pong; each frame is an independent voxel-grid snapshot; undo scoped per frame
+  - **ID:** T-214
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211
+  - **Stack:** T-211..T-215 editor-phase-1
+  - **Acceptance:** (1) add frame → new editable snapshot in timeline; switching shows empty or duplicated grid; (2) edit voxels in frame N → frame N+1 unaffected; (3) scrubber drags through frames smoothly, viewport updates per drag tick; (4) play button cycles at configurable FPS (test 6 fps and 24 fps); (5) loop and ping-pong modes both work; (6) frames round-trip through F-1.5 save/load identically; (7) undo (Ctrl-Z) scoped to active frame, doesn't reach into another frame's history; (8) per-frame undo cap documented in impl PR; (9) fleet-build clean on linux-debug
+  - **Issue:** #764
+  - **Notes:** NOT skeletal animation (that's Phase 3, #606). Each frame is a separate dense .vxs block in v1. Sparse/delta encoding is a Phase 10 perf concern (#613). Risk: per-frame undo cap must be documented to bound memory with many frames. Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
+  - **Links:**
+
+- [ ] **editor: F-1.5 — save/load round-trip with metadata + JSON sidecar** — persist editor scene to disk and load it back with exact byte- and behavior-level round-trip
+  - **ID:** T-215
+  - **Area:** creations/editors, engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-211, T-213, T-214
+  - **Stack:** T-211..T-215 editor-phase-1
+  - **Acceptance:** (1) save scene → .vxs v2 + .vxs.json sidecar written to disk; (2) load saved file → editor scene matches exactly (voxel positions, colors, per-voxel metadata, layers, frames, symmetry settings); (3) per-voxel metadata (material_id, flags, bone_id) round-trips byte-exact through binary block; (4) layers round-trip through sidecar (membership, names, visibility, order); (5) frames round-trip (count, content per frame, FPS, loop mode); (6) IRShapeDebug loads the saved .vxs and renders frame 0 correctly; (7) sidecar is human-diffable (deterministic key order, stable indentation, no timestamps)
+  - **Issue:** #765
+  - **Notes:** Phase 1 F-1.5 save/load acceptance gate for entity-editor epic #604 / umbrella #213. Format support already exists (F-0.6, F-0.7); this wires editor save/load through it. Risk: binary .vxs must carry per-voxel metadata bits — if any field is missing, escalate before extending format (additions go in sidecar, not silent v3 churn). See docs/design/entity-editor-epic.md §Phase 1.
+  - **Links:**
+
+- [ ] **tooling: investigate + fix Ubuntu fleet failure to add approved label on PR approval** — reproduce and fix the root cause of the Ubuntu fleet not adding the expected label when a PR is approved
+  - **ID:** T-216
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) root cause identified (permission gap, gh CLI config, or fleet script bug); (2) fix PR or workaround that makes label-adding work correctly on Ubuntu 24.04 WSL2 fleet; (3) PR approval flow on Ubuntu verified to add correct label after fix
+  - **Issue:** #778
+  - **Notes:** Sparse issue. Manifests as PRs being approved without the expected fleet label added. Likely a permission or gh CLI config issue on Ubuntu 24.04 WSL2. Related to fleet bring-up fixes in PRs #768 (tmux/bash compat) and #769 (permission allowlist). Investigate fleet scripts that invoke `gh pr edit --add-label` in the approval flow.
+  - **Links:**
+
+- [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
+  - **ID:** T-217
+  - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) PR #767 (or replacement) rebased on master with no semantic conflicts; (2) design decisions implemented: defense-in-depth claim redundancy kept (T-138 rollback + gh_acquire both active), cleanup --gh moved to fleet-queue-tick, label defs (fleet:claim-host-agent, fleet:reviewing-host-agent, fleet:placeholder) moved to FLEET.md §"Issue/PR labeling discipline"; (3) multiple concurrent queue-manager agents running simultaneously is not a problem (race-safe); (4) scripts/fleet/fleet-claim conflicts from master-vs-767 resolved; (5) fleet scripts pass smoke check on linux-debug
+  - **Issue:** #774
+  - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-200** — joints as entities — C_Skeleton + C_Joint scaffolding (replace SoA C_JointHierarchy) · Owner: claude/T-200-skeleton-joint-entities · PR: https://github.com/jakildev/IrredenEngine/pull/751
 - [x] **T-197** — C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
 - [x] **T-198** — quat modifier kind — extend modifier compose for rotation perturbations · Owner: claude/T-198-quat-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/748
 - [x] **T-193** — Lua input & command bindings (PR 2/2 implementation) · Owner: claude/T-193-lua-input-commands-impl · PR: https://github.com/jakildev/IrredenEngine/pull/747
@@ -286,6 +416,5 @@ Avoid:
 - [x] **T-184** — asset: delete entire .txl family (raw-binary + .txl.json sidecar + nlohmann dep) · Owner: claude/T-184-delete-txl-family · PR: https://github.com/jakildev/IrredenEngine/pull/722
 - [x] **T-182** — prefab: attach voxel_ref data as ECS components on Prefab.spawn · Owner: claude/T-182-prefab-voxel-attach · PR: https://github.com/jakildev/IrredenEngine/pull/718
 - [x] **T-183** — asset: hoist vec3/vec4 + color binary I/O helpers into engine/math/ · Owner: claude/T-183-math-binary-io-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/719
-- [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
