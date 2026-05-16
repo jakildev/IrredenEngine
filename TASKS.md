@@ -225,7 +225,7 @@ Avoid:
   - **ID:** T-202
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-202-linux-opengl-parity
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-build --target IRShapeDebug` succeeds on linux-debug (gcc-13, OpenGL); (2) all GLSL compute shaders in `engine/render/src/shaders/` load and dispatch without GL errors; (3) trixel pipeline (canvas → composite → framebuffer), lighting stage, and camera/coordinate transform produce output matching the Metal reference at `shape_debug` level; (4) `render-debug-loop` oracle passes on linux-debug; (5) Metal-only features documented (not ported) in engine/render/CLAUDE.md; (6) fleet-build clean on linux-debug
   - **Issue:** #757
@@ -247,7 +247,7 @@ Avoid:
   - **ID:** T-204
   - **Area:** engine/entity
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-204-sort-archetype-bfs-fix
   - **Blocked by:** (none)
   - **Acceptance:** (1) BFS seeded from archetypes with `getChildOfRelation() == kNullRelation` (true roots), walks outward via children; (2) `sortedNodes` contains all archetypes including multi-level parents, not just leaf archetypes; (3) existing `test/ecs/` suite passes; (4) new test in `test/ecs/` exercises a 3-level CHILD_OF chain through relational dispatch and verifies root entities are dispatched first; (5) fleet-build clean on linux-debug
   - **Issue:** #750
@@ -258,11 +258,69 @@ Avoid:
   - **ID:** T-205
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-205-active-canvas-decouple
   - **Blocked by:** (none)
   - **Acceptance:** (1) `ir_render.hpp` no longer exposes `getActiveCanvasEntityOrNull`; (2) `component_shape_descriptor.hpp` and `component_voxel_set.hpp` no longer include `<irreden/ir_render.hpp>` for the canvas snapshot; (3) `IrredenEngineTest` and `IRShapeDebug` build and run; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #753
   - **Notes:** Step 2 of the T-201 four-PR layering refactor. Step 1 (ShapeFlags → IRMath::SDF) landed as PR #752. Two options the architect must decide: (a) move function to `IRWorld::` — ambient-snapshot ergonomics preserved, sourced from world-level singleton instead of render; (b) push snapshot up to callers — `Prefab.spawn` threads active canvas into `C_ShapeDescriptor`/`C_VoxelSetNew` ctors. Call sites: `component_shape_descriptor.hpp:40,46` and `component_voxel_set.hpp:148`. Implementation is ~include shuffle + 3 call-site updates. T-201's final step (drop `IrredenEngineRendering` from script link) is blocked on this landing.
+  - **Links:**
+
+- [ ] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
+  - **ID:** T-206
+  - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-205
+  - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #754
+  - **Notes:** Step 3 of T-201 four-PR layering refactor. Step 1 landed PR #752; step 2 tracked by T-205 (#753). Architect must choose: (a) move pool allocator to engine/world/ (ergonomics preserved, pool changes owning module); (b) push allocation up to callers — C_VoxelSetNew ctor becomes data-only, a separate system claims pool space at first tick (generalizes existing `pendingVoxels_` staging path). Performance contract: ctor is hot for moving shapes — no virtual indirection, no per-call hash lookup. Two ctor sites plus dtor in component_voxel_set.hpp:81,170,229. Step 4 (T-207) is blocked on this landing.
+  - **Links:**
+
+- [ ] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
+  - **ID:** T-207
+  - **Area:** engine/script
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-205, T-206
+  - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #755
+  - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
+  - **Links:**
+
+- [ ] **modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn** — add upsertBySource / upsertBySourceInPlace overloads to Modifier:: so steady-state writers allocate once and update in place; migrate PERIODIC_IDLE_POSITION_OFFSET
+  - **ID:** T-208
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) six new inline overloads land in `modifier.hpp` — `upsertBySource` (scalar+vec3), `upsertBySourceGlobal` (scalar+vec3), `upsertBySourceInPlace` (scalar+vec3); (2) unit tests pass: `UpsertBySource_FirstCallAppends`, `SecondCallOverwrites`, `DifferentKindGetsItsOwnSlot`, `DifferentSourceGetsItsOwnSlot`, `OverridesPriorTickRemaining`, frame-level test ticks `PERIODIC_IDLE_POSITION_OFFSET` 100x and asserts `modifiersVec3_.size() == 1`; (3) `PERIODIC_IDLE_POSITION_OFFSET` uses `upsertBySourceInPlace`, no `ticksRemaining_=1` literal remains; (4) idle bob in default + perf_grid creations visually identical to master; (5) pipeline-ordering comment in `system_periodic_idle_position_offset.hpp` no longer cites `MODIFIER_DECAY` as prerequisite; (6) `docs/design/modifiers.md` documents slot contract and upsert as canonical steady-state-writer pattern; (7) `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug
+  - **Issue:** #758
+  - **Notes:** Slot key is the triple `(source_, field_, kind_)` — ADD and MULTIPLY slots from same source coexist. Hit → overwrite `param_` AND reset `ticksRemaining_=-1` (prevents stale decay countdown). Miss → push_back with `ticksRemaining_=-1`. `upsertBySourceInPlace` skips defensive checks (caller is a system with init-time field id). `removeBySource` already handles slot teardown via existing pre-destroy hook. Lua bindings + lambda upsert out of scope for v1. Predecessor: #746 (T-192). Opus-worker plan filed in issue #758 comment — read it before implementing.
+  - **Links:**
+
+- [ ] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
+  - **ID:** T-209
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) `pushFrameLocal` + `pushOneFrame` overloads (scalar + vec3) live in `engine/prefabs/irreden/common/modifier.hpp`; (2) Lua bindings in `modifier_lua.hpp` expose both names; (3) `PERIODIC_IDLE_POSITION_OFFSET` migrated to `pushFrameLocal` (or marked superseded if T-208 `upsertBySource` lands first); (4) `docs/design/modifiers.md` documents which to use when and demotes raw `push(..., ticksRemaining)` to "custom multi-frame decay only"; (5) fleet-build clean on linux-debug
+  - **Issue:** #759
+  - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
+  - **Links:**
+
+- [ ] **modifier: generalize APPLY_POSITION_OFFSET into reusable APPLY_VEC3_MODIFIER_TO<field, component> pattern** — architect picks template vs. runtime parameterization; port APPLY_POSITION_OFFSET to the generic shape; document inline-apply pattern
+  - **ID:** T-210
+  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-208..T-210 modifier-ergonomics
+  - **Acceptance:** (1) `APPLY_POSITION_OFFSET` reimplemented as an instance of the generic inline-apply pattern (or thin caller of a generic helper if runtime-parameterized); (2) `docs/design/modifiers.md` documents the inline-apply pattern alongside the structured-resolver path with guidance on when to pick which; (3) idle bob in default + perf_grid creations visually identical to master; (4) no regression in `IRShapeDebug`, `voxel_editor`, or any demo using position offset; (5) fleet-build clean on linux-debug
+  - **Issue:** #760
+  - **Notes:** Two open design questions for architect: (a) template vs. runtime-parameterized `FieldBindingId` (registration is dynamic at init, not compile-time); (b) `ADD`-only vs. configurable compose semantics for inline-apply. Future consumers motivating this: gizmo nudge (already inline), hit-stagger, screen-space jitter. Today adding a new inline-compose vec3 channel is "copy-paste APPLY_POSITION_OFFSET." Predecessor: #746 (T-192). Siblings: T-208 (upsertBySource), T-209 (pushFrameLocal/pushOneFrame).
   - **Links:**
 
 ## Done — last 20
