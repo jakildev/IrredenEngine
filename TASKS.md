@@ -287,11 +287,11 @@ Avoid:
   - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
   - **Links:**
 
-- [ ] **modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn** — add upsertBySource / upsertBySourceInPlace overloads to Modifier:: so steady-state writers allocate once and update in place; migrate PERIODIC_IDLE_POSITION_OFFSET
+- [~] **modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn** — add upsertBySource / upsertBySourceInPlace overloads to Modifier:: so steady-state writers allocate once and update in place; migrate PERIODIC_IDLE_POSITION_OFFSET
   - **ID:** T-208
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) six new inline overloads land in `modifier.hpp` — `upsertBySource` (scalar+vec3), `upsertBySourceGlobal` (scalar+vec3), `upsertBySourceInPlace` (scalar+vec3); (2) unit tests pass: `UpsertBySource_FirstCallAppends`, `SecondCallOverwrites`, `DifferentKindGetsItsOwnSlot`, `DifferentSourceGetsItsOwnSlot`, `OverridesPriorTickRemaining`, frame-level test ticks `PERIODIC_IDLE_POSITION_OFFSET` 100x and asserts `modifiersVec3_.size() == 1`; (3) `PERIODIC_IDLE_POSITION_OFFSET` uses `upsertBySourceInPlace`, no `ticksRemaining_=1` literal remains; (4) idle bob in default + perf_grid creations visually identical to master; (5) pipeline-ordering comment in `system_periodic_idle_position_offset.hpp` no longer cites `MODIFIER_DECAY` as prerequisite; (6) `docs/design/modifiers.md` documents slot contract and upsert as canonical steady-state-writer pattern; (7) `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug
