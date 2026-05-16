@@ -245,22 +245,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **script: Lua input & command bindings — declare commands and bind inputs from Lua** — design-then-implement; expose IRInput command registration + key/mouse/gamepad input-to-command/status binding to Lua so creations no longer need a C++ initCommands() block
-  - **ID:** T-193
-  - **Area:** engine/script, engine/input, engine/command
-  - **Model:** opus
-  - **Owner:** claude/T-193-lua-input-commands-impl
-  - **Blocked by:** (none)
-  - **Stack:** T-193..T-196 lua-game-foundation
-  - **Acceptance:** (1) design note `docs/design/lua-input-commands.md` lands in PR 1 covering: how Lua-defined commands plug into the existing command dispatch loop, lifetime of Lua callables relative to the command registry, archetype-batched vs per-event dispatch, and how a Lua-defined command can be referenced by C++ pipeline composition; (2) PR 2 implements: a Lua API that (a) declares a new command with a tick body, (b) binds a key/mouse/gamepad input to that command and to a status (held/pressed/released); (3) the 12-command `initCommands()` block in `creations/demos/default/main_lua.cpp:107-200` can be replaced with a Lua equivalent and the demo behaves identically; (4) existing C++ command path (`template <> struct IRCommand::COMMAND_NAME`) keeps working with no behavior change; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** (none)
-  - **Notes:** Highest-leverage gap blocking pure-Lua interactive games. Today the command system is C++-templated — see `creations/demos/default/main_lua.cpp:107-200` for how commands are currently registered. No `IRInput::createCommand` or input-handler binding is exposed to Lua. Phase as design-then-implement: design PR first, implementation PR second. Codegen support is optional — runtime registration is sufficient for v1. Parent epic: lua-game-foundation (T-193..T-196).
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-193** — Lua input & command bindings (PR 2/2 implementation) · Owner: claude/T-193-lua-input-commands-impl · PR: https://github.com/jakildev/IrredenEngine/pull/747
 - [x] **T-192** — delete C_PositionOffset3D — migrate idle bob + gizmo to vec3 modifiers · Owner: claude/T-192-delete-position-offset · PR: https://github.com/jakildev/IrredenEngine/pull/746
 - [x] **T-196** — Research — Lua binding automation (codegen extension + shared default bindings header) · Owner: claude/T-196-lua-binding-codegen-research · PR: https://github.com/jakildev/IrredenEngine/pull/745
 - [x] **T-194** — Research: Lua physics bindings — enumerate physics surface and propose Lua API · Owner: claude/T-194-lua-physics-research · PR: https://github.com/jakildev/IrredenEngine/pull/744
@@ -280,4 +269,3 @@ Avoid:
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
 - [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
 - [x] **T-180** — asset: hoist .vxs.json sidecar keys + VoxelSetMode string to named constants · Owner: claude/T-180-sidecar-key-constants · PR: https://github.com/jakildev/IrredenEngine/pull/711
-- [x] **T-177** — F-0.1 follow-up — remaining widgets (list, dropdown, radio, text input, scroll) · Owner: claude/T-177-widget-followup · PR: https://github.com/jakildev/IrredenEngine/pull/702
