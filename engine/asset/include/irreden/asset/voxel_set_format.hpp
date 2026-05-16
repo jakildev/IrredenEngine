@@ -39,7 +39,7 @@
 ///                                  // (Rule #3); v1 fields fixed below
 ///       float32 params[4]          // SDF parameter vector
 ///       uint32  packedRGBA         // `Color::toPackedRGBA()` packing
-///       uint32  flags              // `IRRender::ShapeFlags` bit field
+///       uint32  flags              // `IRMath::SDF::ShapeFlags` bit field
 ///       uint8   boneId             // joint binding (T-146/T-169); 0 = none
 ///       float32 offset[3]          // local translation
 ///       float32 rotation[4]        // quaternion (x, y, z, w)

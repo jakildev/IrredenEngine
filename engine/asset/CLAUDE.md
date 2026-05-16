@@ -231,7 +231,7 @@ uint32  shapeTypeId      // numeric; resolve via SREF name lookup
 uint16  recordVersion    // additive-only field evolution (Rule #3)
 float32 params[4]        // SDF parameters (semantics per ShapeType)
 uint32  packedRGBA       // Color::toPackedRGBA()
-uint32  flags            // IRRender::ShapeFlags bit field
+uint32  flags            // IRMath::SDF::ShapeFlags bit field
 uint8   boneId           // joint binding (T-146 / T-169); 0 = none
 float32 offset[3]        // local translation
 float32 rotation[4]      // quaternion (x, y, z, w)
