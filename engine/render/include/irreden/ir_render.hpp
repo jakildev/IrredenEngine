@@ -11,6 +11,7 @@
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
+#include <irreden/render/voxel_pool_api.hpp>
 
 namespace IRRender {
 
@@ -57,27 +58,17 @@ template <typename T> T *getNamedResource(std::string resourceName) {
 }
 /// @}
 
-/// @{
-/// @name Voxel pool
-/// Allocate / release contiguous spans of voxel component arrays from the named canvas
-/// pool. The four spans returned by @c allocateVoxels are co-indexed — element [i] of
-/// each span belongs to voxel i — and @c VoxelPoolAllocation::startIndex_ is the offset
-/// of those spans inside the pool's underlying voxel arrays. Pass that index back to
-/// @c deallocateVoxels (and to @c C_VoxelPool::setEntityIdForRange); never recompute it
-/// from `positions.data() - basePtr` against a separately-cached @c C_VoxelPool*, since
-/// a canvas archetype mutation can leave such a cache pointing at a different pool.
-/// @param size        Number of voxels to allocate.
-/// @param canvasName  Canvas pool to allocate from (default @c "main").
-inline VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main") {
-    return getRenderManager().allocateVoxels(size, canvasName);
-}
-
-/// Release a previously-allocated voxel span back to the pool. Pass the start index
-/// returned by @c allocateVoxels and the same size used to allocate.
-inline void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main") {
-    getRenderManager().deallocateVoxels(startIndex, size, canvasName);
-}
-/// @}
+// Voxel pool API (allocateVoxels / deallocateVoxels) lives in
+// `<irreden/render/voxel_pool_api.hpp>` — included above so existing
+// `IRRender::allocateVoxels` callers via `ir_render.hpp` continue to compile.
+// Callers that allocate from a component ctor — see "GPU / IO resource
+// RAII" exception in .claude/rules/cpp-ecs.md — include the slim header
+// directly instead of pulling in the full render surface. The four spans
+// returned by `allocateVoxels` are co-indexed; `VoxelPoolAllocation::startIndex_`
+// is the source of truth for the pool offset — never recompute it from
+// `positions.data() - basePtr` against a separately-cached `C_VoxelPool*`,
+// since a canvas archetype mutation can leave such a cache pointing at a
+// different pool. See #754 (T-206).
 
 /// @{
 /// @name Canvas management

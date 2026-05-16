@@ -3,19 +3,15 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/ir_render.hpp>
 
 #include <irreden/render/active_canvas.hpp>
-#include <irreden/render/texture.hpp>
+#include <irreden/render/voxel_pool_api.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/systems/system_voxel_pool.hpp>
 
 #include <vector>
 
 using namespace IRMath;
-using IRRender::ImageData;
-using IRRender::ResourceId;
-using IRRender::Texture2D;
 // TODO: add primitives to voxel set, not just setting individual voxels...
 // UPDATE: see component_geometric_shape.hpp
 
@@ -78,7 +74,10 @@ struct C_VoxelSetNew {
         : numVoxels_{size.x * size.y * size.z}
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
-        canvasEntity_ = IRRender::getActiveCanvasEntity();
+        // Null-returning variant for symmetry with the dense-data ctor below;
+        // pool allocation still asserts inside RenderManager when no canvas
+        // exists, so the no-canvas crash site is the same.
+        canvasEntity_ = IRRender::getActiveCanvasEntityOrNull();
         auto allocation = IRRender::allocateVoxels(requestedVoxels);
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
