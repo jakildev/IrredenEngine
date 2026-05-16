@@ -155,7 +155,7 @@ Avoid:
   - **ID:** T-197
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/entity, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-197-sqt-transform-propagate
   - **Blocked by:** (none)
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `C_LocalTransform` + `C_WorldTransform` exist and are auto-attached by `createEntity`; (2) `SYSTEM_PROPAGATE_TRANSFORM` registered and runs in UPDATE pipeline after modifier resolution; (3) root entities: `world == local` (post-modifier); (4) 3-level chain: grandchild world transform correctly reflects parent+grandparent rotation+scale+translation; (5) modifier-resolved vec3/quat fields (POSITION, ROTATION, SCALE) applied inside propagation step; (6) test fixture: 10-level deep chain with non-trivial rotation/scale, assertions on grandchild world transform; (7) `engine/prefabs/irreden/common/CLAUDE.md` documents the propagation contract and ordering; (8) fleet-build clean on linux-debug and macos-debug
@@ -167,7 +167,7 @@ Avoid:
   - **ID:** T-198
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-198-quat-modifier-kind
   - **Blocked by:** (none)
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `IRPrefab::Modifier::push<quat>(target, field, quat{...}, TransformKind::MULTIPLY)` (or equivalent) accepted; (2) resolved rotation reads back as `mod_k * mod_{k-1} * … * mod_0 * base` for stacked MULTIPLY modifiers; (3) OVERRIDE clears prior MULTIPLYs; (4) ADD/CLAMP push on a quat field raises a clear error (assert in debug or static_assert); (5) `SYSTEM_PROPAGATE_TRANSFORM` reads the resolved quat as `modifier_rotation` per the SQT formula in T-197; (6) test coverage: MULTIPLY stacking, OVERRIDE clears, ADD-on-quat assertion fires; (7) compose order convention (`mod * base`) documented in `engine/prefabs/irreden/common/CLAUDE.md`; (8) fleet-build clean on linux-debug and macos-debug
@@ -179,7 +179,7 @@ Avoid:
   - **ID:** T-199
   - **Area:** engine/prefabs/irreden/render, engine/prefabs/irreden/update, engine/prefabs/irreden/input, engine/prefabs/irreden/voxel, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-199-migrate-to-world-transform
   - **Blocked by:** T-197
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `grep -r "C_PositionGlobal3D"` and `grep -r "C_Position3D"` return only references in this ticket's deletion commits; (2) `grep -r "C_Rotation"` cleaned up; (3) every consumer reads `C_WorldTransform` (or `C_LocalTransform` for write paths); (4) `IRShapeDebug` render-debug-loop shot list passes pre/post-migration; (5) IRVoxelEditor/current editor demo functions: gizmos move, voxels position correctly, hitboxes resolve; (6) no regressions in tests: `test/ecs/*`, `test/asset/*`; (7) `engine/prefabs/irreden/common/CLAUDE.md` and `engine/prefabs/irreden/voxel/CLAUDE.md` updated to describe post-migration model; (8) verified on linux-debug (OpenGL) and macos-debug (Metal)
@@ -191,18 +191,18 @@ Avoid:
   - **ID:** T-200
   - **Area:** engine/prefabs/irreden/voxel, docs
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-200-skeleton-joint-entities
   - **Blocked by:** (none)
   - **Acceptance:** (1) `C_Skeleton` and `C_Joint` components compile and register; (2) `C_JointHierarchy` header has a deprecation comment pointing at `C_Skeleton` with a brief migration note for #605 implementers; (3) `engine/prefabs/irreden/voxel/CLAUDE.md` describes the entity-based joint model and severance design; (4) `#605`'s body or the linked design doc (`docs/design/entity-editor-epic.md`) reflects the refined 2.1 approach; (5) fleet-build clean on linux-debug
   - **Issue:** #737
   - **Notes:** Architectural foundation only — no GPU upload system, no animation, no severance API yet. Those live in #605 Phase 2 (after SQT propagation from T-197 and editor Phase 1 from #604 land). Key design point: `C_Skeleton.joints_` is a flat ordered list (canonical bone-index space); indices are stable across saves, severance leaves a hole rather than shifting. This ticket should NOT bake assumptions about which transform component joints carry (SQT not landed yet); leave joint-entity transform type unspecified in the header with a comment. Coordinates with #731 (joint propagation reuses `SYSTEM_PROPAGATE_TRANSFORM`).
   - **Links:**
 
-- [~] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
+- [ ] **script: complete T-188 layering — decouple prefab_api.cpp + shape descriptor from IRRender** — remove the residual `IrredenEngineRendering` link from `engine/script/` by moving `ShapeType`, `getActiveCanvasEntityOrNull`, and voxel pool allocator to render-neutral headers/modules
   - **ID:** T-201
   - **Area:** engine/script, engine/render, engine/prefabs/irreden/voxel, engine/math, engine/world
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) fresh `cmake --preset linux-debug` (or `macos-debug`) configure + `fleet-build --target IrredenEngineScripting` builds without `IrredenEngineRendering` in the script link list; (2) `IrredenEngineTest` builds and all `PrefabApi.*` tests pass; (3) `IRShapeDebug` and standard demos build and run; (4) `engine/script/src/prefab_api.cpp` no longer includes `<irreden/ir_render.hpp>`; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #739
