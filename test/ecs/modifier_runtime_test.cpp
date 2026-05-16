@@ -538,6 +538,62 @@ TEST_F(IRModifierScalarUpsertTest, SecondCallOverwrites) {
     EXPECT_EQ(mods[0].ticksRemaining_, -1);
 }
 
+TEST_F(IRModifierScalarUpsertTest, OverridesPriorTickRemaining) {
+    auto source = IREntity::createEntity();
+    auto target = IREntity::createEntity(IRComponents::C_Modifiers{});
+
+    IRPrefab::Modifier::push(target, m_field, TransformKind::ADD, 1.0f, source, 1);
+    ASSERT_EQ(IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_.size(), 1u);
+
+    IRPrefab::Modifier::upsertBySource(target, m_field, TransformKind::ADD, 5.0f, source);
+
+    auto &mods = IREntity::getComponent<IRComponents::C_Modifiers>(target).modifiers_;
+    ASSERT_EQ(mods.size(), 1u);
+    EXPECT_EQ(mods[0].ticksRemaining_, -1);
+    EXPECT_FLOAT_EQ(mods[0].param_, 5.0f);
+}
+
+// ---- upsertBySourceGlobal: scalar -------------------------------------------
+
+class IRModifierGlobalScalarUpsertTest : public testing::Test {
+  protected:
+    IRModifierGlobalScalarUpsertTest()
+        : m_entity_manager{} {
+        IREntity::singletonEntity<IRComponents::C_GlobalModifiers>();
+        m_field = IRPrefab::Modifier::registerField("test.upsert_global_scalar");
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IRComponents::FieldBindingId m_field{IRComponents::kInvalidFieldId};
+};
+
+TEST_F(IRModifierGlobalScalarUpsertTest, FirstCallAppends) {
+    auto source = IREntity::createEntity();
+
+    IRPrefab::Modifier::upsertBySourceGlobal(m_field, TransformKind::ADD, 3.0f, source);
+
+    auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(
+        IRPrefab::Modifier::globalsEntity()
+    );
+    ASSERT_EQ(c.modifiers_.size(), 1u);
+    EXPECT_FLOAT_EQ(c.modifiers_[0].param_, 3.0f);
+    EXPECT_EQ(c.modifiers_[0].ticksRemaining_, -1);
+}
+
+TEST_F(IRModifierGlobalScalarUpsertTest, SecondCallOverwrites) {
+    auto source = IREntity::createEntity();
+
+    IRPrefab::Modifier::upsertBySourceGlobal(m_field, TransformKind::ADD, 3.0f, source);
+    IRPrefab::Modifier::upsertBySourceGlobal(m_field, TransformKind::ADD, 7.0f, source);
+
+    auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(
+        IRPrefab::Modifier::globalsEntity()
+    );
+    ASSERT_EQ(c.modifiers_.size(), 1u);
+    EXPECT_FLOAT_EQ(c.modifiers_[0].param_, 7.0f);
+    EXPECT_EQ(c.modifiers_[0].ticksRemaining_, -1);
+}
+
 // ---- upsertBySourceInPlace: scalar ------------------------------------------
 
 TEST(ModifierUpsertInPlaceScalar, RepeatedCallStaysSizeOne) {
