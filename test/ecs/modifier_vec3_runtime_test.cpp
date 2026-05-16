@@ -6,6 +6,7 @@
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -380,6 +381,69 @@ TEST(ModifierDirectRef, PushFrameLocalVec3DoesNotTriggerEntityLookup) {
         mods, kFieldA, TransformKind::ADD, IRMath::vec3(0.0f), IREntity::kNullEntity
     );
     EXPECT_EQ(mods.modifiersVec3_.size(), 1u);
+}
+
+TEST(ModifierDirectRef, PushOneFrameScalarDepositsInScalarVectorWithTicks2) {
+    IRComponents::C_Modifiers mods;
+    IRPrefab::Modifier::pushOneFrame(
+        mods, kFieldA, TransformKind::MULTIPLY, 3.0f, IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiersVec3_.size(), 0u);
+    ASSERT_EQ(mods.modifiers_.size(), 1u);
+    EXPECT_EQ(mods.modifiers_[0].field_, kFieldA);
+    EXPECT_FLOAT_EQ(mods.modifiers_[0].param_, 3.0f);
+    EXPECT_EQ(mods.modifiers_[0].ticksRemaining_, 2);
+}
+
+TEST(ModifierDirectRef, PushFrameLocalQuatDepositsInQuatVectorWithTicks1) {
+    IRComponents::C_Modifiers mods;
+    IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    IRPrefab::Modifier::pushFrameLocal(
+        mods, kFieldA, TransformKind::MULTIPLY, identity, IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiers_.size(), 0u);
+    ASSERT_EQ(mods.modifiersVec3_.size(), 0u);
+    ASSERT_EQ(mods.modifiersQuat_.size(), 1u);
+    EXPECT_EQ(mods.modifiersQuat_[0].field_, kFieldA);
+    EXPECT_EQ(mods.modifiersQuat_[0].kind_, TransformKind::MULTIPLY);
+    EXPECT_EQ(mods.modifiersQuat_[0].ticksRemaining_, 1);
+}
+
+TEST(ModifierDirectRef, PushOneFrameQuatDepositsInQuatVectorWithTicks2) {
+    IRComponents::C_Modifiers mods;
+    IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    IRPrefab::Modifier::pushOneFrame(
+        mods, kFieldA, TransformKind::MULTIPLY, identity, IREntity::kNullEntity
+    );
+
+    ASSERT_EQ(mods.modifiersQuat_.size(), 1u);
+    EXPECT_EQ(mods.modifiersQuat_[0].field_, kFieldA);
+    EXPECT_EQ(mods.modifiersQuat_[0].kind_, TransformKind::MULTIPLY);
+    EXPECT_EQ(mods.modifiersQuat_[0].ticksRemaining_, 2);
+}
+
+TEST(ModifierDirectRef, PushFrameLocalQuatAddKindFiresAssertAndNoOps) {
+    IRComponents::C_Modifiers mods;
+    IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_THROW(
+        IRPrefab::Modifier::pushFrameLocal(
+            mods, kFieldA, TransformKind::ADD, identity, IREntity::kNullEntity),
+        std::runtime_error
+    );
+    EXPECT_EQ(mods.modifiersQuat_.size(), 0u);
+}
+
+TEST(ModifierDirectRef, PushOneFrameQuatClampMinKindFiresAssertAndNoOps) {
+    IRComponents::C_Modifiers mods;
+    IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_THROW(
+        IRPrefab::Modifier::pushOneFrame(
+            mods, kFieldA, TransformKind::CLAMP_MIN, identity, IREntity::kNullEntity),
+        std::runtime_error
+    );
+    EXPECT_EQ(mods.modifiersQuat_.size(), 0u);
 }
 
 // ---- Push API: type-mismatch dispatch ------------------------------------
