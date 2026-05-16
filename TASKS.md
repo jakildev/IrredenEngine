@@ -372,11 +372,11 @@ Avoid:
   - **Notes:** Phase 1 F-1.5 save/load acceptance gate for entity-editor epic #604 / umbrella #213. Format support already exists (F-0.6, F-0.7); this wires editor save/load through it. Risk: binary .vxs must carry per-voxel metadata bits — if any field is missing, escalate before extending format (additions go in sidecar, not silent v3 churn). See docs/design/entity-editor-epic.md §Phase 1.
   - **Links:**
 
-- [ ] **tooling: investigate + fix Ubuntu fleet failure to add approved label on PR approval** — reproduce and fix the root cause of the Ubuntu fleet not adding the expected label when a PR is approved
+- [~] **tooling: investigate + fix Ubuntu fleet failure to add approved label on PR approval** — reproduce and fix the root cause of the Ubuntu fleet not adding the expected label when a PR is approved
   - **ID:** T-216
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) root cause identified (permission gap, gh CLI config, or fleet script bug); (2) fix PR or workaround that makes label-adding work correctly on Ubuntu 24.04 WSL2 fleet; (3) PR approval flow on Ubuntu verified to add correct label after fix
   - **Issue:** #778
