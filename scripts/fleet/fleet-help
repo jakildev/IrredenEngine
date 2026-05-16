@@ -175,6 +175,10 @@ Parallel-agent fleet (tmux + Claude)
   fleet-gate-status [--json]     show usage gate + per-pane cooldown state
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
+  fleet-iteration-summary <agent> "<text>"
+                                 write a per-iteration summary to
+                                 ~/.fleet/iteration-summaries/ (used by
+                                 fleet-down --summary for coverage)
   witness [--once]               detect stale heartbeats (architects only)
   fleet-pr view|diff|comments <N> [--repo engine|game]
                                  read scout's per-PR cache + gh fallback
