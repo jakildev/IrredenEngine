@@ -299,11 +299,11 @@ Avoid:
   - **Notes:** Slot key is the triple `(source_, field_, kind_)` — ADD and MULTIPLY slots from same source coexist. Hit → overwrite `param_` AND reset `ticksRemaining_=-1` (prevents stale decay countdown). Miss → push_back with `ticksRemaining_=-1`. `upsertBySourceInPlace` skips defensive checks (caller is a system with init-time field id). `removeBySource` already handles slot teardown via existing pre-destroy hook. Lua bindings + lambda upsert out of scope for v1. Predecessor: #746 (T-192). Opus-worker plan filed in issue #758 comment — read it before implementing.
   - **Links:**
 
-- [ ] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
+- [~] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
   - **ID:** T-209
   - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Stack:** T-208..T-210 modifier-ergonomics
   - **Acceptance:** (1) `pushFrameLocal` + `pushOneFrame` overloads (scalar + vec3) live in `engine/prefabs/irreden/common/modifier.hpp`; (2) Lua bindings in `modifier_lua.hpp` expose both names; (3) `PERIODIC_IDLE_POSITION_OFFSET` migrated to `pushFrameLocal` (or marked superseded if T-208 `upsertBySource` lands first); (4) `docs/design/modifiers.md` documents which to use when and demotes raw `push(..., ticksRemaining)` to "custom multi-frame decay only"; (5) fleet-build clean on linux-debug
