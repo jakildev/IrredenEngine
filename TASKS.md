@@ -151,24 +151,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **engine: C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM** — canonical SQT transform pair and a propagation system that walks the parent chain in topological order, supporting rotation and scale throughout multi-level hierarchies
-  - **ID:** T-197
-  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update, engine/entity, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-197-sqt-transform-propagate
-  - **Blocked by:** (none)
-  - **Stack:** T-197..T-199 transform-consolidation
-  - **Acceptance:** (1) `C_LocalTransform` + `C_WorldTransform` exist and are auto-attached by `createEntity`; (2) `SYSTEM_PROPAGATE_TRANSFORM` registered and runs in UPDATE pipeline after modifier resolution; (3) root entities: `world == local` (post-modifier); (4) 3-level chain: grandchild world transform correctly reflects parent+grandparent rotation+scale+translation; (5) modifier-resolved vec3/quat fields (POSITION, ROTATION, SCALE) applied inside propagation step; (6) test fixture: 10-level deep chain with non-trivial rotation/scale, assertions on grandchild world transform; (7) `engine/prefabs/irreden/common/CLAUDE.md` documents the propagation contract and ordering; (8) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #734
-  - **Notes:** Part of epic #731 (transform consolidation, Phase 2). Blocks T-199 (consumer migration). Topological ordering is non-negotiable — the system must guarantee parents-before-children. `setParent` mid-frame means new child won't see parent transform until next frame; document this. All quat/vec ops through `engine/math/` — no raw glm:: calls. Sibling: T-198 (quat modifier kind, parallel — needed for rotation perturbations to flow through this system).
-  - **Links:**
-
 - [~] **engine: migrate position/rotation consumers to C_WorldTransform — retire C_Position3D/C_PositionGlobal3D/C_Rotation** — swap every consuming system from legacy position/rotation components to the new SQT transform pair and delete the retired components
   - **ID:** T-199
   - **Area:** engine/prefabs/irreden/render, engine/prefabs/irreden/update, engine/prefabs/irreden/input, engine/prefabs/irreden/voxel, engine/entity
   - **Model:** opus
   - **Owner:** claude/T-199-migrate-to-world-transform
-  - **Blocked by:** T-197
+  - **Blocked by:** (none)
   - **Stack:** T-197..T-199 transform-consolidation
   - **Acceptance:** (1) `grep -r "C_PositionGlobal3D"` and `grep -r "C_Position3D"` return only references in this ticket's deletion commits; (2) `grep -r "C_Rotation"` cleaned up; (3) every consumer reads `C_WorldTransform` (or `C_LocalTransform` for write paths); (4) `IRShapeDebug` render-debug-loop shot list passes pre/post-migration; (5) IRVoxelEditor/current editor demo functions: gizmos move, voxels position correctly, hitboxes resolve; (6) no regressions in tests: `test/ecs/*`, `test/asset/*`; (7) `engine/prefabs/irreden/common/CLAUDE.md` and `engine/prefabs/irreden/voxel/CLAUDE.md` updated to describe post-migration model; (8) verified on linux-debug (OpenGL) and macos-debug (Metal)
   - **Issue:** #736
@@ -210,11 +198,11 @@ Avoid:
 
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -237,6 +225,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-197** — C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
 - [x] **T-198** — quat modifier kind — extend modifier compose for rotation perturbations · Owner: claude/T-198-quat-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/748
 - [x] **T-193** — Lua input & command bindings (PR 2/2 implementation) · Owner: claude/T-193-lua-input-commands-impl · PR: https://github.com/jakildev/IrredenEngine/pull/747
 - [x] **T-192** — delete C_PositionOffset3D — migrate idle bob + gizmo to vec3 modifiers · Owner: claude/T-192-delete-position-offset · PR: https://github.com/jakildev/IrredenEngine/pull/746
@@ -256,4 +245,3 @@ Avoid:
 - [x] **T-176** — GPU particles: port stateless-particles 2x3 voxel-diamond render fix · Owner: claude/T-176-gpu-particles-voxel-diamond · PR: https://github.com/jakildev/IrredenEngine/pull/699
 - [x] **T-173** — prefab: Lua prefab format — Prefab.register/spawn + schema validation · Owner: claude/T-173-prefab-lua-format · PR: https://github.com/jakildev/IrredenEngine/pull/703
 - [x] **T-178** — engine/entity singleton reentrancy guard doc + cache-reset test · Owner: claude/T-178-singleton-reentrancy-doc · PR: https://github.com/jakildev/IrredenEngine/pull/713
-- [x] **T-179** — asset: canonicalize memcpy in binary_io + voxel_set_format (bit_cast + chunk-tag helpers) · Owner: claude/T-179-asset-bit-cast-tag-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/712
