@@ -28,8 +28,10 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
-    # Required: prefab_api.cpp uses IRRender::ShapeType + getActiveCanvasEntityOrNull
-    # via component_{shape_descriptor,voxel_set}.hpp. See #739 for the layering fix.
+    # Required: prefab_api.cpp uses IRRender::ShapeType (via
+    # ir_render_types.hpp) and IRRender::getActiveCanvasEntityOrNull (via
+    # render/active_canvas.hpp) through component_{shape_descriptor,voxel_set}.hpp.
+    # See #739 for the layering fix; #753 (T-205) moved the snapshot to its own header.
     IrredenEngineRendering
     # T-193 PR 2: lua_command_bindings.hpp exposes IRCommand on the Lua
     # surface, so the public scripting interface needs the IRCommand

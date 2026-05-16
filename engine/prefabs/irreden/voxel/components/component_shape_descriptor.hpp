@@ -2,7 +2,8 @@
 #define COMPONENT_SHAPE_DESCRIPTOR_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_render.hpp>
+#include <irreden/render/active_canvas.hpp>
+#include <irreden/render/ir_render_types.hpp>
 
 using namespace IRMath;
 
