@@ -155,6 +155,20 @@ Runtime entry points (all `inline`, header-only):
   `registerResolverPipeline()`. Intended for tests and diagnostics;
   production code should use `pushGlobal` / `removeBySource`.
 
+Inline-apply factory: `IRPrefab::Modifier::applyVec3ModifierTo<
+TargetComponent, Member>(name, field)` in
+[`modifier_apply.hpp`](modifier_apply.hpp) generalizes the
+`APPLY_POSITION_OFFSET` shape — *iterate
+`<TargetComponent, C_Modifiers>`, compose one vec3 field against a
+`vec3(0)` base, ADD the result to a vec3 member of the target
+component*. Use it for any per-frame additive vec3 channel with
+exactly one consumer where global-modifier integration is not
+required. Channels with multiple readers, global-modifier needs, or
+multiplicative apply semantics belong on the structured-resolver
+path (`MODIFIER_RESOLVE_GLOBAL` / `_EXEMPT` + read from
+`C_ResolvedFields`). See `docs/design/modifiers.md` §"Inline-apply
+pattern" for the discriminator and rationale.
+
 Composition core lives in `modifier_compose.hpp` and is called from
 both the resolver tick and `applyToField`. Order is non-obvious:
 
