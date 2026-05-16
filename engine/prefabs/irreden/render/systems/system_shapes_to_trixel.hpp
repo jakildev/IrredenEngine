@@ -236,6 +236,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // the shader uses to rasterize each shape — so the
             // per-tile iso footprint matches the SDF surface that
             // pixel ends up writing.
+            int gridX = 1;
             const int tileCount = buildAndUploadTileDescriptors(
                 gpuShapes,
                 shapeTileDescBuf_,
@@ -243,11 +244,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 renderMode,
                 rasterYaw,
                 yawCos_,
-                yawSin_
+                yawSin_,
+                gridX
             );
             if (tileCount == 0) {
                 continue;
             }
+            const int gridY = IRMath::divCeil(tileCount, gridX);
+            frameData_.tileGridX = gridX;
 
             shapesProgram_->use();
             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
@@ -260,7 +264,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.passIndex = 0;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
+            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(gridX), static_cast<std::uint32_t>(gridY), 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             // Pass 1: color + entity ID where depth matches. Colors is bound
@@ -277,7 +281,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.passIndex = 1;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(tileCount), 1, 1);
+            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(gridX), static_cast<std::uint32_t>(gridY), 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             auto &timing = IRRender::gpuStageTiming();
@@ -368,7 +372,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         IRRender::SubdivisionMode renderMode,
         float rasterYaw,
         float yawCos,
-        float yawSin
+        float yawSin,
+        int &gridXOut
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
@@ -432,9 +437,20 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     upload:
         const int tileCount = static_cast<int>(tiles.size());
         if (tileCount == 0) {
+            gridXOut = 1;
             return 0;
         }
-        tileDescBuf->subData(0, tileCount * sizeof(ShapeTileDescriptor), tiles.data());
+        constexpr int kMaxDispatchGroupsX = 1024;
+        const int gridX = IRMath::min(tileCount, kMaxDispatchGroupsX);
+        const int gridY = IRMath::divCeil(tileCount, gridX);
+        const int paddedCount = gridX * gridY;
+        ShapeTileDescriptor sentinel{};
+        sentinel.shapeIndex = -1;
+        while (static_cast<int>(tiles.size()) < paddedCount) {
+            tiles.push_back(sentinel);
+        }
+        tileDescBuf->subData(0, paddedCount * sizeof(ShapeTileDescriptor), tiles.data());
+        gridXOut = gridX;
         return tileCount;
     }
 };

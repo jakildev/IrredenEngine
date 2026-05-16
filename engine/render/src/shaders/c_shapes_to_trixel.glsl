@@ -31,7 +31,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    uniform int tileGridX;
 };
 
 struct ShapeDescriptor {
@@ -706,8 +706,10 @@ int findSurfaceDepth(ivec2 isoRel, uint shapeType, vec4 params, uint flags,
 }
 
 void main() {
-    ShapeTileDescriptor tile = tiles[gl_WorkGroupID.x];
+    int tileIdx = int(gl_WorkGroupID.x) + int(gl_WorkGroupID.y) * tileGridX;
+    ShapeTileDescriptor tile = tiles[tileIdx];
     int shapeIndex = tile.shapeIndex;
+    if (shapeIndex < 0) return;
     ivec2 isoOrigin = tile.tileIsoOrigin;
     ShapeDescriptor shape = shapes[shapeIndex];
 
