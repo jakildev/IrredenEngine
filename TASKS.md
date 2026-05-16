@@ -221,11 +221,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [ ] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
+- [~] **render: Linux/OpenGL backend parity — gcc-13 compile + GLSL shaders + trixel pipeline** — verify and fix the engine/render OpenGL path on linux-debug (WSL2/Ubuntu 24.04/gcc-13) so it compiles clean, all compute shaders load, and the trixel/lighting/camera pipeline matches the leading backend
   - **ID:** T-202
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-build --target IRShapeDebug` succeeds on linux-debug (gcc-13, OpenGL); (2) all GLSL compute shaders in `engine/render/src/shaders/` load and dispatch without GL errors; (3) trixel pipeline (canvas → composite → framebuffer), lighting stage, and camera/coordinate transform produce output matching the Metal reference at `shape_debug` level; (4) `render-debug-loop` oracle passes on linux-debug; (5) Metal-only features documented (not ported) in engine/render/CLAUDE.md; (6) fleet-build clean on linux-debug
   - **Issue:** #757
