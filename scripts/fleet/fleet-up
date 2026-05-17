@@ -507,9 +507,16 @@ baseline = [
     # ad-hoc relabel passes.
     "Bash(fleet-issue:*)",
     "Bash(fleet-pr:*)",
+    "Bash(fleet-pr-clear-feedback-labels:*)",
     "Bash(fleet-iteration-summary:*)",
     "Bash(fleet-worktree-busy-branches:*)",
     "Bash(fleet-labels:*)",
+    # GitHub CLI — every role uses gh pr edit/review/comment for label
+    # management and review posting. Without this entry, headless
+    # claude --print runs (fleet-dispatcher) see a permission prompt they
+    # can't answer, so all label writes silently fail. Confirmed root cause
+    # of the Ubuntu fleet failing to set fleet:approved (issue #778 / T-216).
+    "Bash(gh:*)",
     # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
     # in the user-level allowlist matches commands STARTING with `git`,
     # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an

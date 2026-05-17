@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# fleet-iteration-summary — write a per-iteration summary for fleet-down --summary.
+#
+# Usage: fleet-iteration-summary <worktree-basename> "<summary text>"
+#
+# Writes to ~/.fleet/iteration-summaries/<basename>-<timestamp>.txt so the
+# witness and fleet-down --summary have per-agent coverage even when the pane
+# is between iterations at shutdown.
+#
+# Convention (from role docs): summary must be under ~100 words; must NOT
+# contain backticks (bash evaluates them as command substitution inside
+# double-quoted args, stripping or erroring the content).
+#
+# Source of truth: scripts/fleet/fleet-iteration-summary in the engine repo.
+# Installed to ~/bin/fleet-iteration-summary by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: fleet-iteration-summary <worktree-basename> <summary>" >&2
+    exit 1
+fi
+
+BASENAME="$1"
+SUMMARY="$2"
+
+SUMMARIES_DIR="${FLEET_SUMMARIES_DIR:-$HOME/.fleet/iteration-summaries}"
+mkdir -p "$SUMMARIES_DIR"
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+printf '%s\n' "$SUMMARY" > "$SUMMARIES_DIR/${BASENAME}-${TIMESTAMP}.txt"
