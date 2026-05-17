@@ -210,17 +210,6 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **build/demos: Linux demo validation suite — build + run + screenshot all demos on linux-debug** — for each demo listed in #757, confirm it builds clean and renders a correct frame on linux-debug, commit reference screenshots, and open per-demo PRs
-  - **ID:** T-203
-  - **Area:** creations/demos, build
-  - **Model:** sonnet
-  - **Owner:** claude/T-203-linux-demo-validation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) every demo in #757's in-scope list either (a) builds + runs + renders a correct frame on linux-debug, or (b) is explicitly documented as unsupported (metal_clear_test excluded on Linux, midi_keyboard WSLg-unsupported); (2) reference screenshots committed under docs/pr-screenshots/ref/linux/ or wherever `render-verify` expects them; (3) per-demo PRs include screenshots in the body; (4) shape_debug fixed first (it is the render-debug-loop oracle)
-  - **Issue:** #757
-  - **Notes:** One PR per demo is the right granularity. Use the `render-debug-loop` and `attach-screenshots` skills. After T-202 lands, Sonnet workers can pick demos in parallel. The `fleet:needs-linux-smoke` label triggers cross-host smoke validation automatically.
-  - **Links:**
-
 - [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
   - **ID:** T-206
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
@@ -341,6 +330,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-203** — Linux demo validation suite — fix SHAPES_TO_TRIXEL 2D dispatch crash + all demos pass on linux-debug · Owner: claude/T-203-linux-demo-validation · PR: https://github.com/jakildev/IrredenEngine/pull/782
 - [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
@@ -360,4 +350,3 @@ Avoid:
 - [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
-- [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
