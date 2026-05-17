@@ -267,11 +267,11 @@ Avoid:
   - **Notes:** Undo data layout (delta vs. snapshot, eviction policy, palette-index vs. raw-RGBA storage) is the first undo system in the engine — choice constrains every later Phase 1/2/3 system. Part of entity-editor epic #604 / umbrella #213. See `docs/design/entity-editor-epic.md` §Phase 1.
   - **Links:**
 
-- [~] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
+- [ ] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
   - **ID:** T-212
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
@@ -326,7 +326,7 @@ Avoid:
   - **Notes:** Sparse issue. Manifests as PRs being approved without the expected fleet label added. Likely a permission or gh CLI config issue on Ubuntu 24.04 WSL2. Related to fleet bring-up fixes in PRs #768 (tmux/bash compat) and #769 (permission allowlist). Investigate fleet scripts that invoke `gh pr edit --add-label` in the approval flow.
   - **Links:**
 
-- [~] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
+- [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
   - **Model:** opus
@@ -337,11 +337,11 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [ ] **tooling: allow fleet agents to force-push claude/* branches in settings.json** — replace the broad `git push --force-with-lease` deny with branch-scoped denies that protect master/main but allow fleet rebases on `claude/*` branches
+- [~] **tooling: allow fleet agents to force-push claude/* branches in settings.json** — replace the broad `git push --force-with-lease` deny with branch-scoped denies that protect master/main but allow fleet rebases on `claude/*` branches
   - **ID:** T-218
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-218-force-push-allow
   - **Blocked by:** (none)
   - **Acceptance:** (1) `claude/*` branch force-with-lease pushes succeed without a human approval prompt in headless fleet mode; (2) `git push --force-with-lease origin master` and `origin main` remain blocked; (3) `git push --force` to any branch remains blocked; (4) a fleet agent can successfully rebase and force-push a `claude/*` branch end-to-end (verify with T-199 PR #787 or a fresh test branch)
   - **Issue:** #783
