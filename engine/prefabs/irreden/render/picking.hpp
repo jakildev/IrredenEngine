@@ -280,7 +280,7 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
             const IRMath::vec3 candidateCenter = vs.worldOrigin_ + IRMath::vec3(localInt);
             const IRMath::vec3 delta = worldPoint - candidateCenter;
             // Inside the unit voxel cube?
-            if (IRMath::SDF::box(delta, IRMath::vec3(0.0f)) > IRMath::SDF::kSurfaceThreshold)
+            if (IRMath::SDF::box(delta, IRMath::vec3(0.5f)) > 0.0f)
                 continue;
             const std::size_t flatIdx =
                 static_cast<std::size_t>(IRMath::index3DtoIndex1D(localInt, vs.size_));
