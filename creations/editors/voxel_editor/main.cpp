@@ -72,6 +72,9 @@
 #include <utility>
 #include <vector>
 
+// Symmetry modes (T-212)
+#include "symmetry.hpp"
+
 using namespace IRComponents;
 using namespace IRMath;
 
@@ -160,6 +163,8 @@ EditorState g_editor;
 namespace {
 
 constexpr float kRotationSensitivity = 0.004f;
+
+SymmetryState g_symmetry;
 
 struct ScrollZoomParams {
     IREntity::EntityId cameraEntity_ = IREntity::kNullEntity;
@@ -289,6 +294,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space: re-center + reset yaw");
     IR_LOG_INFO("  Ctrl+Z: undo last stroke");
+    IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -572,6 +578,25 @@ void initCommands() {
         }
     );
 
+    // X/Y/Z: toggle mirror-symmetry axis.
+    auto logSymmetry = []() {
+        IR_LOG_INFO("Symmetry: X=%s Y=%s Z=%s",
+            IRVoxelEditor::g_symmetry.enableX_ ? "ON" : "OFF",
+            IRVoxelEditor::g_symmetry.enableY_ ? "ON" : "OFF",
+            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF");
+    };
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonX,
+        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_; logSymmetry(); }
+    );
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonY,
+        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_; logSymmetry(); }
+    );
     // Ctrl+Z — undo the most recent stroke. The modifier check happens
     // inline because IRCommand bindings don't take modifier masks; a
     // bare Z press without Ctrl is intentionally ignored (Z alone may
@@ -585,6 +610,12 @@ void initCommands() {
                 IRVoxelEditor::undoOne();
             }
         }
+    );
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonZ,
+        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_; logSymmetry(); }
     );
 }
 
