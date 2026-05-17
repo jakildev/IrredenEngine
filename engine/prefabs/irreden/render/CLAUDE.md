@@ -91,11 +91,19 @@ the ECS surface.
 - `VOXEL_PICKING` — editor input driver. On left-click PRESSED, casts a
   ray through the cursor (via `IRPrefab::Picking::castVoxelRay` —
   composes the same screen→world inverse `IRRender::mouseWorldPos3DAtIsoDepth`
-  uses) and walks SDF shapes to find the first hit. Writes
-  `C_VoxelSelection` on the highlight entity and toggles its
+  uses) and walks the union of visible `C_ShapeDescriptor` entities
+  plus the active voxels of every `C_VoxelSetNew` entity to find the
+  first hit. Voxel-set hits also carry a `faceNormal_` (±1 along the
+  dominant axis of `worldHitPos − voxelCenter`) so consumers can
+  compute place-adjacent target coords as `voxelPos + faceNormal`.
+  Writes `C_VoxelSelection` on the highlight entity and toggles its
   `C_ShapeDescriptor::flags_` visibility. Register after the camera
   systems and before `VOXEL_TO_TRIXEL_STAGE_1` so the highlight
-  rasterizes at the new voxel the same frame.
+  rasterizes at the new voxel the same frame. The CPU-side path is
+  the default; `picking.hpp`'s header doc names the
+  `IRRender::getEntityIdAtMouseTrixel` GPU readback as a documented
+  fallback for perf-critical creations that can absorb a one-frame
+  lag.
 
 ## Level-of-detail (UPDATE pipeline; Phase 1)
 
