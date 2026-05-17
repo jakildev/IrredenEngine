@@ -232,18 +232,6 @@ Avoid:
   - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
   - **Links:**
 
-- [~] **modifier: replace ticksRemaining footgun with named pushFrameLocal / pushOneFrame APIs** — add two named wrappers encoding pipeline-position semantics; migrate PERIODIC_IDLE_POSITION_OFFSET; expose both in Lua bindings
-  - **ID:** T-209
-  - **Area:** engine/prefabs/irreden/common, engine/prefabs/irreden/update
-  - **Model:** sonnet
-  - **Owner:** claude/T-209-pushFrameLocal-rebased
-  - **Blocked by:** (none)
-  - **Stack:** T-208..T-210 modifier-ergonomics
-  - **Acceptance:** (1) `pushFrameLocal` + `pushOneFrame` overloads (scalar + vec3) live in `engine/prefabs/irreden/common/modifier.hpp`; (2) Lua bindings in `modifier_lua.hpp` expose both names; (3) `PERIODIC_IDLE_POSITION_OFFSET` migrated to `pushFrameLocal` (or marked superseded if T-208 `upsertBySource` lands first); (4) `docs/design/modifiers.md` documents which to use when and demotes raw `push(..., ticksRemaining)` to "custom multi-frame decay only"; (5) fleet-build clean on linux-debug
-  - **Issue:** #759
-  - **Notes:** Root cause: `ticksRemaining=1` for in-pipeline writers vs. `ticksRemaining=2` for outside-pipeline writers (Lua, input handlers) — two paragraphs of ordering reasoning to pick a literal. `pushFrameLocal` bakes `ticksRemaining=1`; `pushOneFrame` bakes `ticksRemaining=2`. Keep raw `push` for multi-frame decay (buffs etc). Note: if T-208 `upsertBySource` lands first, `PERIODIC_IDLE_POSITION_OFFSET` may already be migrated — still add wrappers for the Lua/input-handler use case. Predecessor: #746 (T-192). Sibling: T-208 (upsertBySource).
-  - **Links:**
-
 - [~] **editor: F-1.1 — place/erase + palette panel + undo stack** — core authoring loop: left-click places, right-click erases, palette panel with ≥16 swatches, per-stroke undo stack with eviction cap
   - **ID:** T-211
   - **Area:** creations/editors, engine/prefabs/irreden/voxel
@@ -268,11 +256,11 @@ Avoid:
   - **Notes:** Bounded math; mirrors off the place/erase stroke from F-1.1 (T-211). Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
   - **Links:**
 
-- [~] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
+- [ ] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
   - **ID:** T-213
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) default Layer 0 exists on empty scene; (2) create new layer → it becomes active → subsequent placements carry its layer id; (3) toggle layer visibility → its voxels hide in viewport AND don't pick; (4) renaming a layer doesn't break per-voxel layer-id references (id stable, name is display-only); (5) reordering layers in panel doesn't change which voxels belong where; (6) deleting a layer moves its voxels to default layer or prompts confirmation; (7) layer membership round-trips through F-1.5 save/load; (8) fleet-build clean on linux-debug
@@ -330,6 +318,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-209** — modifier: replace ticksRemaining footgun with pushFrameLocal / pushOneFrame · Owner: claude/T-209-pushFrameLocal-rebased · PR: https://github.com/jakildev/IrredenEngine/pull/784
 - [x] **T-203** — Linux demo validation suite — fix SHAPES_TO_TRIXEL 2D dispatch crash + all demos pass on linux-debug · Owner: claude/T-203-linux-demo-validation · PR: https://github.com/jakildev/IrredenEngine/pull/782
 - [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
@@ -349,4 +338,3 @@ Avoid:
 - [x] **T-189** — prefab attach DENSE/HYBRID voxel_ref as C_VoxelSetNew on spawn · Owner: claude/T-189-prefab-dense-attach · PR: https://github.com/jakildev/IrredenEngine/pull/729
 - [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
-- [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
