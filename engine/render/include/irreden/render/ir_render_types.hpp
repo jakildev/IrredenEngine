@@ -248,7 +248,10 @@ struct GPUShapesFrameData {
     float visualYaw = 0.0f;
     float rasterYaw = 0.0f;
     float residualYaw = 0.0f;
-    float _yawPadding = 0.0f;
+    // X dimension of the 2D dispatch grid used by SHAPES_TO_TRIXEL. The shader
+    // computes tileIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * tileGridX so
+    // the dispatch stays within GL_MAX_COMPUTE_WORK_GROUP_COUNT[0].
+    int tileGridX = 1;
 };
 
 struct FrameDataSun {

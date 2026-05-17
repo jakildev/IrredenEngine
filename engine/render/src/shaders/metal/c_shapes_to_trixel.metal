@@ -28,7 +28,7 @@ struct ShapesFrameData {
     float visualYaw;
     float rasterYaw;
     float residualYaw;
-    float _yawPadding;
+    int tileGridX;
 };
 
 struct ShapeDescriptor {
@@ -819,8 +819,10 @@ kernel void c_shapes_to_trixel(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
-    const ShapeTileDescriptor tile = tiles[groupId.x];
+    const uint tileIdx = groupId.x + groupId.y * uint(frameData.tileGridX);
+    const ShapeTileDescriptor tile = tiles[tileIdx];
     const int shapeIndex = tile.shapeIndex;
+    if (shapeIndex < 0) return;
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
 
