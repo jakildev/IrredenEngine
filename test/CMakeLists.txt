@@ -34,6 +34,7 @@ add_executable(IrredenEngineTest
   render/camera_yaw_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/per_canvas_light_scope_test.cpp
+  render/picking_face_normal_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sprite_animation_test.cpp
