@@ -187,11 +187,11 @@ Avoid:
 
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
+- [ ] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
   - **ID:** T-206
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** claude/T-206-voxel-pool-api-split
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #754
@@ -248,7 +248,7 @@ Avoid:
   - **ID:** T-212
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-212-symmetry-modes
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
@@ -260,7 +260,7 @@ Avoid:
   - **ID:** T-213
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-213-layer-system
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) default Layer 0 exists on empty scene; (2) create new layer → it becomes active → subsequent placements carry its layer id; (3) toggle layer visibility → its voxels hide in viewport AND don't pick; (4) renaming a layer doesn't break per-voxel layer-id references (id stable, name is display-only); (5) reordering layers in panel doesn't change which voxels belong where; (6) deleting a layer moves its voxels to default layer or prompts confirmation; (7) layer membership round-trips through F-1.5 save/load; (8) fleet-build clean on linux-debug
@@ -272,7 +272,7 @@ Avoid:
   - **ID:** T-214
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-214-frame-animation
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) add frame → new editable snapshot in timeline; switching shows empty or duplicated grid; (2) edit voxels in frame N → frame N+1 unaffected; (3) scrubber drags through frames smoothly, viewport updates per drag tick; (4) play button cycles at configurable FPS (test 6 fps and 24 fps); (5) loop and ping-pong modes both work; (6) frames round-trip through F-1.5 save/load identically; (7) undo (Ctrl-Z) scoped to active frame, doesn't reach into another frame's history; (8) per-frame undo cap documented in impl PR; (9) fleet-build clean on linux-debug
@@ -318,7 +318,7 @@ Avoid:
   - **ID:** T-219
   - **Area:** engine/prefabs/irreden/render, engine/world
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-219-castvoxelray-voxelset
   - **Blocked by:** (none)
   - **Acceptance:** (1) `castVoxelRay` returns hits for active voxels of `C_VoxelSetNew` entities including world position, voxel coordinate, owning entity ID, and face normal; (2) face normal computed as `sign(largestAbsComponent(worldHitPos - voxelCenter))` — suitable for place-adjacent operations; (3) works for multiple `C_VoxelSetNew` entities in the same scene — smoke test with two voxel sets verifies correct hit on each; (4) existing `C_ShapeDescriptor` picking behavior unchanged; (5) `picking.hpp` doc comment documents CPU-side default vs GPU readback fallback (`IRRender::getEntityIdAtMouseTrixel`); (6) builds clean on linux-debug and macos-debug
   - **Issue:** #792
