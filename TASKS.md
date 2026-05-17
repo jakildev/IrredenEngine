@@ -267,11 +267,11 @@ Avoid:
   - **Notes:** Undo data layout (delta vs. snapshot, eviction policy, palette-index vs. raw-RGBA storage) is the first undo system in the engine — choice constrains every later Phase 1/2/3 system. Part of entity-editor epic #604 / umbrella #213. See `docs/design/entity-editor-epic.md` §Phase 1.
   - **Links:**
 
-- [~] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
+- [ ] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
   - **ID:** T-212
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** T-211
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
@@ -315,17 +315,6 @@ Avoid:
   - **Notes:** Phase 1 F-1.5 save/load acceptance gate for entity-editor epic #604 / umbrella #213. Format support already exists (F-0.6, F-0.7); this wires editor save/load through it. Risk: binary .vxs must carry per-voxel metadata bits — if any field is missing, escalate before extending format (additions go in sidecar, not silent v3 churn). See docs/design/entity-editor-epic.md §Phase 1.
   - **Links:**
 
-- [~] **tooling: investigate + fix Ubuntu fleet failure to add approved label on PR approval** — reproduce and fix the root cause of the Ubuntu fleet not adding the expected label when a PR is approved
-  - **ID:** T-216
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-216-ubuntu-approved-label-fix
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) root cause identified (permission gap, gh CLI config, or fleet script bug); (2) fix PR or workaround that makes label-adding work correctly on Ubuntu 24.04 WSL2 fleet; (3) PR approval flow on Ubuntu verified to add correct label after fix
-  - **Issue:** #778
-  - **Notes:** Sparse issue. Manifests as PRs being approved without the expected fleet label added. Likely a permission or gh CLI config issue on Ubuntu 24.04 WSL2. Related to fleet bring-up fixes in PRs #768 (tmux/bash compat) and #769 (permission allowlist). Investigate fleet scripts that invoke `gh pr edit --add-label` in the approval flow.
-  - **Links:**
-
 - [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
@@ -352,6 +341,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
@@ -368,7 +358,6 @@ Avoid:
 - [x] **T-191** — vec3 modifier kind — extend modifier compose for vector fields · Owner: claude/T-191-vec3-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/740
 - [x] **T-189** — prefab attach DENSE/HYBRID voxel_ref as C_VoxelSetNew on spawn · Owner: claude/T-189-prefab-dense-attach · PR: https://github.com/jakildev/IrredenEngine/pull/729
 - [x] **T-187** — render LOD Phase 1 — computeLodLevel + per-shape lodMin filter · Owner: claude/T-187-lod-phase-1 · PR: https://github.com/jakildev/IrredenEngine/pull/727
-- [x] **T-181** — prefab/runtime: C_BindPoints + entity:bindPoint Lua API · Owner: claude/T-181-bind-points-runtime · PR: https://github.com/jakildev/IrredenEngine/pull/720
 - [x] **T-186** — test: JsonSidecarWriter + NameTable round-trips · Owner: claude/T-186-json-sidecar-name-table-tests · PR: https://github.com/jakildev/IrredenEngine/pull/730
 - [x] **T-185** — asset: small cleanups — ShapeRecord serialized annotation, dead stub, makeTag length assert, CLAUDE.md refresh · Owner: claude/T-185-asset-cleanups · PR: https://github.com/jakildev/IrredenEngine/pull/726
 - [x] **T-188** — script: decouple IrredenEngineScripting from IrredenEngineRendering · Owner: claude/T-188-decouple-scripting-rendering · PR: https://github.com/jakildev/IrredenEngine/pull/723
