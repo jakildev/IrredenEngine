@@ -29,7 +29,7 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
 struct Voxel {
     uint colorPacked;       // [0:3]  RGBA8
-    uint materialFlagBone;  // [4]    material_id | [5] flags | [6] bone_id | [7] pad
+    uint materialFlagBone;  // [4]    material_id | [5] flags | [6] bone_id | [7] layer_id
     uint reserved;          // [8:11] reserved
 };
 

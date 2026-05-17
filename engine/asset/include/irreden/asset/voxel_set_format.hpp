@@ -206,10 +206,12 @@ struct ShapeRecord {
 // ---- DENSE-mode types --------------------------------------------------
 
 /// VOXR chunk-level version (Rule #3). Bump when the on-disk record
-/// layout changes; older loaders default the appended fields. The v1
-/// layout is byte-identical to `C_Voxel` so the runtime can blit a
-/// dense block into the voxel pool without per-record translation.
-constexpr std::uint16_t kVoxelRecordVersion = 1;
+/// layout changes; older loaders default the appended fields.
+/// v1: byte 7 was pad0_ (always zero). v2: byte 7 is layer_id_
+/// (per-voxel layer membership; 0 = default layer). Wire bytes are
+/// identical for pre-layer files; the version gate in
+/// readVoxelRecordsChunk makes the migration explicit (Rule #3).
+constexpr std::uint16_t kVoxelRecordVersion = 2;
 
 /// 12 B per-voxel record. Layout MUST match `C_Voxel` (in
 /// `engine/prefabs/irreden/voxel/components/component_voxel.hpp`) so
@@ -224,7 +226,7 @@ struct VoxelRecord {
     std::uint8_t material_id_ = 0;
     std::uint8_t flags_ = 0;
     std::uint8_t bone_id_ = 0;
-    std::uint8_t pad0_ = 0;
+    std::uint8_t layer_id_ = 0;
     std::uint32_t reserved_ = 0;
 };
 

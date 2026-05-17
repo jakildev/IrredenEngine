@@ -29,7 +29,8 @@ constexpr std::uint8_t kInteractive = 1u << 2;
 ///   [4]    material_id_   material registry index (0 = default)
 ///   [5]    flags_         bit-packed VoxelFlags bits
 ///   [6]    bone_id_       skeletal-rig joint index (0 = identity)
-///   [7]    pad0_          reserved; keeps the trailing uint32 4-byte aligned
+///   [7]    layer_id_      editor layer membership (0 = default layer); keeps
+///                         the trailing uint32 4-byte aligned
 ///   [8:11] reserved_      reserved for future per-voxel fields
 ///
 /// Phase 1 (this PR) widens the in-memory + SSBO layout only. The compute
@@ -41,20 +42,21 @@ struct C_Voxel {
     std::uint8_t material_id_;
     std::uint8_t flags_;
     std::uint8_t bone_id_;
-    std::uint8_t pad0_;
+    std::uint8_t layer_id_;
     std::uint32_t reserved_;
 
     C_Voxel(
         IRMath::Color color,
         std::uint8_t material_id = 0,
         std::uint8_t flags = VoxelFlags::kAoContrib,
-        std::uint8_t bone_id = 0
+        std::uint8_t bone_id = 0,
+        std::uint8_t layer_id = 0
     )
         : color_{color}
         , material_id_{material_id}
         , flags_{flags}
         , bone_id_{bone_id}
-        , pad0_{0}
+        , layer_id_{layer_id}
         , reserved_{0} {}
 
     C_Voxel()
@@ -68,6 +70,9 @@ struct C_Voxel {
     }
     std::uint8_t boneId() const {
         return bone_id_;
+    }
+    std::uint8_t layerId() const {
+        return layer_id_;
     }
 
     void activate() {
@@ -85,7 +90,7 @@ static_assert(offsetof(C_Voxel, color_) == 0, "C_Voxel::color_ must be at offset
 static_assert(offsetof(C_Voxel, material_id_) == 4, "C_Voxel::material_id_ must be at offset 4");
 static_assert(offsetof(C_Voxel, flags_) == 5, "C_Voxel::flags_ must be at offset 5");
 static_assert(offsetof(C_Voxel, bone_id_) == 6, "C_Voxel::bone_id_ must be at offset 6");
-static_assert(offsetof(C_Voxel, pad0_) == 7, "C_Voxel::pad0_ must be at offset 7");
+static_assert(offsetof(C_Voxel, layer_id_) == 7, "C_Voxel::layer_id_ must be at offset 7");
 static_assert(offsetof(C_Voxel, reserved_) == 8, "C_Voxel::reserved_ must be at offset 8");
 
 } // namespace IRComponents

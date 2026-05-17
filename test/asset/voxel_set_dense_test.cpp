@@ -24,7 +24,7 @@ void expectVoxelEq(const VoxelRecord &a, const VoxelRecord &b) {
     EXPECT_EQ(a.material_id_, b.material_id_);
     EXPECT_EQ(a.flags_, b.flags_);
     EXPECT_EQ(a.bone_id_, b.bone_id_);
-    EXPECT_EQ(a.pad0_, b.pad0_);
+    EXPECT_EQ(a.layer_id_, b.layer_id_);
     EXPECT_EQ(a.reserved_, b.reserved_);
 }
 
@@ -46,7 +46,7 @@ DenseVoxelSet make20CubeFixture() {
         v.material_id_ = static_cast<std::uint8_t>(i & 0x3Fu);
         v.flags_ = static_cast<std::uint8_t>((i & 1u) ? 0x01u : 0x02u);
         v.bone_id_ = static_cast<std::uint8_t>(i & 0x0Fu);
-        v.pad0_ = 0;
+        v.layer_id_ = 0;
         v.reserved_ = static_cast<std::uint32_t>(i * 7u);
         dense.voxels_[i] = v;
     }
@@ -105,7 +105,7 @@ TEST(VoxelSetDense, VoxelRecordsChunkRoundTrip) {
         v.material_id_ = static_cast<std::uint8_t>(i);
         v.flags_ = 0x07u;
         v.bone_id_ = static_cast<std::uint8_t>(i * 3u);
-        v.pad0_ = 0;
+        v.layer_id_ = 0;
         v.reserved_ = i * 0xCAFEu;
         voxels.push_back(v);
     }

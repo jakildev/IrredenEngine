@@ -410,7 +410,7 @@ ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
         w.writeU8(v.material_id_);
         w.writeU8(v.flags_);
         w.writeU8(v.bone_id_);
-        w.writeU8(v.pad0_);
+        w.writeU8(v.layer_id_);
         w.writeU32(v.reserved_);
     }
     ChunkPayload out;
@@ -427,6 +427,17 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
         return Result<VoxelRecordsLoadResult>::error(
             verR.status_.code_,
             std::move(verR.status_.message_)
+        );
+    }
+    // v1 → v2 migration: pad0_=0 at byte 7 becomes layer_id_=0 (default
+    // layer). Wire bytes are identical; no data translation needed.
+    // Future field additions bump the version and add a migration case here.
+    if (verR.value_ > kVoxelRecordVersion) {
+        IRE_LOG_WARN(
+            "readVoxelRecordsChunk: record version {} > known version {}; "
+            "unknown fields ignored",
+            verR.value_,
+            static_cast<std::uint16_t>(kVoxelRecordVersion)
         );
     }
     auto countR = r.readVarUInt();
@@ -482,13 +493,15 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
                 std::move(boneR.status_.message_)
             );
         v.bone_id_ = boneR.value_;
-        auto padR = r.readU8();
-        if (!padR.ok())
+        auto layerR = r.readU8();
+        if (!layerR.ok())
             return Result<VoxelRecordsLoadResult>::error(
-                padR.status_.code_,
-                std::move(padR.status_.message_)
+                layerR.status_.code_,
+                std::move(layerR.status_.message_)
             );
-        v.pad0_ = padR.value_;
+        // v1 files had pad0_=0 here; v1 → v2 migration: treat as layer_id_=0
+        // (default layer), which is the correct semantic for pre-layer files.
+        v.layer_id_ = layerR.value_;
         auto resR = r.readU32();
         if (!resR.ok())
             return Result<VoxelRecordsLoadResult>::error(

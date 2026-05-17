@@ -69,6 +69,9 @@
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
 
+// Editor layer system (T-213)
+#include "editor_layer_manager.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <deque>
@@ -200,6 +203,26 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 };
 
 int g_autoWarmupFrames = 0;
+
+// Layer system (T-213). Tracks named layers and the active layer for new
+// placements. Keyboard commands below let the user create, select, rename,
+// and hide layers without a UI panel (F-0.1 trixel UI panel is pending).
+// When T-211 instantiates the scene's C_VoxelSetNew, set g_sceneVoxelSetEntity
+// so visibility toggles can iterate voxels and update their alpha accordingly.
+EditorLayerManager g_layerManager;
+IREntity::EntityId g_sceneVoxelSetEntity = IREntity::kNullEntity;
+
+void logLayerState() {
+    for (const auto &r : g_layerManager.layers()) {
+        IR_LOG_INFO(
+            "  layer {} '{}' visible={} {}",
+            r.id_,
+            r.name_,
+            r.visible_,
+            r.id_ == g_layerManager.activeLayerId() ? "<active>" : ""
+        );
+    }
+}
 
 // Apply a single placement / erasure edit to the voxel set, appending
 // the prior state to the in-flight stroke buffer. Skips the edit when
@@ -709,9 +732,9 @@ void initCommands() {
     );
 
     // Frame-based animation controls (T-214, F-1.4). Keys not taken by
-    // T-211 (Q/E/Space/Z), T-212 (X/Y/Z symmetry), or T-213 (N — layer
-    // add): Left/Right for frame nav, P play/pause, A add blank frame,
-    // D duplicate, Backspace delete, L loop-mode toggle.
+    // T-211 (Q/E/Space/Z), T-212 (X/Y/Z symmetry), or T-213 (K/[/]/H —
+    // layer system): Left/Right for frame nav, P play/pause, A add
+    // blank frame, D duplicate, Backspace delete, L loop-mode toggle.
 
     // Left arrow — go to previous frame.
     IRCommand::createCommand(
@@ -813,6 +836,61 @@ void initCommands() {
                 "Loop mode: %s",
                 anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP ? "LOOP" : "PING-PONG"
             );
+        }
+    );
+
+    // K: add a new layer (auto-named from count, immediately becomes active).
+    // Rebound from N to avoid collision with T-214's N binding (add blank frame).
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonK,
+        []() {
+            std::uint8_t id = IRVoxelEditor::g_layerManager.addLayer(
+                "layer " + std::to_string(IRVoxelEditor::g_layerManager.layers().size()));
+            if (id != 0)
+                IRVoxelEditor::g_layerManager.setActiveLayer(id);
+            IR_LOG_INFO("Layers after add:");
+            IRVoxelEditor::logLayerState();
+        }
+    );
+
+    // [: select previous layer in display order (wraps around)
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonLeftBracket,
+        []() {
+            IRVoxelEditor::g_layerManager.selectPrevLayer();
+            IRVoxelEditor::logLayerState();
+        }
+    );
+
+    // ]: select next layer in display order (wraps around)
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonRightBracket,
+        []() {
+            IRVoxelEditor::g_layerManager.selectNextLayer();
+            IRVoxelEditor::logLayerState();
+        }
+    );
+
+    // H: toggle active layer visibility
+    // T-211 integration point: when g_sceneVoxelSetEntity != kNullEntity,
+    // iterate C_VoxelSetNew and update voxel alpha for affected layer.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonH,
+        []() {
+            bool nowVisible =
+                IRVoxelEditor::g_layerManager.toggleLayerVisibility(
+                    IRVoxelEditor::g_layerManager.activeLayerId());
+            IR_LOG_INFO("Layer {} visibility -> {}",
+                IRVoxelEditor::g_layerManager.activeLayerId(),
+                nowVisible ? "shown" : "hidden");
         }
     );
 }
