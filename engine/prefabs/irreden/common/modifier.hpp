@@ -145,6 +145,138 @@ inline void push(
     );
 }
 
+// Caller runs INSIDE the resolver pipeline, after MODIFIER_DECAY in the same
+// UPDATE tick. Modifier survives this frame's compose; next frame's DECAY
+// removes it. Use for system ticks positioned inside the pipeline.
+inline void pushFrameLocal(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 1);
+}
+
+inline void pushFrameLocal(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 1);
+}
+
+// Direct-reference overloads for tick functions that already hold the
+// component reference from the archetype iterator. Avoids the per-entity
+// getComponentOptional lookup in push(EntityId, ...).
+inline void pushFrameLocal(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    mods.modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, 1});
+}
+
+inline void pushFrameLocal(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    mods.modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, 1});
+}
+
+inline void pushFrameLocal(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec4 param,
+    IREntity::EntityId source
+) {
+    const bool unitQuatIncompatible = kind == IRComponents::TransformKind::ADD ||
+                                      kind == IRComponents::TransformKind::CLAMP_MIN ||
+                                      kind == IRComponents::TransformKind::CLAMP_MAX;
+    IR_ASSERT(
+        !unitQuatIncompatible,
+        "Quat modifier kind: ADD/CLAMP_MIN/CLAMP_MAX are not meaningful on unit "
+        "quaternions; use MULTIPLY for compose, OVERRIDE/SET for replacement."
+    );
+    if (unitQuatIncompatible)
+        return;
+    mods.modifiersQuat_.push_back(IRComponents::ModifierQuat{field, kind, param, source, 1});
+}
+
+// Caller runs OUTSIDE the resolver pipeline (Lua, input handler, command).
+// Modifier survives the next frame's DECAY + compose; the frame after removes
+// it. The extra tick accounts for DECAY running before the first compose.
+inline void pushOneFrame(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 2);
+}
+
+inline void pushOneFrame(
+    IREntity::EntityId target,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    push(target, field, kind, param, source, 2);
+}
+
+// Direct-reference overloads for out-of-pipeline callers that already hold
+// the component reference. ticksRemaining=2 accounts for DECAY running before
+// the next frame's compose.
+inline void pushOneFrame(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    float param,
+    IREntity::EntityId source
+) {
+    mods.modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, 2});
+}
+
+inline void pushOneFrame(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec3 param,
+    IREntity::EntityId source
+) {
+    mods.modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, 2});
+}
+
+inline void pushOneFrame(
+    IRComponents::C_Modifiers &mods,
+    IRComponents::FieldBindingId field,
+    IRComponents::TransformKind kind,
+    IRMath::vec4 param,
+    IREntity::EntityId source
+) {
+    const bool unitQuatIncompatible = kind == IRComponents::TransformKind::ADD ||
+                                      kind == IRComponents::TransformKind::CLAMP_MIN ||
+                                      kind == IRComponents::TransformKind::CLAMP_MAX;
+    IR_ASSERT(
+        !unitQuatIncompatible,
+        "Quat modifier kind: ADD/CLAMP_MIN/CLAMP_MAX are not meaningful on unit "
+        "quaternions; use MULTIPLY for compose, OVERRIDE/SET for replacement."
+    );
+    if (unitQuatIncompatible)
+        return;
+    mods.modifiersQuat_.push_back(IRComponents::ModifierQuat{field, kind, param, source, 2});
+}
+
 inline void pushGlobal(
     IRComponents::FieldBindingId field,
     IRComponents::TransformKind kind,
