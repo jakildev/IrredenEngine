@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
+- [ ] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
   - **ID:** T-206
   - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
   - **Model:** opus
-  - **Owner:** claude/T-206-voxel-pool-api-split
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #754
@@ -318,7 +318,7 @@ Avoid:
   - **ID:** T-219
   - **Area:** engine/prefabs/irreden/render, engine/world
   - **Model:** opus
-  - **Owner:** claude/T-219-castvoxelray-voxelset
+  - **Owner:** claude/T-219-castvoxelray-voxel-sets
   - **Blocked by:** (none)
   - **Acceptance:** (1) `castVoxelRay` returns hits for active voxels of `C_VoxelSetNew` entities including world position, voxel coordinate, owning entity ID, and face normal; (2) face normal computed as `sign(largestAbsComponent(worldHitPos - voxelCenter))` — suitable for place-adjacent operations; (3) works for multiple `C_VoxelSetNew` entities in the same scene — smoke test with two voxel sets verifies correct hit on each; (4) existing `C_ShapeDescriptor` picking behavior unchanged; (5) `picking.hpp` doc comment documents CPU-side default vs GPU readback fallback (`IRRender::getEntityIdAtMouseTrixel`); (6) builds clean on linux-debug and macos-debug
   - **Issue:** #792
