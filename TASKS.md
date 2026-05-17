@@ -314,6 +314,17 @@ Avoid:
   - **Notes:** Escalated from PR #756/PR #787 (T-199) — two opus-worker iterations independently completed the rebase correctly but both hit the same wall: `.claude/settings.json` line with `"Bash(git push --force-with-lease:*)"` in the deny list blocks all force-with-lease pushes. Option A (preferred): remove `Bash(git push --force-with-lease:*)`, add `Bash(git push --force-with-lease origin master:*)` and `Bash(git push --force-with-lease origin main:*)`. Option B: add targeted allow `Bash(git push --force-with-lease origin claude/*)` — only works if harness honors allow-before-deny specificity; verify before using. Keep `Bash(git push --force:*)` in deny list either way. This is a settings.json-only change.
   - **Links:**
 
+- [ ] **render: extend castVoxelRay to walk C_VoxelSetNew entities** — add CPU-side ray traversal over individual voxels in C_VoxelSetNew pool spans, returning hit world position, voxel coordinate, owning entity ID, and face normal; prerequisite for T-211 voxel editor picking
+  - **ID:** T-219
+  - **Area:** engine/prefabs/irreden/render, engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `castVoxelRay` returns hits for active voxels of `C_VoxelSetNew` entities including world position, voxel coordinate, owning entity ID, and face normal; (2) face normal computed as `sign(largestAbsComponent(worldHitPos - voxelCenter))` — suitable for place-adjacent operations; (3) works for multiple `C_VoxelSetNew` entities in the same scene — smoke test with two voxel sets verifies correct hit on each; (4) existing `C_ShapeDescriptor` picking behavior unchanged; (5) `picking.hpp` doc comment documents CPU-side default vs GPU readback fallback (`IRRender::getEntityIdAtMouseTrixel`); (6) builds clean on linux-debug and macos-debug
+  - **Issue:** #792
+  - **Notes:** Prerequisite for T-211 (editor F-1.1 place/erase); PR #785 (T-211's first PR) is design-blocked on this and will rebase once it lands. CPU-side path has no frame lag — preferred for editor click responsiveness. GPU readback path (`IRRender::getEntityIdAtMouseTrixel`, 1-frame lag, O(1) per pick) is documented as the fallback for high-voxel-count scenes. Extend `gatherVisibleShapes` or add a sibling helper; treat each active voxel as an axis-aligned unit cube for SDF testing. Multi-sub-entity scenes, voxel-set joints, and growable pool allocation are explicitly out of scope.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
