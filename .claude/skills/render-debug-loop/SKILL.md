@@ -94,8 +94,7 @@ detail lives.
 
 If `engine/render/tests/render-baselines/<demo>/<SHA>/` exists for the
 target demo, Read each baseline crop alongside its current counterpart.
-(`<SHA>` is the HEAD commit SHA at baseline-capture time; the capture
-procedure and directory convention are defined by #433.)
+(`<SHA>` is the HEAD commit SHA at baseline-capture time.)
 Pairwise eyeballing catches drift that any single
 shot would not flag in isolation.
 

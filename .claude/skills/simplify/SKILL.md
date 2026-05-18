@@ -80,9 +80,7 @@ For everything else, flag with the IRMath equivalent. See [`.claude/rules/cpp-ma
 
 If the IRMath wrapper does not exist yet, **don't auto-substitute** —
 flag with: "IRMath::<name> does not exist; add the wrapper to
-`engine/math/` first, then call it." (The `IRMath::kPi` / `kHalfPi` /
-`kTwoPi` constants in particular may not be merged yet — verify before
-suggesting.)
+`engine/math/` first, then call it."
 
 **Check 2: function-local `static` in system tick files.**
 
@@ -116,7 +114,6 @@ Live deviations already on the list (don't re-flag, but note in the
 report if touched):
 
 - `engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp:41-43`
-- `engine/prefabs/irreden/audio/systems/system_rhythmic_launch.hpp:29`
 - `engine/prefabs/irreden/update/systems/system_gravity.hpp:17`
 - `engine/prefabs/irreden/update/systems/system_animation_color.hpp:25-26`
 
