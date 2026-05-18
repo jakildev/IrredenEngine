@@ -333,11 +333,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.4). role-merger.md distinguishes merger-audit.log (append-only) from merger.log (claimed to be tail-rotated) but scripts/fleet/ has no rotation config. Either rotation lives off-tree undocumented, or the claim is stale. ~5 line doc edits + investigation.
   - **Links:**
 
-- [ ] **docs/roles: decide whether queue-manager produces feedback; document either way** — add explicit statement to role-queue-manager.md on end-of-iteration feedback; either add the section or explicitly opt out
+- [~] **docs/roles: decide whether queue-manager produces feedback; document either way** — add explicit statement to role-queue-manager.md on end-of-iteration feedback; either add the section or explicitly opt out
   - **ID:** T-274
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) role-queue-manager.md explicitly states whether queue-manager produces end-of-iteration feedback; (2) if yes: End-of-iteration feedback section added pointing at ~/.fleet/feedback/queue-manager.md (consistent with other transient roles); (3) if no: one-line explicit statement added so future readers don't wonder; (4) ~10 line edit
   - **Issue:** #875
