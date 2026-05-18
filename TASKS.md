@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections** — remove boilerplate intro paragraphs and trigger restatements from 9+ SKILL.md files
-  - **ID:** T-243
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-243-trim-skill-when-to-invoke
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all affected SKILL.md files follow: front-matter → one-sentence body intro → Flow; (2) "When to invoke" sections that restate front-matter `description:` trigger phrases removed from: `simplify:25-38`, `review-pr:23-31`, `commit-and-push:22-28`, `polish-checkpoint:26-35,50-55`, `optimize:42-68`, `backend-parity:37-50`, `start-next-task:46-70`, `attach-screenshots:25-39`, `request-re-review:17-29`, `lua-creation-setup:13-25`; (3) "Why this exists" sections paraphrasing the description removed from the same files
-  - **Issue:** #826
-  - **Notes:** Follow-up from T-222 audit (§5.18, §4.1). Size M. 9+ of 16 SKILL.md files open with a paragraph paraphrasing front-matter; standardizing cuts significant boilerplate.
-  - **Links:**
-
 - [~] **docs/skills: drop decorative ❌ emoji bullets from Anti-patterns sections** — switch all Anti-patterns / "What this skill does NOT do" sections across SKILL.md files from ❌ bullets to bare list bullets
   - **ID:** T-244
   - **Area:** docs
@@ -337,7 +326,7 @@ Avoid:
   - **ID:** T-252
   - **Area:** docs, engine/prefabs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-252-prefabs-dedup
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/prefabs/CLAUDE.md:93-147` component-method rules (§(a)/(b)/(c) + Documented exceptions) kept as canonical; (2) near-verbatim duplicate removed from `.claude/rules/cpp-ecs.md` with one-line reference back; (3) `engine/prefabs/CLAUDE.md:150-173` anti-pattern items 1,2,6,7 trimmed (restate cpp-ecs.md rules); (4) IRMath and getComponent restatement lines trimmed; (5) `L40-52` Layout section (directory inventory) deleted; (6) "File pattern" table at L60-66 and cross-domain anti-patterns L155-163 preserved
   - **Issue:** #835
@@ -590,13 +579,13 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
 - [x] **T-242** — docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize · Owner: claude/T-242-trim-skill-inventories · PR: https://github.com/jakildev/IrredenEngine/pull/890
 - [x] **T-238** — docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md · Owner: claude/T-238-pr-body-v2 · PR: https://github.com/jakildev/IrredenEngine/pull/889
 - [x] **T-241** — docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only · Owner: claude/T-241-render-trixel-pipeline-rewrite · PR: https://github.com/jakildev/IrredenEngine/pull/888
 - [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
-- [x] **T-212** — editor F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset) · Owner: claude/T-212-symmetry-modes · PR: https://github.com/jakildev/IrredenEngine/pull/794
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
 - [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
 - [x] **T-235** — docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md · Owner: claude/T-235-build-snippets · PR: https://github.com/jakildev/IrredenEngine/pull/876
