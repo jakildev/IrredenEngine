@@ -255,6 +255,61 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
   - **Links:**
 
+- [ ] **render: IRProfile::ScopeTimer + GPU timer query infrastructure (B0)** — CPU scope-timer macro + GPU timer-query pool around each render pipeline stage; perf_grid HUD displays per-stage ms
+  - **ID:** T-275
+  - **Area:** engine/render, engine/profile, creations/demos/perf_grid
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `IRProfile::ScopeTimer` macro emits per-frame histogram readable from a debug HUD; (2) GPU timer queries instrument each render pipeline stage (init, voxel→trixel stage 1/2, shapes→trixel, visibility compaction, lighting, framebuffer composite), results lagged 1 frame; (3) `creations/demos/perf_grid` HUD displays per-stage CPU + GPU ms; (4) golden screenshot of profiler overlay; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #939
+  - **Notes:** Epic B (#935) foundation task — blocks B1, B2, B5 (and indirectly E2). Base of Stack S-B-render (B0 → B1 → B2 → B5); downstream tasks branch from this PR's head, not master. GPU timer queries use pool to avoid sync stalls; results read 1 frame later. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B0".
+  - **Links:**
+
+- [ ] **asset: .vxs DENSE-RLE chunk variant (B3)** — new `VOXR_RLE` chunk tag in .vxs format; RLE encoding reduces hollow 64³ voxel set to ~10% of DENSE chunk size
+  - **ID:** T-276
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) hollow 64³ voxel set saves at ~10% of DENSE chunk size; (2) round-trip unit tests in `engine/asset/tests/` cover empty/full/hollow/striped cases; (3) format extensibility rules verified: old loader skips new chunk silently, new loader prefers RLE; (4) `engine/asset/CLAUDE.md` documents the new chunk tag; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #940
+  - **Notes:** Epic B (#935) independent task — no format version bump; old loaders silently skip VOXR_RLE. Hard dependency for Epic E E6 (#938 chunk disk persistence). Must land before Phase 1 authoring (#604) generates dense .vxs corpus. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B3".
+  - **Links:**
+
+- [ ] **render: runtime-sized voxel pools (B4)** — replace compile-time `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` constants with runtime values sized from GPU VRAM budget at startup
+  - **ID:** T-277
+  - **Area:** engine/render, engine/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) launch with `--voxel-pool-size 128` runs at 128³; default behaviour identical to today at 64³; (2) `render_manager` init logs the selected pool size; (3) all existing demos continue to pass at default; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #941
+  - **Notes:** Epic B (#935) independent task — blocks Epic E E2 (#938 GPU residency manager). Replaces `ir_constants.hpp:54,63` TODOs. CLI override via `--voxel-pool-size N`. Sane fallback defaults preserve today's 64³ behaviour. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B4".
+  - **Links:**
+
+- [ ] **editor: AABB box-fill + line-fill + face-fill (A1)** — drag A→B fills the AABB; axis-locked drag → line-fill; flood-fill connected coplanar surface → face-fill; ghost preview during drag; undo via snapshot stack
+  - **ID:** T-278
+  - **Area:** creations/editors
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) drag a 16×16×16 box in under 1 s of user time (multi-voxel fill in one operation); (2) line-fill along X axis when modifier-key-held; (3) face-fill flood-fills a connected coplanar surface; (4) undo/redo correctly bracket each fill operation; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #942
+  - **Notes:** Epic A (#934) foundation task — base of Stack S-A-author (A1 → A4 → A2 → A3); downstream tasks branch from this PR's head. Reuses `IRPrefab::Picking::castVoxelRay` (engine/prefabs/irreden/render/picking.hpp:47-92). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A1".
+  - **Links:**
+
+- [ ] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
+  - **ID:** T-279
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `C_LocalTransform` landed; identity-default = pure data per cpp-ecs §"Component method tiers"; (2) existing scenes render identically (identity transform is a no-op); (3) entity spawned with non-identity SQT renders at transformed position/orientation/scale (verified in inline test demo); (4) no `getComponent` calls in tick functions touch this component; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #943
+  - **Notes:** Epic C (#936) foundation task — base of both Stack S-C-core (C1 → C2 → C3 → C7) and S-C-math (C1 → C5 → C4 → C8). `C_Rotation` (Euler vec3, component_rotation.hpp:8-20) is deprecated and removed in a follow-up after consumer migration audit. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C1".
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
