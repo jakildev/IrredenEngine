@@ -157,28 +157,17 @@ side. That's the expected case for cursor flow.
 
 #### 4b. Cursor stack mode
 
-If 4a returned empty AND the user's cue contained a stacking phrase
+If 4a returned empty AND the user's cue contains a stacking phrase
 ("stack this", "next slice stacked", "keep stacking", "stack the next
-on this PR", "build on the last PR"), this is **cursor stack mode**.
-
-Set `MODE=cursor-stack`, `BASE=<old-branch-name>` (the branch you
-recorded in step 1). Note the old branch name — step 7b writes it to
-git config on the new branch.
+on this PR", "build on the last PR"), set `MODE=cursor-stack`,
+`BASE=<old-branch-name>`. Step 7b writes the parent branch to git config.
 
 If 4a returned empty AND the cue is fresh-start ("next task", "I
 merged it", "back to master", etc.), continue to 4c.
 
-If the cue is ambiguous (just "next slice" / "next" with no stacking
-or fresh-start hint) AND the **old branch has its own
-`cursor-stack-base` set** (i.e. the old branch is itself the middle
-of a stack), stop and ask the user:
-
-> You're on a stacked branch (`<old-branch>` → base
-> `<existing-stack-base>`). Should the next slice continue the stack
-> (branch off `<old-branch>`), or branch off `master`?
-
-Don't guess. Stack continuation has different review semantics than a
-fresh slice and the human should pick.
+If the cue is ambiguous AND the old branch has `cursor-stack-base` set,
+ask: "continue the stack or branch off master?" — don't guess.
+See [FLEET.md §Cursor flow](../../../docs/agents/FLEET.md).
 
 #### 4c. Standard mode
 
@@ -269,26 +258,14 @@ old PR when you push. Always start a new branch.
 
 ### 7b. Record cursor-stack-base (cursor stack mode only)
 
-In **cursor stack mode** only, persist the parent branch name as
-git config on the new branch so `commit-and-push` can find it later
-when opening the PR:
-
 ```bash
 git config branch.<new-branch>.cursor-stack-base <old-branch-name>
 ```
 
-This config write is also `.git/config` — same `all` permissions
-requirement on macOS as step 7.
-
-The config is per-branch and survives chat boundaries: if the human
-opens a new chat tomorrow already on `<new-branch>`, `commit-and-push`
-reads the config from `branch.<new-branch>.cursor-stack-base` and
-opens the PR with the correct `--base`. No "resume stack" cue is
-needed across chats.
-
-Skip this step in fleet stack mode (the chain lives in
-`fleet-claim` state, not git config) and in standard mode (no
-parent to record).
+`.git/config` write — needs `all` permission on macOS (same as step 7).
+Skip in fleet stack mode and standard mode.
+See [FLEET.md §Cursor flow](../../../docs/agents/FLEET.md) for how
+`commit-and-push` consumes this across chat boundaries.
 
 ### 8. Sanity-check the state
 
@@ -305,15 +282,9 @@ git log --oneline -5
   merge-base with `origin/master` is whatever the old branch branched
   from — not the old branch's tip. That's expected.
 
-In cursor stack mode, also confirm the config write took:
-
-```bash
-git config --get branch.<new-branch>.cursor-stack-base
-```
-
-It should print `<old-branch-name>`. If it's empty, the write was
-sandboxed (see step 7b's macOS note) — re-run with `all` permissions
-before continuing.
+In cursor stack mode, confirm the config write: `git config --get
+branch.<new-branch>.cursor-stack-base` should print the old branch.
+If empty, re-run step 7b with `all` permissions.
 
 If the top commit is wrong for the mode you're in, the checkout went
 wrong — stop and investigate.
@@ -395,13 +366,8 @@ work (somehow step 1's clean check missed it):
 3. Push and update the PR.
 4. `git checkout <new-branch>` to return.
 
-If you set up cursor stack mode and later realize the new slice should
-not actually be stacked (e.g. you decide to base it on master after
-all):
+To undo cursor stack mode (base the new slice off master after all):
 
-1. Clear the config: `git config --unset
-   branch.<new-branch>.cursor-stack-base` (needs `all` permissions on
-   macOS).
-2. Rebase the new branch onto master:
-   `git rebase --onto origin/master <old-branch> <new-branch>`.
-3. Continue work. `commit-and-push` will now open the PR vs `master`.
+1. `git config --unset branch.<new-branch>.cursor-stack-base` (needs `all` on macOS)
+2. `git rebase --onto origin/master <old-branch> <new-branch>`
+3. Continue — `commit-and-push` opens the PR vs `master`.
