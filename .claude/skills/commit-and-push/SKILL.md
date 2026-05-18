@@ -296,7 +296,7 @@ if [[ -n "$parent_branch" ]]; then
     parent_pr_ref="${parent_pr_url:-$parent_branch (no PR yet)}"
     gh pr create --base "$parent_branch" \
         --title "<scope>: <title>" \
-        --body "$(cat <<'EOF'
+        --body "$(cat <<EOF
 <cursor stack body — see procedures/pr-body.md cursor stack mode; substitute $parent_pr_ref>
 EOF
 )"
