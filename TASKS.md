@@ -335,11 +335,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.8, §1.5). Size S. Canonical mechanism already in FLEET.md:140-186.
   - **Links:**
 
-- [ ] **docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md** — extract three near-identical PR-body templates into one canonical template with per-mode delta sections
+- [~] **docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md** — extract three near-identical PR-body templates into one canonical template with per-mode delta sections
   - **ID:** T-238
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/pr-body.md` with one canonical PR-body template + single-PR / fleet-stacked / cursor-stacked delta sections; (2) `commit-and-push/SKILL.md:264-374` three templates (~110 lines) replaced with ~2-line refs; (3) net reduction ~50 lines from main SKILL.md
   - **Issue:** #821
