@@ -78,6 +78,11 @@ just the items that role works on:
 | queue-manager | `needs_plan`, `human_approved`, `tasks_done`, `needs_flip` (in-progress tasks whose linked issue closed) |
 | merger | `prs` (engine, approved or non-MERGEABLE only) |
 
+**opus-reviewer:** review bodies longer than 2 KB are stored as
+head + tail with an `…[truncated]…` separator (the verdict line
+typically lives in the tail); for full-body context fetch with
+`fleet-pr view <N>`.
+
 **Read the projection first.** It's ~5 KB vs. ~32 KB for full
 state.json — significant per-iteration token savings. Fall back to
 state.json only when you need cross-role data (e.g. sonnet-reviewer
