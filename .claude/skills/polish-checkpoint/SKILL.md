@@ -152,20 +152,10 @@ state:
 
 ## Anti-patterns
 
-- Running this skill autonomously after every edit. It's a
-  user-invoked checkpoint, not a save-on-edit hook.
-- Following polish-checkpoint with `commit-and-push` unless the
-  user explicitly asks. The whole point is the human controls when
-  to PR.
-- Skipping the build step on code diffs to save time. The
-  checkpoint is not real if the build doesn't actually pass.
-- Editing files outside the dirty diff to "improve" them. Stay
-  scoped to what the session has already changed.
-- Switching branches mid-skill. The user's current branch state
-  is intentional; respect it.
-- Using this skill in fleet flow. Fleet workers run
-  `commit-and-push` end-to-end; intermediate checkpoints are an
-  interactive-session concept.
+- Following polish-checkpoint with `commit-and-push` unless the user
+  explicitly asks. The whole point is the human controls when to PR.
+- Switching branches mid-skill. The user's current branch state is
+  intentional; respect it.
 
 ## Recovery
 

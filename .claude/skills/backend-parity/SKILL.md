@@ -304,25 +304,11 @@ call, read its threadgroup size, and encode it as
 
 ## Anti-patterns
 
-- Shipping a port without building the lagging preset. The whole
-  point of the skill is that you *verified* it builds and runs.
-- Shipping a port without smoke-running the demo. Build-clean ≠
-  parity.
-- `#ifdef METAL` / `#ifdef OPENGL` stubs that silently return
-  wrong values. Either port properly or stop and flag.
-- Bundling multiple unrelated parity fixes into one PR. One logical
-  feature per PR; the reviewer can't usefully sign off on "ports
-  three shaders and rewrites the framebuffer path".
-- Changing the leading backend mid-port. If the leading side has a
-  bug, file it separately and then port the correct behavior.
-  This skill is parity, not drive-by cleanup.
-- Hardcoding dispatch sizes instead of reusing
-  `voxelDispatchGridForCount()` or the equivalent math helper.
-- Inventing new uniform layouts "because MSL is different". Match
-  the CPU-side feeder struct exactly; if the feeder struct is wrong
-  for Metal, that's a separate refactor in a separate PR.
-- Running this skill on a host whose backend matches the
-  *leading* side. You cannot verify the port — stop.
+- `#ifdef METAL` / `#ifdef OPENGL` stubs that silently return wrong values.
+  Either port properly or stop and flag.
+- Changing the leading backend mid-port. If the leading side has a bug,
+  file it separately and then port the correct behavior. This skill is
+  parity, not drive-by cleanup.
 
 ## Re-port after review feedback
 
