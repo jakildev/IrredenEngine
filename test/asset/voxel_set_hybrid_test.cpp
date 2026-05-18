@@ -97,7 +97,7 @@ DenseVoxelSet make50VoxelFixture() {
         v.material_id_ = static_cast<std::uint8_t>(i % 8);
         v.flags_ = 1u;
         v.bone_id_ = 0;
-        v.pad0_ = 0;
+        v.layer_id_ = 0;
         v.reserved_ = 0;
         dense.voxels_[i] = v;
     }

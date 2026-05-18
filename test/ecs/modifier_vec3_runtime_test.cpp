@@ -291,9 +291,8 @@ TEST(CResolvedFieldsVec3, ScalarAndVec3PathsAreIndependent) {
 namespace {
 
 void decayVec3Once(std::vector<ModifierVec3> &v) {
-    auto end = std::remove_if(
-        v.begin(), v.end(), IRComponents::detail::tickAndExpired<ModifierVec3>
-    );
+    auto end =
+        std::remove_if(v.begin(), v.end(), IRComponents::detail::tickAndExpired<ModifierVec3>);
     v.erase(end, v.end());
 }
 
@@ -352,7 +351,11 @@ TEST(ModifierDirectRef, PushFrameLocalVec3DepositsInVec3VectorWithTicks1) {
 TEST(ModifierDirectRef, PushFrameLocalScalarDepositsInScalarVectorWithTicks1) {
     IRComponents::C_Modifiers mods;
     IRPrefab::Modifier::pushFrameLocal(
-        mods, kFieldA, TransformKind::MULTIPLY, 2.5f, IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::MULTIPLY,
+        2.5f,
+        IREntity::kNullEntity
     );
 
     ASSERT_EQ(mods.modifiersVec3_.size(), 0u);
@@ -365,7 +368,11 @@ TEST(ModifierDirectRef, PushFrameLocalScalarDepositsInScalarVectorWithTicks1) {
 TEST(ModifierDirectRef, PushOneFrameVec3DepositsWithTicks2) {
     IRComponents::C_Modifiers mods;
     IRPrefab::Modifier::pushOneFrame(
-        mods, kFieldA, TransformKind::ADD, IRMath::vec3(4.0f), IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::ADD,
+        IRMath::vec3(4.0f),
+        IREntity::kNullEntity
     );
 
     ASSERT_EQ(mods.modifiersVec3_.size(), 1u);
@@ -378,7 +385,11 @@ TEST(ModifierDirectRef, PushFrameLocalVec3DoesNotTriggerEntityLookup) {
     // is taken.
     IRComponents::C_Modifiers mods;
     IRPrefab::Modifier::pushFrameLocal(
-        mods, kFieldA, TransformKind::ADD, IRMath::vec3(0.0f), IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::ADD,
+        IRMath::vec3(0.0f),
+        IREntity::kNullEntity
     );
     EXPECT_EQ(mods.modifiersVec3_.size(), 1u);
 }
@@ -386,7 +397,11 @@ TEST(ModifierDirectRef, PushFrameLocalVec3DoesNotTriggerEntityLookup) {
 TEST(ModifierDirectRef, PushOneFrameScalarDepositsInScalarVectorWithTicks2) {
     IRComponents::C_Modifiers mods;
     IRPrefab::Modifier::pushOneFrame(
-        mods, kFieldA, TransformKind::MULTIPLY, 3.0f, IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::MULTIPLY,
+        3.0f,
+        IREntity::kNullEntity
     );
 
     ASSERT_EQ(mods.modifiersVec3_.size(), 0u);
@@ -400,7 +415,11 @@ TEST(ModifierDirectRef, PushFrameLocalQuatDepositsInQuatVectorWithTicks1) {
     IRComponents::C_Modifiers mods;
     IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
     IRPrefab::Modifier::pushFrameLocal(
-        mods, kFieldA, TransformKind::MULTIPLY, identity, IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::MULTIPLY,
+        identity,
+        IREntity::kNullEntity
     );
 
     ASSERT_EQ(mods.modifiers_.size(), 0u);
@@ -415,7 +434,11 @@ TEST(ModifierDirectRef, PushOneFrameQuatDepositsInQuatVectorWithTicks2) {
     IRComponents::C_Modifiers mods;
     IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
     IRPrefab::Modifier::pushOneFrame(
-        mods, kFieldA, TransformKind::MULTIPLY, identity, IREntity::kNullEntity
+        mods,
+        kFieldA,
+        TransformKind::MULTIPLY,
+        identity,
+        IREntity::kNullEntity
     );
 
     ASSERT_EQ(mods.modifiersQuat_.size(), 1u);
@@ -429,7 +452,12 @@ TEST(ModifierDirectRef, PushFrameLocalQuatAddKindFiresAssertAndNoOps) {
     IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
     EXPECT_THROW(
         IRPrefab::Modifier::pushFrameLocal(
-            mods, kFieldA, TransformKind::ADD, identity, IREntity::kNullEntity),
+            mods,
+            kFieldA,
+            TransformKind::ADD,
+            identity,
+            IREntity::kNullEntity
+        ),
         std::runtime_error
     );
     EXPECT_EQ(mods.modifiersQuat_.size(), 0u);
@@ -440,7 +468,12 @@ TEST(ModifierDirectRef, PushOneFrameQuatClampMinKindFiresAssertAndNoOps) {
     IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
     EXPECT_THROW(
         IRPrefab::Modifier::pushOneFrame(
-            mods, kFieldA, TransformKind::CLAMP_MIN, identity, IREntity::kNullEntity),
+            mods,
+            kFieldA,
+            TransformKind::CLAMP_MIN,
+            identity,
+            IREntity::kNullEntity
+        ),
         std::runtime_error
     );
     EXPECT_EQ(mods.modifiersQuat_.size(), 0u);
@@ -506,7 +539,11 @@ TEST_F(IRModifierVec3PushTest, ApplyToFieldVec3ComposesDirectly) {
     auto target = IREntity::createEntity(C_Modifiers{});
     auto field = IRPrefab::Modifier::registerFieldVec3("test.apply_query");
     IRPrefab::Modifier::push(
-        target, field, TransformKind::ADD, IRMath::vec3(2.0f, 4.0f, 6.0f), IREntity::kNullEntity
+        target,
+        field,
+        TransformKind::ADD,
+        IRMath::vec3(2.0f, 4.0f, 6.0f),
+        IREntity::kNullEntity
     );
 
     auto result = IRPrefab::Modifier::applyToFieldVec3(target, field, IRMath::vec3(10.0f));
@@ -521,11 +558,10 @@ class IRModifierVec3AutoSweepTest : public testing::Test {
   protected:
     IRModifierVec3AutoSweepTest()
         : m_entity_manager{} {
-        m_hook_id = IREntity::getEntityManager().registerPreDestroyHook(
-            [](IREntity::EntityId destroyed) {
+        m_hook_id =
+            IREntity::getEntityManager().registerPreDestroyHook([](IREntity::EntityId destroyed) {
                 IRPrefab::Modifier::removeBySource(destroyed);
-            }
-        );
+            });
     }
 
     ~IRModifierVec3AutoSweepTest() override {
@@ -542,7 +578,11 @@ TEST_F(IRModifierVec3AutoSweepTest, DestroyingSourceStripsVec3ModifiersFromTarge
     auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::push(
-        target, field, TransformKind::ADD, IRMath::vec3(1.0f, 2.0f, 3.0f), source
+        target,
+        field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        source
     );
     auto &before = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
     ASSERT_EQ(before.size(), 1u);
@@ -557,7 +597,7 @@ TEST_F(IRModifierVec3AutoSweepTest, DestroyingSourceLeavesOtherSourceVec3Modifie
     auto field = IRPrefab::Modifier::registerFieldVec3("test.sweep_partial");
     auto sourceA = IREntity::createEntity();
     auto sourceB = IREntity::createEntity();
-    auto target  = IREntity::createEntity(C_Modifiers{});
+    auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::push(target, field, TransformKind::ADD, IRMath::vec3(1.0f), sourceA);
     IRPrefab::Modifier::push(target, field, TransformKind::ADD, IRMath::vec3(7.0f), sourceB);
@@ -588,7 +628,11 @@ TEST_F(IRModifierVec3UpsertTest, FirstCallAppends) {
     auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f, 2.0f, 3.0f), source
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        source
     );
 
     auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
@@ -602,10 +646,18 @@ TEST_F(IRModifierVec3UpsertTest, SecondCallOverwrites) {
     auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f),
+        source
     );
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(9.0f, 8.0f, 7.0f), source
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(9.0f, 8.0f, 7.0f),
+        source
     );
 
     auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
@@ -621,10 +673,18 @@ TEST_F(IRModifierVec3UpsertTest, DifferentKindGetsItsOwnSlot) {
     auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f),
+        source
     );
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::MULTIPLY, IRMath::vec3(2.0f), source
+        target,
+        m_field,
+        TransformKind::MULTIPLY,
+        IRMath::vec3(2.0f),
+        source
     );
 
     auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
@@ -634,13 +694,21 @@ TEST_F(IRModifierVec3UpsertTest, DifferentKindGetsItsOwnSlot) {
 TEST_F(IRModifierVec3UpsertTest, DifferentSourceGetsItsOwnSlot) {
     auto sourceA = IREntity::createEntity();
     auto sourceB = IREntity::createEntity();
-    auto target  = IREntity::createEntity(C_Modifiers{});
+    auto target = IREntity::createEntity(C_Modifiers{});
 
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), sourceA
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f),
+        sourceA
     );
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(2.0f), sourceB
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(2.0f),
+        sourceB
     );
 
     auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
@@ -652,14 +720,16 @@ TEST_F(IRModifierVec3UpsertTest, OverridesPriorTickRemaining) {
     auto target = IREntity::createEntity(C_Modifiers{});
 
     // Simulate a prior push() with decay semantics.
-    IRPrefab::Modifier::push(
-        target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source, 1
-    );
+    IRPrefab::Modifier::push(target, m_field, TransformKind::ADD, IRMath::vec3(1.0f), source, 1);
     ASSERT_EQ(IREntity::getComponent<C_Modifiers>(target).modifiersVec3_.size(), 1u);
 
     // Upsert from the same triple must reset ticksRemaining_ to -1.
     IRPrefab::Modifier::upsertBySource(
-        target, m_field, TransformKind::ADD, IRMath::vec3(5.0f), source
+        target,
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(5.0f),
+        source
     );
 
     auto &mods = IREntity::getComponent<C_Modifiers>(target).modifiersVec3_;
@@ -686,7 +756,10 @@ TEST_F(IRModifierGlobalVec3UpsertTest, FirstCallAppends) {
     auto source = IREntity::createEntity();
 
     IRPrefab::Modifier::upsertBySourceGlobal(
-        m_field, TransformKind::ADD, IRMath::vec3(1.0f, 2.0f, 3.0f), source
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        source
     );
 
     auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(
@@ -701,10 +774,16 @@ TEST_F(IRModifierGlobalVec3UpsertTest, SecondCallOverwrites) {
     auto source = IREntity::createEntity();
 
     IRPrefab::Modifier::upsertBySourceGlobal(
-        m_field, TransformKind::ADD, IRMath::vec3(1.0f), source
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(1.0f),
+        source
     );
     IRPrefab::Modifier::upsertBySourceGlobal(
-        m_field, TransformKind::ADD, IRMath::vec3(9.0f, 8.0f, 7.0f), source
+        m_field,
+        TransformKind::ADD,
+        IRMath::vec3(9.0f, 8.0f, 7.0f),
+        source
     );
 
     auto &c = IREntity::getComponent<IRComponents::C_GlobalModifiers>(

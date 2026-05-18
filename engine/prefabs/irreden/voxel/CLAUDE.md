@@ -8,8 +8,9 @@ for single voxels and particles.
 
 - `C_Voxel` — per-voxel record (12 B std430): RGBA color + `material_id`,
   `flags` (bit-packed `VoxelFlags::kAoContrib | kEmissive | kInteractive`),
-  `bone_id`. Default ctor sets `flags = kAoContrib` and the rest zero so v1
-  scenes render unchanged. Usually handled as spans inside a `C_VoxelPool`.
+  `bone_id`, `layer_id` (editor layer membership; 0 = default layer).
+  Default ctor sets `flags = kAoContrib` and the rest zero so v1 scenes
+  render unchanged. Usually handled as spans inside a `C_VoxelPool`.
   Layout matches the GPU SSBO at slot 6 — see
   `components/component_voxel.hpp` and the per-pipeline shaders for the
   struct mirror.
