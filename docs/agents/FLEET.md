@@ -417,7 +417,11 @@ Defaults and tuning:
 - Global override (any unmatched type): `FLEET_DISPATCHER_USAGE_GATE`.
 - Stale observations (older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS`,
   default `3600`) are dropped from evaluation, so a single high-watermark
-  reading can't latch the gate closed forever.
+  reading can't latch the gate closed forever. **Account-switch recovery:**
+  switching Claude accounts leaves the prior account's observations cached
+  and they will gate the new account until the stale window ages out.
+  `fleet-up --reset-usage` wipes `~/.fleet/state/usage/*.json` immediately;
+  safe to run on a live fleet (the gate re-evaluates on the next tick).
 - Reset grace (`FLEET_DISPATCHER_RESET_GRACE_SECONDS`, default `600`) —
   observations stay in evaluation until `resetsAt + grace` is in the past.
   Set to `0` to revert to the old "open instantly at resetsAt" behavior.

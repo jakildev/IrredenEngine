@@ -125,6 +125,51 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 1
 fi
 
+# --- Early flag parsing -----------------------------------------------------
+#
+# Flags handled here take effect before the early-exit-if-session-exists
+# check, so they work on both fresh boots and live fleets. The main arg
+# parser further down recognizes the same flags as no-ops so the
+# unknown-arg guard doesn't reject them.
+RESET_USAGE=0
+for arg in "$@"; do
+    case "$arg" in
+        --reset-usage) RESET_USAGE=1 ;;
+    esac
+done
+
+# --reset-usage: wipe ~/.fleet/state/usage/*.json.
+#
+# Use case: the operator just switched Claude accounts. fleet-claude-stream
+# latches rate_limit_event observations per bucket (five_hour, seven_day,
+# ...), and the dispatcher reads those each tick to decide whether to gate
+# dispatches. A 94%-utilized cache file from the prior account will gate
+# the new account's dispatches for up to FLEET_DISPATCHER_USAGE_STALE_SECONDS
+# (default 1h) even though the new account has full budget.
+#
+# Safe to run on a live fleet — the dispatcher polls usage files every
+# tick (10s default), so the gate re-evaluates within one interval of
+# the wipe; no dispatcher restart needed. Cached observations re-populate
+# organically as the new account's events flow through fleet-claude-stream.
+if (( RESET_USAGE )); then
+    usage_dir="$HOME/.fleet/state/usage"
+    if [[ -d "$usage_dir" ]]; then
+        wiped=0
+        for f in "$usage_dir"/*.json; do
+            [[ -e "$f" ]] || continue
+            rm -f "$f"
+            wiped=$((wiped + 1))
+        done
+        if (( wiped > 0 )); then
+            echo "fleet-up: --reset-usage wiped $wiped cached observation(s) from $usage_dir"
+        else
+            echo "fleet-up: --reset-usage: $usage_dir already empty"
+        fi
+    else
+        echo "fleet-up: --reset-usage: $usage_dir does not exist (nothing to wipe)"
+    fi
+fi
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "fleet session already exists — attach with: tmux attach -t $SESSION"
     echo "(kill with \`tmux kill-session -t $SESSION\` first if you want a fresh layout)"
@@ -917,6 +962,7 @@ for arg in "$@"; do
     case "$arg" in
         dry-run|live|review-only) MODE="$arg" ;;
         --no-attach)  ATTACH_LIVE=0 ;;
+        --reset-usage) ;;  # handled in early parse loop near the top
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
@@ -1193,6 +1239,12 @@ other modes you can pass to fleet-up:
   fleet-up live                  # full loop from the start, auto-attaches tmux
   fleet-up live --no-attach      # full loop, leave detached (CI / headless)
   fleet-up review-only           # close-out mode — no new work, finish in-flight
+
+flags (compose with any mode):
+  --reset-usage                  # wipe cached usage observations from a prior
+                                 #   account (use after switching Claude accounts;
+                                 #   safe to run on a live fleet — gate
+                                 #   re-evaluates within one dispatcher tick)
 
 graceful shutdown:
   fleet-down                     # graceful: send "exit", wait, kill, clear claims
