@@ -71,7 +71,11 @@ tree just means the commit-and-push pre-checks find nothing to do.
 ```bash
 git rev-parse --abbrev-ref HEAD
 git status
-git diff --stat && git diff
+git diff --stat
+```
+
+```bash
+git diff
 ```
 
 Group touched files by module (`engine/render/`, `engine/system/`,
