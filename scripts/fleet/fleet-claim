@@ -621,7 +621,7 @@ def edit_tasks_md(content, action, task_id, owner):
     found = False
     decision = None
 
-    header_re = re.compile(r'^- \[([ ~x!])\] \*\*([^*]+)\*\*(.*)$')
+    header_re = re.compile(r'^- \[([ ~x!])\] \*\*(.+?)\*\*(.*)$')
     field_re = re.compile(r'^(\s+)- \*\*([^:]+):\*\*\s*(.*?)\s*$')
 
     n = len(lines)
@@ -1198,7 +1198,7 @@ content = os.environ.get('FLEET_RECLAIM_TASKS_MD', '')
 block_status = None
 block_id = None
 block_owner = None
-header_re = re.compile(r'^- \[([ ~x!])\] \*\*([^*]+)\*\*')
+header_re = re.compile(r'^- \[([ ~x!])\] \*\*(.+?)\*\*')
 field_re = re.compile(r'^\s+- \*\*([^:]+):\*\*\s*(.*?)\s*$')
 for line in content.splitlines():
     m = header_re.match(line)
