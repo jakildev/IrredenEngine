@@ -348,11 +348,11 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [ ] **render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests** — remove two provably-unreachable guards from `castVoxelRay` voxel-set branch and cherry-pick 4 face-normal tests from closed PR #796
+- [~] **render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests** — remove two provably-unreachable guards from `castVoxelRay` voxel-set branch and cherry-pick 4 face-normal tests from closed PR #796
   - **ID:** T-224
   - **Area:** engine/prefabs/irreden/render, test/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `picking.hpp` voxel-set branch no longer contains the SDF box guard (`SDF::box(delta, vec3(0.5)) > 0`) or the defensive `flatIdx >= voxels_.size()` check; (2) `picking_face_normal_test.cpp` grows from 6 to 10 `TEST(` entries (NegativeVoxelCoordPlusXFace, OriginVoxelMinusZFace, ExactCenterFavorsXAxisPositive, ReturnsSingleNonzeroAxis); (3) `fleet-build --target IrredenEngineTest` clean on linux-debug and macos-debug; (4) `fleet-run IrredenEngineTest` — all PickingFaceNormal tests pass; (5) `fleet-build --target IRVoxelEditor` clean; (6) no behavioral change in IRShapeDebug or IRVoxelEditor voxel picking (smoke)
   - **Issue:** #807
