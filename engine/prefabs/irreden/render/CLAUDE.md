@@ -91,7 +91,12 @@ the ECS surface.
 - `VOXEL_PICKING` — editor input driver. On left-click PRESSED, casts a
   ray through the cursor (via `IRPrefab::Picking::castVoxelRay` —
   composes the same screen→world inverse `IRRender::mouseWorldPos3DAtIsoDepth`
-  uses) and walks SDF shapes to find the first hit. Writes
+  uses) and walks both visible `C_ShapeDescriptor` SDF shapes and
+  active voxels of every `C_VoxelSetNew` to find the first hit.
+  Voxel-set hits return the owning entity, the world-aligned voxel
+  coordinate, and a face normal suitable for place-adjacent math
+  (`hit.faceNormal_` — ±1 along the dominant axis of
+  `hit.worldHitPos_ - voxelCenter`). Writes
   `C_VoxelSelection` on the highlight entity and toggles its
   `C_ShapeDescriptor::flags_` visibility. Register after the camera
   systems and before `VOXEL_TO_TRIXEL_STAGE_1` so the highlight

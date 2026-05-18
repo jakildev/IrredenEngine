@@ -9,6 +9,7 @@
 // Components
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -309,6 +310,22 @@ void initEntities() {
 
         EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
         IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
+    }
+
+    // Two small voxel sets to exercise multi-`C_VoxelSetNew` picking
+    // (T-219). Placed left and right of the origin so a click on either
+    // returns the correct owning entity. Voxels are integer-aligned —
+    // left-clicking any visible voxel selects it; the highlight
+    // (created below) snaps to its world center via `selection.voxelPos_`.
+    {
+        IREntity::createEntity(
+            C_Position3D{vec3(-8.0f, 0.0f, -4.0f)},
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
+        );
+        IREntity::createEntity(
+            C_Position3D{vec3(8.0f, 0.0f, -4.0f)},
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
+        );
     }
 
     // Selection-highlight entity: a slightly oversized box marker
