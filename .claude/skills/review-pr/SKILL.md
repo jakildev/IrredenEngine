@@ -390,7 +390,7 @@ tool**, then pass it with `--body-file`:
 - [ ] <...>
 - [ ] <...>
 
-🤖 Reviewed by Claude (review-pr skill)
+🤖 Reviewed by Claude <model> (review-pr skill)
 ```
 
 2. Post the review:
