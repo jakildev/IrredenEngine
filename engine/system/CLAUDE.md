@@ -6,12 +6,6 @@ Systems are themselves entities: `SystemId` is an alias for `EntityId`, and a
 system's behavior is stored as `C_SystemEvent<TICK>` etc. components on the
 system entity.
 
-## Public API
-
-`IRSystem::` exposes: `createSystem<...>()`, `createSystemDynamic()`,
-`replaceSystemBody()`, `registerPipeline()`, `executePipeline()`,
-system tag helpers, and per-system-parameters.
-
 ## `createSystemDynamic` for runtime-typed systems
 
 `createSystem<Components...>()` is the canonical path — component types
@@ -225,10 +219,6 @@ happens once, not per tick.
 named-resource pointers fetched once at engine init that never change — is
 fine as `static`. Those are program constants, not system state. The rule
 applies to *mutable* or *system-owned* state.
-
-See `.fleet/status/system-static-deviations.md` (queue-manager-owned;
-feature PRs do not edit) for the current list of files still using
-function-local `static` for system state.
 
 ## Pipelines
 

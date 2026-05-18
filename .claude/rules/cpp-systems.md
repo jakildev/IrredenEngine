@@ -13,16 +13,7 @@ Rule:
 
 Allowed: `static constexpr`, `static const` for genuine compile-time constants. Those are program constants, not system state.
 
-## Why this matters
-
-Function-local `static` for system state is broken on four axes:
-
-1. **Hidden state** — not visible to ECS inspectors, system-walking tools, or anyone reading the prefab catalog.
-2. **Lifetime mismatch** — persists for program lifetime, doesn't free when the system entity is destroyed. Every reload leaks.
-3. **Single-instance assumption** — all instances of `System<X>` share the same statics. Multi-instance use silently cross-talks.
-4. **Conflicts with the ECS philosophy** — "everything on an entity" is the design; statics are the back door.
-
-The performance argument doesn't hold either: both supported forms have the same per-tick access cost as `static`. The instance pointer is captured into the lambdas at `create()` time — the lookup happens once, not per tick.
+See `engine/system/CLAUDE.md` § "Don't use function-local `static` for system state" for the full rationale.
 
 ## Preferred: member-on-`System<N>` via `registerSystem`
 
@@ -77,28 +68,7 @@ Notes (apply to both forms):
 
 ## Three valid TICK function signatures
 
-`createSystem<Components...>` detects the signature at compile time via `std::is_invocable_v<>`:
-
-```cpp
-// 1. Per-component (most common — pick this by default)
-createSystem<C_Velocity3D, C_VelocityDrag>(
-    "VelocityDrag",
-    [](C_Velocity3D& velocity, C_VelocityDrag& drag) {
-        // deltaTime(UPDATE) is the tick's dt
-    });
-
-// 2. Per-entity-id (when the system truly needs the entity id)
-createSystem<C_NavAgent, C_MoveOrder>(
-    "GridPathfind",
-    [](EntityId id, C_NavAgent& agent, C_MoveOrder& order) { ... });
-
-// 3. Per-archetype / batch (bulk-processing, SIMD, sort, partition)
-createSystem<C_NavAgent>(
-    "GridBake",
-    [](const Archetype& arch,
-       std::vector<EntityId>& ids,
-       std::vector<C_NavAgent>& agents) { ... });
-```
+See `engine/system/CLAUDE.md` § "Three valid TICK function signatures".
 
 ## beginTick / endTick contract
 
