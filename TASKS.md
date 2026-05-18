@@ -269,7 +269,7 @@ Avoid:
   - **Notes:** Phase 1 F-1.5 save/load acceptance gate for entity-editor epic #604 / umbrella #213. Format support already exists (F-0.6, F-0.7); this wires editor save/load through it. Risk: binary .vxs must carry per-voxel metadata bits — if any field is missing, escalate before extending format (additions go in sidecar, not silent v3 churn). See docs/design/entity-editor-epic.md §Phase 1.
   - **Links:**
 
-- [~] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
+- [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
   - **Model:** opus
@@ -284,22 +284,11 @@ Avoid:
   - **ID:** T-221
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/audit-roles.md` present in merged PR; (2) note covers all 7 role files with file:line citations for each duplication; (3) each duplication names a right shared home (existing doc or proposed new doc); (4) follow-up GitHub issues filed (no labels) for each concrete cleanup task in the note
   - **Issue:** #800
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
-  - **Links:**
-
-- [~] **docs/skills: add missing 'name:' field to request-re-review/SKILL.md front-matter** — add `name: request-re-review` to the only SKILL.md missing that front-matter field
-  - **ID:** T-226
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-226-request-re-review-name-field
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `.claude/skills/request-re-review/SKILL.md` front-matter contains `name: request-re-review` above `description:`; (2) all 16 SKILL.md files now carry both `name:` and `description:` fields
-  - **Issue:** #809
-  - **Notes:** Follow-up from T-222 audit (§5.20, §4.3). XS — one-line insertion. 15/16 other skills already have both fields.
   - **Links:**
 
 - [~] **docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify** — resolve stale-vs-current symbol name divergence and move canonical description to engine/video/CLAUDE.md
@@ -669,6 +658,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
 - [x] **T-225** — docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation · Owner: claude/T-225-fix-cross-repo-isolation-leaks · PR: https://github.com/jakildev/IrredenEngine/pull/844
 - [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
 - [x] **T-223** — docs: audit CLAUDE.md files — baseline drift, dead pointers, slop · Owner: claude/T-223-claude-md-audit · PR: https://github.com/jakildev/IrredenEngine/pull/806
@@ -688,4 +678,3 @@ Avoid:
 - [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
 - [x] **T-200** — joints as entities — C_Skeleton + C_Joint scaffolding (replace SoA C_JointHierarchy) · Owner: claude/T-200-skeleton-joint-entities · PR: https://github.com/jakildev/IrredenEngine/pull/751
 - [x] **T-197** — C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
-- [x] **T-198** — quat modifier kind — extend modifier compose for rotation perturbations · Owner: claude/T-198-quat-modifier-kind · PR: https://github.com/jakildev/IrredenEngine/pull/748
