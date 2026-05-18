@@ -451,8 +451,22 @@ Do the work, then exit cleanly:
     ... --jq` chain — same filter, no API call.)
 
     The filter keeps only PRs that are approved, not flagged for
-    fixes, and not claimed by the human. If the list is empty, skip
+    fixes, and not claimed by the human. **Also drop PRs already
+    carrying any `fleet:reviewing-*` label** — another agent is
+    already smoking them. If the list is empty, skip
     to step 2. Otherwise, pick the oldest (smallest number), then:
+
+    **Acquire the cross-host smoke claim FIRST.** Two same-host
+    author agents (`opus-worker-1` and `opus-worker-2`) both poll the
+    same `fleet:needs-<host>-smoke` label and could race to check out
+    + build the same PR. The same `fleet:reviewing-*` lock the
+    reviewer roles use serializes them:
+
+    `fleet-claim review-claim <N> <your-worktree-basename>`
+
+    - **Exit 0** — you own this smoke. Proceed to step a.
+    - **Exit 1** — another agent is already smoking it. Skip to step 2.
+
     a. Re-touch heartbeat (`fleet-heartbeat <your-worktree-basename>`)
        — the build can take minutes and you don't want the witness to
        alarm.
@@ -475,8 +489,12 @@ Do the work, then exit cleanly:
        failure, and add `fleet:needs-fix`:
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
-    g. Reset to scratch branch before continuing:
+    g. **Release the cross-host smoke claim**, then reset to scratch:
+       `fleet-claim review-release <N> <your-worktree-basename>`
        `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
+       Always release — runs whether smoke passed or failed. Queue-
+       tick's `cleanup --gh` would sweep a forgotten label after
+       30 min, but during that window the PR can't be re-smoked.
 
     Validate ONE PR per iteration. Multiple outstanding render PRs
     are handled across successive iterations so task pickup isn't

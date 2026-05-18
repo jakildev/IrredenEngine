@@ -525,6 +525,22 @@ Specifically, **never pass these via `--label` when filing**:
   Cleared by the **reviewer** on the post-rebase verdict (the same
   label-swap commands that handle `fleet:awaiting-upstream-review`
   remove it).
+- `fleet:reviewing-<host>-<agent>` — owned by the **`fleet-claim`
+  script** (atomic review-claim primitive). Applied at the start of
+  reviewer or cross-host-smoke work; removed by
+  `fleet-claim review-release` immediately after the verdict label
+  is set, or on abort paths. Host disambiguation
+  (mac / linux / windows) is required for correctness — both hosts
+  can have an `opus-reviewer` agent; without the host prefix the
+  deterministic-min tie-break would collide. The lex-min of all
+  `fleet:reviewing-*` labels on the PR wins; losers self-remove their
+  label and exit 1. Reviewer / smoke-pickup agents **skip any PR
+  carrying any `fleet:reviewing-*` label** as a fast-path filter,
+  but the real mutex is `fleet-claim review-claim` itself (TOCTOU on
+  the label list is benign — the atomic POST resolves the race).
+  Queue-tick's `fleet-claim cleanup --gh` pass sweeps labels older
+  than 30 min and replays orphan sentinels from failed removals.
+  Don't add manually; don't add to issues.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the

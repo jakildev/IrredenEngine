@@ -96,6 +96,23 @@ if [[ -d "$GAME/.git" ]]; then
     fi
 fi
 
+# --- Stale fleet:reviewing-* label sweep (T-217) ---
+#
+# Sweeps fleet:reviewing-<host>-<agent> labels older than 30 min off open
+# PRs, then replays any orphan sentinels under ~/.fleet/orphans/ from
+# earlier failed removals. Idempotent; safe under concurrent queue-tick
+# invocations across hosts. Runs every tick (not gated on TASKS.md
+# changes) — stale labels accumulate independently of TASKS.md churn.
+fleet-claim cleanup --gh --repo jakildev/IrredenEngine >> "$LOG_FILE" 2>&1 || true
+
+if [[ -d "$GAME/.git" ]]; then
+    game_slug=$(git -C "$GAME" remote get-url origin 2>/dev/null \
+        | sed -E 's|.*github.com[:/]||; s|\.git$||' || true)
+    if [[ -n "$game_slug" ]]; then
+        fleet-claim --repo game cleanup --gh --repo "$game_slug" >> "$LOG_FILE" 2>&1 || true
+    fi
+fi
+
 if [[ $changed -eq 0 ]]; then
     log "TASKS.md unchanged — no commit"
 else
