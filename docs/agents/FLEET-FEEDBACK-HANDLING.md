@@ -206,19 +206,22 @@ stripped. Observed on PR #637 on 2026-05-11 and 2026-05-12; the
 wrapper exists at `scripts/fleet/fleet-pr-clear-feedback-labels`.
 
 For `human:needs-fix` / `human:blocker` specifically, also mark
-the PR as in-progress and clear the prior approval so the human
-knows to hold the merge. **Two separate calls** — `fleet:approved`
-may not be present, and combining remove-when-absent with
-`--add-label` would abort the call:
+the PR as in-progress, clear the prior approval, and clear any
+prior ESCALATE state in case the human is forcing a transition
+from ESCALATE to AMEND mode. **Separate calls** — `fleet:approved`
+and `fleet:human-deferred` may not be present, and combining
+remove-when-absent with `--add-label` would abort the call:
 
 ```
 gh pr edit <N> --add-label "fleet:human-amending"
 gh pr edit <N> --remove-label "fleet:approved"
+fleet-pr-clear-feedback-labels <N> --labels "fleet:human-deferred"
 ```
 
 For `fleet:needs-fix` / `fleet:has-nits` / `fleet:design-unblocked`
-only (no human label): skip both — reviewer-flagged feedback and
-architect direction don't trigger the human-amending state.
+only (no human label): skip all three — reviewer-flagged feedback
+and architect direction don't trigger the human-amending state, and
+`fleet:human-deferred` belongs only to the ESCALATE→AMEND path.
 
 #### Worker-only: reserve the worktree for the in-flight amendment
 

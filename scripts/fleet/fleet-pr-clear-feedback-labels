@@ -15,7 +15,13 @@
 # This wrapper queries the live label set first and only fires a
 # remove-label call for labels actually present, one per call so a
 # single failure doesn't strand the others. The default label list
-# is the worker AMEND set; override with --labels for other callers.
+# is the AMEND trigger set; override with --labels for other callers.
+#
+# Note: fleet:human-deferred is NOT in the default set — it is an
+# ESCALATE-path outcome, not a feedback trigger. It is cleared
+# separately via --labels "fleet:human-deferred" only on the
+# human:needs-fix / human:blocker ESCALATE→AMEND path in
+# FLEET-FEEDBACK-HANDLING.md step b.
 #
 # Usage:
 #   fleet-pr-clear-feedback-labels <N> [--repo <slug>] [--labels <csv>]
@@ -24,7 +30,7 @@
 #   --repo <slug>     Target repo (e.g. jakildev/IrredenEngine). Default:
 #                     the current git remote.
 #   --labels <csv>    Comma-separated label set to clear. Default:
-#                     the worker AMEND set.
+#                     the AMEND trigger set.
 #
 # Exit status:
 #   0  every label in --labels that was present has been removed
@@ -36,7 +42,7 @@
 
 set -euo pipefail
 
-DEFAULT_LABELS="human:needs-fix,human:blocker,fleet:needs-fix,fleet:has-nits,fleet:human-deferred,fleet:design-unblocked"
+DEFAULT_LABELS="human:needs-fix,human:blocker,fleet:needs-fix,fleet:has-nits,fleet:design-unblocked"
 
 pr_number=""
 repo_slug=""
