@@ -19,14 +19,7 @@ creation that opts into the `--auto-screenshot` flag.
 
 ### Platform
 
-Works on all three presets. Use the fleet wrappers so the loop runs
-unattended (no command-substitution or compound-command gates).
-
-| Host          | Preset          | Build command                     | Run command              |
-|---------------|-----------------|-----------------------------------|--------------------------|
-| WSL2 Ubuntu   | `linux-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
-| macOS         | `macos-debug`   | `fleet-build --target <TARGET>`   | `fleet-run <EXE_NAME>`   |
-| Windows-native| `windows-debug` | see `docs/agents/BUILD.md` PATH-fix section | see `docs/agents/BUILD.md` |
+Works on all three presets; see [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md) for the host/preset mapping. Use the fleet wrappers so the loop runs unattended (no command-substitution or compound-command gates): `fleet-build --target <TARGET>` and `fleet-run <EXE_NAME>`.
 
 `fleet-build` auto-detects the worktree root and the corresponding
 `<worktree>/build/` tree, and configures the preset on first use.

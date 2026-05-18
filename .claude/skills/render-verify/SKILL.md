@@ -34,15 +34,7 @@ new baseline, then commit the updated PNGs alongside the render change.
 
 ### Platform
 
-Works on any preset. The harness detects the active backend from
-`build/CMakeCache.txt` and looks up reference PNGs under the matching
-backend subdirectory:
-
-| Host          | Preset          | References dir                                           |
-|---------------|-----------------|----------------------------------------------------------|
-| WSL2 Ubuntu   | `linux-debug`   | `creations/demos/<demo>/test/references/linux-debug/`    |
-| macOS         | `macos-debug`   | `creations/demos/<demo>/test/references/macos-debug/`    |
-| Windows-native| `windows-debug` | `creations/demos/<demo>/test/references/windows-debug/`  |
+Works on any preset; see [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md) for the host/preset mapping. The harness detects the active backend from `build/CMakeCache.txt` and looks up reference PNGs under `creations/demos/<demo>/test/references/<preset>/`.
 
 Backends produce pixel-different output (FP rounding, driver differences).
 Each backend keeps its own reference set — references are **not** shared

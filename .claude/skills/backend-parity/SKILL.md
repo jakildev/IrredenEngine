@@ -248,15 +248,12 @@ either:
 
 After every port, the skill must **build the lagging preset clean**.
 Use `fleet-build` — it avoids the `$(nproc)` / `$(sysctl)` command-substitution
-gate and auto-detects the worktree's build tree:
+gate and auto-detects the worktree's build tree. See [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md)
+for the host/preset mapping (and the Windows-native PATH-fix wrapper):
 
 ```bash
 fleet-build --target IRShapeDebug
 ```
-
-This works on macOS (`macos-debug` preset) and Linux/WSL (`linux-debug` preset).
-For Windows-native, use the PATH-fix wrapper documented in
-[`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md).
 
 **Watch for the build-hygiene canary** — a "Built target" line without
 any "Building CXX object" / "Building C object" / "Building Metal
