@@ -267,32 +267,12 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
   - **Links:**
 
-- [~] **fleet: verify and document merger.log rotation** — investigate whether merger.log is actually rotated; update role-merger.md to accurately describe its lifecycle
-  - **ID:** T-273
-  - **Area:** docs, tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-273-merger-log-rotation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) merger.log lifecycle verified by checking scripts/fleet/, ~/.fleet/, dispatcher config, and cron entries; (2) role-merger.md:579-580,803,851-853 updated to cite rotation source, or "tail-rotated" claim removed if no rotation exists, or rotation added if it should exist but doesn't; (3) future readers can find rotation source from the doc
-  - **Issue:** #874
-  - **Notes:** From T-221 role audit (audit-roles.md §4.4). role-merger.md distinguishes merger-audit.log (append-only) from merger.log (claimed to be tail-rotated) but scripts/fleet/ has no rotation config. Either rotation lives off-tree undocumented, or the claim is stale. ~5 line doc edits + investigation.
-  - **Links:**
-
-- [~] **docs/roles: decide whether queue-manager produces feedback; document either way** — add explicit statement to role-queue-manager.md on end-of-iteration feedback; either add the section or explicitly opt out
-  - **ID:** T-274
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-274-queuemanager-feedback
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) role-queue-manager.md explicitly states whether queue-manager produces end-of-iteration feedback; (2) if yes: End-of-iteration feedback section added pointing at ~/.fleet/feedback/queue-manager.md (consistent with other transient roles); (3) if no: one-line explicit statement added so future readers don't wonder; (4) ~10 line edit
-  - **Issue:** #875
-  - **Notes:** From T-221 role audit (audit-roles.md §4.7). Every other transient role has an End-of-iteration feedback section. Queue-manager has none (verified via grep). Either option is acceptable — the doc just needs to be explicit.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-274** — docs/roles: decide whether queue-manager produces feedback; document either way · Owner: claude/T-274-queuemanager-feedback · PR: https://github.com/jakildev/IrredenEngine/pull/927
+- [x] **T-273** — fleet: verify and document merger.log rotation · Owner: claude/T-273-merger-log-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/926
 - [x] **T-270** — docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle · Owner: claude/T-270-architect-doc-catchup · PR: https://github.com/jakildev/IrredenEngine/pull/923
 - [x] **T-269** — docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect · Owner: claude/T-269-clear-feedback-labels-wrapper · PR: https://github.com/jakildev/IrredenEngine/pull/922
 - [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
@@ -311,5 +291,3 @@ Avoid:
 - [x] **T-256** — docs: small modules — delete inline directory trees from CLAUDE.md files · Owner: claude/T-256-delete-dir-trees · PR: https://github.com/jakildev/IrredenEngine/pull/911
 - [x] **T-254** — docs: engine/audio + engine/video CLAUDE.md — remove dead pointers · Owner: claude/T-254-audio-video-dead-refs · PR: https://github.com/jakildev/IrredenEngine/pull/907
 - [x] **T-252** — docs: engine/prefabs/CLAUDE.md — de-dup vs cpp-ecs.md · Owner: claude/T-252-prefabs-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/904
-- [x] **T-253** — docs: engine/prefabs/irreden/ — prune name catalogs across subtree · Owner: claude/T-253-prefab-claude-md-prune · PR: https://github.com/jakildev/IrredenEngine/pull/903
-- [x] **T-251** — docs: engine/math/CLAUDE.md — collapse function-signature catalogs · Owner: claude/T-251-math-claude-md-catalogs · PR: https://github.com/jakildev/IrredenEngine/pull/902
