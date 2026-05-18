@@ -36,25 +36,11 @@ directory before launching, so the demo picks up its sibling `data/`,
 
 ### Demo requirement: `--auto-screenshot`
 
-This skill drives a demo that opts into the reusable auto-screenshot
-helper in `engine/video/`. Conforming demos do three things in `main.cpp`:
-
-1. Call `IRVideo::parseAutoScreenshotArgv(argc, argv, &warmupFrames)` to
-   detect the flag and read its optional warmup-frames count.
-2. Declare an `IRVideo::AutoScreenshotShot` table (zoom + iso camera
-   position + label per shot).
-3. When `warmupFrames > 0`, append `IRVideo::createAutoScreenshotSystem(
-   cfg)`'s returned `SystemId` to the RENDER pipeline list before
-   `registerPipeline` fires.
-
-The helper handles warmup, settle frames, zoom / camera application,
-the screenshot request, and window close after the last shot.
-
-**Reference implementations:** `creations/demos/shape_debug/main.cpp` and
-`creations/demos/metal_clear_test/main.cpp` — both wire up the helper in
-under a dozen lines. If your target demo does not yet opt in, either
-(a) add the six-line wire-up shown there, or (b) use `shape_debug` if
-it exercises the code path you care about.
+The target demo must opt into the auto-screenshot helper. See
+[`engine/video/CLAUDE.md` § "Auto-screenshot helper"](../../../engine/video/CLAUDE.md)
+for the API, wire-up steps, and reference implementations. If your target
+demo does not yet opt in, either (a) add the wire-up shown in the reference
+callers, or (b) use `shape_debug` if it exercises the code path you care about.
 
 ## Loop Steps
 

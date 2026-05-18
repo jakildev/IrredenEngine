@@ -57,10 +57,9 @@ reference set on a host representative of where verify will run.
 
 ### Demo requirement: `--auto-screenshot`
 
-The target demo must implement `--auto-screenshot [warmup-frames]` (same
-contract as `render-debug-loop`). Reference implementation:
-`creations/demos/shape_debug/main.cpp` — see `ShotConfig`, `g_shots[]`,
-the `AutoScreenshot` system.
+The target demo must implement `--auto-screenshot [warmup-frames]`. See
+[`engine/video/CLAUDE.md` § "Auto-screenshot helper"](../../../engine/video/CLAUDE.md)
+for the API and reference implementations.
 
 ### Manifest
 
