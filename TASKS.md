@@ -366,11 +366,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). CLAUDE-BASELINE.md:74-79 explicitly names engine/prefabs/CLAUDE.md as canonical home for the categorization. The C_PeriodicIdle example and C_VoxelSetNew exception are identical word-for-word in both files.
   - **Links:**
 
-- [ ] **docs: engine/prefabs/irreden/ — prune name catalogs across subtree** — triage all 7 CLAUDE.md files under engine/prefabs/irreden/, keeping only genuine gotchas and pruning name-catalog bullets
+- [~] **docs: engine/prefabs/irreden/ — prune name catalogs across subtree** — triage all 7 CLAUDE.md files under engine/prefabs/irreden/, keeping only genuine gotchas and pruning name-catalog bullets
   - **ID:** T-253
   - **Area:** docs, engine/prefabs/irreden/common, engine/prefabs/irreden/render, engine/prefabs/irreden/audio, engine/prefabs/irreden/input, engine/prefabs/irreden/update, engine/prefabs/irreden/voxel, engine/prefabs/irreden/video
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `common/CLAUDE.md:7-28` pruned to entries documenting non-obvious lifecycle; `SYSTEM_PROPAGATE_TRANSFORM` banner drift at L74/L113/L153 fixed to `PROPAGATE_TRANSFORM`; (2) `render/CLAUDE.md:8-68` catalog and L41-56 per-field docs trimmed; L70 pipeline header fixed; L351-354 SystemName rule removed; (3) `audio/CLAUDE.md:9-37` catalogs compressed to C_MidiNote::onDestroy() gotcha; "Commands: None" deleted; WIP note for system_audio_device_manager.hpp added; (4) `input/CLAUDE.md:8-26` catalog pruned; beginTick/beforeTick inconsistency resolved; (5) `update/CLAUDE.md:7-17` pruned to C_Velocity3D gotcha; (6) `voxel/CLAUDE.md:8-40` pruned to pool/layout/deprecation notes; stubs at L46-49 and L167-173 moved out; (7) `video/CLAUDE.md` collapsed to "Status: mostly placeholder" + Gotchas
   - **Issue:** #836
