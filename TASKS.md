@@ -280,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: align model-version stamps emitted by review-pr and commit-and-push** — fix stale Opus 4.6 stamp in review-pr and align co-author stamp with harness
-  - **ID:** T-228
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-228-align-model-version-stamps
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `review-pr/SKILL.md:393` stale `Opus 4.6` stamp updated or removed; (2) `commit-and-push/SKILL.md:199` co-author stamp consistent with harness system prompt; (3) either both skills drop the model-version stamp (letting the harness add it) or both use one canonical signature constant documented in a shared doc
-  - **Issue:** #811
-  - **Notes:** Follow-up from T-222 audit (§5.10, §3.4). Size S. Three artifacts with three different stamps; canonical Opus is now 4.7.
-  - **Links:**
-
 - [~] **docs/skills: pick a single formatter owner across simplify / commit-and-push / polish-checkpoint** — eliminate the three-way disagreement on who runs clang-format
   - **ID:** T-229
   - **Area:** docs
@@ -636,6 +625,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
 - [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
 - [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
 - [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
@@ -655,4 +645,3 @@ Avoid:
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
 - [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
-- [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
