@@ -36,7 +36,8 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
@@ -53,12 +54,11 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
         // state still wins over the base unselected border (state-aware
         // theme call), which keeps click feedback consistent with the
         // other interactive widgets.
-        const IRMath::Color borderColor = swatch.selected_
-            ? theme.borderFocused_
-            : IRPrefab::Widget::detail::stateBorder(theme, widget, state);
-        const int thickness = swatch.selected_
-            ? theme.borderThickness_ + 1
-            : theme.borderThickness_;
+        const IRMath::Color borderColor =
+            swatch.selected_ ? theme.borderFocused_
+                             : IRPrefab::Widget::detail::stateBorder(theme, widget, state);
+        const int thickness =
+            swatch.selected_ ? theme.borderThickness_ + 1 : theme.borderThickness_;
         IRRender::drawBorder(
             *canvas_,
             guiPos.pos_,
@@ -76,8 +76,7 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetColorSwatch,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderColorSwatch");
+            IRComponents::C_GuiPosition>("WidgetRenderColorSwatch");
     }
 };
 

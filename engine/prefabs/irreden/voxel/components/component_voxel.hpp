@@ -33,10 +33,9 @@ constexpr std::uint8_t kInteractive = 1u << 2;
 ///                         the trailing uint32 4-byte aligned
 ///   [8:11] reserved_      reserved for future per-voxel fields
 ///
-/// Phase 1 (this PR) widens the in-memory + SSBO layout only. The compute
-/// shaders (`c_voxel_to_trixel_stage_*`) read `color_` from offset 0 just
-/// like before — the new fields ride along for Phase 2 (#605) where stage 1
-/// multiplies the voxel position by `bone_matrix[bone_id]`.
+/// The compute shaders (`c_voxel_to_trixel_stage_*`) read `color_` from
+/// offset 0; `bone_id_` and `layer_id_` ride along for Phase 2 (#605)
+/// where stage 1 applies the skeletal joint matrix and layer visibility.
 struct C_Voxel {
     IRMath::Color color_;
     std::uint8_t material_id_;

@@ -27,7 +27,7 @@ struct LayerRecord {
 // must iterate the scene's C_VoxelSetNew and update voxel alpha accordingly
 // — that wiring lives in T-211 once the scene entity is instantiated.
 class EditorLayerManager {
-public:
+  public:
     EditorLayerManager() {
         m_layers.push_back(LayerRecord{0, "default", true, IRMath::Color{180, 180, 200, 255}});
     }
@@ -43,20 +43,23 @@ public:
 
     // Cycles to the previous layer in display order, wrapping around.
     void selectPrevLayer() {
-        if (m_layers.size() <= 1) return;
+        if (m_layers.size() <= 1)
+            return;
         auto idx = indexOfActive();
         m_activeLayerId = m_layers[idx == 0 ? m_layers.size() - 1 : idx - 1].id_;
     }
 
     // Cycles to the next layer in display order, wrapping around.
     void selectNextLayer() {
-        if (m_layers.size() <= 1) return;
+        if (m_layers.size() <= 1)
+            return;
         auto idx = indexOfActive();
         m_activeLayerId = m_layers[(idx + 1) % m_layers.size()].id_;
     }
 
     // Adds a new layer and returns its id. Returns 0 on overflow (255-layer max).
-    std::uint8_t addLayer(std::string name, IRMath::Color colorTag = IRMath::Color{180, 180, 200, 255}) {
+    std::uint8_t
+    addLayer(std::string name, IRMath::Color colorTag = IRMath::Color{180, 180, 200, 255}) {
         if (m_nextId == 0)
             return 0; // 255-layer limit reached
         std::uint8_t id = m_nextId++;
@@ -66,7 +69,8 @@ public:
 
     bool renameLayer(std::uint8_t id, std::string name) {
         auto *rec = findLayer(id);
-        if (!rec) return false;
+        if (!rec)
+            return false;
         rec->name_ = std::move(name);
         return true;
     }
@@ -74,7 +78,8 @@ public:
     // Toggles visibility. Returns the new visible state, or false if not found.
     bool toggleLayerVisibility(std::uint8_t id) {
         auto *rec = findLayer(id);
-        if (!rec) return false;
+        if (!rec)
+            return false;
         rec->visible_ = !rec->visible_;
         return rec->visible_;
     }
@@ -87,10 +92,13 @@ public:
     // Deletes a layer. Layer 0 cannot be deleted. Active layer falls back to 0.
     // Caller is responsible for migrating voxels with this layer_id_ to layer 0.
     bool deleteLayer(std::uint8_t id) {
-        if (id == 0) return false;
-        auto it = std::find_if(m_layers.begin(), m_layers.end(),
-            [id](const LayerRecord &r) { return r.id_ == id; });
-        if (it == m_layers.end()) return false;
+        if (id == 0)
+            return false;
+        auto it = std::find_if(m_layers.begin(), m_layers.end(), [id](const LayerRecord &r) {
+            return r.id_ == id;
+        });
+        if (it == m_layers.end())
+            return false;
         m_layers.erase(it);
         if (m_activeLayerId == id)
             m_activeLayerId = 0;
@@ -99,14 +107,16 @@ public:
 
     bool moveLayerUp(std::uint8_t id) {
         auto idx = findIndex(id);
-        if (idx >= m_layers.size() || idx == 0) return false;
+        if (idx >= m_layers.size() || idx == 0)
+            return false;
         std::swap(m_layers[idx], m_layers[idx - 1]);
         return true;
     }
 
     bool moveLayerDown(std::uint8_t id) {
         auto idx = findIndex(id);
-        if (idx >= m_layers.size() || idx + 1 == m_layers.size()) return false;
+        if (idx >= m_layers.size() || idx + 1 == m_layers.size())
+            return false;
         std::swap(m_layers[idx], m_layers[idx + 1]);
         return true;
     }
@@ -115,22 +125,25 @@ public:
         return m_layers;
     }
 
-private:
+  private:
     LayerRecord *findLayer(std::uint8_t id) {
-        auto it = std::find_if(m_layers.begin(), m_layers.end(),
-            [id](const LayerRecord &r) { return r.id_ == id; });
+        auto it = std::find_if(m_layers.begin(), m_layers.end(), [id](const LayerRecord &r) {
+            return r.id_ == id;
+        });
         return it == m_layers.end() ? nullptr : &*it;
     }
 
     const LayerRecord *findLayer(std::uint8_t id) const {
-        auto it = std::find_if(m_layers.begin(), m_layers.end(),
-            [id](const LayerRecord &r) { return r.id_ == id; });
+        auto it = std::find_if(m_layers.begin(), m_layers.end(), [id](const LayerRecord &r) {
+            return r.id_ == id;
+        });
         return it == m_layers.end() ? nullptr : &*it;
     }
 
     std::size_t findIndex(std::uint8_t id) const {
         for (std::size_t i = 0; i < m_layers.size(); ++i)
-            if (m_layers[i].id_ == id) return i;
+            if (m_layers[i].id_ == id)
+                return i;
         return m_layers.size();
     }
 

@@ -69,7 +69,6 @@
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
 
-// Editor layer system (T-213)
 #include "editor_layer_manager.hpp"
 
 #include <algorithm>
@@ -204,11 +203,10 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0;
 
-// Layer system (T-213). Tracks named layers and the active layer for new
-// placements. Keyboard commands below let the user create, select, rename,
-// and hide layers without a UI panel (F-0.1 trixel UI panel is pending).
-// When T-211 instantiates the scene's C_VoxelSetNew, set g_sceneVoxelSetEntity
-// so visibility toggles can iterate voxels and update their alpha accordingly.
+// Named-layer state for new placements. Commands below let the user create,
+// select, rename, and hide layers. Set g_sceneVoxelSetEntity after
+// allocating the scene's C_VoxelSetNew so visibility toggles can iterate
+// voxels and update their alpha accordingly.
 EditorLayerManager g_layerManager;
 IREntity::EntityId g_sceneVoxelSetEntity = IREntity::kNullEntity;
 
@@ -840,14 +838,15 @@ void initCommands() {
     );
 
     // K: add a new layer (auto-named from count, immediately becomes active).
-    // Rebound from N to avoid collision with T-214's N binding (add blank frame).
+    // N is reserved for frame-animation's "add blank frame" binding.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonK,
         []() {
             std::uint8_t id = IRVoxelEditor::g_layerManager.addLayer(
-                "layer " + std::to_string(IRVoxelEditor::g_layerManager.layers().size()));
+                "layer " + std::to_string(IRVoxelEditor::g_layerManager.layers().size())
+            );
             if (id != 0)
                 IRVoxelEditor::g_layerManager.setActiveLayer(id);
             IR_LOG_INFO("Layers after add:");
@@ -877,20 +876,21 @@ void initCommands() {
         }
     );
 
-    // H: toggle active layer visibility
-    // T-211 integration point: when g_sceneVoxelSetEntity != kNullEntity,
-    // iterate C_VoxelSetNew and update voxel alpha for affected layer.
+    // H: toggle active layer visibility. When g_sceneVoxelSetEntity is set,
+    // iterate C_VoxelSetNew and update voxel alpha for the affected layer.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonH,
         []() {
-            bool nowVisible =
-                IRVoxelEditor::g_layerManager.toggleLayerVisibility(
-                    IRVoxelEditor::g_layerManager.activeLayerId());
-            IR_LOG_INFO("Layer {} visibility -> {}",
+            bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(
+                IRVoxelEditor::g_layerManager.activeLayerId()
+            );
+            IR_LOG_INFO(
+                "Layer {} visibility -> {}",
                 IRVoxelEditor::g_layerManager.activeLayerId(),
-                nowVisible ? "shown" : "hidden");
+                nowVisible ? "shown" : "hidden"
+            );
         }
     );
 }

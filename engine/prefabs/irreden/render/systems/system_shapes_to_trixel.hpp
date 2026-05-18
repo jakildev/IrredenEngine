@@ -264,7 +264,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.passIndex = 0;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(gridX), static_cast<std::uint32_t>(gridY), 1);
+            IRRender::device()->dispatchCompute(
+                static_cast<std::uint32_t>(gridX),
+                static_cast<std::uint32_t>(gridY),
+                1
+            );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             // Pass 1: color + entity ID where depth matches. Colors is bound
@@ -281,7 +285,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.passIndex = 1;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(gridX), static_cast<std::uint32_t>(gridY), 1);
+            IRRender::device()->dispatchCompute(
+                static_cast<std::uint32_t>(gridX),
+                static_cast<std::uint32_t>(gridY),
+                1
+            );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             auto &timing = IRRender::gpuStageTiming();

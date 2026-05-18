@@ -210,9 +210,11 @@ Container chunks:
   in `unknownShapesSkipped_`.
 - `BNDS` — DENSE-mode bounds. Six i32 (`min.xyz, max.xyz`); inclusive
   min, exclusive max. `voxelCount() = (max - min).x * .y * .z`.
-- `VOXR` — DENSE-mode per-voxel records. `kVoxelRecordVersion` u16 +
-  varuint count + tightly-packed 12 B records matching `C_Voxel`. A
-  count mismatch against the bounds-derived voxel volume logs a warning
+- `VOXR` — DENSE-mode per-voxel records. `kVoxelRecordVersion` u16 (current:
+  2) + varuint count + tightly-packed 12 B records matching `C_Voxel`.
+  v1→v2 migration: byte 7 renamed `pad0_` → `layer_id_`; wire bytes
+  identical (both zero for pre-layer files), so no data translation needed.
+  A count mismatch against the bounds-derived voxel volume logs a warning
   and proceeds with the chunk's count (Rule #5).
 - `LAYR` — DENSE-mode named layer membership bitmasks. One layer is
   `(name, ceil(voxelCount/64) u64 words)`; bit i = membership of voxel
