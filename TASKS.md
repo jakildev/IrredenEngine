@@ -245,28 +245,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
   - **Links:**
 
-- [~] **fleet: resolve fleet:awaiting-base vs fleet:awaiting-upstream-review label drift** — investigate whether these are two distinct states or unintentional drift; update FLEET.md label dictionary and role files to be consistent
-  - **ID:** T-268
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-268-label-drift-fix
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) FLEET.md label dictionary is consistent with usage in all role files; (2) either fleet:awaiting-base added to FLEET.md as a distinct documented merger-owned label (clarifying difference from fleet:awaiting-upstream-review), or merger usage (role-merger.md:362,437,447,478,819-825) renamed to fleet:awaiting-upstream-review; (3) whichever direction wins, every consumer agrees on label names
-  - **Issue:** #869
-  - **Notes:** From T-221 role audit (audit-roles.md §3.2). Highest-priority semantic question in the T-221 cleanup set — a real correctness concern, not just dedup. fleet:awaiting-base appears in role-merger.md only; fleet:awaiting-upstream-review is in FLEET.md label dictionary and reviewer roles, but not the merger.
-  - **Links:**
-
-- [~] **docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect** — fix known non-atomic label removal bug; drop spurious fleet:human-deferred removal in AMEND path
-  - **ID:** T-269
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-269-clear-feedback-labels-wrapper
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-sonnet-author.md:261` raw label chain replaced with `fleet-pr-clear-feedback-labels <N>` call; (2) `role-opus-architect.md:185-186` same swap; (3) unconditional `fleet:human-deferred` removal in sonnet-author AMEND path removed (AMEND path triggers on human:needs-fix/human:blocker, not fleet:human-deferred); (4) known non-atomic failure mode can no longer recur in these two roles
-  - **Issue:** #870
-  - **Notes:** From T-221 role audit (audit-roles.md §3.1, §4.5, §4.8). Highest-priority bug in the T-221 cleanup set. The raw chained `gh pr edit --remove-label A --remove-label B` form exits non-zero on the first absent label, leaving partial label state. Past occurrences: PR #637 on 2026-05-11 and 2026-05-12. role-opus-worker.md already uses the wrapper correctly.
-  - **Links:**
-
 - [~] **docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle** — fix three stale points in role-opus-architect.md relative to current fleet semantics
   - **ID:** T-270
   - **Area:** docs
@@ -326,6 +304,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-269** — docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect · Owner: claude/T-269-clear-feedback-labels-wrapper · PR: https://github.com/jakildev/IrredenEngine/pull/922
+- [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
 - [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
 - [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
 - [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
@@ -344,5 +324,3 @@ Avoid:
 - [x] **T-253** — docs: engine/prefabs/irreden/ — prune name catalogs across subtree · Owner: claude/T-253-prefab-claude-md-prune · PR: https://github.com/jakildev/IrredenEngine/pull/903
 - [x] **T-251** — docs: engine/math/CLAUDE.md — collapse function-signature catalogs · Owner: claude/T-251-math-claude-md-catalogs · PR: https://github.com/jakildev/IrredenEngine/pull/902
 - [x] **T-249** — docs/skills: pull pipeline-ordering (INPUT -> UPDATE -> RENDER) into one canonical doc · Owner: claude/T-249-pipeline-ordering-canonical · PR: https://github.com/jakildev/IrredenEngine/pull/901
-- [x] **T-247** — docs/skills: sweep Bash-rule violations in skill-prescribed snippets · Owner: claude/T-247-bash-rule-violations · PR: https://github.com/jakildev/IrredenEngine/pull/899
-- [x] **T-245** — docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating · Owner: claude/T-245-request-re-review-compose · PR: https://github.com/jakildev/IrredenEngine/pull/897
