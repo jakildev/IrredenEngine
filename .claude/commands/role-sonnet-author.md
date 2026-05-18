@@ -504,41 +504,4 @@ the human can tell which sonnet pane observed what. See
 
 ## Hard rules
 
-- Never `git push origin master`. Never `--force`. Never call
-  `gh pr merge`. The human merges.
-- Never run `cmake --preset` — only `cmake --build` against the
-  already-configured tree.
-- Never touch the `.claude/worktrees/` layout.
-- Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
-  `xcode-select` — those are human-initiated.
-- **Never leave dirty edits uncommitted at the end of an iteration.**
-  If you made any changes to the working tree — manual edits, edits
-  that simplify applied, fixes from optimize, anything — you MUST
-  follow with `commit-and-push` to land them. The next iteration's
-  branch switch will discard them. If `simplify` ran and reported
-  fixes applied but you didn't proceed to commit, that's the bug:
-  finish the flow. Don't invoke `simplify` standalone — let
-  `commit-and-push` invoke it for you, so the commit step is
-  guaranteed to follow.
-- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
-  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one;
-  never include them in a feature PR's diff. Canonical explanation
-  in `.fleet/status/README.md`.
-- **Edit/Write paths must stay inside your worktree.** The parent
-  clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
-  in the path) and your worktree at
-  `.../.claude/worktrees/<your-basename>/` both contain the same tree
-  shape, so an Edit aimed at the parent's absolute path will succeed
-  silently — but your build runs against the worktree, so the edit
-  appears to "do nothing" while quietly orphaning changes in the
-  parent clone (potentially clobbering another agent's work). Prefer
-  relative paths from your worktree's cwd. If you must use an
-  absolute path, it MUST start with
-  `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
-  Re-confirm with `pwd` if unsure.
-- Single-command Bash only (see CRITICAL section above).
-- **Edit/Write blocked for `.claude/commands/` files?** The harness
-  permission gate blocks these paths even with `Edit(*)`/`Write(*)`
-  in the allowlist. Use python3 for OS-level writes (sanctioned via
-  `Bash(python3:*)` in the allowlist):
-  `python3 -c "f=open(path).read(); assert old in f, 'string not found'; open(path, 'w').write(f.replace(old, new, 1))"`
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).

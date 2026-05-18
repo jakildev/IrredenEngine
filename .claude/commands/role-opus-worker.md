@@ -836,22 +836,10 @@ human can tell which opus-worker observed what. See
 
 ## Hard rules
 
-- Never `git push origin master`. Never `--force`. Never call
-  `gh pr merge`. The human merges.
-- Never run `cmake --preset` — only `cmake --build` against the
-  already-configured tree.
-- Never touch the `.claude/worktrees/` layout.
-- Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
-  `xcode-select` — those are human-initiated.
-- Never write plan files during task execution. Plan files are written
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
+
+- **Never write plan files during task execution.** Plan files are written
   only during the planning step (step 2) for `fleet:needs-plan` issues.
-- **Never leave dirty edits uncommitted at the end of an iteration.**
-  If you made any changes to the working tree — manual edits, edits
-  that simplify applied, fixes from optimize, anything — you MUST
-  follow with `commit-and-push` to land them. The next iteration's
-  branch switch will discard them. Don't invoke `simplify` standalone
-  — let `commit-and-push` invoke it for you, so the commit step is
-  guaranteed to follow.
 - **`~/.fleet/plans/` and `.fleet/plans/` are for task plans only.**
   The only valid filenames are `T-NNN.md` (canonical) and
   `issue-N.md` (pre-rename, awaiting queue-manager ingestion).
@@ -860,25 +848,3 @@ human can tell which opus-worker observed what. See
   Read only the file matching your task ID. Authority for "who works
   on what" lives in TASKS.md `Owner:` and `fleet-claim` locks; nothing
   else.
-- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
-  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one;
-  never include them in a feature PR's diff. Canonical explanation
-  in `.fleet/status/README.md`.
-- **Edit/Write paths must stay inside your worktree.** The parent
-  clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
-  in the path) and your worktree at
-  `.../.claude/worktrees/<your-basename>/` both contain the same tree
-  shape, so an Edit aimed at the parent's absolute path will succeed
-  silently — but your build runs against the worktree, so the edit
-  appears to "do nothing" while quietly orphaning changes in the
-  parent clone (potentially clobbering another agent's work). Prefer
-  relative paths from your worktree's cwd. If you must use an
-  absolute path, it MUST start with
-  `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
-  Re-confirm with `pwd` if unsure.
-- Single-command Bash only (see CRITICAL section above).
-- **Edit/Write blocked for `.claude/commands/` files?** The harness
-  permission gate blocks these paths even with `Edit(*)`/`Write(*)`
-  in the allowlist. Use python3 for OS-level writes (sanctioned via
-  `Bash(python3:*)` in the allowlist):
-  `python3 -c "f=open(path).read(); assert old in f, 'string not found'; open(path, 'w').write(f.replace(old, new, 1))"`

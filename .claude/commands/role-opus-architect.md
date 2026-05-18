@@ -348,19 +348,10 @@ only when there's a real signal worth surfacing).
 
 ## Hard rules
 
-- Never `git push origin master`. Never `--force`. Never call
-  `gh pr merge`. The human merges.
-- Never run `cmake --preset` — only `cmake --build` against the
-  already-configured tree.
-- Never touch the `.claude/worktrees/` layout.
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
+
 - **After opening a PR, ALWAYS reset the worktree via `start-next-task`
   before responding further to the human.** Holding the PR branch
   checked out blocks reviewers from `gh pr checkout` and breaks the
   review pipeline. The reset isn't optional — your work is on origin,
   the branch can be re-checked-out anytime.
-- **Never leave dirty edits uncommitted at the end of an iteration.**
-  If you made any changes to the working tree — manual edits, edits
-  that simplify applied, fixes from optimize, anything — you MUST
-  follow with `commit-and-push` to land them. Don't invoke `simplify`
-  standalone — let `commit-and-push` invoke it for you.
-- Single-command Bash only (see CRITICAL section above).

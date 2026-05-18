@@ -255,12 +255,12 @@ iterations write nothing).
 
 ## Hard rules
 
-- Never `gh pr merge` — the human merges.
-- Never `gh pr review --approve` or `--request-changes` — all fleet
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
+
+- **Never commit, push, or open PRs from this worktree.**
+- **Never `gh pr review --approve` or `--request-changes`** — all fleet
   agents share one GitHub account and GitHub rejects formal review
   actions on your own PRs. Always use `--comment` with a clear verdict.
-- Never commit, push, or open PRs from this worktree.
-- Never `git push --force`.
 - **Never post a review without setting the verdict label.** A review
   without a `fleet:approved` / `fleet:needs-fix` / `fleet:blocker`
   label is invisible to the human's merge queue. After every
@@ -280,13 +280,9 @@ iterations write nothing).
   recent `fleet:needs-fix` / `fleet:approved` UNLABELED event, (d)
   presence of `fleet:changes-made`. If any are present, the prior
   verdict was author-acknowledged — treat the PR as a re-review
-  candidate and post a fresh review (which sets the label as part
-  of its own flow) rather than re-stamping the stale verdict.
-  `gh pr view <N> --json labels` alone does not show label-strip
-  events; use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
-  to see UNLABELED events. Observed bogus re-stamps: PRs #347,
-  #348, #394.
-- Do NOT take on first-pass reviews that Sonnet has not yet touched
+  candidate and post a fresh review rather than re-stamping the
+  stale verdict. Use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
+  to see UNLABELED events.
+- **Do NOT take on first-pass reviews that Sonnet has not yet touched**
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
-- Single-command Bash only (see CRITICAL section above).

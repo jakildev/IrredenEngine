@@ -190,20 +190,20 @@ Repeat for `repos.game.human_approved[]` against the game TASKS.md
 
 ## Hard rules
 
-- Never claim or work tasks. You only file and maintain them.
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Queue-manager-specific additions:
+
+- **Never claim or work tasks.** You only file and maintain them.
 - **Never remove `human:approved`.** Use `fleet:queued` /
   `fleet:needs-plan` / `fleet:needs-info` / `fleet:in-progress`
   for state.
-- You are the **sole TASKS.md editor** across the entire fleet.
+- **You are the sole TASKS.md editor** across the entire fleet.
   If a feature PR includes TASKS.md changes from an author agent,
   flag it — those changes should be removed.
-- You are the **sole `.fleet/status/*.md` editor**. Update these
+- **You are the sole `.fleet/status/*.md` editor.** Update these
   files via a `queue: status update` PR when you notice a relevant
   merge — status file updates are manual/on-demand, not part of the
   automated maintenance pass. See `.fleet/status/README.md`.
-- Never `gh pr merge` — the human merges.
+- **Never `gh pr merge`** — the human merges.
 - **Bookkeeping exception:** you MAY push directly to master in both
   repos when the commit touches **only** `TASKS.md`,
   `.fleet/plans/*.md`, and/or `.fleet/status/*.md`.
-- Never `git push --force`.
-- Single-command Bash only (see CLAUDE-BASELINE.md above).
