@@ -171,7 +171,7 @@ per-file sections don't re-justify them:
 
 **Dead pointers:**
 - L228–231 cites `.fleet/status/system-static-deviations.md` —
-  **(unverified)** in this audit pass.
+  **confirmed absent** (file does not exist). Dead pointer.
 
 **Rule contradictions:**
 - (none)
@@ -1208,11 +1208,11 @@ GitHub issues (no labels — queue-manager will triage).
    "Three valid TICK function signatures" / "no function-local static"
    anti-patterns are duplicated verbatim with the corresponding rule
    files. CLAUDE-BASELINE.md explicitly names
-   `engine/prefabs/CLAUDE.md` as the canonical home for the categorization,
-   so the rule files should reference here. Delete the duplicates from
-   the rule files OR delete the CLAUDE.md restatements — pick one
-   canonical home. Also delete the layout-block inventory of
-   `engine/prefabs/irreden/` subdirs.
+   `engine/prefabs/CLAUDE.md` as the canonical home for the categorization
+   — keep the rules there and delete the duplicates from
+   `.claude/rules/cpp-ecs.md`, replacing them with one-line references
+   back to `engine/prefabs/CLAUDE.md`. Also delete the layout-block
+   inventory of `engine/prefabs/irreden/` subdirs.
 
 4. **`engine/prefabs/irreden/` — prune name catalogs across all subtree
    CLAUDE.md.** `common/`, `render/`, `audio/`, `input/`, `update/`,
@@ -1221,7 +1221,10 @@ GitHub issues (no labels — queue-manager will triage).
    document a non-obvious gotcha (auto-add lifecycle, modifier routing,
    onDestroy side effects, pool-per-canvas invariant); prune entries
    that pure-restate the name. One PR per file is too granular —
-   batch the subtree in one PR.
+   batch the subtree in one PR. Also correct the
+   `SYSTEM_PROPAGATE_TRANSFORM` → `PROPAGATE_TRANSFORM` naming drift in
+   `common/CLAUDE.md` L74, L113, L153 (actual `SystemName` enum value
+   has no `SYSTEM_` prefix).
 
 5. **`engine/audio/CLAUDE.md` + `engine/video/CLAUDE.md` — remove
    genuinely dead pointers.** `C_AudioFile`, `C_FramebufferCapture` (at
@@ -1255,7 +1258,9 @@ GitHub issues (no labels — queue-manager will triage).
    `engine/system/CLAUDE.md` since it's the closest-to-code doc.
    Delete the duplicates from `.claude/rules/cpp-systems.md` and replace
    with one-line references. Also delete the L10–14 `IRSystem::`
-   function-name catalog.
+   function-name catalog. Also remove the L228–231 reference to
+   `.fleet/status/system-static-deviations.md` — the file is confirmed
+   absent (dead pointer).
 
 9. **`creations/CLAUDE.md` + `creations/demos/CLAUDE.md` — fix drift.**
    `creations/CLAUDE.md` L18 + L29–34 reference
