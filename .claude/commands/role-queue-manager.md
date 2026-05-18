@@ -180,6 +180,16 @@ Repeat for `repos.game.human_approved[]` against the game TASKS.md
 3. Paste the PR URL back to the human.
 4. For cross-repo tasks: file the engine PR first.
 
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know
+about — an issue with unclear scope that you had to defer, a stale
+plan file, a surprising queue state, or a suggestion for improving
+the ingestion workflow — append a structured entry to
+`~/.fleet/feedback/queue-manager.md`. See
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
+(high — most iterations write nothing).
+
 ## Hard rules
 
 See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Queue-manager-specific additions:
