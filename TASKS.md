@@ -280,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: reconcile backend-parity's proactive start-next-task chaining with start-next-task's no-auto-invoke contract** — remove the contradictory chaining instruction from one of the two skills
-  - **ID:** T-230
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-230-backend-parity-no-chain
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) contradiction resolved — either `backend-parity/SKILL.md:331-335` drops the "chain to start-next-task" instruction, or `start-next-task/SKILL.md:46-70` documents a backend-parity exemption; (2) no other skill issues an auto-invoke of start-next-task without citing the exemption
-  - **Issue:** #813
-  - **Notes:** Follow-up from T-222 audit (§5.12, §3.2). XS. backend-parity tells agents to chain to start-next-task proactively; start-next-task says "Do not invoke proactively."
-  - **Links:**
-
 - [~] **docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md** — consolidate the per-entity getComponent / structural-change / allocation-in-tick check from 5 SKILL.md files into one shared rules file
   - **ID:** T-231
   - **Area:** docs
@@ -614,6 +603,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
 - [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
@@ -633,4 +623,3 @@ Avoid:
 - [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
-- [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
