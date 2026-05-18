@@ -167,6 +167,9 @@ revisited per-phase:
 | **Per-voxel record extends to 12 B** | `{material_id, flags, bone_id}` added. `bone_id = 0` is identity (zero-cost back-compat). |
 | **Prefab format is Lua tables** | Consistent with the rest of the engine's Lua scripting story. Round-trips through `Prefab.spawn(...)`. |
 | **Single-window invariant lifted only at Phase 8** | Real multi-window has cost; defer until single-window editor proves valuable first. |
+| **Rotation architecture** | `C_LocalTransform` (SQT) per entity; `C_RotationMode` enum (`GRID` vs `DETACHED`); world rotation is Z-axis only via per-face geometric trixel deformation (replaces screen-space bilinear residual); pitch/roll allowed only on detached canvases per-entity. Locked design in engine epic `#936` (successor to `#310`). |
+| **World streaming** | Sparse over chunks; finite GPU residency budget; LRU + camera-radius eviction; one-frame upload budget enforced via low-LOD fallback for off-budget chunks. Locked design in engine epic `#938`. |
+| **SHAPES/HYBRID author flow deprecated (pending decision)** | Primary entity shapes are voxels-only; SDF runtime restricted to special effects (auras, fields, lighting occluders). Decision tracked in engine epic `#937`; lands during Epic C C3–C5. |
 
 ## Engine vs. game work split
 
@@ -231,6 +234,14 @@ chunk at the head tags the asset as `DENSE`, `SHAPES`, or `HYBRID`. New
 SDF primitives extend the `ShapeType` enum + add an `sdf<NAME>`
 GLSL/Metal pair — **no format version bump required** (extensibility
 rule #2 below).
+
+> **Deprecation note (pending decision):** the SHAPES and HYBRID author
+> flows are being restricted to "effects only" per engine epic `#937`.
+> Primary entity authoring is voxels-only — editor never exposes SDF
+> primitive authoring; the parametric-shape bake operation (Epic A A3,
+> `#934`) always emits a DENSE chunk. SDF runtime path stays for sun
+> shadow / light volume occluders and special-effect entities (auras,
+> fields, glows). Decision deliverable lands during Epic C C3–C5.
 
 ### GPU upload
 
@@ -749,6 +760,18 @@ the editor menu and works on the active entity.
 **Issue:** [`#613`](https://github.com/jakildev/IrredenEngine/issues/613).
 **Blocked by:** Phase 5 (`#608`).
 
+> **Pull-forward note:** engine epic `#935` (Voxel storage & rendering
+> optimizations) pulls several Phase 10 sub-tasks forward so they land
+> alongside Phase 1 authoring — prevents a dense `.vxs` corpus from
+> accumulating before sparse savings exist, and gives Phase 2/5 the
+> perf headroom they will need anyway. Specifically: 10.1 measure is
+> covered by `#935` B0 profile infra; 10.3 save-format compression is
+> covered by `#935` B3 (`VOXR_RLE` chunk); 10.4 GPU upload optimization
+> is covered by `#935` B5 (push-at-mutation position upload). Phase
+> 10.2 (the dense-vs-sparse decision itself) stays here — it's
+> informed by the B-track wins under real workload, plus the chunked
+> streaming context in `#938`.
+
 ### Scope
 
 After the system has been stressed with real authoring, decide whether
@@ -758,12 +781,12 @@ no premature optimization.**
 
 ### Sub-tasks
 
-- **10.1** Pool fragmentation under heavy edit (measure).
+- **10.1** Pool fragmentation under heavy edit (measure). *Covered by `#935` B0.*
 - **10.2** Decision: keep dense pool vs. sparse octree / brick pool.
-- **10.3** Save-format compression.
+- **10.3** Save-format compression. *Covered by `#935` B3.*
 - **10.4** GPU upload optimization for animated rigged voxels — skip
   position uploads when only matrices changed; bone-matrix-only updates
-  per frame.
+  per frame. *Covered by `#935` B5.*
 
 ### Acceptance
 
@@ -882,10 +905,23 @@ starts; tracked here rather than scattered across 11 issues.
   · [`#611`](https://github.com/jakildev/IrredenEngine/issues/611)
   · [`#612`](https://github.com/jakildev/IrredenEngine/issues/612)
   · [`#613`](https://github.com/jakildev/IrredenEngine/issues/613)
+- **Related engine epics (cross-cutting with this plan):**
+  [`#934`](https://github.com/jakildev/IrredenEngine/issues/934) editor
+  authoring enhancements (extends Phase 1) ·
+  [`#935`](https://github.com/jakildev/IrredenEngine/issues/935) voxel
+  storage & rendering optimizations (pulls forward from Phase 10) ·
+  [`#936`](https://github.com/jakildev/IrredenEngine/issues/936) rotation
+  architecture (successor to `#310`) ·
+  [`#937`](https://github.com/jakildev/IrredenEngine/issues/937) SDF
+  runtime restriction (tracking) ·
+  [`#938`](https://github.com/jakildev/IrredenEngine/issues/938) world
+  streaming + chunked GPU residency.
 - **Game-side companion doc:** `creations/game/irreden/docs/editor-needs.md`
   ([`jakildev/irreden#60`](https://github.com/jakildev/irreden/pull/60))
 - **Related engine design docs:**
   [`docs/design/screen-space-sun-shadow-map.md`](screen-space-sun-shadow-map.md)
   (shadow path interacts with rigged voxels in Phase 2),
   [`docs/design/lua-driven-ecs.md`](lua-driven-ecs.md) (Lua scripting
-  surface that Phase 9 extends).
+  surface that Phase 9 extends),
+  [`docs/design/iso-basis-baked-assumptions.md`](iso-basis-baked-assumptions.md)
+  (iso depth invariant context for the rotation epic `#936`).
