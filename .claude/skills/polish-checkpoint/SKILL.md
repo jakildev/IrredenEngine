@@ -45,7 +45,11 @@ Do **not** auto-invoke. Always wait for an explicit cue.
 ```bash
 git rev-parse --abbrev-ref HEAD
 git status
-git diff --stat && git diff
+git diff --stat
+```
+
+```bash
+git diff
 ```
 
 Group touched files by module (`engine/render/`, `engine/system/`,

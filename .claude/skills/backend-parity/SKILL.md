@@ -105,10 +105,11 @@ and fragment stages should produce **both** `v_<key>.glsl` and
 
 **C++ backend audit:**
 
-```bash
-diff <(ls engine/render/src/opengl/ | sed 's/^opengl_//') \
-     <(ls engine/render/src/metal/   | sed 's/^metal_//')
-```
+Use the Glob tool to list backend source files and compare stems:
+- `engine/render/src/opengl/opengl_*.cpp`
+- `engine/render/src/metal/metal_*.cpp`
+
+Strip the `opengl_`/`metal_` prefix from each result and compare — any stem present on one side but absent on the other is a potential parity gap.
 
 Read the diff carefully — Metal has runtime-bridge files
 (`metal_runtime.cpp`, `metal_cocoa_bridge.mm`, `metal_cpp_impl.cpp`)
