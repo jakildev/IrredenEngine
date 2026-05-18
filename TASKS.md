@@ -367,11 +367,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.23, §2 Bash rules row). XS. CLAUDE-BASELINE.md:180-219 forbids compound `&&`, process substitution, and `$(nproc)`. The cmake violations overlap with T-235 (#818) — coordinate to avoid double-fixing.
   - **Links:**
 
-- [ ] **docs/skills: trim Anti-patterns sections that restate flow-step requirements** — remove redundant anti-pattern bullets from 6 SKILL.md files, keeping only non-obvious gotchas
+- [~] **docs/skills: trim Anti-patterns sections that restate flow-step requirements** — remove redundant anti-pattern bullets from 6 SKILL.md files, keeping only non-obvious gotchas
   - **ID:** T-248
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) each of the 6 affected skills has ≤2 non-obvious anti-patterns; (2) duplicates of flow-step requirements removed from: `backend-parity/SKILL.md`, `start-next-task/SKILL.md:352-387`, `attach-screenshots/SKILL.md`, `polish-checkpoint/SKILL.md:177-189`, `commit-and-push/SKILL.md:448-464`, `review-pr/SKILL.md:495-505`
   - **Issue:** #831
