@@ -314,6 +314,17 @@ Avoid:
   - **Notes:** Escalated from PR #756/PR #787 (T-199) — two opus-worker iterations independently completed the rebase correctly but both hit the same wall: `.claude/settings.json` line with `"Bash(git push --force-with-lease:*)"` in the deny list blocks all force-with-lease pushes. Option A (preferred): remove `Bash(git push --force-with-lease:*)`, add `Bash(git push --force-with-lease origin master:*)` and `Bash(git push --force-with-lease origin main:*)`. Option B: add targeted allow `Bash(git push --force-with-lease origin claude/*)` — only works if harness honors allow-before-deny specificity; verify before using. Keep `Bash(git push --force:*)` in deny list either way. This is a settings.json-only change.
   - **Links:**
 
+- [ ] **entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls** — add name→id reverse check in registerField so re-registering the same field name across World restarts returns the same id
+  - **ID:** T-220
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `registerField("foo")` called twice returns the same `FieldBindingId`; (2) test asserts id stability across two `World` constructions (or two fixture instances) within one process; (3) no regression in modifier_runtime_test / modifier_lua_test; (4) fleet-build clean on linux-debug
+  - **Issue:** #512
+  - **Notes:** Follow-up nit from PR #508 (T-100) Opus recheck. No reverse name→id check in `modifier_field_registry.hpp:25-29`. Lua side is guarded by `em.isComponentRegistered` at first registration, but across World teardown+reconstruct the same field name appends again with a fresh id — id drifts silently. Registry is small (<100 entries) so an O(N) linear scan per registration is fine (init-time only). Fix: scan `m_names` in `registerField` and return existing id if name already present.
+  - **Links:**
+
 - [~] **render: extend castVoxelRay to walk C_VoxelSetNew entities** — add CPU-side ray traversal over individual voxels in C_VoxelSetNew pool spans, returning hit world position, voxel coordinate, owning entity ID, and face normal; prerequisite for T-211 voxel editor picking
   - **ID:** T-219
   - **Area:** engine/prefabs/irreden/render, engine/world
