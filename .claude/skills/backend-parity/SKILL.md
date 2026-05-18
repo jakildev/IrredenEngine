@@ -33,21 +33,6 @@ You cannot port in a direction you can't build, because the skill's
 core rule is "no port lands without a clean build + smoke run on the
 target backend". Cross-compilation is not a substitute.
 
-## When to invoke
-
-Trigger when the user says:
-
-- "port to metal" / "metal parity" / "port this to MSL"
-- "sync the backends" / "audit render parity" / "find render drift"
-- "mirror PR 42 to metal" / "catch metal up on the last few renders"
-- "does metal have X?" (when X is a recently-added rendering feature)
-- Any phrase implying: one backend has something the other doesn't,
-  bring them into sync.
-
-Also consider invoking after any render PR that touched only GLSL or
-only MSL lands on master — but only with a user cue first. Do **not**
-auto-run this skill unprompted; it does nontrivial writes.
-
 ## Model expectations
 
 This is **Opus** work by default. The render backends and shader

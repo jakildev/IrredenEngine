@@ -16,20 +16,6 @@ Visual regression harness. Complements `render-debug-loop`: where that skill
 is the open-ended "render, inspect, iterate" loop for fixing new rendering
 work, this skill is the one-shot "did anything regress?" gate.
 
-## When to invoke
-
-- After changing anything in `engine/render/src/shaders/`,
-  `engine/render/src/opengl/`, `engine/render/src/metal/`, or any
-  `engine/prefabs/irreden/render/systems/`.
-- Before opening a PR that touches the render pipeline (spot-check that
-  unrelated shots still match).
-- On a clean `master` checkout as a smoke test that the harness itself
-  still works.
-
-If the skill reports a regression you *expected* (intentional visual
-change), re-run with `--update-references` to bless the new output as the
-new baseline, then commit the updated PNGs alongside the render change.
-
 ## Prerequisites
 
 ### Platform

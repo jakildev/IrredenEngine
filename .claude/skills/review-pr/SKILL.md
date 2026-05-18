@@ -19,27 +19,6 @@ Runs a code review on a Github PR using Irreden-Engine-specific criteria.
 Intended for a dedicated **reviewer agent** running in its own worktree — one
 whose context window is *not* polluted by the code it is reviewing.
 
-## When to invoke
-
-Trigger when the user says:
-
-- "review PR 42" / "review #42"
-- "review the last PR" / "review the open PR"
-- "check my PR" / "give me a review"
-- "review any new PRs" / "review the PR queue" / "check for new PRs to review"
-- Any phrase implying: look at this PR and tell me what's wrong.
-
-**Also trigger from a persistent reviewer-loop session**, where the session's
-own launch prompt told it to poll `gh pr list` on an interval and review
-anything new. In that mode the reviewer agent resolves the set of unreviewed
-PRs itself and invokes this skill once per PR without the user typing a fresh
-phrase each time. The loop pattern is documented in `docs/AGENT_FLEET_SETUP.md`.
-
-Do **not** invoke proactively inside an unrelated working session — e.g. while
-an author-agent is mid-refactor on its own PR, don't auto-jump into reviewing
-a third-party PR you happen to notice. The bar is: either the user asked, or
-this session's whole job is to be a reviewer.
-
 ## Model expectations (two-tier review)
 
 This skill runs on either Sonnet or Opus. The two roles are different:

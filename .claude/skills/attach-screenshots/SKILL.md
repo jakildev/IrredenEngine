@@ -21,23 +21,6 @@ no way to tell whether they *look right*. This skill closes that gap
 by running the demo twice — once at `origin/master`, once on the
 dirty tree — and committing paired PNGs to the branch.
 
-## When to invoke
-
-Trigger when:
-
-- The user says "attach screenshots", "add screenshots to this PR",
-  "capture before/after", "show me the visual diff".
-- A worker role is about to run `commit-and-push` on a diff that
-  touches visual code (render pipeline, shaders, render prefabs,
-  render-heavy demos). See "Trigger conditions" below.
-- The reviewer agent asks for a visual side-by-side and the worker
-  is addressing the feedback.
-
-Do **not** auto-invoke on pure doc passes, header-only refactors, or
-non-render code. Running the skill is not free — two builds and two
-timed demo runs. Reserve it for PRs where a reviewer genuinely needs
-to see pixels.
-
 ## Trigger conditions (diff-based)
 
 Invoke when `git diff --name-only origin/master...HEAD` or the dirty

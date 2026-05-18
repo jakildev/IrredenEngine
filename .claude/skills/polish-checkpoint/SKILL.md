@@ -22,38 +22,6 @@ checks as `commit-and-push`, minus everything past the simplify
 step. Lets the human iterate with confidence that the working tree
 is clean and the build is green, without locking the work into a PR.
 
-## Why this exists
-
-The fleet workflow bundles polish + commit + push + PR open into one
-end-to-end skill (`commit-and-push`). That fits an autonomous worker
-shipping a finished slice, but it doesn't fit an interactive Cursor
-session where the human wants intermediate confidence checks while
-still iterating. The Cursor flow needs a way to say "clean the diff
-and verify the build, but don't commit yet" — that's what this skill
-is. When the human is genuinely ready to PR, `commit-and-push` runs
-the same pre-commit checks again (idempotent) and then does the git
-work.
-
-## When to invoke
-
-Trigger when the user says:
-
-- "checkpoint" / "polish for now" / "let's checkpoint"
-- "verify what I have" / "is the working tree clean?"
-- "clean up but don't commit" / "self-review without shipping"
-- "run simplify and the build" / "polish + verify"
-
-Do **not** auto-invoke. Always wait for an explicit cue. This is the
-Cursor-flow analog of `simplify` plus a build verify; it's not a
-save-on-edit hook.
-
-This skill is **not** a substitute for `commit-and-push`. When the
-user is ready to open a PR, they'll say "commit", "ship it", "open a
-PR", or similar, and `commit-and-push` runs the same checks plus the
-actual git work. Running this skill and then `commit-and-push`
-back-to-back is fine — `simplify` is idempotent and a clean working
-tree just means the commit-and-push pre-checks find nothing to do.
-
 ## Preconditions
 
 1. **The working tree must have something to polish.** If `git

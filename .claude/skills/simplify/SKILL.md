@@ -21,21 +21,6 @@ A pre-commit cleanup pass on the dirty working tree. Reads what
 changed, applies the fixes that don't need judgment, and reports
 the rest.
 
-## Why this exists
-
-The reviewer agent flags the same handful of issues over and over:
-per-entity `getComponent` inside a system tick, naming-convention
-slips, debug `std::cout` lines that didn't get removed, comments
-that say `/// Returns x` on `int getX() { return x_; }`. Each
-flagged issue costs a round-trip — reviewer comments, author
-addresses, reviewer re-reviews. If the author's worktree catches
-these before the PR opens, the reviewer's only finding is the
-genuinely subtle stuff.
-
-This skill is that filter. It's not a substitute for review — it's a
-first pass that gets the cheap stuff out of the way so the reviewer
-can focus on what matters.
-
 ## Flow
 
 ### 1. Read what changed
