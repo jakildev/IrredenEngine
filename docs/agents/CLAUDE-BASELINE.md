@@ -108,33 +108,114 @@ namespaces in headers; keep them in `.cpp`.
 
 ---
 
-## What belongs in CLAUDE.md files
+## What belongs in agent-facing docs
 
-CLAUDE.md files document **concepts, constraints, and gotchas** — things
-that aren't obvious from reading the code. They are NOT inventories.
+This rule covers every doc loaded into an agent's context: `CLAUDE.md`
+files (one per module), `SKILL.md` files under `.claude/skills/`, and
+role files under `.claude/commands/role-*.md`. They differ in scope but
+share one editorial rule:
 
-**Do NOT include:**
-- File/directory tree listings or layout blocks. Agents can Glob/Grep.
-- Catalogs of type, class, or struct names. Agents can Grep for them.
-- Variable or field name references (e.g., `m_foo`, `kBar`). Grep.
-- Lists of "files in this module" that just mirror `ls`.
+**Point, don't dump.** State each rule, table, procedure, or template
+once in its canonical home; everywhere else, link to it. Two copies
+drift; one copy + N pointers does not. Before adding anything, ask:
+"Could I replace this with a one-line link to a doc that already owns
+it?" The `## Canonical-home map` below names the common ones.
+
+**Do NOT include** (any agent-facing doc):
+
+- File/directory tree listings or layout blocks. Agents can `Glob`.
+- Catalogs of type/class/component/system/function names. Agents `Grep`.
+- "Key components" / "Key systems" sections that mirror `ls <dir>`.
+- Function-signature catalogs (the signature lives in the header).
+- Restated rules owned by another doc — ECS footgun, naming, IRMath,
+  Bash rules, cross-repo isolation, build commands, fleet workflow.
+  See the canonical-home map for who owns what.
+
+**SKILL.md-specific don'ts:**
+
+- `## When to invoke` / `## Why this exists` sections that paraphrase
+  the front-matter `description:` — the description already triggered
+  the skill, so a second copy in the body is filler.
+- `## Anti-patterns` entries that just restate flow-step requirements.
+  Keep entries that capture genuinely non-obvious things to avoid.
+- Decorative emoji bullets (`❌`, `✅`). Bare list bullets are the
+  codebase convention.
+- Procedures owned by a sibling skill. Compose by reference
+  (`Skill: simplify`) rather than restating.
+- Heavy worked examples (PR-body templates, full code scaffolds,
+  HEREDOC blocks) — move to `<skill>/procedures/<topic>.md`.
+
+**Role-file-specific don'ts:**
+
+- Restated protocols owned by another fleet doc — `FLEET.md`,
+  `FLEET-RUNTIME.md`, `FLEET-FEEDBACK-HANDLING.md`,
+  `FLEET-CROSS-HOST-SMOKE.md`, `REVIEWER-PROTOCOL.md`,
+  `FLEET-CACHE.md`, `BUILD.md`. Reference by anchor; don't paraphrase.
+- The baseline `## Hard rules` list — it lives in this doc §"Hard rules
+  for autonomous fleet roles". Role files keep only role-specific
+  exceptions.
 
 **DO include:**
-- Design decisions and their rationale ("we use X because Y").
-- Constraints and invariants not obvious from the code ("never call
-  getComponent inside a tick function — here's why").
-- Gotchas and footguns that have bitten before.
-- Conceptual relationships that span multiple directories ("the trixel
-  pipeline spans prefabs/render, prefabs/update, and shaders/glsl").
-- Pipeline or ordering constraints that affect correctness.
-- Code examples that demonstrate a **pattern** (e.g., tick-function
-  signatures) — use illustrative names, but the pattern is the point.
 
-Names are fine when they're part of a pattern example or a gotcha where
-the specific name is the actionable fix. They're clutter when they're
-just listing what exists. The test: "would this section survive a
-rename refactor, or would it go stale?" If it would go stale, it
-doesn't belong.
+- Design decisions and their rationale ("we use X because Y").
+- Constraints and invariants not obvious from the code, with the *why*.
+- Gotchas and footguns that have bitten before.
+- Conceptual relationships spanning multiple directories.
+- Pipeline / ordering constraints that affect correctness.
+- Code examples that demonstrate a **pattern** — illustrative names
+  are fine, but the pattern is the point.
+- Trigger conditions, owner-role boundaries, and behavioral contracts
+  that no other doc owns.
+
+**Verify cross-refs before merging.** A pointer that doesn't resolve
+is worse than a duplicate.
+
+- Every `[text](path)` / `[text](path#anchor)` resolves to an existing
+  file / heading. GitHub anchors are lowercase-kebab of the heading
+  text — re-check after any heading rename.
+- Section refs cited as `§Foo` match an actual `## Foo` heading. Six
+  role files spent months with `(see CRITICAL section above)` pointing
+  at a `## CRITICAL` header that never existed (PR #917). Same shape
+  of bug to avoid.
+- Names cited (type, function, label, task ID) still exist. Renamed-
+  and-not-swept names are how `engine/input/CLAUDE.md` ended up
+  pointing at a `C_Hitbox2D` that never existed (PR #909).
+
+**The test for inclusion:** would this section survive a rename
+refactor, or would it go stale? Names are fine when part of a pattern
+example or a gotcha where the specific name is the actionable fix;
+they are clutter when they're just listing what exists. If it would
+go stale, it doesn't belong.
+
+If you can't find a canonical home for what you're about to write,
+that's a signal the topic *needs* one — file an issue rather than
+starting a third copy.
+
+---
+
+## Canonical-home map
+
+Where each cross-cutting rule lives. When authoring or improving an
+agent-facing doc, link to the canonical home rather than restating.
+
+| Topic | Canonical home |
+|---|---|
+| ECS footgun · Naming · Style · IRMath · Bash rules · Cross-repo isolation · Engine API removal · Encode contracts in code · Deprecation markers · Hard rules for fleet roles · What belongs in agent-facing docs · Citing source in filed artifacts | this doc (`docs/agents/CLAUDE-BASELINE.md`) |
+| Build commands · presets · `fleet-build` · `fleet-run` | `docs/agents/BUILD.md` |
+| Fleet workflow · labels · cursor cues · model split · cross-platform parity · stacking | `docs/agents/FLEET.md` |
+| Cross-host smoke validation (OpenGL ↔ Metal) | `docs/agents/FLEET-CROSS-HOST-SMOKE.md` |
+| Feedback-label handling (AMEND / ESCALATE / labels) | `docs/agents/FLEET-FEEDBACK-HANDLING.md` |
+| Per-iteration runtime (heartbeat / exit / shutdown) | `docs/agents/FLEET-RUNTIME.md` |
+| Reviewer protocols (stack gating · label-swap · claim · nits) | `docs/agents/REVIEWER-PROTOCOL.md` |
+| Shared fleet state cache | `docs/agents/FLEET-CACHE.md` |
+| ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
+| Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
+| System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
+| Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |
+| Component-method tier rules | `engine/prefabs/CLAUDE.md` |
+| Asset serialization version-bump | `engine/asset/CLAUDE.md` |
+| `--auto-screenshot` contract | `engine/video/CLAUDE.md` |
+| PR-body templates · host-stamp logic | `.claude/skills/commit-and-push/procedures/` |
 
 ---
 

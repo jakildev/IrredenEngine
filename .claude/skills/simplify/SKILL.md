@@ -308,6 +308,31 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
   Either rename the heading or refocus the body.
 - **Contradictions within a doc.** Step 3 says X, step 7 (added
   later in a different change) says NOT X. Reconcile or report.
+- **Point-don't-dump violations.** Per
+  [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
+  §"What belongs in agent-facing docs", agent-facing docs (`CLAUDE.md`,
+  `SKILL.md`, role files) restate canonical content far too often. Flag
+  any of the following for replacement with a one-line pointer to the
+  canonical home (see the Canonical-home map in `CLAUDE-BASELINE.md`):
+  - File/directory tree listings, layout blocks, "Key components" /
+    "Key systems" sections, type/class/function name catalogs,
+    function-signature catalogs — agents can `Glob` / `Grep`.
+  - Restated baseline rules — ECS footgun, naming table, IRMath
+    substitution, Bash rules, cross-repo isolation, Hard rules,
+    build commands, fleet workflow, feedback-handling, reviewer
+    protocols.
+  - In `SKILL.md`: `## When to invoke` / `## Why this exists` bodies
+    paraphrasing the YAML `description:`.
+  - In `SKILL.md`: `## Anti-patterns` entries that restate flow-step
+    requirements (keep entries that capture non-obvious things to
+    avoid).
+  - Decorative emoji bullets (`❌`, `✅`) — codebase convention is bare
+    list bullets.
+- **Broken cross-refs.** Every `[text](path)` / `[text](path#anchor)`
+  link in the diff resolves to an existing file / heading. Section
+  references cited as `§Foo` match an actual `## Foo` heading. Named
+  symbols (type, function, label, task ID) still exist in the tree.
+  Use the Grep tool to verify, then fix or report.
 
 For role docs and skill docs specifically, also report (don't
 auto-fix — these need human judgment on scope):
