@@ -25,6 +25,7 @@ enum class WidgetKind : int {
     RADIO = 7,
     TEXT_INPUT = 8,
     SCROLL = 9,
+    COLOR_SWATCH = 10,
 };
 
 // Common widget header. Every widget entity carries this alongside its
@@ -144,6 +145,19 @@ struct C_WidgetTextInput {
     std::string text_;
     int cursorPos_ = 0;
     int maxLength_ = 0;
+};
+
+// COLOR_SWATCH — a single solid-color clickable cell. Carries its own
+// RGBA so consumers (palette panels, theme editors) can populate a
+// grid of distinct colors without overriding the widget theme. The
+// `selected_` bit is decorative — flips an outlined border so the
+// active swatch stands out within a group; consumers maintain
+// mutual exclusion themselves (clearing siblings on click). Click
+// signal still travels on `C_WidgetState::fireAction_` like every
+// other interactive widget.
+struct C_WidgetColorSwatch {
+    IRMath::Color color_ = IRMath::Color{0, 0, 0, 255};
+    bool selected_ = false;
 };
 
 // SCROLL — bounded viewport that paints a scroll track + thumb along

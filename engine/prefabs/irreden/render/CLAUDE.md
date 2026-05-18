@@ -240,16 +240,26 @@ builders.
 
 `widgets.hpp` exposes `IRPrefab::Widget::make<kind>(...)` builders and
 `wasClicked` / `sliderValue` / `checkboxState` (plus the T-177 follow-up
-readers) for the ten F-0.1 primitives: **panel, label, button, slider,
-checkbox, list, dropdown, radio, text input, scroll**. Each builder
-produces a single ECS entity that carries `C_Widget` (kind + size +
-disabled flag), `C_GuiPosition`, optionally `C_WidgetState` +
-`C_HitBox2DGui` (interactive kinds only), and a kind-specific data
-component (`C_WidgetPanel` / `C_WidgetLabel` / `C_WidgetButton` /
-`C_WidgetSlider` / `C_WidgetCheckbox` / `C_WidgetList` /
-`C_WidgetDropdown` / `C_WidgetRadio` / `C_WidgetTextInput` /
-`C_WidgetScroll`). Theme lives in `widget_theme.hpp::defaultTheme()` —
-a single inline header-level instance a creation mutates once at init.
+readers) for the eleven primitives: **panel, label, button, slider,
+checkbox, list, dropdown, radio, text input, scroll, color swatch**.
+Each builder produces a single ECS entity that carries `C_Widget`
+(kind + size + disabled flag), `C_GuiPosition`, optionally
+`C_WidgetState` + `C_HitBox2DGui` (interactive kinds only), and a
+kind-specific data component (`C_WidgetPanel` / `C_WidgetLabel` /
+`C_WidgetButton` / `C_WidgetSlider` / `C_WidgetCheckbox` /
+`C_WidgetList` / `C_WidgetDropdown` / `C_WidgetRadio` /
+`C_WidgetTextInput` / `C_WidgetScroll` / `C_WidgetColorSwatch`).
+Theme lives in `widget_theme.hpp::defaultTheme()` — a single inline
+header-level instance a creation mutates once at init.
+
+`C_WidgetColorSwatch` (T-211) is a single solid-color clickable cell
+for palette panels and theme editors. Each swatch carries its own
+RGBA so a grid of distinct colors needs no theme override; the
+`selected_` bit thickens the border and switches to
+`theme.borderFocused_` so the active palette pick reads at a glance.
+Mutual exclusion across a swatch group is consumer-owned — the
+widget framework does not bind color swatches to a group id the way
+radios do.
 
 **Pipeline wiring (required order):**
 
@@ -264,7 +274,7 @@ RENDER: ... → TEXT_TO_TRIXEL → WIDGET_RENDER_PANEL
         → WIDGET_RENDER_SLIDER → WIDGET_RENDER_CHECKBOX
         → WIDGET_RENDER_LIST → WIDGET_RENDER_RADIO
         → WIDGET_RENDER_TEXT_INPUT → WIDGET_RENDER_SCROLL
-        → WIDGET_RENDER_DROPDOWN
+        → WIDGET_RENDER_COLOR_SWATCH → WIDGET_RENDER_DROPDOWN
         → TRIXEL_TO_FRAMEBUFFER → ...
 ```
 

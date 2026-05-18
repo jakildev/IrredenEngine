@@ -5,10 +5,13 @@
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_video.hpp>
 
 // Components
 #include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -16,18 +19,24 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera_yaw.hpp>
-#include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 
 // Gizmo primitives (T-152, F-0.5 Phase 1)
 #include <irreden/render/gizmo.hpp>
 
+// Picking + ray-hit struct (T-219)
+#include <irreden/render/picking.hpp>
+
+// Widget framework (T-145 / T-177)
+#include <irreden/render/widgets.hpp>
+
 // Systems
 #include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
 #include <irreden/render/systems/system_gizmo_screen_space_size.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -40,11 +49,15 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
+#include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
-#include <irreden/render/systems/system_voxel_picking.hpp>
+#include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/systems/system_widget_render_panel.hpp>
+#include <irreden/render/systems/system_widget_render_label.hpp>
+#include <irreden/render/systems/system_widget_render_color_swatch.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -52,16 +65,100 @@
 // Command suites
 #include <irreden/common/command_suite_camera.hpp>
 
+#include <cstddef>
+#include <deque>
+#include <list>
+#include <memory>
+#include <utility>
+#include <vector>
+
 using namespace IRComponents;
 using namespace IRMath;
 
+namespace IRVoxelEditor {
+
+// Scene + palette config (kept as named constants so the editor never
+// inlines a hardcoded dimension — D1 in the T-211 architect direction
+// calls out that the size be configurable per scene).
+constexpr ivec3 kEditableSceneSize{16, 16, 16};
+constexpr vec3 kEditableSceneOrigin{-8.0f, -8.0f, -12.0f};
+constexpr int kPaletteCount = 16;
+
+// 16 distinct palette colors. Indexed in row-major order across the
+// 4×4 panel grid. Colors are picked to span hue and value so the
+// active-swatch indicator (theme.borderFocused_ outline) reads against
+// every cell.
+constexpr Color kPaletteColors[kPaletteCount] = {
+    Color{220, 80, 80, 255},
+    Color{220, 140, 60, 255},
+    Color{220, 200, 60, 255},
+    Color{120, 200, 60, 255},
+    Color{60, 200, 120, 255},
+    Color{60, 200, 200, 255},
+    Color{60, 140, 220, 255},
+    Color{80, 80, 220, 255},
+    Color{140, 60, 220, 255},
+    Color{220, 60, 200, 255},
+    Color{200, 200, 200, 255},
+    Color{140, 140, 140, 255},
+    Color{60, 60, 60, 255},
+    Color{220, 180, 140, 255},
+    Color{120, 80, 60, 255},
+    Color{240, 240, 240, 255},
+};
+
+// Per-stroke undo record. One record per click; per-voxel drag-paint
+// is a follow-up — v1 commits one record per single-voxel place/erase
+// event. The "stroke" abstraction is still per-architect (D3) so a
+// follow-up that adds drag-paint can fold many edits into one record
+// without rewiring undo replay.
+struct UndoEdit {
+    IREntity::EntityId voxelSet_;
+    ivec3 localIdx_;
+    C_Voxel prev_;
+};
+
+struct UndoRecord {
+    std::vector<UndoEdit> edits_;
+
+    std::size_t byteSize() const {
+        return sizeof(UndoEdit) * edits_.size();
+    }
+};
+
+// Per-stroke byte budget with whole-stroke eviction (D3b). One mebibyte
+// is enough headroom for a 1024-edit stroke (24 KiB) to live ~40
+// strokes deep before the oldest evicts.
+constexpr std::size_t kUndoByteBudget = 1u << 20;
+
+// Reserve capacity for the per-stroke edits vector at stroke-begin so
+// the per-voxel write hot path doesn't allocate (D3-aligned: the
+// architect's reference shape pre-sizes the vector at mouse-down with
+// the brush AABB). The brush is single-voxel today; the reserve is a
+// high-water-mark for the future drag-paint extension.
+constexpr std::size_t kUndoStrokeReserve = 1024;
+
+// Module-level state captured into systems via SystemParams. Holds the
+// palette swatch entity ids (built at init), the active swatch index
+// (driven by swatch clicks), the editable voxel set's entity id, the
+// undo stack, and the in-flight stroke buffer.
+struct EditorState {
+    std::vector<IREntity::EntityId> paletteSwatches_;
+    int activeSwatchIdx_ = 0;
+    IREntity::EntityId editableVoxelSet_ = IREntity::kNullEntity;
+    std::deque<UndoRecord> undoRecords_;
+    std::size_t undoTotalBytes_ = 0;
+    UndoRecord pendingStroke_;
+};
+
+EditorState g_editor;
+
 namespace {
 
-// Radians per screen-pixel of horizontal mouse movement during right-drag.
 constexpr float kRotationSensitivity = 0.004f;
 
 struct ScrollZoomParams {
-    EntityId cameraEntity_ = kNullEntity;
+    IREntity::EntityId cameraEntity_ = IREntity::kNullEntity;
     int scrollDelta_ = 0;
 };
 
@@ -70,20 +167,119 @@ struct RotateParams {
     float prevMouseX_ = 0.0f;
 };
 
+// Three auto-screenshot framings so the render-debug-loop / regression
+// harness records the palette panel and the editable scene from a
+// stable camera. Camera position is irrelevant to the GUI canvas but
+// it does anchor the world-space scene render.
+constexpr IRVideo::AutoScreenshotShot kShots[] = {
+    {1.0f, IRMath::vec2(0.0f, 0.0f), "editor_idle"},
+    {0.75f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_out"},
+    {1.5f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_in"},
+};
+
+int g_autoWarmupFrames = 0;
+
+// Apply a single placement / erasure edit to the voxel set, appending
+// the prior state to the in-flight stroke buffer. Skips the edit when
+// the target index is out of bounds for the set. `flat` is the linear
+// pool index so the per-voxel mutation reuses the precomputed offset.
+void applyEdit(
+    IREntity::EntityId voxelSetEntity,
+    C_VoxelSetNew &set,
+    ivec3 localIdx,
+    std::size_t flat,
+    bool place,
+    Color placeColor
+) {
+    UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat]};
+    g_editor.pendingStroke_.edits_.push_back(edit);
+    if (place) {
+        set.voxels_[flat].color_ = placeColor;
+        set.voxels_[flat].activate();
+    } else {
+        set.voxels_[flat].deactivate();
+    }
+}
+
+void commitStroke() {
+    if (g_editor.pendingStroke_.edits_.empty()) {
+        return;
+    }
+    g_editor.undoTotalBytes_ += g_editor.pendingStroke_.byteSize();
+    g_editor.undoRecords_.push_back(std::move(g_editor.pendingStroke_));
+    g_editor.pendingStroke_.edits_.clear();
+    g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
+
+    // Whole-stroke eviction from the front (D3b). Per-record eviction
+    // would split a stroke; Ctrl-Z partway through a half-evicted
+    // stroke would only restore part of it.
+    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
+        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
+        g_editor.undoRecords_.pop_front();
+    }
+}
+
+void undoOne() {
+    if (g_editor.undoRecords_.empty()) {
+        return;
+    }
+    UndoRecord rec = std::move(g_editor.undoRecords_.back());
+    g_editor.undoRecords_.pop_back();
+    g_editor.undoTotalBytes_ -= rec.byteSize();
+    // Replay in reverse so overlapping edits inside a stroke restore
+    // in last-write-wins order — same property the forward edit chain
+    // produced when authoring.
+    for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
+        if (flat < set.voxels_.size()) {
+            set.voxels_[flat] = it->prev_;
+        }
+    }
+}
+
+// Computes the local index inside `set` for a world voxel position.
+// Returns true and writes `outLocal`/`outFlat` if the target lies in
+// the set's bounds; false otherwise.
+bool worldVoxelToLocal(
+    const C_VoxelSetNew &set,
+    const C_PositionGlobal3D &globalPos,
+    ivec3 worldVoxel,
+    ivec3 &outLocal,
+    std::size_t &outFlat
+) {
+    if (set.numVoxels_ <= 0 || set.voxels_.empty()) {
+        return false;
+    }
+    const ivec3 origin = IRMath::roundVec3HalfUp(globalPos.pos_);
+    outLocal = worldVoxel - origin;
+    if (outLocal.x < 0 || outLocal.x >= set.size_.x || outLocal.y < 0 ||
+        outLocal.y >= set.size_.y || outLocal.z < 0 || outLocal.z >= set.size_.z) {
+        return false;
+    }
+    outFlat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(outLocal, set.size_));
+    return outFlat < set.voxels_.size();
+}
+
 } // namespace
+
+} // namespace IRVoxelEditor
 
 void initSystems();
 void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
+    IRVideo::parseAutoScreenshotArgv(argc, argv, &IRVoxelEditor::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: voxel_editor");
-    IR_LOG_INFO("  Right-drag: rotate model view (Z-yaw turntable)");
+    IR_LOG_INFO("  Left-click: place voxel adjacent to hit face");
+    IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space: re-center + reset yaw");
-    IR_LOG_INFO("  Left-click: pick voxel (click empty to clear)");
+    IR_LOG_INFO("  Ctrl+Z: undo last stroke");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -93,16 +289,9 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    // Mouse scroll events arrive as ephemeral C_MouseScroll entities (C_Lifetime{1}),
-    // created by the GLFW scroll callback (one entity per event). This differs from
-    // key presses, which use persistent C_KeyMouseButton + C_KeyStatus state-machine
-    // entities queryable via IRInput::checkKeyMouseButton() at any time. Scroll is a
-    // continuous delta value, not a pressed/held/released state, so the ephemeral-event
-    // model fits the underlying GLFW push semantics naturally. Consume C_MouseScroll in
-    // the INPUT pipeline (same stage the entities are created, before LIFETIME destroys
-    // them in UPDATE). A unified IRInput::getScrollDelta() query API — analogous to
-    // checkKeyMouseButton() — does not yet exist; see engine/input/CLAUDE.md for the
-    // canonical input system surface.
+    using IRVoxelEditor::RotateParams;
+    using IRVoxelEditor::ScrollZoomParams;
+
     auto scrollParams = std::make_unique<ScrollZoomParams>();
     auto *sp = scrollParams.get();
     auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
@@ -127,31 +316,137 @@ void initSystems() {
     );
     IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
 
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {// Rescale gizmo handles to constant pixel size BEFORE the
-         // global-position propagation system reads `C_Position3D`, so
-         // the new local positions reach the SHAPES_TO_TRIXEL pass in
-         // the same frame.
-         IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::LIFETIME>()
+    // Palette swatch poller: detect which swatch fired this frame,
+    // update the active index, and mirror the selection bit onto every
+    // swatch so the render system can highlight the active one. Runs
+    // in INPUT, AFTER WIDGET_INPUT so `fireAction_` is already set for
+    // this frame's clicks. Uses a tag component as the archetype filter
+    // — needs to fire even when there are zero matching entities, so we
+    // use C_GuiElement (every widget carries it) and only act in
+    // beginTick/endTick.
+    auto paletteUpdateSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorPaletteUpdate",
+        [](const C_GuiElement &) {},
+        []() {
+            // Resolve the swatch the user clicked this frame, if any.
+            const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
+            for (int i = 0; i < n; ++i) {
+                if (IRPrefab::Widget::wasClicked(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
+                    IRVoxelEditor::g_editor.activeSwatchIdx_ = i;
+                    break;
+                }
+            }
+            // Always reconcile the selected-bit so the renderer reflects
+            // whatever the active index is now (cheap: 16 boolean writes).
+            for (int i = 0; i < n; ++i) {
+                IRPrefab::Widget::setColorSwatchSelected(
+                    IRVoxelEditor::g_editor.paletteSwatches_[i],
+                    i == IRVoxelEditor::g_editor.activeSwatchIdx_
+                );
+            }
         }
     );
-    // GIZMO_HOVER reads the previous frame's entity-id GPU readback;
-    // GIZMO_DRAG runs immediately after so press detection sees a fresh
-    // hover flag in the same INPUT pipeline pass.
-    IRSystem::registerPipeline(
-        IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
-         scrollZoomSystem,
-         IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
-         IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
+
+    // Place / erase driver: reads left-click PRESSED for place and
+    // right-click PRESSED for erase. Right-DRAG keeps rotating the
+    // camera (EditorViewportRotate below) — the rotate gesture only
+    // mutates state while HELD with mouse movement, so a press alone
+    // doesn't move the camera. Both actions cast a single ray per
+    // click and operate on the place-adjacent / hit voxel
+    // respectively. Single-voxel-per-click v1; drag-paint deferred to
+    // a follow-up. Runs in INPUT, after the input/hover/widget chain
+    // so the GUI's `fireAction_` (e.g. clicking a swatch) reaches the
+    // poller above ahead of this system seeing the same press — but
+    // GUI clicks land on widget hitboxes (the swatch panel is in the
+    // top-left), so a click over the scene fires this system without
+    // affecting the palette and vice versa.
+    auto placeEraseSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorPlaceErase",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            // Mouse is hovering over the palette panel (or any other
+            // widget) — let widgets eat the click so place/erase
+            // doesn't fire under a swatch. Widget hover state is
+            // populated by HITBOX_MOUSE_TEST_GUI earlier in this
+            // pipeline tick.
+            bool overWidget = false;
+            const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
+            for (int i = 0; i < n; ++i) {
+                if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
+                    overWidget = true;
+                    break;
+                }
+            }
+
+            const bool placeClick =
+                !overWidget &&
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+            const bool eraseClick =
+                !overWidget &&
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
+
+            if (!placeClick && !eraseClick) {
+                return;
+            }
+
+            const auto hit = IRPrefab::Picking::castVoxelRay();
+            if (!hit) {
+                return;
+            }
+            // The picker leaves `faceNormal_ == ivec3(0)` for shape
+            // hits (cube-face direction is undefined on non-box
+            // SDFs). Place/erase needs a voxel hit; bail on shape
+            // hits.
+            if (hit->faceNormal_ == ivec3(0)) {
+                return;
+            }
+
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
+            auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+
+            ivec3 worldVoxel = hit->voxelPos_;
+            if (placeClick) {
+                worldVoxel = hit->voxelPos_ + hit->faceNormal_;
+            }
+
+            ivec3 localIdx{};
+            std::size_t flat = 0;
+            if (!IRVoxelEditor::worldVoxelToLocal(set, gpos, worldVoxel, localIdx, flat)) {
+                return;
+            }
+
+            // Single-click strokes: a press begins a fresh stroke
+            // record, the same-frame edit appends to it, and the
+            // commit happens before the function returns. Drag-paint
+            // would split this into press → begin / held → append /
+            // release → commit; that's the documented follow-up.
+            IRVoxelEditor::g_editor.pendingStroke_.edits_.clear();
+            IRVoxelEditor::g_editor.pendingStroke_.edits_.reserve(
+                IRVoxelEditor::kUndoStrokeReserve
+            );
+
+            const Color placeColor =
+                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+            IRVoxelEditor::applyEdit(hit->entity_, set, localIdx, flat, placeClick, placeColor);
+            IRVoxelEditor::commitStroke();
+        }
     );
 
-    // Right-click drag rotates the camera Z-yaw (turntable), which in the
-    // isometric engine is equivalent to rotating the entity being edited.
+    IRSystem::registerPipeline(
+        IRTime::Events::UPDATE,
+        {IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
+         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::LIFETIME>()}
+    );
+
+    // INPUT pipeline. WIDGET_INPUT writes per-widget hover/press/fire
+    // state; the palette poller reads that state to set the active
+    // swatch; the place/erase system reads `isHovered` to suppress
+    // scene clicks under the palette. Gizmo input lands after the
+    // widget chain so an over-gizmo click doesn't trip the scene-
+    // edit path either.
     auto rotParams = std::make_unique<RotateParams>();
     auto *rp = rotParams.get();
     auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
@@ -171,7 +466,7 @@ void initSystems() {
                 vec2 mouse = IRInput::getMousePositionScreen();
                 if (!rp->firstRotFrame_) {
                     float deltaX = mouse.x - rp->prevMouseX_;
-                    IRPrefab::Camera::rotateYaw(deltaX * kRotationSensitivity);
+                    IRPrefab::Camera::rotateYaw(deltaX * IRVoxelEditor::kRotationSensitivity);
                 }
                 rp->prevMouseX_ = mouse.x;
                 rp->firstRotFrame_ = false;
@@ -181,32 +476,60 @@ void initSystems() {
     IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
     IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {
-            rotateSystem,
-            IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-            IRSystem::createSystem<IRSystem::VOXEL_PICKING>(),
-            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-            IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-            IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
-        }
+        IRTime::Events::INPUT,
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
+         IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
+         IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+         paletteUpdateSystem,
+         placeEraseSystem,
+         scrollZoomSystem,
+         IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
+         IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
     );
+
+    std::list<IRSystem::SystemId> renderPipeline = {
+        rotateSystem,
+        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
+        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
+        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+        // TEXT_TO_TRIXEL clears the GUI canvas to transparent in its
+        // beginTick (`canvasTextures_->clear()`). Without this stage,
+        // the GUI canvas keeps stale pixels — when composited over the
+        // main canvas by TRIXEL_TO_FRAMEBUFFER, the result is an
+        // opaque-black overlay that hides the 3D scene. Widget renders
+        // must come AFTER the clear so their pixels survive.
+        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+    };
+
+    if (IRVoxelEditor::g_autoWarmupFrames > 0) {
+        IRVideo::AutoScreenshotConfig cfg{};
+        cfg.warmupFrames_ = IRVoxelEditor::g_autoWarmupFrames;
+        cfg.settleFrames_ = 3;
+        cfg.shots_ = IRVoxelEditor::kShots;
+        cfg.numShots_ = sizeof(IRVoxelEditor::kShots) / sizeof(IRVoxelEditor::kShots[0]);
+        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+    }
+
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
 void initCommands() {
     IRCommand::registerCameraCommands();
 
-    // Q: snap yaw to nearest 90 degrees counterclockwise
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
@@ -217,7 +540,6 @@ void initCommands() {
         }
     );
 
-    // E: snap yaw to nearest 90 degrees clockwise
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
@@ -228,7 +550,6 @@ void initCommands() {
         }
     );
 
-    // Space: re-center camera pan and reset yaw to default front view
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
@@ -238,18 +559,32 @@ void initCommands() {
             IRPrefab::Camera::setYaw(0.0f);
         }
     );
+
+    // Ctrl+Z — undo the most recent stroke. The modifier check happens
+    // inline because IRCommand bindings don't take modifier masks; a
+    // bare Z press without Ctrl is intentionally ignored (Z alone may
+    // become a different editor hotkey later).
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonZ,
+        []() {
+            if (IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
+                IRVoxelEditor::undoOne();
+            }
+        }
+    );
 }
 
 void initEntities() {
-    // Dockspace placeholder — F-0.1 (trixel UI primitives) and F-0.2 (layout system)
-    // will add the widget-based dockspace here.
+    using IRVoxelEditor::g_editor;
 
-    // Reference grid: a flat ground plane with axis markers at the origin.
-    // +Z is downward in this iso convention; the work plane sits at z=0 and
-    // the floor reference plane sits at z=2 below it.
+    // Pre-size the in-flight stroke buffer so a click's append doesn't
+    // pay a first-time allocation cost.
+    g_editor.pendingStroke_.edits_.reserve(IRVoxelEditor::kUndoStrokeReserve);
+
     constexpr float kFloorZ = 2.0f;
 
-    // Ground plane
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, kFloorZ)},
         C_ShapeDescriptor{
@@ -259,7 +594,6 @@ void initEntities() {
         }
     );
 
-    // X-axis indicator (red, extends along X)
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
@@ -269,7 +603,6 @@ void initEntities() {
         }
     );
 
-    // Y-axis indicator (green, extends along Y)
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
@@ -279,7 +612,6 @@ void initEntities() {
         }
     );
 
-    // Origin marker
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
@@ -289,65 +621,74 @@ void initEntities() {
         }
     );
 
-    // F-0.5 Phase 1: place one of each gizmo primitive at fixed offsets
-    // around the origin so the geometry is inspectable. Hover, drag, and
-    // screen-space sizing are deferred to follow-up tasks; see T-152 plan.
+    // F-0.5 Phase 1 gizmo primitives — kept around the perimeter as
+    // visual references for the gizmo render pass.
     {
-        EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
+        IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
         IREntity::getComponent<C_Position3D>(translateGizmo).pos_ = vec3(-12.0f, 12.0f, -3.0f);
 
-        EntityId rotateGizmo = IRPrefab::Gizmo::createRotateGizmo();
+        IREntity::EntityId rotateGizmo = IRPrefab::Gizmo::createRotateGizmo();
         IREntity::getComponent<C_Position3D>(rotateGizmo).pos_ = vec3(12.0f, 12.0f, -3.0f);
 
-        EntityId scaleGizmo = IRPrefab::Gizmo::createScaleGizmo();
+        IREntity::EntityId scaleGizmo = IRPrefab::Gizmo::createScaleGizmo();
         IREntity::getComponent<C_Position3D>(scaleGizmo).pos_ = vec3(-12.0f, -12.0f, -3.0f);
 
-        EntityId jointMarker = IRPrefab::Gizmo::createJointMarker();
+        IREntity::EntityId jointMarker = IRPrefab::Gizmo::createJointMarker();
         IREntity::getComponent<C_Position3D>(jointMarker).pos_ = vec3(8.0f, -12.0f, -3.0f);
 
-        EntityId bindPointMarker = IRPrefab::Gizmo::createBindPointMarker();
+        IREntity::EntityId bindPointMarker = IRPrefab::Gizmo::createBindPointMarker();
         IREntity::getComponent<C_Position3D>(bindPointMarker).pos_ = vec3(12.0f, -12.0f, -3.0f);
 
-        EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
+        IREntity::EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
         IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
     }
 
-    // Two small voxel sets to exercise multi-`C_VoxelSetNew` picking
-    // (T-219). Placed left and right of the origin so a click on either
-    // returns the correct owning entity. Voxels are integer-aligned —
-    // left-clicking any visible voxel selects it; the highlight
-    // (created below) snaps to its world center via `selection.voxelPos_`.
+    // Editable voxel set — the place/erase target. Allocated empty
+    // (default color, alpha=255 so cells are active at start) then
+    // every voxel is deactivated so the user starts from an empty
+    // scene. A single floor row stays activated as a "ground" for the
+    // first click to land on. Architect D1: the size is a named
+    // constant on the editor side, not hardcoded inline.
+    g_editor.editableVoxelSet_ = IREntity::createEntity(
+        C_Position3D{IRVoxelEditor::kEditableSceneOrigin},
+        C_VoxelSetNew{IRVoxelEditor::kEditableSceneSize, Color{200, 200, 210, 255}}
+    );
     {
-        IREntity::createEntity(
-            C_Position3D{vec3(-8.0f, 0.0f, -4.0f)},
-            C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
-        );
-        IREntity::createEntity(
-            C_Position3D{vec3(8.0f, 0.0f, -4.0f)},
-            C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
-        );
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const ivec3 sz = set.size_;
+        for (int x = 0; x < sz.x; ++x) {
+            for (int y = 0; y < sz.y; ++y) {
+                for (int z = 0; z < sz.z; ++z) {
+                    const int idx = IRMath::index3DtoIndex1D(ivec3(x, y, z), sz);
+                    if (z == sz.z - 1) {
+                        // Ground row stays activated and gets a flat
+                        // gray so the user has something to click on
+                        // before placing any voxels themselves.
+                        set.voxels_[idx].color_ = Color{120, 120, 130, 255};
+                        set.voxels_[idx].activate();
+                    } else {
+                        set.voxels_[idx].deactivate();
+                    }
+                }
+            }
+        }
     }
 
-    // Selection-highlight entity: a slightly oversized box marker
-    // positioned at the picked voxel. Created hidden — system_voxel_picking
-    // toggles SHAPE_FLAG_VISIBLE on/off and rewrites position on each click.
-    // The 1.4× sizing reads as a halo around the underlying voxel rather
-    // than z-fighting with it.
-    EntityId highlight = IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(1.4f, 1.4f, 1.4f, 0.0f),
-            Color{255, 220, 80, 255}
-        },
-        C_VoxelSelection{},
-        C_VoxelSelectionHighlight{}
+    // Smaller satellite voxel sets — exercise multi-`C_VoxelSetNew`
+    // picking from T-219 and give the user secondary targets to click
+    // on. Their colors stay fixed so it's obvious which click landed
+    // on the editable set versus a satellite.
+    IREntity::createEntity(
+        C_Position3D{vec3(-16.0f, 0.0f, -6.0f)},
+        C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
     );
-    auto &highlightShape = IREntity::getComponent<C_ShapeDescriptor>(highlight);
-    highlightShape.flags_ &= ~IRRender::SHAPE_FLAG_VISIBLE;
+    IREntity::createEntity(
+        C_Position3D{vec3(16.0f, 0.0f, -6.0f)},
+        C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
+    );
 
-    // Canvas setup
-    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+    // Canvas setup (unchanged from the F-0.5 baseline).
+    IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
@@ -355,4 +696,41 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+
+    // Palette panel — fixed top-left dock at 200×220 trixels. The 16
+    // swatches lay out in a 4×4 grid below the title. Architect D4:
+    // mutable palette + voxels store raw RGBA, so editing a swatch
+    // (future workflow) does not repaint already-placed voxels.
+    // Palette docks to the bottom-left of the GUI canvas so it sits
+    // below the iso scene render and never covers the edit target.
+    // Sized to fit a 4×4 grid of 22-trixel swatches inside a
+    // ~115×165-trixel panel — small enough not to crowd the workspace.
+    constexpr ivec2 kPanelPos{4, 240};
+    constexpr ivec2 kPanelSize{120, 175};
+    constexpr int kSwatchSize = 20;
+    constexpr int kSwatchGap = 4;
+    constexpr int kSwatchOriginX = kPanelPos.x + 8;
+    constexpr int kSwatchOriginY = kPanelPos.y + 48;
+    constexpr int kGridCols = 4;
+
+    IRPrefab::Widget::makePanel(kPanelPos, kPanelSize, "PALETTE");
+    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 12, kPanelPos.y + 36), "CLICK A SWATCH");
+
+    g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
+    for (int i = 0; i < IRVoxelEditor::kPaletteCount; ++i) {
+        const int row = i / kGridCols;
+        const int col = i % kGridCols;
+        const ivec2 pos(
+            kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
+            kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
+        );
+        g_editor.paletteSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kSwatchSize, kSwatchSize),
+                IRVoxelEditor::kPaletteColors[i],
+                i == 0
+            )
+        );
+    }
 }
