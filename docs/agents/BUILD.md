@@ -199,7 +199,7 @@ Two modes; never mix them:
 - **All other executables** (interactive demos, test binaries, profiling runs) —
   use `--timeout 15`:
   `fleet-run --timeout 15 <exe>`
-  The fleet-wide default; 5 s is too short for a demo mid-init.
+  15 s gives demos time to init; omitting `--timeout` would block indefinitely.
 
 ---
 
