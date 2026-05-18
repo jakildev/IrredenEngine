@@ -333,11 +333,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.5, §3.6). Reviewer-tagging and author-claiming are two halves of the same protocol — keeping them in separate role files obscures the handoff. The Sonnet-vs-Opus visual judgment split is a real protocol divergence worth documenting explicitly.
   - **Links:**
 
-- [ ] **docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor** — add canonical Hard rules section to CLAUDE-BASELINE.md; collapse all seven role Hard rules epilogues to pointers; fix broken (see CRITICAL section above) anchor throughout
+- [~] **docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor** — add canonical Hard rules section to CLAUDE-BASELINE.md; collapse all seven role Hard rules epilogues to pointers; fix broken (see CRITICAL section above) anchor throughout
   - **ID:** T-265
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `CLAUDE-BASELINE.md` gains `## Hard rules for autonomous fleet roles` covering all baseline prohibitions (never push master, never --force, never gh pr merge, never cmake --preset, never sudo/brew/apt, never touch .claude/worktrees/ layout); (2) every role file's Hard rules section collapses to 3-line pointer plus role-specific additions (e.g., merger's "never write merge commits"); (3) broken "(see CRITICAL section above)" in all seven role files fixed to point at CLAUDE-BASELINE.md § Bash tool rules; (4) net -150 lines across seven roles
   - **Issue:** #866
