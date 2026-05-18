@@ -241,14 +241,14 @@ symbol names**.
 - `render-verify` lists `ShotConfig`, `g_shots[]`, the
   `AutoScreenshot` system.
 
-These are not aliases — one set is the engine-side helper and the other
-is the demo's local config struct. One of the two docs is stale; based
-on which symbols actually resolve in `engine/video/`, the
-`render-verify` form looks older (likely pre-extraction). **Action.**
-Verify against `engine/video/` and update whichever doc is wrong. Move
-the contract description to a single source under
-`engine/video/CLAUDE.md` (or wherever the helper lives) and have both
-skills link.
+These are not aliases — one set is the engine-side API and the other
+is the demo's local config struct. `ShotConfig` and `g_shots[]` are
+defined in `creations/demos/shape_debug/main.cpp`, not in the engine;
+`render-verify` documents those demo-local variables. `render-debug-loop`
+documents the actual engine exports from `engine/video/`. Both skills
+describe real, existing symbols — neither is stale — but the contract
+lives in two places. **Action.** Move the canonical description to a
+single source under `engine/video/CLAUDE.md` and have both skills link.
 
 ### 3.2 `backend-parity` → `start-next-task` chaining
 
@@ -470,7 +470,6 @@ all high-signal.
 
 ---
 
-*Filed for T-222 (issue #800's sister docs audit; engine TASKS.md
-entry T-222, issue #801). Follow-up issues will be filed without
+*Filed for T-222 (sister audit to T-221, issue #800; this task is T-222, issue #801). Follow-up issues will be filed without
 labels, one per cleanup proposal in §5, so the queue-manager can
 triage.*
