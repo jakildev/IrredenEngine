@@ -187,23 +187,12 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **voxel: refactor C_VoxelSetNew pool API — remove IRRender::allocateVoxels from component ctor (T-201 step 3)** — move or re-home the voxel pool allocator so C_VoxelSetNew no longer calls IRRender::allocateVoxels / deallocateVoxels directly
-  - **ID:** T-206
-  - **Area:** engine/render, engine/world, engine/prefabs/irreden/voxel, engine/script
-  - **Model:** opus
-  - **Owner:** claude/T-206-voxel-pool-api
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `component_voxel_set.hpp` no longer includes `<irreden/ir_render.hpp>` or `<irreden/render/texture.hpp>`; (2) `IRShapeDebug`, `voxel_editor`, and other demos using `C_VoxelSetNew` continue to render correctly; (3) no hot-path regression in voxel pool allocation (verify via visual smoke or existing benchmarks); (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #754
-  - **Notes:** Step 3 of T-201 four-PR layering refactor. Step 1 landed PR #752; step 2 tracked by T-205 (#753). Architect must choose: (a) move pool allocator to engine/world/ (ergonomics preserved, pool changes owning module); (b) push allocation up to callers — C_VoxelSetNew ctor becomes data-only, a separate system claims pool space at first tick (generalizes existing `pendingVoxels_` staging path). Performance contract: ctor is hot for moving shapes — no virtual indirection, no per-call hash lookup. Two ctor sites plus dtor in component_voxel_set.hpp:81,170,229. Step 4 (T-207) is blocked on this landing.
-  - **Links:**
-
 - [ ] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
   - **ID:** T-207
   - **Area:** engine/script
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-206
+  - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #755
   - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
@@ -291,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify** — resolve stale-vs-current symbol name divergence and move canonical description to engine/video/CLAUDE.md
-  - **ID:** T-227
-  - **Area:** docs, engine/video
-  - **Model:** sonnet
-  - **Owner:** claude/T-227-auto-screenshot-symbol-unify
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) verify against `engine/video/` which symbol set is current (`IRVideo::parseAutoScreenshotArgv` + `IRVideo::AutoScreenshotShot` + `IRVideo::createAutoScreenshotSystem` vs `ShotConfig` / `g_shots[]` / `AutoScreenshot` system); (2) canonical contract description added to `engine/video/CLAUDE.md`; (3) both `render-debug-loop/SKILL.md` and `render-verify/SKILL.md` reduced to one line + link
-  - **Issue:** #810
-  - **Notes:** Follow-up from T-222 audit (§5.9, §3.1). Size M. One of the two symbol sets is stale — likely render-verify's pre-extraction form.
-  - **Links:**
-
 - [~] **docs/skills: align model-version stamps emitted by review-pr and commit-and-push** — fix stale Opus 4.6 stamp in review-pr and align co-author stamp with harness
   - **ID:** T-228
   - **Area:** docs
@@ -350,7 +328,7 @@ Avoid:
   - **ID:** T-232
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-232-cpp-math-rules-file
+  - **Owner:** claude/T-232-irmath-table-to-rules
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRMath substitution table moved from `simplify/SKILL.md:144-154` into `.claude/rules/cpp-math.md` (already referenced at `simplify/SKILL.md:119`); (2) `backend-parity/SKILL.md:218-222`, `optimize/SKILL.md:211-213`, `review-pr/SKILL.md:268-273` each replaced with a one-line ref; (3) canonical source remains `CLAUDE-BASELINE.md:92-107`
   - **Issue:** #815
@@ -658,6 +636,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
+- [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
 - [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
 - [x] **T-225** — docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation · Owner: claude/T-225-fix-cross-repo-isolation-leaks · PR: https://github.com/jakildev/IrredenEngine/pull/844
 - [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
@@ -676,5 +656,3 @@ Avoid:
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
 - [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
 - [x] **T-204** — entity: fix sortArchetypeNodesByRelationChildOf — BFS seeds leaves instead of roots · Owner: claude/T-204-sort-archetype-bfs-fix · PR: https://github.com/jakildev/IrredenEngine/pull/770
-- [x] **T-200** — joints as entities — C_Skeleton + C_Joint scaffolding (replace SoA C_JointHierarchy) · Owner: claude/T-200-skeleton-joint-entities · PR: https://github.com/jakildev/IrredenEngine/pull/751
-- [x] **T-197** — C_LocalTransform (SQT) + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
