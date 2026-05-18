@@ -381,6 +381,215 @@ Avoid:
   - **Notes:** Companion to T-221 (#800, role-*.md audit) and T-222 (#801, skills audit). Known stale refs post-transform-migration: `C_Position3D`, `C_PositionOffset3D`, `C_PositionGlobal3D`, `C_Rotation` still referenced in some module CLAUDE.md files. 31 CLAUDE.md files across the repo — pattern is root + per-module inheriting from `docs/agents/CLAUDE-BASELINE.md`. Suggested cleanup PR grouping from issue: one PR per subtree.
   - **Links:**
 
+- [ ] **docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation** — remove game-repo references from two SKILL.md files that name the private game repo, violating CLAUDE-BASELINE §Cross-repo info isolation
+  - **ID:** T-225
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `.claude/skills/midi-scene-creator/SKILL.md:164-169` and `.claude/skills/create-creation/SKILL.md:186` no longer reference the game repo by name or role; (2) engine-public alternatives (e.g., `creations/demos/default/`) used instead or section removed; (3) no other `irreden` / game repo references remain in either file
+  - **Issue:** #808
+  - **Notes:** Follow-up from T-222 audit (§5.5, §2 row 9, §4.3). XS mechanical fix. CLAUDE-BASELINE.md:228-292 is the canonical isolation rule.
+  - **Links:**
+
+- [ ] **docs/skills: add missing 'name:' field to request-re-review/SKILL.md front-matter** — add `name: request-re-review` to the only SKILL.md missing that front-matter field
+  - **ID:** T-226
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `.claude/skills/request-re-review/SKILL.md` front-matter contains `name: request-re-review` above `description:`; (2) all 16 SKILL.md files now carry both `name:` and `description:` fields
+  - **Issue:** #809
+  - **Notes:** Follow-up from T-222 audit (§5.20, §4.3). XS — one-line insertion. 15/16 other skills already have both fields.
+  - **Links:**
+
+- [ ] **docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify** — resolve stale-vs-current symbol name divergence and move canonical description to engine/video/CLAUDE.md
+  - **ID:** T-227
+  - **Area:** docs, engine/video
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) verify against `engine/video/` which symbol set is current (`IRVideo::parseAutoScreenshotArgv` + `IRVideo::AutoScreenshotShot` + `IRVideo::createAutoScreenshotSystem` vs `ShotConfig` / `g_shots[]` / `AutoScreenshot` system); (2) canonical contract description added to `engine/video/CLAUDE.md`; (3) both `render-debug-loop/SKILL.md` and `render-verify/SKILL.md` reduced to one line + link
+  - **Issue:** #810
+  - **Notes:** Follow-up from T-222 audit (§5.9, §3.1). Size M. One of the two symbol sets is stale — likely render-verify's pre-extraction form.
+  - **Links:**
+
+- [ ] **docs/skills: align model-version stamps emitted by review-pr and commit-and-push** — fix stale Opus 4.6 stamp in review-pr and align co-author stamp with harness
+  - **ID:** T-228
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `review-pr/SKILL.md:393` stale `Opus 4.6` stamp updated or removed; (2) `commit-and-push/SKILL.md:199` co-author stamp consistent with harness system prompt; (3) either both skills drop the model-version stamp (letting the harness add it) or both use one canonical signature constant documented in a shared doc
+  - **Issue:** #811
+  - **Notes:** Follow-up from T-222 audit (§5.10, §3.4). Size S. Three artifacts with three different stamps; canonical Opus is now 4.7.
+  - **Links:**
+
+- [ ] **docs/skills: pick a single formatter owner across simplify / commit-and-push / polish-checkpoint** — eliminate the three-way disagreement on who runs clang-format
+  - **ID:** T-229
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) formatter step (fleet-build --target format-changed or equivalent) owned by exactly one skill; (2) the other two skills do not mention a separate format step; (3) decision documented with a one-sentence rationale in the owning skill
+  - **Issue:** #812
+  - **Notes:** Follow-up from T-222 audit (§5.11, §3.3). Size S. Three-way conflict: simplify runs `fleet-build --target format-changed`; polish-checkpoint runs `fleet-build --target format` after simplify; commit-and-push invokes simplify but omits format.
+  - **Links:**
+
+- [ ] **docs/skills: reconcile backend-parity's proactive start-next-task chaining with start-next-task's no-auto-invoke contract** — remove the contradictory chaining instruction from one of the two skills
+  - **ID:** T-230
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) contradiction resolved — either `backend-parity/SKILL.md:331-335` drops the "chain to start-next-task" instruction, or `start-next-task/SKILL.md:46-70` documents a backend-parity exemption; (2) no other skill issues an auto-invoke of start-next-task without citing the exemption
+  - **Issue:** #813
+  - **Notes:** Follow-up from T-222 audit (§5.12, §3.2). XS. backend-parity tells agents to chain to start-next-task proactively; start-next-task says "Do not invoke proactively."
+  - **Links:**
+
+- [ ] **docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md** — consolidate the per-entity getComponent / structural-change / allocation-in-tick check from 5 SKILL.md files into one shared rules file
+  - **ID:** T-231
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `.claude/rules/cpp-ecs-smells.md` created with the canonical ECS-invariants checklist; (2) `simplify/SKILL.md:62-105`, `review-pr/SKILL.md:200-222`, `optimize/SKILL.md:194-200`, `polish-checkpoint/SKILL.md:88-94`, `ecs-prefab-creator/SKILL.md:131-133` each replaced with a one-line ref to the new file; (3) `.claude/rules/cpp-systems.md` ref pattern at `simplify/SKILL.md:119-122` used as the ref style
+  - **Issue:** #814
+  - **Notes:** Follow-up from T-222 audit (§5.1, §1.1, §2). Size M. Same checklist restated in 5 files; canonical source is CLAUDE-BASELINE.md:16-31 + engine/system/CLAUDE.md.
+  - **Links:**
+
+- [ ] **docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md** — consolidate the IRMath→glm substitution table from simplify and 3 other skills into one shared rules file
+  - **ID:** T-232
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRMath substitution table moved from `simplify/SKILL.md:144-154` into `.claude/rules/cpp-math.md` (already referenced at `simplify/SKILL.md:119`); (2) `backend-parity/SKILL.md:218-222`, `optimize/SKILL.md:211-213`, `review-pr/SKILL.md:268-273` each replaced with a one-line ref; (3) canonical source remains `CLAUDE-BASELINE.md:92-107`
+  - **Issue:** #815
+  - **Notes:** Follow-up from T-222 audit (§5.2, §1.3). Size S. `lua-creation-setup/SKILL.md:294` already uses the correct one-line ref form.
+  - **Links:**
+
+- [ ] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
+  - **ID:** T-233
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `simplify/SKILL.md:308-321`, `ecs-prefab-creator/SKILL.md:22-23` and `200-206`, `render-trixel-pipeline/SKILL.md:106-114`, `backend-parity/SKILL.md:121-132`, `review-pr/SKILL.md:283-289` each use a one-sentence ref to `CLAUDE-BASELINE.md §Naming` (and keep only regex-style fix patterns they specifically use); (2) duplicate tables removed; (3) canonical home `CLAUDE-BASELINE.md:36-47` unchanged
+  - **Issue:** #816
+  - **Notes:** Follow-up from T-222 audit (§5.3, §1.2). Size S. Five files restate the same table.
+  - **Links:**
+
+- [ ] **docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref** — replace 38-line inline procedure with a ~2-line check + baseline pointer
+  - **ID:** T-234
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `commit-and-push/SKILL.md:118-156` replaced with ~2 lines: scan diff for tokens listed in `CLAUDE-BASELINE.md §Cross-repo information isolation`; warn if matched; (2) anti-pattern restatement at `commit-and-push/SKILL.md:462-464` removed; (3) no cross-repo policy content duplicated from baseline
+  - **Issue:** #817
+  - **Notes:** Follow-up from T-222 audit (§5.4, §1.4). Size S. `CLAUDE-BASELINE.md:273` says "commit-and-push checks for this" but the skill restates the whole policy (~38 lines).
+  - **Links:**
+
+- [ ] **docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md** — fix five different timeout variants across 6 skills and eliminate a raw cmake --build violation in backend-parity
+  - **ID:** T-235
+  - **Area:** docs, build
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) canonical fleet-build/fleet-run wrapper + timeout guidance block added to `docs/agents/BUILD.md`; (2) `simplify/SKILL.md:573-576`, `polish-checkpoint/SKILL.md:107,122`, `attach-screenshots/SKILL.md:183-185,230-231`, `optimize/SKILL.md:120-122`, `render-debug-loop/SKILL.md:66,89`, `render-verify/SKILL.md:102-104` each reference BUILD.md and state only their per-skill timeout choice; (3) `backend-parity/SKILL.md:253-269` raw `cmake --build build --target IRShapeDebug -j$(nproc)` replaced with `fleet-build`
+  - **Issue:** #818
+  - **Notes:** Follow-up from T-222 audit (§5.6, §1.6). Size M. backend-parity's raw cmake trips the Bash-tool command_substitution gate (CLAUDE-BASELINE.md:180-219).
+  - **Links:**
+
+- [ ] **docs/skills: replace host/preset table copies with refs to BUILD.md** — remove duplicate host/preset tables from render-verify, render-debug-loop, backend-parity
+  - **ID:** T-236
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `render-verify/SKILL.md:42-46`, `render-debug-loop/SKILL.md:26-29`, `backend-parity/SKILL.md:253-269` (variant) each replaced with a two-line ref to `docs/agents/BUILD.md`; (2) no duplicate host/preset table remains in these three files
+  - **Issue:** #819
+  - **Notes:** Follow-up from T-222 audit (§5.7, §1.7). XS. Canonical home is docs/agents/BUILD.md (already referenced from engine-root CLAUDE.md).
+  - **Links:**
+
+- [ ] **docs/skills: shrink start-next-task's cursor-stack-base coverage; defer mechanism to FLEET.md** — cut ~40 lines from start-next-task/SKILL.md by deferring the cursor-stack-base mechanism description to FLEET.md
+  - **ID:** T-237
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `start-next-task/SKILL.md` sections `34-39`, `159-186`, `270-291` trimmed to flow descriptions only; mechanism deferred to `FLEET.md:140-186` ref; (2) net reduction ~40 lines; (3) `commit-and-push/procedures/cursor-stack.md` still correctly scoped to PR-creation deltas only
+  - **Issue:** #820
+  - **Notes:** Follow-up from T-222 audit (§5.8, §1.5). Size S. Canonical mechanism already in FLEET.md:140-186.
+  - **Links:**
+
+- [ ] **docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md** — extract three near-identical PR-body templates into one canonical template with per-mode delta sections
+  - **ID:** T-238
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/pr-body.md` with one canonical PR-body template + single-PR / fleet-stacked / cursor-stacked delta sections; (2) `commit-and-push/SKILL.md:264-374` three templates (~110 lines) replaced with ~2-line refs; (3) net reduction ~50 lines from main SKILL.md
+  - **Issue:** #821
+  - **Notes:** Follow-up from T-222 audit (§5.13, §1.9). Size M. Three templates differ by only 1-2 fields. Existing `procedures/` pattern: fleet-stack, cursor-stack, rebase-guard.
+  - **Links:**
+
+- [ ] **docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md** — extract 37-line host-stamp shell logic into a shared procedures file
+  - **ID:** T-239
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/host-label.md` with the `fleet:authored-on-{linux,macos}` host-stamp logic; (2) `commit-and-push/SKILL.md:386-423` (~37 lines) replaced with a ref; (3) reviewer-side `review-pr/SKILL.md:478-484` already refs `review-pr/procedures/cross-host-smoke.md` — ensure consistency
+  - **Issue:** #822
+  - **Notes:** Follow-up from T-222 audit (§5.14, §1.11). Size S. Existing procedures/ pattern: cross-host-smoke.md, cursor-stack.md, rebase-guard.md.
+  - **Links:**
+
+- [ ] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
+  - **ID:** T-240
+  - **Area:** docs, engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `simplify/SKILL.md:209-307` (~98 lines) moved to `engine/asset/CLAUDE.md` (or `.claude/rules/cpp-asset-versioning.md`); (2) simplify retains one line: "applies the asset version-bump check from <link>"; (3) rule content (heuristics + false-positive guards + output templates + unannotated-struct extension) preserved verbatim in the new location
+  - **Issue:** #823
+  - **Notes:** Follow-up from T-222 audit (§5.15, §4.5). Size M. Asset-format policy buried in a generalist skill — wrong layering.
+  - **Links:**
+
+- [ ] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
+  - **ID:** T-241
+  - **Area:** docs, engine/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `render-trixel-pipeline/SKILL.md` reduced to 30-50 lines covering concepts and gotchas only; (2) buffer/image binding tables (lines 128-149), `FrameDataVoxelToCanvas` struct copy (153-164), Key Components file-path subsections (166-187), and Render Modes / Shape Types enum tables (189-211) removed or moved; (3) moved concepts filed in `engine/render/CLAUDE.md` if conceptual value exists; (4) SKILL.md gains When-to-invoke / Anti-patterns / Recovery sections per CLAUDE-BASELINE.md structure
+  - **Issue:** #824
+  - **Notes:** Follow-up from T-222 audit (§5.16, §2 inventory row, §4.5). Size L. CLAUDE-BASELINE.md:113-137 forbids inventory-of-names content in SKILL.md files.
+  - **Links:**
+
+- [ ] **docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize** — delete four inventory sections that violate CLAUDE-BASELINE §no-inventories rule
+  - **ID:** T-242
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `render-debug-loop/SKILL.md:175-189` Key Files table removed or compressed to a grep pointer; (2) `backend-parity/SKILL.md:99-118` backend C++ file-pairs table removed; (3) `backend-parity/SKILL.md:121-132` shader-prefix convention table removed (duplicate of CLAUDE-BASELINE); (4) `optimize/SKILL.md:142-158` 15-stage GPU pass-name list removed; (5) all removed sections replaced with "see `<file>`" or Grep pointers
+  - **Issue:** #825
+  - **Notes:** Follow-up from T-222 audit (§5.17, §2 inventory row). Size M. All four sections list names that are grep-discoverable in the code.
+  - **Links:**
+
+- [ ] **docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections** — remove boilerplate intro paragraphs and trigger restatements from 9+ SKILL.md files
+  - **ID:** T-243
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) all affected SKILL.md files follow: front-matter → one-sentence body intro → Flow; (2) "When to invoke" sections that restate front-matter `description:` trigger phrases removed from: `simplify:25-38`, `review-pr:23-31`, `commit-and-push:22-28`, `polish-checkpoint:26-35,50-55`, `optimize:42-68`, `backend-parity:37-50`, `start-next-task:46-70`, `attach-screenshots:25-39`, `request-re-review:17-29`, `lua-creation-setup:13-25`; (3) "Why this exists" sections paraphrasing the description removed from the same files
+  - **Issue:** #826
+  - **Notes:** Follow-up from T-222 audit (§5.18, §4.1). Size M. 9+ of 16 SKILL.md files open with a paragraph paraphrasing front-matter; standardizing cuts significant boilerplate.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
