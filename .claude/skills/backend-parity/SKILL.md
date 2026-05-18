@@ -219,7 +219,7 @@ General rules:
   iso-projection helpers; the canonical forms live in
   `ir_iso_common.glsl` (GLSL) and should be mirrored in MSL as an
   equivalent header under `shaders/metal/` if more than two shaders
-  need them. See the Math section in top-level `CLAUDE.md`.
+  need them. See [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for IRMath substitutions.
 - **Trailing sanity.** Every ported shader needs at least one
   end-to-end manual test: build the lagging preset, run
   `IRShapeDebug` (or whatever demo exercises the pipeline the shader
