@@ -347,6 +347,17 @@ Avoid:
   - **Notes:** Latent bug identified in Opus recheck of PR #508 (T-100). `modifier_field_registry.hpp:25-29` appends name on every registration without dedup; `engine/script/src/lua_script.cpp` guards via `isComponentRegistered` but the guard breaks on World restart. Registry stays small (<100 entries) — O(N) scan per registration acceptable since registration is init-time only.
   - **Links:**
 
+- [ ] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
+  - **ID:** T-221
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/audit-roles.md` present in merged PR; (2) note covers all 7 role files with file:line citations for each duplication; (3) each duplication names a right shared home (existing doc or proposed new doc); (4) follow-up GitHub issues filed (no labels) for each concrete cleanup task in the note
+  - **Issue:** #800
+  - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
