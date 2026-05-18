@@ -28,24 +28,21 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
-    # Required: component_voxel_set.hpp still pulls in <irreden/ir_render.hpp>
-    # for IRRender::allocateVoxels / deallocateVoxels and active_canvas.hpp
-    # for IRRender::getActiveCanvasEntityOrNull. ShapeType + SHAPE_FLAG_* are
-    # already render-neutral (IRMath::SDF) so they no longer drag IRRender in.
-    # See #739 for the layering fix; T-205 (#772) split active_canvas.hpp;
-    # T-206 (re-landing) will split the voxel pool API.
-    IrredenEngineRendering
     # T-193 PR 2: lua_command_bindings.hpp exposes IRCommand on the Lua
     # surface, so the public scripting interface needs the IRCommand
     # umbrella in scope wherever LuaScript is included.
     IrredenEngineCommand
 )
-# PRIVATE so render headers don't leak through script's PUBLIC interface
-# (T-188 layering rule). component_voxel_set.hpp drags IRRender symbols
-# in transitively until the T-206 voxel-pool API split re-lands on master.
-target_link_libraries(
+# Prefab headers (component_shape_descriptor, voxel_pool_api) transitively
+# include lightweight render headers (active_canvas.hpp, lod_level.hpp,
+# ir_render.hpp). The include path is pulled via generator expression so
+# it tracks IrredenEngineRendering's INTERFACE_INCLUDE_DIRECTORIES
+# automatically — no full library link; symbols resolve at final executable
+# link time through IrredenEngineWorld / IrredenEngine.
+# See #739 (T-201) and T-207 for the layering plan.
+target_include_directories(
     IrredenEngineScripting PRIVATE
-    IrredenEngineRendering
+    $<TARGET_PROPERTY:IrredenEngineRendering,INTERFACE_INCLUDE_DIRECTORIES>
 )
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
