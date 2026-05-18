@@ -183,5 +183,5 @@ Within each pipeline, systems execute in the order listed in `registerPipeline`.
 ## Reference Creations
 
 - **Minimal C++:** `creations/demos/default/main.cpp`
-- **Full Lua:** `creations/demos/default/` (complete Lua stack; MIDI-specific example has moved to the game repo)
+- **Full Lua:** `creations/demos/default/` (complete Lua stack)
 - **C++ + Lua hybrid:** `creations/demos/default/main_lua.cpp`
