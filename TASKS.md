@@ -378,11 +378,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.24, §4.4). Size S. Guideline: keep only anti-patterns that would surprise a reader — things that aren't already obvious from reading the flow steps.
   - **Links:**
 
-- [ ] **docs/skills: pull pipeline-ordering (INPUT -> UPDATE -> RENDER) into one canonical doc** — move the INPUT->UPDATE->RENDER pipeline ordering description to its canonical home; replace 3 SKILL.md restatements with one-line refs
+- [~] **docs/skills: pull pipeline-ordering (INPUT -> UPDATE -> RENDER) into one canonical doc** — move the INPUT->UPDATE->RENDER pipeline ordering description to its canonical home; replace 3 SKILL.md restatements with one-line refs
   - **ID:** T-249
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) canonical pipeline-ordering paragraph lives in `engine/system/CLAUDE.md` (or `engine/CLAUDE.md`); (2) `ecs-prefab-creator/SKILL.md:189-196`, `create-creation/SKILL.md:172-181`, `midi-scene-creator/SKILL.md:80-91` each reference the canonical doc instead of restating
   - **Issue:** #832
