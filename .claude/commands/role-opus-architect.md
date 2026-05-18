@@ -191,7 +191,7 @@ it into TASKS.md. You do NOT edit TASKS.md directly.
 ## Planning issues
 
 The **opus worker** autonomously handles `fleet:needs-plan` issues
-on its 20-minute loop — reading the issue thread, posting a plan
+as a transient, scout-triggered invocation — reading the issue thread, posting a plan
 comment, saving a plan file to `~/.fleet/plans/`, and swapping labels.
 You do not need to poll for these.
 
@@ -231,6 +231,12 @@ conversation), use the same flow:
 
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.
+
+**Game-side scope.** The architect does not autonomously claim game
+tasks. The responsibility list above is engine-only. When the human
+explicitly asks you to plan or work a game-side issue, use
+`--repo jakildev/irreden` instead of `jakildev/IrredenEngine` for
+all `gh issue` / `gh pr` calls touching that repo.
 
 ## Handling `fleet:design-blocked` PRs
 
