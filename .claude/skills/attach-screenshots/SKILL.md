@@ -182,13 +182,12 @@ Build and run:
 
 ```bash
 fleet-build --target <demo-name>
-fleet-run --timeout 30 <demo-name> --auto-screenshot 10
+fleet-run <demo-name> --auto-screenshot 10
 ```
 
-`IRShapeDebug` finishes its 6-shot sequence in ~3s; `--timeout 30`
-gives a safety margin for slower hosts without leaving windows open
-if something hangs. `fleet-run` reports `exited cleanly after Ns`
-on normal completion.
+`fleet-run` reports `exited cleanly after Ns` on normal completion.
+Do not add `--timeout` — auto-screenshot fires `closeWindow()` when the
+shot sequence is done; a timeout would mask hangs (see [BUILD.md §Timeout choices](../../../docs/agents/BUILD.md#timeout-choices)).
 
 If `fleet-build` or `fleet-run` fails, **restore** before
 propagating the failure:
@@ -228,7 +227,7 @@ second `rm` needed:
 
 ```bash
 fleet-build --target <demo-name>
-fleet-run --timeout 30 <demo-name> --auto-screenshot 10
+fleet-run <demo-name> --auto-screenshot 10
 ```
 
 Move the PNGs to the output directory with `-after` suffixes,

@@ -246,27 +246,17 @@ either:
 
 ### 5. Build the lagging backend
 
-After every port, the skill must **build the lagging preset clean**:
-
-**macOS (porting to Metal):**
-
-```bash
-cmake --build build --target IRShapeDebug -j$(sysctl -n hw.ncpu)
-```
-
-**Linux/WSL (porting to OpenGL):**
+After every port, the skill must **build the lagging preset clean**.
+Use `fleet-build` — it avoids the `$(nproc)` / `$(sysctl)` command-substitution
+gate and auto-detects the worktree's build tree:
 
 ```bash
-cmake --build build --target IRShapeDebug -j$(nproc)
+fleet-build --target IRShapeDebug
 ```
 
-**Windows-native (porting to OpenGL):**
-
-Use the PATH-fix wrapper from [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md):
-
-```bash
-cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1
-```
+This works on macOS (`macos-debug` preset) and Linux/WSL (`linux-debug` preset).
+For Windows-native, use the PATH-fix wrapper documented in
+[`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md).
 
 **Watch for the build-hygiene canary** — a "Built target" line without
 any "Building CXX object" / "Building C object" / "Building Metal
@@ -282,12 +272,10 @@ submitting a half-port.
 
 A clean build is necessary but not sufficient. Also launch the
 demo that exercises the feature and confirm it doesn't crash on the
-first frame. At minimum:
+first frame:
 
 ```bash
-# macOS:
-cd build/creations/demos/shape_debug && ./IRShapeDebug
-# Linux/WSL: same (WSLg routes the window to Windows host)
+fleet-run --timeout 15 IRShapeDebug
 ```
 
 Let it render at least a few frames. If it's a deterministic scene,

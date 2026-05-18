@@ -100,7 +100,7 @@ The driver:
 2. Detects the backend from `build/CMakeCache.txt`.
 3. Runs `fleet-build --target IRShapeDebug`.
 4. Clears `<exe_dir>/save_files/screenshots/`.
-5. Runs `fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10`.
+5. Runs `fleet-run IRShapeDebug --auto-screenshot 10`.
 6. For each shot, runs `scripts/render-compare.py` against the reference.
 7. Prints a pass/fail table and exits non-zero on any failure.
 
