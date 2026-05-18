@@ -399,11 +399,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
   - **Links:**
 
-- [ ] **fleet: verify and document merger.log rotation** — investigate whether merger.log is actually rotated; update role-merger.md to accurately describe its lifecycle
+- [~] **fleet: verify and document merger.log rotation** — investigate whether merger.log is actually rotated; update role-merger.md to accurately describe its lifecycle
   - **ID:** T-273
   - **Area:** docs, tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) merger.log lifecycle verified by checking scripts/fleet/, ~/.fleet/, dispatcher config, and cron entries; (2) role-merger.md:579-580,803,851-853 updated to cite rotation source, or "tail-rotated" claim removed if no rotation exists, or rotation added if it should exist but doesn't; (3) future readers can find rotation source from the doc
   - **Issue:** #874
