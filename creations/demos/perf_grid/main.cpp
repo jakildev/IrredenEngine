@@ -26,6 +26,7 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
@@ -34,9 +35,11 @@
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
+#include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
@@ -98,6 +101,10 @@ struct CliOverrides {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.5f, vec2(0, 0), "fit_grid"},
     {1.0f, vec2(0, 0), "zoom1_origin"},
+    // Profiler-overlay regression shot — captures the perf_stats overlay
+    // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
+    // CPU/GPU readout) trip the render-verify image compare.
+    {0.5f, vec2(0, 0), "profiler_overlay"},
 };
 
 PerfGridSettings g_settings{};
@@ -386,6 +393,15 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
+    // perf_grid is the canonical profiler-overlay demo: it ships with both
+    // CPU per-stage histogram and GPU timer-query reading enabled, so the
+    // PERF_STATS_OVERLAY rendered at the end of the pipeline always carries
+    // full timing data. A creation that wants a cheaper run can flip either
+    // of these back off through `ir.render.setCpuTimingEnabled(false)` /
+    // `setGpuTimingEnabled(false)` from a Lua config.
+    IRProfile::cpuFrameHistogram().enabled_ = true;
+    IRRender::gpuStageTiming().enabled_ = true;
+
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
@@ -399,6 +415,13 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
+        // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
+        // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
+        // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
+        // must be overlay → text → trixel-to-fb for the HUD to land on
+        // screen — matches the lighting demo wiring.
+        IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
+        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
     };

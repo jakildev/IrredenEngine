@@ -4,6 +4,7 @@
 // This is the API for the profiling module
 #include <irreden/profile/logger_spd.hpp>
 #include <irreden/profile/cpu_profiler.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
 #include <string>
 #include <cstdarg>
@@ -89,10 +90,10 @@ template <typename... Args> inline void glLogFatal(const char *format, Args &&..
 
 /// @name CPU profiling macros (easy_profiler wrappers, no-ops in IR_RELEASE)
 /// @{
-#define IR_PROFILE_FUNCTION(color) EASY_FUNCTION(color)  ///< Block named by `__FUNCTION__`.
-#define IR_PROFILE_BLOCK(name, color) EASY_BLOCK(name, color)  ///< Block with explicit name.
-#define IR_PROFILE_END_BLOCK EASY_END_BLOCK  ///< Closes the innermost open block.
-#define IR_PROFILE_MAIN_THREAD EASY_MAIN_THREAD  ///< Marks the calling thread as the main thread.
+#define IR_PROFILE_FUNCTION(color) EASY_FUNCTION(color)       ///< Block named by `__FUNCTION__`.
+#define IR_PROFILE_BLOCK(name, color) EASY_BLOCK(name, color) ///< Block with explicit name.
+#define IR_PROFILE_END_BLOCK EASY_END_BLOCK                   ///< Closes the innermost open block.
+#define IR_PROFILE_MAIN_THREAD EASY_MAIN_THREAD ///< Marks the calling thread as the main thread.
 /// @}
 
 /// @name Game/client log macros — route to the game logger sink (use in creation code)

@@ -4,6 +4,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -53,10 +54,21 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
     }
 
     void onBeforeTick(IRSystem::SystemId system) override {
-        if (!gpuStageTiming().enabled_)
-            return;
         auto it = m_stages.find(system);
         if (it == m_stages.end())
+            return;
+
+        // CPU side is independent of GPU support / enable state — the histogram
+        // gates itself when disabled. The wall-clock cost (two `now()` calls
+        // + a hashmap lookup at scope exit) is well under a microsecond.
+        if (IRProfile::cpuFrameHistogram().enabled_) {
+            it->second.cpuT0_ = IRProfile::SteadyClock::now();
+            it->second.cpuActive_ = true;
+        } else {
+            it->second.cpuActive_ = false;
+        }
+
+        if (!gpuStageTiming().enabled_)
             return;
         if (useLegacyTiming()) {
             IRRender::device()->finish();
@@ -76,10 +88,19 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
     }
 
     void onAfterTick(IRSystem::SystemId system) override {
-        if (!gpuStageTiming().enabled_)
-            return;
         auto it = m_stages.find(system);
         if (it == m_stages.end())
+            return;
+
+        if (it->second.cpuActive_) {
+            const auto cpuT1 = IRProfile::SteadyClock::now();
+            const double ms =
+                std::chrono::duration<double, std::milli>(cpuT1 - it->second.cpuT0_).count();
+            IRProfile::cpuFrameHistogram().record(it->second.info_->name_, ms);
+            it->second.cpuActive_ = false;
+        }
+
+        if (!gpuStageTiming().enabled_)
             return;
         if (useLegacyTiming()) {
             IRRender::device()->finish();
@@ -106,6 +127,12 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         RenderDevice *device_ = nullptr;
         int nextSlot_ = 0;
         int activeSlot_ = -1;
+
+        // CPU sibling for the matching stage. Captured at `onBeforeTick`,
+        // committed at `onAfterTick` regardless of `gpuStageTiming().enabled_`
+        // — CPU timing is independent of GPU support / opt-in.
+        IRProfile::TimePoint cpuT0_{};
+        bool cpuActive_ = false;
     };
 
     static bool useLegacyTiming() {

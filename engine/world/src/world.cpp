@@ -98,6 +98,26 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
     render["setGpuTimingEnabled"] = [](bool enabled) {
         IRRender::gpuStageTiming().enabled_ = enabled;
     };
+    render["isCpuTimingEnabled"] = []() { return IRProfile::cpuFrameHistogram().enabled_; };
+    render["setCpuTimingEnabled"] = [](bool enabled) {
+        IRProfile::cpuFrameHistogram().enabled_ = enabled;
+    };
+    render["getCpuPassTimings"] = [&lua]() {
+        sol::table out = lua.create_table();
+        int index = 1;
+        for (const auto &[name, stats] : IRProfile::cpuFrameHistogram().lastFrame()) {
+            sol::table row = lua.create_table();
+            row["name"] = name;
+            row["ms"] = stats.totalMs_;
+            row["maxMs"] = stats.maxMs_;
+            row["count"] = stats.count_;
+            out[index++] = row;
+        }
+        return out;
+    };
+    render["getCpuPassTiming"] = [](std::string_view name) {
+        return IRProfile::cpuFrameHistogram().lastFrameMs(name);
+    };
     render["getPassTimings"] = [&lua]() {
         sol::table out = lua.create_table();
         const auto &registry = IRRender::gpuStageRegistry();
@@ -198,6 +218,7 @@ void World::gameLoop() {
 
 void World::input() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_SCOPE("input");
 
     m_inputManager.tick();
     m_inputManager.advanceInputState(IRTime::Events::INPUT);
@@ -224,6 +245,7 @@ void World::end() {
 void World::update() {
     m_timeManager.beginEvent<IRTime::UPDATE>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_SCOPE("update");
 
     m_inputManager.advanceInputState(IRTime::Events::UPDATE);
     m_commandManager.executeUserKeyboardCommandsAll();
@@ -238,12 +260,19 @@ void World::update() {
 void World::render() {
     m_timeManager.beginEvent<IRTime::RENDER>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+    IR_PROFILE_SCOPE("render");
 
     m_inputManager.advanceInputState(IRTime::Events::RENDER);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
     m_videoManager.render();
     m_renderer.presentFrame();
+
+    // Frame-aligned histogram swap: every IR_PROFILE_SCOPE that ran since the
+    // previous render() landed in the "current" map; the HUD reads the
+    // newly-swapped "last frame" map next frame, so display state is stable
+    // across the entire next-frame INPUT/UPDATE/RENDER cycle.
+    IRProfile::cpuFrameHistogram().endFrame();
 
     m_timeManager.endEvent<IRTime::RENDER>();
 }
