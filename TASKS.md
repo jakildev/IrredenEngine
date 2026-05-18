@@ -336,17 +336,6 @@ Avoid:
   - **Notes:** Prerequisite for T-211 (editor F-1.1 place/erase); PR #785 (T-211's first PR) is design-blocked on this and will rebase once it lands. CPU-side path has no frame lag — preferred for editor click responsiveness. GPU readback path (`IRRender::getEntityIdAtMouseTrixel`, 1-frame lag, O(1) per pick) is documented as the fallback for high-voxel-count scenes. Extend `gatherVisibleShapes` or add a sibling helper; treat each active voxel as an axis-aligned unit cube for SDF testing. Multi-sub-entity scenes, voxel-set joints, and growable pool allocation are explicitly out of scope.
   - **Links:**
 
-- [~] **entity: dedup globalFieldRegistry field names across World restarts** — linear scan in `registerField` to return an existing `FieldBindingId` when a name was previously registered; prevents id drift across World teardown/reconstruct cycles
-  - **ID:** T-220
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `registerField("foo")` called twice in the same process returns the same `FieldBindingId` both times; (2) test asserts id stability across two `World` constructions (or two fixture instances) within a single process; (3) no regression in modifier_runtime_test / modifier_lua_test; (4) fleet-build clean on linux-debug
-  - **Issue:** #512
-  - **Notes:** Latent bug identified in Opus recheck of PR #508 (T-100). `modifier_field_registry.hpp:25-29` appends name on every registration without dedup; `engine/script/src/lua_script.cpp` guards via `isComponentRegistered` but the guard breaks on World restart. Registry stays small (<100 entries) — O(N) scan per registration acceptable since registration is init-time only.
-  - **Links:**
-
 - [ ] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
   - **ID:** T-221
   - **Area:** docs
@@ -367,6 +356,17 @@ Avoid:
   - **Acceptance:** (1) `docs/agents/audit-skills.md` present in merged PR; (2) note covers all 16 SKILL.md files with file:line citations for each duplicated block; (3) each duplication names a right shared home (existing baseline doc or proposed new doc); (4) drift between composing skills identified (e.g. commit-and-push vs polish-checkpoint vs simplify); (5) slop flagged: redundant intros, dead examples referencing retired components or symbols; (6) concrete follow-up cleanup tasks enumerated, each sized for one PR; (7) follow-up GitHub issues filed (no labels) for each cleanup proposal
   - **Issue:** #801
   - **Notes:** 16 SKILL.md files totaling ~5,400 lines; simplify (645), review-pr (523), commit-and-push (474), lua-creation-setup (470) are the biggest. Several skills compose: commit-and-push invokes simplify; polish-checkpoint mirrors commit-and-push's pre-commit phase; render-debug-loop uses render-verify. Companion to T-221 (roles audit). Deliverable is a research findings note — no code changes.
+  - **Links:**
+
+- [ ] **docs: audit CLAUDE.md files — baseline drift, dead pointers, slop** — read all CLAUDE.md files across engine and creations; produce `docs/agents/audit-claude-md.md` listing per-file duplications, dead symbol refs, rule contradictions, slop, and concrete follow-up cleanup tasks
+  - **ID:** T-223
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/audit-claude-md.md` present in merged PR; (2) per-file findings covering all CLAUDE.md files with categories: baseline duplications, dead symbol/type/path pointers (verified with grep), rule contradictions, slop, and missing-but-should-document candidates; (3) concrete follow-up GitHub issues filed (no labels) grouped by subtree (e.g. `engine/render/`, `engine/prefabs/`, `creations/` as separate PRs); (4) fleet-build clean on linux-debug
+  - **Issue:** #802
+  - **Notes:** Companion to T-221 (#800, role-*.md audit) and T-222 (#801, skills audit). Known stale refs post-transform-migration: `C_Position3D`, `C_PositionOffset3D`, `C_PositionGlobal3D`, `C_Rotation` still referenced in some module CLAUDE.md files. 31 CLAUDE.md files across the repo — pattern is root + per-module inheriting from `docs/agents/CLAUDE-BASELINE.md`. Suggested cleanup PR grouping from issue: one PR per subtree.
   - **Links:**
 
 ## Done — last 20
