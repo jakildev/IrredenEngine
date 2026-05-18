@@ -257,17 +257,6 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.7, §1.7). XS. Canonical home is docs/agents/BUILD.md (already referenced from engine-root CLAUDE.md).
   - **Links:**
 
-- [~] **docs/skills: shrink start-next-task's cursor-stack-base coverage; defer mechanism to FLEET.md** — cut ~40 lines from start-next-task/SKILL.md by deferring the cursor-stack-base mechanism description to FLEET.md
-  - **ID:** T-237
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-237-start-next-task-cursor-stack
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `start-next-task/SKILL.md` sections `34-39`, `159-186`, `270-291` trimmed to flow descriptions only; mechanism deferred to `FLEET.md:140-186` ref; (2) net reduction ~40 lines; (3) `commit-and-push/procedures/cursor-stack.md` still correctly scoped to PR-creation deltas only
-  - **Issue:** #820
-  - **Notes:** Follow-up from T-222 audit (§5.8, §1.5). Size S. Canonical mechanism already in FLEET.md:140-186.
-  - **Links:**
-
 - [~] **docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md** — extract three near-identical PR-body templates into one canonical template with per-mode delta sections
   - **ID:** T-238
   - **Area:** docs
@@ -301,11 +290,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.15, §4.5). Size M. Asset-format policy buried in a generalist skill — wrong layering.
   - **Links:**
 
-- [~] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
+- [ ] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
   - **ID:** T-241
   - **Area:** docs, engine/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `render-trixel-pipeline/SKILL.md` reduced to 30-50 lines covering concepts and gotchas only; (2) buffer/image binding tables (lines 128-149), `FrameDataVoxelToCanvas` struct copy (153-164), Key Components file-path subsections (166-187), and Render Modes / Shape Types enum tables (189-211) removed or moved; (3) moved concepts filed in `engine/render/CLAUDE.md` if conceptual value exists; (4) SKILL.md gains When-to-invoke / Anti-patterns / Recovery sections per CLAUDE-BASELINE.md structure
   - **Issue:** #824
@@ -514,6 +503,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
 - [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
 - [x] **T-235** — docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md · Owner: claude/T-235-build-snippets · PR: https://github.com/jakildev/IrredenEngine/pull/876
 - [x] **T-207** — script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt · Owner: claude/T-207-script-remove-render-link · PR: https://github.com/jakildev/IrredenEngine/pull/860
@@ -533,4 +523,3 @@ Avoid:
 - [x] **T-223** — docs: audit CLAUDE.md files — baseline drift, dead pointers, slop · Owner: claude/T-223-claude-md-audit · PR: https://github.com/jakildev/IrredenEngine/pull/806
 - [x] **T-222** — docs audit of SKILL.md files — shared protocols + point-don't-dump · Owner: claude/T-222-skills-audit · PR: https://github.com/jakildev/IrredenEngine/pull/804
 - [x] **T-220** — entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls · Owner: claude/T-220-dedup-field-registry · PR: https://github.com/jakildev/IrredenEngine/pull/799
-- [x] **T-219** — extend castVoxelRay to walk C_VoxelSetNew entities · Owner: claude/T-219-castvoxelray-voxel-sets · PR: https://github.com/jakildev/IrredenEngine/pull/795
