@@ -323,11 +323,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.14, §1.11). Size S. Existing procedures/ pattern: cross-host-smoke.md, cursor-stack.md, rebase-guard.md.
   - **Links:**
 
-- [~] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
+- [ ] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
   - **ID:** T-240
   - **Area:** docs, engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `simplify/SKILL.md:209-307` (~98 lines) moved to `engine/asset/CLAUDE.md` (or `.claude/rules/cpp-asset-versioning.md`); (2) simplify retains one line: "applies the asset version-bump check from <link>"; (3) rule content (heuristics + false-positive guards + output templates + unannotated-struct extension) preserved verbatim in the new location
   - **Issue:** #823
