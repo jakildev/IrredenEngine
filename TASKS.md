@@ -291,11 +291,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.3, §1.2). Size S. Five files restate the same table.
   - **Links:**
 
-- [ ] **docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref** — replace 38-line inline procedure with a ~2-line check + baseline pointer
+- [~] **docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref** — replace 38-line inline procedure with a ~2-line check + baseline pointer
   - **ID:** T-234
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `commit-and-push/SKILL.md:118-156` replaced with ~2 lines: scan diff for tokens listed in `CLAUDE-BASELINE.md §Cross-repo information isolation`; warn if matched; (2) anti-pattern restatement at `commit-and-push/SKILL.md:462-464` removed; (3) no cross-repo policy content duplicated from baseline
   - **Issue:** #817
