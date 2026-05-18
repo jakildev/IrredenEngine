@@ -48,4 +48,4 @@ When the parent PR merges, change this PR's base to `master`
 ```
 
 No `Full chain:` line and no `Closes #<issue-N>`. Drop `## Notes for reviewer`.
-`$parent_pr_ref` is the parent PR URL (or branch name if no PR exists yet). Use `<<EOF` (no quotes) in the HEREDOC so that `$parent_pr_ref` expands.
+`$parent_pr_ref` is the parent PR URL (or branch name if no PR exists yet). Use `<<EOF` (no quotes) in the HEREDOC so that `$parent_pr_ref` expands; `<<'EOF'` suppresses expansion and embeds the literal string.
