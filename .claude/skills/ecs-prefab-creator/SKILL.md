@@ -19,7 +19,7 @@ Prefabs are header-only files under `engine/prefabs/irreden/<domain>/`. They com
 
 1. Use include guard `COMPONENT_<NAME>_H`.
 2. Namespace `IRComponents`, struct name `C_<PascalName>`.
-3. Public members use trailing `_`. Private members use `m_` prefix.
+3. Follow naming conventions in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming (public trailing `_`, private `m_` prefix, struct name `C_<PascalName>`).
 4. Provide a default constructor and at least one parameterized constructor.
 
 ```cpp
@@ -196,7 +196,7 @@ Pipelines run in order: **INPUT -> UPDATE -> RENDER**. System order within a pip
 
 ## Checklist
 
-- [ ] Component: `C_` prefix, `IRComponents` namespace, trailing `_` on public members
+- [ ] Component: `C_` prefix, `IRComponents` namespace (see CLAUDE-BASELINE §Naming for member conventions)
 - [ ] System: enum added to `ir_system_types.hpp` first
 - [ ] System: `System<NAME>` specialization with `create()`
 - [ ] Command: enum added to `ir_command_types.hpp` first

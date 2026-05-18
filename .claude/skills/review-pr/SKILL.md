@@ -257,12 +257,8 @@ or any `c_compute_*shadow*.glsl` / `.metal`)
   simplify and review-pr checks cannot guard it without the annotation. Add the annotation
   and set `kSaveVersion = 1` on the struct.
 
-**Naming / style**
-- ❌ `m_` on public members, trailing `_` on private members (backwards).
-- ❌ `MinimapDetail`-style feature-specific helper namespaces instead of
-  `detail`.
-- ❌ Abbreviations in new names where a full word would read more clearly.
-- ❌ Anonymous namespaces in headers.
+**Naming / style** — follow the table in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §Naming.
+- ❌ `m_` on public members, trailing `_` on private members (backwards — the single most common slip).
 
 **Tests / build**
 - ❌ Code change with no corresponding test change where a test existed.
