@@ -196,7 +196,7 @@ obvious from filenames.>
 <If the session unearthed build/runtime gotchas worth remembering, note
 them here so the commit doubles as a changelog entry.>
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
 
 If the work is entirely inside a subdirectory with its own `CLAUDE.md`
@@ -243,7 +243,7 @@ Stage-1 compute was over-culling near the left edge because the cpu-side
 visibleIsoViewport used the raw camera pos while the gpu used the
 trixel-offset-corrected one. Align both to the offset-corrected form.
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
