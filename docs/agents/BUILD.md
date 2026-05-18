@@ -186,6 +186,23 @@ fleet-run IRShapeDebug
 fleet-run IrredenEngineTest --gtest_brief=1
 ```
 
+### Timeout choices
+
+Two modes; never mix them:
+
+- **`--auto-screenshot` demos** — omit `--timeout`:
+  `fleet-run <demo> --auto-screenshot 10`
+  Auto-screenshot fires `closeWindow()` when the shot sequence is done.
+  Adding `--timeout` would mask hangs: `fleet-run` reports "alive at deadline"
+  as success even when `--auto-screenshot` never completes.
+
+- **All other executables** (interactive demos, test binaries, profiling runs) —
+  use `--timeout 15`:
+  `fleet-run --timeout 15 <exe>`
+  15 s gives demos time to init; omitting `--timeout` would block indefinitely.
+
+---
+
 `fleet-run --targets` lists names you can pass to `fleet-run` (built
 executables under `creations/` and `test/` by default; add `--plan` for
 CMake demo/test targets from `cmake --build --target help`). Same as
