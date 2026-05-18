@@ -129,7 +129,7 @@ Systems support multiple event hooks via optional lambdas after the tick functio
 
 ### Anti-patterns
 
-- No `getComponent` / `getComponentOptional` in per-entity ticks, no structural changes (add/remove/create entity) mid-iteration — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full checklist.
+- No `getComponent` / `getComponentOptional` in per-entity ticks, no structural changes (add/remove/create entity) mid-iteration — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full checklist, and [`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md) for alternative patterns (template-param widening, caching at creation time, `relationTick` for per-parent-group lookups, batching foreign-entity lookups).
 
 ## Creating a Command
 
