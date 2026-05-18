@@ -171,7 +171,7 @@ per-file sections don't re-justify them:
 
 **Dead pointers:**
 - L228–231 cites `.fleet/status/system-static-deviations.md` —
-  **confirmed absent** (file does not exist). Dead pointer.
+  **(confirmed absent — file does not exist; rolled into #841 scope).**
 
 **Rule contradictions:**
 - (none)
@@ -911,7 +911,8 @@ Cleanest large-ish file in the engine layer.
   `PROPAGATE_TRANSFORM` (no `SYSTEM_` prefix) per
   `ir_system_types.hpp:56`. Mildly drift-prone — readers searching
   the enum will miss. The sibling `update/CLAUDE.md` uses the
-  correct bare form.
+  correct bare form. **Rolled into #836 (catalog pruning) to fix the
+  enum-name comment banners.**
 
 **Rule contradictions:**
 - L9–18: phrases `C_Position3D`, `C_PositionGlobal3D`, `C_Rotation`
@@ -1208,11 +1209,20 @@ GitHub issues (no labels — queue-manager will triage).
    "Three valid TICK function signatures" / "no function-local static"
    anti-patterns are duplicated verbatim with the corresponding rule
    files. CLAUDE-BASELINE.md explicitly names
+<<<<<<< HEAD
    `engine/prefabs/CLAUDE.md` as the canonical home for the categorization
    — keep the rules there and delete the duplicates from
    `.claude/rules/cpp-ecs.md`, replacing them with one-line references
    back to `engine/prefabs/CLAUDE.md`. Also delete the layout-block
    inventory of `engine/prefabs/irreden/` subdirs.
+=======
+   `engine/prefabs/CLAUDE.md` as the canonical home for the component-method
+   categorization. **Recommendation: keep `engine/prefabs/CLAUDE.md` as
+   canonical; delete the duplicate blocks from `.claude/rules/cpp-ecs.md`
+   and `.claude/rules/cpp-systems.md` and replace each with a one-line
+   reference pointer.** Also delete the layout-block inventory of
+   `engine/prefabs/irreden/` subdirs.
+>>>>>>> T-223 nits: confirm absent system-static-deviations pointer, roll enum-name drift into #836, explicit canonical-home rec for #835
 
 4. **`engine/prefabs/irreden/` — prune name catalogs across all subtree
    CLAUDE.md.** `common/`, `render/`, `audio/`, `input/`, `update/`,
@@ -1221,10 +1231,16 @@ GitHub issues (no labels — queue-manager will triage).
    document a non-obvious gotcha (auto-add lifecycle, modifier routing,
    onDestroy side effects, pool-per-canvas invariant); prune entries
    that pure-restate the name. One PR per file is too granular —
+<<<<<<< HEAD
    batch the subtree in one PR. Also correct the
    `SYSTEM_PROPAGATE_TRANSFORM` → `PROPAGATE_TRANSFORM` naming drift in
    `common/CLAUDE.md` L74, L113, L153 (actual `SystemName` enum value
    has no `SYSTEM_` prefix).
+=======
+   batch the subtree in one PR. Also fix the `SYSTEM_PROPAGATE_TRANSFORM`
+   comment-banner drift in `common/CLAUDE.md` (L74, L113, L153) — correct
+   enum name is `PROPAGATE_TRANSFORM` per `ir_system_types.hpp:56`.
+>>>>>>> T-223 nits: confirm absent system-static-deviations pointer, roll enum-name drift into #836, explicit canonical-home rec for #835
 
 5. **`engine/audio/CLAUDE.md` + `engine/video/CLAUDE.md` — remove
    genuinely dead pointers.** `C_AudioFile`, `C_FramebufferCapture` (at
