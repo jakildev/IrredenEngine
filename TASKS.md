@@ -414,11 +414,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.9, §3.1). Size M. One of the two symbol sets is stale — likely render-verify's pre-extraction form.
   - **Links:**
 
-- [ ] **docs/skills: align model-version stamps emitted by review-pr and commit-and-push** — fix stale Opus 4.6 stamp in review-pr and align co-author stamp with harness
+- [~] **docs/skills: align model-version stamps emitted by review-pr and commit-and-push** — fix stale Opus 4.6 stamp in review-pr and align co-author stamp with harness
   - **ID:** T-228
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md:393` stale `Opus 4.6` stamp updated or removed; (2) `commit-and-push/SKILL.md:199` co-author stamp consistent with harness system prompt; (3) either both skills drop the model-version stamp (letting the harness add it) or both use one canonical signature constant documented in a shared doc
   - **Issue:** #811
