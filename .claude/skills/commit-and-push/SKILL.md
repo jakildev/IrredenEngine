@@ -319,18 +319,18 @@ if the user already asked for the next task).
 
 ## Anti-patterns
 
-- ❌ Committing to `master`. Always branch first.
-- ❌ `git add -A` / `git add .` — risk of committing secrets or build junk.
-- ❌ Amending a previous commit without being asked.
-- ❌ Force-pushing master. Never.
-- ❌ Skipping hooks (`--no-verify`) unless the user explicitly requests it.
-- ❌ Bypass-pushing to master with admin — the new workflow uses PRs and
+- Committing to `master`. Always branch first.
+- `git add -A` / `git add .` — risk of committing secrets or build junk.
+- Amending a previous commit without being asked.
+- Force-pushing master. Never.
+- Skipping hooks (`--no-verify`) unless the user explicitly requests it.
+- Bypass-pushing to master with admin — the new workflow uses PRs and
   reviewer agents. If you feel tempted to bypass, something upstream is
   broken; flag it to the user instead.
-- ❌ Opening a PR without running `simplify` first.
-- ❌ Continuing to commit on the same feature branch after opening its PR
+- Opening a PR without running `simplify` first.
+- Continuing to commit on the same feature branch after opening its PR
   unless the user explicitly asks for it — otherwise use `start-next-task`.
-- ❌ Leaking game references into an engine PR — see `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation".
+- Leaking game references into an engine PR — see `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation".
 
 ## Recovery
 

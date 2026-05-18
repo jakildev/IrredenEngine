@@ -148,23 +148,23 @@ and should be moved to a system, builder, or namespace.
 
 ## Anti-patterns
 
-- ❌ Per-entity `getComponent` inside a system tick function. Fix: add the
+- Per-entity `getComponent` inside a system tick function. Fix: add the
   component to the system's template parameters.
-- ❌ Allocating memory in a hot tick path (`std::vector` push, string
+- Allocating memory in a hot tick path (`std::vector` push, string
   concat, `new`). Reserve once at `beginTick`.
-- ❌ Adding a new system without updating the `SystemName` enum.
-- ❌ Storing references to other entities' component storage across frames
+- Adding a new system without updating the `SystemName` enum.
+- Storing references to other entities' component storage across frames
   — archetype changes invalidate addresses.
-- ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component
+- Cross-domain includes inside a prefab header (e.g. `voxel/` component
   including `audio/` component). Prefabs are grouped by domain on purpose;
   cross-domain composition belongs in a creation.
-- ❌ Function-local `static` for system-owned state. Use the
+- Function-local `static` for system-owned state. Use the
   member-on-`System<N>` form via `registerSystem` (preferred) or the
   explicit `Params` + `setSystemParams` form — both have the same
   per-tick cost, correct lifetime, and are multi-instance safe.
   See `engine/system/CLAUDE.md` "Per-system parameters" for the
   rule, rationale, and canonical patterns.
-- ❌ `bool dirty_` (or `needsUpload_`, `changed_`) on a component to
+- `bool dirty_` (or `needsUpload_`, `changed_`) on a component to
   gate a per-frame CPU→GPU sync step. Push at mutation time (per-write
   `subData` / `subImage2D`) or let the GPU own ongoing state and seed
   the resource once in the ctor. The only documented exception is

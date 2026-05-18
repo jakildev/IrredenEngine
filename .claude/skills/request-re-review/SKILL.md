@@ -94,8 +94,8 @@ Re-review requested for PR #<N> (<title>).
 
 ## Anti-patterns
 
-- ❌ Leaving the PR branch checked out after requesting re-review.
+- Leaving the PR branch checked out after requesting re-review.
   The whole point is to release it for reviewers.
-- ❌ Using this on a PR that's still `fleet:wip` — that PR isn't
+- Using this on a PR that's still `fleet:wip` — that PR isn't
   ready for review at all. Tell the user to finalize first.
-- ❌ Force-pushing. Never `--force`.
+- Force-pushing. Never `--force`.

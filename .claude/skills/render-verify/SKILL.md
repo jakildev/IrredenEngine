@@ -186,17 +186,17 @@ fleet doesn't need `pip install Pillow` on every new host.
 
 ## Anti-patterns
 
-- ❌ Updating references without visually inspecting the new PNGs. Blind
+- Updating references without visually inspecting the new PNGs. Blind
   `--update-references --force` masks real regressions.
-- ❌ Committing references for a backend you can't build. Each backend's
+- Committing references for a backend you can't build. Each backend's
   set must be captured on a host that can run that preset.
-- ❌ Loosening thresholds to make a failing shot pass. If the shot is
+- Loosening thresholds to make a failing shot pass. If the shot is
   legitimately flakey, fix the demo's determinism or exclude the shot
   from the manifest.
-- ❌ Adding the harness to a demo whose output is intentionally random or
+- Adding the harness to a demo whose output is intentionally random or
   time-dependent. The demo must be fully deterministic across runs for
   the harness to mean anything.
-- ❌ Sharing references across backends. OpenGL and Metal produce
+- Sharing references across backends. OpenGL and Metal produce
   pixel-different output; treating one as the canonical reference will
   produce false failures on the other.
 

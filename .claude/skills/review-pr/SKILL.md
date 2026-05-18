@@ -185,29 +185,29 @@ compliance or raise an issue.
 **ECS invariants** — check against [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md). For each item, confirm compliance or raise an issue.
 
 **Ownership / lifetime**
-- ❌ `shared_ptr` where `unique_ptr` would do.
-- ❌ Raw owning pointers (raw pointer = non-owning, always).
-- ❌ Storing references or pointers to ECS component storage across ticks —
+- `shared_ptr` where `unique_ptr` would do.
+- Raw owning pointers (raw pointer = non-owning, always).
+- Storing references or pointers to ECS component storage across ticks —
   archetype changes invalidate addresses.
-- ❌ Capturing `this` or references to World managers in lambdas that outlive
+- Capturing `this` or references to World managers in lambdas that outlive
   the World (e.g. lua callbacks registered before World teardown).
-- ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime
+- Stored `g_*Manager` pointer or reference in any object whose lifetime
   can outlive `World` (background threads, sol2 callback closures, long-lived
   caches) — see `engine/world/CLAUDE.md` and `engine/CLAUDE.md`.
 
 **Render pipeline**
-- ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)`
+- CPU frame-data struct out of sync with its GLSL `layout(std140)`
   counterpart. `vec3` members pad to 16 bytes; array elements stride to 16
   bytes; members crossing a 16-byte boundary need `alignas(16)`. If either
   the C++ struct (in `engine/render/include/irreden/render/`) or its shader
   `uniform` block changed, cross-reference both sides.
-- ❌ shader references `binding = N` but the C++ `kBufferIndex_*` constant
+- shader references `binding = N` but the C++ `kBufferIndex_*` constant
   was not updated — the mismatch is silent (wrong uniforms, no error).
   Confirm every bind-point index agrees on both sides.
-- ❌ New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
-- ❌ Canvas allocation before the canvas entity exists.
-- ❌ Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
-- ❌ new `*.glsl` added without a matching `*.metal` counterpart (if parity
+- New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
+- Canvas allocation before the canvas entity exists.
+- Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
+- new `*.glsl` added without a matching `*.metal` counterpart (if parity
   is intentionally deferred, the PR body must acknowledge it and reference a
   follow-up task).
 
@@ -229,28 +229,28 @@ or any `c_compute_*shadow*.glsl` / `.metal`)
   correct AO neighbor-voxel sampling.
 
 **Math / coordinates** (see [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for the full glm→IRMath substitution table)
-- ❌ Mixing 3D world coords with iso 2D coords without going through
+- Mixing 3D world coords with iso 2D coords without going through
   `IRMath::pos3DtoPos2DIso` or a named helper.
-- ❌ Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
-- ❌ PlaneIso axis swapped.
+- Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
+- PlaneIso axis swapped.
 
 **Serialization** (when the diff touches `engine/asset/`, `engine/prefabs/irreden/voxel/`, or `engine/world/`)
-- ❌ A struct annotated `// IRAsset: serialized` gained, lost, or renamed a field without
+- A struct annotated `// IRAsset: serialized` gained, lost, or renamed a field without
   bumping `static constexpr uint16_t kSaveVersion = N;` in the same diff.
   Fix: increment `kSaveVersion` and add a reader migration keyed on
   `(structType, oldVersion)` in the format's load function. (Save Format Extensibility Rule #3.)
-- ❌ A new serialized record type with no `// IRAsset: serialized` annotation — the
+- A new serialized record type with no `// IRAsset: serialized` annotation — the
   simplify and review-pr checks cannot guard it without the annotation. Add the annotation
   and set `kSaveVersion = 1` on the struct.
 
 **Naming / style** — follow the table in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §Naming.
-- ❌ `m_` on public members, trailing `_` on private members (backwards — the single most common slip).
+- `m_` on public members, trailing `_` on private members (backwards — the single most common slip).
 
 **Tests / build**
-- ❌ Code change with no corresponding test change where a test existed.
-- ❌ New feature with no new test at all (flag as needs-fix unless the user
+- Code change with no corresponding test change where a test existed.
+- New feature with no new test at all (flag as needs-fix unless the user
   explicitly said "no tests").
-- ❌ Build or format-check not run before opening the PR (check commit
+- Build or format-check not run before opening the PR (check commit
   message for mention, or run `cmake --build build --target format-check`
   yourself if cheap).
 
@@ -453,13 +453,13 @@ Reply with a compact summary to the calling session:
 
 ## Anti-patterns
 
-- ❌ Reviewing only the diff, not the surrounding file. Context matters.
-- ❌ Vague review comments without file:line citations.
-- ❌ Approving work that violates an ECS invariant "because the test passes"
+- Reviewing only the diff, not the surrounding file. Context matters.
+- Vague review comments without file:line citations.
+- Approving work that violates an ECS invariant "because the test passes"
   — some invariants don't fail at test time.
-- ❌ Merging the PR yourself. The user merges.
-- ❌ Pushing commits to the PR branch from the reviewer worktree.
-- ❌ Leaving a review that just says "LGTM" with nothing specific. Either the
+- Merging the PR yourself. The user merges.
+- Pushing commits to the PR branch from the reviewer worktree.
+- Leaving a review that just says "LGTM" with nothing specific. Either the
   PR is actually clean (in which case call out one non-obvious good choice
   as **praise**, to reinforce it) or it isn't.
 
