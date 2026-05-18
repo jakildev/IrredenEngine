@@ -85,8 +85,18 @@ and falls through to the next priority tier.
   `beforeTick` caches `C_CameraPosition2DIso + C_ZoomLevel`. Moving
   the camera inside the same tick with a separate system can desync
   the hover test by one frame.
-- **Mouse scroll is ephemeral.** Only valid for exactly one frame. Query
-  it in the same pipeline event it's created, or you miss it.
+- **Mouse scroll is ephemeral by design.** The GLFW scroll callback
+  creates one `C_MouseScroll` entity per event (`C_Lifetime{1}`),
+  which `LIFETIME` destroys in `UPDATE`. This differs from key
+  presses, which use persistent `C_KeyMouseButton + C_KeyStatus`
+  state-machine entities queryable via `IRInput::checkKeyMouseButton()`
+  at any time. Scroll is a continuous delta value, not a
+  pressed/held/released state, so the ephemeral-event model fits
+  the underlying GLFW push semantics naturally. Consume
+  `C_MouseScroll` in the `INPUT` pipeline (same stage the entities
+  are created, before `LIFETIME` destroys them in `UPDATE`) or you
+  miss it. A unified `IRInput::getScrollDelta()` query API —
+  analogous to `checkKeyMouseButton()` — does not yet exist.
 - **`C_KeyStatus` transitions after counts.** The system updates press/
   release counts first, then transitions the state machine. If you read
   state and counts in the same system, make sure you read them in the

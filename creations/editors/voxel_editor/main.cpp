@@ -145,6 +145,9 @@ constexpr std::size_t kUndoStrokeReserve = 1024;
 struct EditorState {
     std::vector<IREntity::EntityId> paletteSwatches_;
     int activeSwatchIdx_ = 0;
+    // Saved at scene creation for the future save-load / serialization
+    // pass; runtime place/erase resolves the target set via the picker
+    // hit rather than reading this field, so it has no per-frame use.
     IREntity::EntityId editableVoxelSet_ = IREntity::kNullEntity;
     std::deque<UndoRecord> undoRecords_;
     std::size_t undoTotalBytes_ = 0;
@@ -228,7 +231,11 @@ void undoOne() {
     g_editor.undoTotalBytes_ -= rec.byteSize();
     // Replay in reverse so overlapping edits inside a stroke restore
     // in last-write-wins order — same property the forward edit chain
-    // produced when authoring.
+    // produced when authoring. Voxel-set entities are allocated once
+    // in initEntities and live for the session; there is no teardown
+    // path, so the getComponent lookup below assumes the set is alive
+    // without an extra liveness check. A future refactor that adds
+    // entity removal must guard this loop.
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
         const std::size_t flat =
@@ -416,16 +423,13 @@ void initSystems() {
                 return;
             }
 
-            // Single-click strokes: a press begins a fresh stroke
-            // record, the same-frame edit appends to it, and the
-            // commit happens before the function returns. Drag-paint
-            // would split this into press → begin / held → append /
-            // release → commit; that's the documented follow-up.
-            IRVoxelEditor::g_editor.pendingStroke_.edits_.clear();
-            IRVoxelEditor::g_editor.pendingStroke_.edits_.reserve(
-                IRVoxelEditor::kUndoStrokeReserve
-            );
-
+            // Single-click strokes: same-frame append + commit before
+            // return. `pendingStroke_.edits_` is always entered empty
+            // and pre-reserved (init seeds it; commitStroke clears +
+            // reserves on every exit), so no per-click clear/reserve is
+            // needed. Drag-paint would split this into press → begin /
+            // held → append / release → commit and would need an
+            // explicit begin to bound the reserve to the brush AABB.
             const Color placeColor =
                 IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
             IRVoxelEditor::applyEdit(hit->entity_, set, localIdx, flat, placeClick, placeColor);
