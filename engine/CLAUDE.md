@@ -17,34 +17,6 @@ Core engine static libraries. Everything here is shared by every creation.
   modules (`common/`, `math/`, `profile/`) do not depend on high-level
   ones (`render/`, `world/`).
 
-## Layer map (bottom-up)
-
-```
-common/   — shared primitives (ir_constants, ir_platform)
-math/     — GLM aliases, iso projection, easing, color, physics
-profile/  — easy_profiler + spdlog logging wrappers
-time/     — TimeManager + EventProfiler (fixed-step loop)
-
-entity/   — IRECS archetype store, EntityManager, Archetype, relations
-system/   — SystemManager, pipeline scheduler, SystemName enum
-command/  — CommandManager, input-triggered action binding
-
-input/    — InputManager, GLFW keyboard/mouse/gamepad polling
-window/   — IRGLFWWindow, OpenGL context bring-up
-render/   — RenderManager, RenderingResourceManager, trixel pipeline, shaders
-audio/    — AudioManager, MIDI in/out (RtMidi, RtAudio)
-video/    — VideoRecorder, ffmpeg encoder, screenshot path
-script/   — LuaScript, sol2 bindings, kHasLuaBinding<T> traits
-
-asset/    — trixel texture + SDF load/save
-world/    — World class, owns all managers above
-
-prefabs/  — header-only C_* / System<> / Command<> definitions, grouped
-            by domain: common/ update/ voxel/ input/ render/ audio/ video/
-```
-
-Read the `CLAUDE.md` inside each subdirectory for the module-specific story.
-
 ## `SystemName` enum is authoritative
 
 Every prefab system that uses the `System<NAME>::create()` template pattern
