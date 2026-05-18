@@ -89,6 +89,9 @@
 // Symmetry modes (T-212)
 #include "symmetry.hpp"
 
+// Scene save/load (T-215, F-1.5)
+#include "scene_io.hpp"
+
 using namespace IRComponents;
 using namespace IRMath;
 
@@ -1175,6 +1178,98 @@ void initCommands() {
             bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
             IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
             IR_LOG_INFO("Layer {} visibility -> {}", layerId, nowVisible ? "shown" : "hidden");
+        }
+    );
+
+    // Ctrl+S — save scene (all frames + layer metadata) to disk.
+    // Snapshots the live voxels into the active frame before writing.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+                return;
+            auto &anim = IRVoxelEditor::g_anim;
+            IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
+            std::vector<std::vector<IRComponents::C_Voxel>> snapshots;
+            snapshots.reserve(static_cast<std::size_t>(anim.frameCount()));
+            for (const auto &f : anim.frames_)
+                snapshots.push_back(f.voxels_);
+            auto res = IRVoxelEditor::saveEditorScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName),
+                snapshots,
+                IRVoxelEditor::kEditableSceneSize,
+                IRVoxelEditor::g_layerManager,
+                anim,
+                IRVoxelEditor::g_symmetry
+            );
+            if (res.ok_)
+                IR_LOG_INFO("Scene saved to {}/{}", IRVoxelEditor::kSceneSaveDir, IRVoxelEditor::kSceneBaseName);
+            else
+                IR_LOG_ERROR("Save failed: {}", res.errorMsg_);
+        }
+    );
+
+    // Ctrl+O — load scene from disk, replacing all frames and layer state.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonO,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+                return;
+            auto loaded = IRVoxelEditor::loadEditorScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName)
+            );
+            if (!loaded.ok_) {
+                IR_LOG_ERROR("Load failed: {}", loaded.errorMsg_);
+                return;
+            }
+            auto &anim = IRVoxelEditor::g_anim;
+            auto &editor = IRVoxelEditor::g_editor;
+
+            // Replace animation frames.
+            anim.frames_.clear();
+            for (auto &snap : loaded.frameSnapshots_)
+                anim.frames_.push_back(IRVoxelEditor::VoxelFrame{std::move(snap)});
+            if (anim.frames_.empty())
+                anim.frames_.emplace_back();
+            anim.fps_ = loaded.fps_;
+            anim.loopMode_ = loaded.loopMode_;
+            anim.playing_ = false;
+            anim.elapsed_ = 0.0f;
+            anim.activeFrame_ = IRMath::clamp(loaded.activeFrame_, 0, anim.frameCount() - 1);
+
+            IRVoxelEditor::g_symmetry = loaded.symmetry_;
+
+            if (!loaded.layers_.empty())
+                IRVoxelEditor::g_layerManager.resetAndLoad(
+                    loaded.layers_, loaded.activeLayerId_, loaded.nextLayerId_
+                );
+
+            // Reset per-frame undo state to match the new frame count.
+            editor.undoRecords_ = {};
+            editor.undoTotalBytes_ = 0;
+            editor.perFrameUndoStacks_.assign(static_cast<std::size_t>(anim.frameCount()), {});
+            editor.perFrameUndoBytes_.assign(static_cast<std::size_t>(anim.frameCount()), 0);
+
+            IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
+
+            // Re-apply visibility for any hidden layers.
+            for (const auto &layer : IRVoxelEditor::g_layerManager.layers()) {
+                if (!layer.visible_)
+                    IRVoxelEditor::applyLayerVisibility(layer.id_, false);
+            }
+
+            IR_LOG_INFO(
+                "Scene loaded from {}/{} ({} frames)",
+                IRVoxelEditor::kSceneSaveDir,
+                IRVoxelEditor::kSceneBaseName,
+                anim.frameCount()
+            );
         }
     );
 }

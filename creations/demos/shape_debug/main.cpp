@@ -6,9 +6,13 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/render/camera.hpp>
 
+#include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/voxel/dense_bridge.hpp>
+
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
+#include <string>
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -97,6 +101,9 @@ float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
+// --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
+// built-in shape fixtures. Empty = not requested.
+std::string g_loadVxsPath;
 
 } // namespace
 
@@ -138,6 +145,11 @@ int main(int argc, char **argv) {
                 g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
                 g_initialYaw = static_cast<float>(std::atof(argv[i + 1]));
                 g_initialYawSet = true;
+                ++i;
+            }
+        } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
+            if (i + 1 < argc) {
+                g_loadVxsPath = argv[i + 1];
                 ++i;
             }
         }
@@ -529,4 +541,27 @@ void initEntities() {
     // the fog-of-war pass end-to-end. Radius chosen to cover the shape
     // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
     IRPrefab::Fog::revealRadius(0, 0, 48);
+
+    // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
+    // set at the origin so it can be compared against the procedural shapes.
+    if (!g_loadVxsPath.empty()) {
+        auto loaded = IRAsset::loadDenseVoxelSet(g_loadVxsPath);
+        if (!loaded.ok()) {
+            IR_LOG_ERROR("--load-vxs: could not load '{}'", g_loadVxsPath);
+        } else if (loaded.value_.dense_.voxels_.size() != loaded.value_.dense_.voxelCount()) {
+            IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", g_loadVxsPath);
+        } else {
+            auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
+            EntityId vxsEntity = IREntity::createEntity(
+                C_Position3D{vec3(-20.0f, -8.0f, 0.0f)},
+                std::move(voxelSet)
+            );
+            IR_LOG_INFO(
+                "--load-vxs: loaded '{}' -> entity {} ({} voxels)",
+                g_loadVxsPath,
+                vxsEntity,
+                loaded.value_.dense_.voxelCount()
+            );
+        }
+    }
 }

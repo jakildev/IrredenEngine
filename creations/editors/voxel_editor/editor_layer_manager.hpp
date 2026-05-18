@@ -36,6 +36,22 @@ class EditorLayerManager {
         return m_activeLayerId;
     }
 
+    std::uint8_t nextId() const {
+        return m_nextId;
+    }
+
+    // Discard all current layers and replace with the given snapshot.
+    // Used by the scene loader to restore exact layer IDs after a round-trip.
+    void resetAndLoad(
+        const std::vector<LayerRecord> &layers,
+        std::uint8_t activeLayerId,
+        std::uint8_t nextId
+    ) {
+        m_layers = layers;
+        m_activeLayerId = activeLayerId;
+        m_nextId = nextId;
+    }
+
     void setActiveLayer(std::uint8_t id) {
         if (findLayer(id))
             m_activeLayerId = id;
