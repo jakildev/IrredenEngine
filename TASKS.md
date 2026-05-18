@@ -359,11 +359,11 @@ Avoid:
   - **Notes:** 16 SKILL.md files totaling ~5,400 lines; simplify (645), review-pr (523), commit-and-push (474), lua-creation-setup (470) are the biggest. Several skills compose: commit-and-push invokes simplify; polish-checkpoint mirrors commit-and-push's pre-commit phase; render-debug-loop uses render-verify. Companion to T-221 (roles audit). Deliverable is a research findings note — no code changes.
   - **Links:**
 
-- [ ] **docs: audit CLAUDE.md files — baseline drift, dead pointers, slop** — read all CLAUDE.md files across engine and creations; produce `docs/agents/audit-claude-md.md` listing per-file duplications, dead symbol refs, rule contradictions, slop, and concrete follow-up cleanup tasks
+- [~] **docs: audit CLAUDE.md files — baseline drift, dead pointers, slop** — read all CLAUDE.md files across engine and creations; produce `docs/agents/audit-claude-md.md` listing per-file duplications, dead symbol refs, rule contradictions, slop, and concrete follow-up cleanup tasks
   - **ID:** T-223
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/audit-claude-md.md` present in merged PR; (2) per-file findings covering all CLAUDE.md files with categories: baseline duplications, dead symbol/type/path pointers (verified with grep), rule contradictions, slop, and missing-but-should-document candidates; (3) concrete follow-up GitHub issues filed (no labels) grouped by subtree (e.g. `engine/render/`, `engine/prefabs/`, `creations/` as separate PRs); (4) fleet-build clean on linux-debug
   - **Issue:** #802
