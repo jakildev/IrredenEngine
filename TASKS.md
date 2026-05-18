@@ -403,11 +403,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.20, §4.3). XS — one-line insertion. 15/16 other skills already have both fields.
   - **Links:**
 
-- [ ] **docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify** — resolve stale-vs-current symbol name divergence and move canonical description to engine/video/CLAUDE.md
+- [~] **docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify** — resolve stale-vs-current symbol name divergence and move canonical description to engine/video/CLAUDE.md
   - **ID:** T-227
   - **Area:** docs, engine/video
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) verify against `engine/video/` which symbol set is current (`IRVideo::parseAutoScreenshotArgv` + `IRVideo::AutoScreenshotShot` + `IRVideo::createAutoScreenshotSystem` vs `ShotConfig` / `g_shots[]` / `AutoScreenshot` system); (2) canonical contract description added to `engine/video/CLAUDE.md`; (3) both `render-debug-loop/SKILL.md` and `render-verify/SKILL.md` reduced to one line + link
   - **Issue:** #810
