@@ -248,6 +248,26 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Activates all voxels in the plane perpendicular to `axis` at `planeIndex`
+    // and sets their color. Pair with deactivateAll() to seed an editor scene.
+    // axis: 0=X, 1=Y, 2=Z. planeIndex must be in [0, size_[axis]).
+    void fillPlane(int axis, int planeIndex, Color color) {
+        const ivec3 sz = size_;
+        const int dim0 = (axis + 1) % 3;
+        const int dim1 = (axis + 2) % 3;
+        for (int a = 0; a < sz[dim0]; ++a) {
+            for (int b = 0; b < sz[dim1]; ++b) {
+                ivec3 coord{0, 0, 0};
+                coord[axis] = planeIndex;
+                coord[dim0] = a;
+                coord[dim1] = b;
+                const int idx = IRMath::index3DtoIndex1D(coord, sz);
+                voxels_[idx].color_ = color;
+                voxels_[idx].activate();
+            }
+        }
+    }
+
     // take positions of all voxels in voxel object and form a new shape. This could
     // mean moving the parent positions of the Entity to the new desired location OMG
 

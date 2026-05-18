@@ -89,3 +89,13 @@ Callbacks are `sol::protected_function` (Lua) or plain `std::function`
 - **Lua callback lifetime.** `sol::protected_function` captured in a
   handler must outlive the handler or the callback will crash. Register
   the callback for the lifetime of the entity.
+- **`C_MouseScroll` is ephemeral, not persistent.** Each scroll event
+  creates a short-lived entity carrying `C_MouseScroll` (with a
+  `C_Lifetime` so it expires after one frame). Unlike persistent key
+  state (one entity per button, alive for the session), scroll entities
+  are born per-event and die via the LIFETIME system. Systems that
+  iterate `C_MouseScroll` must therefore accumulate deltas in their
+  `endTick` rather than reading a single "current scroll" component —
+  multiple scroll events can arrive in one frame, each as its own
+  entity. The scrollZoomSystem in `creations/editors/voxel_editor/` is
+  the canonical example.
