@@ -305,7 +305,7 @@ Avoid:
   - **ID:** T-242
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-242-trim-skill-inventories
   - **Blocked by:** (none)
   - **Acceptance:** (1) `render-debug-loop/SKILL.md:175-189` Key Files table removed or compressed to a grep pointer; (2) `backend-parity/SKILL.md:99-118` backend C++ file-pairs table removed; (3) `backend-parity/SKILL.md:121-132` shader-prefix convention table removed (duplicate of CLAUDE-BASELINE); (4) `optimize/SKILL.md:142-158` 15-stage GPU pass-name list removed; (5) all removed sections replaced with "see `<file>`" or Grep pointers
   - **Issue:** #825
