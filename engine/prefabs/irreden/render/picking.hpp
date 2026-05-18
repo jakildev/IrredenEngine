@@ -43,6 +43,7 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <limits>
 #include <optional>
 #include <span>
 #include <vector>
@@ -236,8 +237,8 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
     if (shapes.empty() && voxelSets.empty())
         return std::nullopt;
 
-    float depthMin = shapes.empty() ? voxelSets[0].isoDepthMin_ : shapes[0].isoDepthMin_;
-    float depthMax = shapes.empty() ? voxelSets[0].isoDepthMax_ : shapes[0].isoDepthMax_;
+    float depthMin = std::numeric_limits<float>::infinity();
+    float depthMax = -std::numeric_limits<float>::infinity();
     for (const auto &s : shapes) {
         depthMin = IRMath::min(depthMin, s.isoDepthMin_);
         depthMax = IRMath::max(depthMax, s.isoDepthMax_);
@@ -279,13 +280,8 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
             }
             const IRMath::vec3 candidateCenter = vs.worldOrigin_ + IRMath::vec3(localInt);
             const IRMath::vec3 delta = worldPoint - candidateCenter;
-            // Inside the unit voxel cube?
-            if (IRMath::SDF::box(delta, IRMath::vec3(0.5f)) > 0.0f)
-                continue;
             const std::size_t flatIdx =
                 static_cast<std::size_t>(IRMath::index3DtoIndex1D(localInt, vs.size_));
-            if (flatIdx >= vs.voxels_.size())
-                continue;
             // Active = non-zero alpha (matches `C_Voxel::activate` /
             // `deactivate` and the GPU pipeline's per-voxel skip).
             if (vs.voxels_[flatIdx].color_.alpha_ == 0)
