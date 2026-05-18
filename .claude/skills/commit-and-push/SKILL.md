@@ -211,7 +211,7 @@ default. Read the nearest `CLAUDE.md` before drafting.
   `docs:`) derived from the dominant changed path.
 - Body wraps at ~72 chars per line.
 - Describe *why* over *what*.
-- Always include the `Co-Authored-By` trailer exactly as shown.
+- Always include the `Co-Authored-By` trailer; the harness system prompt specifies the exact form with the current model version.
 
 ### 5. Stage files
 
