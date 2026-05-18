@@ -170,7 +170,10 @@ upstream needs cleanup.
 If a chat lands on a branch that already has `cursor-stack-base`
 set and the human cues a non-specific "next slice" without saying
 "stacked" or "fresh start", **ask** whether to continue the stack
-or branch off master. Don't guess.
+or branch off master. Don't guess. Sample prompt:
+
+> "You're on `<old-branch>` (stacked on `<existing-stack-base>`).
+> Should the next slice continue the stack or branch off master?"
 
 **macOS sandbox note.** Cursor's Bash sandbox on macOS blocks
 writes to `.git/config`, `gh` keychain access, and SSH `git push`.
