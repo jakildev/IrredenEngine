@@ -257,17 +257,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
-  - **ID:** T-221
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-221-roles-audit
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/agents/audit-roles.md` present in merged PR; (2) note covers all 7 role files with file:line citations for each duplication; (3) each duplication names a right shared home (existing doc or proposed new doc); (4) follow-up GitHub issues filed (no labels) for each concrete cleanup task in the note
-  - **Issue:** #800
-  - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
-  - **Links:**
-
 - [~] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
   - **ID:** T-233
   - **Area:** docs
@@ -569,6 +558,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-221** — docs audit of role-*.md — shared protocols + point-don't-dump · Owner: claude/T-221-roles-audit · PR: https://github.com/jakildev/IrredenEngine/pull/857
 - [x] **T-211** — editor F-1.1 — place/erase + palette panel + undo stack · Owner: claude/T-211-place-erase-palette-undo · PR: https://github.com/jakildev/IrredenEngine/pull/785
 - [x] **T-232** — docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md · Owner: claude/T-232-irmath-table-to-rules · PR: https://github.com/jakildev/IrredenEngine/pull/853
 - [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
@@ -588,4 +578,3 @@ Avoid:
 - [x] **T-199** — migrate COMPUTE_LIGHT_VOLUME reader to C_WorldTransform (step 1) · Owner: claude/T-199-step1-clean · PR: https://github.com/jakildev/IrredenEngine/pull/787
 - [x] **T-201** — split LodLevel header + migrate component_shape_descriptor IRRender:: aliases · Owner: claude/T-201-lod-level-shape-types-split · PR: https://github.com/jakildev/IrredenEngine/pull/786
 - [x] **T-209** — modifier: replace ticksRemaining footgun with pushFrameLocal / pushOneFrame · Owner: claude/T-209-pushFrameLocal-rebased · PR: https://github.com/jakildev/IrredenEngine/pull/784
-- [x] **T-203** — Linux demo validation suite — fix SHAPES_TO_TRIXEL 2D dispatch crash + all demos pass on linux-debug · Owner: claude/T-203-linux-demo-validation · PR: https://github.com/jakildev/IrredenEngine/pull/782
