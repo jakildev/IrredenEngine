@@ -313,11 +313,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.6, §1.6). Size M. backend-parity's raw cmake trips the Bash-tool command_substitution gate (CLAUDE-BASELINE.md:180-219).
   - **Links:**
 
-- [ ] **docs/skills: replace host/preset table copies with refs to BUILD.md** — remove duplicate host/preset tables from render-verify, render-debug-loop, backend-parity
+- [~] **docs/skills: replace host/preset table copies with refs to BUILD.md** — remove duplicate host/preset tables from render-verify, render-debug-loop, backend-parity
   - **ID:** T-236
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `render-verify/SKILL.md:42-46`, `render-debug-loop/SKILL.md:26-29`, `backend-parity/SKILL.md:253-269` (variant) each replaced with a two-line ref to `docs/agents/BUILD.md`; (2) no duplicate host/preset table remains in these three files
   - **Issue:** #819
