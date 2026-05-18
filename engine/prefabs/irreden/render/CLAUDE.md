@@ -320,6 +320,7 @@ when extending or composing widgets:
 
 ## Gotchas
 
+- **SQT transition (T-199 in flight).** `C_Position3D` / `C_PositionGlobal3D` references in this file are accurate-but-aging — new code should prefer `C_LocalTransform` + `C_WorldTransform`; legacy usages will be swept by the T-199 consumer migration.
 - **Canvas texture lifetime.** The 3 GPU textures owned by
   `C_TriangleCanvasTextures` are created in the ctor and only freed in
   `onDestroy()`. Destroying a canvas entity mid-frame while a system

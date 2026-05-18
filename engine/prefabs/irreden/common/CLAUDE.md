@@ -6,16 +6,17 @@ in `update/`.
 
 ## Key components
 
-- `C_Position3D` — local vec3 (legacy; superseded by `C_LocalTransform`,
-  retired in the T-199 migration).
+- `C_Position3D` — local vec3 (legacy; T-199 in flight — superseded by
+  `C_LocalTransform` when consumers migrate; new code should prefer SQT).
 - `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
-  (legacy parallel to `C_WorldTransform`; retired with `C_Position3D`).
+  (legacy parallel to `C_WorldTransform`; T-199 in flight — both still
+  active during the consumer sweep).
   Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
   the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
   than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
   and the `APPLY_POSITION_OFFSET` system.
-- `C_Rotation` — Euler vec3 (legacy; superseded by the quat field on
-  `C_LocalTransform`).
+- `C_Rotation` — Euler vec3 (legacy; T-199 in flight — superseded by the
+  quat field on `C_LocalTransform` when consumers migrate).
 - `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
