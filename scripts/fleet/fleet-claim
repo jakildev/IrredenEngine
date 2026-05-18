@@ -19,7 +19,9 @@
 #   fleet-claim release "<task title>"
 #   fleet-claim check "<task title>"
 #   fleet-claim list [--with-age]
-#   fleet-claim cleanup [--repo <owner/repo>] ...
+#   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
+#   fleet-claim review-claim <pr-number> <agent>
+#   fleet-claim review-release <pr-number> <agent>
 #   fleet-claim clear-all
 #   fleet-claim stack "T-1 T-2 ..." <agent>
 #   fleet-claim release-stack <agent>
@@ -137,6 +139,157 @@ slugify() {
     else
         echo "$base"
     fi
+}
+
+# --- cross-machine GitHub-label lock --------------------------------------
+#
+# T-138's master-push lock covers the cross-host task-claim race by writing
+# the `[~]` row to origin/master as part of the claim handshake. This
+# section adds a complementary GitHub-label primitive for the gaps T-138
+# doesn't cover:
+#
+#   - PR review claims  — reviewers (sonnet-reviewer, opus-reviewer) take a
+#                         `fleet:reviewing-<host>-<agent>` label on the PR
+#                         before reading the diff so two reviewers on
+#                         different hosts can't both work the same PR.
+#   - Cross-host smoke  — author roles' step 1b smoke pickup uses the same
+#                         primitive so two same-host author agents can't
+#                         race on the same `fleet:needs-<host>-smoke` PR.
+#
+# Tie-break: POST .../labels returns the resulting label set. Filter to the
+# `fleet:reviewing-` prefix and take the lexicographic minimum. If our
+# label is the min we own the lock; otherwise we lost the race, remove
+# our label, and the caller exits 1.
+#
+# Host disambiguation (`fleet:reviewing-<host>-<agent>`) is required for
+# correctness — both hosts can have an `opus-reviewer` agent.
+#
+# Stale label sweep runs from `fleet-queue-tick` via
+# `fleet-claim cleanup --gh`; orphan sentinels under ~/.fleet/orphans/
+# retry failed removals on the next cleanup pass. Both ops are idempotent
+# and safe under multiple concurrent queue-managers / queue-tick instances.
+
+derive_host() {
+    # Normalize uname output to one of: mac | windows | linux.
+    # WSL2 (/proc/version contains "Microsoft" or "WSL") maps to "windows"
+    # because the user runs the WSL2 fleet as their Windows fleet.
+    # FLEET_TEST_HOST overrides for test scaffolding.
+    if [[ -n "${FLEET_TEST_HOST:-}" ]]; then
+        echo "$FLEET_TEST_HOST"
+        return
+    fi
+    local u
+    u=$(uname -s 2>/dev/null || echo Unknown)
+    case "$u" in
+        Darwin) echo mac ;;
+        Linux)
+            if [[ -f /proc/version ]] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+                echo windows
+            else
+                echo linux
+            fi
+            ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
+        *) echo unknown ;;
+    esac
+}
+
+repo_from_ns() {
+    # Map the global REPO_NS to a real GitHub owner/repo path. Empty (or
+    # "engine") → engine; "game" → game. Unknown namespaces print nothing
+    # and the caller treats it as "no GH side, fall back to local-only".
+    case "${REPO_NS:-}" in
+        ""|engine) echo "jakildev/IrredenEngine" ;;
+        game)      echo "jakildev/irreden" ;;
+        *)         echo "" ;;
+    esac
+}
+
+# write_orphan_sentinel <repo> <issue-or-pr> <label> <reason>
+#   Drops a JSON sentinel under ~/.fleet/orphans/ so the cleanup pass
+#   retries the failed --remove-label later.
+write_orphan_sentinel() {
+    local repo="$1" issue="$2" label="$3" reason="$4"
+    local orphans_dir="${FLEET_ORPHANS_DIR:-$HOME/.fleet/orphans}"
+    mkdir -p "$orphans_dir"
+    local ts safe
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    safe="${label//\//-}"
+    safe="${safe//:/-}"
+    local sentinel="$orphans_dir/${ts}-${safe}.json"
+    cat > "$sentinel" <<EOF
+{
+  "repo": "$repo",
+  "issue": $issue,
+  "label": "$label",
+  "reason": "$reason",
+  "created": "$ts"
+}
+EOF
+    echo "fleet-claim: WARN gh remove-label failed for '$label' on $repo#$issue; wrote sentinel $sentinel" >&2
+}
+
+# gh_release_label <repo> <issue-or-pr> <label>
+#   Retry-once-then-sentinel policy for removing a fleet:reviewing-* label.
+#   Exit 0 on successful removal (or label already absent). Exit 1 only
+#   after both attempts fail and the sentinel is written.
+gh_release_label() {
+    local repo="$1" issue="$2" label="$3"
+    if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+        return 0
+    fi
+    sleep 2
+    if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+        return 0
+    fi
+    write_orphan_sentinel "$repo" "$issue" "$label" "remove-label failed after retry"
+    return 1
+}
+
+# _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
+#   Atomic-add + deterministic-min tie-break primitive. PRs and issues
+#   share GitHub's /issues/N/labels endpoint, so this works for both.
+#
+#   Returns 0 if our label is the lex-min of all <label-prefix>*
+#   labels on the response (we own the lock); 1 otherwise (we lost
+#   the race and self-removed our label). On API error, returns 1.
+_acquire_label_on() {
+    local repo="$1" target="$2" label="$3" prefix="$4"
+
+    local labels_json
+    if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
+            --method POST -f "labels[]=${label}" 2>&1); then
+        echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
+        echo "$labels_json" >&2
+        return 1
+    fi
+
+    local min_label
+    min_label=$(echo "$labels_json" | python3 -c '
+import json, sys
+try:
+    labels = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+prefix = sys.argv[1]
+matching = sorted(l["name"] for l in labels if isinstance(l, dict) and l.get("name", "").startswith(prefix))
+if matching:
+    print(matching[0])
+' "$prefix" 2>/dev/null || echo "")
+
+    if [[ -z "$min_label" ]]; then
+        echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
+
+    if [[ "$min_label" != "$label" ]]; then
+        echo "fleet-claim: lost tie-break to ${min_label#$prefix} on $repo#$target" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
+
+    return 0
 }
 
 # --- dependency checking --------------------------------------------------
@@ -1145,6 +1298,66 @@ cmd_release() {
     fi
 }
 
+# cmd_review_claim <pr-num> <agent>
+#   Atomically claim a PR for review (or cross-host smoke) work via a
+#   `fleet:reviewing-<host>-<agent>` label. Reviewer roles invoke this
+#   before reading the diff; author-role step 1b invokes it before
+#   building the cross-host smoke target. Returns 0 on success, 1 if
+#   another agent already holds the claim.
+#
+#   Reviewer-role policy: the verdict label-swap also `--remove-label`s
+#   `fleet:reviewing-<host>-<agent>`, so the lock is released as part of
+#   posting the verdict. `cmd_review_release` exists for abort paths.
+cmd_review_claim() {
+    local pr="$1" agent="${2:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim review-claim: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="fleet:reviewing-${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]]; then
+        echo "fleet-claim review-claim: WARN no GH repo for namespace '${REPO_NS:-engine}'; cannot acquire" >&2
+        return 1
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim review-claim: WARN 'gh' not on PATH; cannot acquire" >&2
+        return 1
+    fi
+
+    if ! _acquire_label_on "$repo" "$pr" "$label" "fleet:reviewing-"; then
+        return 1
+    fi
+
+    echo "review-claim acquired: $repo PR#$pr ($agent)"
+    return 0
+}
+
+# cmd_review_release <pr-num> <agent>
+#   Release a review claim. Mirrors gh_release_label semantics
+#   (retry-once-then-sentinel). Returns 0 on success, 1 if the second
+#   attempt failed (sentinel written; cleanup pass will retry).
+cmd_review_release() {
+    local pr="$1" agent="${2:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim review-release: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="fleet:reviewing-${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]] || ! command -v gh >/dev/null 2>&1; then
+        echo "review-release: no gh / unknown namespace; nothing to do" >&2
+        return 0
+    fi
+    gh_release_label "$repo" "$pr" "$label"
+}
+
 cmd_check() {
     # Exit 0 = free, exit 1 = claimed.
     local title="$1"
@@ -1229,12 +1442,18 @@ cmd_list() {
 cmd_cleanup() {
     # Remove claims whose task title matches a merged or closed PR title.
     # Accepts zero or more --repo flags; defaults to jakildev/IrredenEngine.
+    # With --gh, ALSO sweeps stale fleet:reviewing-* labels off open PRs
+    # and replays any orphan sentinels from failed earlier removals.
+    # The GH pass is idempotent and safe under concurrent queue-tick
+    # invocations.
     mkdir -p "$CLAIMS_DIR"
 
     local -a repos=()
+    local do_gh=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --repo) repos+=("$2"); shift 2 ;;
+            --gh)   do_gh=1; shift ;;
             *)      shift ;;
         esac
     done
@@ -1282,6 +1501,171 @@ cmd_cleanup() {
         echo "no stale claims found"
     else
         echo "cleaned $cleaned stale claim(s)"
+    fi
+
+    if [[ $do_gh -eq 1 ]]; then
+        cmd_cleanup_gh "${repos[@]}" || true
+        replay_orphans || true
+    fi
+}
+
+# cmd_cleanup_gh <repo> [<repo> ...]
+#   Sweeps stale fleet:reviewing-* labels off open PRs. A label is "stale"
+#   when it has been present > FLEET_CLAIM_STALE_SECS (default 1800 = 30
+#   min). No "live PR present" gate is needed — the PR IS the unit; > 30
+#   min means the reviewer crashed.
+#
+#   Idempotent: --remove-label on an absent label is a no-op, so two
+#   queue-tick invocations running this concurrently both succeed without
+#   error. No shared state is written; each pass reads GitHub fresh.
+cmd_cleanup_gh() {
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
+        return 0
+    fi
+
+    local -a repos=("$@")
+    if [[ ${#repos[@]} -eq 0 ]]; then
+        repos=("jakildev/IrredenEngine")
+    fi
+
+    local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
+    local now
+    now=$(date +%s)
+    local total_removed=0
+
+    for repo in "${repos[@]}"; do
+        local prs_json pr_review_plan
+        prs_json=$(gh pr list --repo "$repo" --state open \
+            --json number,labels --limit 200 2>/dev/null || echo "[]")
+        pr_review_plan=$(echo "$prs_json" | python3 -c '
+import json, sys
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+for pr in prs:
+    n = pr.get("number")
+    for l in (pr.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:reviewing-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$pr_review_plan" ]] && continue
+
+        while IFS=$'\t' read -r pr_num label_name; do
+            [[ -z "$pr_num" || -z "$label_name" ]] && continue
+
+            # Fetch label-add timestamp from the events API. Multiple
+            # add/remove cycles can exist; take the most recent add.
+            local added_at
+            added_at=$(gh api "repos/${repo}/issues/${pr_num}/events" \
+                --paginate \
+                --jq '.[] | select(.event=="labeled" and .label.name=="'"$label_name"'") | .created_at' \
+                2>/dev/null | tail -n1 || true)
+
+            [[ -z "$added_at" ]] && continue
+
+            local added_epoch
+            added_epoch=$(python3 -c "
+import sys, datetime
+try:
+    dt = datetime.datetime.strptime('$added_at', '%Y-%m-%dT%H:%M:%SZ')
+    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+
+            [[ "$added_epoch" -eq 0 ]] && continue
+
+            local age=$(( now - added_epoch ))
+            if [[ $age -lt $stale_secs ]]; then
+                continue
+            fi
+
+            if gh issue edit "$pr_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num (age: $((age / 60))m)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
+                    "cleanup --gh: PR remove-label failed"
+            fi
+        done <<< "$pr_review_plan"
+    done
+
+    if [[ $total_removed -eq 0 ]]; then
+        echo "cleanup --gh: no stale labels"
+    else
+        echo "cleanup --gh: removed $total_removed stale label(s)"
+    fi
+}
+
+# replay_orphans
+#   Retries each sentinel under ~/.fleet/orphans/ (from earlier
+#   release/cleanup failures). On success, deletes the sentinel. On
+#   age > FLEET_ORPHAN_MAX_SECS (default 24h), abandons with a warning
+#   so the human can clean up manually via gh.
+replay_orphans() {
+    if ! command -v gh >/dev/null 2>&1; then
+        return 0
+    fi
+    local orphans_dir="${FLEET_ORPHANS_DIR:-$HOME/.fleet/orphans}"
+    [[ -d "$orphans_dir" ]] || return 0
+
+    local now
+    now=$(date +%s)
+    local max_age_secs="${FLEET_ORPHAN_MAX_SECS:-86400}"
+    local replayed=0 abandoned=0
+
+    shopt -s nullglob
+    for sentinel in "$orphans_dir"/*.json; do
+        [[ -f "$sentinel" ]] || continue
+
+        local fields
+        fields=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$sentinel'))
+    print(d.get('repo',''))
+    print(d.get('issue',''))
+    print(d.get('label',''))
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+        local repo issue label
+        repo=$(echo "$fields"  | sed -n '1p')
+        issue=$(echo "$fields" | sed -n '2p')
+        label=$(echo "$fields" | sed -n '3p')
+
+        if [[ -z "$repo" || -z "$issue" || -z "$label" ]]; then
+            echo "replay_orphans: malformed sentinel $sentinel; removing" >&2
+            rm -f "$sentinel" 2>/dev/null || true
+            continue
+        fi
+
+        if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+            rm -f "$sentinel" 2>/dev/null || true
+            echo "replay_orphans: replayed remove of '$label' on $repo#$issue"
+            replayed=$((replayed + 1))
+            continue
+        fi
+
+        local sentinel_mtime age
+        sentinel_mtime=$(stat -c %Y "$sentinel" 2>/dev/null || stat -f %m "$sentinel" 2>/dev/null || echo "$now")
+        age=$(( now - sentinel_mtime ))
+        if [[ $age -gt $max_age_secs ]]; then
+            echo "replay_orphans: WARN abandoning $sentinel (age $((age / 3600))h > $((max_age_secs / 3600))h); remove '$label' on $repo#$issue manually" >&2
+            rm -f "$sentinel" 2>/dev/null || true
+            abandoned=$((abandoned + 1))
+        fi
+    done
+    shopt -u nullglob
+
+    if [[ $replayed -gt 0 || $abandoned -gt 0 ]]; then
+        echo "replay_orphans: $replayed replayed, $abandoned abandoned"
     fi
 }
 
@@ -2671,6 +3055,20 @@ case "${1:-}" in
         shift
         cmd_cleanup "$@"
         ;;
+    review-claim)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] review-claim <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_review_claim "$2" "$3"
+        ;;
+    review-release)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] review-release <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_review_release "$2" "$3"
+        ;;
     clear-all)
         cmd_clear_all
         ;;
@@ -2830,11 +3228,26 @@ commands:
                                 record branch+PR for a stacked task
   stack-pr-state <agent>        print task/branch/pr table for agent's stack
   check-stale [max-secs]        release claims older than max-secs (default: 7200)
-  cleanup [--repo o/r] ...      remove claims for merged/closed PRs.
+  cleanup [--repo o/r] [--gh] ...
+                                Remove claims for merged/closed PRs. With
+                                --gh also sweeps stale fleet:reviewing-*
+                                labels off open GitHub PRs (>30 min age)
+                                and replays any ~/.fleet/orphans/
+                                sentinels. The --gh pass is idempotent
+                                and safe under concurrent invocations;
+                                fleet-queue-tick runs it once per tick.
                                 NOTE: cleanup's --repo takes a full owner/repo
                                 path (e.g. "jakildev/IrredenEngine"); it lives
                                 AFTER the subcommand and is unrelated to the
                                 global --repo namespace flag above.
+  review-claim <pr> <agent>     atomically claim a PR for review/smoke work
+                                via a fleet:reviewing-<host>-<agent> label.
+                                Exit 0 = owned; exit 1 = another agent
+                                holds it.
+  review-release <pr> <agent>   release a review claim (retry-once-then-
+                                sentinel; the verdict label swap normally
+                                already removed it, so this is the abort/
+                                cleanup path).
   clear-all                     wipe all claims (used by fleet-up on restart)
 
 reservation commands (worktree-pinning, distinct from claims):

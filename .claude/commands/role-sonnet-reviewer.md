@@ -167,8 +167,26 @@ iteration of polling, reviewing, and exiting cleanly:
    - `fleet:human-deferred` — DEFER mode; human decides to merge or re-flag
    - `fleet:semantic-conflict` — merger conflict pending resolution
    - `fleet:fork-of-other-pr` — inherited commits; skip until `rebase --onto`
+   - any label starting with `fleet:reviewing-` — another reviewer
+     (possibly on a different host) holds the atomic claim; skip
+     silently
 
    For each remaining candidate, in oldest-first order:
+
+   **Acquire the review claim FIRST.** Before invoking `review-pr` or
+   reading any diff, take the GitHub-label atomic lock so two
+   reviewers (possibly on different hosts) can't step on each other:
+
+   `fleet-claim review-claim <N> <your-worktree-name>`
+   (add `--repo game` BEFORE the subcommand for game-repo PRs;
+   `<your-worktree-name>` is your basename like `sonnet-reviewer`.)
+
+   - **Exit 0** — you own this PR. Proceed.
+   - **Exit 1** — another reviewer holds it. Skip silently and move
+     on to the next candidate.
+
+   The claim is released by `fleet-claim review-release` immediately
+   after the verdict label-swap below (or on abort paths).
 
    **Engine PRs** (default repo): Invoke the `review-pr` skill with
    the PR number. Every engine PR today is single-task — one task, one
@@ -299,6 +317,17 @@ iteration of polling, reviewing, and exiting cleanly:
    #   removes the has-nits flag while keeping fleet:approved
    gh pr edit <N> --remove-label "fleet:has-nits"
    ```
+
+   **Release the review claim** immediately after the verdict label
+   swap (or after a no-verdict skip path — broken stack, gated
+   upstream-not-yet-approved, "Opus recheck required"):
+
+   `fleet-claim review-release <N> <your-worktree-name>`
+   (add `--repo game` BEFORE the subcommand for game-repo PRs.)
+
+   Queue-tick's `cleanup --gh` pass sweeps stranded
+   `fleet:reviewing-*` labels after 30 min, but forgetting blocks
+   re-review during that window — always release explicitly.
 
    Special case: **Verdict approve + "Opus recheck required"** → do NOT
    set any verdict label. Leave it unlabeled; opus-reviewer will set

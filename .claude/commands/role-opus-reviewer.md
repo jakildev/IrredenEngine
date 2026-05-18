@@ -146,7 +146,9 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 
    **Skip** PRs labeled `fleet:wip`, `human:wip`, `human:needs-fix`,
    `fleet:human-amending`, `fleet:human-deferred`,
-   `fleet:semantic-conflict`, or `fleet:fork-of-other-pr` — those are
+   `fleet:semantic-conflict`, `fleet:fork-of-other-pr`, or carrying
+   any label starting with `fleet:reviewing-` (another reviewer holds
+   the atomic claim — see step 2 below) — those are
    either in-progress, human-owned, under active author fixes
    (`fleet:human-amending`), in DEFER mode where the human decides
    to merge as-is or re-flag (`fleet:human-deferred` — do NOT
@@ -174,6 +176,21 @@ iteration of polling, reviewing, and exiting cleanly:
    labels and reviews) live at `repos.engine.prs[]` and
    `repos.game.prs[]`.
 2. For each candidate, in oldest-first order:
+
+   **Acquire the review claim FIRST.** Before reading the Sonnet
+   review or the diff, take the GitHub-label atomic lock so two
+   reviewers (across hosts) can't step on each other:
+
+   `fleet-claim review-claim <N> opus-reviewer`
+   (add `--repo game` BEFORE the subcommand for game-repo PRs.)
+
+   - **Exit 0** — you own this PR. Proceed to step a.
+   - **Exit 1** — another reviewer holds it. Skip this PR silently
+     and move to the next candidate.
+
+   The claim is released by `fleet-claim review-release` immediately
+   after the verdict label is set (step g below), or on abort paths.
+
    a. Read the existing Sonnet review in full first
       (`fleet-pr comments <N>`; add `--repo game` for game PRs).
       Note what Sonnet flagged.
@@ -265,6 +282,17 @@ iteration of polling, reviewing, and exiting cleanly:
         author worker to clean up the nits before the human merges)
       - Verdict needs-fix → `fleet:needs-fix`
       - Verdict blocker → `fleet:blocker`
+   g. **Release the review claim** immediately after setting the
+      verdict label (and also on no-verdict skip paths — broken
+      stack, gated upstream-not-yet-approved, etc.). One command,
+      handles host derivation and retry-once-sentinel internally:
+
+      `fleet-claim review-release <N> opus-reviewer`
+      (add `--repo game` BEFORE the subcommand for game-repo PRs.)
+
+      Queue-tick's `cleanup --gh` pass sweeps stranded
+      `fleet:reviewing-*` labels after 30 min, but forgetting blocks
+      the PR from re-review during that window — always release.
 
    **Cross-host smoke tagging (engine PRs only).** After the verdict
    label is set, check whether the PR's diff touches any render path:
