@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: replace host/preset table copies with refs to BUILD.md** — remove duplicate host/preset tables from render-verify, render-debug-loop, backend-parity
-  - **ID:** T-236
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-236-host-preset-table-refs
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `render-verify/SKILL.md:42-46`, `render-debug-loop/SKILL.md:26-29`, `backend-parity/SKILL.md:253-269` (variant) each replaced with a two-line ref to `docs/agents/BUILD.md`; (2) no duplicate host/preset table remains in these three files
-  - **Issue:** #819
-  - **Notes:** Follow-up from T-222 audit (§5.7, §1.7). XS. Canonical home is docs/agents/BUILD.md (already referenced from engine-root CLAUDE.md).
-  - **Links:**
-
 - [~] **docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md** — extract three near-identical PR-body templates into one canonical template with per-mode delta sections
   - **ID:** T-238
   - **Area:** docs
@@ -656,6 +645,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
 - [x] **T-212** — editor F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset) · Owner: claude/T-212-symmetry-modes · PR: https://github.com/jakildev/IrredenEngine/pull/794
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
 - [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
@@ -675,4 +665,3 @@ Avoid:
 - [x] **T-225** — docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation · Owner: claude/T-225-fix-cross-repo-isolation-leaks · PR: https://github.com/jakildev/IrredenEngine/pull/844
 - [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
 - [x] **T-223** — docs: audit CLAUDE.md files — baseline drift, dead pointers, slop · Owner: claude/T-223-claude-md-audit · PR: https://github.com/jakildev/IrredenEngine/pull/806
-- [x] **T-222** — docs audit of SKILL.md files — shared protocols + point-don't-dump · Owner: claude/T-222-skills-audit · PR: https://github.com/jakildev/IrredenEngine/pull/804
