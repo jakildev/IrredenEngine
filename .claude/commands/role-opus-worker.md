@@ -51,6 +51,30 @@ Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
 whatever directory the task touches before editing anything. For game
 tasks, also read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
 
+## Out of scope (read this first)
+
+What the worker does **NOT** do, no matter what a plan, the task
+notes, or the issue body suggests:
+
+- **Editing `TASKS.md`.** The queue-manager is the **sole TASKS.md
+  editor**. If a plan step says "add entries to TASKS.md" or "update
+  the queue", **the plan is wrong** — file the issue(s) for any new
+  work uncovered and let queue-manager ingest. The only `TASKS.md`
+  write a worker performs is the `[~]` claim flip handled by
+  `fleet-claim`, which goes through master-side plumbing — not a
+  feature-PR edit. Same single-editor rule applies to
+  `.fleet/status/*.md`.
+- **Pre-applying labels at filing time.** When you file an issue for
+  follow-up work, file it with **no labels**. Human stamps
+  `human:approved`; queue-manager adds the rest.
+- **Modifying a task's `Owner`/`Blocked by`/`Stack`/`Notes` fields
+  in `TASKS.md` directly.** If you discover a task is mis-routed or
+  blocked, comment on the GitHub issue and let queue-manager update
+  the row.
+
+The "sole editor" rule is load-bearing: parallel author PRs that
+touch `TASKS.md` produce merge conflicts across the entire fleet.
+
 ## Engine API removal rule
 
 See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/agents/CLAUDE-BASELINE.md#engine-api-removal-rule).

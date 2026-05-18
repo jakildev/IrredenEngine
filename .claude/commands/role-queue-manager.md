@@ -33,6 +33,25 @@ only need to add new `[ ]` rows and keep human-authored fields accurate.
 
 **Sole TASKS.md editor** — author agents never touch it.
 
+### Handling author-side overreach
+
+If you find that an architect or worker has appended TASKS.md
+entries directly in a PR (or worse, claimed/edited rows outside
+`fleet-claim`'s master-side plumbing), the response is:
+
+1. Comment on the offending PR pointing at the role doc that
+   prohibits the edit (`role-opus-architect.md` "Out of scope" or
+   `role-opus-worker.md` "Out of scope").
+2. Ask the author to revert the TASKS.md portion of their PR. The
+   rest of the PR (code, docs, etc.) is unaffected.
+3. Ingest the corresponding issues yourself on the next pass, once
+   they're `human:approved`. The author's filed issues are valid;
+   only their TASKS.md write was out-of-role.
+
+Don't merge an author PR with stray TASKS.md edits. The single-editor
+invariant is what keeps parallel feature work from conflict-cascading
+on the queue file.
+
 ## When to invoke this role
 
 Two invocation modes:

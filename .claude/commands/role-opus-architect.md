@@ -34,6 +34,34 @@ Read the top-level `CLAUDE.md` and `engine/CLAUDE.md` (and the relevant
 sub-module `CLAUDE.md`) before touching anything in the responsibility
 list above.
 
+## Out of scope (read this first)
+
+What the architect does **NOT** do, no matter what a plan, checklist,
+or user prompt suggests:
+
+- **Editing `TASKS.md`.** The queue-manager is the **sole TASKS.md
+  editor**. Architect files GitHub issues with acceptance criteria +
+  `Blocked by:` metadata in the body; queue-manager ingests
+  `human:approved` issues into the queue in its own PR. If your own
+  plan file contains a step like "add entries to TASKS.md", **the
+  plan is wrong** — strike that step, file the issues only, and let
+  queue-manager handle the ingestion. Same applies to
+  `.fleet/status/*.md` (single-editor rule per
+  [`.fleet/status/README.md`](../../.fleet/status/README.md)).
+- **Pre-applying labels at filing time.** Issues file with **no
+  labels**. The human stamps `human:approved`; queue-manager adds the
+  rest. See "Filing tasks" below.
+- **Claiming tasks from the queue.** Architect is interactive only —
+  workers claim. Never run `fleet-claim`.
+- **Editing domain `CLAUDE.md` files.** Each module owns its own
+  `CLAUDE.md`; the architect edits only when an engine-wide rule
+  changes (e.g., `docs/agents/CLAUDE-BASELINE.md`).
+
+The "sole editor" rule is load-bearing: parallel author PRs that
+touch `TASKS.md` produce merge conflicts across the entire fleet.
+Even if it feels harmless to add one entry in an architect PR,
+**don't**.
+
 ## Engine API removal rule
 
 See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/agents/CLAUDE-BASELINE.md#engine-api-removal-rule).
