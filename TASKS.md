@@ -347,11 +347,11 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [ ] **docs: audit SKILL.md files — shared protocols + point-don't-dump** — read all 16 `.claude/skills/*/SKILL.md` files, produce `docs/agents/audit-skills.md` enumerating duplicated ≥5-line blocks, ECS/naming/IRMath restatements, drift between composing skills, slop, and one-PR-each follow-up cleanup tasks
+- [~] **docs: audit SKILL.md files — shared protocols + point-don't-dump** — read all 16 `.claude/skills/*/SKILL.md` files, produce `docs/agents/audit-skills.md` enumerating duplicated ≥5-line blocks, ECS/naming/IRMath restatements, drift between composing skills, slop, and one-PR-each follow-up cleanup tasks
   - **ID:** T-222
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/audit-skills.md` present in merged PR; (2) note covers all 16 SKILL.md files with file:line citations for each duplicated block; (3) each duplication names a right shared home (existing baseline doc or proposed new doc); (4) drift between composing skills identified (e.g. commit-and-push vs polish-checkpoint vs simplify); (5) slop flagged: redundant intros, dead examples referencing retired components or symbols; (6) concrete follow-up cleanup tasks enumerated, each sized for one PR; (7) follow-up GitHub issues filed (no labels) for each cleanup proposal
   - **Issue:** #801
