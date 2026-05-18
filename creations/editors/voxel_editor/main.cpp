@@ -552,8 +552,8 @@ void initSystems() {
             // Panel hitbox covers the whole palette dock; check it first
             // so clicks on the background (title bar, label gap, padding)
             // are suppressed without iterating the swatch list.
-            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_)
-                           || IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
+            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -735,16 +735,16 @@ void initSystems() {
             }
 
             // Checkbox click → toggle active layer visibility + update voxels.
-            if (g_layerVisCheckbox != IREntity::kNullEntity
-                && IRPrefab::Widget::wasClicked(g_layerVisCheckbox)) {
+            if (g_layerVisCheckbox != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_layerVisCheckbox)) {
                 const std::uint8_t activeId = g_layerManager.activeLayerId();
                 bool nowVisible = g_layerManager.toggleLayerVisibility(activeId);
                 applyLayerVisibility(activeId, nowVisible);
             }
 
             // Add button → new layer, auto-named, becomes active.
-            if (g_layerAddBtn != IREntity::kNullEntity
-                && IRPrefab::Widget::wasClicked(g_layerAddBtn)) {
+            if (g_layerAddBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_layerAddBtn)) {
                 std::uint8_t id = g_layerManager.addLayer(
                     "layer " + std::to_string(g_layerManager.layers().size())
                 );
@@ -753,8 +753,8 @@ void initSystems() {
             }
 
             // Delete button → migrate voxels to default, then remove layer.
-            if (g_layerDelBtn != IREntity::kNullEntity
-                && IRPrefab::Widget::wasClicked(g_layerDelBtn)) {
+            if (g_layerDelBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_layerDelBtn)) {
                 const std::uint8_t delId = g_layerManager.activeLayerId();
                 if (delId != 0 && g_sceneVoxelSetEntity != IREntity::kNullEntity) {
                     const bool defaultVisible = g_layerManager.isVisible(0);
@@ -773,12 +773,24 @@ void initSystems() {
             }
 
             // Rebuild list items (names + "[H]" suffix for hidden layers).
+            // Compare against the existing entry first so a clean frame
+            // skips the per-layer std::string concatenation alloc.
+            static constexpr const char *kHiddenSuffix = " [H]";
+            static constexpr std::size_t kHiddenSuffixLen = 4; // strlen(" [H]")
             const auto &updatedLayers = g_layerManager.layers();
             if (list.items_.size() != updatedLayers.size())
                 list.items_.resize(updatedLayers.size());
             for (std::size_t i = 0; i < updatedLayers.size(); ++i) {
-                list.items_[i] = updatedLayers[i].name_
-                               + (updatedLayers[i].visible_ ? "" : " [H]");
+                const auto &name = updatedLayers[i].name_;
+                const bool hidden = !updatedLayers[i].visible_;
+                const std::size_t suffixLen = hidden ? kHiddenSuffixLen : 0u;
+                const std::string &existing = list.items_[i];
+                if (existing.size() == name.size() + suffixLen &&
+                    existing.compare(0, name.size(), name) == 0 &&
+                    (!hidden || existing.compare(name.size(), suffixLen, kHiddenSuffix) == 0)) {
+                    continue;
+                }
+                list.items_[i] = hidden ? name + kHiddenSuffix : name;
             }
 
             // Mirror active layer → list selection.
@@ -896,22 +908,30 @@ void initCommands() {
 
     // X/Y/Z: toggle mirror-symmetry axis.
     auto logSymmetry = []() {
-        IR_LOG_INFO("Symmetry: X=%s Y=%s Z=%s",
+        IR_LOG_INFO(
+            "Symmetry: X=%s Y=%s Z=%s",
             IRVoxelEditor::g_symmetry.enableX_ ? "ON" : "OFF",
             IRVoxelEditor::g_symmetry.enableY_ ? "ON" : "OFF",
-            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF");
+            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF"
+        );
     };
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonX,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
+            logSymmetry();
+        }
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonY,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
+            logSymmetry();
+        }
     );
     // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
     // modifier checks disambiguate inline since IRCommand bindings don't
@@ -1154,11 +1174,7 @@ void initCommands() {
             const std::uint8_t layerId = IRVoxelEditor::g_layerManager.activeLayerId();
             bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
             IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
-            IR_LOG_INFO(
-                "Layer {} visibility -> {}",
-                layerId,
-                nowVisible ? "shown" : "hidden"
-            );
+            IR_LOG_INFO("Layer {} visibility -> {}", layerId, nowVisible ? "shown" : "hidden");
         }
     );
 }
@@ -1348,11 +1364,11 @@ void initEntities() {
     // shortcuts K/[/]/H still work; the panel just makes the state visible.
     constexpr ivec2 kLayerPanelPos{130, 240};
     constexpr ivec2 kLayerPanelSize{120, 96};
-    IRVoxelEditor::g_layerPanel = IRPrefab::Widget::makePanel(
-        kLayerPanelPos, kLayerPanelSize, "LAYERS"
-    );
+    IRVoxelEditor::g_layerPanel =
+        IRPrefab::Widget::makePanel(kLayerPanelPos, kLayerPanelSize, "LAYERS");
     IREntity::setComponent(
-        IRVoxelEditor::g_layerPanel, IRComponents::C_HitBox2DGui{kLayerPanelSize}
+        IRVoxelEditor::g_layerPanel,
+        IRComponents::C_HitBox2DGui{kLayerPanelSize}
     );
     IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_layerPanel).zOrder_ = -1;
 
