@@ -11,8 +11,6 @@ description: >-
 
 # Lua Creation Setup
 
-## Overview
-
 LuaJIT 2.1 + sol2. C++ sets up systems and pipelines; Lua drives entity creation, configuration, and runtime game logic. Lua bindings must be registered **before** `IREngine::init`.
 
 There are two distinct use cases, often combined:
