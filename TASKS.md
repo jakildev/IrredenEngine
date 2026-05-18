@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: drop decorative ❌ emoji bullets from Anti-patterns sections** — switch all Anti-patterns / "What this skill does NOT do" sections across SKILL.md files from ❌ bullets to bare list bullets
-  - **ID:** T-244
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-244-drop-emoji-bullets
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) every Anti-patterns and "What this skill does NOT do" section in all SKILL.md files uses bare `-` bullets, not ❌; (2) no other decorative emoji bullets remain in SKILL.md files; (3) engine CLAUDE.md and baseline remain unchanged
-  - **Issue:** #827
-  - **Notes:** Follow-up from T-222 audit (§5.19, §4.6). XS mechanical change. Engine CLAUDE.md and baseline already avoid emoji; SKILL.md files should follow the same convention.
-  - **Links:**
-
 - [~] **docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating** — reduce request-re-review/SKILL.md to the parts only it owns; invoke the other two skills by reference
   - **ID:** T-245
   - **Area:** docs
@@ -568,6 +557,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
 - [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
 - [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
 - [x] **T-242** — docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize · Owner: claude/T-242-trim-skill-inventories · PR: https://github.com/jakildev/IrredenEngine/pull/890
@@ -587,4 +577,3 @@ Avoid:
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
-- [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
