@@ -170,7 +170,7 @@ TEST(VoxelSetRle, HollowCompressionRatio) {
 
 // ---- Extensibility: old loader skips VRLE, new loader prefers VRLE ------
 
-TEST(VoxelSetRle, OldLoaderSkipsVrleUsesVoxr) {
+TEST(VoxelSetRle, NewLoaderPrefersVrleOverVoxr) {
     // Build a file with VRLE-different data than VOXR so we can tell which
     // one was used. Write: BNDS + VOXR (blue voxels) + VRLE (red voxels).
     // An old loader (VOXR-only) must return blue; a new loader must return red.

@@ -534,7 +534,7 @@ ChunkPayload makeVoxelRecordsRleChunk(std::span<const VoxelRecord> voxels) {
         if (v.color_.alpha_ == 0) {
             if (inFilled) {
                 inFilled = false;
-                pendingEmpty = 1;
+                pendingEmpty = 1; // pendingEmpty is always 0 here; cleared on triple push
             } else {
                 ++pendingEmpty;
             }
