@@ -381,11 +381,11 @@ Avoid:
   - **Notes:** Companion to T-221 (#800, role-*.md audit) and T-222 (#801, skills audit). Known stale refs post-transform-migration: `C_Position3D`, `C_PositionOffset3D`, `C_PositionGlobal3D`, `C_Rotation` still referenced in some module CLAUDE.md files. 31 CLAUDE.md files across the repo — pattern is root + per-module inheriting from `docs/agents/CLAUDE-BASELINE.md`. Suggested cleanup PR grouping from issue: one PR per subtree.
   - **Links:**
 
-- [ ] **docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation** — remove game-repo references from two SKILL.md files that name the private game repo, violating CLAUDE-BASELINE §Cross-repo info isolation
+- [~] **docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation** — remove game-repo references from two SKILL.md files that name the private game repo, violating CLAUDE-BASELINE §Cross-repo info isolation
   - **ID:** T-225
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `.claude/skills/midi-scene-creator/SKILL.md:164-169` and `.claude/skills/create-creation/SKILL.md:186` no longer reference the game repo by name or role; (2) engine-public alternatives (e.g., `creations/demos/default/`) used instead or section removed; (3) no other `irreden` / game repo references remain in either file
   - **Issue:** #808
