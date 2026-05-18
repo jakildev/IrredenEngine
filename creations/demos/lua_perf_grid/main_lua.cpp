@@ -56,6 +56,7 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <algorithm>
@@ -214,7 +215,7 @@ C_LuaWaveState makeWaveState(int x, int y, int z) {
         /* period           */ period,
         /* resume_countdown */ 0.0f,
         /* s0_end_angle     */ pi,
-        /* s0_end_t         */  1.0f,
+        /* s0_end_t         */ 1.0f,
         /* s0_reversed      */ false,
         /* s0_start_angle   */ 0.0f,
         /* s0_start_t       */ -1.0f,
@@ -222,7 +223,7 @@ C_LuaWaveState makeWaveState(int x, int y, int z) {
         /* s1_end_t         */ -1.0f,
         /* s1_reversed      */ false,
         /* s1_start_angle   */ pi,
-        /* s1_start_t       */  1.0f,
+        /* s1_start_t       */ 1.0f,
         /* tick_count       */ 0,
     };
 }
@@ -265,6 +266,7 @@ void configureLightingAndCanvas() {
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
         C_Position3D{vec3(0.0f, 0.0f, -64.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, -64.0f)},
         C_LightSource{
             LightType::EMISSIVE,
             Color{90, 200, 255, 255},
@@ -356,6 +358,7 @@ void registerLuaBindings() {
             {
                 waveSysId,
                 IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+                IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
                 IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
             }
         );

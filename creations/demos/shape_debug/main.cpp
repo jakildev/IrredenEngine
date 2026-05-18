@@ -25,6 +25,7 @@
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -183,6 +184,7 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(
@@ -458,7 +460,8 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
-    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops, zoom16=red(LOD_0) tops.
+    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops,
+    // zoom16=red(LOD_0) tops.
     constexpr float kLodFixtureY = -16.0f;
     constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
     struct LodFixture {
@@ -517,6 +520,7 @@ void initEntities() {
     // nearby shapes. Cyan reads cleanly against the warm shape palette.
     IREntity::createEntity(
         C_Position3D{vec3(40.0f, 6.0f, -2.0f)},
+        C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
 
