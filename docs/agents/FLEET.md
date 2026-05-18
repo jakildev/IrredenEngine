@@ -682,6 +682,20 @@ Specifically, **never pass these via `--label` when filing**:
   **author** rebases manually onto the new upstream tip and removes
   the label, or an **opus-worker** drives the resolution similar to
   `fleet:semantic-conflict`.
+- `fleet:awaiting-base` — owned by the **merger** (sets in step 5a.5
+  sub-case i when a stacked child PR is CONFLICTING because its base
+  already merged, or carried forward by step 2.5 while the base PR is
+  still OPEN). Signals that the child is waiting for its base PR to
+  merge before it can be re-targeted to master. Cleared automatically
+  by the merger in step 2.5 ii when the base merges (re-targets the
+  child to master and removes the label) or in step 2.5 iii when the
+  base closes (replaced by `fleet:needs-info`).
+  **Distinct from `fleet:awaiting-upstream-review`**: this label is
+  about *merge state* (has the upstream PR landed?), not *review state*
+  (has the upstream PR been approved?). A stacked child can be waiting
+  for its upstream to be *approved* (reviewer-owned gate) while the
+  upstream is still OPEN, or waiting for its upstream to *merge*
+  (merger-owned gate) after it has already been approved.
 - `fleet:awaiting-upstream-review` — owned by the **reviewer**. Set
   on a stacked child PR when the upstream PR is not yet approved
   (the child's review is deferred until the upstream verdict
