@@ -6,9 +6,7 @@ dependency-free beyond GLM.
 
 ## GLM alias rule
 
-Use `IRMath::vec2/3/4`, `ivec2/3/4`, `uvec2/3/4`, `u8vec2/3/4`, `mat2/3/4`
-— never raw `glm::` names. The aliases are defined in `ir_math_types.hpp`
-and re-exported through `ir_math.hpp`.
+`IRMath::` aliases only — never raw `glm::`. Full substitution table and rationale in `.claude/rules/cpp-math.md`.
 
 ## Isometric projection — the equations
 
@@ -36,63 +34,23 @@ so there's one place to fix a coordinate-system bug.
 
 ## Layout helpers
 
-Entity-positioning helpers — each returns a single `vec3` for one `index`.
-Call in a loop from `0` to `count - 1` to place a group of entities:
-
-- `layoutGridCentered(index, count, columns, spacingPrimary, spacingSecondary, plane, depth)` — rectangular grid.
-- `layoutZigZagCentered(index, count, itemsPerZag, spacingPrimary, spacingSecondary, plane, depth)` — zig-zag variant.
-- `layoutZigZagPath(index, count, itemsPerSegment, spacingPrimary, spacingSecondary, plane, depth)` — zig-zag along a path.
-- `layoutCircle(index, count, radius, startAngleRad, plane, depth)` — ring.
-- `layoutSquareSpiral(index, spacing, plane, depth)` — outward square spiral.
-- `layoutHelix(index, count, radius, turns, heightSpan, axis)` — vertical spiral; `turns` is full rotations, `heightSpan` is total rise.
-- `layoutPathTangentArcs(index, count, radius, blocksPerArc, zStep, axis, startAngleRad, invert)` — along a parametric arc path.
-
-Helpers that take `PlaneIso` (most of them): double-check the plane axis —
-`XY` vs `YZ` is the #1 bug source.
+`layout.hpp` — grid, zigzag, circle, spiral, helix, and arc-path placement helpers. Each returns a `vec3` for index `i` in `[0, count)`, called in a loop. Gotcha: most helpers take a `PlaneIso` argument — `XY` vs `YZ` axis swap is the #1 source of wrong depth and is silent at compile time.
 
 ## Color
 
-- `colorToColorHSV(Color) → ColorHSV` / `colorHSVToColor(ColorHSV) → Color` — convert between `Color` (u8 RGBA) and `ColorHSV` (float HSV).
-- `hsvToRgb(vec3 hsv) → vec3` — raw float HSV → RGB (no `Color` wrapping).
-- `lerpColor(a, b, t)` / `lerpHSV(a, b, t)` — interpolation.
-- `applyHSVOffset(base, hsvDelta)` — shift hue/saturation/value on a
-  packed RGBA color.
-- `IRColors::kBlack/kWhite/kRed/...` — canned constants.
-- `color_palettes.hpp` — compile-time palette arrays (no file I/O).
-- `color.hpp` — sorting (`sortByHue`).
+`color.hpp` — HSV conversion (`colorToColorHSV`/`colorHSVToColor`), interpolation (`lerpColor`/`lerpHSV`), and `applyHSVOffset`. Gotcha: `applyHSVOffset` operates on packed u8 RGBA — don't mix with float HSV in the same expression. `IRColors::k*` are canned constants; `color_palettes.hpp` has compile-time palette arrays.
 
 ## Physics
 
-`physics.hpp` — ballistic helpers for voxel-scale jumps:
-
-- `impulseForHeight(targetHeight, gravity)` → initial v0.
-- `flightTimeForHeight(...)`.
-- `heightForImpulse(...)`.
-- `isTunnelingSafe(maxVelocity, dt, colliderThicknessA, colliderThicknessB)` — returns true when both colliders are thick enough that a body moving at `maxVelocity` cannot pass through in a single timestep `dt`.
-
-Use these; don't re-derive the kinematics inline.
+`physics.hpp` — ballistic helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`) and `isTunnelingSafe`. Use these; don't re-derive kinematics inline.
 
 ## Quaternions
 
-Quaternions are stored as `IRMath::vec4(qx, qy, qz, qw)` — the same
-layout used by `IRComponents::Joint::rotation_` and
-`IRAsset::RigJoint::rotation_` (identity is `vec4(0, 0, 0, 1)`, i.e.
-`.w` is the scalar).
-
-- `IRMath::quatMul(a, b) → vec4` — Hamilton product; in column-vector
-  convention, rotates by `b` first then `a` (bone usage: `quatMul(parent_world, local)`).
-- `IRMath::rotateVectorByQuat(v, q) → vec3` — rotate a vec3 by a
-  unit quaternion. Same algebra as `glm::rotate(quat, vec3)`.
-
-These are the helpers `IRPrefab::Rig::worldTransformForBindPoint`
-uses to walk a joint chain when resolving `IREntity.bindPoint(entity, name)`.
+Stored as `vec4(qx, qy, qz, qw)` — `.w` is the scalar (identity: `(0,0,0,1)`). `quatMul(a, b)` applies `b` then `a` — in joint chains: `quatMul(parentWorld, local)`. `rotateVectorByQuat(v, q)` is equivalent to `glm::rotate(quat, vec3)`.
 
 ## Random
 
-- `randomBool()`, `randomInt(min, max)`, `randomFloat(min, max)`.
-- `randomVec<vec3>(min, max)`, `randomColor()`, `randomColor(palette)`.
-
-Uses `std::rand`; deterministic if you seed.
+`randomBool/Int/Float` and `randomVec<T>/randomColor` — uses `std::rand`; seed for determinism.
 
 ## Gotchas
 

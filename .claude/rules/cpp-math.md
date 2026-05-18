@@ -30,20 +30,7 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 
 ## Iso projection: never inline the equations
 
-```
-iso.x = -x + y
-iso.y = -x - y + 2z
-distance = x + y + z
-```
-
-Always call the named helpers — never inline these equations in system code:
-
-- `IRMath::pos3DtoPos2DIso(pos3D)` — projection
-- `IRMath::pos3DtoPos2DScreen(pos3D)` — projection scaled + sign-flipped for screen coords (backend-aware)
-- `IRMath::pos3DtoDistance(pos3D)` — depth scalar
-- `IRMath::isoDepthShift(pos, d)` — shift depth without affecting 2D projection
-
-One place to fix a coordinate-system bug.
+Canonical equations and named helpers: `engine/math/CLAUDE.md §"Isometric projection — the equations"`. Always call the helpers; never inline.
 
 ## Binary I/O of math types
 
