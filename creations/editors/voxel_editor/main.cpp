@@ -5,6 +5,7 @@
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
 
 // Components
@@ -65,6 +66,10 @@
 // Command suites
 #include <irreden/common/command_suite_camera.hpp>
 
+// Frame-based animation state (T-214, F-1.4)
+#include "animation.hpp"
+
+#include <algorithm>
 #include <cstddef>
 #include <deque>
 #include <list>
@@ -159,6 +164,14 @@ struct EditorState {
 };
 
 EditorState g_editor;
+
+// Frame-based animation state (T-214, F-1.4). Each VoxelFrame snapshots
+// the editable target's voxel pool span; switchToFrame swaps the live
+// voxels in and out. Lives at module scope (not in EditorState) because
+// the playback system reads it from a stateless lambda — keeping it as
+// a free global avoids threading a pointer through SystemParams just to
+// reach the same address every frame.
+AnimationState g_anim;
 
 namespace {
 
@@ -276,6 +289,56 @@ bool worldVoxelToLocal(
     return outFlat < set.voxels_.size();
 }
 
+// Copy the editable target's live voxels into frames_[idx].voxels_.
+// No-op when the editable target is not yet initialized (initCommands
+// runs before initEntities, so command callbacks may fire before the
+// editable set exists — guard rather than crash).
+void snapshotLiveToFrame(int idx) {
+    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+        return;
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    g_anim.frames_[idx].voxels_.assign(vs.voxels_.begin(), vs.voxels_.end());
+}
+
+// Copy frames_[idx].voxels_ into the editable target's live voxels.
+// A size mismatch — fresh-blank frame inserted by addBlankFrame whose
+// voxels_ has never been populated — fills the live voxels with
+// transparent cells instead.
+void loadFrameToLive(int idx) {
+    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+        return;
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    auto &nf = g_anim.frames_[idx];
+    if (nf.voxels_.size() == vs.voxels_.size()) {
+        std::copy(nf.voxels_.begin(), nf.voxels_.end(), vs.voxels_.begin());
+    } else {
+        C_Voxel blank{Color{0, 0, 0, 0}};
+        std::fill(vs.voxels_.begin(), vs.voxels_.end(), blank);
+    }
+}
+
+// Snapshot the live voxels into the active frame, then load frame
+// `frameIndex` into the live target. Out-of-range and same-frame are
+// no-ops.
+void switchToFrame(int frameIndex) {
+    if (frameIndex < 0 || frameIndex >= g_anim.frameCount())
+        return;
+    if (frameIndex == g_anim.activeFrame_)
+        return;
+
+    snapshotLiveToFrame(g_anim.activeFrame_);
+    g_anim.activeFrame_ = frameIndex;
+    loadFrameToLive(frameIndex);
+
+    IR_LOG_INFO(
+        "Frame: %d / %d  [%s  %.0f FPS]",
+        g_anim.activeFrame_ + 1,
+        g_anim.frameCount(),
+        g_anim.playing_ ? "PLAYING" : "PAUSED",
+        g_anim.fps_
+    );
+}
+
 } // namespace
 
 } // namespace IRVoxelEditor
@@ -295,6 +358,9 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Space: re-center + reset yaw");
     IR_LOG_INFO("  Ctrl+Z: undo last stroke");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
+    IR_LOG_INFO("  Left/Right arrow: previous/next frame");
+    IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
+    IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -388,8 +454,7 @@ void initSystems() {
             // Panel hitbox covers the whole palette dock; check it first
             // so clicks on the background (title bar, label gap, padding)
             // are suppressed without iterating the swatch list.
-            bool overWidget =
-                IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_);
+            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -493,6 +558,26 @@ void initSystems() {
     );
     IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
+    // Frame-based animation playback (T-214). Runs once per RENDER tick
+    // in beginTick over C_CameraYaw (the singleton camera entity), so
+    // the swap lands BEFORE this frame's voxel-to-trixel stages read
+    // C_VoxelSetNew::voxels_. Use the camera archetype filter because
+    // we need a one-shot per-frame fire regardless of voxel-set state;
+    // the per-entity tick is a no-op, all work happens in beginTick.
+    // tickPlayback returns the next frame index via out-param without
+    // touching g_anim.activeFrame_ — that lets switchToFrame snapshot
+    // the old active frame's voxels before swapping in the new one.
+    auto animPlaybackSystem = IRSystem::createSystem<C_CameraYaw>(
+        "EditorAnimPlayback",
+        [](C_CameraYaw &) {},
+        []() {
+            const float dt = static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER));
+            int next = 0;
+            if (IRVoxelEditor::tickPlayback(IRVoxelEditor::g_anim, dt, next))
+                IRVoxelEditor::switchToFrame(next);
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -507,6 +592,7 @@ void initSystems() {
 
     std::list<IRSystem::SystemId> renderPipeline = {
         rotateSystem,
+        animPlaybackSystem,
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
         IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
@@ -619,6 +705,114 @@ void initCommands() {
                 IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
                 logSymmetry();
             }
+        }
+    );
+
+    // Frame-based animation controls (T-214, F-1.4). Keys not taken by
+    // T-211 (Q/E/Space/Z), T-212 (X/Y/Z symmetry), or T-213 (N — layer
+    // add): Left/Right for frame nav, P play/pause, A add blank frame,
+    // D duplicate, Backspace delete, L loop-mode toggle.
+
+    // Left arrow — go to previous frame.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonLeft,
+        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ - 1); }
+    );
+
+    // Right arrow — go to next frame.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonRight,
+        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ + 1); }
+    );
+
+    // P — toggle play / pause; reset the elapsed timer and forward
+    // direction so resuming always starts cleanly.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonP,
+        []() {
+            auto &anim = IRVoxelEditor::g_anim;
+            anim.playing_ = !anim.playing_;
+            anim.elapsed_ = 0.0f;
+            if (anim.playing_)
+                anim.playDirection_ = 1;
+            IR_LOG_INFO(
+                "Playback: %s  (%d frames at %.0f FPS)",
+                anim.playing_ ? "PLAYING" : "PAUSED",
+                anim.frameCount(),
+                anim.fps_
+            );
+        }
+    );
+
+    // A — add a blank frame after the current frame and switch to it.
+    // Snapshot the live voxels into the active frame first so the user
+    // doesn't lose their pose when stepping forward to a new blank.
+    // The new frame's voxels_ is empty, so loadFrameToLive falls into
+    // its size-mismatch branch and fills the live target with blank.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonA,
+        []() {
+            auto &anim = IRVoxelEditor::g_anim;
+            IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
+            anim.addBlankFrame();
+            IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
+            IR_LOG_INFO("Added blank frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
+        }
+    );
+
+    // D — duplicate the current frame. Snapshot the live voxels into
+    // the active frame first so the copy is current.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonD,
+        []() {
+            auto &anim = IRVoxelEditor::g_anim;
+            IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
+            anim.duplicateCurrentFrame();
+            IR_LOG_INFO("Duplicated frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
+        }
+    );
+
+    // Backspace — delete the current frame (minimum 1 frame).
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonBackspace,
+        []() {
+            auto &anim = IRVoxelEditor::g_anim;
+            if (anim.frameCount() <= 1) {
+                IR_LOG_INFO("Cannot delete the only frame.");
+                return;
+            }
+            anim.deleteCurrentFrame();
+            IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
+            IR_LOG_INFO("Deleted frame (now %d / %d)", anim.activeFrame_ + 1, anim.frameCount());
+        }
+    );
+
+    // L — toggle loop mode between LOOP and PING-PONG.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonL,
+        []() {
+            auto &anim = IRVoxelEditor::g_anim;
+            anim.loopMode_ = (anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP)
+                                 ? IRVoxelEditor::LoopMode::PING_PONG
+                                 : IRVoxelEditor::LoopMode::LOOP;
+            IR_LOG_INFO(
+                "Loop mode: %s",
+                anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP ? "LOOP" : "PING-PONG"
+            );
         }
     );
 }
