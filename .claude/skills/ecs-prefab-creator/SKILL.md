@@ -192,7 +192,7 @@ After creating prefabs, the creation must:
 2. Add `createSystem<IRSystem::MY_SYSTEM>()` in the appropriate `registerPipeline()` call.
 3. Add `createCommand<IRCommand::MY_COMMAND>(...)` in `initCommands()`.
 
-Pipelines run in order: **INPUT -> UPDATE -> RENDER**. System order within a pipeline matters.
+See [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines for the INPUT → UPDATE → RENDER order and system ordering within each pipeline.
 
 ## Checklist
 

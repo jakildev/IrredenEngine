@@ -232,6 +232,16 @@ function-local `static` for system state.
 
 ## Pipelines
 
+Three built-in pipelines execute in this order each frame: **INPUT → UPDATE → RENDER**.
+
+Within each pipeline, systems execute in the order listed in `registerPipeline`. Common orderings:
+
+**UPDATE:** velocity/acceleration → goto/easing → global position → voxel children → lifetime
+
+**INPUT:** key/mouse → gamepad → hover detect
+
+**RENDER:** camera pan → velocity render → voxel-to-trixel stages → shapes/text → trixel compositing → framebuffer → debug overlay → screen
+
 ```cpp
 IRSystem::registerPipeline(IRTime::Events::UPDATE, {
     velocitySystem,
