@@ -425,11 +425,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.10, §3.4). Size S. Three artifacts with three different stamps; canonical Opus is now 4.7.
   - **Links:**
 
-- [ ] **docs/skills: pick a single formatter owner across simplify / commit-and-push / polish-checkpoint** — eliminate the three-way disagreement on who runs clang-format
+- [~] **docs/skills: pick a single formatter owner across simplify / commit-and-push / polish-checkpoint** — eliminate the three-way disagreement on who runs clang-format
   - **ID:** T-229
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) formatter step (fleet-build --target format-changed or equivalent) owned by exactly one skill; (2) the other two skills do not mention a separate format step; (3) decision documented with a one-sentence rationale in the owning skill
   - **Issue:** #812
