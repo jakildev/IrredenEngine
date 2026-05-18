@@ -411,6 +411,7 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
+    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     IRVideo::parseAutoScreenshotArgv(argc, argv, &IRVoxelEditor::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: voxel_editor");
     IR_LOG_INFO("  Left-click: place voxel adjacent to hit face");
@@ -763,22 +764,30 @@ void initCommands() {
 
     // X/Y/Z: toggle mirror-symmetry axis.
     auto logSymmetry = []() {
-        IR_LOG_INFO("Symmetry: X=%s Y=%s Z=%s",
+        IR_LOG_INFO(
+            "Symmetry: X=%s Y=%s Z=%s",
             IRVoxelEditor::g_symmetry.enableX_ ? "ON" : "OFF",
             IRVoxelEditor::g_symmetry.enableY_ ? "ON" : "OFF",
-            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF");
+            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF"
+        );
     };
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonX,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
+            logSymmetry();
+        }
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonY,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
+            logSymmetry();
+        }
     );
     // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
     // modifier checks disambiguate inline since IRCommand bindings don't

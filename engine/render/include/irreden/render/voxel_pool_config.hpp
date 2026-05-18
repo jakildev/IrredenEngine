@@ -29,7 +29,10 @@ IRMath::ivec3 getMaxAllocationSize();
 /// Total voxels in the global pool (edge³).
 int getTotalSize();
 
-/// Total voxels in the per-entity max allocation (edge³).
+/// Total voxels in the per-entity max allocation (edge³). Currently
+/// tracks `getTotalSize()`; the issue (#941) leaves room for a separate
+/// per-entity total once the residency manager work introduces an
+/// independent per-entity override.
 int getMaxAllocationSizeTotal();
 
 /// Scan @p argv for `--voxel-pool-size N`; on match, call setSize and log
