@@ -3,7 +3,7 @@ name: polish-checkpoint
 description: >-
   Run a mid-session quality checkpoint without committing. Mirrors the
   pre-commit phase of `commit-and-push` (simplify the dirty tree,
-  format, verify the build for the touched target) but stops before
+  verify the build for the touched target) but stops before
   any git operations — no staging, no commit, no push, no PR. Use
   when the user says "checkpoint", "polish for now", "verify what I
   have", "clean up but don't commit", "self-review without shipping",
@@ -98,20 +98,7 @@ post-simplify state. If `simplify` reverted everything (rare — only
 happens when the only diffs were ones it cleaned up entirely),
 report "working tree is clean after simplify" and stop.
 
-### 3. Format
-
-Run the formatter so the diff shape stays consistent across the
-session:
-
-```bash
-fleet-build --target format
-```
-
-If `format` rewrote files, those edits are part of the polish — keep
-them. Re-check `git status` afterwards so the report below reflects
-the post-format state.
-
-### 4. Verify the build (code diffs only)
+### 3. Verify the build (code diffs only)
 
 If the diff is purely docs/markdown (no `.cpp`, `.hpp`, `.glsl`,
 `.metal`, `CMakeLists.txt`, etc.), skip this step.
@@ -143,7 +130,7 @@ to silently "fix" the break in this pass — that's editing scope and
 risks turning a checkpoint into a debugging detour. Surface the
 error and let the human decide whether to fix it next or roll back.
 
-### 5. Report
+### 4. Report
 
 Compact summary so the user knows where they stand:
 
@@ -151,7 +138,6 @@ Compact summary so the user knows where they stand:
 polish-checkpoint:
   branch: <branch-name>  (<N> file(s) dirty, <M> hunk(s))
   simplify: applied <X> auto-fix(es), reported <Y> finding(s)
-  format:   <N> file(s) reformatted   (or: clean)
   build:    <target>   clean           (or: broken — see below)
 ```
 
@@ -178,7 +164,7 @@ state:
 
 - **No git operations.** No `git add`, no `git commit`, no `git
   push`, no `gh pr create`. Read-only on history; only edits the
-  working tree (via `simplify` and `format`).
+  working tree (via `simplify`).
 - **No branch switching.** Don't invoke `start-next-task`, don't
   create a feature branch, don't pull master. The user is iterating
   on the current state.
@@ -209,11 +195,6 @@ state:
 
 If `simplify` makes a change the user didn't want, they can revert
 with `git checkout -- <path>` since polish-checkpoint never commits.
-
-If `format` rewrites a file in a way the user disagrees with (rare —
-the formatter is configured project-wide), the same revert works,
-but the underlying clang-format config is probably what wants
-adjusting. Flag it for follow-up; don't fight the formatter inline.
 
 If the build was green before the session and broke during this
 checkpoint, the most useful next step is usually to bisect the
