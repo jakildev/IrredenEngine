@@ -44,7 +44,7 @@ Use the deferred variants (`IREntity::deferredCreate`, `deferredSetComponent`, e
 
 ## Component method tiers
 
-See [`engine/prefabs/CLAUDE.md` § "Component method rules"](../engine/prefabs/CLAUDE.md#component-method-rules) — that file is the canonical home per `CLAUDE-BASELINE.md` §74–79.
+See [`engine/prefabs/CLAUDE.md` § "Component method rules"](../../engine/prefabs/CLAUDE.md#component-method-rules) — that file is the canonical home per the "Components hold data; systems do work" bullet in [`CLAUDE-BASELINE.md` §"Style"](../../docs/agents/CLAUDE-BASELINE.md#style).
 
 ## No dirty flags on components
 
