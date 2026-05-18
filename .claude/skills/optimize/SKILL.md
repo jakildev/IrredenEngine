@@ -137,11 +137,7 @@ re-enable the profiler before re-running.
 ### 3. GPU profiling
 
 The engine has **per-pass GPU stage timing** wired into the render
-pipeline. Every major stage (`voxelCompact`, `voxelStage1`,
-`voxelStage2`, `shapeCompact`, `shapePass0`, `shapePass1`,
-`textToTrixel`, `computeVoxelAO`, `computeSunShadow`,
-`lightingToTrixel`, `trixelToTrixel`, `trixelToFb`, `entityCanvasToFb`,
-`fbToScreen`, `canvasClear`) brackets its GPU work with
+pipeline. Every named GPU stage brackets its work with
 `device()->finish()` + `std::chrono::steady_clock` samples and writes
 the per-frame millisecond cost into `IRRender::gpuStageTiming()`.
 

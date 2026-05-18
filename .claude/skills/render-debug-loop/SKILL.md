@@ -158,21 +158,6 @@ After applying fixes, return to **Step 1**.
 
 ---
 
-## Key Files
-
-| File | Role |
-|------|------|
-| `engine/render/src/shaders/c_shapes_to_trixel.glsl` | SDF shape compute shader |
-| `engine/render/src/shaders/ir_iso_common.glsl` | Shared iso math (face offsets, depth encoding) |
-| `engine/render/src/shaders/f_trixel_to_framebuffer.glsl` | Fragment shader: canvas to framebuffer with parity |
-| `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl` | Voxel pool stage 1 (reference) |
-| `engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl` | Voxel pool stage 2 (reference) |
-| `engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp` | CPU-side shape gather and dispatch |
-| `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp` | CPU-side framebuffer draw, zoom, camera |
-| `engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp` | Screen-space lighting application (T-011) |
-| `engine/render/include/irreden/render/ir_render_types.hpp` | GPU struct definitions, ShapeFlags |
-| `engine/math/include/irreden/ir_math.hpp` | `trixelOriginOffsetZ1`, `pos2DIsoToTriangleIndex` |
-
 ## Notes
 
 - `--auto-screenshot` accepts an optional warmup frame count (default 10).
