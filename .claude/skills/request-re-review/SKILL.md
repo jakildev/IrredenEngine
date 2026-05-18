@@ -32,27 +32,11 @@ gh pr list --state open --head <branch-name> --json number,title,labels
 
 If no PR is found, tell the user and stop.
 
-### 2. Commit and push any uncommitted changes
+### 2. Commit and push any pending changes
 
-Check for uncommitted work:
-```bash
-git status --porcelain
-```
-
-If there are changes:
-- Stage specific files by path (e.g. `git add engine/.../foo.cpp`).
-  Do NOT use `git add -A` or `git add .` — risks staging secrets,
-  build artifacts, or unrelated stray edits in the worktree.
-  `commit-and-push` enforces the same rule; this skill follows it.
-- Commit with a descriptive message:
-  `git commit -m "changes from human review session"`
-- Push: `git push`
-
-If there are no uncommitted changes but there ARE unpushed commits,
-push them.
-
-If everything is already clean and pushed, that's fine — proceed to
-relabel.
+Invoke the `commit-and-push` skill to stage, commit, and push any
+uncommitted changes on this branch. If the working tree is already
+clean and all commits are pushed, skip to step 3.
 
 ### 3. Swap labels to request re-review
 
@@ -69,18 +53,9 @@ gh pr comment <N> --body "Human made changes — re-review requested."
 
 ### 5. Release the branch
 
-Determine the correct scratch branch name based on your worktree:
-- If in an engine worktree named `<name>`: `claude/<name>-scratch`
-  (e.g., `opus-architect` → `claude/opus-arch-scratch`)
-- If unsure, use a generic: `claude/scratch`
-
-Reset to the scratch branch:
-```bash
-git checkout -B claude/<name>-scratch origin/master
-```
-
-This frees the PR branch so reviewers (or other agents) can check
-it out.
+Invoke the `start-next-task` skill to reset to a scratch branch off
+`origin/master`. This frees the PR branch so reviewers (or other
+agents) can check it out.
 
 ### 6. Report back
 
