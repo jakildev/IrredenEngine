@@ -257,17 +257,6 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.4, §1.4). Size S. `CLAUDE-BASELINE.md:273` says "commit-and-push checks for this" but the skill restates the whole policy (~38 lines).
   - **Links:**
 
-- [~] **docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md** — fix five different timeout variants across 6 skills and eliminate a raw cmake --build violation in backend-parity
-  - **ID:** T-235
-  - **Area:** docs, build
-  - **Model:** sonnet
-  - **Owner:** claude/T-235-build-snippets
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) canonical fleet-build/fleet-run wrapper + timeout guidance block added to `docs/agents/BUILD.md`; (2) `simplify/SKILL.md:573-576`, `polish-checkpoint/SKILL.md:107,122`, `attach-screenshots/SKILL.md:183-185,230-231`, `optimize/SKILL.md:120-122`, `render-debug-loop/SKILL.md:66,89`, `render-verify/SKILL.md:102-104` each reference BUILD.md and state only their per-skill timeout choice; (3) `backend-parity/SKILL.md:253-269` raw `cmake --build build --target IRShapeDebug -j$(nproc)` replaced with `fleet-build`
-  - **Issue:** #818
-  - **Notes:** Follow-up from T-222 audit (§5.6, §1.6). Size M. backend-parity's raw cmake trips the Bash-tool command_substitution gate (CLAUDE-BASELINE.md:180-219).
-  - **Links:**
-
 - [~] **docs/skills: replace host/preset table copies with refs to BUILD.md** — remove duplicate host/preset tables from render-verify, render-debug-loop, backend-parity
   - **ID:** T-236
   - **Area:** docs
@@ -536,6 +525,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-235** — docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md · Owner: claude/T-235-build-snippets · PR: https://github.com/jakildev/IrredenEngine/pull/876
 - [x] **T-207** — script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt · Owner: claude/T-207-script-remove-render-link · PR: https://github.com/jakildev/IrredenEngine/pull/860
 - [x] **T-233** — docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE · Owner: claude/T-233-drop-naming-table-copies · PR: https://github.com/jakildev/IrredenEngine/pull/859
 - [x] **T-221** — docs audit of role-*.md — shared protocols + point-don't-dump · Owner: claude/T-221-roles-audit · PR: https://github.com/jakildev/IrredenEngine/pull/857
@@ -555,4 +545,3 @@ Avoid:
 - [x] **T-220** — entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls · Owner: claude/T-220-dedup-field-registry · PR: https://github.com/jakildev/IrredenEngine/pull/799
 - [x] **T-219** — extend castVoxelRay to walk C_VoxelSetNew entities · Owner: claude/T-219-castvoxelray-voxel-sets · PR: https://github.com/jakildev/IrredenEngine/pull/795
 - [x] **T-218** — tooling: allow fleet agents to force-push claude/* branches · Owner: claude/T-218-force-push-allow · PR: https://github.com/jakildev/IrredenEngine/pull/789
-- [x] **T-199** — migrate COMPUTE_LIGHT_VOLUME reader to C_WorldTransform (step 1) · Owner: claude/T-199-step1-clean · PR: https://github.com/jakildev/IrredenEngine/pull/787
