@@ -126,7 +126,7 @@ single component on the rig root. Three pieces:
   joint-matrix uploader iterate joints without seeing rig roots or
   skinned voxel sets.
 - **`CHILD_OF`** relations between joint entities form the bone tree. The
-  same `SYSTEM_PROPAGATE_TRANSFORM` (from `#731` Phase 2) that walks
+  same `PROPAGATE_TRANSFORM` (from `#731` Phase 2) that walks
   every other CHILD_OF hierarchy composes the parent chain — no
   joint-specific traversal code.
 
