@@ -298,11 +298,11 @@ Avoid:
   - **Notes:** Epic D (#937) audit task — output informs D2 (the decision deliverable on restricting SDF runtime to effects only). Audit entry point: `C_ShapeDescriptor` at `engine/prefabs/irreden/voxel/components/component_shape_descriptor.hpp:31-47`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D1".
   - **Links:**
 
-- [ ] **fleet: invalidate seen-hash on ingest lock-bail** — rm the queue-manager-ingest seen-hash when fleet-queue-ingest exits due to lock contention so the next scout tick re-fires the trigger
+- [~] **fleet: invalidate seen-hash on ingest lock-bail** — rm the queue-manager-ingest seen-hash when fleet-queue-ingest exits due to lock contention so the next scout tick re-fires the trigger
   - **ID:** T-282
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) a `human:approved` label added to an issue while another `fleet-queue-ingest` is in flight gets picked up by the next scout tick after the in-flight iteration completes; (2) regression note added to `scripts/fleet/fleet-queue-ingest` or `docs/agents/FLEET.md` explaining why the hash invalidation is necessary; (3) fix at `scripts/fleet/fleet-queue-ingest:44-47` — lock-bailed branch calls `rm -f ~/.fleet/state/seen-hashes/queue-manager-ingest` before exit
   - **Issue:** #973
