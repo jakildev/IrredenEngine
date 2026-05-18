@@ -1,4 +1,5 @@
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_render.hpp>
 
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
@@ -36,6 +37,7 @@ void initEntities();
 void initCommands();
 
 int main(int argc, char **argv) {
+    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     IR_LOG_INFO("Starting creation: default");
 
     IREngine::init("config.json");
@@ -79,14 +81,15 @@ void initCommands() {
     IRCommand::registerCameraCommands();
     IRCommand::registerCaptureCommands();
     IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
+        InputTypes::KEY_MOUSE,
+        ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonGraveAccent
     );
 }
 
 void initEntities() {
     const ivec3 partitions = ivec3(2, 2, 2);
-    const ivec3 batchSize = IRConstants::kVoxelPoolMaxAllocationSize;
+    const ivec3 batchSize = IRRender::VoxelPoolConfig::getMaxAllocationSize();
     // const ivec3 batchSize = ivec3(4, 4, 4);
 
     for (int x = 0; x < partitions.x; x++) {

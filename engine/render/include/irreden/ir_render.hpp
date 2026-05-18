@@ -11,6 +11,7 @@
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
+#include <irreden/render/voxel_pool_config.hpp>
 
 namespace IRRender {
 

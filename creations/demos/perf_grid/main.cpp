@@ -196,25 +196,25 @@ void validateSettings() {
     g_settings.spacing_ = std::max(0.25f, g_settings.spacing_);
     g_settings.wavePeriodSeconds_ = std::max(0.1f, g_settings.wavePeriodSeconds_);
 
-    if (g_settings.mode_ == PerfGridMode::VoxelSet &&
-        g_settings.gridSize_ > IRConstants::kVoxelPoolSize.x) {
+    const int poolEdge = IRRender::VoxelPoolConfig::getEdge();
+    if (g_settings.mode_ == PerfGridMode::VoxelSet && g_settings.gridSize_ > poolEdge) {
         IR_LOG_WARN(
             "voxel_set mode requested grid_size={}, but the global voxel pool holds only {}^3 "
             "single-voxel entities. Clamping grid_size to {}.",
             g_settings.gridSize_,
-            IRConstants::kVoxelPoolSize.x,
-            IRConstants::kVoxelPoolSize.x
+            poolEdge,
+            poolEdge
         );
-        g_settings.gridSize_ = IRConstants::kVoxelPoolSize.x;
+        g_settings.gridSize_ = poolEdge;
     }
 
     const int entityCount = g_settings.gridSize_ * g_settings.gridSize_ * g_settings.gridSize_;
     if (g_settings.mode_ == PerfGridMode::VoxelSet &&
-        entityCount == IRConstants::kMaxSingleVoxels) {
+        entityCount == IRRender::VoxelPoolConfig::getTotalSize()) {
         IR_LOG_WARN(
             "perf_grid voxel_set mode will allocate all {} voxels in the global pool; "
             "do not add particle or other voxel-pool consumers to this scene.",
-            IRConstants::kMaxSingleVoxels
+            IRRender::VoxelPoolConfig::getTotalSize()
         );
     }
 }
@@ -342,6 +342,7 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
+    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     parseArgs(argc, argv);
 
     IR_LOG_INFO("Starting creation: perf_grid");

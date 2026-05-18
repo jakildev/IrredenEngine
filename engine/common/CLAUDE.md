@@ -20,7 +20,10 @@ There is no `ir_common.hpp` umbrella — include the specific header.
 - `IRConstants::kChunkSize = 32` — voxel chunk edge (32×32×32).
 - `IRConstants::kTrixelDistanceMaxDistance` — sentinel distance used to
   clear the trixel depth texture. Read by GLSL as the "nothing here" depth.
-- Zoom bounds, world extents, voxel pool size constants.
+- Zoom bounds, world extents.
+
+Voxel pool sizing is runtime, not compile-time — see
+`IRRender::VoxelPoolConfig` in `engine/render/include/irreden/render/voxel_pool_config.hpp`.
 
 Treat this file as read-mostly. Changing a value here typically ripples
 through shaders (which read it via `ir_constants.glsl`) and several
