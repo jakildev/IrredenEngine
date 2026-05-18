@@ -247,7 +247,7 @@ Avoid:
   - **ID:** T-277
   - **Area:** engine/render, engine/common
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-277-runtime-voxel-pools
   - **Blocked by:** (none)
   - **Acceptance:** (1) launch with `--voxel-pool-size 128` runs at 128³; default behaviour identical to today at 64³; (2) `render_manager` init logs the selected pool size; (3) all existing demos continue to pass at default; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #941
@@ -296,6 +296,28 @@ Avoid:
   - **Acceptance:** (1) `docs/design/sdf-runtime-audit.md` lists every site using `C_ShapeDescriptor` as a primary entity across all demos, creations, and tests; (2) for each site, notes the use case (primary shape vs. lighting blocker vs. special effect); (3) concrete recommendation for restriction shape (effects-only feasibility + migration cost estimate); (4) no code changes
   - **Issue:** #945
   - **Notes:** Epic D (#937) audit task — output informs D2 (the decision deliverable on restricting SDF runtime to effects only). Audit entry point: `C_ShapeDescriptor` at `engine/prefabs/irreden/voxel/components/component_shape_descriptor.hpp:31-47`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D1".
+  - **Links:**
+
+- [ ] **fleet: invalidate seen-hash on ingest lock-bail** — rm the queue-manager-ingest seen-hash when fleet-queue-ingest exits due to lock contention so the next scout tick re-fires the trigger
+  - **ID:** T-282
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) a `human:approved` label added to an issue while another `fleet-queue-ingest` is in flight gets picked up by the next scout tick after the in-flight iteration completes; (2) regression note added to `scripts/fleet/fleet-queue-ingest` or `docs/agents/FLEET.md` explaining why the hash invalidation is necessary; (3) fix at `scripts/fleet/fleet-queue-ingest:44-47` — lock-bailed branch calls `rm -f ~/.fleet/state/seen-hashes/queue-manager-ingest` before exit
+  - **Issue:** #973
+  - **Notes:** Scout writes `seen-hashes/queue-manager-ingest` before the ingest subprocess does any work; if ingest exits on lock contention the hash is already advanced and the trigger is silently consumed. Fix: on lock-bail, invalidate the hash so the next scout tick re-arms. Idempotent — worst case is one extra iteration that finds everything already-labeled and exits fast. See also T-283 (#974 — epic filter, contributing factor to why the symptom persisted).
+  - **Links:**
+
+- [ ] **fleet: filter fleet:epic in project_queue_manager_ingest** — add the role-doc skip labels to the projector so epics never appear in the pending_issues slice
+  - **ID:** T-283
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) after labeling an issue `fleet:epic + human:approved`, the queue-manager-ingest projection does not include it; (2) with only epics in `human_approved`, the projection hash stays stable and `fleet-queue-ingest` is not spawned; (3) the empty-projection fast-path in `fleet-queue-ingest` fires when only epics are pending, exiting in <1s without invoking claude; (4) fix at `fleet-state-scout:822-846` adds `_INGEST_SKIP_LABELS = frozenset({"fleet:queued","fleet:needs-plan","fleet:needs-info","fleet:epic"})`; mirror filter in `slice_queue_manager_ingest`
+  - **Issue:** #974
+  - **Notes:** `project_queue_manager_ingest` enumerates every `human:approved AND NOT fleet:queued` issue without filtering by label. Role doc (Step 5) explicitly skips fleet:epic/needs-plan/needs-info/queued. Mismatch makes epics permanent projection residents, preventing the empty-projection fast-path and contributing to #973 persisting. See T-282 for the companion race fix.
   - **Links:**
 
 ## Done — last 20
