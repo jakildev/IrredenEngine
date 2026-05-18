@@ -68,7 +68,7 @@ inline IRAsset::VoxelRecord toVoxelRecord(const IRComponents::C_Voxel &v) {
     r.flags_ = v.flags_;
     r.bone_id_ = v.bone_id_;
     r.layer_id_ = v.layer_id_;
-    r.reserved_ = v.reserved_;
+
     return r;
 }
 
@@ -205,66 +205,76 @@ inline LoadResult loadEditorScene(const std::string &dir, const std::string &bas
     const auto &meta = f0.meta_;
     auto get = [&](const std::string &k) { return detail::metaGet(meta, k); };
 
-    const std::string fpsStr = get("fps");
-    if (!fpsStr.empty())
-        result.fps_ = std::stof(fpsStr);
-
-    result.loopMode_ = (get("loop_mode") == "PING_PONG") ? LoopMode::PING_PONG : LoopMode::LOOP;
-
     int frameCount = 1;
-    const std::string fcStr = get("frame_count");
-    if (!fcStr.empty())
-        frameCount = std::stoi(fcStr);
+    try {
+        const std::string fpsStr = get("fps");
+        if (!fpsStr.empty())
+            result.fps_ = std::stof(fpsStr);
 
-    const std::string afStr = get("active_frame");
-    if (!afStr.empty())
-        result.activeFrame_ = std::stoi(afStr);
+        result.loopMode_ = (get("loop_mode") == "PING_PONG") ? LoopMode::PING_PONG : LoopMode::LOOP;
 
-    const std::string sxStr = get("sym_enable_x");
-    if (!sxStr.empty()) result.symmetry_.enableX_ = sxStr == "1";
-    const std::string syStr = get("sym_enable_y");
-    if (!syStr.empty()) result.symmetry_.enableY_ = syStr == "1";
-    const std::string szStr = get("sym_enable_z");
-    if (!szStr.empty()) result.symmetry_.enableZ_ = szStr == "1";
+        const std::string fcStr = get("frame_count");
+        if (!fcStr.empty())
+            frameCount = std::stoi(fcStr);
 
-    const std::string oxStr = get("sym_offset_x");
-    if (!oxStr.empty()) result.symmetry_.offsetX_ = std::stof(oxStr);
-    const std::string oyStr = get("sym_offset_y");
-    if (!oyStr.empty()) result.symmetry_.offsetY_ = std::stof(oyStr);
-    const std::string ozStr = get("sym_offset_z");
-    if (!ozStr.empty()) result.symmetry_.offsetZ_ = std::stof(ozStr);
+        const std::string afStr = get("active_frame");
+        if (!afStr.empty())
+            result.activeFrame_ = std::stoi(afStr);
 
-    const std::string lcStr = get("active_layer_id");
-    if (!lcStr.empty())
-        result.activeLayerId_ = static_cast<std::uint8_t>(std::stoi(lcStr));
+        const std::string sxStr = get("sym_enable_x");
+        if (!sxStr.empty()) result.symmetry_.enableX_ = sxStr == "1";
+        const std::string syStr = get("sym_enable_y");
+        if (!syStr.empty()) result.symmetry_.enableY_ = syStr == "1";
+        const std::string szStr = get("sym_enable_z");
+        if (!szStr.empty()) result.symmetry_.enableZ_ = szStr == "1";
 
-    const std::string nlStr = get("next_layer_id");
-    if (!nlStr.empty())
-        result.nextLayerId_ = static_cast<std::uint8_t>(std::stoi(nlStr));
+        const std::string oxStr = get("sym_offset_x");
+        if (!oxStr.empty()) result.symmetry_.offsetX_ = std::stof(oxStr);
+        const std::string oyStr = get("sym_offset_y");
+        if (!oyStr.empty()) result.symmetry_.offsetY_ = std::stof(oyStr);
+        const std::string ozStr = get("sym_offset_z");
+        if (!ozStr.empty()) result.symmetry_.offsetZ_ = std::stof(ozStr);
 
-    int layerCount = 0;
-    const std::string layerCountStr = get("layer_count");
-    if (!layerCountStr.empty())
-        layerCount = std::stoi(layerCountStr);
+        const std::string activeLayerIdStr = get("active_layer_id");
+        if (!activeLayerIdStr.empty())
+            result.activeLayerId_ = static_cast<std::uint8_t>(std::stoi(activeLayerIdStr));
 
-    result.layers_.reserve(static_cast<std::size_t>(layerCount));
-    for (int i = 0; i < layerCount; ++i) {
-        const std::string prefix = "layer_" + std::to_string(i) + "_";
-        LayerRecord rec{};
-        const std::string idStr = get(prefix + "id");
-        if (!idStr.empty())
-            rec.id_ = static_cast<std::uint8_t>(std::stoi(idStr));
-        rec.name_ = get(prefix + "name");
-        rec.visible_ = (get(prefix + "visible") != "0");
-        const std::string cr = get(prefix + "color_r");
-        const std::string cg = get(prefix + "color_g");
-        const std::string cb = get(prefix + "color_b");
-        const std::string ca = get(prefix + "color_a");
-        rec.colorTag_.red_   = cr.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cr));
-        rec.colorTag_.green_ = cg.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cg));
-        rec.colorTag_.blue_  = cb.empty() ? 200 : static_cast<std::uint8_t>(std::stoi(cb));
-        rec.colorTag_.alpha_ = ca.empty() ? 255 : static_cast<std::uint8_t>(std::stoi(ca));
-        result.layers_.push_back(rec);
+        const std::string nlStr = get("next_layer_id");
+        if (!nlStr.empty())
+            result.nextLayerId_ = static_cast<std::uint8_t>(std::stoi(nlStr));
+
+        int layerCount = 0;
+        const std::string layerCountStr = get("layer_count");
+        if (!layerCountStr.empty())
+            layerCount = std::stoi(layerCountStr);
+
+        result.layers_.reserve(static_cast<std::size_t>(layerCount));
+        for (int i = 0; i < layerCount; ++i) {
+            const std::string prefix = "layer_" + std::to_string(i) + "_";
+            LayerRecord rec{};
+            const std::string idStr = get(prefix + "id");
+            if (!idStr.empty())
+                rec.id_ = static_cast<std::uint8_t>(std::stoi(idStr));
+            rec.name_ = get(prefix + "name");
+            rec.visible_ = (get(prefix + "visible") != "0");
+            const std::string cr = get(prefix + "color_r");
+            const std::string cg = get(prefix + "color_g");
+            const std::string cb = get(prefix + "color_b");
+            const std::string ca = get(prefix + "color_a");
+            rec.colorTag_.red_   = cr.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cr));
+            rec.colorTag_.green_ = cg.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cg));
+            rec.colorTag_.blue_  = cb.empty() ? 200 : static_cast<std::uint8_t>(std::stoi(cb));
+            rec.colorTag_.alpha_ = ca.empty() ? 255 : static_cast<std::uint8_t>(std::stoi(ca));
+            result.layers_.push_back(rec);
+        }
+    } catch (const std::invalid_argument &e) {
+        LoadResult err;
+        err.errorMsg_ = std::string("META parse error (invalid value): ") + e.what();
+        return err;
+    } catch (const std::out_of_range &e) {
+        LoadResult err;
+        err.errorMsg_ = std::string("META parse error (value out of range): ") + e.what();
+        return err;
     }
 
     // Load all frames (frame 0 already in hand).
