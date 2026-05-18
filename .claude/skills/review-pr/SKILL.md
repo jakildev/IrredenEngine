@@ -196,30 +196,7 @@ worse, needs-fix.
 Go through each of these explicitly. For every item, either confirm
 compliance or raise an issue.
 
-**ECS invariants**
-- ❌ Per-entity `getComponent` / `getComponentOptional` inside a system tick
-  function. Fix: add the component to the system's template parameters.
-- ❌ `createEntity` / `removeComponent` called mid-iteration in a system
-  tick without using the deferred variant.
-- ❌ Allocating memory (new, std::vector push in hot loop, std::string
-  concat) in per-entity tick paths.
-- ❌ New prefab system that isn't added to the `SystemName` enum in
-  `engine/system/include/irreden/system/ir_system_types.hpp`.
-- ❌ New component that isn't `C_`-prefixed, or whose public members don't
-  have a trailing `_`.
-- ❌ `functionBeginTick` / `functionEndTick` declared with `Archetype&` or
-  any component parameter — they must be `void()`. The per-entity tick is
-  where entity data arrives; `begin`/`endTick` receive no entity args.
-- ❌ `endTick` reads `ids[0]` or indexes `ids` without a `ids.size() == 0`
-  guard — `begin`/`endTick` fire even when the archetype is empty.
-- ❌ system reads `C_Position3D` for visual placement instead of
-  `C_PositionGlobal3D` — rendered position is `C_PositionGlobal3D`
-  after `APPLY_POSITION_OFFSET` has folded any modifier-driven offset
-  into it (see `engine/CLAUDE.md`).
-- ❌ component method calls `IREntity::getComponent` / `setComponent` /
-  `createEntity` / `setParent` on a *different* entity (tier-c violation per
-  `engine/prefabs/CLAUDE.md`). Confirm the method appears on the documented
-  exceptions list before allowing.
+**ECS invariants** — check against [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md). For each item, confirm compliance or raise an issue.
 
 **Ownership / lifetime**
 - ❌ `shared_ptr` where `unique_ptr` would do.

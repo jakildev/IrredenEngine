@@ -59,59 +59,13 @@ relevant `CLAUDE.md` files in those directories define module-specific
 rules that override the defaults below; read them before touching
 anything in their scope.
 
-### 2. ECS smells (the biggest performance footgun)
+### 2. ECS smells
 
-Per-entity `getComponent<C_Foo>()` or `getComponentOptional<C_Foo>()`
-inside a system's per-entity tick is a hash-map lookup, an archetype
-scan, and another hash-map lookup — at scale it dominates the frame.
-The fix is mechanical: add the component to the system's template
-parameters so it iterates the dense column.
+Check the diff against every item in [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) — that file is the canonical diagnostic checklist.
 
-**Apply the fix when** the call is unconditional and the component is
-small. Add the type to the system's `createSystem<...>` template
-params (or the equivalent template signature) and replace the
-`getComponent` call with the iteration variable.
+**Auto-fix** when a `getComponent` call is unconditional and the component is small: add the type to `createSystem<...>` template params and replace the call with the iteration variable.
 
-**Report instead of fixing when** the call is conditional, when the
-component might not exist on every entity in the archetype, or when
-the system signature is shared with other tick functions you can't
-see in the diff. Note `engine/system/CLAUDE.md` has the full
-tick-function-signature story.
-
-Also flag (don't auto-fix):
-- `createEntity` / `removeComponent` mid-iteration without the
-  deferred variant — race-prone, deferred is the right answer.
-- Allocation in per-entity tick paths (`new`, `vector::push_back` on
-  a hot vector, `string` concat, `map::operator[]` insertion).
-- A new prefab system that isn't added to `SystemName` in
-  `engine/system/include/irreden/ir_system_types.hpp` (the system
-  name enum is the registration mechanism).
-- `C_Position3D` read in a render-related system for visual placement
-  instead of `C_PositionGlobal3D` — `APPLY_POSITION_OFFSET` folds any
-  modifier-driven offset into globalPos each UPDATE tick. Flag;
-  confirm the component is intentional.
-- A component method that calls `IREntity::getComponent` /
-  `setComponent` / `createEntity` / `setParent` on a *different*
-  entity (tier-c violation per `engine/prefabs/CLAUDE.md`). Flag
-  unless the method is on the documented exceptions list.
-- `functionBeginTick` / `functionEndTick` declared with `Archetype&`
-  or any component parameter — they must be `void()`.
-- `endTick` body that reads `ids[0]` or indexes `ids` without first
-  guarding `ids.size() == 0`.
-- **Bare string C++ component references in Lua.** In `.lua` files, a
-  `components = { "C_..." }` or `excludes = { "C_..." }` entry that
-  spells a C++ component as a bare string (e.g. `"C_Position3D"`) instead
-  of the `IRComponent.C_Name` handle. Fix: replace `"C_Name"` with
-  `IRComponent.C_Name`. Only applicable when `bindLuaDrivenEcs()` is in
-  use (any creation that calls `IRSystem.registerSystem`). Bare strings
-  for Lua-defined components (no `C_` prefix) are still the only option —
-  don't flag those.
-- **Hand-written IRTime / SystemName string keys in new C++ binding code.**
-  In C++ binding files (e.g. `lua_pipeline_bindings.hpp`), new `IRTime`
-  or `SystemName` table entries written as `t["NAME"] = ...` without the
-  `IR_BIND_TIME` / `IR_BIND_SYS` macro. The macros derive the key from
-  the enum via stringization so the key stays in sync. Flag; suggest using
-  `IR_BIND_TIME(NAME)` or `IR_BIND_SYS(NAME)` instead.
+**Flag for human judgment** when: the call is conditional, the component might not exist on every archetype entity, the system signature spans files outside the diff, or the smell is a tier-c component method, a structural-change mid-iteration, a missing `SystemName` entry, or a Lua binding issue.
 
 ### 2b. Math primitives + system-state smells (mechanically detectable)
 

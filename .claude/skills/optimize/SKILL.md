@@ -191,14 +191,7 @@ before/after numbers.
 
 For **CPU hotspots** in system ticks:
 
-- Per-entity `getComponent<C_Foo>()` → add `C_Foo` to the system's
-  template parameters so it's iterated as a dense column. (See
-  `engine/system/CLAUDE.md` for tick-function signature patterns.)
-  This is the single biggest engine-wide perf win and `simplify`
-  also flags it — but optimize is the place to actually verify the
-  measured ms improvement after fixing.
-- Allocation in per-entity paths → hoist to component construction
-  or pre-size + reuse a member buffer.
+- Per-entity `getComponent<C_Foo>()` and allocation in per-entity paths — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full pattern catalogue. After applying the fix, re-run the benchmark to verify the measured ms improvement.
 - `std::map` / `std::unordered_map` lookups in the inner loop →
   replace with a flat array indexed by entity ID, or move the
   lookup outside the loop.

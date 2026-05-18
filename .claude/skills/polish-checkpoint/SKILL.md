@@ -86,12 +86,10 @@ Skill: simplify
 ```
 
 `simplify` reads the same diff and applies inline fixes for the usual
-Irreden-Engine smells: per-entity `getComponent` inside system tick
-functions, naming-convention slips (`m_` on public, missing `C_`
-prefix on a new component), debug `std::cout` lines left from
-troubleshooting, tautological doc comments, change-narration
-comments, allocation in hot loops, etc. It auto-fixes the safe ones
-and reports anything that needs human judgment.
+Irreden-Engine smells — ECS checks per [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md),
+naming-convention slips, debug `std::cout` lines, tautological doc comments,
+and change-narration comments. It auto-fixes the safe ones and reports anything
+that needs human judgment.
 
 After `simplify` finishes, re-check `git status` so you know the
 post-simplify state. If `simplify` reverted everything (rare — only
