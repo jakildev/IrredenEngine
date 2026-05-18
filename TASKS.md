@@ -316,7 +316,7 @@ Avoid:
   - **ID:** T-243
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-243-standardize-skill-md-structure
   - **Blocked by:** (none)
   - **Acceptance:** (1) all affected SKILL.md files follow: front-matter → one-sentence body intro → Flow; (2) "When to invoke" sections that restate front-matter `description:` trigger phrases removed from: `simplify:25-38`, `review-pr:23-31`, `commit-and-push:22-28`, `polish-checkpoint:26-35,50-55`, `optimize:42-68`, `backend-parity:37-50`, `start-next-task:46-70`, `attach-screenshots:25-39`, `request-re-review:17-29`, `lua-creation-setup:13-25`; (3) "Why this exists" sections paraphrasing the description removed from the same files
   - **Issue:** #826
@@ -327,7 +327,7 @@ Avoid:
   - **ID:** T-244
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-244-drop-emoji-bullets
   - **Blocked by:** (none)
   - **Acceptance:** (1) every Anti-patterns and "What this skill does NOT do" section in all SKILL.md files uses bare `-` bullets, not ❌; (2) no other decorative emoji bullets remain in SKILL.md files; (3) engine CLAUDE.md and baseline remain unchanged
   - **Issue:** #827
@@ -338,7 +338,7 @@ Avoid:
   - **ID:** T-245
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-245-request-re-review-compose
   - **Blocked by:** (none)
   - **Acceptance:** (1) `request-re-review/SKILL.md:53-69` staging-discipline subset replaced with "invoke commit-and-push"; (2) `request-re-review/SKILL.md:87-99` branch-release subset replaced with "invoke start-next-task"; (3) skill retains only: trigger discipline, the label swap (remove `human:needs-fix`, add `fleet:changes-made`), and composition instructions
   - **Issue:** #828
@@ -503,7 +503,7 @@ Avoid:
   - **ID:** T-260
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-260-fleet-feedback-handling
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-FEEDBACK-HANDLING.md` created covering full protocol: priority order across human:needs-fix/fleet:needs-fix/fleet:has-nits/fleet:design-unblocked, AMEND-vs-ESCALATE decision, TOCTOU branch-claim, idempotent label removal, fleet:human-amending mechanic, fleet-claim reserve, response-label conventions, downstream rebase propagation, reservation release; (2) `role-opus-worker.md:228-436` and `role-sonnet-author.md:143-371` collapse to ≤30-line pointers; (3) `role-opus-architect.md:167-194` catches up to the same protocol via the new doc; (4) net -300 lines across three roles
   - **Issue:** #861
@@ -536,7 +536,7 @@ Avoid:
   - **ID:** T-263
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-263-fleet-runtime-doc
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-RUNTIME.md` created covering: heartbeat (step 0), reservation check (step 0.5), exit protocol (no kill -TERM $PPID), per-iteration shutdown (reset, fleet-iteration-summary, no-backticks warning, release-worktree ordering); (2) git checkout origin/master -- warning (from worker role) included; (3) all five transient roles reduce matching sections to pointers; (4) net -130 lines across five roles
   - **Issue:** #864
