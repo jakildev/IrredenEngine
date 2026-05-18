@@ -453,15 +453,9 @@ Reply with a compact summary to the calling session:
 
 ## Anti-patterns
 
-- Reviewing only the diff, not the surrounding file. Context matters.
-- Vague review comments without file:line citations.
 - Approving work that violates an ECS invariant "because the test passes"
   — some invariants don't fail at test time.
-- Merging the PR yourself. The user merges.
 - Pushing commits to the PR branch from the reviewer worktree.
-- Leaving a review that just says "LGTM" with nothing specific. Either the
-  PR is actually clean (in which case call out one non-obvious good choice
-  as **praise**, to reinforce it) or it isn't.
 
 ## Re-review
 
