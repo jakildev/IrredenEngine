@@ -252,7 +252,7 @@ IRSystem.registerSystem({
 
 Whole-number float defaults (e.g. `0.0`) are indistinguishable from `0` at the C level under LuaJIT — use `{ type = "float", default = 0 }` for those. A bad inference is a hard error at script-load time naming the offending field.
 
-**Field order:** the codegen-emitted C++ struct and `ComponentName.new(...)` constructor list fields in **alphabetical order** (T-106 invariant). Match that order when constructing values in `setAt` calls.
+**Field order:** the codegen-emitted C++ struct and `ComponentName.new(...)` constructor list fields in **alphabetical order** (codegen invariant). Match that order when constructing values in `setAt` calls.
 
 #### `IRSystem.registerSystem` — declare a new system
 

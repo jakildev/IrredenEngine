@@ -19,7 +19,7 @@ description: >-
 own launch prompt told it to poll `gh pr list` on an interval and review
 anything new. In that mode the reviewer agent resolves the set of unreviewed
 PRs itself and invokes this skill once per PR without the user typing a fresh
-phrase each time. The loop pattern is documented in `docs/AGENT_FLEET_SETUP.md`.
+phrase each time. The loop pattern is documented in `docs/agents/FLEET.md`.
 
 Do **not** invoke proactively inside an unrelated working session — e.g. while
 an author-agent is mid-refactor on its own PR, don't auto-jump into reviewing
@@ -251,7 +251,7 @@ or any `c_compute_*shadow*.glsl` / `.metal`)
 - New feature with no new test at all (flag as needs-fix unless the user
   explicitly said "no tests").
 - Build or format-check not run before opening the PR (check commit
-  message for mention, or run `cmake --build build --target format-check`
+  message for mention, or run `fleet-build --target format-changed`
   yourself if cheap).
 
 **Opus-only items** (Sonnet should not attempt these — escalate via the
