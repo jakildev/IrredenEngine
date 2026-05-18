@@ -344,11 +344,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.18, §1.19, §1.20, §2.3, §2.5). The "Write body file inside worktree" warning only differs by filename (.review-body.md vs .merger-body.md) — one canonical note covers both.
   - **Links:**
 
-- [ ] **fleet: resolve fleet:awaiting-base vs fleet:awaiting-upstream-review label drift** — investigate whether these are two distinct states or unintentional drift; update FLEET.md label dictionary and role files to be consistent
+- [~] **fleet: resolve fleet:awaiting-base vs fleet:awaiting-upstream-review label drift** — investigate whether these are two distinct states or unintentional drift; update FLEET.md label dictionary and role files to be consistent
   - **ID:** T-268
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) FLEET.md label dictionary is consistent with usage in all role files; (2) either fleet:awaiting-base added to FLEET.md as a distinct documented merger-owned label (clarifying difference from fleet:awaiting-upstream-review), or merger usage (role-merger.md:362,437,447,478,819-825) renamed to fleet:awaiting-upstream-review; (3) whichever direction wins, every consumer agrees on label names
   - **Issue:** #869
