@@ -278,17 +278,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). S — one file but needs callback-path verification before fixing. C_HitboxRect and C_HitboxCircle live under `engine/prefabs/irreden/update/components/`.
   - **Links:**
 
-- [~] **docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup** — make engine/system/CLAUDE.md canonical for tick-signature and static-anti-pattern rules; remove verbatim duplicates from the rule file
-  - **ID:** T-257
-  - **Area:** docs, engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-257-system-claude-md-dedup
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/system/CLAUDE.md:56-82` (three valid TICK signatures) kept as canonical; verbatim duplicate removed from `.claude/rules/cpp-systems.md` with one-line reference; (2) `engine/system/CLAUDE.md:210-227` (static anti-pattern) kept as canonical; duplicate removed from rule file; (3) `engine/system/CLAUDE.md:10-14` `IRSystem::` function-name catalog removed; (4) `engine/system/CLAUDE.md:228-231` dead `.fleet/status/system-static-deviations.md` pointer removed
-  - **Issue:** #841
-  - **Notes:** From T-223 audit (audit-claude-md.md). S — pick one canonical home for each rule, delete the other side. The three-function-signatures block and static anti-pattern explanation are duplicated verbatim.
-  - **Links:**
-
 - [~] **docs: creations/ + creations/demos/ CLAUDE.md — fix drift** — resolve stale voxel_editor reference, remove .gitignore paste, trim redundant CMake walkthrough, fix incomplete demo inventory
   - **ID:** T-258
   - **Area:** docs, creations
@@ -458,6 +447,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-257** — docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup · Owner: claude/T-257-system-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/912
 - [x] **T-256** — docs: small modules — delete inline directory trees from CLAUDE.md files · Owner: claude/T-256-delete-dir-trees · PR: https://github.com/jakildev/IrredenEngine/pull/911
 - [x] **T-254** — docs: engine/audio + engine/video CLAUDE.md — remove dead pointers · Owner: claude/T-254-audio-video-dead-refs · PR: https://github.com/jakildev/IrredenEngine/pull/907
 - [x] **T-252** — docs: engine/prefabs/CLAUDE.md — de-dup vs cpp-ecs.md · Owner: claude/T-252-prefabs-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/904
@@ -477,4 +467,3 @@ Avoid:
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
-- [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
