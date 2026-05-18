@@ -458,11 +458,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.1, §1.1, §2). Size M. Same checklist restated in 5 files; canonical source is CLAUDE-BASELINE.md:16-31 + engine/system/CLAUDE.md.
   - **Links:**
 
-- [ ] **docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md** — consolidate the IRMath→glm substitution table from simplify and 3 other skills into one shared rules file
+- [~] **docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md** — consolidate the IRMath→glm substitution table from simplify and 3 other skills into one shared rules file
   - **ID:** T-232
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRMath substitution table moved from `simplify/SKILL.md:144-154` into `.claude/rules/cpp-math.md` (already referenced at `simplify/SKILL.md:119`); (2) `backend-parity/SKILL.md:218-222`, `optimize/SKILL.md:211-213`, `review-pr/SKILL.md:268-273` each replaced with a one-line ref; (3) canonical source remains `CLAUDE-BASELINE.md:92-107`
   - **Issue:** #815
