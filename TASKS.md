@@ -245,17 +245,6 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.13, §1.9). Size M. Three templates differ by only 1-2 fields. Existing `procedures/` pattern: fleet-stack, cursor-stack, rebase-guard.
   - **Links:**
 
-- [~] **docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md** — extract 37-line host-stamp shell logic into a shared procedures file
-  - **ID:** T-239
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-239-host-label-procedure
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/host-label.md` with the `fleet:authored-on-{linux,macos}` host-stamp logic; (2) `commit-and-push/SKILL.md:386-423` (~37 lines) replaced with a ref; (3) reviewer-side `review-pr/SKILL.md:478-484` already refs `review-pr/procedures/cross-host-smoke.md` — ensure consistency
-  - **Issue:** #822
-  - **Notes:** Follow-up from T-222 audit (§5.14, §1.11). Size S. Existing procedures/ pattern: cross-host-smoke.md, cursor-stack.md, rebase-guard.md.
-  - **Links:**
-
 - [~] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
   - **ID:** T-240
   - **Area:** docs, engine/asset
@@ -645,6 +634,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
 - [x] **T-212** — editor F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset) · Owner: claude/T-212-symmetry-modes · PR: https://github.com/jakildev/IrredenEngine/pull/794
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
@@ -653,7 +643,6 @@ Avoid:
 - [x] **T-207** — script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt · Owner: claude/T-207-script-remove-render-link · PR: https://github.com/jakildev/IrredenEngine/pull/860
 - [x] **T-233** — docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE · Owner: claude/T-233-drop-naming-table-copies · PR: https://github.com/jakildev/IrredenEngine/pull/859
 - [x] **T-221** — docs audit of role-*.md — shared protocols + point-don't-dump · Owner: claude/T-221-roles-audit · PR: https://github.com/jakildev/IrredenEngine/pull/857
-- [x] **T-211** — editor F-1.1 — place/erase + palette panel + undo stack · Owner: claude/T-211-place-erase-palette-undo · PR: https://github.com/jakildev/IrredenEngine/pull/785
 - [x] **T-232** — docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md · Owner: claude/T-232-irmath-table-to-rules · PR: https://github.com/jakildev/IrredenEngine/pull/853
 - [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
