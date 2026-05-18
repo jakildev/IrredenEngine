@@ -324,11 +324,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.2, §1.3). Size S. `lua-creation-setup/SKILL.md:294` already uses the correct one-line ref form.
   - **Links:**
 
-- [ ] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
+- [~] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
   - **ID:** T-233
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `simplify/SKILL.md:308-321`, `ecs-prefab-creator/SKILL.md:22-23` and `200-206`, `render-trixel-pipeline/SKILL.md:106-114`, `backend-parity/SKILL.md:121-132`, `review-pr/SKILL.md:283-289` each use a one-sentence ref to `CLAUDE-BASELINE.md §Naming` (and keep only regex-style fix patterns they specifically use); (2) duplicate tables removed; (3) canonical home `CLAUDE-BASELINE.md:36-47` unchanged
   - **Issue:** #816
