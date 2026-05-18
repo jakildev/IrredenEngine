@@ -377,11 +377,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §3.3, §3.5, §4.6). The opus-worker is transient one-shot (not a 20-minute loop) per role-opus-worker.md:48-67. The fleet:approved clear on human:needs-fix is missing from architect flow. ~30 line edits.
   - **Links:**
 
-- [ ] **docs/roles: collapse redundant --repo flags in role-merger.md** — remove 30+ redundant --repo flags from gh pr edit/comment/list calls; keep only where override is actually needed
+- [~] **docs/roles: collapse redundant --repo flags in role-merger.md** — remove 30+ redundant --repo flags from gh pr edit/comment/list calls; keep only where override is actually needed
   - **ID:** T-271
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) all inferable `--repo <engine-repo>` flags removed from gh pr edit, gh pr comment, gh pr list invocations in role-merger.md; (2) --repo only kept where repo override is genuinely required; (3) no semantic change; (4) ~30 line edits
   - **Issue:** #872
