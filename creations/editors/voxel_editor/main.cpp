@@ -1613,7 +1613,7 @@ void initEntities() {
         "-"
     );
 
-    // Ghost preview entity for drag-fill operations (T-278, A1). Invisible until
+    // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
     // frame and hides it again on RELEASED.
     IRVoxelEditor::g_fillTool.ghostEntity_ = IREntity::createEntity(
