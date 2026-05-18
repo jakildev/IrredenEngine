@@ -169,168 +169,49 @@ iteration of polling, reviewing, and exiting cleanly:
    `repos.game.prs[]`.
 2. For each candidate, in oldest-first order:
 
-   **Acquire the review claim FIRST.** Before reading the Sonnet
-   review or the diff, take the GitHub-label atomic lock so two
-   reviewers (across hosts) can't step on each other:
-
-   `fleet-claim review-claim <N> opus-reviewer`
-   (add `--repo game` BEFORE the subcommand for game-repo PRs.)
-
-   - **Exit 0** — you own this PR. Proceed to step a.
-   - **Exit 1** — another reviewer holds it. Skip this PR silently
-     and move to the next candidate.
-
-   The claim is released by `fleet-claim review-release` immediately
-   after the verdict label is set (step g below), or on abort paths.
-
-   a. Read the existing Sonnet review in full first
-      (`fleet-pr comments <N>`; add `--repo game` for game PRs).
-      Note what Sonnet flagged.
-   b. **Stack awareness — gate on upstream status, then note context.**
-      A stacked PR's `baseRefName` IS its upstream PR's `headRefName`.
-      The candidate PR's own metadata already lives in the cache
-      loaded at step 1 of the iteration; read from there first and
-      fall back to live `gh` only when the cache misses.
-
-      1. **Detect stacking.** From the cached candidate PR, check
-         `baseRefName`. If it equals `"master"`, this is a standalone
-         PR — skip to step c with a normal review.
-
-      2. **Look up the upstream PR.** Search the same cache
-         (`repos.<repo>.prs[]`) for an entry whose `headRefName`
-         matches the candidate's `baseRefName`. A hit gives you the
-         upstream's `number` and `labels` for free. A miss means the
-         upstream is merged or closed; fall through to one live call:
-         `gh pr list --head "<baseRefName>" --state all --json number,state,mergedAt --jq '.[0]'`
-         (add `--repo <game-repo>` for game PRs).
-
-      3. **Already gated — check before deciding.** If the candidate's
-         own `labels` already contains `fleet:awaiting-upstream-review`:
-         - Re-check upstream status using the same cache-then-live-
-           fallback logic from step 2 above.
-         - If upstream is now approved or merged — remove the gate label
-           (`gh pr edit <N> --remove-label "fleet:awaiting-upstream-review"`)
-           and proceed to step c.
-         - Otherwise (still open-without-approval, OR now broken) —
-           silently skip. Do NOT post any additional comment.
-
-      4. **Decide based on upstream status** (gate label not present):
-         - **Upstream MERGED, or upstream OPEN with `fleet:approved`
-           or `human:approved`** — proceed to step c. Note the stack
-           context in the review body: "Stacked on #<U>; approval
-           assumes #<U> lands first."
-         - **Upstream OPEN without an approval label** (its `labels`
-           contains neither `fleet:approved` nor `human:approved`) —
-           add the gate label and post a hold-comment once:
-           `gh pr edit <N> --add-label "fleet:awaiting-upstream-review"`
-           `gh pr comment <N> --body "Holding review: upstream PR #<U> is not yet approved. This stacked PR will be re-evaluated once the upstream lands an approval label."`
-           For game PRs add `--repo <game-repo>` to both.
-           Do NOT post a verdict.
-         - **Upstream not found, OR closed-not-merged** — the stack
-           is broken. Surface to the human once:
-           `gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."`
-           Do NOT add a verdict label.
-
-      `fleet-pr diff <N>` always scopes to this PR's own diff — do
-      not re-review the parent.
-   c. **Engine PRs:** Invoke the `review-pr` skill on the PR.
+   a. **Acquire the review claim FIRST.** See
+      [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
+      Skip silently on Exit 1.
+   b. Read the existing Sonnet review in full
+      (`fleet-pr comments <N>`; add `--repo game` for game PRs). Note
+      what Sonnet flagged so your pass focuses on what Sonnet could
+      not confirm.
+   c. **Stack-awareness gate.** Follow
+      [REVIEWER-PROTOCOL.md § Stack awareness](../../docs/agents/REVIEWER-PROTOCOL.md#stack-awareness--gate-on-upstream-status-then-note-context).
+      If the gate decides "do not post a verdict," release the claim
+      and move on.
+   d. **Engine PRs:** Invoke the `review-pr` skill on the PR.
       **Game PRs:** Read the diff with `fleet-pr diff <N> --repo game`
       and review manually (you cannot check out game PRs into this
       engine worktree). For game conventions, read
       `~/src/IrredenEngine/creations/game/CLAUDE.md`.
-   d. Focus your review on the items Sonnet could not confirm — do
+   e. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
       X; on closer read I confirm/disagree because Y".
-   e. Post the review: write the review body to `.review-body.md`
-      (worktree-local) using the **Write tool**, then:
-      `gh pr review <N> --comment --body-file .review-body.md`
-      For game PRs, add `--repo <game-repo>`.
-      Do NOT write to `/tmp/...` — Claude Code's sandbox blocks Write
-      to paths outside the worktree even if `/tmp` is in
-      `additionalDirectories` (the gate is broader than path matching).
-      The `.review-body.md` filename is gitignored.
-      **Never** use `--body "$(cat ...)"` or `--body "<text>"` — shell
-      escaping of backticks and special characters causes parse errors.
-      Do **not** use `--approve` or `--request-changes` — all fleet
-      agents share one GitHub account, and GitHub rejects formal
-      review actions on your own PRs.
-   f. **Set the PR label** to match your verdict (add `--repo
-      <game-repo>` for game PRs). The label is the primary signal
-      the human uses. Always remove stale labels first. Three labels
-      are also cleared here as part of the verdict:
-      - `fleet:awaiting-upstream-review` — a previously-gated stacked
-        PR exits the gate cleanly when the reviewer finally proceeds.
-      - `fleet:stacked-rebase` — set by merger when a stacked PR's
-        base just merged and got re-targeted to master; your re-eval
-        after the re-target is exactly what that label is waiting for.
-      - `fleet:needs-base-update` — stacked PR whose upstream has since
-        been re-approved or merged; cleared on any verdict re-evaluation.
-      `gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"`
-      (swap the label name for needs-fix or blocker as appropriate).
-      - Verdict approve, no Nits section → `fleet:approved` only
-      - Verdict approve WITH a non-empty `### Nits` section → BOTH
-        `fleet:approved` AND `fleet:has-nits` (the latter tells the
-        author worker to clean up the nits before the human merges)
-      - Verdict needs-fix → `fleet:needs-fix`
-      - Verdict blocker → `fleet:blocker`
-   g. **Release the review claim** immediately after setting the
-      verdict label (and also on no-verdict skip paths — broken
-      stack, gated upstream-not-yet-approved, etc.). One command,
-      handles host derivation and retry-once-sentinel internally:
+   f. **Post the review body.** See
+      [REVIEWER-PROTOCOL.md § Posting the review body](../../docs/agents/REVIEWER-PROTOCOL.md#posting-the-review-body)
+      for the `Write` → `.review-body.md` → `gh pr review --body-file`
+      mechanics.
+   g. **Set the verdict label.** Use the canonical 4-command block in
+      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
+      (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
+      call after `gh pr review` MUST be the `gh pr edit ... --add-label`
+      — a review without a verdict label is invisible to the human's
+      merge queue.
+   h. **Release the review claim** immediately after the verdict
+      label-swap (and on no-verdict skip paths — broken stack, gated
+      upstream-not-yet-approved, etc.). See
+      [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
+   i. **Cross-host smoke tagging (engine render PRs only).** See
+      [REVIEWER-PROTOCOL.md § Cross-host smoke tagging](../../docs/agents/REVIEWER-PROTOCOL.md#cross-host-smoke-tagging).
+      If Sonnet already added the labels on first pass, no action
+      needed.
 
-      `fleet-claim review-release <N> opus-reviewer`
-      (add `--repo game` BEFORE the subcommand for game-repo PRs.)
-
-      Queue-tick's `cleanup --gh` pass sweeps stranded
-      `fleet:reviewing-*` labels after 30 min, but forgetting blocks
-      the PR from re-review during that window — always release.
-
-   **Cross-host smoke tagging (engine PRs only).** After the verdict
-   label is set, check whether the PR's diff touches any render path:
-   `engine/render/`, `engine/prefabs/irreden/render/`, any `*.glsl`,
-   any `*.metal`, or any file under `engine/render/src/shaders/`. Use
-   `gh pr diff <N> --name-only` to read the changed paths. If any
-   path matches, add the smoke label for the host the author was NOT
-   on (`commit-and-push` stamps `fleet:authored-on-<host>` at PR
-   create-time; the author already smoke-tested their own host per
-   the workflow):
-
-   - PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke`
-   - PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke`
-   - Neither (Windows-native author, or pre-fix PR) → add both
-
-   `gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"`
-
-   Each host's author agents poll for the label matching their host,
-   run a clean-checkout build + `IRShapeDebug` smoke, and remove the
-   label on success. The PR cannot be safely merged until the
-   outstanding label is gone. Skip for game-repo PRs and non-render
-   engine PRs — the labels narrow the "did this port build on the
-   other backend" question, not general CI. If Sonnet already added
-   the labels on first pass, no action needed.
-
-   **Nits vs real issues — the bright line:**
-   - **Approve with nits** is fine for genuinely-optional improvements
-     (naming, wording, formatting, optional asserts, follow-up
-     refactor opportunities). Add `fleet:has-nits` so the author
-     worker cleans them up before the human merges. The author now
-     treats `fleet:has-nits` as actionable, so put real nits in the
-     Nits section freely.
-   - **The contradiction "approve, but please fix X before merge" is
-     forbidden.** If a finding is described as "must resolve before
-     merge", "safe to merge once X is resolved", "the comment and code
-     must agree", or anything implying the merge depends on it — that
-     is by definition a `needs-fix`, not a Nit. Move it to the
-     Needs-fix section and drop the verdict to `needs-fix`.
-   - **Needs-fix** is for substantive issues: correctness bugs,
-     invariant violations, lifetime/ownership mistakes, missing
-     synchronization, performance regressions, unsafe API use, or any
-     nit that is actually a pre-merge requirement.
-   - Opus budget is expensive. Don't spend it requesting a full
-     re-review round over a renamed variable. When in doubt about a
-     borderline finding, prefer `fleet:has-nits` over `fleet:needs-fix`
-     — the author addresses nits aggressively now, no re-review needed.
+   **Nits vs needs-fix decisions** — see
+   [REVIEWER-PROTOCOL.md § Nits vs needs-fix](../../docs/agents/REVIEWER-PROTOCOL.md#nits-vs-needs-fix--the-bright-line).
+   Opus budget is expensive; don't spend it requesting a full
+   re-review round over a renamed variable.
 3. **Reset to scratch branch.** After reviewing all candidates (or if
    none existed), return to the scratch branch so no PR branch is left
    checked out — other agents may need to check out the same branch:
