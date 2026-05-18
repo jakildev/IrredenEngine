@@ -323,11 +323,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.18, §4.1). Size M. 9+ of 16 SKILL.md files open with a paragraph paraphrasing front-matter; standardizing cuts significant boilerplate.
   - **Links:**
 
-- [ ] **docs/skills: drop decorative ❌ emoji bullets from Anti-patterns sections** — switch all Anti-patterns / "What this skill does NOT do" sections across SKILL.md files from ❌ bullets to bare list bullets
+- [~] **docs/skills: drop decorative ❌ emoji bullets from Anti-patterns sections** — switch all Anti-patterns / "What this skill does NOT do" sections across SKILL.md files from ❌ bullets to bare list bullets
   - **ID:** T-244
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) every Anti-patterns and "What this skill does NOT do" section in all SKILL.md files uses bare `-` bullets, not ❌; (2) no other decorative emoji bullets remain in SKILL.md files; (3) engine CLAUDE.md and baseline remain unchanged
   - **Issue:** #827
