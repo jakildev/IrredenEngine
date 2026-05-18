@@ -187,18 +187,6 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
-  - **ID:** T-212
-  - **Area:** creations/editors
-  - **Model:** sonnet
-  - **Owner:** claude/T-212-symmetry-modes
-  - **Blocked by:** (none)
-  - **Stack:** T-211..T-215 editor-phase-1
-  - **Acceptance:** (1) X-mirror toggle: placing on +X writes a voxel on -X simultaneously with same color/layer/metadata; (2) mirror-plane offset slider adjusts axis live — voxels placed after shift mirror across new axis; (3) stroke crossing the mirror plane writes one voxel per affected cell, not two; (4) all three axes mirrorable independently or combined (verify XYZ octant placement); (5) mirrored placements are part of the same stroke undo record as the source placement; (6) fleet-build clean on linux-debug
-  - **Issue:** #762
-  - **Notes:** Bounded math; mirrors off the place/erase stroke from F-1.1 (T-211). Part of entity-editor epic #604. See `docs/design/entity-editor-epic.md` §Phase 1.
-  - **Links:**
-
 - [~] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
   - **ID:** T-213
   - **Area:** creations/editors
@@ -316,7 +304,7 @@ Avoid:
   - **ID:** T-243
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-243-standardize-skill-md-structure
+  - **Owner:** claude/T-243-trim-skill-when-to-invoke
   - **Blocked by:** (none)
   - **Acceptance:** (1) all affected SKILL.md files follow: front-matter → one-sentence body intro → Flow; (2) "When to invoke" sections that restate front-matter `description:` trigger phrases removed from: `simplify:25-38`, `review-pr:23-31`, `commit-and-push:22-28`, `polish-checkpoint:26-35,50-55`, `optimize:42-68`, `backend-parity:37-50`, `start-next-task:46-70`, `attach-screenshots:25-39`, `request-re-review:17-29`, `lua-creation-setup:13-25`; (3) "Why this exists" sections paraphrasing the description removed from the same files
   - **Issue:** #826
@@ -349,7 +337,7 @@ Avoid:
   - **ID:** T-246
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-246-sweep-stale-refs
   - **Blocked by:** (none)
   - **Acceptance:** (1) `review-pr/SKILL.md:393` stale "Opus 4.6" stamp updated or removed; (2) `review-pr/SKILL.md:295-297` `cmake --build ... format-check` replaced with `fleet-build --target format-changed`; (3) `review-pr/SKILL.md:36` dead `docs/AGENT_FLEET_SETUP.md` pointer replaced with `docs/agents/FLEET.md`; (4) `backend-parity/SKILL.md:265-269` personal username (`C:/Users/evinj/...`) removed; (5) `simplify/SKILL.md:155-160` "IRMath::kPi may not be merged" hedge removed (verified merged); (6) `simplify/SKILL.md:189-200` hardcoded live-deviations file:line list removed or made grep-pointer; (7) `lua-creation-setup/SKILL.md:255-257` T-106 task ID citation removed; (8) `render-debug-loop/SKILL.md:122-125` forward-ref to PR #433 removed
   - **Issue:** #829
@@ -360,7 +348,7 @@ Avoid:
   - **ID:** T-247
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-247-bash-rule-violations
   - **Blocked by:** (none)
   - **Acceptance:** (1) `polish-checkpoint/SKILL.md:74` `git diff --stat && git diff` replaced with two separate Bash tool calls or Read/Glob equivalent; (2) `backend-parity/SKILL.md:158-160` `diff <(ls ...) <(ls ...)` replaced with single-command or Glob-based form; (3) `backend-parity/SKILL.md:254,260` raw `cmake --build ... -j$(nproc)` replaced with `fleet-build` (coordinate with T-235)
   - **Issue:** #830
@@ -371,7 +359,7 @@ Avoid:
   - **ID:** T-248
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-248-trim-antipatterns-restating
   - **Blocked by:** (none)
   - **Acceptance:** (1) each of the 6 affected skills has ≤2 non-obvious anti-patterns; (2) duplicates of flow-step requirements removed from: `backend-parity/SKILL.md`, `start-next-task/SKILL.md:352-387`, `attach-screenshots/SKILL.md`, `polish-checkpoint/SKILL.md:177-189`, `commit-and-push/SKILL.md:448-464`, `review-pr/SKILL.md:495-505`
   - **Issue:** #831
@@ -382,7 +370,7 @@ Avoid:
   - **ID:** T-249
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-249-pipeline-ordering-canonical
   - **Blocked by:** (none)
   - **Acceptance:** (1) canonical pipeline-ordering paragraph lives in `engine/system/CLAUDE.md` (or `engine/CLAUDE.md`); (2) `ecs-prefab-creator/SKILL.md:189-196`, `create-creation/SKILL.md:172-181`, `midi-scene-creator/SKILL.md:80-91` each reference the canonical doc instead of restating
   - **Issue:** #832
@@ -404,7 +392,7 @@ Avoid:
   - **ID:** T-251
   - **Area:** docs, engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-251-math-claude-md-catalogs
   - **Blocked by:** (none)
   - **Acceptance:** (1) `L37-95` sections (Layout helpers, Color, Physics, Quaternions, Random) each compressed to ≤3-line gotcha paragraph; (2) `L8-12` GLM alias rule trimmed to one sentence + pointer to CLAUDE-BASELINE + cpp-math.md; (3) iso-equations in `L14-36` — pick one canonical home (engine/math/CLAUDE.md) and delete the duplicate from `.claude/rules/cpp-math.md` (or vice versa); (4) PlaneIso axis-swap, SMOOTH mode position-multiplier, and IREasingFunctions gotchas preserved
   - **Issue:** #834
@@ -668,6 +656,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-212** — editor F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset) · Owner: claude/T-212-symmetry-modes · PR: https://github.com/jakildev/IrredenEngine/pull/794
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
 - [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
 - [x] **T-235** — docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md · Owner: claude/T-235-build-snippets · PR: https://github.com/jakildev/IrredenEngine/pull/876
@@ -687,4 +676,3 @@ Avoid:
 - [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
 - [x] **T-223** — docs: audit CLAUDE.md files — baseline drift, dead pointers, slop · Owner: claude/T-223-claude-md-audit · PR: https://github.com/jakildev/IrredenEngine/pull/806
 - [x] **T-222** — docs audit of SKILL.md files — shared protocols + point-don't-dump · Owner: claude/T-222-skills-audit · PR: https://github.com/jakildev/IrredenEngine/pull/804
-- [x] **T-220** — entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls · Owner: claude/T-220-dedup-field-registry · PR: https://github.com/jakildev/IrredenEngine/pull/799
