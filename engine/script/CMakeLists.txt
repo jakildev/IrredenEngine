@@ -35,13 +35,14 @@ target_link_libraries(
 )
 # Prefab headers (component_shape_descriptor, voxel_pool_api) transitively
 # include lightweight render headers (active_canvas.hpp, lod_level.hpp,
-# ir_render.hpp). The include path is made available here without a full
-# library link — IrredenEngineRendering's symbols are resolved at final
-# executable link time through IrredenEngineWorld / IrredenEngine.
+# ir_render.hpp). The include path is pulled via generator expression so
+# it tracks IrredenEngineRendering's INTERFACE_INCLUDE_DIRECTORIES
+# automatically — no full library link; symbols resolve at final executable
+# link time through IrredenEngineWorld / IrredenEngine.
 # See #739 (T-201) and T-207 for the layering plan.
 target_include_directories(
     IrredenEngineScripting PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../render/include
+    $<TARGET_PROPERTY:IrredenEngineRendering,INTERFACE_INCLUDE_DIRECTORIES>
 )
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
