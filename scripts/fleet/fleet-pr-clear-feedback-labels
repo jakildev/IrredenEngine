@@ -30,7 +30,7 @@
 #   --repo <slug>     Target repo (e.g. jakildev/IrredenEngine). Default:
 #                     the current git remote.
 #   --labels <csv>    Comma-separated label set to clear. Default:
-#                     the worker AMEND set.
+#                     the AMEND trigger set.
 #
 # Exit status:
 #   0  every label in --labels that was present has been removed
