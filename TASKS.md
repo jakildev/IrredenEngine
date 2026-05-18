@@ -311,11 +311,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). S — one file but needs callback-path verification before fixing. C_HitboxRect and C_HitboxCircle live under `engine/prefabs/irreden/update/components/`.
   - **Links:**
 
-- [ ] **docs: small modules — delete inline directory trees from CLAUDE.md files** — remove 5 ASCII directory-tree blocks that violate CLAUDE-BASELINE §"Do NOT include: File/directory tree listings"
+- [~] **docs: small modules — delete inline directory trees from CLAUDE.md files** — remove 5 ASCII directory-tree blocks that violate CLAUDE-BASELINE §"Do NOT include: File/directory tree listings"
   - **ID:** T-256
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `CLAUDE.md:71-82` root ASCII tree deleted; (2) `engine/CLAUDE.md:20-44` layer-map ASCII tree deleted (keep surrounding prose); (3) `engine/common/CLAUDE.md:38-46` internal-layout tree deleted (keep "header-only, no src/" note); (4) `engine/utility/CLAUDE.md:27-33` ASCII tree deleted entirely; (5) `engine/profile/CLAUDE.md:54-64` internal-layout section deleted (already proven stale — omits profile_report.hpp)
   - **Issue:** #840
