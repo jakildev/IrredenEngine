@@ -312,11 +312,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.17, §2 inventory row). Size M. All four sections list names that are grep-discoverable in the code.
   - **Links:**
 
-- [ ] **docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections** — remove boilerplate intro paragraphs and trigger restatements from 9+ SKILL.md files
+- [~] **docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections** — remove boilerplate intro paragraphs and trigger restatements from 9+ SKILL.md files
   - **ID:** T-243
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) all affected SKILL.md files follow: front-matter → one-sentence body intro → Flow; (2) "When to invoke" sections that restate front-matter `description:` trigger phrases removed from: `simplify:25-38`, `review-pr:23-31`, `commit-and-push:22-28`, `polish-checkpoint:26-35,50-55`, `optimize:42-68`, `backend-parity:37-50`, `start-next-task:46-70`, `attach-screenshots:25-39`, `request-re-review:17-29`, `lua-creation-setup:13-25`; (3) "Why this exists" sections paraphrasing the description removed from the same files
   - **Issue:** #826
