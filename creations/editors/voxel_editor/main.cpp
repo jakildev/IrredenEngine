@@ -144,6 +144,7 @@ constexpr std::size_t kUndoStrokeReserve = 1024;
 // undo stack, and the in-flight stroke buffer.
 struct EditorState {
     std::vector<IREntity::EntityId> paletteSwatches_;
+    IREntity::EntityId palettePanel_ = IREntity::kNullEntity;
     int activeSwatchIdx_ = 0;
     // Saved at scene creation for the future save-load / serialization
     // pass; runtime place/erase resolves the target set via the picker
@@ -378,12 +379,18 @@ void initSystems() {
             // doesn't fire under a swatch. Widget hover state is
             // populated by HITBOX_MOUSE_TEST_GUI earlier in this
             // pipeline tick.
-            bool overWidget = false;
-            const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
-            for (int i = 0; i < n; ++i) {
-                if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
-                    overWidget = true;
-                    break;
+            // Panel hitbox covers the whole palette dock; check it first
+            // so clicks on the background (title bar, label gap, padding)
+            // are suppressed without iterating the swatch list.
+            bool overWidget =
+                IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_);
+            if (!overWidget) {
+                const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
+                for (int i = 0; i < n; ++i) {
+                    if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
+                        overWidget = true;
+                        break;
+                    }
                 }
             }
 
@@ -718,7 +725,11 @@ void initEntities() {
     constexpr int kSwatchOriginY = kPanelPos.y + 48;
     constexpr int kGridCols = 4;
 
-    IRPrefab::Widget::makePanel(kPanelPos, kPanelSize, "PALETTE");
+    g_editor.palettePanel_ = IRPrefab::Widget::makePanel(kPanelPos, kPanelSize, "PALETTE");
+    // makePanel skips C_HitBox2DGui so it doesn't consume mouse hover. Add it
+    // manually so clicks on the panel background (title bar, label gap, padding)
+    // are blocked from falling through to the scene picker.
+    IREntity::setComponent(g_editor.palettePanel_, IRComponents::C_HitBox2DGui{kPanelSize});
     IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 12, kPanelPos.y + 36), "CLICK A SWATCH");
 
     g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
