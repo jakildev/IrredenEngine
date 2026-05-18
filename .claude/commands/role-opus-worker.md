@@ -47,24 +47,9 @@ file, what stays direct — lives in
 
 ## Exit protocol
 
-You are a transient one-shot `claude --print` invocation,
-dispatched into a tmux pane that's otherwise sitting at a bash
-prompt. When your iteration finishes, **stop emitting tool calls
-and produce a final text response** — `claude --print` then exits
-naturally, the pane returns to bash, and `fleet-dispatcher` fires
-a fresh invocation on scout's next trigger.
-
-Do NOT loop, do NOT call `fleet-babysit`, do NOT keep emitting
-tool calls hoping the iteration will be re-entered. The iteration
-is done when you stop producing turns.
-
-Older role-doc revisions suggested `bash -c 'kill -TERM $PPID'`
-to terminate immediately. The auto-mode classifier now blocks
-that command (it reads as "agent attempting to terminate its
-controlling session"), so the explicit-kill path no longer
-applies. Ending your turn cleanly without further tool calls is
-the correct exit; the natural-exit pause is at most a few
-seconds and doesn't change anything load-bearing.
+See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
+— transient one-shot, natural-exit on the final turn, no looping, no
+`kill -TERM $PPID`.
 
 ## Responsibilities
 
@@ -165,8 +150,9 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
    and read individual entries with
    `git -C <repo> show origin/master:.fleet/plans/<file>`.
-   Do NOT use `git checkout origin/master -- ...` — it stages the
-   files and breaks later `git checkout -b`.
+   See [docs/agents/FLEET-RUNTIME.md § Plan-file Read pattern](../../docs/agents/FLEET-RUNTIME.md#plan-file-read-pattern-workers-only)
+   for the rationale (the `git checkout origin/master -- ...` form
+   stages files and breaks later `git checkout -b`).
 4. Review both queues from the `tasks.open[]` arrays you just
    loaded; cross-check the `prs[]` arrays for what is already
    in flight under another agent (the live "is this task already
@@ -191,39 +177,18 @@ reading right now.
 
 Do the work, then exit cleanly:
 
-0. **Heartbeat** — signal to the witness monitor that this agent is alive.
-   Your agent name is your worktree basename (`opus-worker-1` or `opus-worker-2`,
-   from `pwd` output at startup). Call the helper with that name:
-   `fleet-heartbeat <your-worktree-basename>`
-   (Replace `<your-worktree-basename>` with your actual basename — e.g.
-   `fleet-heartbeat opus-worker-2` if that is your worktree. Do not
-   hardcode `opus-worker-1`. The helper wraps a `touch
-   ~/.fleet/heartbeats/<role>`; we route through the wrapper to avoid
-   the path-scope prompt that fires on the raw `touch ~/...` form.)
-   Also re-run `fleet-heartbeat <your-worktree-basename>` before
-   fleet-build, optimize, simplify, and commit-and-push so the witness
-   doesn't false-alarm during long builds or PR flows (threshold is
-   30 minutes per iteration).
+0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
+   Your worktree basename (`opus-worker-1` or `opus-worker-2`, from
+   `pwd` at startup) is the helper argument. Re-touch before
+   `fleet-build`, `optimize`, `simplify`, and `commit-and-push`.
 
-0.5. **Check for a worktree reservation.** See whether a prior iteration
-   reserved this worktree for an interrupted task:
-   `fleet-claim reservation-of <your-worktree-basename>`
-
-   - **Empty output** — no reservation; proceed normally (step 1 onward).
-   - **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
-     reserved for an in-flight task from a previous interrupted iteration.
-     Read the reserved branch and check it out:
-     Use the **Read tool** to read
-     `~/.fleet/reservations/<your-worktree-basename>.json`
-     and extract the `branch` field from the JSON. Then:
-     `git checkout <branch>`
-     (No-op if the branch is already checked out.) Run steps 1, 1b, and
-     2 normally — feedback, smoke, and `fleet:needs-plan` planning are
-     still your responsibility. **At step 3**, skip task pickup: the
-     reserved task IS your task. Record the reserved task ID, skip steps
-     3–4 (pickup and claim — already done), and jump directly to step 5
-     (read the plan file) with the reserved task ID. The PR from the
-     previous iteration is still open; do NOT open a new one.
+0.5. **Reservation check.** See [docs/agents/FLEET-RUNTIME.md § Reservation check](../../docs/agents/FLEET-RUNTIME.md#reservation-check--step-05-workers-and-authors-only).
+   If `fleet-claim reservation-of <your-worktree-basename>` returns a
+   `T-NNN`, run steps 1, 1b, and 2 normally (feedback, smoke,
+   `fleet:needs-plan` planning still apply), then skip task pickup at
+   step 3, skip the claim at step 4, and jump directly to **step 5
+   (read the plan file)** with the reserved task ID. The PR from the
+   previous iteration is still open; do NOT open a new one.
 
 1. **Check for feedback labels on open PRs across both repos.**
    Re-Read `~/.fleet/state/state.json` if its contents are no
@@ -1131,29 +1096,15 @@ Do the work, then exit cleanly:
     ```
     Paste the PR URL.
 
-12. **Reset.** Before resetting, write a per-iteration summary:
+12. **Reset.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
+    Summary template:
     `fleet-iteration-summary <your-worktree-basename> "T-NNN: <task title>. PR: #<N>. <Snags if any — under 100 words.>"`
-    **Do NOT use backticks in the summary text.** Your bash shell
-    evaluates backticks within double-quoted args as command
-    substitution — `` `something` `` will be run as a command, fail,
-    and silently strip from the saved summary. Write technical
-    references in plain prose.
-
-    **Then release the reservation BEFORE resetting** so the next
-    iteration on this pane doesn't try to resume the just-completed
-    task: `fleet-claim release-worktree <your-worktree-basename>`.
-    Order matters — release before scratch-reset means an
-    interruption between the two leaves the worktree in a known
-    "free" state, not pinned to dead work. (#521)
-
-    Then use the `start-next-task` skill to land on a fresh
-    branch off `origin/master` in the **current cwd's repo** (engine
-    if you didn't cd; game if you did). Print
-    `[opus-worker] Iteration complete. Will re-fire on next dispatcher trigger.`
-    Then exit cleanly. fleet-dispatcher launches a fresh `claude` for
-    this role when the scout's projection sees new actionable state —
-    the new process lands cwd back in the engine worktree, so the
-    next iteration starts from a clean slate.
+    Then `fleet-claim release-worktree <your-worktree-basename>`
+    (release BEFORE the scratch reset, per #521), then `start-next-task`
+    in the current cwd's repo (engine if you didn't cd; game if you did).
+    Print `[opus-worker] Iteration complete. Will re-fire on next dispatcher trigger.`
+    and exit cleanly. The next iteration's fresh process lands cwd back
+    in the engine worktree.
 
 ## Mode behavior
 
