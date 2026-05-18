@@ -322,11 +322,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.14, §2.2, §3.4). Broken anchor exists in role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md, role-merger.md, role-opus-reviewer.md, role-sonnet-reviewer.md — role-queue-manager.md says "see CLAUDE-BASELINE.md above" (also misleading).
   - **Links:**
 
-- [ ] **docs/roles: invert Engine API removal rule citation (baseline owns it)** — make CLAUDE-BASELINE.md the canonical home for the Engine API removal rule; collapse role-file copies to pointers
+- [~] **docs/roles: invert Engine API removal rule citation (baseline owns it)** — make CLAUDE-BASELINE.md the canonical home for the Engine API removal rule; collapse role-file copies to pointers
   - **ID:** T-266
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `CLAUDE-BASELINE.md:282-290` expanded to full canonical Engine API removal rule (the version currently in the role docs); downstream citation dropped; (2) `role-opus-worker.md:86-99` and `role-opus-architect.md:53-66` each collapsed to 2-line pointer at CLAUDE-BASELINE.md § Engine API removal rule; (3) net -13 lines
   - **Issue:** #867
