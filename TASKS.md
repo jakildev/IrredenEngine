@@ -232,11 +232,11 @@ Avoid:
   - **Notes:** Epic B (#935) foundation task — blocks B1, B2, B5 (and indirectly E2). Base of Stack S-B-render (B0 → B1 → B2 → B5); downstream tasks branch from this PR's head, not master. GPU timer queries use pool to avoid sync stalls; results read 1 frame later. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B0".
   - **Links:**
 
-- [ ] **asset: .vxs DENSE-RLE chunk variant (B3)** — new `VOXR_RLE` chunk tag in .vxs format; RLE encoding reduces hollow 64³ voxel set to ~10% of DENSE chunk size
+- [~] **asset: .vxs DENSE-RLE chunk variant (B3)** — new `VOXR_RLE` chunk tag in .vxs format; RLE encoding reduces hollow 64³ voxel set to ~10% of DENSE chunk size
   - **ID:** T-276
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) hollow 64³ voxel set saves at ~10% of DENSE chunk size; (2) round-trip unit tests in `engine/asset/tests/` cover empty/full/hollow/striped cases; (3) format extensibility rules verified: old loader skips new chunk silently, new loader prefers RLE; (4) `engine/asset/CLAUDE.md` documents the new chunk tag; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #940
