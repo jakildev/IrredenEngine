@@ -355,11 +355,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §3.2). Highest-priority semantic question in the T-221 cleanup set — a real correctness concern, not just dedup. fleet:awaiting-base appears in role-merger.md only; fleet:awaiting-upstream-review is in FLEET.md label dictionary and reviewer roles, but not the merger.
   - **Links:**
 
-- [ ] **docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect** — fix known non-atomic label removal bug; drop spurious fleet:human-deferred removal in AMEND path
+- [~] **docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect** — fix known non-atomic label removal bug; drop spurious fleet:human-deferred removal in AMEND path
   - **ID:** T-269
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-sonnet-author.md:261` raw label chain replaced with `fleet-pr-clear-feedback-labels <N>` call; (2) `role-opus-architect.md:185-186` same swap; (3) unconditional `fleet:human-deferred` removal in sonnet-author AMEND path removed (AMEND path triggers on human:needs-fix/human:blocker, not fleet:human-deferred); (4) known non-atomic failure mode can no longer recur in these two roles
   - **Issue:** #870
