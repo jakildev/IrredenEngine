@@ -151,103 +151,10 @@ raw stdout/printf in non-debug code is a cleanup target.
 
 ### 2c. Serialized-struct version-bump check
 
-When a struct annotated `// IRAsset: serialized` gains, loses, or renames a
-field, the matching `kSaveVersion` constant must be bumped in the same diff
-and a migration entry must exist (or be flagged as a `// TODO: migration`
-comment) in the format's reader. This is Save Format Extensibility Rule #3
-(`engine/asset/CLAUDE.md`).
-
-Run this check whenever any `.hpp` or `.cpp` file under `engine/asset/`,
-`engine/prefabs/irreden/voxel/`, or `engine/world/` is in the diff.
-
-**Detection:**
-
-1. Scan the diff's `+` lines for struct fields (member variable declarations)
-   inside a struct body whose `struct <Name>` declaration is preceded **on
-   the immediately prior line** by the comment `// IRAsset: serialized`.
-   The annotation must be on the line directly above `struct <Name>` — an
-   annotation elsewhere in the file does not apply to subsequent structs.
-
-2. For each struct type whose field layout changed (added/removed/renamed
-   field on a `+` or `-` line), check whether the diff also contains a
-   corresponding `kSaveVersion` change on a `+` line in the same file (or a
-   sibling sidecar file for the format):
-
-   ```
-   static constexpr uint16_t kSaveVersion = N;
-   ```
-
-3. If the field layout changed but no `kSaveVersion` bump appears in the
-   diff, emit a finding — **do not auto-fix**, this needs human judgment:
-
-   ```
-   reported 1 finding for review:
-     - <path>:<line> — <StructName> is annotated // IRAsset: serialized and
-       its field layout changed, but kSaveVersion was not bumped.
-       Add `static constexpr uint16_t kSaveVersion = N+1;` and a migration
-       entry in the format's reader for saves written at the old version.
-   ```
-
-**False-positive guard — do NOT flag:**
-- Changes to method bodies, constructors, or `static` helper functions within
-  the struct (these do not affect binary layout).
-- A struct whose `// IRAsset: serialized` annotation was itself added in the
-  same diff — version 1 never needs a migration.
-- Changes to the `kSaveVersion` line itself.
-- Changes that only touch comments or whitespace inside the struct.
-
-**Detection extension — unannotated serialized structs:**
-
-The version-bump check above protects structs that are *already* annotated.
-A second class of bug is structs whose fields are individually serialized
-but which lack the `// IRAsset: serialized` annotation entirely — the
-version-bump check then never fires, even on layout changes that need a
-migration. `ShapeRecord` (`engine/asset/include/irreden/asset/voxel_set_format.hpp`)
-shipped in T-168 / T-170 without the annotation despite each of its
-fields being individually written and read by the format's chunk
-handlers; the gap stayed invisible until an audit pass surfaced it.
-
-Run this additional check in the same scope as the version-bump check
-(diff in `engine/asset/`, `engine/prefabs/irreden/voxel/`, or
-`engine/world/`):
-
-1. Scan the diff's `+` lines for any sequence of two or more
-   `<writer>.write*(<expr>.<field>_)` calls where `<expr>` is a
-   reference to a struct instance and `<field>_` is a public member.
-   Likewise for `<reader>.read*` paired with assignment back to
-   `<expr>.<field>_`. Two-or-more is the heuristic for "this struct
-   is being serialized field-by-field" rather than "one field of a
-   struct happens to be written."
-
-2. For each struct type touched this way, resolve its declaration
-   (same file or sibling header) and check whether the declaration
-   is preceded by `// IRAsset: serialized` on the immediately prior
-   line per the annotation rule.
-
-3. If the struct is serialized field-by-field and lacks the
-   annotation, emit a finding — **do not auto-fix**, the annotation
-   carries a `kSaveVersion` constant whose initial value is a human
-   call:
-
-   ```
-   reported 1 finding for review:
-     - <header-path>:<line> — <StructName> is serialized field-by-field
-       by <function-path>:<line> but lacks the `// IRAsset: serialized`
-       annotation. Add the comment line directly above the struct
-       declaration plus a `static constexpr uint16_t kSaveVersion = 1;`
-       member so the version-bump check (Rule #3) covers future changes.
-   ```
-
-**False-positive guard for the extension — do NOT flag:**
-- Structs that only carry transient binary I/O state (`BinaryStatus`,
-  `LoadedChunk`, `ChunkPayload`, `Result<T>`). These pass through
-  format code without being the format's persisted record.
-- Structs declared in `engine/asset/include/irreden/asset/binary_io.hpp`
-  or `chunk_header.hpp` — framework types, not format records.
-- Cases where the writer/reader calls operate on a temporary or a
-  function-local variable that doesn't correspond to a named struct
-  type. The "this is the format's record" heuristic requires a
-  resolvable struct type.
+See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
+detection policy, false-positive guards, and the detection extension for
+unannotated serialized structs. Trigger scope: any `.hpp` or `.cpp` under
+`engine/asset/`, `engine/prefabs/irreden/voxel/`, or `engine/world/`.
 
 ### 3. Naming convention slips
 
