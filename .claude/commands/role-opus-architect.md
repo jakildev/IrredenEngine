@@ -12,27 +12,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
-Violating these blocks unattended operation with interactive
-prompts.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-The architect doesn't have a dedicated per-role projection (it's
-interactive, not loop-driven). Read `~/.fleet/state/state.json`
-for the open-PR list, `fleet:design-blocked` PRs, feedback-label
-PRs, and parsed `TASKS.md`. Filter `repos.engine.prs[]` locally
-on labels.
-
-Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
-`fleet-issue view <N>`. Writes (`gh pr edit`, `gh pr comment`,
-`gh issue create`, `gh issue edit`) stay direct.
-
-Full cache protocol — staleness rules, layout of every cache
-file, what stays direct — lives in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Responsibilities
 

@@ -217,6 +217,10 @@ Read/Glob/Grep tools instead of Bash when possible.
 - **No `git show ref:file | sed/head/tail`** — run `git show ref:file`
   alone, or use `git -C <path> log`/`git -C <path> diff` with
   appropriate flags instead of piping.
+- **Body files for `--body-file`** — write them to a worktree-local path
+  (e.g. `.review-body.md`, `.merger-body.md`) via the **Write** tool,
+  not `/tmp/`; run `rm -f <path>` first if a prior session may have
+  left the file behind.
 
 This rule exists because the user-level allowlist (`~/.claude/settings.json`)
 matches on the first token of each Bash command. A compound command like

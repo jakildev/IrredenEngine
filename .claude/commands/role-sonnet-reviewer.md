@@ -12,36 +12,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
-Violating these blocks unattended operation with interactive
-prompts.
-
-Role-specific: when posting a PR review with `gh pr review
---body-file`, write the body via the **Write** tool to a worktree-
-local path (e.g. `.review-body.md`), not `/tmp/`. First run
-`rm -f .review-body.md` so the Write tool doesn't refuse with
-"File has not been read yet" (that error fires when an existing
-file at the path wasn't Read in this session — typical when a
-previous iteration left the body file behind).
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-Read your pre-filtered slice at
-`~/.fleet/state/projections/sonnet-reviewer.json` — `candidate_prs`
-(open PRs across both repos with the review-skip filter already
-applied). ~5 KB vs. ~32 KB for full `state.json`. Fall back to
-`state.json` only when you need a PR not in your candidate list
-(e.g. looking up an upstream PR by `headRefName` for stack
-detection).
-
-Per-item drill-ins use `fleet-pr view|diff|comments <N>`. Writes
-(`gh pr review`, `gh pr comment`, `gh pr edit`) stay direct.
-
-Full cache protocol — staleness rules, layout of every cache
-file, what stays direct — lives in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Exit protocol
 
@@ -66,15 +41,7 @@ treat it as a hard rule for this role.
 0. Print your role banner:
    `[sonnet-reviewer] First-pass PR reviewer — polls for unreviewed PRs, posts structured reviews, flags Opus escalations. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
-2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
-   (written once by `fleet-up` at startup). Use the `engine` field
-   for `<engine-repo>` and the `game` field (when present) for
-   `<game-repo>`. If `game` is absent, skip all game-repo steps.
-   If the cache file is missing, fall back to `gh repo view --json
-   nameWithOwner --jq .nameWithOwner` for engine and `git -C
-   ~/src/IrredenEngine/creations/game remote get-url origin` for
-   game. If the game-side fallback fails (directory absent), treat
-   as no game repo and skip all game-repo steps.
+2. **Discover repo slugs** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 3. Confirm you are on the throwaway branch:
    `git branch --show-current` should report something like
    `claude/sonnet-reviewer-scratch`. If not, run these two commands

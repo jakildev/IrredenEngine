@@ -16,36 +16,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
-Violating these blocks unattended operation with interactive
-prompts.
-
-Role-specific: when posting a merger comment with `gh pr comment
---body-file`, write the body via the **Write** tool to a worktree-
-local path (`.merger-body.md`), not `/tmp/`. First run
-`rm -f .merger-body.md` so the Write tool doesn't refuse with
-"File has not been read yet" (that error fires when an existing
-file at the path wasn't Read in this session — typical when a
-previous iteration left the body file behind).
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-Read your pre-filtered slice at
-`~/.fleet/state/projections/merger.json` — `prs` (open engine PRs
-that are either `fleet:approved` or have a non-MERGEABLE state).
-~5 KB vs. ~32 KB for full `state.json`. Merger is engine-only;
-the slice ignores game.
-
-Per-item lookups stay direct: `gh pr view <N> --json mergeable`
-(UNKNOWN refresh — not in the wrapper), `git fetch`, `git rebase`,
-`gh pr comment`, `gh pr edit`. The wrappers are read-only and
-don't cover the conflict-resolution flow.
-
-Full cache protocol — staleness rules, layout of every cache
-file, what stays direct — lives in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Exit protocol
 
@@ -89,11 +64,7 @@ the cooldown label prevents an immediate retry.
 0. Print your role banner:
    `[merger] Auto-rebases stale PRs and sort-merges TASKS.md conflicts. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `merger` worktree.
-2. **Discover engine repo slug** by Read'ing `~/.fleet/state/repos.json`
-   (written once by `fleet-up` at startup). Use the `engine` field
-   for the `<engine-repo>` placeholder. If the cache file is
-   missing, fall back to `gh repo view --json nameWithOwner --jq
-   .nameWithOwner`.
+2. **Discover repo slug** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 3. Reset to the throwaway branch unconditionally — `-B` makes it
    idempotent. Run as two separate Bash calls:
    `git -C ~/src/IrredenEngine fetch origin --quiet`
