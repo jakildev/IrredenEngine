@@ -267,17 +267,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
   - **Links:**
 
-- [~] **docs: engine/audio + engine/video CLAUDE.md — remove dead pointers** — delete confirmed-absent component names from engine/video/CLAUDE.md and deduplicate engine/audio/CLAUDE.md key-components catalog
-  - **ID:** T-254
-  - **Area:** docs, engine/audio, engine/video
-  - **Model:** sonnet
-  - **Owner:** claude/T-254-audio-video-dead-refs
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/video/CLAUDE.md:87-89` refs to `C_FramebufferCapture`, `C_FramebufferOutputPosition`, `C_OutputResolution` removed or marked "(planned: not yet implemented)"; (2) `engine/video/CLAUDE.md:86-90` cleaned; (3) `engine/audio/CLAUDE.md:57` `C_AudioFile` dead ref removed or marked "(planned)"; (4) `engine/audio/CLAUDE.md:50-58` key-components catalog removed with pointer to `engine/prefabs/irreden/audio/CLAUDE.md`; (5) NOTE: `C_FramebufferCapture` in `engine/prefabs/irreden/video/CLAUDE.md` is valid and untouched
-  - **Issue:** #837
-  - **Notes:** From T-223 audit (audit-claude-md.md). S — 2 files, ~10 lines changed. The dead C_Framebuffer* names exist only in engine/video/CLAUDE.md; the live version is in the prefab subtree.
-  - **Links:**
-
 - [~] **docs: engine/input/CLAUDE.md — fix C_Hitbox2D dead reference** — replace dead C_Hitbox2D name with actual C_HitboxRect / C_HitboxCircle; verify callback-path consistency; consolidate Lua callback lifetime gotcha
   - **ID:** T-255
   - **Area:** docs, engine/input
@@ -348,7 +337,7 @@ Avoid:
   - **ID:** T-262
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-262-molecule-stacked-pr-hoist
   - **Blocked by:** (none)
   - **Acceptance:** (1) `FLEET.md` §"Stacked PRs" gains subsections covering fleet-claim molecule resume/advance/complete, stack-base, stack-set-pr, claim-base, and --stackable-on fallback; (2) `role-opus-worker.md:679-960` and `role-sonnet-author.md:448-664` collapse to ~40-line pointers each; (3) net -250 lines across the two roles
   - **Issue:** #863
@@ -480,6 +469,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-254** — docs: engine/audio + engine/video CLAUDE.md — remove dead pointers · Owner: claude/T-254-audio-video-dead-refs · PR: https://github.com/jakildev/IrredenEngine/pull/907
 - [x] **T-252** — docs: engine/prefabs/CLAUDE.md — de-dup vs cpp-ecs.md · Owner: claude/T-252-prefabs-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/904
 - [x] **T-253** — docs: engine/prefabs/irreden/ — prune name catalogs across subtree · Owner: claude/T-253-prefab-claude-md-prune · PR: https://github.com/jakildev/IrredenEngine/pull/903
 - [x] **T-251** — docs: engine/math/CLAUDE.md — collapse function-signature catalogs · Owner: claude/T-251-math-claude-md-catalogs · PR: https://github.com/jakildev/IrredenEngine/pull/902
@@ -499,4 +489,3 @@ Avoid:
 - [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
 - [x] **T-234** — docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref · Owner: claude/T-234-shrink-cross-repo-isolation · PR: https://github.com/jakildev/IrredenEngine/pull/879
 - [x] **T-235** — docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md · Owner: claude/T-235-build-snippets · PR: https://github.com/jakildev/IrredenEngine/pull/876
-- [x] **T-207** — script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt · Owner: claude/T-207-script-remove-render-link · PR: https://github.com/jakildev/IrredenEngine/pull/860
