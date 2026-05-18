@@ -187,17 +187,6 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
-  - **ID:** T-207
-  - **Area:** engine/script
-  - **Model:** sonnet
-  - **Owner:** claude/T-207-script-remove-render-link
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #755
-  - **Notes:** Closes #739 (T-201 as a whole) once this PR merges. T-189 (#729) re-added the render link as a temporary workaround; this PR removes it for good. Mandatory clean-configure build: PR #729 showed how easy it is to mask a build break with cached artifacts. Mechanical — just link-list edit + build validation.
-  - **Links:**
-
 - [~] **editor: F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset)** — three independent mirror toggles; each axis has an adjustable mirror-plane offset; mirrored placements fold into the same undo record as the source
   - **ID:** T-212
   - **Area:** creations/editors
@@ -323,11 +312,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.14, §1.11). Size S. Existing procedures/ pattern: cross-host-smoke.md, cursor-stack.md, rebase-guard.md.
   - **Links:**
 
-- [ ] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
+- [~] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
   - **ID:** T-240
   - **Area:** docs, engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-240-simplify-serialization-rule
   - **Blocked by:** (none)
   - **Acceptance:** (1) `simplify/SKILL.md:209-307` (~98 lines) moved to `engine/asset/CLAUDE.md` (or `.claude/rules/cpp-asset-versioning.md`); (2) simplify retains one line: "applies the asset version-bump check from <link>"; (3) rule content (heuristics + false-positive guards + output templates + unannotated-struct extension) preserved verbatim in the new location
   - **Issue:** #823
@@ -547,6 +536,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-207** — script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt · Owner: claude/T-207-script-remove-render-link · PR: https://github.com/jakildev/IrredenEngine/pull/860
 - [x] **T-233** — docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE · Owner: claude/T-233-drop-naming-table-copies · PR: https://github.com/jakildev/IrredenEngine/pull/859
 - [x] **T-221** — docs audit of role-*.md — shared protocols + point-don't-dump · Owner: claude/T-221-roles-audit · PR: https://github.com/jakildev/IrredenEngine/pull/857
 - [x] **T-211** — editor F-1.1 — place/erase + palette panel + undo stack · Owner: claude/T-211-place-erase-palette-undo · PR: https://github.com/jakildev/IrredenEngine/pull/785
@@ -566,4 +556,3 @@ Avoid:
 - [x] **T-219** — extend castVoxelRay to walk C_VoxelSetNew entities · Owner: claude/T-219-castvoxelray-voxel-sets · PR: https://github.com/jakildev/IrredenEngine/pull/795
 - [x] **T-218** — tooling: allow fleet agents to force-push claude/* branches · Owner: claude/T-218-force-push-allow · PR: https://github.com/jakildev/IrredenEngine/pull/789
 - [x] **T-199** — migrate COMPUTE_LIGHT_VOLUME reader to C_WorldTransform (step 1) · Owner: claude/T-199-step1-clean · PR: https://github.com/jakildev/IrredenEngine/pull/787
-- [x] **T-201** — split LodLevel header + migrate component_shape_descriptor IRRender:: aliases · Owner: claude/T-201-lod-level-shape-types-split · PR: https://github.com/jakildev/IrredenEngine/pull/786
