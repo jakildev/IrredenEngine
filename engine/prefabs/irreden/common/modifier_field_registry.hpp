@@ -28,6 +28,9 @@ class FieldRegistry {
     IRComponents::FieldBindingId registerField(
         const char *name, IRComponents::FieldValueType type = IRComponents::FieldValueType::SCALAR
     ) {
+        const auto existing = findFieldId(name);
+        if (existing != IRComponents::kInvalidFieldId)
+            return existing;
         const auto id = static_cast<IRComponents::FieldBindingId>(m_names.size());
         m_names.push_back(name);
         m_types.push_back(type);

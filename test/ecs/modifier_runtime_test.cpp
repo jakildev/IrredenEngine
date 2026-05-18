@@ -63,6 +63,43 @@ TEST(ModifierRegistry, GlobalSingletonIsStable) {
     EXPECT_EQ(&r1, &r2);
 }
 
+TEST(ModifierRegistry, RegisterDedupReturnsSameId) {
+    FieldRegistry registry;
+    auto id1 = registry.registerField("foo");
+    auto id2 = registry.registerField("foo");
+    EXPECT_EQ(id1, id2);
+    EXPECT_NE(id1, IRComponents::kInvalidFieldId);
+}
+
+TEST(ModifierRegistry, RegisterDedupFieldCountDoesNotGrow) {
+    FieldRegistry registry;
+    registry.registerField("x");
+    EXPECT_EQ(registry.fieldCount(), 1u);
+    registry.registerField("x");
+    EXPECT_EQ(registry.fieldCount(), 1u);
+}
+
+TEST(ModifierRegistry, RegisterVec3DedupReturnsSameId) {
+    FieldRegistry registry;
+    auto id1 = registry.registerFieldVec3("transform.translation");
+    auto id2 = registry.registerFieldVec3("transform.translation");
+    EXPECT_EQ(id1, id2);
+    EXPECT_NE(id1, IRComponents::kInvalidFieldId);
+}
+
+TEST(ModifierRegistry, GlobalRegistryIdStableAcrossReinit) {
+    // Simulates two World constructions: the static globalFieldRegistry()
+    // persists across EntityManager teardown/reconstruct, so re-registering
+    // the same name must return the same FieldBindingId rather than
+    // appending a fresh entry.
+    auto id1 =
+        globalFieldRegistry().registerField("test.dedup_across_world_restarts");
+    auto id2 =
+        globalFieldRegistry().registerField("test.dedup_across_world_restarts");
+    EXPECT_EQ(id1, id2);
+    EXPECT_NE(id1, IRComponents::kInvalidFieldId);
+}
+
 // ---- Compose: structured transforms ---------------------------------------
 
 namespace {
