@@ -334,11 +334,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.19, §4.6). XS mechanical change. Engine CLAUDE.md and baseline already avoid emoji; SKILL.md files should follow the same convention.
   - **Links:**
 
-- [ ] **docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating** — reduce request-re-review/SKILL.md to the parts only it owns; invoke the other two skills by reference
+- [~] **docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating** — reduce request-re-review/SKILL.md to the parts only it owns; invoke the other two skills by reference
   - **ID:** T-245
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `request-re-review/SKILL.md:53-69` staging-discipline subset replaced with "invoke commit-and-push"; (2) `request-re-review/SKILL.md:87-99` branch-release subset replaced with "invoke start-next-task"; (3) skill retains only: trigger discipline, the label swap (remove `human:needs-fix`, add `fleet:changes-made`), and composition instructions
   - **Issue:** #828
