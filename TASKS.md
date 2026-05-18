@@ -287,11 +287,11 @@ Avoid:
   - **Notes:** Epic E (#938) foundation task — base of Stack S-E-stream (E0 → E1 → E2 → E3 → E4) and S-E-persist (E1 → E6); blocks all of E1–E6. Survey anchors: `kChunkSize` at `engine/common/include/irreden/ir_constants.hpp:19`, `C_ChunkVisibleThisFrame` at `engine/prefabs/irreden/common/components/component_tags_all.hpp:7`, render-side chunking in voxel pool / visibility compaction, `kWorldBoundMax`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E0".
   - **Links:**
 
-- [ ] **render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1)** — enumerate every site using `C_ShapeDescriptor` as a primary entity (vs. lighting blocker or special effect); write audit doc with concrete restriction-feasibility recommendation
+- [~] **render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1)** — enumerate every site using `C_ShapeDescriptor` as a primary entity (vs. lighting blocker or special effect); write audit doc with concrete restriction-feasibility recommendation
   - **ID:** T-281
   - **Area:** engine/render, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/design/sdf-runtime-audit.md` lists every site using `C_ShapeDescriptor` as a primary entity across all demos, creations, and tests; (2) for each site, notes the use case (primary shape vs. lighting blocker vs. special effect); (3) concrete recommendation for restriction shape (effects-only feasibility + migration cost estimate); (4) no code changes
   - **Issue:** #945
