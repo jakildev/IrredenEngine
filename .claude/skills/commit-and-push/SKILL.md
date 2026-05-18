@@ -46,7 +46,7 @@ This skill has three modes. Detect at the start of the flow, in priority order:
 2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base` git config set (written by `start-next-task` when the human cued stacking). PRs target the parent branch instead of `master`. See [`procedures/cursor-stack.md`](procedures/cursor-stack.md) for the detection check, the `Stacked on:` body line, and the macOS sandbox note.
 3. **Single-PR mode (default)** — neither stack signal present. Proceed with the standard flow below.
 
-The two stack modes are mutually exclusive. In single-PR mode, ignore the procedures/ files and follow the Flow as written.
+The two stack modes are mutually exclusive. In single-PR mode, ignore `procedures/fleet-stack.md` and `procedures/cursor-stack.md`; `procedures/pr-body.md` still applies for the step 8 body template.
 
 ## Flow
 
@@ -228,30 +228,25 @@ plain `git push` works.
 
 ### 8. Open the PR
 
-Use `gh pr create`. For the single-PR flow, target is `master`. Pass the
-body via HEREDOC so the Markdown renders correctly:
+Use `gh pr create`. Body template per mode: [`procedures/pr-body.md`](procedures/pr-body.md).
+
+For the **single-PR flow** (default), target is `master`:
 
 ```bash
-gh pr create --base master --title "render: match cpu/gpu iso culling bounds" --body "$(cat <<'EOF'
+gh pr create --base master --title "<scope>: <title>" --body "$(cat <<'EOF'
 ## Summary
-- Stage-1 compute vs cpu iso culling bounds were out of sync; fixed.
-- Now both paths use the trixel-offset-corrected camera pos.
+- <bullet>
 
 ## Test plan
-- [ ] `IRShapeDebug` renders without left-edge culling pop at zoom ≥ 2
-- [ ] `render-debug-loop` screenshots diff-clean against baseline
-
-## Notes for reviewer
-Check `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl` vs
-`engine/math/src/ir_math.cpp` `visibleIsoViewport`.
+- [ ] <check>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```
 
-Title should match the commit title when the PR is a single commit. For
-multi-commit PRs, use a broader title that covers the series.
+Title should match the commit title for a single commit; use a broader title
+for multi-commit PRs.
 
 **PR labels — `fleet:wip` (important):** For the **default Cursor /
 human-ready** single-PR open to `master`, **do not** pass
@@ -263,12 +258,13 @@ where appropriate — that is unrelated and still applies. The
 **Stack-aware** block still uses `fleet:wip` for stacked fleet-worker
 PRs; that is intentional for that workflow.
 
-**Stack-aware override:** when the current task is part of a
+**Fleet stack override:** when the current task is part of a
 `fleet-claim stack`, compute the base via `stack-base` and record the
 resulting PR via `stack-set-pr`. When `$base` is a feature branch
 (i.e. not `master`), also pass `--label "fleet:stacked"` so the merger
 can filter stacked PRs via label without an extra `gh pr view --json
-baseRefName` call per candidate:
+baseRefName` call per candidate. Body adds a `## Stack context` block —
+see [`procedures/pr-body.md`](procedures/pr-body.md) fleet stack mode:
 
 ```bash
 base=$(fleet-claim stack-base <agent> <task-id>)
@@ -279,38 +275,18 @@ fi
 pr_url=$(gh pr create --base "$base" \
     --title "T-<NNN>: <short title>" \
     --body "$(cat <<'EOF'
-## Summary
-- <what this task does>
-
-## Stack context
-This PR is part of a stack. Reviewers: review this PR on its own; the
-chain is coordinated in the PR body's "Stacked on" line.
-
-Stacked on: <previous PR URL, or "master" for the first PR>
-Full chain: T-<A>, T-<B>, T-<C>
-
-## Test plan
-- [ ] <task-specific checks>
-
-Closes #<issue-N>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+<fleet stack body — see procedures/pr-body.md fleet stack mode>
 EOF
 )" "${labels[@]}")
 fleet-claim stack-set-pr <agent> <task-id> "$(git branch --show-current)" "$pr_url"
 ```
 
-The `Stacked on:` line is the reviewer's primary signal that earlier
-PRs are prerequisites. The `Full chain:` line helps them find the
-siblings if they want cross-context. The merger reads `baseRefName`
-directly for correctness decisions; `fleet:stacked` is a derived
-convenience label for human visibility and cheap filtering.
-
 **Cursor stack override:** when the current branch has a
 `cursor-stack-base` git config set (see [`procedures/cursor-stack.md`](procedures/cursor-stack.md)
-for the detection rule and full deltas), use that as the PR base
-instead of `master`. No `fleet-claim` calls and no `fleet:stacked`
-label — cursor stack mode is human-managed.
+for the detection rule and full deltas), use that as the PR base instead of
+`master`. No `fleet-claim` calls and no `fleet:stacked` label. Body adds a
+`## Stack context` block — see [`procedures/pr-body.md`](procedures/pr-body.md)
+cursor stack mode:
 
 ```bash
 parent_branch=$(git config --get branch."$(git branch --show-current)".cursor-stack-base)
@@ -320,33 +296,12 @@ if [[ -n "$parent_branch" ]]; then
     parent_pr_ref="${parent_pr_url:-$parent_branch (no PR yet)}"
     gh pr create --base "$parent_branch" \
         --title "<scope>: <title>" \
-        --body "$(cat <<EOF
-## Summary
-- <what this slice does>
-
-## Stack context
-Stacked on: $parent_pr_ref
-
-When the parent PR merges, change this PR's base to \`master\`
-(via the GitHub UI or \`gh pr edit <N> --base master\`).
-
-## Test plan
-- [ ] <slice-specific checks>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+        --body "$(cat <<'EOF'
+<cursor stack body — see procedures/pr-body.md cursor stack mode; substitute $parent_pr_ref>
 EOF
 )"
 fi
 ```
-
-The `Stacked on:` line is the reviewer's signal that an earlier PR is
-a prerequisite. Cursor stack mode does not record a `Full chain:`
-line — chains are short and the link-walk via `Stacked on:` is
-sufficient.
-
-The `gh pr list --head` and `gh pr create` calls both need keychain
-access; on macOS Cursor's Bash sandbox, run them with `all`
-permissions.
 
 ### 8b. Tag the host the PR was authored on
 
