@@ -289,17 +289,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
   - **Links:**
 
-- [~] **docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers** — consolidate four duplicated procedure blocks from both reviewer roles into one shared protocol doc
-  - **ID:** T-261
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-261-reviewer-protocol
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/agents/REVIEWER-PROTOCOL.md` created covering: acquire/release review claim, stack awareness, verdict label-swap commands (approve/approve+nits/needs-fix/blocker), cross-host smoke tagging (or pointer to FLEET-CROSS-HOST-SMOKE.md), nits-vs-needs-fix bright line; (2) `role-opus-reviewer.md:180-341` and `role-sonnet-reviewer.md:176-385` listed duplicate blocks replaced with pointers; (3) reviewer roles cannot drift further on shared semantics; (4) net +100 lines overall (worth it — drift prevention)
-  - **Issue:** #862
-  - **Notes:** From T-221 role audit (audit-roles.md §1.2, §1.7, §1.8, §1.9). Stack-awareness, verdict label-swap, nits bright line, and review-claim acquire/release each appear in both reviewer files.
-  - **Links:**
-
 - [~] **docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md** — move molecule resume/advance/complete protocol and per-task stacked PR command sequence out of both authoring roles into FLEET.md §Stacked PRs
   - **ID:** T-262
   - **Area:** docs
@@ -436,6 +425,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-261** — docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers · Owner: claude/T-261-reviewer-protocol · PR: https://github.com/jakildev/IrredenEngine/pull/908
 - [x] **T-246** — docs/skills: sweep stale tooling/version refs · Owner: claude/T-246-sweep-stale-refs · PR: https://github.com/jakildev/IrredenEngine/pull/898
 - [x] **T-257** — docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup · Owner: claude/T-257-system-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/912
 - [x] **T-256** — docs: small modules — delete inline directory trees from CLAUDE.md files · Owner: claude/T-256-delete-dir-trees · PR: https://github.com/jakildev/IrredenEngine/pull/911
@@ -455,4 +445,3 @@ Avoid:
 - [x] **T-241** — docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only · Owner: claude/T-241-render-trixel-pipeline-rewrite · PR: https://github.com/jakildev/IrredenEngine/pull/888
 - [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
-- [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
