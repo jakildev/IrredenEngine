@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: sweep stale tooling/version refs flagged in audit-skills §4.2** — verify and fix 8 hardcoded refs that will rot: stale Opus stamp, dead doc path, personal username, task ID citation, PR forward-ref, unmerged-hedge, stale cmake command, stale live-deviations list
-  - **ID:** T-246
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-246-sweep-stale-refs
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `review-pr/SKILL.md:393` stale "Opus 4.6" stamp updated or removed; (2) `review-pr/SKILL.md:295-297` `cmake --build ... format-check` replaced with `fleet-build --target format-changed`; (3) `review-pr/SKILL.md:36` dead `docs/AGENT_FLEET_SETUP.md` pointer replaced with `docs/agents/FLEET.md`; (4) `backend-parity/SKILL.md:265-269` personal username (`C:/Users/evinj/...`) removed; (5) `simplify/SKILL.md:155-160` "IRMath::kPi may not be merged" hedge removed (verified merged); (6) `simplify/SKILL.md:189-200` hardcoded live-deviations file:line list removed or made grep-pointer; (7) `lua-creation-setup/SKILL.md:255-257` T-106 task ID citation removed; (8) `render-debug-loop/SKILL.md:122-125` forward-ref to PR #433 removed
-  - **Issue:** #829
-  - **Notes:** Follow-up from T-222 audit (§5.22, §4.2). Size S. Each ref must be verified against current codebase state before replacing.
-  - **Links:**
-
 - [~] **docs/skills: trim Anti-patterns sections that restate flow-step requirements** — remove redundant anti-pattern bullets from 6 SKILL.md files, keeping only non-obvious gotchas
   - **ID:** T-248
   - **Area:** docs
@@ -256,11 +245,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.24, §4.4). Size S. Guideline: keep only anti-patterns that would surprise a reader — things that aren't already obvious from reading the flow steps.
   - **Links:**
 
-- [~] **docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs** — remove dead directory reference, resolve placeholder task ID, and delete function-name and component-name catalog sections
+- [ ] **docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs** — remove dead directory reference, resolve placeholder task ID, and delete function-name and component-name catalog sections
   - **ID:** T-250
   - **Area:** docs, engine/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/render/CLAUDE.md:240` dead `engine/render/tests/render-baselines/` pointer fixed (point at real location or delete); (2) `L344` `T-09Y` placeholder resolved to real task ID or removed; (3) `L13-30` `IRRender::` function-name catalog removed; (4) `L119-131` `C_*` component catalog removed; (5) `L41-56` `C_GizmoHandle` per-field docs removed (belong in header); (6) `L137-143` shader naming prefix restatement trimmed to pointer to CLAUDE-BASELINE; (7) pipeline ASCII block at L254-268 preserved
   - **Issue:** #833
@@ -293,7 +282,7 @@ Avoid:
   - **ID:** T-259
   - **Area:** docs, engine/prefabs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-259-sqt-transition-notes
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/prefabs/irreden/common/CLAUDE.md:9-18` softened from "retired" to "in flight under T-199 — superseded by C_LocalTransform + C_WorldTransform when consumers migrate"; (2) `engine/prefabs/irreden/render/CLAUDE.md:42,48,209,213-218` code examples using C_Position3D get a one-line transition note pointing at T-199; (3) `engine/prefabs/CLAUDE.md:94-97` common/ section notes that both legacy and new SQT components coexist during T-199 migration; (4) engine/script/CLAUDE.md Lua examples left unchanged (addressed when T-199 lands the Lua-side migration)
   - **Issue:** #843
@@ -326,7 +315,7 @@ Avoid:
   - **ID:** T-264
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-264-cross-host-smoke-doc
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-CROSS-HOST-SMOKE.md` created covering: reviewer tagging (fleet:needs-<other-host>-smoke), author claiming, build/run/verdict, and explicit Sonnet-vs-Opus behavioral split (Sonnet defers visual judgment; Opus inspects screenshots and decides); (2) `role-opus-worker.md:438-502`, `role-sonnet-author.md:373-446`, `role-opus-reviewer.md:297-319`, `role-sonnet-reviewer.md:342-364` each collapse to ~5-line pointers; (3) net -20 lines overall
   - **Issue:** #865
@@ -337,7 +326,7 @@ Avoid:
   - **ID:** T-265
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-265-hoist-hard-rules
   - **Blocked by:** (none)
   - **Acceptance:** (1) `CLAUDE-BASELINE.md` gains `## Hard rules for autonomous fleet roles` covering all baseline prohibitions (never push master, never --force, never gh pr merge, never cmake --preset, never sudo/brew/apt, never touch .claude/worktrees/ layout); (2) every role file's Hard rules section collapses to 3-line pointer plus role-specific additions (e.g., merger's "never write merge commits"); (3) broken "(see CRITICAL section above)" in all seven role files fixed to point at CLAUDE-BASELINE.md § Bash tool rules; (4) net -150 lines across seven roles
   - **Issue:** #866
@@ -447,6 +436,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-246** — docs/skills: sweep stale tooling/version refs · Owner: claude/T-246-sweep-stale-refs · PR: https://github.com/jakildev/IrredenEngine/pull/898
 - [x] **T-257** — docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup · Owner: claude/T-257-system-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/912
 - [x] **T-256** — docs: small modules — delete inline directory trees from CLAUDE.md files · Owner: claude/T-256-delete-dir-trees · PR: https://github.com/jakildev/IrredenEngine/pull/911
 - [x] **T-254** — docs: engine/audio + engine/video CLAUDE.md — remove dead pointers · Owner: claude/T-254-audio-video-dead-refs · PR: https://github.com/jakildev/IrredenEngine/pull/907
@@ -466,4 +456,3 @@ Avoid:
 - [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
-- [x] **T-237** — docs/skills: shrink start-next-task cursor-stack-base coverage; defer mechanism to FLEET.md · Owner: claude/T-237-start-next-task-cursor-stack · PR: https://github.com/jakildev/IrredenEngine/pull/881
