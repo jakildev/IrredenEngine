@@ -109,8 +109,9 @@ Three concrete reasons for the `int16`-per-axis pack:
 - 64-bit key fits in an `unordered_map<ChunkKey, ...>` slot and a
   `std::atomic<uint64_t>` for lock-free residency-set scans.
 - Pretty filenames: `world/chunks/-0001_+0042_+0007.vxs` (axis order
-  x, y, z, signed three-digit padded — chosen so `ls` sorts the disk
-  representation usefully).
+  x, y, z, signed four-digit padded — chosen so `ls` sorts the disk
+  representation usefully; four digits cover the full ±32 768 chunk
+  range without overflow).
 
 ### Chunk component on entities
 
@@ -190,7 +191,17 @@ public:
     // Forced overrides (editor "load this chunk now" / save-all).
     void requestResident(ChunkKey key, RequestPriority p);
     void requestEvict(ChunkKey key);
-    void flushAllPending(); // blocks; used by save-snapshot path
+
+    // Entity migration — called from system_propagate_chunk_membership's
+    // endTick. Public because the migration system lives in
+    // engine/prefabs/irreden/world/, outside engine/world/.
+    void migrateEntity(IREntity::EntityId id, ChunkKey oldKey, ChunkKey newKey);
+
+    // Blocks until all pending loads and saves complete.
+    // Used by: World construction (warm-up) and save-snapshot path.
+    // Covers both "drain all LOADING/UPLOADING slots" and
+    // "flush all dirty EVICTING slots" in a single drain pass.
+    void flushAllPending();
 };
 ```
 
@@ -267,11 +278,14 @@ band in all six directions; `R_view` always rounds up to include
 
 ### Async upload job model
 
-Disk → CPU and CPU → GPU run on a single `std::thread` worker pool
-(initially 2 threads — disk-bound and GPU-staging-bound) drained
-each frame. The job queue is a `concurrent_queue<UploadJob>` (custom
-SPSC ring; no `<concurrent_queue>` standard yet, so we ship a small
-header in `engine/world/`). Each job carries:
+Disk → CPU and CPU → GPU run as two dedicated `std::thread` workers
+(one disk-bound, one GPU-staging-bound). Each stage has its **own**
+SPSC queue — main thread → disk-thread for `LOAD_DISK` jobs, and
+disk-thread → GPU-staging-thread for `UPLOAD_GPU` jobs — so each
+queue has exactly one producer and one consumer. (A single shared
+queue would be SPMC, which is not safe with an SPSC ring.) No
+`<concurrent_queue>` standard yet; we ship a small SPSC ring header
+in `engine/world/`. Each job carries:
 
 ```cpp
 struct UploadJob {
@@ -451,10 +465,9 @@ Specifically:
   tick").
 - A migration adds the entity to the destination chunk's
   `ownedEntities_` and removes it from the source chunk's. If the
-  source chunk is non-resident at the time of migration (rare —
-  the entity must have been in a then-resident chunk to have
-  moved), the migration is queued and applied when the source
-  chunk re-enters residency. (See "Edge cases" below.)
+  source chunk is non-resident at the time of migration, the
+  migration is queued and applied when the source chunk
+  re-enters residency. (See "Edge cases" below.)
 
 ### Migration system
 
@@ -549,10 +562,12 @@ streaming.
    `IREntity::entityExists(record.entityId)` before applying.
 
 3. **Source chunk evicted while a child entity's migration is
-   pending.** The pending migration is dropped — the entity has
-   already destructed with the source chunk's eviction. (Eviction
-   does not save individual entities; it saves the whole chunk —
-   see Topic 6.)
+   pending.** The pending migration is dropped. The entity was
+   serialized to disk with the source chunk at eviction time; its
+   `EntityId` persists in the saved chunk file. When the source
+   chunk reloads, the entity reappears at its original
+   pre-migration position. (Eviction saves the whole chunk, not
+   individual entities — see Topic 6.)
 
 4. **Concurrent migration + structural change.** All structural
    changes route through `flushStructuralChanges` at pipeline end.
