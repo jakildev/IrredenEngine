@@ -336,6 +336,7 @@ Avoid:
   - **Notes:** Prerequisite for T-211 (editor F-1.1 place/erase); PR #785 (T-211's first PR) is design-blocked on this and will rebase once it lands. CPU-side path has no frame lag — preferred for editor click responsiveness. GPU readback path (`IRRender::getEntityIdAtMouseTrixel`, 1-frame lag, O(1) per pick) is documented as the fallback for high-voxel-count scenes. Extend `gatherVisibleShapes` or add a sibling helper; treat each active voxel as an axis-aligned unit cube for SDF testing. Multi-sub-entity scenes, voxel-set joints, and growable pool allocation are explicitly out of scope.
   - **Links:**
 
+
 - [ ] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
   - **ID:** T-221
   - **Area:** docs
