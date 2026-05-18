@@ -125,6 +125,10 @@ class ScopeTimer {
     ScopeTimer &operator=(const ScopeTimer &) = delete;
 
   private:
+    // Must point to static storage (a string literal). The view is borrowed
+    // and not copied; using the `IR_PROFILE_SCOPE` macro with anything else
+    // — a local `std::string`, a temporary, a stack-built name — leaves a
+    // dangling reference at scope exit when `record()` reads it.
     std::string_view m_name;
     TimePoint m_t0{};
     bool m_enabled;

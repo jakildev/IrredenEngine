@@ -80,7 +80,9 @@ the map has warmed up and the hot path is allocation-free
 Reader API: `cpuFrameHistogram().lastFrameMs(name)` returns the last
 completed frame's total for `name` (0.0 if never recorded). Lua
 mirror: `ir.render.setCpuTimingEnabled(true)`,
-`ir.render.getCpuPassTimings()`, `ir.render.getCpuPassTiming(name)`.
+`ir.render.getCpuPassTimings()`, `ir.render.getCpuPassTiming(name)`
+— registered in `engine/world/src/world.cpp::World::setupLuaBindings`
+on the `ir.render` table, alongside the GPU-timing surface.
 
 The render-side observer (`GpuStageTimingObserver` in
 `engine/prefabs/irreden/render/gpu_stage_timing_observer.hpp`) also
