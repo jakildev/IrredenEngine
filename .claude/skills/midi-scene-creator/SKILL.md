@@ -65,7 +65,7 @@ Key API:
 
 ## MIDI Systems
 
-Register these in your creation's `initSystems()` under the appropriate pipeline:
+Register these in your creation's `initSystems()` under the appropriate pipeline (pipelines execute in order INPUT → UPDATE → RENDER; see [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines):
 
 | System | Pipeline | Purpose |
 |--------|----------|---------|

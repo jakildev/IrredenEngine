@@ -170,15 +170,7 @@ For the Lua binding files, see the `lua-creation-setup` skill.
 
 ## Pipeline Ordering
 
-Pipelines execute in this order each frame: **INPUT -> UPDATE -> RENDER**.
-
-Within each pipeline, systems execute in the order listed in `registerPipeline`. Common orderings:
-
-**UPDATE:** velocity/acceleration -> goto/easing -> global position -> voxel children -> lifetime
-
-**INPUT:** key/mouse -> gamepad -> hover detect
-
-**RENDER:** camera pan -> velocity render -> voxel-to-trixel stages -> shapes/text -> trixel compositing -> framebuffer -> debug overlay -> screen
+See [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines for the INPUT → UPDATE → RENDER order and common system orderings within each pipeline.
 
 ## Reference Creations
 
