@@ -324,11 +324,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.7, §1.7). XS. Canonical home is docs/agents/BUILD.md (already referenced from engine-root CLAUDE.md).
   - **Links:**
 
-- [ ] **docs/skills: shrink start-next-task's cursor-stack-base coverage; defer mechanism to FLEET.md** — cut ~40 lines from start-next-task/SKILL.md by deferring the cursor-stack-base mechanism description to FLEET.md
+- [~] **docs/skills: shrink start-next-task's cursor-stack-base coverage; defer mechanism to FLEET.md** — cut ~40 lines from start-next-task/SKILL.md by deferring the cursor-stack-base mechanism description to FLEET.md
   - **ID:** T-237
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `start-next-task/SKILL.md` sections `34-39`, `159-186`, `270-291` trimmed to flow descriptions only; mechanism deferred to `FLEET.md:140-186` ref; (2) net reduction ~40 lines; (3) `commit-and-push/procedures/cursor-stack.md` still correctly scoped to PR-creation deltas only
   - **Issue:** #820
