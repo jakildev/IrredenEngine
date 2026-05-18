@@ -110,10 +110,10 @@ Three concrete reasons for the `int16`-per-axis pack:
   current product use case.
 - 64-bit key fits in an `unordered_map<ChunkKey, ...>` slot and a
   `std::atomic<uint64_t>` for lock-free residency-set scans.
-- Pretty filenames: `world/chunks/-0001_+0042_+0007.vxs` (axis order
-  x, y, z, signed four-digit padded — chosen so `ls` sorts the disk
-  representation usefully; four digits cover the full ±32 768 chunk
-  range without overflow).
+- Pretty filenames: `world/chunks/-00001_+00042_+00007.vxs` (axis order
+  x, y, z, signed five-digit padded — chosen so `ls` sorts the disk
+  representation usefully; five digits cover the full ±32 768 int16
+  ChunkKey range without overflow).
 
 ### Chunk component on entities
 
@@ -823,9 +823,9 @@ state reflects every load completion), it pairs the call with
 saves/<save-name>/
     snapshot.bin            # world-level state (issue #199)
     chunks/
-        +0000_+0000_+0000.vxs
-        +0000_+0000_+0000.vxs.json   # sidecar (Rule #6)
-        -0001_+0000_+0000.vxs
+        +00000_+00000_+00000.vxs
+        +00000_+00000_+00000.vxs.json   # sidecar (Rule #6)
+        -00001_+00000_+00000.vxs
         ...
 ```
 
