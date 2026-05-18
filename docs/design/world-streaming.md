@@ -20,8 +20,10 @@ systems).
 Today the engine renders one canvas with one fully-resident voxel pool
 sized at `kVoxelPoolSize = 64³` voxels (see
 `engine/common/include/irreden/ir_constants.hpp:63`). The world bound
-collapses to `kChunkSize - 1` on each axis (`kWorldBoundMax`,
-`ir_constants.hpp:42`) — i.e. the entire "world" is a single chunk.
+collapses to `vec3(kChunkSize) - vec3(1, 1, 2)` (`kWorldBoundMax`,
+`ir_constants.hpp:42`; the z ceiling is `kChunkSize.z - 2` to leave
+the top ground layer as scene floor) — i.e. the entire "world" is a
+single chunk.
 `kChunkSize = uvec3{32, 32, 32}` and `C_ChunkVisibleThisFrame` are
 declared but unused by any system; the bookkeeping is forward-looking.
 
@@ -197,11 +199,16 @@ public:
     // engine/prefabs/irreden/world/, outside engine/world/.
     void migrateEntity(IREntity::EntityId id, ChunkKey oldKey, ChunkKey newKey);
 
-    // Blocks until all pending loads and saves complete.
-    // Used by: World construction (warm-up) and save-snapshot path.
-    // Covers both "drain all LOADING/UPLOADING slots" and
-    // "flush all dirty EVICTING slots" in a single drain pass.
-    void flushAllPending();
+    // Drain pending LOAD_DISK + UPLOAD_GPU work to RESIDENT.
+    // Used by: World construction (warm-up — bring the spawn camera's
+    // resident-set fully online before the first rendered frame).
+    void flushPendingLoads();
+
+    // Force-save every dirty resident slot, then drain the save queue.
+    // Used by: save-snapshot path (paired with #199's world-snapshot
+    // save). Does not touch in-flight loads — call flushPendingLoads()
+    // first if a settled load state is required.
+    void flushPendingSaves();
 };
 ```
 
@@ -279,13 +286,50 @@ band in all six directions; `R_view` always rounds up to include
 ### Async upload job model
 
 Disk → CPU and CPU → GPU run as two dedicated `std::thread` workers
-(one disk-bound, one GPU-staging-bound). Each stage has its **own**
-SPSC queue — main thread → disk-thread for `LOAD_DISK` jobs, and
-disk-thread → GPU-staging-thread for `UPLOAD_GPU` jobs — so each
-queue has exactly one producer and one consumer. (A single shared
-queue would be SPMC, which is not safe with an SPSC ring.) No
-`<concurrent_queue>` standard yet; we ship a small SPSC ring header
-in `engine/world/`. Each job carries:
+(one disk-bound, one GPU-staging-bound). The pipeline is a **three-
+SPSC linear chain**, one queue per stage transition — each queue has
+exactly one producer thread and exactly one consumer thread, which is
+the only shape under which our lock-free SPSC ring is safe:
+
+```
+                   loadDiskQueue           uploadGpuQueue
+   main thread  ──────────────▶  disk    ──────────────▶  GPU-staging
+   (producer)                    thread                   thread
+                                 (consumer)               (consumer)
+                                 ▲ producer next ─────────┘
+                                                          │
+                                          completionQueue │
+   main thread  ◀───────────────────────────────────────────┘
+   (consumer)
+```
+
+- `loadDiskQueue` — main thread → disk thread. Carries `LOAD_DISK`
+  jobs. Main thread enqueues when a chunk enters `LOADING`; disk
+  thread drains, performs the file read into `stagingBytes_`, then
+  pushes the same job (re-stamped `UPLOAD_GPU`) onto the next queue.
+- `uploadGpuQueue` — disk thread → GPU-staging thread. Carries
+  `UPLOAD_GPU` jobs. GPU-staging thread drains, performs the upload
+  into the chunk's `VoxelPoolAllocation`, then pushes a
+  `JobCompletion` onto the completion queue.
+- `completionQueue` — GPU-staging thread → main thread. Carries
+  `JobCompletion` records. Main thread drains in `flushUploads` and
+  transitions slots to `RESIDENT`, attaches entities, etc. Errors
+  propagate **forward** along the pipeline rather than back: a disk-
+  read failure stamps the job `errorStage = LOAD_DISK` and pushes it
+  onto `uploadGpuQueue` with empty staging bytes; the GPU-staging
+  thread sees the error stamp, skips the actual GPU upload, and
+  emits the terminal `JobCompletion{status = ERROR}`. This keeps the
+  GPU-staging thread the sole producer of `completionQueue` (true
+  SPSC) and guarantees the main thread receives exactly one
+  completion record per scheduled job.
+
+A single shared `UploadJob` queue with two consumers would be SPMC
+and not safe with an SPSC ring; a single shared completion queue
+with two producers would be MPSC and likewise unsafe. The three-
+queue split keeps every edge SPSC.
+
+No `<concurrent_queue>` standard yet; we ship a small SPSC ring
+header in `engine/world/`. Each `UploadJob` carries:
 
 ```cpp
 struct UploadJob {
@@ -294,12 +338,20 @@ struct UploadJob {
     std::vector<std::uint8_t> stagingBytes_; // CPU buffer between stages
     // Size in bytes for budget accounting; one frame's flush sums these.
     std::uint64_t sizeBytes_ = 0;
+    // Set by a stage when it fails; the next stage skips its work
+    // and just forwards the record so the terminal stage can emit one
+    // JobCompletion{ERROR}. Stage::LOAD_DISK means "disk read failed";
+    // Stage::UPLOAD_GPU is unused (GPU stage emits the completion
+    // directly). Default = "no error so far".
+    std::optional<Stage> errorStage_;
 };
 ```
 
-Completion signals back through `concurrent_queue<JobCompletion>`
-drained on the main thread in `flushUploads` so all `IREntity` /
-`IRRender` calls remain single-threaded.
+`JobCompletion` carries the chunk key, terminal status (`OK`/`ERROR`)
+and (on error) a short diagnostic. The main thread's drain in
+`flushUploads` is the only site that touches `IREntity` /
+`IRRender` state on completion, so all engine-state mutation stays
+single-threaded.
 
 ---
 
@@ -352,7 +404,7 @@ those are the cases where the static ring miss-rate spikes.
 ### Cache warm-up
 
 On `World` construction, the residency manager calls
-`flushAllPending()` against the spawn camera's resident-set so the
+`flushPendingLoads()` against the spawn camera's resident-set so the
 first rendered frame is not staring at a low-LOD wall. The cost is
 deterministic: spawn radius is bounded by `R_view` and chunk-load
 time is `O(disk_read + voxel_copy)` per chunk.
@@ -465,9 +517,11 @@ Specifically:
   tick").
 - A migration adds the entity to the destination chunk's
   `ownedEntities_` and removes it from the source chunk's. If the
-  source chunk is non-resident at the time of migration, the
-  migration is queued and applied when the source chunk
-  re-enters residency. (See "Edge cases" below.)
+  destination chunk is non-resident at the time of migration, the
+  migration is queued on a manager-owned deferred queue, the
+  destination chunk's residency is force-requested, and the record
+  is applied at the start of `tickPrefetch` on the frame the
+  destination becomes resident. (See "Edge cases" below.)
 
 ### Migration system
 
@@ -549,10 +603,23 @@ streaming.
 1. **Entity teleport across many chunks in one frame.** The
    migration system handles arbitrary distance — it computes
    `worldToChunk(worldPos)` directly, not by neighbor walk. The
-   destination chunk's residency is checked synchronously; if
-   non-resident, a `requestResident(destKey, FORCED)` is issued
-   and the migration applies on the next frame when the chunk
-   becomes resident.
+   destination chunk's residency is checked synchronously inside
+   `ChunkResidencyManager::migrateEntity`:
+   - **Both source and destination resident** — apply immediately
+     (remove from source `ownedEntities_`, append to destination,
+     update `C_ChunkMembership.chunkCoord_`).
+   - **Destination non-resident** — record the migration on a
+     manager-owned deferred queue (`pendingMigrationsToNonResident_`,
+     a `std::deque<MigrationRecord>` field on
+     `ChunkResidencyManager`), issue
+     `requestResident(destKey, FORCED)`, and return. The deferred
+     queue is drained at the start of each `tickPrefetch` after the
+     residency-set update completes — every record whose destination
+     is now resident is applied and removed; the rest remain queued.
+   The migration **System**'s `migrations_` vector is still cleared
+   every `endTick` (per the params-on-System pattern); the deferred
+   queue lives on the manager precisely because it must survive
+   across frames without violating the per-tick allocation rule.
 
 2. **Entity destroyed mid-migration.** The migration record carries
    the EntityId; if `IREntity::destroyEntity(id)` fired this frame,
@@ -641,16 +708,27 @@ repeat entityCount times:
     varuint relationCount
     repeat relationCount times:
         uint16 relationTypeId     (via name table)
-        uint64 otherChunkLocalId  (or absolute id if cross-chunk — flag bit)
+        uint64 otherIdentifier    (chunk-local-id if same-chunk;
+                                   stable cross-chunk identifier from
+                                   #199's identity scheme if flag bit
+                                   says cross-chunk — NOT a raw
+                                   runtime EntityId)
 ```
 
 The world snapshot (#199) is the system of record for "how an
-entity serializes." The chunk file is a sliced view — entities
-inside this chunk's voxel AABB plus the components/relations
-needed to bring them back. Cross-chunk relations (entity in
-chunk A with a CHILD_OF link to entity in chunk B) are stored
-with a flag bit + absolute EntityId; the loader resolves them
-lazily after both chunks become resident.
+entity serializes," and critically also for **how an entity is
+identified across save/load**. Runtime `EntityId`s are assigned by
+`createEntity` and are not stable across save/load cycles — using
+a raw EntityId for a cross-chunk reference would break on every
+round-trip. The snapshot encoder defines a stable per-entity
+identifier (UUID, hash of (origin chunk, chunk-local-id), or
+similar — exact shape decided by #199) that survives the load
+cycle; the chunk's `ENTS` cross-chunk relation field stores that
+stable identifier, and the loader maps stable identifier →
+freshly-assigned `EntityId` after both chunks reload. The chunk
+file is a sliced view — entities inside this chunk's voxel AABB
+plus the components/relations needed to bring them back — and
+inherits #199's identity model unchanged.
 
 This sharing decision lands at the same time as the snapshot
 work, so a chunk file IS a slice of a snapshot, not a separate
@@ -695,20 +773,49 @@ Each `ChunkResidencySlot` carries a `dirty_` bit. The bit is set by:
 
 The bit is consulted at `EVICTING → EVICTED` transition: if dirty,
 schedule a save to disk before deallocating the pool slice. The
-save is async (the residency worker pool), but the pool slice
-holding the data must persist until the save completes — which
-is why `EVICTING` is a state separate from `EVICTED`.
+save is async (the residency worker pool).
 
-Pristine chunks (loaded but never modified) skip the save. A
-read-only world (e.g. a published level) never writes to disk.
+**Race resolution — snapshot at schedule time.** Two events can
+follow an `EVICTING` transition while the save is still in flight:
+re-resident (camera reversed direction) and `EVICTED` (no
+re-request, eviction completes). Reading from the live pool slice
+while the save runs invites two distinct hazards: a re-resident
+slot can be mutated mid-save (torn snapshot), and post-save dirty
+bits on a re-resident slot collide with the save's clear-on-
+completion (dropping the mutations). To eliminate both, the save
+job receives a **synchronous CPU-side copy** of the voxel + entity
+bytes at the moment it is scheduled — the main thread copies the
+pool slice's contents (and the entity manifest produced by #199's
+encoder) into the `UploadJob`-style staging buffer before
+returning control to the residency manager. The pool slice is
+then free to be mutated, freed, or re-attached to a re-resident
+slot immediately; the save thread reads only its private copy.
+
+The cost is one main-thread `memcpy` of the chunk's voxel +
+entity bytes per eviction. Eviction is rare relative to per-frame
+work (a few chunks per second under normal motion), so the
+amortised cost is negligible; the alternative — a "write-lock
+EVICTING" rule that defers voxel mutation in the renderer for
+arbitrarily long save durations — would couple the renderer to
+disk I/O latency. The snapshot-at-schedule-time choice is the
+explicit decision; the locking-model alternative is rejected.
+
+Pristine chunks (loaded but never modified) skip the save and
+incur no copy. A read-only world (e.g. a published level) never
+writes to disk.
 
 ### Save-all path
 
-`ChunkResidencyManager::flushAllPending()` walks every resident
+`ChunkResidencyManager::flushPendingSaves()` walks every resident
 slot, forces a save on every dirty one (synchronously this time —
 this is invoked from the save-snapshot button), and returns when
-all jobs complete. The world-snapshot save (when #199 ships)
-calls this path before serializing the rest of the world state.
+all jobs complete. Each forced save uses the same
+snapshot-at-schedule-time copy described above, then blocks on
+the save worker's completion. The world-snapshot save (when #199
+ships) calls this path before serializing the rest of the world
+state; if it needs in-flight loads to settle first (so the saved
+state reflects every load completion), it pairs the call with
+`flushPendingLoads()` first.
 
 ### File layout
 
