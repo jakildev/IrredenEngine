@@ -21,7 +21,6 @@ systems that populate button state. The underlying polling lives in
 - `C_KeyStatus` — a button state machine
   (`NOT_HELD`/`PRESSED`/`HELD`/`RELEASED`/`PRESSED_AND_RELEASED`) plus
   press/release frame counts.
-- `C_MousePosition` — cached cursor.
 - `C_MouseScroll` — ephemeral per-scroll event (`C_Lifetime{1}`).
 - `C_GLFWGamepadState` — 15 button states + 6 axes.
 
@@ -82,7 +81,7 @@ and falls through to the next priority tier.
 ## Gotchas
 
 - **Hover tests need cached camera state.** `HITBOX_MOUSE_TEST`'s
-  `beforeTick` caches `C_CameraPosition2DIso + C_ZoomLevel`. Moving
+  `beginTick` caches `C_CameraPosition2DIso + C_ZoomLevel`. Moving
   the camera inside the same tick with a separate system can desync
   the hover test by one frame.
 - **Mouse scroll is ephemeral by design.** The GLFW scroll callback

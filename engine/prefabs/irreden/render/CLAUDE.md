@@ -13,16 +13,8 @@ the ECS surface.
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
   ctor-allocated, `onDestroy()`-freed.
-- `C_Camera` — tag.
-- `C_CameraPosition2DIso` — iso-space position.
-- `C_ZoomLevel` — float zoom.
 - `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
   `camera.hpp` for the cardinal/residual split API.
-- `C_TextSegment` — UTF-8 string for text-to-trixel.
-- `C_TextStyle` — font, size, color.
-- `C_GeometricShape` — 2D overlay shape descriptor.
-- `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
-  distance offset).
 - `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
   sprite + atlas metadata + per-instance playback state. Sprites bypass the
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
@@ -35,21 +27,7 @@ the ECS surface.
   full data model, depth semantics, and cross-task scope.
 - `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
   (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
-  bind-point / IK marker) + axis. Carries the Phase 2 (T-164) baseline
-  fields — `referenceParams_` (the unscaled shape descriptor params
-  written at construction), `referenceLocalPos_` (the unscaled local
-  position), and `isAnchor_` (true for single-entity markers whose own
-  `C_Position3D` is the world-space anchor — false for child handles
-  parented under a group root). Also carries the Phase 3 (T-165)
-  interaction fields — `hover_` (stamped each frame by `GIZMO_HOVER`
-  from the GPU entity-id readback), `baseColor_` (the unmodulated
-  color captured at spawn — the hover system writes a brightened tint
-  onto the sibling `C_ShapeDescriptor` while hovered and restores the
-  base on the same frame the hover bit clears), and `anchorEntity_`
-  (the entity whose `C_Position3D` `GIZMO_DRAG` mutates — by
-  convention the gizmo group parent, so all axes of a multi-handle
-  gizmo share one anchor; `kNullEntity` keeps the handle hoverable
-  but disables drag). Visible geometry comes from a sibling
+  bind-point / IK marker) + axis. Visible geometry comes from a sibling
   `C_ShapeDescriptor` on the same entity (SDF primitive rendered by
   `SHAPES_TO_TRIXEL`); the marker carries no rendering state itself.
   Builders live in `IRPrefab::Gizmo::` (see "Exposing system public
@@ -67,7 +45,7 @@ the ECS surface.
   more detail than the camera is providing). Phase 1 of the LOD story;
   see `docs/design/lod-strategy.md`.
 
-## Key systems (all RENDER pipeline)
+## Key systems
 
 - `VOXEL_TO_TRIXEL_STAGE_1` / `STAGE_2` — compute-shader voxel
   rasterization to the 3 canvas textures.
@@ -358,7 +336,3 @@ when extending or composing widgets:
 - **Render-behavior flags are the knobs.** Changing pipeline behavior
   for a canvas (disable zoom tracking, turn off hover) is done via
   `C_TrixelCanvasRenderBehavior`, not by branching in the systems.
-- **`SystemName` enum registration.** Every render system name
-  (`VOXEL_TO_TRIXEL_STAGE_1`, ...) must exist in
-  `engine/system/include/irreden/ir_system_types.hpp` or the
-  specialization won't link.

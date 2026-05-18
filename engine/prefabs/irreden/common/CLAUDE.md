@@ -20,9 +20,6 @@ in `update/`.
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
   below.
-- `C_Name` — debug/display string.
-- `C_Player` — tag for player-controlled entities.
-- `C_Selected` — tag for UI selection.
 - `C_Modifiers` / `C_GlobalModifiers` / `C_NoGlobalModifiers` /
   `C_LambdaModifiers` / `C_ResolvedFields` — generic modifier
   framework. See [Modifier framework](#modifier-framework) below.
@@ -42,7 +39,7 @@ quaternion layout `IRMath::vec4(qx, qy, qz, qw)` — identity is
 `vec4(0, 0, 0, 1)`. See `engine/math/CLAUDE.md` "Quaternions" for the
 algebra contract (`IRMath::quatMul`, `IRMath::rotateVectorByQuat`).
 
-`SYSTEM_PROPAGATE_TRANSFORM` in
+`PROPAGATE_TRANSFORM` in
 [`update/systems/system_propagate_transform.hpp`](../update/systems/system_propagate_transform.hpp)
 walks the parent chain in topological order each tick and writes
 `C_WorldTransform`. The composition formula:
@@ -71,7 +68,7 @@ Entities that don't push perturbations don't need `C_Modifiers`. The
 matching `ROTATION` quat field arrives with the quat modifier kind
 ticket (T-198); until then, `modifier_rotation` is identity.
 
-**Pipeline placement.** Register `SYSTEM_PROPAGATE_TRANSFORM`
+**Pipeline placement.** Register `PROPAGATE_TRANSFORM`
 after the modifier resolver pipeline so the resolved fields are
 current, and before any consumer (render, gizmo, physics) that reads
 `C_WorldTransform`.
