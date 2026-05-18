@@ -208,41 +208,19 @@ Each iteration:
 
    `fleet-claim molecule resume <your-worktree-name>`
 
-   This command always exits 0 (so it's safe to include in a parallel
-   tool batch with `git fetch`, `gh pr list`, etc.). Discriminate via
-   stdout:
+   See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Molecule
+   resume protocol" for the full discriminate-by-stdout flow, resume
+   vs restart judgment, and advance/complete commands. Sonnet-author
+   is engine-only, so the cross-repo (`--repo game`) notes in that
+   section don't apply.
 
-   - **Stdout has a `T-NNN` task ID** — that task is part of a stack
-     you started earlier (possibly in a previous process before a
-     crash). It is now (or remains) marked `in-progress`. Skip the
-     normal pickup flow and jump straight to step 4 ("Read the plan
-     file"), then continue to step 5 ("Work it") to begin working it.
-     If the task's PR is already open, `fleet-claim stack-pr-state
-     <your-worktree-name>` shows its URL and branch. Check out the
-     task's branch and continue committing normally — one task per
-     branch means the branch itself is the per-task anchor, so no
-     special commit-subject prefix is required.
-
-     **Resume vs restart judgment.** Read the worktree's git status:
-     - No work-in-progress on the branch matching that task ID →
-       **start the task fresh** as if newly claimed.
-     - Coherent partial work-in-progress → **resume from that state**;
-       previous process did real work, reuse it.
-     - Incoherent partial work (random dirty files, half-applied edits
-       to unrelated areas, mid-conflict markers) → discard with
-       `git restore --staged .` + `git checkout -- .` and start fresh.
-
-     After committing each task in the molecule, advance the state:
-     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
-     If you can't complete a task, use `failed` and surface to human.
-
-   - **Stdout is empty** — no work to resume. Either there's no
-     molecule for this agent (overwhelming common case) or the
-     molecule is fully done. Optionally call
-     `fleet-claim molecule complete <your-worktree-name>` to archive
-     a finished molecule (idempotent — exits 0 with a stderr note if
-     there's nothing to archive, so it's safe in any batch). Then
-     proceed with the normal pickup flow.
+   **Sonnet-author-specific routing:**
+   - **Stdout has a `T-NNN`** — skip normal pickup below and jump to
+     step 4 ("Read the plan file"), then continue to step 5 ("Work
+     it"); the task is already claimed via the molecule. After
+     committing, run
+     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`.
+   - **Stdout is empty** — proceed with normal pickup below.
 
    **Normal pickup (no active molecule):** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
@@ -308,116 +286,30 @@ Each iteration:
      prints a diagnostic showing which blockers failed.
 
    **Stack claiming** (use sparingly — most sonnet tasks are
-   independent): If you find two tightly coupled `[sonnet]` tasks in
+   independent). If you find two tightly coupled `[sonnet]` tasks in
    a dependency chain, you can claim them atomically:
    `fleet-claim stack "T-002 T-004" <your-worktree-name>`
 
    Stack claim is all-or-nothing — if any task is already claimed or
    has unresolved external blockers, all are rolled back. Within the
    stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
-   Work the stack **sequentially, one PR per task**, with each PR's
-   base set to the previous task's branch (true stacked PRs). Release
-   the chain with `fleet-claim release-stack <your-worktree-name>`
-   after the last PR merges. Prefer single claims unless the tasks
-   are genuinely coupled.
+   `stack` also writes a molecule file so step 2's molecule resume
+   can pick the chain back up after a crash. Release the chain with
+   `fleet-claim release-stack <your-worktree-name>` after the last
+   PR merges. Prefer single claims unless the tasks are genuinely
+   coupled.
 
-   **`stack` also writes a molecule file** (`~/.fleet/molecules/<your-
-   worktree-name>.yml`) so a crash mid-stack won't strand the
-   remaining tasks. Step 2's molecule check picks it back up on the
-   next iteration. As you complete each task, run
-   `fleet-claim molecule advance` so the molecule reflects reality;
-   `release-stack` archives the molecule when you're done.
+   See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Per-task
+   stacked PR command sequence" for the per-task branching, PR
+   creation, title/body template, post-merge rebase, and feedback
+   flow. As you complete each task in the chain, run
+   `fleet-claim molecule advance` so the molecule reflects reality.
 
-   **Stacked PR flow (REQUIRED):** each task in the chain gets its
-   own branch and its own PR, with each PR's `--base` pointing at the
-   previous task's branch. GitHub treats these as "stacked PRs":
-   reviewers approve each one independently, and when an earlier PR
-   merges, the next PR's base auto-rebases to master.
-
-   For the current task in the stack (first `(pending)` row in
-   `fleet-claim stack-pr-state <your-worktree-name>`):
-
-   1. **Compute the base branch** for this PR:
-      `base=$(fleet-claim stack-base <your-worktree-name> <task-id>)`
-      — returns `master` for the first task, or the previous task's
-      branch (e.g. `claude/T-002-lua-bindings`) for subsequent tasks.
-   2. **Branch off that base:**
-      `git fetch origin "$base"`
-      `git checkout -b claude/<task-id>-<short-topic> "origin/$base"`
-      (e.g. `claude/T-002-lua-bindings`, `claude/T-004-lua-tests`).
-   3. Do the task's work in that branch. Commit as normal — no
-      special commit-subject prefix is required anymore; one task per
-      branch means the branch name IS the per-task anchor.
-   4. Open the PR with `--base "$base"` and record it in the stack.
-      When `$base` is a feature branch (i.e. not `master`), add
-      `--label "fleet:stacked"` so the merger and reviewer can filter
-      by label without an extra `gh pr view --json baseRefName` call:
-      `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip" --label "fleet:stacked"`
-      `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
-      For the first task in the chain (`$base == master`), omit the
-      `fleet:stacked` label — that PR merges into master normally.
-
-   **Stacked PR title + body format:** start the PR title with the
-   task ID so reviewers can tell which task in the chain this PR
-   covers. The body includes a `Stacked on:` line pointing at the
-   previous PR (or `master` for the first) so reviewers see the
-   stack context immediately.
-
-   ```markdown
-   ## Summary
-   - <what this task does>
-
-   ## Stack context
-   Stacked on: <previous PR URL, or "master" for the first>
-   Full chain: T-002 → T-004
-
-   ## Test plan
-   - [ ] <task-specific checks>
-
-   Closes #<issue-N>
-   ```
-
-   The `commit-and-push` skill's "Stack-aware mode" section walks
-   through the branch + PR creation; let it drive — it already knows
-   to call `stack-base` and `stack-set-pr`.
-
-   **When an earlier PR in the stack merges:** GitHub auto-rebases
-   the next PR's base to master. Pull the latest master into the
-   next branch before continuing work on it:
-   `git fetch origin master`
-   `git rebase origin/master`
-   Force-push with `--force-with-lease` (never `--force`). The
-   reviewer's approval on the unchanged commits carries over unless
-   a conflict actually modified them.
-
-   **For single-task claims** (including stackable-blocked claims),
-   determine the base before branching:
-   `fleet-claim claim-base "<task-id>"`
-   - Returns `master` — branch off `origin/master` normally.
-   - Returns a feature branch (e.g. `claude/T-NNN-…`) — this is a
-     stackable-on claim; fetch and branch off that upstream branch:
-     `git fetch origin <upstream-branch>`
-     `git checkout -b claude/<task-id>-<short-topic> origin/<upstream-branch>`
-
-   For a normal claim (base is `master`):
-   `git checkout -b claude/<area>-<topic>`
-   `git commit --allow-empty -m "claim: <task title>"`
-
-   Check the task's **Issue:** field. If it has a `#N` reference,
-   include `Closes #N` in the PR body so the issue closes
-   automatically when the PR merges:
-   `gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
-   If there is no issue (`(none)`), omit the `Closes` line.
-
-   For a stackable-on claim (base is a feature branch), open with
-   `--base <upstream-branch>` and add `fleet:stacked`:
-   First look up the upstream PR URL:
-   `gh pr view <stackable_blocker_pr.number> --json url --jq .url`
-   Then open the PR:
-   `gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
-
-   Reference the task title in the PR title so the queue-manager can
-   match it.
+   **Single-task base resolution** (normal claim or stackable-on
+   fallback) — see [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
+   "Single-task base resolution (`claim-base`)" for the `claim-base`
+   command, base-branching, claim commit, and PR-creation snippets
+   (covers both the `master`-base and stackable-on cases).
 
 4. **Read the plan file (if it exists).** Check these paths in order:
    - `.fleet/plans/<task-ID>.md` (repo copy, synced from master)
