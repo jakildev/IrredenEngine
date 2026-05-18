@@ -13,41 +13,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
-Violating these blocks unattended operation with interactive
-prompts.
-
-Role-specific: when posting a PR review with `gh pr review
---body-file`, write the body via the **Write** tool to a worktree-
-local path (e.g. `.review-body.md`), not `/tmp/`. First run
-`rm -f .review-body.md` so the Write tool doesn't refuse with
-"File has not been read yet" (that error fires when an existing
-file at the path wasn't Read in this session — typical when a
-previous iteration left the body file behind).
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-Read your pre-filtered slice at
-`~/.fleet/state/projections/opus-reviewer.json` — `flagged_prs`
-(open PRs flagged with `fleet:has-nits` or `fleet:needs-fix`,
-across both repos). ~5 KB vs. ~32 KB for full `state.json`.
-
-The slice carries each PR's `reviews[]` so the
-`Opus recheck required` line in the latest Sonnet review body is
-visible without a drill-in. Review bodies longer than 2 KB are
-stored as head + tail with an `…[truncated]…` separator (the
-verdict line typically lives in the tail); for full-body context,
-fetch with `fleet-pr view <N>`.
-
-Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
-`fleet-issue view <N>`. Writes (`gh pr review`, `gh pr comment`,
-`gh pr edit`) stay direct.
-
-Full cache protocol — staleness rules, layout of every cache
-file, what stays direct — lives in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Exit protocol
 
@@ -97,15 +67,7 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 0. Print your role banner:
    `[opus-reviewer] Final reviewer — Opus recheck on PRs touching core engine invariants or flagged by Sonnet. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
-2. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`
-   (written once by `fleet-up` at startup). Use the `engine` field
-   for `<engine-repo>` and the `game` field (when present) for
-   `<game-repo>`. If `game` is absent, skip all game-repo steps.
-   If the cache file is missing, fall back to `gh repo view --json
-   nameWithOwner --jq .nameWithOwner` for engine and `git -C
-   ~/src/IrredenEngine/creations/game remote get-url origin` for
-   game. If the game-side fallback fails (directory absent), treat
-   as no game repo and skip all game-repo steps.
+2. **Discover repo slugs** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 3. Confirm you are on the throwaway branch
    `claude/opus-reviewer-scratch`. If not, run these two commands
    separately (do NOT wrap in `cd ... &&`):

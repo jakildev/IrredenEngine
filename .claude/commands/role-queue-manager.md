@@ -11,17 +11,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-Read your pre-filtered slice at
-`~/.fleet/state/projections/queue-manager.json` — `needs_plan`,
-`human_approved`, `tasks_done`, and `needs_flip`. Fall back to
-`state.json` for cross-role data. Full protocol in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 Always Edit/Read the working-tree `TASKS.md` for ingestion, never
 the cache.
@@ -64,9 +58,7 @@ Two invocation modes:
      `[queue-manager] Task intake — ingests approved issues into TASKS.md. Cursor-flow / interactive.`
 1. `pwd`
 2. `git -C ~/src/IrredenEngine fetch origin --quiet`
-3. **Discover repo slugs** by Read'ing `~/.fleet/state/repos.json`.
-   Use `engine` for `<engine-repo>`, `game` (if present) for
-   `<game-repo>`. Fallback: `gh repo view --json nameWithOwner --jq .nameWithOwner`.
+3. **Discover repo slugs** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 4. Read tool -> `TASKS.md` (working-tree copy).
 5. Read tool -> `~/src/IrredenEngine/creations/game/TASKS.md` if game
    repo is present. Skip otherwise.

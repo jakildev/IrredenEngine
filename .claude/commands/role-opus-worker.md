@@ -22,28 +22,11 @@ Mode (optional argument): $ARGUMENTS
 
 ## Bash tool rules
 
-See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules)
-for the canonical list — single-command Bash only, no `cd && git`,
-no shell pipes / redirects, prefer Read / Glob / Grep tools.
-Violating these blocks unattended operation with interactive
-prompts.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-Read your pre-filtered slice at
-`~/.fleet/state/projections/opus-worker.json` — `tasks_open` (open
-`[opus]` tasks across both repos), `needs_plan` (issues awaiting
-plans), and `feedback_prs` (PRs with feedback or
-`fleet:design-unblocked`). ~5 KB vs. ~32 KB for full
-`state.json`.
-
-Per-item drill-ins use `fleet-pr view|diff|comments <N>` and
-`fleet-issue view <N>`. Writes (`gh pr edit`, `gh pr comment`,
-`gh pr create`, `gh issue create`, `gh issue edit`) stay direct.
-
-Full cache protocol — staleness rules, layout of every cache
-file, what stays direct — lives in
-[docs/agents/FLEET-CACHE.md](docs/agents/FLEET-CACHE.md).
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Exit protocol
 
