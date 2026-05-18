@@ -59,9 +59,12 @@ stage. Forgetting to advance for an event means stale state persists.
 
 ## Hover / hitbox
 
-Input-driven but render-aware. `C_Hitbox2D` is a screen-space axis-aligned
-rectangle on an entity. The hover-detect system tests the cursor against
-every hitbox each INPUT tick and fires registered callbacks:
+Input-driven but render-aware. `C_HitBox2D` defines world-space
+(camera-transformed iso) half-extents on an entity. `C_HitBox2DGui`
+is the GUI-canvas-trixel-coordinate variant; see
+`engine/prefabs/irreden/input/CLAUDE.md` for both. The hover-detect
+system tests the cursor against each hitbox each INPUT tick and fires
+registered callbacks:
 
 - `onHovered` / `onUnhovered` — entity-wide.
 - `onClicked` — matches a button status.
@@ -82,13 +85,15 @@ Callbacks are `sol::protected_function` (Lua) or plain `std::function`
   `irGamepadId = 0`. Supporting multiple pads requires edits to the
   gamepad system, not just additional entities.
 - **Hover needs hitbox + position.** No fallback — an entity with only a
-  `C_Position3D` will never register a hover.
+  position component and no `C_HitBox2D` (or `C_HitBox2DGui`) will never
+  register a hover.
 - **No window-focus tracking.** Input fires regardless of whether the
   window has focus. If this matters, filter in the system using a GLFW
   focus query.
-- **Lua callback lifetime.** `sol::protected_function` captured in a
-  handler must outlive the handler or the callback will crash. Register
-  the callback for the lifetime of the entity.
+- **Lua callback lifetime.** Keep the registered callback alive for the
+  entity's lifetime; deregistering via the handler id releases the
+  `sol::protected_function` reference. For the broader `sol::state`
+  lifetime rule see `engine/script/CLAUDE.md §Gotchas`.
 - **`C_MouseScroll` is ephemeral, not persistent.** Each scroll event
   creates a short-lived entity carrying `C_MouseScroll` (with a
   `C_Lifetime` so it expires after one frame). Unlike persistent key
