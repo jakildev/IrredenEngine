@@ -590,6 +590,182 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.18, §4.1). Size M. 9+ of 16 SKILL.md files open with a paragraph paraphrasing front-matter; standardizing cuts significant boilerplate.
   - **Links:**
 
+- [ ] **docs/skills: drop decorative ❌ emoji bullets from Anti-patterns sections** — switch all Anti-patterns / "What this skill does NOT do" sections across SKILL.md files from ❌ bullets to bare list bullets
+  - **ID:** T-244
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) every Anti-patterns and "What this skill does NOT do" section in all SKILL.md files uses bare `-` bullets, not ❌; (2) no other decorative emoji bullets remain in SKILL.md files; (3) engine CLAUDE.md and baseline remain unchanged
+  - **Issue:** #827
+  - **Notes:** Follow-up from T-222 audit (§5.19, §4.6). XS mechanical change. Engine CLAUDE.md and baseline already avoid emoji; SKILL.md files should follow the same convention.
+  - **Links:**
+
+- [ ] **docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating** — reduce request-re-review/SKILL.md to the parts only it owns; invoke the other two skills by reference
+  - **ID:** T-245
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `request-re-review/SKILL.md:53-69` staging-discipline subset replaced with "invoke commit-and-push"; (2) `request-re-review/SKILL.md:87-99` branch-release subset replaced with "invoke start-next-task"; (3) skill retains only: trigger discipline, the label swap (remove `human:needs-fix`, add `fleet:changes-made`), and composition instructions
+  - **Issue:** #828
+  - **Notes:** Follow-up from T-222 audit (§5.21, §3.5). Size S. If commit-and-push or start-next-task contracts tighten, the restated copies silently drift.
+  - **Links:**
+
+- [ ] **docs/skills: sweep stale tooling/version refs flagged in audit-skills §4.2** — verify and fix 8 hardcoded refs that will rot: stale Opus stamp, dead doc path, personal username, task ID citation, PR forward-ref, unmerged-hedge, stale cmake command, stale live-deviations list
+  - **ID:** T-246
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `review-pr/SKILL.md:393` stale "Opus 4.6" stamp updated or removed; (2) `review-pr/SKILL.md:295-297` `cmake --build ... format-check` replaced with `fleet-build --target format-changed`; (3) `review-pr/SKILL.md:36` dead `docs/AGENT_FLEET_SETUP.md` pointer replaced with `docs/agents/FLEET.md`; (4) `backend-parity/SKILL.md:265-269` personal username (`C:/Users/evinj/...`) removed; (5) `simplify/SKILL.md:155-160` "IRMath::kPi may not be merged" hedge removed (verified merged); (6) `simplify/SKILL.md:189-200` hardcoded live-deviations file:line list removed or made grep-pointer; (7) `lua-creation-setup/SKILL.md:255-257` T-106 task ID citation removed; (8) `render-debug-loop/SKILL.md:122-125` forward-ref to PR #433 removed
+  - **Issue:** #829
+  - **Notes:** Follow-up from T-222 audit (§5.22, §4.2). Size S. Each ref must be verified against current codebase state before replacing.
+  - **Links:**
+
+- [ ] **docs/skills: sweep Bash-rule violations in skill-prescribed snippets** — replace compound-command and process-substitution forms in two SKILL.md files with single-command or tool-based equivalents
+  - **ID:** T-247
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `polish-checkpoint/SKILL.md:74` `git diff --stat && git diff` replaced with two separate Bash tool calls or Read/Glob equivalent; (2) `backend-parity/SKILL.md:158-160` `diff <(ls ...) <(ls ...)` replaced with single-command or Glob-based form; (3) `backend-parity/SKILL.md:254,260` raw `cmake --build ... -j$(nproc)` replaced with `fleet-build` (coordinate with T-235)
+  - **Issue:** #830
+  - **Notes:** Follow-up from T-222 audit (§5.23, §2 Bash rules row). XS. CLAUDE-BASELINE.md:180-219 forbids compound `&&`, process substitution, and `$(nproc)`. The cmake violations overlap with T-235 (#818) — coordinate to avoid double-fixing.
+  - **Links:**
+
+- [ ] **docs/skills: trim Anti-patterns sections that restate flow-step requirements** — remove redundant anti-pattern bullets from 6 SKILL.md files, keeping only non-obvious gotchas
+  - **ID:** T-248
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) each of the 6 affected skills has ≤2 non-obvious anti-patterns; (2) duplicates of flow-step requirements removed from: `backend-parity/SKILL.md`, `start-next-task/SKILL.md:352-387`, `attach-screenshots/SKILL.md`, `polish-checkpoint/SKILL.md:177-189`, `commit-and-push/SKILL.md:448-464`, `review-pr/SKILL.md:495-505`
+  - **Issue:** #831
+  - **Notes:** Follow-up from T-222 audit (§5.24, §4.4). Size S. Guideline: keep only anti-patterns that would surprise a reader — things that aren't already obvious from reading the flow steps.
+  - **Links:**
+
+- [ ] **docs/skills: pull pipeline-ordering (INPUT -> UPDATE -> RENDER) into one canonical doc** — move the INPUT->UPDATE->RENDER pipeline ordering description to its canonical home; replace 3 SKILL.md restatements with one-line refs
+  - **ID:** T-249
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) canonical pipeline-ordering paragraph lives in `engine/system/CLAUDE.md` (or `engine/CLAUDE.md`); (2) `ecs-prefab-creator/SKILL.md:189-196`, `create-creation/SKILL.md:172-181`, `midi-scene-creator/SKILL.md:80-91` each reference the canonical doc instead of restating
+  - **Issue:** #832
+  - **Notes:** Follow-up from T-222 audit (§5.25, §1.8). XS. `engine/system/CLAUDE.md` already has load-bearing pipeline information; this is the natural home.
+  - **Links:**
+
+- [ ] **docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs** — remove dead directory reference, resolve placeholder task ID, and delete function-name and component-name catalog sections
+  - **ID:** T-250
+  - **Area:** docs, engine/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/render/CLAUDE.md:240` dead `engine/render/tests/render-baselines/` pointer fixed (point at real location or delete); (2) `L344` `T-09Y` placeholder resolved to real task ID or removed; (3) `L13-30` `IRRender::` function-name catalog removed; (4) `L119-131` `C_*` component catalog removed; (5) `L41-56` `C_GizmoHandle` per-field docs removed (belong in header); (6) `L137-143` shader naming prefix restatement trimmed to pointer to CLAUDE-BASELINE; (7) pipeline ASCII block at L254-268 preserved
+  - **Issue:** #833
+  - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
+  - **Links:**
+
+- [ ] **docs: engine/math/CLAUDE.md — collapse function-signature catalogs** — compress the five catalog sections (~60 lines) to gotcha paragraphs; settle the iso-equations canonical home; trim GLM alias restatement
+  - **ID:** T-251
+  - **Area:** docs, engine/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `L37-95` sections (Layout helpers, Color, Physics, Quaternions, Random) each compressed to ≤3-line gotcha paragraph; (2) `L8-12` GLM alias rule trimmed to one sentence + pointer to CLAUDE-BASELINE + cpp-math.md; (3) iso-equations in `L14-36` — pick one canonical home (engine/math/CLAUDE.md) and delete the duplicate from `.claude/rules/cpp-math.md` (or vice versa); (4) PlaneIso axis-swap, SMOOTH mode position-multiplier, and IREasingFunctions gotchas preserved
+  - **Issue:** #834
+  - **Notes:** From T-223 audit (audit-claude-md.md). The bulk of the file is essentially `ls` of the math headers — violates CLAUDE-BASELINE §"What belongs in CLAUDE.md files".
+  - **Links:**
+
+- [ ] **docs: engine/prefabs/CLAUDE.md — de-dup vs .claude/rules/cpp-ecs.md** — make engine/prefabs/CLAUDE.md the canonical home for component-method rules; remove duplicates from the rule file
+  - **ID:** T-252
+  - **Area:** docs, engine/prefabs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/prefabs/CLAUDE.md:93-147` component-method rules (§(a)/(b)/(c) + Documented exceptions) kept as canonical; (2) near-verbatim duplicate removed from `.claude/rules/cpp-ecs.md` with one-line reference back; (3) `engine/prefabs/CLAUDE.md:150-173` anti-pattern items 1,2,6,7 trimmed (restate cpp-ecs.md rules); (4) IRMath and getComponent restatement lines trimmed; (5) `L40-52` Layout section (directory inventory) deleted; (6) "File pattern" table at L60-66 and cross-domain anti-patterns L155-163 preserved
+  - **Issue:** #835
+  - **Notes:** From T-223 audit (audit-claude-md.md). CLAUDE-BASELINE.md:74-79 explicitly names engine/prefabs/CLAUDE.md as canonical home for the categorization. The C_PeriodicIdle example and C_VoxelSetNew exception are identical word-for-word in both files.
+  - **Links:**
+
+- [ ] **docs: engine/prefabs/irreden/ — prune name catalogs across subtree** — triage all 7 CLAUDE.md files under engine/prefabs/irreden/, keeping only genuine gotchas and pruning name-catalog bullets
+  - **ID:** T-253
+  - **Area:** docs, engine/prefabs/irreden/common, engine/prefabs/irreden/render, engine/prefabs/irreden/audio, engine/prefabs/irreden/input, engine/prefabs/irreden/update, engine/prefabs/irreden/voxel, engine/prefabs/irreden/video
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `common/CLAUDE.md:7-28` pruned to entries documenting non-obvious lifecycle; `SYSTEM_PROPAGATE_TRANSFORM` banner drift at L74/L113/L153 fixed to `PROPAGATE_TRANSFORM`; (2) `render/CLAUDE.md:8-68` catalog and L41-56 per-field docs trimmed; L70 pipeline header fixed; L351-354 SystemName rule removed; (3) `audio/CLAUDE.md:9-37` catalogs compressed to C_MidiNote::onDestroy() gotcha; "Commands: None" deleted; WIP note for system_audio_device_manager.hpp added; (4) `input/CLAUDE.md:8-26` catalog pruned; beginTick/beforeTick inconsistency resolved; (5) `update/CLAUDE.md:7-17` pruned to C_Velocity3D gotcha; (6) `voxel/CLAUDE.md:8-40` pruned to pool/layout/deprecation notes; stubs at L46-49 and L167-173 moved out; (7) `video/CLAUDE.md` collapsed to "Status: mostly placeholder" + Gotchas
+  - **Issue:** #836
+  - **Notes:** From T-223 audit (audit-claude-md.md). Size L — per-entry judgment, not a sed pass. Keep entries that document non-obvious lifecycle, modifier-field routing, pool layout, etc.
+  - **Links:**
+
+- [ ] **docs: engine/audio + engine/video CLAUDE.md — remove dead pointers** — delete confirmed-absent component names from engine/video/CLAUDE.md and deduplicate engine/audio/CLAUDE.md key-components catalog
+  - **ID:** T-254
+  - **Area:** docs, engine/audio, engine/video
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/video/CLAUDE.md:87-89` refs to `C_FramebufferCapture`, `C_FramebufferOutputPosition`, `C_OutputResolution` removed or marked "(planned: not yet implemented)"; (2) `engine/video/CLAUDE.md:86-90` cleaned; (3) `engine/audio/CLAUDE.md:57` `C_AudioFile` dead ref removed or marked "(planned)"; (4) `engine/audio/CLAUDE.md:50-58` key-components catalog removed with pointer to `engine/prefabs/irreden/audio/CLAUDE.md`; (5) NOTE: `C_FramebufferCapture` in `engine/prefabs/irreden/video/CLAUDE.md` is valid and untouched
+  - **Issue:** #837
+  - **Notes:** From T-223 audit (audit-claude-md.md). S — 2 files, ~10 lines changed. The dead C_Framebuffer* names exist only in engine/video/CLAUDE.md; the live version is in the prefab subtree.
+  - **Links:**
+
+- [ ] **docs: engine/input/CLAUDE.md — fix C_Hitbox2D dead reference** — replace dead C_Hitbox2D name with actual C_HitboxRect / C_HitboxCircle; verify callback-path consistency; consolidate Lua callback lifetime gotcha
+  - **ID:** T-255
+  - **Area:** docs, engine/input
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/input/CLAUDE.md:62-65` `C_Hitbox2D` replaced with `C_HitboxRect` / `C_HitboxCircle`; (2) hover-callback section around L62-80 updated to match actual component names and confirmed callback-path (`onHovered`/`onUnhovered`/`onClicked` fire from HitboxRect/HitboxCircle paths); (3) `L72-91` Lua callback lifetime gotcha consolidated to canonical home (`engine/script/CLAUDE.md`) with pointer; (4) Grep confirms no other doc/skill/role files reference `C_Hitbox2D`
+  - **Issue:** #838
+  - **Notes:** From T-223 audit (audit-claude-md.md). S — one file but needs callback-path verification before fixing. C_HitboxRect and C_HitboxCircle live under `engine/prefabs/irreden/update/components/`.
+  - **Links:**
+
+- [ ] **docs: small modules — delete inline directory trees from CLAUDE.md files** — remove 5 ASCII directory-tree blocks that violate CLAUDE-BASELINE §"Do NOT include: File/directory tree listings"
+  - **ID:** T-256
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `CLAUDE.md:71-82` root ASCII tree deleted; (2) `engine/CLAUDE.md:20-44` layer-map ASCII tree deleted (keep surrounding prose); (3) `engine/common/CLAUDE.md:38-46` internal-layout tree deleted (keep "header-only, no src/" note); (4) `engine/utility/CLAUDE.md:27-33` ASCII tree deleted entirely; (5) `engine/profile/CLAUDE.md:54-64` internal-layout section deleted (already proven stale — omits profile_report.hpp)
+  - **Issue:** #840
+  - **Notes:** From T-223 audit (audit-claude-md.md). XS — 5 mechanical deletions, no judgment calls. CLAUDE-BASELINE.md forbids directory tree listings: "Agents can Glob/Grep."
+  - **Links:**
+
+- [ ] **docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup** — make engine/system/CLAUDE.md canonical for tick-signature and static-anti-pattern rules; remove verbatim duplicates from the rule file
+  - **ID:** T-257
+  - **Area:** docs, engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/system/CLAUDE.md:56-82` (three valid TICK signatures) kept as canonical; verbatim duplicate removed from `.claude/rules/cpp-systems.md` with one-line reference; (2) `engine/system/CLAUDE.md:210-227` (static anti-pattern) kept as canonical; duplicate removed from rule file; (3) `engine/system/CLAUDE.md:10-14` `IRSystem::` function-name catalog removed; (4) `engine/system/CLAUDE.md:228-231` dead `.fleet/status/system-static-deviations.md` pointer removed
+  - **Issue:** #841
+  - **Notes:** From T-223 audit (audit-claude-md.md). S — pick one canonical home for each rule, delete the other side. The three-function-signatures block and static anti-pattern explanation are duplicated verbatim.
+  - **Links:**
+
+- [ ] **docs: creations/ + creations/demos/ CLAUDE.md — fix drift** — resolve stale voxel_editor reference, remove .gitignore paste, trim redundant CMake walkthrough, fix incomplete demo inventory
+  - **ID:** T-258
+  - **Area:** docs, creations
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `creations/CLAUDE.md:18,29-34` voxel_editor refs resolved (add "in flight under T-211" note if path doesn't exist, else leave); (2) `L23-34` .gitignore paste replaced with one-liner pointer; (3) `L77-95` CMake boilerplate section trimmed to MinGW-DLL gotcha + shape_debug pointer; (4) `L14-21` tree of creations/ subdirs replaced with prose; (5) `creations/demos/CLAUDE.md:16-48` demo inventory replaced with 2-line summary naming only canonical reference demos (shape_debug, default, lua_perf_grid); (6) `L51-67` adding-a-new-demo recipe compressed to one sentence
+  - **Issue:** #842
+  - **Notes:** From T-223 audit (audit-claude-md.md). M — mechanical but with one judgment call: whether creations/editors/voxel_editor/ exists on disk. T-211 is in flight and will create it; check via Glob before deciding.
+  - **Links:**
+
+- [ ] **docs: SQT transition notes across prefabs/ family CLAUDE.md** — add in-flight T-199 transition notes to 3 CLAUDE.md files that reference legacy C_Position3D without acknowledging the ongoing migration
+  - **ID:** T-259
+  - **Area:** docs, engine/prefabs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/prefabs/irreden/common/CLAUDE.md:9-18` softened from "retired" to "in flight under T-199 — superseded by C_LocalTransform + C_WorldTransform when consumers migrate"; (2) `engine/prefabs/irreden/render/CLAUDE.md:42,48,209,213-218` code examples using C_Position3D get a one-line transition note pointing at T-199; (3) `engine/prefabs/CLAUDE.md:94-97` common/ section notes that both legacy and new SQT components coexist during T-199 migration; (4) engine/script/CLAUDE.md Lua examples left unchanged (addressed when T-199 lands the Lua-side migration)
+  - **Issue:** #843
+  - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
+  - **Links:
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
