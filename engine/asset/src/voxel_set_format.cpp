@@ -514,6 +514,176 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
     return Result<VoxelRecordsLoadResult>::success(std::move(out));
 }
 
+// ---- VRLE chunk -------------------------------------------------------
+
+ChunkPayload makeVoxelRecordsRleChunk(std::span<const VoxelRecord> voxels) {
+    // Build RLE triples (emptyRun, filledStart, filledCount) over voxels.
+    // A slot is "empty" when alpha == 0. Filled slots are written inline.
+    // Trailing empty slots need no triple.
+    struct Triple {
+        std::uint64_t emptyBefore_;
+        const VoxelRecord *filledStart_;
+        std::uint64_t filledCount_;
+    };
+    std::vector<Triple> triples;
+
+    std::uint64_t pendingEmpty = 0;
+    bool inFilled = false;
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        const auto &v = voxels[i];
+        if (v.color_.alpha_ == 0) {
+            if (inFilled) {
+                inFilled = false;
+                pendingEmpty = 1;
+            } else {
+                ++pendingEmpty;
+            }
+        } else {
+            if (!inFilled) {
+                triples.push_back({pendingEmpty, &v, 0});
+                pendingEmpty = 0;
+                inFilled = true;
+            }
+            ++triples.back().filledCount_;
+        }
+    }
+
+    MemoryBinaryWriter w;
+    w.writeU16(VoxelRecord::kSaveVersion);
+    w.writeVarUInt(static_cast<std::uint64_t>(triples.size()));
+    for (const auto &t : triples) {
+        w.writeVarUInt(t.emptyBefore_);
+        w.writeVarUInt(t.filledCount_);
+        for (std::uint64_t j = 0; j < t.filledCount_; ++j) {
+            const auto &v = t.filledStart_[j];
+            IRMath::BinaryIO::writeColorPacked(w, v.color_);
+            w.writeU8(v.material_id_);
+            w.writeU8(v.flags_);
+            w.writeU8(v.bone_id_);
+            w.writeU8(v.layer_id_);
+            w.writeU32(v.reserved_);
+        }
+    }
+    ChunkPayload out;
+    out.tag_ = kChunkTagVoxelRecordsRle;
+    out.data_ = w.takeBuffer();
+    return out;
+}
+
+Result<VoxelRecordsLoadResult>
+readVoxelRecordsRleChunk(std::span<const std::uint8_t> body, std::size_t expectedCount) {
+    MemoryBinaryReader r(body.data(), body.size(), "<VRLE chunk>");
+    auto verR = r.readU16();
+    if (!verR.ok()) {
+        return Result<VoxelRecordsLoadResult>::error(
+            verR.status_.code_,
+            std::move(verR.status_.message_)
+        );
+    }
+    if (verR.value_ > kVoxelRecordVersion) {
+        IRE_LOG_WARN(
+            "readVoxelRecordsRleChunk: record version {} > known version {}; "
+            "unknown fields ignored",
+            verR.value_,
+            static_cast<std::uint16_t>(kVoxelRecordVersion)
+        );
+    }
+    auto tripleCountR = r.readVarUInt();
+    if (!tripleCountR.ok()) {
+        return Result<VoxelRecordsLoadResult>::error(
+            tripleCountR.status_.code_,
+            std::move(tripleCountR.status_.message_)
+        );
+    }
+
+    VoxelRecordsLoadResult out;
+    out.recordVersion_ = verR.value_;
+    // Pre-fill with default (all-zero) VoxelRecord; slots not covered by any
+    // triple decode as empty (alpha==0).
+    out.voxels_.assign(expectedCount, VoxelRecord{});
+
+    std::size_t cursor = 0;
+    for (std::uint64_t t = 0; t < tripleCountR.value_; ++t) {
+        auto emptyR = r.readVarUInt();
+        if (!emptyR.ok()) {
+            return Result<VoxelRecordsLoadResult>::error(
+                emptyR.status_.code_,
+                std::move(emptyR.status_.message_)
+            );
+        }
+        auto filledR = r.readVarUInt();
+        if (!filledR.ok()) {
+            return Result<VoxelRecordsLoadResult>::error(
+                filledR.status_.code_,
+                std::move(filledR.status_.message_)
+            );
+        }
+        cursor += static_cast<std::size_t>(emptyR.value_);
+        const std::uint64_t filled = filledR.value_;
+        for (std::uint64_t j = 0; j < filled; ++j) {
+            VoxelRecord v{};
+            auto colorR = r.readU32();
+            if (!colorR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    colorR.status_.code_,
+                    std::move(colorR.status_.message_)
+                );
+            v.color_ = Color::fromPackedRGBA(colorR.value_);
+            auto matR = r.readU8();
+            if (!matR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    matR.status_.code_,
+                    std::move(matR.status_.message_)
+                );
+            v.material_id_ = matR.value_;
+            auto flagsR = r.readU8();
+            if (!flagsR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    flagsR.status_.code_,
+                    std::move(flagsR.status_.message_)
+                );
+            v.flags_ = flagsR.value_;
+            auto boneR = r.readU8();
+            if (!boneR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    boneR.status_.code_,
+                    std::move(boneR.status_.message_)
+                );
+            v.bone_id_ = boneR.value_;
+            auto layerR = r.readU8();
+            if (!layerR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    layerR.status_.code_,
+                    std::move(layerR.status_.message_)
+                );
+            v.layer_id_ = layerR.value_;
+            auto resR = r.readU32();
+            if (!resR.ok())
+                return Result<VoxelRecordsLoadResult>::error(
+                    resR.status_.code_,
+                    std::move(resR.status_.message_)
+                );
+            v.reserved_ = resR.value_;
+            if (cursor < out.voxels_.size()) {
+                out.voxels_[cursor] = v;
+            }
+            ++cursor;
+        }
+    }
+    // Trailing empty slots at the end of the volume are implicit (no triple
+    // needed). Only warn when the RLE data overshot the expected count, which
+    // indicates a malformed chunk (not just a sparse/hollow voxel set).
+    if (cursor > expectedCount) {
+        IRE_LOG_WARN(
+            "readVoxelRecordsRleChunk: decoded {} voxels, expected {} "
+            "(overflow — truncated at expected boundary)",
+            cursor,
+            expectedCount
+        );
+    }
+    return Result<VoxelRecordsLoadResult>::success(std::move(out));
+}
+
 // ---- LAYR chunk -------------------------------------------------------
 
 ChunkPayload makeLayersChunk(std::span<const LayerInfo> layers) {
@@ -780,14 +950,16 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
             "saveDenseVoxelSet: could not open '" + path + "' for write"
         );
     }
-    // Build the chunk set in order: MODE, BNDS, VOXR (always); LAYR /
-    // FRAM / META only if the caller has data (Rule #1 — extra chunks
-    // are additive, missing chunks degrade to empty on load).
+    // Build the chunk set: MODE, BNDS, VOXR, VRLE (always); LAYR / FRAM /
+    // META only if the caller has data (Rule #1 — extra chunks are additive,
+    // missing chunks degrade to empty on load). VRLE is written alongside
+    // VOXR so old loaders skip VRLE and use VOXR (Rule #1 forward compat).
     std::vector<ChunkPayload> chunks;
-    chunks.reserve(6);
+    chunks.reserve(7);
     chunks.push_back(makeModeChunk(VoxelSetMode::DENSE));
     chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
     chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
+    chunks.push_back(makeVoxelRecordsRleChunk(dense.voxels_));
     if (!dense.layers_.empty()) {
         chunks.push_back(makeLayersChunk(dense.layers_));
     }
@@ -840,7 +1012,19 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
     out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
     const std::size_t expectedCount = out.dense_.voxelCount();
 
-    if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
+    // Prefer VRLE (RLE-encoded) if present; fall back to VOXR (dense).
+    // Old loaders skip VRLE (Rule #1) and use VOXR; new loaders prefer VRLE.
+    if (const LoadedChunk *vrle = findChunk(chunksR.value_, kChunkTagVoxelRecordsRle)) {
+        auto vR = readVoxelRecordsRleChunk(vrle->data_, expectedCount);
+        if (!vR.ok()) {
+            return Result<DenseVoxelSetFile>::error(
+                vR.status_.code_,
+                std::move(vR.status_.message_)
+            );
+        }
+        out.dense_.recordVersion_ = vR.value_.recordVersion_;
+        out.dense_.voxels_ = std::move(vR.value_.voxels_);
+    } else if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
         auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
         if (!vR.ok()) {
             return Result<DenseVoxelSetFile>::error(
@@ -851,13 +1035,12 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         out.dense_.recordVersion_ = vR.value_.recordVersion_;
         out.dense_.voxels_ = std::move(vR.value_.voxels_);
     } else if (expectedCount > 0) {
-        // BNDS present but VOXR absent → malformed save. Rule #5
-        // requires we proceed (caller may still want the bounds), but
-        // log loudly so the caller knows `voxels_` is empty while
-        // `voxelCount()` reports a positive number.
+        // BNDS present but neither VOXR nor VRLE → malformed save. Rule #5
+        // requires we proceed (caller may still want the bounds), but log
+        // loudly so the caller knows `voxels_` is empty.
         IRE_LOG_WARN(
-            "loadDenseVoxelSet: BNDS present (voxelCount={}) but VOXR "
-            "chunk missing in '{}'; voxels_ left empty",
+            "loadDenseVoxelSet: BNDS present (voxelCount={}) but no VOXR/VRLE "
+            "chunk in '{}'; voxels_ left empty",
             expectedCount,
             path
         );
@@ -911,12 +1094,13 @@ BinaryStatus saveVoxelSet(
     }
     const auto shapeTypeEntries = buildCurrentShapeTypeNameTable();
     std::vector<ChunkPayload> chunks;
-    chunks.reserve(8);
+    chunks.reserve(9);
     chunks.push_back(makeModeChunk(VoxelSetMode::HYBRID));
     chunks.push_back(makeShapeRefsChunk(shapeTypeEntries));
     chunks.push_back(makeShapeGroupChunk(shapes));
     chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
     chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
+    chunks.push_back(makeVoxelRecordsRleChunk(dense.voxels_));
     if (!dense.layers_.empty()) {
         chunks.push_back(makeLayersChunk(dense.layers_));
     }
@@ -991,7 +1175,15 @@ Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
     out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
     const std::size_t expectedCount = out.dense_.voxelCount();
 
-    if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
+    // Prefer VRLE if present; fall back to VOXR.
+    if (const LoadedChunk *vrle = findChunk(chunksR.value_, kChunkTagVoxelRecordsRle)) {
+        auto vR = readVoxelRecordsRleChunk(vrle->data_, expectedCount);
+        if (!vR.ok()) {
+            return Result<VoxelSetAllFile>::error(vR.status_.code_, std::move(vR.status_.message_));
+        }
+        out.dense_.recordVersion_ = vR.value_.recordVersion_;
+        out.dense_.voxels_ = std::move(vR.value_.voxels_);
+    } else if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
         auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
         if (!vR.ok()) {
             return Result<VoxelSetAllFile>::error(vR.status_.code_, std::move(vR.status_.message_));
@@ -1000,8 +1192,8 @@ Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
         out.dense_.voxels_ = std::move(vR.value_.voxels_);
     } else if (expectedCount > 0) {
         IRE_LOG_WARN(
-            "loadVoxelSet: BNDS present (voxelCount={}) but VOXR "
-            "chunk missing in '{}'; voxels_ left empty",
+            "loadVoxelSet: BNDS present (voxelCount={}) but no VOXR/VRLE "
+            "chunk in '{}'; voxels_ left empty",
             expectedCount,
             path
         );

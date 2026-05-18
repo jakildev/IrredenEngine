@@ -20,6 +20,8 @@
 ///     SHPG chunk             shape-group primitive records (SHAPES mode)
 ///     BNDS chunk             dense bounds (ivec3 min, ivec3 max) (DENSE)
 ///     VOXR chunk             dense per-voxel records, 12 B/record (DENSE)
+///     VRLE chunk             RLE-encoded per-voxel records; triples of
+///                            (emptyRun, filledRun, records[filled]) (DENSE)
 ///     LAYR chunk             dense layer membership bitmasks (DENSE)
 ///     FRAM chunk             dense per-frame position offsets (DENSE)
 ///     META chunk             free-form key/value strings (DENSE)
@@ -70,6 +72,30 @@
 ///       uint8   bone_id
 ///       uint8   pad0               // reserved (zero on write)
 ///       uint32  reserved           // reserved for future per-voxel fields
+///
+/// VRLE chunk body — RLE-encoded per-voxel records (T-276 / B3):
+///
+/// Compresses runs of empty (alpha==0) voxel slots. Writers emit VRLE
+/// alongside VOXR so old loaders silently skip VRLE and use VOXR (Rule
+/// #1); new loaders prefer VRLE when both are present. A hollow 64³
+/// voxel set saves VRLE at ~10% of the VOXR chunk size.
+///
+///     uint16  recordVersion        // same semantics as VOXR recordVersion
+///     varuint tripleCount          // number of (emptyRun, filledRun, records) triples
+///     repeat tripleCount times:
+///       varuint emptyRun           // empty (alpha==0) slots to skip before filled block
+///       varuint filledRun          // number of filled voxels that follow
+///       repeat filledRun times:    // same 12 B record layout as VOXR
+///         uint32  packedRGBA
+///         uint8   material_id
+///         uint8   flags
+///         uint8   bone_id
+///         uint8   layer_id
+///         uint32  reserved
+///
+/// Trailing empty slots at the end of the voxel volume are implicit
+/// (no trailing triple needed). Slots not covered by any triple are
+/// decoded as VoxelRecord{} (all zero, alpha==0).
 ///
 /// LAYR chunk body — DENSE layer membership bitmasks (Phase 1):
 ///
@@ -126,6 +152,7 @@ constexpr std::array<char, 4> kChunkTagShapeRefs = {'S', 'R', 'E', 'F'};
 constexpr std::array<char, 4> kChunkTagShapeGroup = {'S', 'H', 'P', 'G'};
 constexpr std::array<char, 4> kChunkTagBounds = {'B', 'N', 'D', 'S'};
 constexpr std::array<char, 4> kChunkTagVoxelRecords = {'V', 'O', 'X', 'R'};
+constexpr std::array<char, 4> kChunkTagVoxelRecordsRle = {'V', 'R', 'L', 'E'};
 constexpr std::array<char, 4> kChunkTagLayers = {'L', 'A', 'Y', 'R'};
 constexpr std::array<char, 4> kChunkTagFrames = {'F', 'R', 'A', 'M'};
 constexpr std::array<char, 4> kChunkTagMeta = {'M', 'E', 'T', 'A'};
@@ -351,6 +378,14 @@ Result<BoundsPair> readBoundsChunk(std::span<const std::uint8_t> body);
 /// + varuint count + tightly-packed 12 B records.
 ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels);
 
+/// Serialize @p voxels into a VRLE chunk body. Uses
+/// (emptyRun, filledRun, records[]) triples; a voxel slot is "empty"
+/// when its alpha is 0. Writers emit VRLE alongside VOXR so old loaders
+/// (Rule #1 — unknown chunks skipped) continue to work; new loaders
+/// prefer VRLE. A hollow 64³ voxel set typically encodes at ~10% of the
+/// VOXR chunk size.
+ChunkPayload makeVoxelRecordsRleChunk(std::span<const VoxelRecord> voxels);
+
 struct VoxelRecordsLoadResult {
     std::vector<VoxelRecord> voxels_;
     std::uint16_t recordVersion_ = kVoxelRecordVersion;
@@ -361,6 +396,13 @@ struct VoxelRecordsLoadResult {
 /// varuint count (Rule #5 — recoverable, never fatal).
 Result<VoxelRecordsLoadResult>
 readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCount);
+
+/// Parse a VRLE chunk body. @p expectedCount comes from the BNDS volume.
+/// Decoded voxels not covered by any triple are returned as VoxelRecord{}
+/// (all-zero / alpha-0). A count mismatch is logged but does not fail the
+/// load (Rule #5 — recoverable, never fatal).
+Result<VoxelRecordsLoadResult>
+readVoxelRecordsRleChunk(std::span<const std::uint8_t> body, std::size_t expectedCount);
 
 // ---- LAYR chunk --------------------------------------------------------
 

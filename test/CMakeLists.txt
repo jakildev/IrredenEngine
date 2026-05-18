@@ -9,6 +9,7 @@ add_executable(IrredenEngineTest
   asset/sprite_sheet_test.cpp
   asset/voxel_set_dense_test.cpp
   asset/voxel_set_hybrid_test.cpp
+  asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
   audio/music_theory_test.cpp
   common/ir_platform_test.cpp
