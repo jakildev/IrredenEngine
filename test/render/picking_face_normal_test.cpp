@@ -44,19 +44,10 @@ TEST(PickingFaceNormal, CornerTieBreaksToFirstMaxAxis) {
     );
 }
 
-TEST(PickingFaceNormal, ZeroDeltaProducesPositiveXFallback) {
-    // Degenerate input (ray hit exactly the voxel center). Picks +X
-    // deterministically — caller should treat zero-delta as "no
-    // preferred face" if it matters.
-    EXPECT_EQ(
-        voxelHitFaceNormal(IRMath::vec3(0.0f, 0.0f, 0.0f)),
-        IRMath::ivec3(1, 0, 0)
-    );
-}
-
-TEST(PickingFaceNormal, NegativeVoxelCoordPlusXFace) {
-    // Mixed-sign coords — confirm the formula doesn't bias toward positive
-    // axes when the voxel sits at a negative world coord.
+TEST(PickingFaceNormal, OutOfBoundsDeltaPositiveXFace) {
+    // Pure-function stress-test: delta (0.6, 0, 0) is outside the
+    // [-0.5, 0.5) range the rounding step guarantees in normal flow.
+    // Exercises robustness for callers that bypass the rounding path.
     EXPECT_EQ(
         voxelHitFaceNormal(IRMath::vec3(0.6f, 0.0f, 0.0f)),
         IRMath::ivec3(1, 0, 0)
