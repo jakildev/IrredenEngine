@@ -12,19 +12,6 @@ description: >-
 
 # commit-and-push
 
-End-to-end flow for packaging a chunk of work into a reviewable PR on the
-Irreden Engine repo. This repo runs a parallel-agent workflow: each working
-agent lives in its own worktree, commits on a short-lived feature branch, and
-opens a PR that a reviewer agent inspects before the user merges.
-
-## When to invoke
-
-Trigger this skill whenever the user says something like:
-
-- "commit" / "commit my changes" / "commit and push"
-- "open a PR" / "make a PR" / "send it for review"
-- "wrap up" / "save progress" / "this slice is done"
-
 Do **not** invoke proactively — only when the user explicitly asks.
 
 ## Preconditions — do these before anything else

@@ -11,23 +11,6 @@ description: >-
 
 # request-re-review
 
-Push changes on the current PR branch and request a fleet re-review.
-
-## When to invoke
-
-Trigger when the user says:
-
-- "request re-review" / "re-review this PR"
-- "push and re-review" / "push for re-review"
-- "I'm done with this PR, have the fleet re-review"
-- "update PR and get it reviewed again"
-- Any phrase implying: I've made changes to an approved/reviewed PR
-  and want the fleet reviewers to look at it again.
-
-Also useful when the user has checked out a PR branch in any pane
-(architect, worker, etc.), made manual edits with an agent, and wants
-the review pipeline to pick it back up.
-
 ## Preconditions
 
 1. You are on a PR branch (not a scratch branch, not master).

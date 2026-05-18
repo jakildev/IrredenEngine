@@ -12,9 +12,6 @@ description: >-
 
 # Render Debug Loop
 
-Automated build → run → screenshot → evaluate cycle for any Irreden Engine
-creation that opts into the `--auto-screenshot` flag.
-
 ## Prerequisites
 
 ### Platform

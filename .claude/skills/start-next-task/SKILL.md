@@ -16,11 +16,6 @@ description: >-
 
 # start-next-task
 
-Cleanly transitions a worktree from "this chunk is done, PR is open" to
-"ready for the next chunk of work". This is the other half of the new PR
-workflow — `commit-and-push` packages a slice; `start-next-task` prepares
-the worktree for the next slice.
-
 The skill operates in three modes, selected in priority order at step 4:
 
 - **Fleet stack mode** (active `fleet-claim` molecule with remaining
@@ -40,33 +35,6 @@ The skill operates in three modes, selected in priority order at step 4:
   fresh `origin/master`. The historical behavior and the most common
   case for both fleet single-task work and cursor flow's "I merged it,
   start something new" pattern.
-
-## When to invoke
-
-Trigger when the user says:
-
-- **Fresh-start cues** (→ standard mode):
-  - "next task" / "start next" / "what's next" (when a PR has just
-    been opened)
-  - "move on" / "move to the next item"
-  - "pull master and start fresh" / "rebase off master"
-  - "I merged it" / "merged, let's keep going" / "back to master"
-  - "fresh start" / "new task"
-- **Stack cues** (→ cursor stack mode, when not in fleet stack mode):
-  - "stack this" / "next slice, stacked" / "keep stacking"
-  - "stack the next on this PR"
-  - "build on the last PR" / "PR-stacked next slice"
-- Immediately after `commit-and-push` completes, if the user indicated
-  they want to keep working (e.g. "commit this and then start on the
-  pathfinding refactor", or "ship it and keep going stacked").
-
-Do **not** invoke proactively without a cue. If the user says "commit
-and push" and stops, don't also run `start-next-task` — wait for them
-to ask. The one cursor-flow exception is documented in
-[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) "Cursor flow":
-when a new chat lands on a feature branch with an already-merged PR
-and the user asks for new work, surface the state and ask whether to
-invoke `start-next-task` first.
 
 ## Preconditions
 
