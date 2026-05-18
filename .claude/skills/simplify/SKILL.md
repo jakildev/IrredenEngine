@@ -307,18 +307,7 @@ Run this additional check in the same scope as the version-bump check
 
 ### 3. Naming convention slips
 
-These are the rules from [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md):
-
-| Context           | Convention            |
-|-------------------|-----------------------|
-| Private members   | `m_` prefix           |
-| Public members    | trailing `_`          |
-| Components        | `C_` prefix           |
-| Compute shaders   | `c_` prefix           |
-| Vertex shaders    | `v_` prefix           |
-| Fragment shaders  | `f_` prefix           |
-| Geometry shaders  | `g_` prefix           |
-
+Follow the naming table in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming.
 Backwards usage (`m_` on public, trailing `_` on private) is the
 single most common slip — fix it inline. Same for missing `C_` on a
 new component class, missing shader prefixes, anonymous namespaces in

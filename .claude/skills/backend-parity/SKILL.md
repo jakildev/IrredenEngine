@@ -122,7 +122,7 @@ and `.../metal/`.
 |----------------------------------------------------------|-------------------------------------------------------------|
 | `engine/render/src/shaders/*.glsl` (flat)                | `engine/render/src/shaders/metal/*.metal`                    |
 
-GLSL prefixes (`c_`, `v_`, `f_`, `g_`) indicate the stage. MSL files
+GLSL prefixes (`c_`, `v_`, `f_`, `g_`) follow CLAUDE-BASELINE §Naming and indicate the shader stage. MSL files
 use one `.metal` file per shader with the stage inferred from the
 `kernel` / `vertex` / `fragment` declaration inside. A single `.metal`
 file sometimes bundles a vertex and a fragment stage together (see
