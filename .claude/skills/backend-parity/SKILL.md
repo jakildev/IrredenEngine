@@ -330,9 +330,9 @@ Title format: `metal: <what you ported>` or `opengl: <what you ported>`
 depending on the lagging side.
 
 After the PR is open, `commit-and-push` hands control back. The
-reviewer agent (`review-pr` skill) takes over. If the user wants you
-to continue with more parity work on the same run, chain to
-`start-next-task` and pick the next gap.
+reviewer agent (`review-pr` skill) takes over. Wait for a user cue
+before starting the next parity gap — do not invoke `start-next-task`
+proactively.
 
 ## Cross-backend translation cheatsheet
 
