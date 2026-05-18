@@ -243,11 +243,11 @@ Avoid:
   - **Notes:** Epic B (#935) independent task — no format version bump; old loaders silently skip VOXR_RLE. Hard dependency for Epic E E6 (#938 chunk disk persistence). Must land before Phase 1 authoring (#604) generates dense .vxs corpus. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B3".
   - **Links:**
 
-- [ ] **render: runtime-sized voxel pools (B4)** — replace compile-time `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` constants with runtime values sized from GPU VRAM budget at startup
+- [~] **render: runtime-sized voxel pools (B4)** — replace compile-time `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` constants with runtime values sized from GPU VRAM budget at startup
   - **ID:** T-277
   - **Area:** engine/render, engine/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) launch with `--voxel-pool-size 128` runs at 128³; default behaviour identical to today at 64³; (2) `render_manager` init logs the selected pool size; (3) all existing demos continue to pass at default; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #941
