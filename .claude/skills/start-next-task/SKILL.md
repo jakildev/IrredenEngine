@@ -320,38 +320,38 @@ Reply with a compact summary:
 
 ## Anti-patterns
 
-- ❌ Switching branches with a dirty working tree. Always clean first.
-- ❌ Branching off your previous PR branch in **standard mode** (no
+- Switching branches with a dirty working tree. Always clean first.
+- Branching off your previous PR branch in **standard mode** (no
   active molecule and no stack cue). That stacks unrelated work and
   pollutes the old PR. Either stack mode (4a returned a `T-NNN`, or
   the human cued stacking) is the only case where the old branch is
   the correct base.
-- ❌ Branching off `origin/master` in **either stack mode**. The
+- Branching off `origin/master` in **either stack mode**. The
   downstream slice's diff would then include the upstream changes
   too, defeating the whole point of stacked PRs (one slice = one
   isolated diff).
-- ❌ Skipping `fleet-claim molecule advance` after `commit-and-push`
+- Skipping `fleet-claim molecule advance` after `commit-and-push`
   and going straight to `start-next-task`. `molecule resume` would
   return the just-completed task as still in-progress, branching you
   onto the same thing you just shipped. The stack-mode sanity-check
   in step 4a catches this — heed it.
-- ❌ Writing `cursor-stack-base` git config in fleet stack mode or
+- Writing `cursor-stack-base` git config in fleet stack mode or
   standard mode. The config is the cursor-flow stack signal; setting
   it elsewhere confuses `commit-and-push`.
-- ❌ Auto-detecting cursor stack mode from "old branch happens to be
+- Auto-detecting cursor stack mode from "old branch happens to be
   a feature branch" without a user cue. The cue is the only signal.
   Without it, the human's intent is ambiguous (they may want a fresh
   slice off master), and step 4b's "ask, don't guess" rule applies
   for cursor flow.
-- ❌ Running `git rebase origin/master` on the old branch to "catch
+- Running `git rebase origin/master` on the old branch to "catch
   it up", then reusing it. Rebasing the same branch for new unrelated
   work is how PR histories become unreadable.
-- ❌ Deleting the old local branch. Leave it alone — if the reviewer
+- Deleting the old local branch. Leave it alone — if the reviewer
   asks for changes, you'll need to check it out again. Both stack
   modes REQUIRE the old branch as the new branch's base.
-- ❌ Starting the next task without reading the target area's
+- Starting the next task without reading the target area's
   CLAUDE.md. That's where the module-specific invariants live.
-- ❌ Invoking this skill when no PR was actually opened (i.e. after a
+- Invoking this skill when no PR was actually opened (i.e. after a
   `commit-and-push` failure). Check step 2.
 
 ## Recovery

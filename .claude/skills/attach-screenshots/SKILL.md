@@ -314,18 +314,18 @@ over stash:
 
 ## Anti-patterns
 
-- ❌ Committing screenshots in a separate commit. Stage and let
+- Committing screenshots in a separate commit. Stage and let
   `commit-and-push` bundle them into the feature commit.
-- ❌ Running the capture from inside a worker role's tick function or
+- Running the capture from inside a worker role's tick function or
   hot path. This skill is explicit, worker-invoked, and costs one
   full rebuild + timed demo run per pass.
-- ❌ Capturing from any demo other than one that implements
+- Capturing from any demo other than one that implements
   `--auto-screenshot`. The "before" pass must be deterministic — a
   hand-driven demo is not.
-- ❌ Deleting prior `docs/pr-screenshots/<other-branch>/` directories
+- Deleting prior `docs/pr-screenshots/<other-branch>/` directories
   "for tidiness". Each branch owns its own; historical branches are a
   visual changelog.
-- ❌ Invoking this skill on PRs that don't touch visual code. Pure
+- Invoking this skill on PRs that don't touch visual code. Pure
   refactors and doc passes should skip it — the build and run cost
   is not worth no-op screenshots.
 
