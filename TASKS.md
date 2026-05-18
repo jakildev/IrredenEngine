@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating** — reduce request-re-review/SKILL.md to the parts only it owns; invoke the other two skills by reference
-  - **ID:** T-245
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-245-request-re-review-compose
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `request-re-review/SKILL.md:53-69` staging-discipline subset replaced with "invoke commit-and-push"; (2) `request-re-review/SKILL.md:87-99` branch-release subset replaced with "invoke start-next-task"; (3) skill retains only: trigger discipline, the label swap (remove `human:needs-fix`, add `fleet:changes-made`), and composition instructions
-  - **Issue:** #828
-  - **Notes:** Follow-up from T-222 audit (§5.21, §3.5). Size S. If commit-and-push or start-next-task contracts tighten, the restated copies silently drift.
-  - **Links:**
-
 - [~] **docs/skills: sweep stale tooling/version refs flagged in audit-skills §4.2** — verify and fix 8 hardcoded refs that will rot: stale Opus stamp, dead doc path, personal username, task ID citation, PR forward-ref, unmerged-hedge, stale cmake command, stale live-deviations list
   - **ID:** T-246
   - **Area:** docs
@@ -315,7 +304,7 @@ Avoid:
   - **ID:** T-252
   - **Area:** docs, engine/prefabs
   - **Model:** sonnet
-  - **Owner:** claude/T-252-prefabs-claude-md-dedup
+  - **Owner:** claude/T-252-prefabs-dedup
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/prefabs/CLAUDE.md:93-147` component-method rules (§(a)/(b)/(c) + Documented exceptions) kept as canonical; (2) near-verbatim duplicate removed from `.claude/rules/cpp-ecs.md` with one-line reference back; (3) `engine/prefabs/CLAUDE.md:150-173` anti-pattern items 1,2,6,7 trimmed (restate cpp-ecs.md rules); (4) IRMath and getComponent restatement lines trimmed; (5) `L40-52` Layout section (directory inventory) deleted; (6) "File pattern" table at L60-66 and cross-domain anti-patterns L155-163 preserved
   - **Issue:** #835
@@ -546,6 +535,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-245** — docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating · Owner: claude/T-245-request-re-review-compose · PR: https://github.com/jakildev/IrredenEngine/pull/897
 - [x] **T-260** — docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md · Owner: claude/T-260-fleet-feedback-handling · PR: https://github.com/jakildev/IrredenEngine/pull/895
 - [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
 - [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
@@ -565,4 +555,3 @@ Avoid:
 - [x] **T-232** — docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md · Owner: claude/T-232-irmath-table-to-rules · PR: https://github.com/jakildev/IrredenEngine/pull/853
 - [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
-- [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
