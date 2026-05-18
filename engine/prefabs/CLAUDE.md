@@ -72,6 +72,8 @@ Component methods fall into three tiers:
 
 **(a) Pure data.** Fields and a constructor that initializes them. Most
 components in `common/`, `input/`, and tag-style components fall here.
+(`common/` currently houses both the legacy `C_Position3D` / `C_PositionGlobal3D`
+and the new `C_WorldTransform` / `C_LocalTransform` SQT pair; T-199 in flight.)
 
 **(b) Self-only helpers (allowed).** Methods that read or write only the
 component's own fields (and stack-locals derived from them). Examples:
