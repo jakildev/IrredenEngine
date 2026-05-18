@@ -499,11 +499,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
   - **Links:**
 
-- [ ] **docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md** — extract near-verbatim feedback-label procedure (~210-230 lines each) from opus-worker and sonnet-author into one canonical shared doc; collapse architect's leaner drifted version
+- [~] **docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md** — extract near-verbatim feedback-label procedure (~210-230 lines each) from opus-worker and sonnet-author into one canonical shared doc; collapse architect's leaner drifted version
   - **ID:** T-260
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-FEEDBACK-HANDLING.md` created covering full protocol: priority order across human:needs-fix/fleet:needs-fix/fleet:has-nits/fleet:design-unblocked, AMEND-vs-ESCALATE decision, TOCTOU branch-claim, idempotent label removal, fleet:human-amending mechanic, fleet-claim reserve, response-label conventions, downstream rebase propagation, reservation release; (2) `role-opus-worker.md:228-436` and `role-sonnet-author.md:143-371` collapse to ≤30-line pointers; (3) `role-opus-architect.md:167-194` catches up to the same protocol via the new doc; (4) net -300 lines across three roles
   - **Issue:** #861
