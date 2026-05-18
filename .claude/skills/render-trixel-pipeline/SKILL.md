@@ -103,16 +103,7 @@ Mapped in the compute shader via `localIDToFace()` with work group size `(2, 3, 
 
 ## Shaders
 
-All shaders live in `engine/render/src/shaders/`. Naming convention:
-
-| Prefix | Type | Example |
-|--------|------|---------|
-| `c_` | Compute | `c_voxel_to_trixel_stage_1.glsl` |
-| `v_` | Vertex | `v_trixel_to_framebuffer.glsl` |
-| `f_` | Fragment | `f_trixel_to_framebuffer.glsl` |
-| `g_` | Geometry | (none currently) |
-
-Metal equivalents exist under `engine/render/src/shaders/metal/`.
+All shaders live in `engine/render/src/shaders/`. File prefixes (`c_` compute, `v_` vertex, `f_` fragment, `g_` geometry) follow CLAUDE-BASELINE.md §Naming. Metal equivalents exist under `engine/render/src/shaders/metal/`.
 
 ### Key Compute Shaders
 
