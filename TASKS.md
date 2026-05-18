@@ -245,17 +245,6 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.13, §1.9). Size M. Three templates differ by only 1-2 fields. Existing `procedures/` pattern: fleet-stack, cursor-stack, rebase-guard.
   - **Links:**
 
-- [~] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
-  - **ID:** T-241
-  - **Area:** docs, engine/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-241-render-trixel-pipeline-rewrite
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `render-trixel-pipeline/SKILL.md` reduced to 30-50 lines covering concepts and gotchas only; (2) buffer/image binding tables (lines 128-149), `FrameDataVoxelToCanvas` struct copy (153-164), Key Components file-path subsections (166-187), and Render Modes / Shape Types enum tables (189-211) removed or moved; (3) moved concepts filed in `engine/render/CLAUDE.md` if conceptual value exists; (4) SKILL.md gains When-to-invoke / Anti-patterns / Recovery sections per CLAUDE-BASELINE.md structure
-  - **Issue:** #824
-  - **Notes:** Follow-up from T-222 audit (§5.16, §2 inventory row, §4.5). Size L. CLAUDE-BASELINE.md:113-137 forbids inventory-of-names content in SKILL.md files.
-  - **Links:**
-
 - [~] **docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize** — delete four inventory sections that violate CLAUDE-BASELINE §no-inventories rule
   - **ID:** T-242
   - **Area:** docs
@@ -623,6 +612,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-241** — docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only · Owner: claude/T-241-render-trixel-pipeline-rewrite · PR: https://github.com/jakildev/IrredenEngine/pull/888
 - [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
@@ -642,4 +632,3 @@ Avoid:
 - [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
 - [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
 - [x] **T-225** — docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation · Owner: claude/T-225-fix-cross-repo-isolation-leaks · PR: https://github.com/jakildev/IrredenEngine/pull/844
-- [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
