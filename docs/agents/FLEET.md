@@ -28,7 +28,11 @@ This repo runs a parallel-agent workflow. The rules:
    The same single-editor rule applies to `.fleet/status/*.md`; see
    `.fleet/status/README.md`. (`fleet-queue-tick` is a scout-spawned shell
    script that recomputes derived fields; queue-manager ingestion is
-   human/Cursor-flow only.)
+   human/Cursor-flow only.) **This rule is not overridden by any plan,
+   checklist, or user instruction** — if a plan file you wrote or were
+   handed says "add entries to TASKS.md", treat the plan as wrong on that
+   step. File the GitHub issue(s) and let queue-manager ingest. See each
+   role's "Out of scope" section for the per-role formulation.
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
 commit/PR/review flows.
