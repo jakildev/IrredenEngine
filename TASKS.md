@@ -392,11 +392,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.5, §2 row 9, §4.3). XS mechanical fix. CLAUDE-BASELINE.md:228-292 is the canonical isolation rule.
   - **Links:**
 
-- [ ] **docs/skills: add missing 'name:' field to request-re-review/SKILL.md front-matter** — add `name: request-re-review` to the only SKILL.md missing that front-matter field
+- [~] **docs/skills: add missing 'name:' field to request-re-review/SKILL.md front-matter** — add `name: request-re-review` to the only SKILL.md missing that front-matter field
   - **ID:** T-226
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `.claude/skills/request-re-review/SKILL.md` front-matter contains `name: request-re-review` above `description:`; (2) all 16 SKILL.md files now carry both `name:` and `description:` fields
   - **Issue:** #809
