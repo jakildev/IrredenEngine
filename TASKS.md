@@ -355,11 +355,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The bulk of the file is essentially `ls` of the math headers — violates CLAUDE-BASELINE §"What belongs in CLAUDE.md files".
   - **Links:**
 
-- [ ] **docs: engine/prefabs/CLAUDE.md — de-dup vs .claude/rules/cpp-ecs.md** — make engine/prefabs/CLAUDE.md the canonical home for component-method rules; remove duplicates from the rule file
+- [~] **docs: engine/prefabs/CLAUDE.md — de-dup vs .claude/rules/cpp-ecs.md** — make engine/prefabs/CLAUDE.md the canonical home for component-method rules; remove duplicates from the rule file
   - **ID:** T-252
   - **Area:** docs, engine/prefabs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/prefabs/CLAUDE.md:93-147` component-method rules (§(a)/(b)/(c) + Documented exceptions) kept as canonical; (2) near-verbatim duplicate removed from `.claude/rules/cpp-ecs.md` with one-line reference back; (3) `engine/prefabs/CLAUDE.md:150-173` anti-pattern items 1,2,6,7 trimmed (restate cpp-ecs.md rules); (4) IRMath and getComponent restatement lines trimmed; (5) `L40-52` Layout section (directory inventory) deleted; (6) "File pattern" table at L60-66 and cross-domain anti-patterns L155-163 preserved
   - **Issue:** #835
