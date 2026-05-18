@@ -141,17 +141,7 @@ For each hit, manually exclude paths in the allowlist (do not flag):
 - `*.glsl` / `*.metal` files (the grep glob excludes these, but
   double-check).
 
-For everything else, flag with the IRMath equivalent. Common substitutions:
-
-| Found | Suggest |
-|-------|---------|
-| `glm::vec3` / `glm::ivec3` / `glm::mat4` | `IRMath::vec3` / `IRMath::ivec3` / `IRMath::mat4` |
-| `glm::min` / `glm::max` / `glm::clamp` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
-| `glm::length` / `glm::normalize` / `glm::dot` | `IRMath::length` / `IRMath::normalize` / `IRMath::dot` |
-| `glm::sin` / `glm::cos` / `glm::sqrt` | `IRMath::sin` / `IRMath::cos` / `IRMath::sqrt` |
-| `glm::pi<float>()` / `glm::half_pi<float>()` / `glm::two_pi<float>()` | `IRMath::kPi` / `IRMath::kHalfPi` / `IRMath::kTwoPi` |
-| `std::min` / `std::max` / `std::clamp` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
-| `std::sin` / `std::cos` / `std::sqrt` / `std::abs` | `IRMath::sin` / `IRMath::cos` / `IRMath::sqrt` / `IRMath::abs` |
+For everything else, flag with the IRMath equivalent. See [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for the full substitution table.
 
 If the IRMath wrapper does not exist yet, **don't auto-substitute** —
 flag with: "IRMath::<name> does not exist; add the wrapper to

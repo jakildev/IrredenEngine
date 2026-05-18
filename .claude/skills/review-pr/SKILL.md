@@ -265,7 +265,7 @@ or any `c_compute_*shadow*.glsl` / `.metal`)
   resident chunk set includes a 1-chunk guard band in all six directions for
   correct AO neighbor-voxel sampling.
 
-**Math / coordinates**
+**Math / coordinates** (see [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for the full glm→IRMath substitution table)
 - ❌ Mixing 3D world coords with iso 2D coords without going through
   `IRMath::pos3DtoPos2DIso` or a named helper.
 - ❌ Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
