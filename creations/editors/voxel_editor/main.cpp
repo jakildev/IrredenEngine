@@ -89,7 +89,7 @@
 // Symmetry modes (T-212)
 #include "symmetry.hpp"
 
-// Scene save/load (T-215, F-1.5)
+// Scene save/load
 #include "scene_io.hpp"
 
 using namespace IRComponents;

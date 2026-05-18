@@ -1,6 +1,6 @@
 #pragma once
 
-// Save/load round-trip for the voxel editor scene (T-215, F-1.5).
+// Save/load round-trip for the voxel editor scene.
 //
 // Each animation frame is persisted as a separate DENSE-mode .vxs file:
 //   {dir}/{baseName}_frame_{N}.vxs
