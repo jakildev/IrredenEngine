@@ -81,21 +81,8 @@ For the full workflow — fleet rules, cursor cues, stacking, design escalation,
 
 ## Project layout
 
-```
-engine/                        # Core static libs — see engine/CLAUDE.md
-  entity/   system/   world/   # ECS runtime
-  math/     common/            # Shared primitives
-  render/   audio/   video/    # IO and GPU
-  script/   input/   command/  # Scripting + input
-  window/   time/    profile/  asset/
-  prefabs/irreden/             # Header-only components/systems/commands/entities
-    common/ update/ voxel/ input/ render/ audio/ video/
-creations/                     # Applications — see creations/CLAUDE.md
-  demos/   editors/   template/
-```
-
-Each of the listed directories has its own `CLAUDE.md` with the module-
-specific patterns, gotchas, and file maps. Read the most specific one for
-whatever you're touching. Creations layered on top of the engine (including
-gitignored private implementations) define their own conventions in their
-own `CLAUDE.md` — when working there, those override the engine baseline.
+Each directory has its own `CLAUDE.md` with module-specific patterns,
+gotchas, and file maps. Read the most specific one for whatever you're
+touching. Creations layered on top of the engine (including gitignored
+private implementations) define their own conventions in their own
+`CLAUDE.md` — when working there, those override the engine baseline.

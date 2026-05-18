@@ -34,15 +34,6 @@ systems.
   NDC Y direction, depth range convention (0..1 vs -1..1), mouse Y flip.
   Use this instead of `#ifdef`ing backends in call sites.
 
-## Internal layout
-
-```
-engine/common/
-└── include/irreden/
-    ├── ir_constants.hpp
-    └── ir_platform.hpp
-```
-
 No `src/` — everything is header-only.
 
 ## Gotchas

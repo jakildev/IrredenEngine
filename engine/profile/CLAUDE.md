@@ -50,19 +50,6 @@ Colors are ARGB hex: `0xff0000ff` = pure blue, `0xffff0000` = pure red, etc.
 `CPUProfiler::setEnabled(bool)` gates all profile macros. Call it from a
 creation's startup if you want profiling off by default.
 
-## Internal layout
-
-```
-engine/profile/
-└── include/irreden/
-    ├── ir_profile.hpp             — public macros
-    └── profile/
-        ├── ir_profile.tpp         — template impls for log macros
-        ├── ir_profile_types.hpp   — shared type helpers
-        ├── logger_spd.hpp         — spdlog singleton (engine/gl/game sinks)
-        └── cpu_profiler.hpp       — easy_profiler singleton
-```
-
 ## Gotchas
 
 - **Macros are no-ops in release.** Don't put side-effectful calls inside
