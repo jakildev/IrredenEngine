@@ -436,11 +436,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.11, §3.3). Size S. Three-way conflict: simplify runs `fleet-build --target format-changed`; polish-checkpoint runs `fleet-build --target format` after simplify; commit-and-push invokes simplify but omits format.
   - **Links:**
 
-- [ ] **docs/skills: reconcile backend-parity's proactive start-next-task chaining with start-next-task's no-auto-invoke contract** — remove the contradictory chaining instruction from one of the two skills
+- [~] **docs/skills: reconcile backend-parity's proactive start-next-task chaining with start-next-task's no-auto-invoke contract** — remove the contradictory chaining instruction from one of the two skills
   - **ID:** T-230
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) contradiction resolved — either `backend-parity/SKILL.md:331-335` drops the "chain to start-next-task" instruction, or `start-next-task/SKILL.md:46-70` documents a backend-parity exemption; (2) no other skill issues an auto-invoke of start-next-task without citing the exemption
   - **Issue:** #813
