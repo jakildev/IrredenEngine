@@ -76,8 +76,8 @@ plus five lines of wire-up. Used by the `render-debug-loop` and
 Wire-up order in `main.cpp`:
 
 1. Call `parseAutoScreenshotArgv(argc, argv, &warmupFrames)`.
-2. Declare a `const AutoScreenshotShot` table at file scope (must outlive
-   the game loop — `constexpr AutoScreenshotShot kShots[]` is idiomatic).
+2. Declare a `constexpr AutoScreenshotShot kShots[]` table at file scope
+   (must outlive the game loop).
 3. When `warmupFrames > 0`, build an `AutoScreenshotConfig` and call
    `createAutoScreenshotSystem(cfg)` — append the returned `SystemId` to
    the **RENDER** pipeline list before `registerPipeline` fires.
