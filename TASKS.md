@@ -356,11 +356,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.22, §4.2). Size S. Each ref must be verified against current codebase state before replacing.
   - **Links:**
 
-- [ ] **docs/skills: sweep Bash-rule violations in skill-prescribed snippets** — replace compound-command and process-substitution forms in two SKILL.md files with single-command or tool-based equivalents
+- [~] **docs/skills: sweep Bash-rule violations in skill-prescribed snippets** — replace compound-command and process-substitution forms in two SKILL.md files with single-command or tool-based equivalents
   - **ID:** T-247
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `polish-checkpoint/SKILL.md:74` `git diff --stat && git diff` replaced with two separate Bash tool calls or Read/Glob equivalent; (2) `backend-parity/SKILL.md:158-160` `diff <(ls ...) <(ls ...)` replaced with single-command or Glob-based form; (3) `backend-parity/SKILL.md:254,260` raw `cmake --build ... -j$(nproc)` replaced with `fleet-build` (coordinate with T-235)
   - **Issue:** #830
