@@ -10,23 +10,6 @@ canvas registry.
 functions. Creations and other modules should **only** include this header,
 never internal render headers.
 
-Key exposed surface:
-
-- `getRenderManager()`, `getRenderingResourceManager()`.
-- Resource CRUD: `createResource<T>()`, `getResource<T>()`,
-  `destroyResource<T>()`, plus `createNamed<T>(name, ...)` and
-  `getNamedResource<T>(name)`.
-- Voxel pool: `allocateVoxels(count)` returns a `VoxelPoolAllocation`
-  (`startIndex_` + the four co-indexed spans); `deallocateVoxels(startIndex,
-  size)` releases the span. The start index is the source of truth — never
-  recompute it from `positions.data() - basePtr`.
-- Canvases: `createCanvas(name, size, ...)`, `getCanvas(name)`,
-  `setActiveCanvas(name)`.
-- Camera and viewport: `getCameraPosition2DIso()`, `getCameraZoom()`,
-  `getViewport()`, `getOutputScaleFactor()`, `mousePosToWorldPos()`.
-- Subdivision mode: `setSubdivisionMode(NONE|POSITION_ONLY|FULL)`,
-  `setVoxelRenderSubdivisions(n)`.
-- GUI state: `setGuiVisible`, `setGuiScale`, `setHoveredTrixelVisible`.
 
 ## Two managers
 
@@ -116,32 +99,16 @@ Every system in that list is a normal prefab under
 `engine/prefabs/irreden/render/systems/`. Each must have its name in
 `SystemName` enum before the specialization will link.
 
-## Key components (defined in prefabs/irreden/render)
-
-- `C_TriangleCanvasTextures` — 3 GPU textures (RGBA8 color, R32I distance,
-  RG32UI entity id). Created in ctor, destroyed in `onDestroy()`.
-- `C_EntityCanvas` — wraps a canvas entity id.
-- `C_TrixelFramebuffer` — main output framebuffer (color + depth).
-- `C_VoxelPool` — chunked voxel storage; filled by `allocateVoxels()`.
-- `C_ZoomLevel`, `C_Camera`, `C_CameraPosition2DIso` — camera entity.
-- `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
-  distance offset, ...).
-- `C_TextSegment`, `C_TextStyle`, `C_GeometricShape` — overlay prefabs.
-- `C_TrixelCanvasRenderBehavior` — flags for camera/zoom/hover hookups.
 
 ## Shaders
 
 Location: `engine/render/src/shaders/` (GLSL) and
 `engine/render/src/shaders/metal/` (Metal).
 
-Naming prefixes:
-
-- `c_` compute — all voxel→trixel stages, text rendering, shape rendering,
-  visibility compaction.
-- `v_` vertex / `f_` fragment — `trixel_to_framebuffer`,
-  `framebuffer_to_screen`, `debug_overlay`.
-- `ir_iso_common.glsl`, `ir_constants.glsl` — shared includes.
-
+Naming prefixes follow the convention in
+[`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming)
+(`c_` compute, `v_` vertex, `f_` fragment, `g_` geometry).
+Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`.
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
@@ -236,10 +203,8 @@ the following to the PR body:
    the canonical example).
 
 If the PR intentionally changes silhouettes / lighting / shading
-model, also refresh the affected directory under
-`engine/render/tests/render-baselines/` in the same PR and call out
-the intentional drift in the description so reviewers know the new
-crop is the new baseline rather than a regression.
+model, call out the intentional drift in the description so reviewers
+know the new crop is the new baseline rather than a regression.
 
 The skill drives any creation that supports `--auto-screenshot`
 (today: `shape_debug`; reference implementation is
@@ -337,14 +302,14 @@ Lighting splits across two sampling spaces:
   writes whichever voxels land in-range).
 
 **Phased-out producer:** `BUILD_LIGHT_OCCLUSION_GRID` and the
-`LightOcclusionGrid` SSBO are scheduled for removal in T-09Y once
-light-volume LOS moves off the world-space bitfield. AO already
-migrated to screen-space neighbour sampling (T-091), so the bitfield
-now feeds only `c_propagate_light_volume`. The single source of truth
-for "is there geometry along ray R" in the long run is `trixelDistances`
-(and the depth-map bakes derived from it); the world-space bitfield is
-an intermediate that survives only until the propagate shader migrates
-to a screen-space LOS source.
+`LightOcclusionGrid` SSBO are scheduled for removal once light-volume
+LOS moves off the world-space bitfield. AO already migrated to
+screen-space neighbour sampling (T-091), so the bitfield now feeds only
+`c_propagate_light_volume`. The single source of truth for "is there
+geometry along ray R" in the long run is `trixelDistances` (and the
+depth-map bakes derived from it); the world-space bitfield is an
+intermediate that survives only until the propagate shader migrates to
+a screen-space LOS source.
 
 The four invariants below exist because these are the places easiest to break
 silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
