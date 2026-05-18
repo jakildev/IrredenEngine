@@ -346,11 +346,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.13, §1.9). Size M. Three templates differ by only 1-2 fields. Existing `procedures/` pattern: fleet-stack, cursor-stack, rebase-guard.
   - **Links:**
 
-- [ ] **docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md** — extract 37-line host-stamp shell logic into a shared procedures file
+- [~] **docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md** — extract 37-line host-stamp shell logic into a shared procedures file
   - **ID:** T-239
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/host-label.md` with the `fleet:authored-on-{linux,macos}` host-stamp logic; (2) `commit-and-push/SKILL.md:386-423` (~37 lines) replaced with a ref; (3) reviewer-side `review-pr/SKILL.md:478-484` already refs `review-pr/procedures/cross-host-smoke.md` — ensure consistency
   - **Issue:** #822
