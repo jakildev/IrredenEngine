@@ -261,7 +261,7 @@ Avoid:
   - **ID:** T-238
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-238-pr-body-template
+  - **Owner:** claude/T-238-pr-body-v2
   - **Blocked by:** (none)
   - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/pr-body.md` with one canonical PR-body template + single-PR / fleet-stacked / cursor-stacked delta sections; (2) `commit-and-push/SKILL.md:264-374` three templates (~110 lines) replaced with ~2-line refs; (3) net reduction ~50 lines from main SKILL.md
   - **Issue:** #821
@@ -290,11 +290,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.15, §4.5). Size M. Asset-format policy buried in a generalist skill — wrong layering.
   - **Links:**
 
-- [ ] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
+- [~] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
   - **ID:** T-241
   - **Area:** docs, engine/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-241-render-trixel-pipeline-rewrite
   - **Blocked by:** (none)
   - **Acceptance:** (1) `render-trixel-pipeline/SKILL.md` reduced to 30-50 lines covering concepts and gotchas only; (2) buffer/image binding tables (lines 128-149), `FrameDataVoxelToCanvas` struct copy (153-164), Key Components file-path subsections (166-187), and Render Modes / Shape Types enum tables (189-211) removed or moved; (3) moved concepts filed in `engine/render/CLAUDE.md` if conceptual value exists; (4) SKILL.md gains When-to-invoke / Anti-patterns / Recovery sections per CLAUDE-BASELINE.md structure
   - **Issue:** #824
