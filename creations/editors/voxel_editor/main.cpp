@@ -59,6 +59,8 @@
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
+#include <irreden/render/systems/system_widget_apply_slider.hpp>
+#include <irreden/render/systems/system_widget_render_slider.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -137,8 +139,10 @@ struct UndoRecord {
 };
 
 // Per-stroke byte budget with whole-stroke eviction (D3b). One mebibyte
-// is enough headroom for a 1024-edit stroke (24 KiB) to live ~40
-// strokes deep before the oldest evicts.
+// is enough headroom for a 1024-edit stroke (24 KiB) to live ~40 strokes
+// deep before the oldest evicts. Applied per frame: each animation frame
+// has its own independent undo stack capped at this limit; total in-memory
+// undo cost is at most kUndoByteBudget × frameCount.
 constexpr std::size_t kUndoByteBudget = 1u << 20;
 
 // Reserve capacity for the per-stroke edits vector at stroke-begin so
@@ -163,6 +167,15 @@ struct EditorState {
     std::deque<UndoRecord> undoRecords_;
     std::size_t undoTotalBytes_ = 0;
     UndoRecord pendingStroke_;
+
+    // Per-frame undo stacks. Index i stores the saved undo state for
+    // g_anim.frames_[i] when that frame is not active. The active frame's
+    // live undo state always lives in undoRecords_ / undoTotalBytes_
+    // (the "hot" slot). switchToFrame swaps the hot slot in and out.
+    // Size must equal g_anim.frameCount(); frame-add and frame-delete
+    // handlers insert/erase entries in parallel with g_anim.frames_.
+    std::vector<std::deque<UndoRecord>> perFrameUndoStacks_;
+    std::vector<std::size_t> perFrameUndoBytes_;
 };
 
 EditorState g_editor;
@@ -209,6 +222,11 @@ int g_autoWarmupFrames = 0;
 // voxels and update their alpha accordingly.
 EditorLayerManager g_layerManager;
 IREntity::EntityId g_sceneVoxelSetEntity = IREntity::kNullEntity;
+
+// Animation scrubber and FPS slider entity IDs (T-214). Initialized in
+// initEntities; accessed by initSystems lambdas and switchToFrame.
+IREntity::EntityId g_scrubberSlider = IREntity::kNullEntity;
+IREntity::EntityId g_fpsSlider = IREntity::kNullEntity;
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -340,16 +358,40 @@ void loadFrameToLive(int idx) {
 
 // Snapshot the live voxels into the active frame, then load frame
 // `frameIndex` into the live target. Out-of-range and same-frame are
-// no-ops.
+// no-ops. Swaps the per-frame undo hot slot so undo (Ctrl-Z) only
+// reaches into the history of the active frame.
 void switchToFrame(int frameIndex) {
     if (frameIndex < 0 || frameIndex >= g_anim.frameCount())
         return;
     if (frameIndex == g_anim.activeFrame_)
         return;
 
-    snapshotLiveToFrame(g_anim.activeFrame_);
+    const int oldFrame = g_anim.activeFrame_;
+
+    // Save the departing frame's undo state into the cold slot.
+    if (oldFrame < static_cast<int>(g_editor.perFrameUndoStacks_.size())) {
+        g_editor.perFrameUndoStacks_[oldFrame] = std::move(g_editor.undoRecords_);
+        g_editor.perFrameUndoBytes_[oldFrame] = g_editor.undoTotalBytes_;
+    }
+
+    snapshotLiveToFrame(oldFrame);
     g_anim.activeFrame_ = frameIndex;
     loadFrameToLive(frameIndex);
+
+    // Restore the arriving frame's undo state into the hot slot.
+    g_editor.undoRecords_ = {};
+    g_editor.undoTotalBytes_ = 0;
+    if (frameIndex < static_cast<int>(g_editor.perFrameUndoStacks_.size())) {
+        g_editor.undoRecords_ = std::move(g_editor.perFrameUndoStacks_[frameIndex]);
+        g_editor.undoTotalBytes_ = g_editor.perFrameUndoBytes_[frameIndex];
+        g_editor.perFrameUndoStacks_[frameIndex] = {};
+        g_editor.perFrameUndoBytes_[frameIndex] = 0;
+    }
+
+    // Mirror the new frame index onto the scrubber widget (keyboard nav).
+    if (g_scrubberSlider != IREntity::kNullEntity) {
+        IRPrefab::Widget::setSliderValue(g_scrubberSlider, static_cast<float>(frameIndex));
+    }
 
     IR_LOG_INFO(
         "Frame: %d / %d  [%s  %.0f FPS]",
@@ -579,6 +621,37 @@ void initSystems() {
     );
     IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
+    // Scrubber + FPS sync (T-214). Runs in INPUT, after WIDGET_APPLY_SLIDER
+    // so the drag value is already committed to C_WidgetSlider::currentValue_.
+    // When the slider is pressed (user dragging), drives switchToFrame.
+    // When not pressed, mirrors g_anim.activeFrame_ back onto the slider so
+    // keyboard nav and playback keep the thumb in sync. Also pulls the FPS
+    // slider value into g_anim.fps_ each tick.
+    auto scrubberSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorScrubberSync",
+        [](const C_GuiElement &) {},
+        []() {
+            if (IRVoxelEditor::g_scrubberSlider == IREntity::kNullEntity)
+                return;
+            auto &slider = IREntity::getComponent<C_WidgetSlider>(IRVoxelEditor::g_scrubberSlider);
+            slider.maxValue_ = static_cast<float>(IRVoxelEditor::g_anim.frameCount() - 1);
+            if (IRPrefab::Widget::isPressed(IRVoxelEditor::g_scrubberSlider)) {
+                const int next = static_cast<int>(IRMath::round(slider.currentValue_));
+                IRVoxelEditor::switchToFrame(next);
+            } else {
+                slider.currentValue_ = IRMath::clamp(
+                    static_cast<float>(IRVoxelEditor::g_anim.activeFrame_),
+                    slider.minValue_,
+                    slider.maxValue_
+                );
+            }
+            if (IRVoxelEditor::g_fpsSlider != IREntity::kNullEntity) {
+                IRVoxelEditor::g_anim.fps_ =
+                    IRPrefab::Widget::sliderValue(IRVoxelEditor::g_fpsSlider);
+            }
+        }
+    );
+
     // Frame-based animation playback (T-214). Runs once per RENDER tick
     // in beginTick over C_CameraYaw (the singleton camera entity), so
     // the swap lands BEFORE this frame's voxel-to-trixel stages read
@@ -604,6 +677,8 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
          IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
          IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
+         scrubberSystem,
          paletteUpdateSystem,
          placeEraseSystem,
          scrollZoomSystem,
@@ -634,6 +709,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
@@ -687,22 +763,30 @@ void initCommands() {
 
     // X/Y/Z: toggle mirror-symmetry axis.
     auto logSymmetry = []() {
-        IR_LOG_INFO("Symmetry: X=%s Y=%s Z=%s",
+        IR_LOG_INFO(
+            "Symmetry: X=%s Y=%s Z=%s",
             IRVoxelEditor::g_symmetry.enableX_ ? "ON" : "OFF",
             IRVoxelEditor::g_symmetry.enableY_ ? "ON" : "OFF",
-            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF");
+            IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF"
+        );
     };
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonX,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
+            logSymmetry();
+        }
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonY,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_; logSymmetry(); }
+        [logSymmetry]() {
+            IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
+            logSymmetry();
+        }
     );
     // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
     // modifier checks disambiguate inline since IRCommand bindings don't
@@ -782,39 +866,98 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonA,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
+            auto &editor = IRVoxelEditor::g_editor;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
+            // Save departing frame's undo state; new frame starts clean.
+            const int oldFrame = anim.activeFrame_;
+            if (oldFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
+                editor.perFrameUndoStacks_[oldFrame] = std::move(editor.undoRecords_);
+                editor.perFrameUndoBytes_[oldFrame] = editor.undoTotalBytes_;
+            }
+            editor.undoRecords_ = {};
+            editor.undoTotalBytes_ = 0;
             anim.addBlankFrame();
+            // Keep perFrameUndoStacks_ in sync: insert empty slot for new frame.
+            editor.perFrameUndoStacks_.insert(
+                editor.perFrameUndoStacks_.begin() + anim.activeFrame_,
+                {}
+            );
+            editor.perFrameUndoBytes_.insert(
+                editor.perFrameUndoBytes_.begin() + anim.activeFrame_,
+                std::size_t{0}
+            );
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Added blank frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
         }
     );
 
     // D — duplicate the current frame. Snapshot the live voxels into
-    // the active frame first so the copy is current.
+    // the active frame first so the copy is current. The duplicate
+    // starts with an empty undo history — its voxels are the same as
+    // the source frame, so no undo-restoration is needed to get back
+    // to the initial state; clearing is the simpler and safer choice.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonD,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
+            auto &editor = IRVoxelEditor::g_editor;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
+            // Save source frame's undo state; the duplicate starts clean.
+            const int oldFrame = anim.activeFrame_;
+            if (oldFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
+                editor.perFrameUndoStacks_[oldFrame] = std::move(editor.undoRecords_);
+                editor.perFrameUndoBytes_[oldFrame] = editor.undoTotalBytes_;
+            }
+            editor.undoRecords_ = {};
+            editor.undoTotalBytes_ = 0;
             anim.duplicateCurrentFrame();
+            // Insert empty undo slot for the duplicate frame.
+            editor.perFrameUndoStacks_.insert(
+                editor.perFrameUndoStacks_.begin() + anim.activeFrame_,
+                {}
+            );
+            editor.perFrameUndoBytes_.insert(
+                editor.perFrameUndoBytes_.begin() + anim.activeFrame_,
+                std::size_t{0}
+            );
             IR_LOG_INFO("Duplicated frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
         }
     );
 
-    // Backspace — delete the current frame (minimum 1 frame).
+    // Backspace — delete the current frame (minimum 1 frame). The
+    // deleted frame's undo history is discarded; the surviving active
+    // frame's saved undo state is promoted into the hot slot.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonBackspace,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
+            auto &editor = IRVoxelEditor::g_editor;
             if (anim.frameCount() <= 1) {
                 IR_LOG_INFO("Cannot delete the only frame.");
                 return;
             }
+            const int deletedFrame = anim.activeFrame_;
+            // Discard the deleted frame's hot undo state.
+            editor.undoRecords_ = {};
+            editor.undoTotalBytes_ = 0;
+            // Remove the cold slot for the frame being deleted.
+            if (deletedFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
+                editor.perFrameUndoStacks_.erase(editor.perFrameUndoStacks_.begin() + deletedFrame);
+                editor.perFrameUndoBytes_.erase(editor.perFrameUndoBytes_.begin() + deletedFrame);
+            }
             anim.deleteCurrentFrame();
+            // Promote the new active frame's cold undo state to the hot slot.
+            const int newFrame = anim.activeFrame_;
+            if (newFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
+                editor.undoRecords_ = std::move(editor.perFrameUndoStacks_[newFrame]);
+                editor.undoTotalBytes_ = editor.perFrameUndoBytes_[newFrame];
+                editor.perFrameUndoStacks_[newFrame] = {};
+                editor.perFrameUndoBytes_[newFrame] = 0;
+            }
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Deleted frame (now %d / %d)", anim.activeFrame_ + 1, anim.frameCount());
         }
@@ -901,6 +1044,11 @@ void initEntities() {
     // Pre-size the in-flight stroke buffer so a click's append doesn't
     // pay a first-time allocation cost.
     g_editor.pendingStroke_.edits_.reserve(IRVoxelEditor::kUndoStrokeReserve);
+
+    // Per-frame undo slots — one per animation frame, always kept in sync
+    // with g_anim.frames_. Starts with one entry for the initial frame.
+    g_editor.perFrameUndoStacks_.resize(IRVoxelEditor::g_anim.frameCount());
+    g_editor.perFrameUndoBytes_.resize(IRVoxelEditor::g_anim.frameCount(), 0);
 
     constexpr float kFloorZ = 2.0f;
 
@@ -1043,4 +1191,28 @@ void initEntities() {
             )
         );
     }
+
+    // Animation controls panel (T-214, F-1.4) — sits below the palette
+    // panel. Frame scrubber: drag to navigate frames smoothly. FPS slider:
+    // drag to adjust playback speed (1–30 FPS). Both update in real time;
+    // keyboard nav (Left/Right) and playback keep the scrubber thumb in sync.
+    constexpr ivec2 kAnimPanelPos{4, 420};
+    constexpr ivec2 kAnimPanelSize{120, 55};
+    IRPrefab::Widget::makePanel(kAnimPanelPos, kAnimPanelSize, "ANIM");
+    IRVoxelEditor::g_scrubberSlider = IRPrefab::Widget::makeSlider(
+        ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 22),
+        ivec2(112, 14),
+        "FRAME",
+        0.0f,
+        static_cast<float>(IRVoxelEditor::g_anim.frameCount() - 1),
+        0.0f
+    );
+    IRVoxelEditor::g_fpsSlider = IRPrefab::Widget::makeSlider(
+        ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 38),
+        ivec2(112, 14),
+        "FPS",
+        1.0f,
+        30.0f,
+        IRVoxelEditor::g_anim.fps_
+    );
 }
