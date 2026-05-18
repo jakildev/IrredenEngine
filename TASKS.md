@@ -497,7 +497,172 @@ Avoid:
   - **Acceptance:** (1) `engine/prefabs/irreden/common/CLAUDE.md:9-18` softened from "retired" to "in flight under T-199 — superseded by C_LocalTransform + C_WorldTransform when consumers migrate"; (2) `engine/prefabs/irreden/render/CLAUDE.md:42,48,209,213-218` code examples using C_Position3D get a one-line transition note pointing at T-199; (3) `engine/prefabs/CLAUDE.md:94-97` common/ section notes that both legacy and new SQT components coexist during T-199 migration; (4) engine/script/CLAUDE.md Lua examples left unchanged (addressed when T-199 lands the Lua-side migration)
   - **Issue:** #843
   - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
-  - **Links:
+  - **Links:**
+
+- [ ] **docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md** — extract near-verbatim feedback-label procedure (~210-230 lines each) from opus-worker and sonnet-author into one canonical shared doc; collapse architect's leaner drifted version
+  - **ID:** T-260
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/FLEET-FEEDBACK-HANDLING.md` created covering full protocol: priority order across human:needs-fix/fleet:needs-fix/fleet:has-nits/fleet:design-unblocked, AMEND-vs-ESCALATE decision, TOCTOU branch-claim, idempotent label removal, fleet:human-amending mechanic, fleet-claim reserve, response-label conventions, downstream rebase propagation, reservation release; (2) `role-opus-worker.md:228-436` and `role-sonnet-author.md:143-371` collapse to ≤30-line pointers; (3) `role-opus-architect.md:167-194` catches up to the same protocol via the new doc; (4) net -300 lines across three roles
+  - **Issue:** #861
+  - **Notes:** From T-221 role audit (audit-roles.md §1.1, §3.1, §3.3, §3.6, §4.5, §4.8). Largest single duplication block in the role files — ~210 lines in worker and ~230 lines in author.
+  - **Links:**
+
+- [ ] **docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers** — consolidate four duplicated procedure blocks from both reviewer roles into one shared protocol doc
+  - **ID:** T-261
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/REVIEWER-PROTOCOL.md` created covering: acquire/release review claim, stack awareness, verdict label-swap commands (approve/approve+nits/needs-fix/blocker), cross-host smoke tagging (or pointer to FLEET-CROSS-HOST-SMOKE.md), nits-vs-needs-fix bright line; (2) `role-opus-reviewer.md:180-341` and `role-sonnet-reviewer.md:176-385` listed duplicate blocks replaced with pointers; (3) reviewer roles cannot drift further on shared semantics; (4) net +100 lines overall (worth it — drift prevention)
+  - **Issue:** #862
+  - **Notes:** From T-221 role audit (audit-roles.md §1.2, §1.7, §1.8, §1.9). Stack-awareness, verdict label-swap, nits bright line, and review-claim acquire/release each appear in both reviewer files.
+  - **Links:**
+
+- [ ] **docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md** — move molecule resume/advance/complete protocol and per-task stacked PR command sequence out of both authoring roles into FLEET.md §Stacked PRs
+  - **ID:** T-262
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `FLEET.md` §"Stacked PRs" gains subsections covering fleet-claim molecule resume/advance/complete, stack-base, stack-set-pr, claim-base, and --stackable-on fallback; (2) `role-opus-worker.md:679-960` and `role-sonnet-author.md:448-664` collapse to ~40-line pointers each; (3) net -250 lines across the two roles
+  - **Issue:** #863
+  - **Notes:** From T-221 role audit (audit-roles.md §1.3, §1.4, §1.6). FLEET.md §"Stacked PRs" already covers scheduler-level mechanics but not the per-task command sequence — this extends it. Alternative: new docs/agents/FLEET-MOLECULES.md if FLEET.md becomes too long.
+  - **Links:**
+
+- [ ] **docs/roles: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown** — consolidate per-iteration runtime ceremonies repeated across all five transient roles into one shared doc
+  - **ID:** T-263
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/FLEET-RUNTIME.md` created covering: heartbeat (step 0), reservation check (step 0.5), exit protocol (no kill -TERM $PPID), per-iteration shutdown (reset, fleet-iteration-summary, no-backticks warning, release-worktree ordering); (2) git checkout origin/master -- warning (from worker role) included; (3) all five transient roles reduce matching sections to pointers; (4) net -130 lines across five roles
+  - **Issue:** #864
+  - **Notes:** From T-221 role audit (audit-roles.md §1.10–§1.13, §4.1, §4.2). "Do NOT use backticks in the summary text" and release-worktree ordering each repeated five times. The kill -TERM $PPID deprecation and git checkout origin/master warning are easily missed when buried in role-specific files.
+  - **Links:**
+
+- [ ] **docs/roles: create FLEET-CROSS-HOST-SMOKE.md** — extract cross-host smoke validation protocol from four role files into a single shared doc with explicit Sonnet-vs-Opus split
+  - **ID:** T-264
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/agents/FLEET-CROSS-HOST-SMOKE.md` created covering: reviewer tagging (fleet:needs-<other-host>-smoke), author claiming, build/run/verdict, and explicit Sonnet-vs-Opus behavioral split (Sonnet defers visual judgment; Opus inspects screenshots and decides); (2) `role-opus-worker.md:438-502`, `role-sonnet-author.md:373-446`, `role-opus-reviewer.md:297-319`, `role-sonnet-reviewer.md:342-364` each collapse to ~5-line pointers; (3) net -20 lines overall
+  - **Issue:** #865
+  - **Notes:** From T-221 role audit (audit-roles.md §1.5, §3.6). Reviewer-tagging and author-claiming are two halves of the same protocol — keeping them in separate role files obscures the handoff. The Sonnet-vs-Opus visual judgment split is a real protocol divergence worth documenting explicitly.
+  - **Links:**
+
+- [ ] **docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor** — add canonical Hard rules section to CLAUDE-BASELINE.md; collapse all seven role Hard rules epilogues to pointers; fix broken (see CRITICAL section above) anchor throughout
+  - **ID:** T-265
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `CLAUDE-BASELINE.md` gains `## Hard rules for autonomous fleet roles` covering all baseline prohibitions (never push master, never --force, never gh pr merge, never cmake --preset, never sudo/brew/apt, never touch .claude/worktrees/ layout); (2) every role file's Hard rules section collapses to 3-line pointer plus role-specific additions (e.g., merger's "never write merge commits"); (3) broken "(see CRITICAL section above)" in all seven role files fixed to point at CLAUDE-BASELINE.md § Bash tool rules; (4) net -150 lines across seven roles
+  - **Issue:** #866
+  - **Notes:** From T-221 role audit (audit-roles.md §1.14, §2.2, §3.4). Broken anchor exists in role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md, role-merger.md, role-opus-reviewer.md, role-sonnet-reviewer.md — role-queue-manager.md says "see CLAUDE-BASELINE.md above" (also misleading).
+  - **Links:**
+
+- [ ] **docs/roles: invert Engine API removal rule citation (baseline owns it)** — make CLAUDE-BASELINE.md the canonical home for the Engine API removal rule; collapse role-file copies to pointers
+  - **ID:** T-266
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `CLAUDE-BASELINE.md:282-290` expanded to full canonical Engine API removal rule (the version currently in the role docs); downstream citation dropped; (2) `role-opus-worker.md:86-99` and `role-opus-architect.md:53-66` each collapsed to 2-line pointer at CLAUDE-BASELINE.md § Engine API removal rule; (3) net -13 lines
+  - **Issue:** #867
+  - **Notes:** From T-221 role audit (audit-roles.md §1.21, §2.1). CLAUDE-BASELINE.md currently points downstream to the role files ("See role-opus-architect.md and role-opus-worker.md for full guidance") — this inverts the canonical direction correctly.
+  - **Links:**
+
+- [ ] **docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers** — collapse three restated intro sections across all seven role files to single-line pointers
+  - **ID:** T-267
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) all seven role files reduce Bash tool rules section to a single-line pointer at CLAUDE-BASELINE.md; (2) all seven reduce shared fleet state cache section to a single-line pointer at FLEET-CACHE.md; (3) four roles (merger, opus-reviewer, sonnet-reviewer, queue-manager) reduce repo-slug discovery startup step to a pointer at FLEET-CACHE.md § "Repo slug discovery"; (4) CLAUDE-BASELINE.md gains one-sentence "keep PR review/merger body files inside the worktree" addendum; (5) net -90 lines across seven roles
+  - **Issue:** #868
+  - **Notes:** From T-221 role audit (audit-roles.md §1.18, §1.19, §1.20, §2.3, §2.5). The "Write body file inside worktree" warning only differs by filename (.review-body.md vs .merger-body.md) — one canonical note covers both.
+  - **Links:**
+
+- [ ] **fleet: resolve fleet:awaiting-base vs fleet:awaiting-upstream-review label drift** — investigate whether these are two distinct states or unintentional drift; update FLEET.md label dictionary and role files to be consistent
+  - **ID:** T-268
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) FLEET.md label dictionary is consistent with usage in all role files; (2) either fleet:awaiting-base added to FLEET.md as a distinct documented merger-owned label (clarifying difference from fleet:awaiting-upstream-review), or merger usage (role-merger.md:362,437,447,478,819-825) renamed to fleet:awaiting-upstream-review; (3) whichever direction wins, every consumer agrees on label names
+  - **Issue:** #869
+  - **Notes:** From T-221 role audit (audit-roles.md §3.2). Highest-priority semantic question in the T-221 cleanup set — a real correctness concern, not just dedup. fleet:awaiting-base appears in role-merger.md only; fleet:awaiting-upstream-review is in FLEET.md label dictionary and reviewer roles, but not the merger.
+  - **Links:**
+
+- [ ] **docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect** — fix known non-atomic label removal bug; drop spurious fleet:human-deferred removal in AMEND path
+  - **ID:** T-269
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-sonnet-author.md:261` raw label chain replaced with `fleet-pr-clear-feedback-labels <N>` call; (2) `role-opus-architect.md:185-186` same swap; (3) unconditional `fleet:human-deferred` removal in sonnet-author AMEND path removed (AMEND path triggers on human:needs-fix/human:blocker, not fleet:human-deferred); (4) known non-atomic failure mode can no longer recur in these two roles
+  - **Issue:** #870
+  - **Notes:** From T-221 role audit (audit-roles.md §3.1, §4.5, §4.8). Highest-priority bug in the T-221 cleanup set. The raw chained `gh pr edit --remove-label A --remove-label B` form exits non-zero on the first absent label, leaving partial label state. Past occurrences: PR #637 on 2026-05-11 and 2026-05-12. role-opus-worker.md already uses the wrapper correctly.
+  - **Links:**
+
+- [ ] **docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle** — fix three stale points in role-opus-architect.md relative to current fleet semantics
+  - **ID:** T-270
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-opus-architect.md:230-231` "20-minute loop" language replaced with "transient, scout-triggered"; (2) human:needs-fix AMEND flow documented including fleet:approved clear (per role-opus-worker.md:374-376 and role-sonnet-author.md:267); (3) brief game-repo --repo namespace guidance added, or explicit statement that architect does not handle game tasks autonomously
+  - **Issue:** #871
+  - **Notes:** From T-221 role audit (audit-roles.md §3.3, §3.5, §4.6). The opus-worker is transient one-shot (not a 20-minute loop) per role-opus-worker.md:48-67. The fleet:approved clear on human:needs-fix is missing from architect flow. ~30 line edits.
+  - **Links:**
+
+- [ ] **docs/roles: collapse redundant --repo flags in role-merger.md** — remove 30+ redundant --repo flags from gh pr edit/comment/list calls; keep only where override is actually needed
+  - **ID:** T-271
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) all inferable `--repo <engine-repo>` flags removed from gh pr edit, gh pr comment, gh pr list invocations in role-merger.md; (2) --repo only kept where repo override is genuinely required; (3) no semantic change; (4) ~30 line edits
+  - **Issue:** #872
+  - **Notes:** From T-221 role audit (audit-roles.md §3.7). Merger runs from the engine clone (pwd confirms ~/src/IrredenEngine/.claude/worktrees/merger), so gh infers the repo from cwd. Affected lines include 140, 185, 246, 306-307, 343, 416, 436-449, 459-460, 477-480, 535-537, 661, 710, 716-720 and more.
+  - **Links:**
+
+- [ ] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
+  - **ID:** T-272
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `role-opus-reviewer.md:421-422` and `role-sonnet-reviewer.md:463-464` PR-number citations removed; (2) failure-mode prose preserved standalone; (3) if keeping citations: moved to docs/agents/lessons-learned.md with dates; (4) ~6 line edits per option
+  - **Issue:** #873
+  - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
+  - **Links:**
+
+- [ ] **fleet: verify and document merger.log rotation** — investigate whether merger.log is actually rotated; update role-merger.md to accurately describe its lifecycle
+  - **ID:** T-273
+  - **Area:** docs, tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) merger.log lifecycle verified by checking scripts/fleet/, ~/.fleet/, dispatcher config, and cron entries; (2) role-merger.md:579-580,803,851-853 updated to cite rotation source, or "tail-rotated" claim removed if no rotation exists, or rotation added if it should exist but doesn't; (3) future readers can find rotation source from the doc
+  - **Issue:** #874
+  - **Notes:** From T-221 role audit (audit-roles.md §4.4). role-merger.md distinguishes merger-audit.log (append-only) from merger.log (claimed to be tail-rotated) but scripts/fleet/ has no rotation config. Either rotation lives off-tree undocumented, or the claim is stale. ~5 line doc edits + investigation.
+  - **Links:**
+
+- [ ] **docs/roles: decide whether queue-manager produces feedback; document either way** — add explicit statement to role-queue-manager.md on end-of-iteration feedback; either add the section or explicitly opt out
+  - **ID:** T-274
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) role-queue-manager.md explicitly states whether queue-manager produces end-of-iteration feedback; (2) if yes: End-of-iteration feedback section added pointing at ~/.fleet/feedback/queue-manager.md (consistent with other transient roles); (3) if no: one-line explicit statement added so future readers don't wonder; (4) ~10 line edit
+  - **Issue:** #875
+  - **Notes:** From T-221 role audit (audit-roles.md §4.7). Every other transient role has an End-of-iteration feedback section. Queue-manager has none (verified via grep). Either option is acceptable — the doc just needs to be explicit.
+  - **Links:**
 
 ## Done — last 20
 
