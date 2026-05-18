@@ -327,6 +327,43 @@ inline void setScrollPosition(IREntity::EntityId widget, int pos) {
     sc.scrollPos_ = IRMath::max(0, pos);
 }
 
+// COLOR_SWATCH — clickable solid-color cell, primarily for palette
+// panels. Each swatch carries its own RGBA so a grid of distinct
+// colors can be built without theme overrides. Consumers maintain
+// "active swatch" mutual exclusion themselves (clear siblings when
+// one fires) — the widget framework does not group color swatches.
+inline IREntity::EntityId makeColorSwatch(
+    IRMath::ivec2 pos, IRMath::ivec2 size, IRMath::Color color, bool initialSelected = false
+) {
+    IRComponents::C_WidgetColorSwatch swatchData;
+    swatchData.color_ = color;
+    swatchData.selected_ = initialSelected;
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::COLOR_SWATCH, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(swatchData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+inline IRMath::Color colorSwatchColor(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetColorSwatch>(widget).color_;
+}
+
+inline void setColorSwatchColor(IREntity::EntityId widget, IRMath::Color color) {
+    IREntity::getComponent<IRComponents::C_WidgetColorSwatch>(widget).color_ = color;
+}
+
+inline bool colorSwatchSelected(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetColorSwatch>(widget).selected_;
+}
+
+inline void setColorSwatchSelected(IREntity::EntityId widget, bool selected) {
+    IREntity::getComponent<IRComponents::C_WidgetColorSwatch>(widget).selected_ = selected;
+}
+
 } // namespace IRPrefab::Widget
 
 #endif /* IRREDEN_WIDGETS_H */
