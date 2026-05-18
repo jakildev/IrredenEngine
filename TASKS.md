@@ -355,11 +355,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
   - **Links:**
 
-- [ ] **docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers** — consolidate four duplicated procedure blocks from both reviewer roles into one shared protocol doc
+- [~] **docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers** — consolidate four duplicated procedure blocks from both reviewer roles into one shared protocol doc
   - **ID:** T-261
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/REVIEWER-PROTOCOL.md` created covering: acquire/release review claim, stack awareness, verdict label-swap commands (approve/approve+nits/needs-fix/blocker), cross-host smoke tagging (or pointer to FLEET-CROSS-HOST-SMOKE.md), nits-vs-needs-fix bright line; (2) `role-opus-reviewer.md:180-341` and `role-sonnet-reviewer.md:176-385` listed duplicate blocks replaced with pointers; (3) reviewer roles cannot drift further on shared semantics; (4) net +100 lines overall (worth it — drift prevention)
   - **Issue:** #862
