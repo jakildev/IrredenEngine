@@ -366,11 +366,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §3.1, §4.5, §4.8). Highest-priority bug in the T-221 cleanup set. The raw chained `gh pr edit --remove-label A --remove-label B` form exits non-zero on the first absent label, leaving partial label state. Past occurrences: PR #637 on 2026-05-11 and 2026-05-12. role-opus-worker.md already uses the wrapper correctly.
   - **Links:**
 
-- [ ] **docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle** — fix three stale points in role-opus-architect.md relative to current fleet semantics
+- [~] **docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle** — fix three stale points in role-opus-architect.md relative to current fleet semantics
   - **ID:** T-270
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-opus-architect.md:230-231` "20-minute loop" language replaced with "transient, scout-triggered"; (2) human:needs-fix AMEND flow documented including fleet:approved clear (per role-opus-worker.md:374-376 and role-sonnet-author.md:267); (3) brief game-repo --repo namespace guidance added, or explicit statement that architect does not handle game tasks autonomously
   - **Issue:** #871
