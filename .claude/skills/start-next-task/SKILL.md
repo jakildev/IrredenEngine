@@ -32,11 +32,10 @@ The skill operates in three modes, selected in priority order at step 4:
   `fleet-claim molecule resume`.
 - **Cursor stack mode** (cursor flow only, driven by user cue): same
   mechanic as fleet stack mode (branch off the old branch) but no
-  molecule machinery. Records the parent branch in
-  `branch.<new>.cursor-stack-base` git config so `commit-and-push`
-  picks it up later when opening the PR. Selected when the human
-  cues stacking ("stack this", "next slice stacked", "keep stacking",
-  "stack the next on this PR") and there is no active fleet molecule.
+  molecule machinery. Activated by stacking cues ("stack this", "next
+  slice stacked", "keep stacking", "stack the next on this PR") when
+  no fleet molecule is active; see [FLEET.md](../../../docs/agents/FLEET.md)
+  "Stacking in cursor flow" for the git-config persistence mechanism.
 - **Standard mode** (no fleet molecule and no stack cue): branch off
   fresh `origin/master`. The historical behavior and the most common
   case for both fleet single-task work and cursor flow's "I merged it,
@@ -157,28 +156,18 @@ side. That's the expected case for cursor flow.
 
 #### 4b. Cursor stack mode
 
-If 4a returned empty AND the user's cue contained a stacking phrase
-("stack this", "next slice stacked", "keep stacking", "stack the next
-on this PR", "build on the last PR"), this is **cursor stack mode**.
+If 4a returned empty AND the cue contains a stacking phrase ("stack
+this", "next slice stacked", "keep stacking", "stack the next on this
+PR", "build on the last PR"): set `MODE=cursor-stack`,
+`BASE=<old-branch-name>`. Step 7b persists the parent branch.
 
-Set `MODE=cursor-stack`, `BASE=<old-branch-name>` (the branch you
-recorded in step 1). Note the old branch name — step 7b writes it to
-git config on the new branch.
+If the cue is fresh-start ("next task", "I merged it", "back to
+master", etc.): continue to 4c.
 
-If 4a returned empty AND the cue is fresh-start ("next task", "I
-merged it", "back to master", etc.), continue to 4c.
-
-If the cue is ambiguous (just "next slice" / "next" with no stacking
-or fresh-start hint) AND the **old branch has its own
-`cursor-stack-base` set** (i.e. the old branch is itself the middle
-of a stack), stop and ask the user:
-
-> You're on a stacked branch (`<old-branch>` → base
-> `<existing-stack-base>`). Should the next slice continue the stack
-> (branch off `<old-branch>`), or branch off `master`?
-
-Don't guess. Stack continuation has different review semantics than a
-fresh slice and the human should pick.
+If the cue is ambiguous and the old branch already has
+`cursor-stack-base` set, ask whether to continue the stack or branch
+from master — don't guess (see [FLEET.md](../../../docs/agents/FLEET.md)
+"Stacking in cursor flow").
 
 #### 4c. Standard mode
 
@@ -269,26 +258,14 @@ old PR when you push. Always start a new branch.
 
 ### 7b. Record cursor-stack-base (cursor stack mode only)
 
-In **cursor stack mode** only, persist the parent branch name as
-git config on the new branch so `commit-and-push` can find it later
-when opening the PR:
-
 ```bash
 git config branch.<new-branch>.cursor-stack-base <old-branch-name>
 ```
 
-This config write is also `.git/config` — same `all` permissions
-requirement on macOS as step 7.
-
-The config is per-branch and survives chat boundaries: if the human
-opens a new chat tomorrow already on `<new-branch>`, `commit-and-push`
-reads the config from `branch.<new-branch>.cursor-stack-base` and
-opens the PR with the correct `--base`. No "resume stack" cue is
-needed across chats.
-
-Skip this step in fleet stack mode (the chain lives in
-`fleet-claim` state, not git config) and in standard mode (no
-parent to record).
+Same `.git/config` write as step 7 — needs `all` permission on macOS.
+Skip in fleet stack mode and standard mode. See
+[FLEET.md](../../../docs/agents/FLEET.md) "Stacking in cursor flow"
+for the cross-chat persistence details.
 
 ### 8. Sanity-check the state
 
@@ -305,15 +282,7 @@ git log --oneline -5
   merge-base with `origin/master` is whatever the old branch branched
   from — not the old branch's tip. That's expected.
 
-In cursor stack mode, also confirm the config write took:
-
-```bash
-git config --get branch.<new-branch>.cursor-stack-base
-```
-
-It should print `<old-branch-name>`. If it's empty, the write was
-sandboxed (see step 7b's macOS note) — re-run with `all` permissions
-before continuing.
+In cursor stack mode, also run `git config --get branch.<new-branch>.cursor-stack-base` — should print `<old-branch-name>`; if empty, retry step 7b with `all` permissions.
 
 If the top commit is wrong for the mode you're in, the checkout went
 wrong — stop and investigate.
