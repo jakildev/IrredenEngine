@@ -221,11 +221,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
   - **Links:**
 
-- [ ] **render: IRProfile::ScopeTimer + GPU timer query infrastructure (B0)** — CPU scope-timer macro + GPU timer-query pool around each render pipeline stage; perf_grid HUD displays per-stage ms
+- [~] **render: IRProfile::ScopeTimer + GPU timer query infrastructure (B0)** — CPU scope-timer macro + GPU timer-query pool around each render pipeline stage; perf_grid HUD displays per-stage ms
   - **ID:** T-275
   - **Area:** engine/render, engine/profile, creations/demos/perf_grid
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRProfile::ScopeTimer` macro emits per-frame histogram readable from a debug HUD; (2) GPU timer queries instrument each render pipeline stage (init, voxel→trixel stage 1/2, shapes→trixel, visibility compaction, lighting, framebuffer composite), results lagged 1 frame; (3) `creations/demos/perf_grid` HUD displays per-stage CPU + GPU ms; (4) golden screenshot of profiler overlay; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #939
