@@ -73,10 +73,17 @@ plus five lines of wire-up. Used by the `render-debug-loop` and
   through shots, triggers one screenshot per shot, and calls
   `IRWindow::closeWindow()` when done.
 
+Wire-up order in `main.cpp`:
+
+1. Call `parseAutoScreenshotArgv(argc, argv, &warmupFrames)`.
+2. Declare a `constexpr AutoScreenshotShot kShots[]` table at file scope
+   (must outlive the game loop).
+3. When `warmupFrames > 0`, build an `AutoScreenshotConfig` and call
+   `createAutoScreenshotSystem(cfg)` — append the returned `SystemId` to
+   the **RENDER** pipeline list before `registerPipeline` fires.
+
 Reference callers: `creations/demos/shape_debug/main.cpp` and
-`creations/demos/metal_clear_test/main.cpp`. The shot table must outlive
-the game loop — `constexpr AutoScreenshotShot kShots[]` at file scope
-is the idiomatic shape.
+`creations/demos/metal_clear_test/main.cpp`.
 
 ## Commands and components (prefabs/irreden/video)
 
