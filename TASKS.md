@@ -276,11 +276,11 @@ Avoid:
   - **Notes:** Epic C (#936) foundation task — base of both Stack S-C-core (C1 → C2 → C3 → C7) and S-C-math (C1 → C5 → C4 → C8). `C_Rotation` (Euler vec3, component_rotation.hpp:8-20) is deprecated and removed in a follow-up after consumer migration audit. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C1".
   - **Links:**
 
-- [ ] **world: chunk infra audit + docs/design/world-streaming.md (E0)** — survey existing chunk infrastructure and write a design doc covering residency manager API, prefetch policy, entity migration semantics, and disk persistence story; no code changes
+- [~] **world: chunk infra audit + docs/design/world-streaming.md (E0)** — survey existing chunk infrastructure and write a design doc covering residency manager API, prefetch policy, entity migration semantics, and disk persistence story; no code changes
   - **ID:** T-280
   - **Area:** engine/world, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/design/world-streaming.md` reviewed by another Opus agent; (2) document covers chunk identity + addressing, residency manager API, prefetch policy (camera radius + visibility priority), one-frame upload-bandwidth cap + low-LOD fallback shape with the proxy choice resolved and rationale given, entity migration semantics (atomic ownership transfer, entity-id preservation, C6/#936 interaction), and disk persistence story reusing .vxs + B3 RLE; (3) no code changes
   - **Issue:** #944
