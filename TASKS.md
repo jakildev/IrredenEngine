@@ -254,11 +254,11 @@ Avoid:
   - **Notes:** Epic B (#935) independent task — blocks Epic E E2 (#938 GPU residency manager). Replaces `ir_constants.hpp:54,63` TODOs. CLI override via `--voxel-pool-size N`. Sane fallback defaults preserve today's 64³ behaviour. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B4".
   - **Links:**
 
-- [ ] **editor: AABB box-fill + line-fill + face-fill (A1)** — drag A→B fills the AABB; axis-locked drag → line-fill; flood-fill connected coplanar surface → face-fill; ghost preview during drag; undo via snapshot stack
+- [~] **editor: AABB box-fill + line-fill + face-fill (A1)** — drag A→B fills the AABB; axis-locked drag → line-fill; flood-fill connected coplanar surface → face-fill; ghost preview during drag; undo via snapshot stack
   - **ID:** T-278
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) drag a 16×16×16 box in under 1 s of user time (multi-voxel fill in one operation); (2) line-fill along X axis when modifier-key-held; (3) face-fill flood-fills a connected coplanar surface; (4) undo/redo correctly bracket each fill operation; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #942
