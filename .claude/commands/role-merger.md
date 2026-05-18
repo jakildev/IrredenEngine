@@ -536,8 +536,7 @@ exit cleanly:
       - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
       - Add cooldown label so we don't re-attempt next iteration:
         `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
-      - Append a log line to `~/.fleet/logs/merger-audit.log`
-        (separate from `merger.log`):
+      - Append a log line to `~/.fleet/logs/merger-audit.log`:
         `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: clean rebase, force-pushed`
 
       **Conflict (non-zero exit).** Identify which files are
@@ -753,8 +752,8 @@ See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`]
 - **Always log every action** to `~/.fleet/logs/merger-audit.log`
   AND comment on the PR. Two-channel audit: the log is the merger's
   internal trail; the comment is the human-visible trail. The
-  audit log is separate from `~/.fleet/logs/merger.log` (tail-rotated)
-  to keep the audit trail intact.
+  audit log is durable and append-only; pane output is ephemeral (tmux terminal
+  only — the dispatcher does not redirect it to disk).
 - **Process at most 2 PRs per iteration.** Auto-pushes retrigger
   CI; flooding the queue is worse than slow turnover.
 - **One conflict class per push.** If a rebase needs both TASKS.md
@@ -802,7 +801,7 @@ Every action lands in TWO places:
 
 1. `~/.fleet/logs/merger-audit.log` — append-only audit trail.
    One line per action with timestamp, PR number, branch, action,
-   outcome. Kept separate from `merger.log` (tail-rotated) so the audit history is preserved.
+   outcome. Append-only so the audit history survives across iterations; pane output is ephemeral.
 2. The PR comment thread — human-visible. Always end with
    `— fleet merger` so a human (or another agent) scanning the
    thread can identify merger comments without parsing the
