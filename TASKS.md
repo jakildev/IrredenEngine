@@ -399,17 +399,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
   - **Links:**
 
-- [~] **docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md** — extract near-verbatim feedback-label procedure (~210-230 lines each) from opus-worker and sonnet-author into one canonical shared doc; collapse architect's leaner drifted version
-  - **ID:** T-260
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-260-fleet-feedback-handling
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/agents/FLEET-FEEDBACK-HANDLING.md` created covering full protocol: priority order across human:needs-fix/fleet:needs-fix/fleet:has-nits/fleet:design-unblocked, AMEND-vs-ESCALATE decision, TOCTOU branch-claim, idempotent label removal, fleet:human-amending mechanic, fleet-claim reserve, response-label conventions, downstream rebase propagation, reservation release; (2) `role-opus-worker.md:228-436` and `role-sonnet-author.md:143-371` collapse to ≤30-line pointers; (3) `role-opus-architect.md:167-194` catches up to the same protocol via the new doc; (4) net -300 lines across three roles
-  - **Issue:** #861
-  - **Notes:** From T-221 role audit (audit-roles.md §1.1, §3.1, §3.3, §3.6, §4.5, §4.8). Largest single duplication block in the role files — ~210 lines in worker and ~230 lines in author.
-  - **Links:**
-
 - [ ] **docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers** — consolidate four duplicated procedure blocks from both reviewer roles into one shared protocol doc
   - **ID:** T-261
   - **Area:** docs
@@ -557,6 +546,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-260** — docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md · Owner: claude/T-260-fleet-feedback-handling · PR: https://github.com/jakildev/IrredenEngine/pull/895
 - [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
 - [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
 - [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
@@ -576,4 +566,3 @@ Avoid:
 - [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
-- [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
