@@ -667,23 +667,10 @@ void initEntities() {
     );
     {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
-        const ivec3 sz = set.size_;
-        for (int x = 0; x < sz.x; ++x) {
-            for (int y = 0; y < sz.y; ++y) {
-                for (int z = 0; z < sz.z; ++z) {
-                    const int idx = IRMath::index3DtoIndex1D(ivec3(x, y, z), sz);
-                    if (z == sz.z - 1) {
-                        // Ground row stays activated and gets a flat
-                        // gray so the user has something to click on
-                        // before placing any voxels themselves.
-                        set.voxels_[idx].color_ = Color{120, 120, 130, 255};
-                        set.voxels_[idx].activate();
-                    } else {
-                        set.voxels_[idx].deactivate();
-                    }
-                }
-            }
-        }
+        set.deactivateAll();
+        // Ground plane at z == size_.z - 1: flat gray, gives the user
+        // something to click before placing any voxels themselves.
+        set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
     }
 
     // Smaller satellite voxel sets — exercise multi-`C_VoxelSetNew`

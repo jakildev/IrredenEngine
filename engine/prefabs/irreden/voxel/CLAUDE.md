@@ -16,7 +16,11 @@ for single voxels and particles.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
   tracks per-chunk bounds for visibility culling. **One pool per canvas entity.**
 - `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
-  position updates; supports reshape (box/sphere SDF).
+  position updates; supports reshape (box/sphere SDF). Use the provided
+  helpers instead of iterating voxels individually: `deactivateAll()`,
+  `activateAll()`, `changeVoxelColor(ivec3, Color)`, `changeVoxelColorAll(Color)`,
+  `fillPlane(int axis, int planeIndex, Color)` (activates a single face slice),
+  `reshape(Shape3D)` (box or sphere fill).
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
