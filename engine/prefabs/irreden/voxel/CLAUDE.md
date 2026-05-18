@@ -177,10 +177,14 @@ animation clips that want to address joints by string.
 - **Never add `C_VoxelPool` to a non-canvas entity.** Pools are
   canvas-scoped. Only the canvas entity created by
   `IRRender::createCanvas` should own one.
-- **`C_VoxelSetNew` allocates on construction.** The constructor calls
-  `IRRender::allocateVoxels(...)` against the active canvas pool. If
-  there's no active canvas, allocation returns an empty span. Check
-  `numVoxels_ > 0` after construction.
+- **`C_VoxelSetNew` allocates on construction.** The constructor goes
+  through `IRPrefab::VoxelPool::allocate(...)` (see `voxel_pool_api.hpp`),
+  which forwards into the render-side pool but keeps
+  `component_voxel_set.hpp` free of `<irreden/ir_render.hpp>` — see the
+  T-201 layering plan in `engine/script/CLAUDE.md`. If there's no active
+  canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
+  ctor asserts (use the dense ctor for headless construction). Check
+  `numVoxels_ > 0` after construction either way.
 - **Position lag by one frame.** `C_PositionGlobal3D` on a voxel set is
   only pushed to the pool by `system_update_voxel_set_children`. Any
   system that moves the entity must run **before** that system in the

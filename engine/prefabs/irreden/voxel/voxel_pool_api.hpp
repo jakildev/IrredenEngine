@@ -1,0 +1,65 @@
+#ifndef IR_PREFAB_VOXEL_POOL_API_H
+#define IR_PREFAB_VOXEL_POOL_API_H
+
+// Prefab-scoped façade over the render-side voxel pool API.
+//
+// Lets pool-owning components (notably `C_VoxelSetNew`) drop their direct
+// `<irreden/ir_render.hpp>` and `<irreden/render/texture.hpp>` includes —
+// the call surface they need (allocate / deallocate / active canvas lookup)
+// is re-exposed here under `IRPrefab::VoxelPool::*` so the public component
+// header stays render-neutral. Implementation forwarders are inline and
+// route into `IRRender::*` directly, preserving the existing performance
+// contract from `C_VoxelPool::allocateVoxels` (single canvas-map lookup,
+// no virtual indirection, no per-call hash beyond what's already there).
+//
+// Layering motivation: `engine/script/` consumers (prefab_api.cpp et al.)
+// transitively include this header through component_voxel_set.hpp; keeping
+// `<irreden/ir_render.hpp>` out of the component's public surface concentrates
+// the render dependency in this one shim header — see
+// `engine/script/CLAUDE.md` for the T-201 layering plan.
+
+#include <irreden/ir_render.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/render/active_canvas.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
+
+#include <cstddef>
+#include <string>
+
+namespace IRPrefab::VoxelPool {
+
+// Entity id of the currently active render canvas. Mirrors
+// `IRRender::getActiveCanvasEntity` semantics: asserts when no render
+// manager exists. Pool-owning components capture this at ctor time so
+// later operations don't need to re-look-up the canvas.
+inline IREntity::EntityId activeCanvasEntity() {
+    return IRRender::getActiveCanvasEntity();
+}
+
+// Active-canvas snapshot that returns `kNullEntity` when no render manager
+// exists. Use this from headless / pre-canvas construction paths (asset
+// tooling, prefab spawn in tests) where the asserting variant would abort.
+inline IREntity::EntityId activeCanvasEntityOrNull() {
+    return IRRender::getActiveCanvasEntityOrNull();
+}
+
+// Allocate a contiguous span of @p size voxels from the named canvas pool.
+// The returned `VoxelPoolAllocation::startIndex_` is the source of truth
+// for the span's position inside the pool's underlying voxel arrays —
+// never recompute it from `positions.data() - basePtr`.
+inline IRRender::VoxelPoolAllocation
+allocate(unsigned int size, const std::string &canvasName = "main") {
+    return IRRender::allocateVoxels(size, canvasName);
+}
+
+// Release a previously-allocated voxel span back to the pool. Pass the
+// start index returned by `allocate` and the same size.
+inline void deallocate(
+    std::size_t startIndex, std::size_t size, const std::string &canvasName = "main"
+) {
+    IRRender::deallocateVoxels(startIndex, size, canvasName);
+}
+
+} // namespace IRPrefab::VoxelPool
+
+#endif /* IR_PREFAB_VOXEL_POOL_API_H */

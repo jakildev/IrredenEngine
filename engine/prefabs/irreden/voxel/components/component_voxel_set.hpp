@@ -3,19 +3,13 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/ir_render.hpp>
 
-#include <irreden/render/active_canvas.hpp>
-#include <irreden/render/texture.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
-#include <irreden/voxel/systems/system_voxel_pool.hpp>
+#include <irreden/voxel/voxel_pool_api.hpp>
 
 #include <vector>
 
 using namespace IRMath;
-using IRRender::ImageData;
-using IRRender::ResourceId;
-using IRRender::Texture2D;
 // TODO: add primitives to voxel set, not just setting individual voxels...
 // UPDATE: see component_geometric_shape.hpp
 
@@ -78,8 +72,8 @@ struct C_VoxelSetNew {
         : numVoxels_{size.x * size.y * size.z}
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
-        canvasEntity_ = IRRender::getActiveCanvasEntity();
-        auto allocation = IRRender::allocateVoxels(requestedVoxels);
+        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntity();
+        auto allocation = IRPrefab::VoxelPool::allocate(requestedVoxels);
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -108,7 +102,7 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             numVoxels_ = 0;
             size_ = ivec3(0);
             return;
@@ -146,7 +140,7 @@ struct C_VoxelSetNew {
     C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
         : numVoxels_{0}
         , size_{boundsMax - boundsMin} {
-        canvasEntity_ = IRRender::getActiveCanvasEntityOrNull();
+        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
         const ivec3 extent = size_;
         const std::size_t requestedVoxels = (extent.x > 0 && extent.y > 0 && extent.z > 0)
                                                 ? static_cast<std::size_t>(extent.x) *
@@ -168,7 +162,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        auto allocation = IRRender::allocateVoxels(static_cast<unsigned int>(requestedVoxels));
+        auto allocation = IRPrefab::VoxelPool::allocate(static_cast<unsigned int>(requestedVoxels));
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -193,7 +187,7 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             size_ = ivec3(0);
             numVoxels_ = 0;
             return;
@@ -227,7 +221,7 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            IRRender::deallocateVoxels(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
             IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
         }
     }
