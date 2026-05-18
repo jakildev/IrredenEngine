@@ -381,11 +381,175 @@ Two stacking modes exist in this fleet:
   for game tasks for visibility, but worker pickup skips them.
 - Single-blocker tasks only (see Q3).
 
-For the exact command sequences, see: `role-sonnet-author.md` and
-`role-opus-worker.md` (fallback-tier claim + stackable-base branching);
-`role-merger.md` (cascade-rebase step and `fleet:needs-base-update`);
-`role-sonnet-reviewer.md` (upstream-gating and cross-author topology
-note).
+For role-specific framing (when to stack, role-specific edge cases),
+see `role-sonnet-author.md` and `role-opus-worker.md`. For the
+merger's cascade-rebase step and `fleet:needs-base-update`, see
+`role-merger.md`. For upstream-gating and cross-author topology
+notes, see `role-sonnet-reviewer.md`. The shared command sequences
+authoring roles use live in the next three sections.
+
+### Molecule resume protocol
+
+`fleet-claim stack ...` writes a molecule file
+(`~/.fleet/molecules/<your-worktree-name>.yml`) so a crash mid-stack
+won't strand the remaining tasks. Authoring roles check for an
+in-flight molecule at the top of each iteration before normal task
+pickup:
+
+`fleet-claim molecule resume <your-worktree-name>`
+
+Always exits 0 (safe to include in a parallel tool batch with
+`git fetch`, `gh pr list`, etc.). Discriminate via stdout:
+
+- **Stdout has a `T-NNN` task ID** — that task is part of a stack
+  started earlier (possibly in a previous process before a crash).
+  It is now (or remains) marked `in-progress`. Skip normal task
+  pickup and jump straight to the role's work step. If the task's
+  PR is already open, `fleet-claim stack-pr-state <your-worktree-name>`
+  (add `--repo game` for game-side molecules — `--repo` is a global
+  flag parsed before the subcommand) shows its URL and branch.
+  Check out the task's branch and continue committing normally —
+  one task per branch means the branch itself is the per-task
+  anchor, so no special commit-subject prefix is required.
+
+  **Resume vs restart judgment.** Read the worktree's git status:
+
+  - No work-in-progress on the branch matching that task ID →
+    **start the task fresh** as if newly claimed.
+  - Coherent partial work-in-progress (uncommitted edits, a
+    half-applied refactor, an opened-but-empty file that fits the
+    task) → **resume from that state**; the previous process did
+    real work, reuse it.
+  - Incoherent partial work (random dirty files, half-applied edits
+    to unrelated areas, mid-conflict markers) → discard with
+    `git restore --staged .` + `git checkout -- .` and start fresh.
+
+  After committing a task in the molecule, advance the molecule
+  state so the next iteration can move on:
+  `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
+  If the work failed and the task should be abandoned, use `failed`
+  instead of `done` and surface the failure to the human before
+  continuing.
+
+  **Cross-repo molecules** (opus-worker only — sonnet-author is
+  engine-only): if the in-flight molecule's tasks live in the game
+  repo (claimed with `--repo game`), all
+  `fleet-claim molecule advance/complete` calls must include
+  `--repo game` too. Cd into the game opus-worker worktree before
+  resuming so `commit-and-push` targets the right repo.
+
+- **Stdout is empty** — nothing to resume. Either no molecule exists
+  for this agent (overwhelming common case) or a molecule exists but
+  every task is already `done` or `failed`. The stderr message tells
+  you which: `"no molecule for agent: ..."` for the former, or
+  `"molecule fully complete (no remaining tasks)"` for the latter.
+  If the latter, also run
+  `fleet-claim molecule complete <your-worktree-name>` (add
+  `--repo game` for game-side) to archive it. The complete command
+  is itself idempotent (exits 0 with a stderr note if there's
+  nothing to archive), so calling it speculatively after every
+  empty resume is also safe. Either way, proceed with the normal
+  pickup flow.
+
+### Per-task stacked PR command sequence
+
+When a stack-claim spans multiple tasks (`fleet-claim stack "T-A T-B …"`),
+each task in the chain gets its own branch and its own PR, with each
+PR's `--base` pointing at the previous task's branch. GitHub treats
+these as "stacked PRs": reviewers approve each one independently, and
+when an earlier PR merges, the next PR's base auto-rebases to master.
+
+For the current task in the stack (first `(pending)` row in
+`fleet-claim stack-pr-state <your-worktree-name>`):
+
+1. **Compute the base branch** for this PR:
+   `base=$(fleet-claim stack-base <your-worktree-name> <task-id>)`
+   — returns `master` for the first task, or the previous task's
+   branch (e.g. `claude/T-005-occupancy`) for subsequent tasks.
+2. **Branch off that base:**
+   `git fetch origin "$base"`
+   `git checkout -b claude/<task-id>-<short-topic> "origin/$base"`
+3. Do the task's work in that branch. Commit as normal — no special
+   commit-subject prefix is required; one task per branch means the
+   branch name IS the per-task anchor.
+4. **Open the PR with `--base "$base"` and record it in the stack.**
+   When `$base` is a feature branch (not `master`), add
+   `--label "fleet:stacked"` so the merger and reviewer can filter
+   by label without an extra `gh pr view --json baseRefName` call:
+   `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip" --label "fleet:stacked"`
+   `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
+   For the first task in the chain (`$base == master`), omit
+   `fleet:stacked` — that PR merges into master normally.
+
+**Stacked PR title + body format.** Start the PR title with the
+task ID so reviewers can tell which task in the chain this PR covers.
+The body includes a `Stacked on:` line pointing at the previous PR
+(or `master` for the first) so reviewers see the stack context
+immediately.
+
+```markdown
+## Summary
+- <what this task does>
+
+## Stack context
+Stacked on: <previous PR URL, or "master" for the first>
+Full chain: T-005 → T-007 → T-009
+
+## Test plan
+- [ ] <task-specific checks>
+
+Closes #<issue-N>
+```
+
+The `commit-and-push` skill's "Stack-aware mode" section walks
+through the branch + PR creation; let it drive — it already knows
+to call `stack-base` and `stack-set-pr`.
+
+**When an earlier PR in the stack merges:** GitHub auto-rebases the
+next PR's base to master. Pull the latest master into the next
+branch before continuing work on it:
+`git fetch origin master`
+`git rebase origin/master`
+Force-push with `--force-with-lease` (never `--force`). The
+reviewer's approval on the unchanged commits carries over unless a
+conflict actually modified them.
+
+**Addressing review feedback on a stacked PR:** commit the fix on
+the same branch, push, and comment as usual. No cross-task
+side-effects.
+
+### Single-task base resolution (`claim-base`)
+
+For single-task claims (including stackable-on fallback claims),
+determine the base branch before checking out:
+
+`fleet-claim claim-base "<task-id>"`
+
+- Returns `master` — branch off `origin/master` normally:
+  `git checkout -b claude/<area>-<topic>`
+  `git commit --allow-empty -m "claim: <task title>"`
+- Returns a feature branch (e.g. `claude/T-NNN-…`) — this is a
+  stackable-on claim; fetch and branch off that upstream branch:
+  `git fetch origin <upstream-branch>`
+  `git checkout -b claude/<task-id>-<short-topic> origin/<upstream-branch>`
+
+Check the task's **Issue:** field. If it has a `#N` reference,
+include `Closes #N` in the PR body so the issue closes automatically
+when the PR merges:
+`gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
+If there is no issue (`(none)`), omit the `Closes` line.
+
+For a stackable-on claim (base is a feature branch), open with
+`--base <upstream-branch>` and add `fleet:stacked`:
+
+First look up the upstream PR URL:
+`gh pr view <stackable_blocker_pr.number> --json url --jq .url`
+
+Then open the PR:
+`gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
+
+Reference the task title in the PR title so the queue-manager can
+match it.
 
 ---
 
