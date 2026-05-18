@@ -245,17 +245,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
   - **Links:**
 
-- [~] **docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers** — collapse three restated intro sections across all seven role files to single-line pointers
-  - **ID:** T-267
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-267-shrink-intro-boilerplate
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) all seven role files reduce Bash tool rules section to a single-line pointer at CLAUDE-BASELINE.md; (2) all seven reduce shared fleet state cache section to a single-line pointer at FLEET-CACHE.md; (3) four roles (merger, opus-reviewer, sonnet-reviewer, queue-manager) reduce repo-slug discovery startup step to a pointer at FLEET-CACHE.md § "Repo slug discovery"; (4) CLAUDE-BASELINE.md gains one-sentence "keep PR review/merger body files inside the worktree" addendum; (5) net -90 lines across seven roles
-  - **Issue:** #868
-  - **Notes:** From T-221 role audit (audit-roles.md §1.18, §1.19, §1.20, §2.3, §2.5). The "Write body file inside worktree" warning only differs by filename (.review-body.md vs .merger-body.md) — one canonical note covers both.
-  - **Links:**
-
 - [~] **fleet: resolve fleet:awaiting-base vs fleet:awaiting-upstream-review label drift** — investigate whether these are two distinct states or unintentional drift; update FLEET.md label dictionary and role files to be consistent
   - **ID:** T-268
   - **Area:** docs
@@ -337,6 +326,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
 - [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
 - [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
 - [x] **T-265** — docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor · Owner: claude/T-265-hoist-hard-rules · PR: https://github.com/jakildev/IrredenEngine/pull/917
@@ -356,4 +346,3 @@ Avoid:
 - [x] **T-249** — docs/skills: pull pipeline-ordering (INPUT -> UPDATE -> RENDER) into one canonical doc · Owner: claude/T-249-pipeline-ordering-canonical · PR: https://github.com/jakildev/IrredenEngine/pull/901
 - [x] **T-247** — docs/skills: sweep Bash-rule violations in skill-prescribed snippets · Owner: claude/T-247-bash-rule-violations · PR: https://github.com/jakildev/IrredenEngine/pull/899
 - [x] **T-245** — docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating · Owner: claude/T-245-request-re-review-compose · PR: https://github.com/jakildev/IrredenEngine/pull/897
-- [x] **T-260** — docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md · Owner: claude/T-260-fleet-feedback-handling · PR: https://github.com/jakildev/IrredenEngine/pull/895
