@@ -47,7 +47,7 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     # Without this, scout writes the seen-hash before the spawn returns, so
     # a lock-bailed spawn silently consumes the projection-change signal and
     # approved issues can strand until the hash is manually deleted (issue #973).
-    rm -f "$HOME/.fleet/state/seen-hashes/queue-manager-ingest"
+    rm -f "$HOME/.fleet/state/seen-hashes/queue-manager-ingest" || true
     exit 0
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
