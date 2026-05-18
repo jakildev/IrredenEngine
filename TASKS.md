@@ -245,28 +245,6 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
   - **Links:**
 
-- [~] **docs: SQT transition notes across prefabs/ family CLAUDE.md** — add in-flight T-199 transition notes to 3 CLAUDE.md files that reference legacy C_Position3D without acknowledging the ongoing migration
-  - **ID:** T-259
-  - **Area:** docs, engine/prefabs
-  - **Model:** sonnet
-  - **Owner:** claude/T-259-sqt-transition-notes
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/prefabs/irreden/common/CLAUDE.md:9-18` softened from "retired" to "in flight under T-199 — superseded by C_LocalTransform + C_WorldTransform when consumers migrate"; (2) `engine/prefabs/irreden/render/CLAUDE.md:42,48,209,213-218` code examples using C_Position3D get a one-line transition note pointing at T-199; (3) `engine/prefabs/CLAUDE.md:94-97` common/ section notes that both legacy and new SQT components coexist during T-199 migration; (4) engine/script/CLAUDE.md Lua examples left unchanged (addressed when T-199 lands the Lua-side migration)
-  - **Issue:** #843
-  - **Notes:** From T-223 audit (audit-claude-md.md). XS — 3 small inserts/edits. T-199 is still in-flight ([~]); this task adds accurate in-flight documentation rather than waiting for migration to complete.
-  - **Links:**
-
-- [~] **docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md** — move molecule resume/advance/complete protocol and per-task stacked PR command sequence out of both authoring roles into FLEET.md §Stacked PRs
-  - **ID:** T-262
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-262-molecule-stacked-pr-hoist
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `FLEET.md` §"Stacked PRs" gains subsections covering fleet-claim molecule resume/advance/complete, stack-base, stack-set-pr, claim-base, and --stackable-on fallback; (2) `role-opus-worker.md:679-960` and `role-sonnet-author.md:448-664` collapse to ~40-line pointers each; (3) net -250 lines across the two roles
-  - **Issue:** #863
-  - **Notes:** From T-221 role audit (audit-roles.md §1.3, §1.4, §1.6). FLEET.md §"Stacked PRs" already covers scheduler-level mechanics but not the per-task command sequence — this extends it. Alternative: new docs/agents/FLEET-MOLECULES.md if FLEET.md becomes too long.
-  - **Links:**
-
 - [~] **docs/roles: create FLEET-CROSS-HOST-SMOKE.md** — extract cross-host smoke validation protocol from four role files into a single shared doc with explicit Sonnet-vs-Opus split
   - **ID:** T-264
   - **Area:** docs
@@ -392,6 +370,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-259** — docs: SQT transition notes across prefabs/ family CLAUDE.md · Owner: claude/T-259-sqt-transition-notes · PR: https://github.com/jakildev/IrredenEngine/pull/916
+- [x] **T-262** — docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md · Owner: claude/T-262-molecule-stacked-pr-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/914
 - [x] **T-258** — docs: creations/ + creations/demos/ CLAUDE.md — fix drift · Owner: claude/T-258-creations-claude-md-drift · PR: https://github.com/jakildev/IrredenEngine/pull/913
 - [x] **T-255** — docs: engine/input/CLAUDE.md — fix C_Hitbox2D dead reference · Owner: claude/T-255-input-hitbox-dead-ref · PR: https://github.com/jakildev/IrredenEngine/pull/909
 - [x] **T-248** — docs/skills: trim Anti-patterns sections that restate flow-step requirements · Owner: claude/T-248-trim-antipatterns-restating · PR: https://github.com/jakildev/IrredenEngine/pull/900
@@ -410,5 +390,3 @@ Avoid:
 - [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
 - [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
 - [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
-- [x] **T-242** — docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize · Owner: claude/T-242-trim-skill-inventories · PR: https://github.com/jakildev/IrredenEngine/pull/890
-- [x] **T-238** — docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md · Owner: claude/T-238-pr-body-v2 · PR: https://github.com/jakildev/IrredenEngine/pull/889
