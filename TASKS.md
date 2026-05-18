@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
+- [ ] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
   - **ID:** T-272
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-opus-reviewer.md:421-422` and `role-sonnet-reviewer.md:463-464` PR-number citations removed; (2) failure-mode prose preserved standalone; (3) if keeping citations: moved to docs/agents/lessons-learned.md with dates; (4) ~6 line edits per option
   - **Issue:** #873
@@ -236,7 +236,7 @@ Avoid:
   - **ID:** T-276
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-276-vxs-rle-chunk
   - **Blocked by:** (none)
   - **Acceptance:** (1) hollow 64³ voxel set saves at ~10% of DENSE chunk size; (2) round-trip unit tests in `engine/asset/tests/` cover empty/full/hollow/striped cases; (3) format extensibility rules verified: old loader skips new chunk silently, new loader prefers RLE; (4) `engine/asset/CLAUDE.md` documents the new chunk tag; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #940
@@ -274,6 +274,28 @@ Avoid:
   - **Acceptance:** (1) `C_LocalTransform` landed; identity-default = pure data per cpp-ecs §"Component method tiers"; (2) existing scenes render identically (identity transform is a no-op); (3) entity spawned with non-identity SQT renders at transformed position/orientation/scale (verified in inline test demo); (4) no `getComponent` calls in tick functions touch this component; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #943
   - **Notes:** Epic C (#936) foundation task — base of both Stack S-C-core (C1 → C2 → C3 → C7) and S-C-math (C1 → C5 → C4 → C8). `C_Rotation` (Euler vec3, component_rotation.hpp:8-20) is deprecated and removed in a follow-up after consumer migration audit. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C1".
+  - **Links:**
+
+- [ ] **world: chunk infra audit + docs/design/world-streaming.md (E0)** — survey existing chunk infrastructure and write a design doc covering residency manager API, prefetch policy, entity migration semantics, and disk persistence story; no code changes
+  - **ID:** T-280
+  - **Area:** engine/world, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/design/world-streaming.md` reviewed by another Opus agent; (2) document covers chunk identity + addressing, residency manager API, prefetch policy (camera radius + visibility priority), one-frame upload-bandwidth cap + low-LOD fallback shape with the proxy choice resolved and rationale given, entity migration semantics (atomic ownership transfer, entity-id preservation, C6/#936 interaction), and disk persistence story reusing .vxs + B3 RLE; (3) no code changes
+  - **Issue:** #944
+  - **Notes:** Epic E (#938) foundation task — base of Stack S-E-stream (E0 → E1 → E2 → E3 → E4) and S-E-persist (E1 → E6); blocks all of E1–E6. Survey anchors: `kChunkSize` at `engine/common/include/irreden/ir_constants.hpp:19`, `C_ChunkVisibleThisFrame` at `engine/prefabs/irreden/common/components/component_tags_all.hpp:7`, render-side chunking in voxel pool / visibility compaction, `kWorldBoundMax`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E0".
+  - **Links:**
+
+- [ ] **render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1)** — enumerate every site using `C_ShapeDescriptor` as a primary entity (vs. lighting blocker or special effect); write audit doc with concrete restriction-feasibility recommendation
+  - **ID:** T-281
+  - **Area:** engine/render, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/design/sdf-runtime-audit.md` lists every site using `C_ShapeDescriptor` as a primary entity across all demos, creations, and tests; (2) for each site, notes the use case (primary shape vs. lighting blocker vs. special effect); (3) concrete recommendation for restriction shape (effects-only feasibility + migration cost estimate); (4) no code changes
+  - **Issue:** #945
+  - **Notes:** Epic D (#937) audit task — output informs D2 (the decision deliverable on restricting SDF runtime to effects only). Audit entry point: `C_ShapeDescriptor` at `engine/prefabs/irreden/voxel/components/component_shape_descriptor.hpp:31-47`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D1".
   - **Links:**
 
 ## Done — last 20
