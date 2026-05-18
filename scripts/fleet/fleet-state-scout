@@ -148,6 +148,16 @@ def fetch_prs(repo):
 
 _ALREADY_QUEUED_LABELS = frozenset({"fleet:queued"})
 
+# Labels that mark issues the queue-manager role doc explicitly skips at
+# Step 5 — filter these out of the ingest projector/slicer so epics and
+# un-planned issues never hold the projection hash non-zero.
+_INGEST_SKIP_LABELS = frozenset({
+    "fleet:queued",      # pre-filtered by fetch_human_approved, included for explicitness
+    "fleet:epic",
+    "fleet:needs-plan",
+    "fleet:needs-info",
+})
+
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
     out = run_capture([
@@ -822,9 +832,10 @@ def project_merger(state):
 def project_queue_manager_ingest(state):
     """Hash-input projection for the queue-manager-ingest auto-fire.
 
-    Tracks the SET of `human:approved AND NOT fleet:queued` issues —
-    i.e., issues the human has approved but queue-manager hasn't yet
-    filed into TASKS.md. The hash flips when this set CHANGES:
+    Tracks the SET of actionable `human:approved` issues — i.e., issues the
+    human has approved but queue-manager hasn't yet filed into TASKS.md, and
+    that are not in a skip category (epic, needs-plan, needs-info, queued).
+    The hash flips when this set CHANGES:
 
     - Operator adds `human:approved` to issue #N: #N enters the set,
       hash flips, scout spawns fleet-queue-ingest, the LLM iteration
@@ -834,13 +845,15 @@ def project_queue_manager_ingest(state):
       set is empty, exits in <1s. One wasted iteration per ingestion
       cycle, acceptable cost.
 
-    `human_approved` from `fetch_human_approved` already excludes
-    `fleet:queued` issues (that filter lives in fetch_issues_by_label),
-    so this projector simply enumerates that set across both repos.
+    `human_approved` already excludes `fleet:queued` via fetch_human_approved;
+    _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
+    un-planned issues don't hold the hash non-zero indefinitely.
     """
     items = []
     for repo, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
+            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
             items.append({"repo": repo, "issue": issue["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
@@ -973,10 +986,14 @@ def slice_queue_manager(state):
 
 def slice_queue_manager_ingest(state):
     """Slice for fleet-queue-ingest. Mirrors the projector — list of
-    issues the human has approved but the queue hasn't filed yet."""
+    actionable issues the human has approved but the queue hasn't filed yet.
+    Applies _INGEST_SKIP_LABELS so the LLM slice never includes epics or
+    un-planned issues that the role-doc skips at Step 5."""
     out = {"pending_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
+            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
     return out
 
