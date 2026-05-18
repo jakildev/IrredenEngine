@@ -280,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md** — consolidate the IRMath→glm substitution table from simplify and 3 other skills into one shared rules file
-  - **ID:** T-232
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-232-cpp-math-rules-file
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRMath substitution table moved from `simplify/SKILL.md:144-154` into `.claude/rules/cpp-math.md` (already referenced at `simplify/SKILL.md:119`); (2) `backend-parity/SKILL.md:218-222`, `optimize/SKILL.md:211-213`, `review-pr/SKILL.md:268-273` each replaced with a one-line ref; (3) canonical source remains `CLAUDE-BASELINE.md:92-107`
-  - **Issue:** #815
-  - **Notes:** Follow-up from T-222 audit (§5.2, §1.3). Size S. `lua-creation-setup/SKILL.md:294` already uses the correct one-line ref form.
-  - **Links:**
-
 - [~] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
   - **ID:** T-233
   - **Area:** docs
@@ -592,6 +581,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-232** — docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md · Owner: claude/T-232-irmath-table-to-rules · PR: https://github.com/jakildev/IrredenEngine/pull/853
 - [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
@@ -611,4 +601,3 @@ Avoid:
 - [x] **T-209** — modifier: replace ticksRemaining footgun with pushFrameLocal / pushOneFrame · Owner: claude/T-209-pushFrameLocal-rebased · PR: https://github.com/jakildev/IrredenEngine/pull/784
 - [x] **T-203** — Linux demo validation suite — fix SHAPES_TO_TRIXEL 2D dispatch crash + all demos pass on linux-debug · Owner: claude/T-203-linux-demo-validation · PR: https://github.com/jakildev/IrredenEngine/pull/782
 - [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
-- [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
