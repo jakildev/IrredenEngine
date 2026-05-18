@@ -532,11 +532,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.3, §1.4, §1.6). FLEET.md §"Stacked PRs" already covers scheduler-level mechanics but not the per-task command sequence — this extends it. Alternative: new docs/agents/FLEET-MOLECULES.md if FLEET.md becomes too long.
   - **Links:**
 
-- [ ] **docs/roles: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown** — consolidate per-iteration runtime ceremonies repeated across all five transient roles into one shared doc
+- [~] **docs/roles: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown** — consolidate per-iteration runtime ceremonies repeated across all five transient roles into one shared doc
   - **ID:** T-263
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-RUNTIME.md` created covering: heartbeat (step 0), reservation check (step 0.5), exit protocol (no kill -TERM $PPID), per-iteration shutdown (reset, fleet-iteration-summary, no-backticks warning, release-worktree ordering); (2) git checkout origin/master -- warning (from worker role) included; (3) all five transient roles reduce matching sections to pointers; (4) net -130 lines across five roles
   - **Issue:** #864
