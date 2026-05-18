@@ -177,7 +177,7 @@ everywhere)" or universal in scope:
 - ECS — the single biggest footgun
 - Naming
 - Style
-- What belongs in CLAUDE.md files
+- What belongs in agent-facing docs
 - Bash tool rules
 - Cross-repo information isolation
 
