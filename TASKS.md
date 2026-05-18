@@ -314,11 +314,11 @@ Avoid:
   - **Notes:** Escalated from PR #756/PR #787 (T-199) — two opus-worker iterations independently completed the rebase correctly but both hit the same wall: `.claude/settings.json` line with `"Bash(git push --force-with-lease:*)"` in the deny list blocks all force-with-lease pushes. Option A (preferred): remove `Bash(git push --force-with-lease:*)`, add `Bash(git push --force-with-lease origin master:*)` and `Bash(git push --force-with-lease origin main:*)`. Option B: add targeted allow `Bash(git push --force-with-lease origin claude/*)` — only works if harness honors allow-before-deny specificity; verify before using. Keep `Bash(git push --force:*)` in deny list either way. This is a settings.json-only change.
   - **Links:**
 
-- [ ] **entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls** — add name→id reverse check in registerField so re-registering the same field name across World restarts returns the same id
+- [~] **entity: dedup globalFieldRegistry — return stable FieldBindingId on repeated registerField calls** — add name→id reverse check in registerField so re-registering the same field name across World restarts returns the same id
   - **ID:** T-220
   - **Area:** engine/prefabs/irreden/common
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `registerField("foo")` called twice returns the same `FieldBindingId`; (2) test asserts id stability across two `World` constructions (or two fixture instances) within one process; (3) no regression in modifier_runtime_test / modifier_lua_test; (4) fleet-build clean on linux-debug
   - **Issue:** #512
@@ -336,11 +336,11 @@ Avoid:
   - **Notes:** Prerequisite for T-211 (editor F-1.1 place/erase); PR #785 (T-211's first PR) is design-blocked on this and will rebase once it lands. CPU-side path has no frame lag — preferred for editor click responsiveness. GPU readback path (`IRRender::getEntityIdAtMouseTrixel`, 1-frame lag, O(1) per pick) is documented as the fallback for high-voxel-count scenes. Extend `gatherVisibleShapes` or add a sibling helper; treat each active voxel as an axis-aligned unit cube for SDF testing. Multi-sub-entity scenes, voxel-set joints, and growable pool allocation are explicitly out of scope.
   - **Links:**
 
-- [ ] **entity: dedup globalFieldRegistry field names across World restarts** — linear scan in `registerField` to return an existing `FieldBindingId` when a name was previously registered; prevents id drift across World teardown/reconstruct cycles
+- [~] **entity: dedup globalFieldRegistry field names across World restarts** — linear scan in `registerField` to return an existing `FieldBindingId` when a name was previously registered; prevents id drift across World teardown/reconstruct cycles
   - **ID:** T-220
   - **Area:** engine/prefabs/irreden/common
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `registerField("foo")` called twice in the same process returns the same `FieldBindingId` both times; (2) test asserts id stability across two `World` constructions (or two fixture instances) within a single process; (3) no regression in modifier_runtime_test / modifier_lua_test; (4) fleet-build clean on linux-debug
   - **Issue:** #512
