@@ -400,11 +400,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
   - **Links:**
 
-- [ ] **docs: engine/math/CLAUDE.md — collapse function-signature catalogs** — compress the five catalog sections (~60 lines) to gotcha paragraphs; settle the iso-equations canonical home; trim GLM alias restatement
+- [~] **docs: engine/math/CLAUDE.md — collapse function-signature catalogs** — compress the five catalog sections (~60 lines) to gotcha paragraphs; settle the iso-equations canonical home; trim GLM alias restatement
   - **ID:** T-251
   - **Area:** docs, engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `L37-95` sections (Layout helpers, Color, Physics, Quaternions, Random) each compressed to ≤3-line gotcha paragraph; (2) `L8-12` GLM alias rule trimmed to one sentence + pointer to CLAUDE-BASELINE + cpp-math.md; (3) iso-equations in `L14-36` — pick one canonical home (engine/math/CLAUDE.md) and delete the duplicate from `.claude/rules/cpp-math.md` (or vice versa); (4) PlaneIso axis-swap, SMOOTH mode position-multiplier, and IREasingFunctions gotchas preserved
   - **Issue:** #834
