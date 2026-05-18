@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize** — delete four inventory sections that violate CLAUDE-BASELINE §no-inventories rule
-  - **ID:** T-242
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-242-trim-skill-inventories
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `render-debug-loop/SKILL.md:175-189` Key Files table removed or compressed to a grep pointer; (2) `backend-parity/SKILL.md:99-118` backend C++ file-pairs table removed; (3) `backend-parity/SKILL.md:121-132` shader-prefix convention table removed (duplicate of CLAUDE-BASELINE); (4) `optimize/SKILL.md:142-158` 15-stage GPU pass-name list removed; (5) all removed sections replaced with "see `<file>`" or Grep pointers
-  - **Issue:** #825
-  - **Notes:** Follow-up from T-222 audit (§5.17, §2 inventory row). Size M. All four sections list names that are grep-discoverable in the code.
-  - **Links:**
-
 - [~] **docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections** — remove boilerplate intro paragraphs and trigger restatements from 9+ SKILL.md files
   - **ID:** T-243
   - **Area:** docs
@@ -359,7 +348,7 @@ Avoid:
   - **ID:** T-253
   - **Area:** docs, engine/prefabs/irreden/common, engine/prefabs/irreden/render, engine/prefabs/irreden/audio, engine/prefabs/irreden/input, engine/prefabs/irreden/update, engine/prefabs/irreden/voxel, engine/prefabs/irreden/video
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-253-prefab-claude-md-prune
   - **Blocked by:** (none)
   - **Acceptance:** (1) `common/CLAUDE.md:7-28` pruned to entries documenting non-obvious lifecycle; `SYSTEM_PROPAGATE_TRANSFORM` banner drift at L74/L113/L153 fixed to `PROPAGATE_TRANSFORM`; (2) `render/CLAUDE.md:8-68` catalog and L41-56 per-field docs trimmed; L70 pipeline header fixed; L351-354 SystemName rule removed; (3) `audio/CLAUDE.md:9-37` catalogs compressed to C_MidiNote::onDestroy() gotcha; "Commands: None" deleted; WIP note for system_audio_device_manager.hpp added; (4) `input/CLAUDE.md:8-26` catalog pruned; beginTick/beforeTick inconsistency resolved; (5) `update/CLAUDE.md:7-17` pruned to C_Velocity3D gotcha; (6) `voxel/CLAUDE.md:8-40` pruned to pool/layout/deprecation notes; stubs at L46-49 and L167-173 moved out; (7) `video/CLAUDE.md` collapsed to "Status: mostly placeholder" + Gotchas
   - **Issue:** #836
@@ -601,6 +590,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-242** — docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize · Owner: claude/T-242-trim-skill-inventories · PR: https://github.com/jakildev/IrredenEngine/pull/890
 - [x] **T-238** — docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md · Owner: claude/T-238-pr-body-v2 · PR: https://github.com/jakildev/IrredenEngine/pull/889
 - [x] **T-241** — docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only · Owner: claude/T-241-render-trixel-pipeline-rewrite · PR: https://github.com/jakildev/IrredenEngine/pull/888
 - [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
@@ -620,4 +610,3 @@ Avoid:
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
 - [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
 - [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
-- [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
