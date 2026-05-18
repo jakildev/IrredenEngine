@@ -447,11 +447,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.12, §3.2). XS. backend-parity tells agents to chain to start-next-task proactively; start-next-task says "Do not invoke proactively."
   - **Links:**
 
-- [ ] **docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md** — consolidate the per-entity getComponent / structural-change / allocation-in-tick check from 5 SKILL.md files into one shared rules file
+- [~] **docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md** — consolidate the per-entity getComponent / structural-change / allocation-in-tick check from 5 SKILL.md files into one shared rules file
   - **ID:** T-231
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `.claude/rules/cpp-ecs-smells.md` created with the canonical ECS-invariants checklist; (2) `simplify/SKILL.md:62-105`, `review-pr/SKILL.md:200-222`, `optimize/SKILL.md:194-200`, `polish-checkpoint/SKILL.md:88-94`, `ecs-prefab-creator/SKILL.md:131-133` each replaced with a one-line ref to the new file; (3) `.claude/rules/cpp-systems.md` ref pattern at `simplify/SKILL.md:119-122` used as the ref style
   - **Issue:** #814
