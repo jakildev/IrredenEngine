@@ -64,12 +64,11 @@ the cooldown label prevents an immediate retry.
 0. Print your role banner:
    `[merger] Auto-rebases stale PRs and sort-merges TASKS.md conflicts. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `merger` worktree.
-2. **Discover repo slug** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
-3. Reset to the throwaway branch unconditionally — `-B` makes it
+2. Reset to the throwaway branch unconditionally — `-B` makes it
    idempotent. Run as two separate Bash calls:
    `git -C ~/src/IrredenEngine fetch origin --quiet`
    `git checkout -B claude/merger-scratch origin/master`
-4. Print `merger standing by` (or `merger standing by (dry-run)`
+3. Print `merger standing by` (or `merger standing by (dry-run)`
    if Mode above is `dry-run`). Don't pre-fetch the PR list —
    the first loop iteration does that and any startup-time fetch
    would be wasted work.
@@ -98,7 +97,7 @@ exit cleanly:
    Read `~/.fleet/state/state.json`; from `repos.engine.prs[]`,
    collect every PR whose `labels` contains `fleet:merger-cooldown`.
    For each such PR number:
-   `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:merger-cooldown"`
+   `gh pr edit <N> --remove-label "fleet:merger-cooldown"`
 
 2. Get the engine PR list from the cache you just loaded —
    `repos.engine.prs[]` already includes `number`, `title`,
@@ -143,7 +142,7 @@ exit cleanly:
    case from (1). `fleet:stacked` is also fine here for the same
    reason. For each such PR, look up its base PR's state:
 
-   `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+   `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
    Three outcomes:
 
@@ -204,7 +203,7 @@ exit cleanly:
    For each candidate, look up the base PR's state — same query as
    step 2.5 and step 5a.5:
 
-   `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+   `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
    If state is not OPEN, skip — step 2.5 owns the merged/closed
    transitions. If OPEN, fetch both refs (separate Bash calls,
@@ -264,8 +263,8 @@ exit cleanly:
 
         — fleet merger
         ```
-      - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+      - `gh pr comment <N> --body-file .merger-body.md`
+      - `gh pr edit <N> --add-label "fleet:merger-cooldown"`
       - Append to `~/.fleet/logs/merger-audit.log`:
         `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase clean onto #<base-pr-number>, force-pushed`
 
@@ -300,8 +299,8 @@ exit cleanly:
 
         — fleet merger
         ```
-      - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-base-update" --add-label "fleet:merger-cooldown"`
+      - `gh pr comment <N> --body-file .merger-body.md`
+      - `gh pr edit <N> --add-label "fleet:needs-base-update" --add-label "fleet:merger-cooldown"`
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
 
    d. **Reset to scratch.** Same as step 5f:
@@ -311,7 +310,7 @@ exit cleanly:
    - `mergeable == "CONFLICTING"`, OR
    - `mergeable == "UNKNOWN"` AND the PR was updated > 5 minutes ago
      (GitHub may still be computing — re-fetch via
-     `gh pr view <N> --repo <engine-repo> --json mergeable` to refresh)
+     `gh pr view <N> --json mergeable` to refresh)
 
    **Skip** if any of these labels are present:
    - `human:wip` — human is editing directly
@@ -374,7 +373,7 @@ exit cleanly:
       Otherwise (stacked PR — base is a feature branch), look up the
       base PR by its head ref. The base might be OPEN, MERGED, or
       CLOSED without merging:
-      `gh pr list --repo <engine-repo> --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+      `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
       Three sub-cases. In all three, skip this PR's rebase entirely
       and jump to step f (reset to scratch), then move on to the next
@@ -394,8 +393,8 @@ exit cleanly:
 
            — fleet merger
            ```
-         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:awaiting-base" --add-label "fleet:merger-cooldown"`
+         - `gh pr comment <N> --body-file .merger-body.md`
+         - `gh pr edit <N> --add-label "fleet:awaiting-base" --add-label "fleet:merger-cooldown"`
          - Log: `... stacked on open #<base-pr-number>, labeled fleet:awaiting-base`
 
       **ii. Base PR is MERGED.** GitHub auto-re-targets the child to
@@ -404,10 +403,10 @@ exit cleanly:
          and the reviewer re-evaluates the new diff. `fleet:stacked` is
          stale after the re-target (baseRefName is now master), so
          drop it too:
-         - `gh pr edit <N> --repo <engine-repo> --base master`
-         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:awaiting-base"`
-         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:stacked"`
-         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:needs-base-update"`
+         - `gh pr edit <N> --base master`
+         - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
+         - `gh pr edit <N> --remove-label "fleet:stacked"`
+         - `gh pr edit <N> --remove-label "fleet:needs-base-update"`
          - Write `.merger-body.md` with:
            ```
            Merger: base PR #<base-pr-number> merged. Re-targeted this PR from
@@ -417,8 +416,8 @@ exit cleanly:
 
            — fleet merger
            ```
-         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
+         - `gh pr comment <N> --body-file .merger-body.md`
+         - `gh pr edit <N> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
          - Log: `... base #<base-pr-number> merged, re-targeted to master, labeled fleet:stacked-rebase`
 
       **iii. Base PR is CLOSED (not merged).** Orphaned stack — the
@@ -435,10 +434,10 @@ exit cleanly:
 
            — fleet merger
            ```
-         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:awaiting-base"`
-         - `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:needs-base-update"`
-         - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:needs-info" --add-label "fleet:merger-cooldown"`
+         - `gh pr comment <N> --body-file .merger-body.md`
+         - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
+         - `gh pr edit <N> --remove-label "fleet:needs-base-update"`
+         - `gh pr edit <N> --add-label "fleet:needs-info" --add-label "fleet:merger-cooldown"`
          - Log: `... base #<base-pr-number> closed (not merged), labeled fleet:needs-info`
 
       `fleet:stacked`, `fleet:awaiting-base`, `fleet:stacked-rebase`,
@@ -493,9 +492,9 @@ exit cleanly:
 
         — fleet merger
         ```
-      - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:fork-of-other-pr"`
-      - `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+      - `gh pr comment <N> --body-file .merger-body.md`
+      - `gh pr edit <N> --add-label "fleet:fork-of-other-pr"`
+      - `gh pr edit <N> --add-label "fleet:merger-cooldown"`
       - Log: `... forked from #<upstream-N> <upstream-headRefName>, labeled fleet:fork-of-other-pr`
       - Jump to step f (reset to scratch); do NOT proceed to step b.
 
@@ -533,9 +532,9 @@ exit cleanly:
 
         — fleet merger
         ```
-      - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+      - `gh pr comment <N> --body-file .merger-body.md`
       - Add cooldown label so we don't re-attempt next iteration:
-        `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+        `gh pr edit <N> --add-label "fleet:merger-cooldown"`
       - Append a log line to `~/.fleet/logs/merger-audit.log`:
         `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: clean rebase, force-pushed`
 
@@ -618,7 +617,7 @@ exit cleanly:
            2. `git rev-parse origin/<headRefName>` — PR head sha
               (ref already fetched in step a)
            3. Fetch the most recent merger comment body (single command):
-              `gh pr view <N> --repo <engine-repo> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
+              `gh pr view <N> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
            4. Scan the returned body for a `SHA pair:` line (added to
               the comment template below). Extract the two SHAs. (If the
               returned body is null or empty — jq `| last` on an empty
@@ -627,7 +626,7 @@ exit cleanly:
            5. If both SHAs match the current values:
               - Skip the comment and label additions below.
               - Re-add the cooldown label only:
-                `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+                `gh pr edit <N> --add-label "fleet:merger-cooldown"`
               - Log: `[<timestamp>] PR #<N> <headRefName>: recurring semantic-conflict — sha pair unchanged, comment skipped`
               - Jump to step f.
            6. If the sha pair differs, or no prior merger comment is
@@ -667,17 +666,17 @@ exit cleanly:
 
            — fleet merger
            ```
-         - `gh pr comment <N> --repo <engine-repo> --body-file .merger-body.md`
+         - `gh pr comment <N> --body-file .merger-body.md`
          - Remove stale verdict labels (not fleet:has-nits — nits remain valid
            regardless of merge conflicts and should be addressed once the
            conflict is resolved). Each as its own Bash call — `gh pr edit
            --remove-label` returns non-zero when the label isn't present,
            which would abort a chained `--add-label`:
-           `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:approved"`
-           `gh pr edit <N> --repo <engine-repo> --remove-label "fleet:needs-fix"`
+           `gh pr edit <N> --remove-label "fleet:approved"`
+           `gh pr edit <N> --remove-label "fleet:needs-fix"`
            Then add the conflict and cooldown labels:
-           `gh pr edit <N> --repo <engine-repo> --add-label "fleet:semantic-conflict"`
-           `gh pr edit <N> --repo <engine-repo> --add-label "fleet:merger-cooldown"`
+           `gh pr edit <N> --add-label "fleet:semantic-conflict"`
+           `gh pr edit <N> --add-label "fleet:merger-cooldown"`
          - Log: `... semantic conflict, labeled fleet:semantic-conflict`
 
    **e. Post-rebase hunk check.** Runs on ALL paths that reach a push
