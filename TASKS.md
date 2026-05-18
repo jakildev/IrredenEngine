@@ -283,7 +283,7 @@ Avoid:
   - **ID:** T-239
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-239-host-label-procedures
+  - **Owner:** claude/T-239-host-label-procedure
   - **Blocked by:** (none)
   - **Acceptance:** (1) new `.claude/skills/commit-and-push/procedures/host-label.md` with the `fleet:authored-on-{linux,macos}` host-stamp logic; (2) `commit-and-push/SKILL.md:386-423` (~37 lines) replaced with a ref; (3) reviewer-side `review-pr/SKILL.md:478-484` already refs `review-pr/procedures/cross-host-smoke.md` — ensure consistency
   - **Issue:** #822
