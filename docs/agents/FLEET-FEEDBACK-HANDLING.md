@@ -281,7 +281,8 @@ Per original feedback label:
   `fleet:approved` stays valid (cleanups don't invalidate approval).
 - **`fleet:design-unblocked`** — no response label needed; the PR
   re-enters the normal review flow once you push (sonnet-reviewer
-  will pick it up via `fleet:wip`).
+  picks it up via `fleet:changes-made` / no-fleet-review criteria,
+  not `fleet:wip` — `fleet:wip` is a skip label for the reviewer).
 
 Then post a summary comment regardless of which path:
 
