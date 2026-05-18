@@ -175,43 +175,11 @@ did it; verify with `gh pr view <N> --json labels --jq
 
 ## Cross-host smoke tagging
 
-After the verdict label is set, check whether the PR's diff touches
-any render path:
-
-- `engine/render/` (any file)
-- `engine/prefabs/irreden/render/` (any file)
-- Any `*.glsl` or `*.metal` shader file
-- Any file under `engine/render/src/shaders/`
-
-Use `gh pr diff <N> --name-only` to read the changed paths. If any
-path matches, add the smoke label for the host the author was NOT
-on. The author already smoke-tested their own host per the workflow,
-so tagging it again is redundant.
-
-`commit-and-push` stamps `fleet:authored-on-<host>` at PR
-create-time:
-
-- PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke`
-- PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke`
-- Neither (Windows-native author, or pre-fix PR) → add both
-
-```
-gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"
-```
-
-Each host's author agents (opus-worker, sonnet-author) poll for the
-label matching their host, run a clean-checkout build +
-`IRShapeDebug` smoke, and remove the label on success. The PR cannot
-be safely merged until the outstanding label is gone.
-
-**Skip** for game-repo PRs — cross-host smoke applies to engine
-backends only. **Skip** for non-render engine PRs (tooling, docs,
-non-render modules) — the labels exist to narrow the "did this port
-build on the other backend" question, not as general CI.
-
-If the first-pass reviewer (sonnet-reviewer) already added the
-labels, the second-pass reviewer (opus-reviewer) does not need to
-re-add them.
+See [FLEET-CROSS-HOST-SMOKE.md § Reviewer side: tagging](FLEET-CROSS-HOST-SMOKE.md#reviewer-side-tagging)
+for the canonical protocol — what counts as a render path, which
+smoke label to apply based on `fleet:authored-on-<host>`, the
+opus-reviewer / sonnet-reviewer non-duplication rule, and skip
+conditions for game-repo and non-render PRs.
 
 ---
 

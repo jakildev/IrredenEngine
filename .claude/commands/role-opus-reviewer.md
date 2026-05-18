@@ -204,7 +204,7 @@ iteration of polling, reviewing, and exiting cleanly:
       upstream-not-yet-approved, etc.). See
       [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
    i. **Cross-host smoke tagging (engine render PRs only).** See
-      [REVIEWER-PROTOCOL.md § Cross-host smoke tagging](../../docs/agents/REVIEWER-PROTOCOL.md#cross-host-smoke-tagging).
+      [FLEET-CROSS-HOST-SMOKE.md § Reviewer side: tagging](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md#reviewer-side-tagging).
       If Sonnet already added the labels on first pass, no action
       needed.
 
