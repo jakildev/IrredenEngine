@@ -597,10 +597,9 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonY,
         [logSymmetry]() { IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_; logSymmetry(); }
     );
-    // Ctrl+Z — undo the most recent stroke. The modifier check happens
-    // inline because IRCommand bindings don't take modifier masks; a
-    // bare Z press without Ctrl is intentionally ignored (Z alone may
-    // become a different editor hotkey later).
+    // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
+    // modifier checks disambiguate inline since IRCommand bindings don't
+    // take modifier masks.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
@@ -615,7 +614,12 @@ void initCommands() {
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonZ,
-        [logSymmetry]() { IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_; logSymmetry(); }
+        [logSymmetry]() {
+            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
+                IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
+                logSymmetry();
+            }
+        }
     );
 }
 
