@@ -302,11 +302,11 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.4, §1.4). Size S. `CLAUDE-BASELINE.md:273` says "commit-and-push checks for this" but the skill restates the whole policy (~38 lines).
   - **Links:**
 
-- [ ] **docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md** — fix five different timeout variants across 6 skills and eliminate a raw cmake --build violation in backend-parity
+- [~] **docs/skills: consolidate fleet-build/fleet-run snippets into one canonical block in BUILD.md** — fix five different timeout variants across 6 skills and eliminate a raw cmake --build violation in backend-parity
   - **ID:** T-235
   - **Area:** docs, build
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) canonical fleet-build/fleet-run wrapper + timeout guidance block added to `docs/agents/BUILD.md`; (2) `simplify/SKILL.md:573-576`, `polish-checkpoint/SKILL.md:107,122`, `attach-screenshots/SKILL.md:183-185,230-231`, `optimize/SKILL.md:120-122`, `render-debug-loop/SKILL.md:66,89`, `render-verify/SKILL.md:102-104` each reference BUILD.md and state only their per-skill timeout choice; (3) `backend-parity/SKILL.md:253-269` raw `cmake --build build --target IRShapeDebug -j$(nproc)` replaced with `fleet-build`
   - **Issue:** #818
