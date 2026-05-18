@@ -39,7 +39,7 @@ parent-canvas pair the system calls:
 2. `relationTick` — binds parent canvas textures to image slots 0 and 1.
 3. `tick` — binds child canvas textures to slots 2 and 3, uploads frame data, dispatches.
 
-Canvas entities without `CHILD_OF` do not participate in `TRIXEL_TO_TRIXEL` -- they render independently into their own textures.
+Canvas entities without `CHILD_OF` do not participate in `TRIXEL_TO_TRIXEL` — they render independently into their own textures.
 
 ## Adding a new render stage
 
