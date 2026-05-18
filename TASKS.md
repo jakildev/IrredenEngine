@@ -280,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md** — consolidate the per-entity getComponent / structural-change / allocation-in-tick check from 5 SKILL.md files into one shared rules file
-  - **ID:** T-231
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-231-ecs-smells-rules-file
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `.claude/rules/cpp-ecs-smells.md` created with the canonical ECS-invariants checklist; (2) `simplify/SKILL.md:62-105`, `review-pr/SKILL.md:200-222`, `optimize/SKILL.md:194-200`, `polish-checkpoint/SKILL.md:88-94`, `ecs-prefab-creator/SKILL.md:131-133` each replaced with a one-line ref to the new file; (3) `.claude/rules/cpp-systems.md` ref pattern at `simplify/SKILL.md:119-122` used as the ref style
-  - **Issue:** #814
-  - **Notes:** Follow-up from T-222 audit (§5.1, §1.1, §2). Size M. Same checklist restated in 5 files; canonical source is CLAUDE-BASELINE.md:16-31 + engine/system/CLAUDE.md.
-  - **Links:**
-
 - [~] **docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md** — consolidate the IRMath→glm substitution table from simplify and 3 other skills into one shared rules file
   - **ID:** T-232
   - **Area:** docs
@@ -603,6 +592,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-231** — docs/skills: extract ECS-invariants checklist into .claude/rules/cpp-ecs-smells.md · Owner: claude/T-231-ecs-smells-rules-file · PR: https://github.com/jakildev/IrredenEngine/pull/852
 - [x] **T-230** — docs/skills: reconcile backend-parity chaining vs start-next-task no-auto-invoke · Owner: claude/T-230-backend-parity-no-chain · PR: https://github.com/jakildev/IrredenEngine/pull/851
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
@@ -622,4 +612,3 @@ Avoid:
 - [x] **T-203** — Linux demo validation suite — fix SHAPES_TO_TRIXEL 2D dispatch crash + all demos pass on linux-debug · Owner: claude/T-203-linux-demo-validation · PR: https://github.com/jakildev/IrredenEngine/pull/782
 - [x] **T-216** — tooling: add Bash(gh:*) to fleet baseline + create fleet-iteration-summary · Owner: claude/T-216-ubuntu-approved-label-fix · PR: https://github.com/jakildev/IrredenEngine/pull/780
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
-- [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
