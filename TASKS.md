@@ -309,11 +309,11 @@ Avoid:
   - **Notes:** Scout writes `seen-hashes/queue-manager-ingest` before the ingest subprocess does any work; if ingest exits on lock contention the hash is already advanced and the trigger is silently consumed. Fix: on lock-bail, invalidate the hash so the next scout tick re-arms. Idempotent — worst case is one extra iteration that finds everything already-labeled and exits fast. See also T-283 (#974 — epic filter, contributing factor to why the symptom persisted).
   - **Links:**
 
-- [ ] **fleet: filter fleet:epic in project_queue_manager_ingest** — add the role-doc skip labels to the projector so epics never appear in the pending_issues slice
+- [~] **fleet: filter fleet:epic in project_queue_manager_ingest** — add the role-doc skip labels to the projector so epics never appear in the pending_issues slice
   - **ID:** T-283
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) after labeling an issue `fleet:epic + human:approved`, the queue-manager-ingest projection does not include it; (2) with only epics in `human_approved`, the projection hash stays stable and `fleet-queue-ingest` is not spawned; (3) the empty-projection fast-path in `fleet-queue-ingest` fires when only epics are pending, exiting in <1s without invoking claude; (4) fix at `fleet-state-scout:822-846` adds `_INGEST_SKIP_LABELS = frozenset({"fleet:queued","fleet:needs-plan","fleet:needs-info","fleet:epic"})`; mirror filter in `slice_queue_manager_ingest`
   - **Issue:** #974
