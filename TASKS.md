@@ -245,17 +245,6 @@ Avoid:
   - **Notes:** Follow-up from T-222 audit (§5.13, §1.9). Size M. Three templates differ by only 1-2 fields. Existing `procedures/` pattern: fleet-stack, cursor-stack, rebase-guard.
   - **Links:**
 
-- [~] **docs/skills: lift simplify's 98-line serialization version-bump rule into engine/asset/CLAUDE.md** — move asset-format-specific version-bump detection policy out of the generalist simplify skill
-  - **ID:** T-240
-  - **Area:** docs, engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-240-simplify-serialization-rule
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `simplify/SKILL.md:209-307` (~98 lines) moved to `engine/asset/CLAUDE.md` (or `.claude/rules/cpp-asset-versioning.md`); (2) simplify retains one line: "applies the asset version-bump check from <link>"; (3) rule content (heuristics + false-positive guards + output templates + unannotated-struct extension) preserved verbatim in the new location
-  - **Issue:** #823
-  - **Notes:** Follow-up from T-222 audit (§5.15, §4.5). Size M. Asset-format policy buried in a generalist skill — wrong layering.
-  - **Links:**
-
 - [~] **docs/skills: rewrite render-trixel-pipeline/SKILL.md to concepts-only; move inventory tables** — reduce structural outlier SKILL.md from inventory-heavy to 30-50 lines of concepts and gotchas
   - **ID:** T-241
   - **Area:** docs, engine/render
@@ -634,6 +623,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-240** — docs/skills: lift simplify's serialization version-bump rule into engine/asset/CLAUDE.md · Owner: claude/T-240-simplify-serialization-rule · PR: https://github.com/jakildev/IrredenEngine/pull/887
 - [x] **T-239** — docs/skills: lift commit-and-push host-stamp logic into procedures/host-label.md · Owner: claude/T-239-host-label-procedure · PR: https://github.com/jakildev/IrredenEngine/pull/886
 - [x] **T-236** — docs/skills: replace host/preset table copies with refs to BUILD.md · Owner: claude/T-236-host-preset-table-refs · PR: https://github.com/jakildev/IrredenEngine/pull/878
 - [x] **T-212** — editor F-1.2 — symmetry modes (X/Y/Z mirror, user-set plane offset) · Owner: claude/T-212-symmetry-modes · PR: https://github.com/jakildev/IrredenEngine/pull/794
@@ -653,4 +643,3 @@ Avoid:
 - [x] **T-226** — docs/skills: add missing name: field to request-re-review/SKILL.md front-matter · Owner: claude/T-226-request-re-review-name-field · PR: https://github.com/jakildev/IrredenEngine/pull/845
 - [x] **T-225** — docs/skills: fix cross-repo info-isolation leaks in midi-scene-creator and create-creation · Owner: claude/T-225-fix-cross-repo-isolation-leaks · PR: https://github.com/jakildev/IrredenEngine/pull/844
 - [x] **T-224** — render/picking: drop dead SDF box guard + unreachable flatIdx check; port 4 extra tests · Owner: claude/T-224-drop-dead-guards · PR: https://github.com/jakildev/IrredenEngine/pull/839
-- [x] **T-223** — docs: audit CLAUDE.md files — baseline drift, dead pointers, slop · Owner: claude/T-223-claude-md-audit · PR: https://github.com/jakildev/IrredenEngine/pull/806
