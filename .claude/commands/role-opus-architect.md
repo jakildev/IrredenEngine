@@ -169,29 +169,19 @@ When you do pick a task:
    longer in your conversation context. From
    `repos.engine.prs[]`, pick PRs whose `labels` array contains
    any of `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits`.
-   **Skip** PRs labeled `human:wip` — human is working on it directly.
 
-   **Priority order**: `human:needs-fix` > `fleet:needs-fix` > `fleet:has-nits`.
-   `fleet:has-nits` means the PR is approved but the reviewer flagged
-   optional improvements that should land before merge — address them.
+   Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
+   it owns the priority order, the AMEND-vs-ESCALATE decision (the
+   architect AMENDs by default — it's the closest model tier to
+   the human), the AMEND-path step sequence (a–h), the
+   `fleet-pr-clear-feedback-labels` wrapper, and the `fleet:approved`
+   clearing on `human:needs-fix`.
 
-   If any PR has `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits`:
-   a. Read ALL comments:
-      `fleet-pr comments <N>`
-      (combines the timeline, review summaries, and inline comments
-      that used to require three separate `gh api` calls.)
-      For `fleet:has-nits`: focus on the latest review's `### Nits`
-      section.
-   b. Remove the feedback label immediately:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
-   c. Address every piece of feedback. Build with `fleet-build`.
-   d. Push fixes using `commit-and-push`.
-   e. Response label:
-      - `human:needs-fix` → add `fleet:changes-made`:
-        `gh pr edit <N> --add-label "fleet:changes-made"`
-      - `fleet:needs-fix` / `fleet:has-nits` → no response label
-        needed; existing `fleet:approved` (if present) stays valid.
-      `gh pr comment <N> --body "Addressed feedback: <summary>"`
+   Architect-specific deltas: skip the worker/author-only
+   `fleet-claim reserve` step (interactive role; the human is the
+   trigger, not the dispatcher). The architect does not encounter
+   `fleet:design-unblocked` (opus-worker's tier) or
+   `fleet:semantic-conflict` (opus-worker's lane).
 
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.
