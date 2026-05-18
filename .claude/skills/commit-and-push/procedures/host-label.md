@@ -12,6 +12,10 @@ tagged for redundant validation. The OTHER host's smoke label (if needed per the
 diff) still gets added — backend drift between OpenGL and Metal is the whole point
 of cross-host validation.
 
+For the reviewer-side of this workflow — reading the host label and deciding which
+smoke tag to add lives in
+[`review-pr/procedures/cross-host-smoke.md`](../../review-pr/procedures/cross-host-smoke.md).
+
 ## Shell snippet
 
 ```bash
