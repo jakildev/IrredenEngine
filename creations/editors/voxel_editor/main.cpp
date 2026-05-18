@@ -237,6 +237,7 @@ void undoOne() {
     // without an extra liveness check. A future refactor that adds
     // entity removal must guard this loop.
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
+        // editable set lives for the session — no teardown path
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
