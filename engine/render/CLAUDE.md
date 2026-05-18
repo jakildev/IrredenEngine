@@ -106,8 +106,7 @@ Location: `engine/render/src/shaders/` (GLSL) and
 `engine/render/src/shaders/metal/` (Metal).
 
 Naming prefixes follow the convention in
-[`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming)
-(`c_` compute, `v_` vertex, `f_` fragment, `g_` geometry).
+[`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming).
 Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`.
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
