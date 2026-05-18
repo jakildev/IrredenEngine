@@ -336,6 +336,17 @@ Avoid:
   - **Notes:** Prerequisite for T-211 (editor F-1.1 place/erase); PR #785 (T-211's first PR) is design-blocked on this and will rebase once it lands. CPU-side path has no frame lag — preferred for editor click responsiveness. GPU readback path (`IRRender::getEntityIdAtMouseTrixel`, 1-frame lag, O(1) per pick) is documented as the fallback for high-voxel-count scenes. Extend `gatherVisibleShapes` or add a sibling helper; treat each active voxel as an axis-aligned unit cube for SDF testing. Multi-sub-entity scenes, voxel-set joints, and growable pool allocation are explicitly out of scope.
   - **Links:**
 
+- [ ] **entity: dedup globalFieldRegistry field names across World restarts** — linear scan in `registerField` to return an existing `FieldBindingId` when a name was previously registered; prevents id drift across World teardown/reconstruct cycles
+  - **ID:** T-220
+  - **Area:** engine/prefabs/irreden/common
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `registerField("foo")` called twice in the same process returns the same `FieldBindingId` both times; (2) test asserts id stability across two `World` constructions (or two fixture instances) within a single process; (3) no regression in modifier_runtime_test / modifier_lua_test; (4) fleet-build clean on linux-debug
+  - **Issue:** #512
+  - **Notes:** Latent bug identified in Opus recheck of PR #508 (T-100). `modifier_field_registry.hpp:25-29` appends name on every registration without dedup; `engine/script/src/lua_script.cpp` guards via `isComponentRegistered` but the guard breaks on World restart. Registry stays small (<100 entries) — O(N) scan per registration acceptable since registration is init-time only.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
