@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [ ] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
+- [~] **script: re-remove IrredenEngineRendering from engine/script/CMakeLists.txt (T-201 step 4)** — final cleanup once T-205 + T-206 clear: drop the render link so IrredenEngineScripting has no dependency on IrredenEngineRendering
   - **ID:** T-207
   - **Area:** engine/script
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/script/CMakeLists.txt` no longer links `IrredenEngineRendering`; (2) fresh-configure build from a clean build dir (`rm -rf build && cmake --preset linux-debug`) succeeds for `IrredenEngineScripting`, `IrredenEngineTest`, and `IRShapeDebug`; (3) all `PrefabApi.*` tests pass; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #755
