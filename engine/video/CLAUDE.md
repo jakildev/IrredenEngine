@@ -90,9 +90,6 @@ Reference callers: `creations/demos/shape_debug/main.cpp` and
 - `command_take_screenshot` → `requestScreenshot()`.
 - `command_take_screenshot_canvas` → `requestCanvasScreenshot()`.
 - `command_toggle_recording` → `toggleRecording()`.
-- `C_FramebufferCapture`, `C_FramebufferOutputPosition`,
-  `C_OutputResolution` — placeholder components tagging framebuffers
-  that participate in capture.
 
 ## Gotchas
 
