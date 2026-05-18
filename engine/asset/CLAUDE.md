@@ -383,10 +383,10 @@ go through `writeString()` / `readString()`. The struct itself is not
    `(structType, oldVersion)`.
 3. Update the per-format save/load header block (Extensibility Rule #7).
 
-The `simplify` skill (pre-commit) and `review-pr` skill both run the
-version-bump detection policy below whenever a `.hpp` or `.cpp` file under
-`engine/asset/`, `engine/prefabs/irreden/voxel/`, or `engine/world/` is in
-the diff.
+The `simplify` skill runs the version-bump detection policy below whenever a
+`.hpp` or `.cpp` file under `engine/asset/`, `engine/prefabs/irreden/voxel/`,
+or `engine/world/` is in the diff; `review-pr` applies the same principles
+via its step 4 Serialization checklist.
 
 ### Automated version-bump detection
 
@@ -466,8 +466,8 @@ invisible until an audit pass surfaced it.
 - Structs that only carry transient binary I/O state (`BinaryStatus`,
   `LoadedChunk`, `ChunkPayload`, `Result<T>`). These pass through format code
   without being the format's persisted record.
-- Structs declared in `binary_io.hpp` or `chunk_header.hpp` — framework types,
-  not format records.
+- Structs declared in `binary_io.hpp` or `chunk_header.hpp` (under
+  `engine/asset/include/irreden/asset/`) — framework types, not format records.
 - Cases where the writer/reader calls operate on a temporary or a
   function-local variable that doesn't correspond to a named struct type.
 
