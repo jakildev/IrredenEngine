@@ -5,7 +5,7 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_render.hpp>
+#include <irreden/math/sdf.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
@@ -235,7 +235,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         spawnedChildren.reserve(loadedVoxels->shapeRecords_.size());
         for (const auto &record : loadedVoxels->shapeRecords_) {
             IRComponents::C_ShapeDescriptor descriptor{
-                static_cast<IRRender::ShapeType>(record.shapeTypeId_),
+                static_cast<IRMath::SDF::ShapeType>(record.shapeTypeId_),
                 record.params_,
                 record.color_
             };

@@ -28,10 +28,12 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
-    # Required: prefab_api.cpp uses IRRender::ShapeType (via
-    # ir_render_types.hpp) and IRRender::getActiveCanvasEntityOrNull (via
-    # render/active_canvas.hpp) through component_{shape_descriptor,voxel_set}.hpp.
-    # See #739 for the layering fix; #753 (T-205) moved the snapshot to its own header.
+    # Required: component_voxel_set.hpp still pulls in <irreden/ir_render.hpp>
+    # for IRRender::allocateVoxels / deallocateVoxels and active_canvas.hpp
+    # for IRRender::getActiveCanvasEntityOrNull. ShapeType + SHAPE_FLAG_* are
+    # already render-neutral (IRMath::SDF) so they no longer drag IRRender in.
+    # See #739 for the layering fix; T-205 (#772) split active_canvas.hpp;
+    # T-206 (re-landing) will split the voxel pool API.
     IrredenEngineRendering
     # T-193 PR 2: lua_command_bindings.hpp exposes IRCommand on the Lua
     # surface, so the public scripting interface needs the IRCommand
@@ -39,8 +41,8 @@ target_link_libraries(
     IrredenEngineCommand
 )
 # PRIVATE so render headers don't leak through script's PUBLIC interface
-# (T-188 layering rule). prefab_api.cpp uses IRRender::ShapeType via
-# C_ShapeDescriptor when attaching SHAPES voxel_ref records.
+# (T-188 layering rule). component_voxel_set.hpp drags IRRender symbols
+# in transitively until the T-206 voxel-pool API split re-lands on master.
 target_link_libraries(
     IrredenEngineScripting PRIVATE
     IrredenEngineRendering
