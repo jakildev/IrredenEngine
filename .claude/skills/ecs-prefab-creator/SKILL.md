@@ -129,8 +129,7 @@ Systems support multiple event hooks via optional lambdas after the tick functio
 
 ### Anti-patterns
 
-- **Never** call `getComponent` or `getComponentOptional` inside a per-entity tick. Each call does hash-map + linear scan + hash-map lookups with profiler overhead.
-- Instead: include the component in the system's template parameters, store data at creation time, use `beginTick`/`endTick` for once-per-frame lookups, or use `relationTick` for per-parent-group lookups.
+- No `getComponent` / `getComponentOptional` in per-entity ticks, no structural changes (add/remove/create entity) mid-iteration — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full checklist, and [`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md) for alternative patterns (template-param widening, caching at creation time, `relationTick` for per-parent-group lookups, batching foreign-entity lookups).
 
 ## Creating a Command
 
