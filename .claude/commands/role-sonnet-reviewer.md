@@ -293,8 +293,7 @@ iterations write nothing).
   swaps `fleet:needs-fix` for `fleet:changes-made`), or by a worker
   mid-claim on a `fleet:has-nits` PR. Heuristically re-stamping a
   stale verdict overwrites those transitions and produces
-  invisible-needs-fix states (observed: PRs #347, #348, #394, plus
-  the 65s `fleet:has-nits` re-stamp race on #402). If you decide to
-  re-review, post a new review and set the label as part of THAT
-  review's flow. Otherwise leave the label alone.
+  invisible-needs-fix states. If you decide to re-review, post a new
+  review and set the label as part of THAT review's flow. Otherwise
+  leave the label alone.
 - Single-command Bash only (see CRITICAL section above).

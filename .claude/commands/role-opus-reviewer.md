@@ -284,8 +284,7 @@ iterations write nothing).
   of its own flow) rather than re-stamping the stale verdict.
   `gh pr view <N> --json labels` alone does not show label-strip
   events; use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
-  to see UNLABELED events. Observed bogus re-stamps: PRs #347,
-  #348, #394.
+  to see UNLABELED events.
 - Do NOT take on first-pass reviews that Sonnet has not yet touched
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.
