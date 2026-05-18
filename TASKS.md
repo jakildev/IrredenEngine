@@ -280,11 +280,11 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [ ] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
+- [~] **docs: audit role-*.md — shared protocols + point-don't-dump** — read all 7 `.claude/commands/role-*.md` files, produce `docs/agents/audit-roles.md` enumerating verbatim/near-verbatim duplication blocks (≥5 lines), dump violations, stale content, and one-PR-each follow-up cleanup tasks
   - **ID:** T-221
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-221-roles-audit
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/audit-roles.md` present in merged PR; (2) note covers all 7 role files with file:line citations for each duplication; (3) each duplication names a right shared home (existing doc or proposed new doc); (4) follow-up GitHub issues filed (no labels) for each concrete cleanup task in the note
   - **Issue:** #800
