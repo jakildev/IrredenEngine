@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
+- [ ] **editor: F-1.3 — layer system (named voxel groups, visibility toggle)** — each voxel carries a single layer id; layer panel UI with name, color tag, visibility eye, active-layer radio, reorder, add/rename/delete; hidden layers don't pick
   - **ID:** T-213
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) default Layer 0 exists on empty scene; (2) create new layer → it becomes active → subsequent placements carry its layer id; (3) toggle layer visibility → its voxels hide in viewport AND don't pick; (4) renaming a layer doesn't break per-voxel layer-id references (id stable, name is display-only); (5) reordering layers in panel doesn't change which voxels belong where; (6) deleting a layer moves its voxels to default layer or prompts confirmation; (7) layer membership round-trips through F-1.5 save/load; (8) fleet-build clean on linux-debug
@@ -203,7 +203,7 @@ Avoid:
   - **ID:** T-214
   - **Area:** creations/editors
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-214-anim-scrubber-perframe-undo
   - **Blocked by:** (none)
   - **Stack:** T-211..T-215 editor-phase-1
   - **Acceptance:** (1) add frame → new editable snapshot in timeline; switching shows empty or duplicated grid; (2) edit voxels in frame N → frame N+1 unaffected; (3) scrubber drags through frames smoothly, viewport updates per drag tick; (4) play button cycles at configurable FPS (test 6 fps and 24 fps); (5) loop and ping-pong modes both work; (6) frames round-trip through F-1.5 save/load identically; (7) undo (Ctrl-Z) scoped to active frame, doesn't reach into another frame's history; (8) per-frame undo cap documented in impl PR; (9) fleet-build clean on linux-debug
@@ -234,26 +234,15 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs** — remove dead directory reference, resolve placeholder task ID, and delete function-name and component-name catalog sections
+- [ ] **docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs** — remove dead directory reference, resolve placeholder task ID, and delete function-name and component-name catalog sections
   - **ID:** T-250
   - **Area:** docs, engine/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/render/CLAUDE.md:240` dead `engine/render/tests/render-baselines/` pointer fixed (point at real location or delete); (2) `L344` `T-09Y` placeholder resolved to real task ID or removed; (3) `L13-30` `IRRender::` function-name catalog removed; (4) `L119-131` `C_*` component catalog removed; (5) `L41-56` `C_GizmoHandle` per-field docs removed (belong in header); (6) `L137-143` shader naming prefix restatement trimmed to pointer to CLAUDE-BASELINE; (7) pipeline ASCII block at L254-268 preserved
   - **Issue:** #833
   - **Notes:** From T-223 audit (audit-claude-md.md). The render-baselines dead ref is high-priority — PR authors following the instruction will fail. Companion: render-debug-loop SKILL.md references the path inconsistently too.
-  - **Links:**
-
-- [~] **docs/roles: invert Engine API removal rule citation (baseline owns it)** — make CLAUDE-BASELINE.md the canonical home for the Engine API removal rule; collapse role-file copies to pointers
-  - **ID:** T-266
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-266-engine-api-removal-rule
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `CLAUDE-BASELINE.md:282-290` expanded to full canonical Engine API removal rule (the version currently in the role docs); downstream citation dropped; (2) `role-opus-worker.md:86-99` and `role-opus-architect.md:53-66` each collapsed to 2-line pointer at CLAUDE-BASELINE.md § Engine API removal rule; (3) net -13 lines
-  - **Issue:** #867
-  - **Notes:** From T-221 role audit (audit-roles.md §1.21, §2.1). CLAUDE-BASELINE.md currently points downstream to the role files ("See role-opus-architect.md and role-opus-worker.md for full guidance") — this inverts the canonical direction correctly.
   - **Links:**
 
 - [~] **docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers** — collapse three restated intro sections across all seven role files to single-line pointers
@@ -311,11 +300,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §3.7). Merger runs from the engine clone (pwd confirms ~/src/IrredenEngine/.claude/worktrees/merger), so gh infers the repo from cwd. Affected lines include 140, 185, 246, 306-307, 343, 416, 436-449, 459-460, 477-480, 535-537, 661, 710, 716-720 and more.
   - **Links:**
 
-- [~] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
+- [ ] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
   - **ID:** T-272
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-272-reviewer-pr-number-cleanup
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `role-opus-reviewer.md:421-422` and `role-sonnet-reviewer.md:463-464` PR-number citations removed; (2) failure-mode prose preserved standalone; (3) if keeping citations: moved to docs/agents/lessons-learned.md with dates; (4) ~6 line edits per option
   - **Issue:** #873
@@ -337,7 +326,7 @@ Avoid:
   - **ID:** T-274
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-274-queuemanager-feedback
   - **Blocked by:** (none)
   - **Acceptance:** (1) role-queue-manager.md explicitly states whether queue-manager produces end-of-iteration feedback; (2) if yes: End-of-iteration feedback section added pointing at ~/.fleet/feedback/queue-manager.md (consistent with other transient roles); (3) if no: one-line explicit statement added so future readers don't wonder; (4) ~10 line edit
   - **Issue:** #875
@@ -348,6 +337,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
 - [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
 - [x] **T-265** — docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor · Owner: claude/T-265-hoist-hard-rules · PR: https://github.com/jakildev/IrredenEngine/pull/917
 - [x] **T-259** — docs: SQT transition notes across prefabs/ family CLAUDE.md · Owner: claude/T-259-sqt-transition-notes · PR: https://github.com/jakildev/IrredenEngine/pull/916
@@ -367,4 +357,3 @@ Avoid:
 - [x] **T-247** — docs/skills: sweep Bash-rule violations in skill-prescribed snippets · Owner: claude/T-247-bash-rule-violations · PR: https://github.com/jakildev/IrredenEngine/pull/899
 - [x] **T-245** — docs/skills: compose request-re-review against commit-and-push and start-next-task instead of restating · Owner: claude/T-245-request-re-review-compose · PR: https://github.com/jakildev/IrredenEngine/pull/897
 - [x] **T-260** — docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md · Owner: claude/T-260-fleet-feedback-handling · PR: https://github.com/jakildev/IrredenEngine/pull/895
-- [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
