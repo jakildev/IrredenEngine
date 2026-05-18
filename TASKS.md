@@ -333,11 +333,11 @@ Avoid:
   - **Notes:** From T-223 audit (audit-claude-md.md). S — pick one canonical home for each rule, delete the other side. The three-function-signatures block and static anti-pattern explanation are duplicated verbatim.
   - **Links:**
 
-- [ ] **docs: creations/ + creations/demos/ CLAUDE.md — fix drift** — resolve stale voxel_editor reference, remove .gitignore paste, trim redundant CMake walkthrough, fix incomplete demo inventory
+- [~] **docs: creations/ + creations/demos/ CLAUDE.md — fix drift** — resolve stale voxel_editor reference, remove .gitignore paste, trim redundant CMake walkthrough, fix incomplete demo inventory
   - **ID:** T-258
   - **Area:** docs, creations
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `creations/CLAUDE.md:18,29-34` voxel_editor refs resolved (add "in flight under T-211" note if path doesn't exist, else leave); (2) `L23-34` .gitignore paste replaced with one-liner pointer; (3) `L77-95` CMake boilerplate section trimmed to MinGW-DLL gotcha + shape_debug pointer; (4) `L14-21` tree of creations/ subdirs replaced with prose; (5) `creations/demos/CLAUDE.md:16-48` demo inventory replaced with 2-line summary naming only canonical reference demos (shape_debug, default, lua_perf_grid); (6) `L51-67` adding-a-new-demo recipe compressed to one sentence
   - **Issue:** #842
