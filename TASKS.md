@@ -255,6 +255,83 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
   - **Links:**
 
+- [ ] **render: IRProfile::ScopeTimer + GPU timer query infrastructure** — CPU scope timer macro + GPU timer query pool; instrument render pipeline stages; HUD in perf_grid
+  - **ID:** T-275
+  - **Area:** engine/render, engine/profile, creations/demos/perf_grid
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `IRProfile::ScopeTimer` macro emits per-frame histogram readable from a debug HUD; (2) GPU timer queries instrument each render pipeline stage (init, voxel→trixel stage 1/2, shapes→trixel, visibility compaction, lighting, framebuffer composite); results lagged 1 frame to avoid sync stall; (3) `creations/demos/perf_grid` HUD displays per-stage CPU + GPU ms; (4) golden screenshot of profiler overlay regression test; (5) `fleet-build` clean on linux-debug and macos-debug
+  - **Issue:** #939
+  - **Notes:** Foundation of Epic B (#935 — voxel storage & rendering optimizations). Blocks B1/B2/B5 verification — those tasks require perf_grid before/after numbers in their PRs. Stack root for S-B-render (B0→B1→B2→B5); downstream sub-tasks branch off this PR's head, not master. Plan: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B0".
+  - **Links:**
+
+- [ ] **asset: .vxs DENSE-RLE chunk variant (VOXR_RLE)** — new run-length-encoded chunk tag for dense voxel records; old loaders silently skip; no version bump
+  - **ID:** T-276
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) hollow 64³ voxel set saves at ~10% of DENSE chunk size; (2) round-trip unit tests in `engine/asset/tests/` cover empty/full/hollow/striped cases; (3) format extensibility verified — old loader skips silently, new loader prefers RLE when both chunks present; (4) `engine/asset/CLAUDE.md` documents the new chunk tag; (5) `fleet-build` clean on linux-debug and macos-debug
+  - **Issue:** #940
+  - **Notes:** Independent task (does NOT stack). Critical timing — must land before Phase 1 authoring (#604) generates a dense `.vxs` corpus. Hard dependency for Epic E E6 chunk disk persistence (#938). Plan §"Epic B → B3". Parent epic #935.
+  - **Links:**
+
+- [ ] **render: runtime-sized voxel pools** — drop compile-time 64³ constexpr; size from GPU VRAM budget; --voxel-pool-size CLI override
+  - **ID:** T-277
+  - **Area:** engine/common, engine/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) launch with `--voxel-pool-size 128` runs at 128³ pool; default behaviour identical at 64³; (2) `render_manager` init logs selected pool size; (3) all existing demos pass at default; (4) `fleet-build` clean on linux-debug and macos-debug
+  - **Issue:** #941
+  - **Notes:** Independent task. Replaces `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` at `engine/common/include/irreden/ir_constants.hpp:54,63` (both marked TODO). Blocks Epic E E2 (#938) — GPU residency manager needs runtime sizing. Plan §"Epic B → B4". Parent epic #935.
+  - **Links:**
+
+- [ ] **editor: AABB box-fill + line-fill + face-fill** — drag-fill, axis-locked line-fill, coplanar flood-fill in voxel_editor; rough ghost preview
+  - **ID:** T-278
+  - **Area:** creations/editors/voxel_editor, engine/prefabs/irreden/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) drag a 16×16×16 box in under 1 s of user time; (2) line-fill along the X axis when modifier-key-held; (3) face-fill flood-fills a connected coplanar surface; (4) undo/redo correctly bracket each fill operation; (5) `fleet-build` clean on linux-debug and macos-debug
+  - **Issue:** #942
+  - **Notes:** Stack root for S-A-author (A1→A4→A2→A3); downstream sub-tasks (A4 ghost preview → A2 loft → A3 parametric bake) branch off this PR's head. Reuses `IRPrefab::Picking::castVoxelRay` at `engine/prefabs/irreden/render/picking.hpp:47-92` and the existing undo snapshot stack. Plan §"Epic A → A1". Parent epic #934.
+  - **Links:**
+
+- [ ] **engine: C_LocalTransform (SQT) component** — per-entity scale + quaternion + translation; identity-default is no-op; deprecates unused C_Rotation
+  - **ID:** T-279
+  - **Area:** engine/prefabs/irreden/common/components
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `C_LocalTransform` lands with identity-default; pure data per cpp-ecs §"Component method tiers"; (2) existing scenes render identically (no-op); (3) entity spawned with non-identity SQT renders transformed (verified inline in a small test demo); (4) no `getComponent` calls in tick paths touch this component; (5) `fleet-build` clean on linux-debug and macos-debug
+  - **Issue:** #943
+  - **Notes:** Foundation of Epic C (#936 — rotation architecture). Stack root for both S-C-core (C1→C2→C3→C7) and S-C-math (C1→C5→C4→C8). Deprecates `C_Rotation` at `engine/prefabs/irreden/common/components/component_rotation.hpp:8-20` (Euler vec3, currently unused; removed in a follow-up after consumer audit). Plan §"Epic C → C1".
+  - **Links:**
+
+- [ ] **world: audit chunk infra + write docs/design/world-streaming.md** — survey existing chunk hooks; design chunked streaming architecture (residency, prefetch, low-LOD fallback, entity migration, disk persist)
+  - **ID:** T-280
+  - **Area:** docs, engine/world (audit only)
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/design/world-streaming.md` reviewed by another Opus agent; (2) covers chunk addressing (ivec3 chunk coords), residency manager API, prefetch policy, one-frame upload budget + low-LOD fallback shape, entity migration semantics, disk persistence story — with concrete data structures and API sketches; (3) low-LOD representation choice resolved with rationale (downsampled voxel proxy vs. SDF silhouette proxy vs. AABB billboard); (4) no code changes
+  - **Issue:** #944
+  - **Notes:** Foundation of Epic E (#938 — world streaming + chunked GPU residency). Blocks E1–E6. Existing hooks: `kChunkSize = {32,32,32}` at `engine/common/include/irreden/ir_constants.hpp:19`, `C_ChunkVisibleThisFrame` at `engine/prefabs/irreden/common/components/component_tags_all.hpp:7`. Current `kWorldBoundMax` bounds world to one chunk; everything else is new. Plan §"Epic E → E0".
+  - **Links:**
+
+- [ ] **render: audit current SHAPES/HYBRID usage (informs SDF restriction decision)** — enumerate sites using C_ShapeDescriptor as primary entity vs lighting blocker vs effect; report under docs/design/sdf-runtime-audit.md
+  - **ID:** T-281
+  - **Area:** docs, engine/render (audit only)
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `docs/design/sdf-runtime-audit.md` lists every site using `C_ShapeDescriptor` as a primary entity; (2) per site notes the use case (primary shape vs. lighting blocker via `C_LightBlocker` vs. special effect); (3) concrete recommendation for restriction shape with migration cost estimate; (4) no code changes
+  - **Issue:** #945
+  - **Notes:** Foundation of Epic D (#937 — SDF runtime restriction tracking). Output informs D2 decision deliverable (lands during Epic C C3–C5). Epic C C8 (SDF rotation) gates on D2. Plan §"Epic D → D1".
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
